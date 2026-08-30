@@ -1,0 +1,420 @@
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import { hydratedClick, settledClick } from "./helpers";
+import { workerDbPath, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
+import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
+
+// THE DAY LEDGER (#3987 phase 1), on its own seeded stack.
+//
+// The page's shared profile already carries food servings and a due stack, which is
+// what the food specs read; what CANNOT be read off it is a COMPOSED WRITE, a SKIP
+// with a reason, or a partially-resolved routine — those are shapes nothing seeds. So
+// this file seeds its own three-dose stack on profile 1, drives the ledger against it,
+// and removes exactly what it added.
+//
+// SERIAL, because every test here reads the same seeded stack and two of them resolve
+// doses in it. Parallel workers each get their own DB (e2e/worker-env.ts), so the
+// isolation that matters is within this file.
+
+const STACK = "Ledger Stack (e2e)";
+const ITEMS = [
+  "Ledger Alpha (e2e)",
+  "Ledger Beta (e2e)",
+  "Ledger Gamma (e2e)",
+];
+const SKIPPED_ITEM = "Ledger Skipped (e2e)";
+const SKIP_REASON = "felt queasy";
+// The minute the composed tap wrote in. Two doses sharing it are one write; a third
+// dose of the same routine written at a different minute is not (the ledger keys the
+// collapse on the write minute, never on the bucket).
+const WRITE_HHMM = "07:07";
+const STATED_HHMM = "09:30";
+
+function openDb(): Database.Database {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  return db;
+}
+
+function zone(): string {
+  return pinnedTimezone(frozenNow().toISOString()).zone;
+}
+
+function todayLocal(): string {
+  return frozenNow().toLocaleDateString("en-CA", { timeZone: zone() });
+}
+
+/** A UTC SQL stamp for a wall time on a profile-local day, in the run's pinned zone. */
+function stampAt(day: string, hhmm: string): string {
+  const at = zonedWallTimeToUtc(zone(), day, hhmm);
+  if (!at) throw new Error(`no instant for ${day} ${hhmm} in ${zone()}`);
+  return utcSqlString(at);
+}
+
+// Doses THIS FILE resolved on profile 1 that it did not seed — the bulk Take-all
+// writes real taken rows against the shared fixture's own stack, and a worker runs
+// several spec files against one DB, so leaving them would hand the next file a day
+// that is already answered.
+const borrowedDoseIds: number[] = [];
+
+function cleanup(): void {
+  const db = openDb();
+  try {
+    if (borrowedDoseIds.length > 0) {
+      const marks = borrowedDoseIds.map(() => "?").join(", ");
+      db.prepare(
+        `DELETE FROM intake_item_logs
+          WHERE date = ? AND status = 'taken' AND dose_id IN (${marks})`
+      ).run(todayLocal(), ...borrowedDoseIds);
+      borrowedDoseIds.length = 0;
+    }
+    const names = [...ITEMS, SKIPPED_ITEM];
+    for (const name of names) {
+      const row = db
+        .prepare(
+          "SELECT id FROM intake_items WHERE profile_id = 1 AND name = ?"
+        )
+        .get(name) as { id: number } | undefined;
+      if (!row) continue;
+      db.prepare("DELETE FROM intake_item_logs WHERE item_id = ?").run(row.id);
+      db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(row.id);
+      db.prepare("DELETE FROM intake_items WHERE id = ?").run(row.id);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+interface Seeded {
+  doseIds: number[];
+  itemIds: number[];
+  skippedDoseId: number;
+}
+
+function seed(): Seeded {
+  const db = openDb();
+  const created = utcSqlString(new Date(frozenNow().getTime() - 86_400_000));
+  const day = todayLocal();
+  try {
+    const doseIds: number[] = [];
+    const itemIds: number[] = [];
+    for (const name of ITEMS) {
+      const itemId = Number(
+        db
+          .prepare(
+            `INSERT INTO intake_items
+               (profile_id, name, active, kind, obligation, condition, source, stack, created_at)
+             VALUES (1, ?, 1, 'supplement', 'should', 'daily', 'manual', ?, ?)`
+          )
+          .run(name, STACK, created).lastInsertRowid
+      );
+      const doseId = Number(
+        db
+          .prepare(
+            `INSERT INTO intake_item_doses
+               (item_id, amount, time_of_day, food_timing, sort, created_at)
+             VALUES (?, '1 cap', 'Morning', 'any', 0, ?)`
+          )
+          .run(itemId, created).lastInsertRowid
+      );
+      itemIds.push(itemId);
+      doseIds.push(doseId);
+    }
+    // TWO of the three, written in ONE minute — the composed tap, read back. The third
+    // stays owed, which is what makes the row say "2 of 3" instead of a bare check.
+    for (const doseId of doseIds.slice(0, 2)) {
+      const itemId = itemIds[doseIds.indexOf(doseId)];
+      db.prepare(
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, status, amount, recorded_at)
+         VALUES (?, ?, ?, 'taken', '1 cap', ?)`
+      ).run(doseId, itemId, day, stampAt(day, WRITE_HHMM));
+    }
+
+    // A SKIP, with its stored reason, on an unstacked item — a recorded event, never
+    // hidden. Its STATED time is later than the composed write's filing time, so it
+    // also carries the ordering claim: a stated row sorts above a filing-time one.
+    const skipItemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, obligation, condition, source, created_at)
+           VALUES (1, ?, 1, 'supplement', 'should', 'daily', 'manual', ?)`
+        )
+        .run(SKIPPED_ITEM, created).lastInsertRowid
+    );
+    const skippedDoseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '2 caps', 'Morning', 'any', 0, ?)`
+        )
+        .run(skipItemId, created).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, status, skip_reason, amount, recorded_at, occurred_at)
+       VALUES (?, ?, ?, 'skipped', ?, '2 caps', ?, ?)`
+    ).run(
+      skippedDoseId,
+      skipItemId,
+      day,
+      SKIP_REASON,
+      stampAt(day, WRITE_HHMM),
+      stampAt(day, STATED_HHMM)
+    );
+    itemIds.push(skipItemId);
+    return { doseIds, itemIds, skippedDoseId };
+  } finally {
+    db.close();
+  }
+}
+
+// Taken rows for one dose ON ONE DAY. Scoped to the day deliberately: a schedule row
+// is not an occurrence (#3936), so a daily supplement carries a taken row for every
+// day it was taken, and counting them all would answer a question nobody asked.
+function takenCount(doseId: number, date: string): number {
+  const db = openDb();
+  try {
+    return (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ? AND status = 'taken'"
+        )
+        .get(doseId, date) as { n: number }
+    ).n;
+  } finally {
+    db.close();
+  }
+}
+
+/** The ledger's Morning group, whose rows every test here reads. */
+function morning(page: Page) {
+  return page.getByTestId("ledger-group-morning");
+}
+
+test.describe("the Day ledger (#3987 phase 1)", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let seeded: Seeded;
+  test.beforeAll(() => {
+    cleanup();
+    seeded = seed();
+  });
+  test.afterAll(cleanup);
+
+  test("a composed write collapses to one row, and states a partial stack honestly", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("day-ledger")).toBeVisible();
+
+    // ONE row for the two doses one tap wrote — named by the routine, with the
+    // routine's own clock.
+    const stack = morning(page).locator('[data-testid^="ledger-stack-"]');
+    await expect(stack).toHaveCount(1);
+    await expect(stack).toContainText(STACK);
+    // "2 of 3", never a bare check: the third dose of the routine is still owed, and a
+    // single ✓ over a partial stack is a claim the day does not support.
+    await expect(stack).toHaveAttribute("data-label", "2 of 3");
+    await expect(stack).toContainText("2 of 3");
+    // COLLAPSED: the members are not in the DOM until it is opened, which is what
+    // makes it one row rather than three wearing a heading.
+    await expect(morning(page)).not.toContainText(ITEMS[0]);
+
+    await hydratedClick(page, stack);
+    // Expanded: the two it wrote, AND the one still open — the open member rides the
+    // stack row rather than the bucket's due row, so the dose is on exactly one row.
+    await expect(morning(page)).toContainText(ITEMS[0]);
+    await expect(morning(page)).toContainText(ITEMS[1]);
+    await expect(
+      page.getByTestId(`ledger-due-dose-${seeded.doseIds[2]}`)
+    ).toBeVisible();
+    // AND NOT ALSO IN THE BUCKET'S DUE ROW. `data-doses` names every dose that row
+    // will write, which is what makes this checkable rather than a visual impression.
+    const due = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    const named = ((await due.getAttribute("data-doses")) ?? "").split(",");
+    expect(named).not.toContain(String(seeded.doseIds[2]));
+  });
+
+  test("a skip states its stored reason, and a stated row sorts above a filed one", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const skip = page.locator('[data-testid^="ledger-dose-"]').filter({
+      hasText: SKIPPED_ITEM,
+    });
+    await expect(skip).toHaveAttribute("data-status", "skipped");
+    // A skip is a recorded event, and the record includes WHY.
+    await expect(skip).toContainText(`Skipped — ${SKIP_REASON}`);
+
+    // ORDERING. The skip states 09:30; the composed stack was only FILED, at 07:07.
+    // A clock-only sort would put the stack first; the ledger sinks every filing-time
+    // row below every stated one, so the skip leads.
+    const stack = morning(page).locator('[data-testid^="ledger-stack-"]');
+    const [skipBox, stackBox] = await Promise.all([
+      skip.boundingBox(),
+      stack.boundingBox(),
+    ]);
+    expect(skipBox).not.toBeNull();
+    expect(stackBox).not.toBeNull();
+    expect(skipBox!.y).toBeLessThan(stackBox!.y);
+    // And the filed row says which clock it is showing (#3958's grammar), rather than
+    // a bare time claiming an administration minute nobody stated. Read off the ROW,
+    // not the summary button: the clock is the row's trailing fact, beside it.
+    await expect(
+      morning(page).locator('li:has([data-testid^="ledger-stack-"])')
+    ).toContainText(/logged \d{1,2}:\d{2}/);
+  });
+
+  test("the bulk Take-all writes only what the day still owes (#3936)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const due = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(due).toBeVisible();
+    const named = ((await due.getAttribute("data-doses")) ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map(Number);
+    expect(named.length).toBeGreaterThan(0);
+    const takeAll = morning(page).locator(
+      '[data-testid^="ledger-takeall-"]'
+    );
+    await expect(takeAll).toHaveText(`Take all ${named.length}`);
+
+    // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved
+    // out of band, exactly as a phone tap or another tab would. The row's list is an
+    // UPPER BOUND — the core re-derives the day's pending set and writes only the
+    // intersection — so the write must land on the REST and must not double-log the
+    // one that moved.
+    const stale = named[0];
+    borrowedDoseIds.push(...named);
+    const db = openDb();
+    try {
+      const item = db
+        .prepare("SELECT item_id FROM intake_item_doses WHERE id = ?")
+        .get(stale) as { item_id: number };
+      db.prepare(
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at)
+         VALUES (?, ?, ?, 'taken', ?)`
+      ).run(stale, item.item_id, todayLocal(), utcSqlString(frozenNow()));
+    } finally {
+      db.close();
+    }
+    const day = todayLocal();
+    expect(takenCount(stale, day)).toBe(1);
+
+    // THE ROW'S PROMISE IS THE SERVER'S PENDING SET, not a client copy of it. A
+    // reload after the out-of-band write must drop the stale dose from the names AND
+    // from the count the label promises — the half that would still be wrong if the
+    // row rendered whatever it was handed at first paint.
+    await page.reload();
+    const namedAfter = ((await due.getAttribute("data-doses")) ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map(Number);
+    expect(namedAfter).not.toContain(stale);
+    expect(namedAfter).toHaveLength(named.length - 1);
+    await expect(takeAll).toHaveText(`Take all ${named.length - 1}`);
+
+    await settledClick(page, takeAll);
+    // ONE taken row for the stale dose, still — no second administration for a dose
+    // the day no longer owed. DEFENDED TWICE, and the second defence is why this
+    // assertion alone is not the whole claim: `resolveDayDoses` intersects the named
+    // ids with the day's freshly-derived pending set, AND `markDoseTaken` is
+    // idempotent per (dose, date). Measured by mutation: removing the intersection
+    // leaves this line green, which is what the reload assertions above are for.
+    expect(takenCount(stale, day)).toBe(1);
+    // And the rest of the named set did land.
+    for (const doseId of named.slice(1))
+      expect(takenCount(doseId, day)).toBe(1);
+  });
+
+  test("past-day dose interactivity flips at the write window, from both sides", async ({
+    page,
+  }) => {
+    // INSIDE the window a past day's rows are live; the day after it is record only.
+    // Both sides are read off the SAME constant the write cores gate on, so the spec
+    // cannot drift from the rule it is checking.
+    const inside = shiftDateStr(todayLocal(), -DOSE_LOG_DATE_WINDOW_DAYS);
+    const outside = shiftDateStr(todayLocal(), -(DOSE_LOG_DATE_WINDOW_DAYS + 1));
+    expect(inside).not.toBe(outside);
+
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.locator(`[data-testid="food-day-${inside}"]`));
+    const insideDue = page.locator('[data-testid^="ledger-due-group-"]').first(); // first-ok: any due group carries the bulk control — order-agnostic
+    await expect(insideDue).toBeVisible();
+    await expect(
+      page.locator('[data-testid^="ledger-takeall-"]').first() // first-ok: same group
+    ).toBeVisible();
+
+    await hydratedClick(
+      page,
+      page.locator(`[data-testid="food-day-${outside}"]`)
+    );
+    // Beyond the window the day still STATES what it owed — the record outlives the
+    // write window — and offers nothing to tap.
+    await expect(page.getByTestId("day-ledger")).toBeVisible();
+    await expect(
+      page.locator('[data-testid^="ledger-takeall-"]')
+    ).toHaveCount(0);
+  });
+});
+
+test.describe("the day is stated once, and the chrome is measured", () => {
+  test.use({ viewport: { width: 430, height: 932 } });
+
+  test("no serving or dose is rendered twice, and the ledger leads the page", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const ledger = page.getByTestId("day-ledger");
+    await expect(ledger).toBeVisible();
+
+    // THE REMOVAL. The Meals cards and the LOGGED-TODAY list were two full renderings
+    // of the same servings, adjacent; neither survives.
+    await expect(page.getByTestId("food-meal-summary")).toHaveCount(0);
+    await expect(page.getByTestId("food-logged-list")).toHaveCount(0);
+    // Every serving row is unique: one <li> per ledger event id, page-wide.
+    const ids = await page
+      .locator('[data-testid^="ledger-serving-"]')
+      .evaluateAll((nodes) =>
+        nodes
+          .map((n) => n.getAttribute("data-testid") ?? "")
+          .filter((id) => /^ledger-serving-\d+$/.test(id))
+      );
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // THE CONVERSE, and it is the half the removal cannot make: an empty page passes
+    // "nothing renders it twice" just as happily. These are the named surfaces that
+    // must STILL carry the day — the ledger states the servings, and the add list
+    // still offers the groups to add.
+    await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // first-ok: any serving row proves the ledger states the day — order-agnostic
+    await expect(
+      page.getByTestId("food-quick-rows").locator('li[data-testid^="food-group-"]')
+    ).not.toHaveCount(0);
+    // The day's census, once, in the header.
+    await expect(page.getByTestId("day-ledger-census")).toContainText(
+      /\d+ servings?/
+    );
+
+    // THE MEASUREMENT (#3987's chrome gate). The redesign's goal is LESS, so less is
+    // measured: the y of the FIRST LEDGER ROW — of any kind, since a dose row can
+    // legitimately lead the day — at 430x932. Reported in the PR body.
+    const firstRow = ledger.locator("ul > li").first(); // first-ok: the topmost row IS the measurement — order is the point
+    const box = await firstRow.boundingBox();
+    expect(box).not.toBeNull();
+    // eslint-disable-next-line no-console
+    console.log(`LEDGER_FIRST_ROW_Y=${Math.round(box!.y)}`);
+    // A ceiling, not the number: the point of the gate is that the chrome above the
+    // day cannot grow back. 520px is roughly half the 932px viewport — the schedule
+    // this replaces spent ~1,600px before its first supplement (#3892).
+    expect(box!.y).toBeLessThan(520);
+  });
+});
