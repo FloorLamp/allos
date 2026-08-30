@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import {
   awaitHydrated,
   hydratedClick,
+  settledBoxes,
   settledClick,
   settledSelect,
 } from "./helpers";
@@ -130,13 +131,11 @@ test("a food row is one dense line: icon, name, stepper (#3987)", async ({
   // ONE LINE. The row's rendered height is within a line-box of the stepper's own
   // box — measured as a RELATIONSHIP, because "the row is 56px" says nothing about
   // whether a second line is wrapping inside it.
-  const [rowBox, stepBox] = await Promise.all([
-    row.boundingBox(),
-    row.getByTestId("log-cruciferous").boundingBox(),
+  const [rowBox, stepBox] = await settledBoxes([
+    row,
+    row.getByTestId("log-cruciferous"),
   ]);
-  expect(rowBox).not.toBeNull();
-  expect(stepBox).not.toBeNull();
-  expect(rowBox!.height).toBeLessThan(stepBox!.height + 24);
+  expect(rowBox.height).toBeLessThan(stepBox.height + 24);
 });
 
 test("the minus is not drawn until there is something to remove (#3987)", async ({
@@ -220,7 +219,9 @@ test("dietary preferences can be edited in a modal without leaving the food log"
 
   // ONE preferences affordance at every width since #3987 — the Meals-cards header
   // that carried the desktop twin retired with the cards.
-  await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(0);
+  await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(
+    0
+  );
   const open = page.getByTestId("food-preferences-open");
   await expect(open).toBeVisible();
   await expect(open).not.toHaveAttribute("href");
@@ -290,7 +291,7 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await expect(page.getByTestId("food-meal-summary")).toHaveCount(0);
   const mealBoxes = await page
     .getByTestId("food-meal-slots")
-    .locator('[data-segmented-option]')
+    .locator("[data-segmented-option]")
     .evaluateAll((buttons) =>
       buttons.map((button) => button.getBoundingClientRect())
     );
@@ -447,26 +448,26 @@ test.describe("the dense row keeps its anatomy on a phone (#3987)", () => {
 
     await expect(page.getByTestId("detail-leafy_greens")).toHaveCount(0);
     // ONE name mount now — the `-mobile` twin went with the breakpoint fork.
-    await expect(
-      page.getByTestId("food-name-leafy_greens-mobile")
-    ).toHaveCount(0);
+    await expect(page.getByTestId("food-name-leafy_greens-mobile")).toHaveCount(
+      0
+    );
     const row = page.getByTestId("food-group-leafy_greens");
     const name = row.getByTestId("food-name-leafy_greens");
     await expect(name).toBeVisible();
     const icon = row.getByTestId("food-group-icon");
-    const [rowBox, iconBox, nameBox] = await Promise.all([
-      row.boundingBox(),
-      icon.boundingBox(),
-      name.boundingBox(),
+    const [rowBox, iconBox, nameBox, stepBox] = await settledBoxes([
+      row,
+      icon,
+      name,
+      row.getByTestId("log-leafy_greens"),
     ]);
     expect(
       Math.abs(
-        iconBox!.y + iconBox!.height / 2 - (nameBox!.y + nameBox!.height / 2)
+        iconBox.y + iconBox.height / 2 - (nameBox.y + nameBox.height / 2)
       )
     ).toBeLessThan(3);
     // The row is one line: its height is the stepper's box plus padding, not two.
-    const stepBox = (await row.getByTestId("log-leafy_greens").boundingBox())!;
-    expect(rowBox!.height).toBeLessThan(stepBox.height + 24);
+    expect(rowBox.height).toBeLessThan(stepBox.height + 24);
   });
 });
 
@@ -748,7 +749,10 @@ async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
     page,
     row.getByRole("button", { name: /^Actions for the/ })
   );
-  await settledClick(page, page.getByTestId(`ledger-serving-remove-${eventId}`));
+  await settledClick(
+    page,
+    page.getByTestId(`ledger-serving-remove-${eventId}`)
+  );
   await expect(row).toHaveCount(0);
 }
 
@@ -868,7 +872,9 @@ test("an earlier hour states an absolute time, and it is what lands (#2053)", as
   // time a statement replaced": the logged list names this serving by the hour that was
   // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
   // control's own option label is what the row ends up reading.
-  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toContainText(hhmm);
+  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toContainText(
+    hhmm
+  );
 
   await removeLoggedServing(page, eventId);
 });

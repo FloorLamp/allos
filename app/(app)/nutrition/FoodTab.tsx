@@ -69,7 +69,11 @@ import {
   formatFastDuration,
 } from "@/lib/fasting";
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
-import { buildDayLedger, type LedgerGroup, type LedgerServing } from "@/lib/day-ledger";
+import {
+  buildDayLedger,
+  type LedgerGroup,
+  type LedgerServing,
+} from "@/lib/day-ledger";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { doseLogDays } from "@/lib/dose-log-window";
@@ -126,7 +130,8 @@ function WeeklyFiberLine({ adequacy }: { adequacy: FiberAdequacy }) {
           data-testid="nutrition-weekly-fiber-value"
           className="font-semibold text-slate-700 dark:text-slate-200"
         >
-          {Math.round(intake.grams)}g{fiberBasisIsFloor(intake.basis) ? "+" : ""}
+          {Math.round(intake.grams)}g
+          {fiberBasisIsFloor(intake.basis) ? "+" : ""}
         </span>
         <span>/ {Math.round(target.grams)}g+ goal</span>
         <span
@@ -349,21 +354,19 @@ export default async function FoodTab({
     mealDays.map((day) => [
       day.date,
       buildDayLedger({
-        servings: day.events.map(
-          (event): LedgerServing => ({
-            kind: "serving",
-            id: `serving:${event.id}`,
-            eventId: event.id,
-            slug: event.groupKey,
-            name: event.name,
-            bucket: event.mealSlot,
-            // The EATING time where one was captured, else the filing time — with the
-            // answer saying which, so the ledger renders "logged 8:06pm" for a row
-            // nobody timed rather than a bare clock claiming an eating minute (#3958).
-            hhmm: event.eatenAt ?? event.loggedTime,
-            clockKind: event.eatenAt ? "stated" : "logged",
-          })
-        ),
+        servings: day.events.map((event): LedgerServing => ({
+          kind: "serving",
+          id: `serving:${event.id}`,
+          eventId: event.id,
+          slug: event.groupKey,
+          name: event.name,
+          bucket: event.mealSlot,
+          // The EATING time where one was captured, else the filing time — with the
+          // answer saying which, so the ledger renders "logged 8:06pm" for a row
+          // nobody timed rather than a bare clock claiming an eating minute (#3958).
+          hhmm: event.eatenAt ?? event.loggedTime,
+          clockKind: event.eatenAt ? "stated" : "logged",
+        })),
         doses: getDayDoseLedger(profile.id, day.date),
         pending: doseWritable.has(day.date)
           ? (pendingByDate.get(day.date) ?? [])

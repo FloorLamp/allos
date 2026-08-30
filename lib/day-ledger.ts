@@ -117,7 +117,9 @@ export function stackLabel(row: LedgerStack): string {
 /** The day header's census — each kind counted once, in a fixed order. */
 export function dayCountsLabel(servings: number, doses: number): string {
   return [
-    servings > 0 ? `${servings} ${servings === 1 ? "serving" : "servings"}` : "",
+    servings > 0
+      ? `${servings} ${servings === 1 ? "serving" : "servings"}`
+      : "",
     doses > 0 ? `${doses} ${doses === 1 ? "dose" : "doses"}` : "",
   ]
     .filter(Boolean)

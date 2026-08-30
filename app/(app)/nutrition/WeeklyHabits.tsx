@@ -97,7 +97,12 @@ export default function WeeklyHabits({
   // end, which is where "you have not done this yet" belongs.
   const byHabit = new Map(habits.map((p) => [p.target.scope_value, p]));
   const rows = [
-    ...rollup.map((g) => ({ slug: g.slug, name: g.name, tier: g.tier, servings: g.servings })),
+    ...rollup.map((g) => ({
+      slug: g.slug,
+      name: g.name,
+      tier: g.tier,
+      servings: g.servings,
+    })),
     ...habits
       .filter((p) => !rollup.some((g) => g.slug === p.target.scope_value))
       .map((p) => {
@@ -236,30 +241,30 @@ export default function WeeklyHabits({
           className="mt-2 flex flex-wrap items-center gap-2"
           data-testid="add-habit-form"
         >
-        <select
-          name="group_key"
-          aria-label="Food group"
-          className="input flex-[2_1_12rem] text-sm"
-          defaultValue="fatty_fish"
-        >
-          {FOOD_GROUPS.map((g) => (
-            <option key={g.slug} value={g.slug}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="number"
-          name="per_week"
-          min={1}
-          max={21}
-          defaultValue={2}
-          aria-label="Servings per week"
-          className="input w-16 text-sm"
-        />
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          /week
-        </span>
+          <select
+            name="group_key"
+            aria-label="Food group"
+            className="input flex-[2_1_12rem] text-sm"
+            defaultValue="fatty_fish"
+          >
+            {FOOD_GROUPS.map((g) => (
+              <option key={g.slug} value={g.slug}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            name="per_week"
+            min={1}
+            max={21}
+            defaultValue={2}
+            aria-label="Servings per week"
+            className="input w-16 text-sm"
+          />
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            /week
+          </span>
           <SubmitButton pendingLabel="Tracking…">Track</SubmitButton>
         </form>
       </Disclosure>

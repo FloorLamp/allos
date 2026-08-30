@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { hydratedClick, settledBoxes, settledClick } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
@@ -20,11 +20,7 @@ import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 // isolation that matters is within this file.
 
 const STACK = "Ledger Stack (e2e)";
-const ITEMS = [
-  "Ledger Alpha (e2e)",
-  "Ledger Beta (e2e)",
-  "Ledger Gamma (e2e)",
-];
+const ITEMS = ["Ledger Alpha (e2e)", "Ledger Beta (e2e)", "Ledger Gamma (e2e)"];
 const SKIPPED_ITEM = "Ledger Skipped (e2e)";
 const SKIP_REASON = "felt queasy";
 // The minute the composed tap wrote in. Two doses sharing it are one write; a third
@@ -256,13 +252,8 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // A clock-only sort would put the stack first; the ledger sinks every filing-time
     // row below every stated one, so the skip leads.
     const stack = morning(page).locator('[data-testid^="ledger-stack-"]');
-    const [skipBox, stackBox] = await Promise.all([
-      skip.boundingBox(),
-      stack.boundingBox(),
-    ]);
-    expect(skipBox).not.toBeNull();
-    expect(stackBox).not.toBeNull();
-    expect(skipBox!.y).toBeLessThan(stackBox!.y);
+    const [skipBox, stackBox] = await settledBoxes([skip, stack]);
+    expect(skipBox.y).toBeLessThan(stackBox.y);
     // And the filed row says which clock it is showing (#3958's grammar), rather than
     // a bare time claiming an administration minute nobody stated. Read off the ROW,
     // not the summary button: the clock is the row's trailing fact, beside it.
@@ -282,9 +273,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .filter(Boolean)
       .map(Number);
     expect(named.length).toBeGreaterThan(0);
-    const takeAll = morning(page).locator(
-      '[data-testid^="ledger-takeall-"]'
-    );
+    const takeAll = morning(page).locator('[data-testid^="ledger-takeall-"]');
     await expect(takeAll).toHaveText(`Take all ${named.length}`);
 
     // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved
@@ -342,12 +331,20 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // Both sides are read off the SAME constant the write cores gate on, so the spec
     // cannot drift from the rule it is checking.
     const inside = shiftDateStr(todayLocal(), -DOSE_LOG_DATE_WINDOW_DAYS);
-    const outside = shiftDateStr(todayLocal(), -(DOSE_LOG_DATE_WINDOW_DAYS + 1));
+    const outside = shiftDateStr(
+      todayLocal(),
+      -(DOSE_LOG_DATE_WINDOW_DAYS + 1)
+    );
     expect(inside).not.toBe(outside);
 
     await page.goto("/nutrition");
-    await hydratedClick(page, page.locator(`[data-testid="food-day-${inside}"]`));
-    const insideDue = page.locator('[data-testid^="ledger-due-group-"]').first(); // first-ok: any due group carries the bulk control — order-agnostic
+    await hydratedClick(
+      page,
+      page.locator(`[data-testid="food-day-${inside}"]`)
+    );
+    const insideDue = page
+      .locator('[data-testid^="ledger-due-group-"]')
+      .first(); // first-ok: any due group carries the bulk control — order-agnostic
     await expect(insideDue).toBeVisible();
     await expect(
       page.locator('[data-testid^="ledger-takeall-"]').first() // first-ok: same group
@@ -360,9 +357,9 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // Beyond the window the day still STATES what it owed — the record outlives the
     // write window — and offers nothing to tap.
     await expect(page.getByTestId("day-ledger")).toBeVisible();
-    await expect(
-      page.locator('[data-testid^="ledger-takeall-"]')
-    ).toHaveCount(0);
+    await expect(page.locator('[data-testid^="ledger-takeall-"]')).toHaveCount(
+      0
+    );
   });
 });
 
@@ -397,7 +394,9 @@ test.describe("the day is stated once, and the chrome is measured", () => {
     // still offers the groups to add.
     await expect(ledger.locator("li[data-group]").first()).toBeVisible(); // first-ok: any serving row proves the ledger states the day — order-agnostic
     await expect(
-      page.getByTestId("food-quick-rows").locator('li[data-testid^="food-group-"]')
+      page
+        .getByTestId("food-quick-rows")
+        .locator('li[data-testid^="food-group-"]')
     ).not.toHaveCount(0);
     // The day's census, once, in the header.
     await expect(page.getByTestId("day-ledger-census")).toContainText(

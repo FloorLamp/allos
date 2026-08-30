@@ -245,9 +245,9 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     // training-routine-scope.spec.ts and food-habits.spec.ts, on the profile that has
     // one; this fixture profile tracks no habits, so asserting it here would be a
     // claim about an empty set.)
-    await expect(rollup.locator(':scope > li:not([data-testid^="rollup-"])')).toHaveCount(
-      0
-    );
+    await expect(
+      rollup.locator(':scope > li:not([data-testid^="rollup-"])')
+    ).toHaveCount(0);
     // Weekly servings keep their visible hierarchy: most logged first, name for ties.
     const rollupValues = await rollupRows.evaluateAll((rows) =>
       rows.map((row) => {
@@ -313,9 +313,9 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await expect(page.getByTestId("food-preferences-open")).toBeVisible();
     // ONE preferences affordance at every width, and no Meals-cards header to carry a
     // second one (#3987).
-    await expect(
-      page.getByTestId("food-preferences-open-desktop")
-    ).toHaveCount(0);
+    await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(
+      0
+    );
     await expect(
       page.getByRole("heading", { name: "Meals", level: 3 })
     ).toHaveCount(0);

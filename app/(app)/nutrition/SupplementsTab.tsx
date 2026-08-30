@@ -423,7 +423,8 @@ export default async function SupplementsTab({
   // differently every morning. The stack list is the whole stack; what folds away is
   // the items that name no time of day at all, which is a property of the item rather
   // than of today. Whether a dose is owed right now is the Day ledger's statement.
-  const isTimeless = (item: Item) => timeBucket(item.dose.time_of_day) === "Anytime";
+  const isTimeless = (item: Item) =>
+    timeBucket(item.dose.time_of_day) === "Anytime";
   const notScheduled = activeSupplementItems.filter(
     (i) => !isHeld(i.supplement) && isTimeless(i)
   );

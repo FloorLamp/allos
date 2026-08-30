@@ -75,15 +75,15 @@ function pending(
 describe("buildDayLedger — one group system (#3987)", () => {
   it("interleaves servings and doses in the same bucket group", () => {
     const groups = buildDayLedger({
-      servings: [serving(1, "Morning", "07:30"), serving(2, "Evening", "19:00")],
+      servings: [
+        serving(1, "Morning", "07:30"),
+        serving(2, "Evening", "19:00"),
+      ],
       doses: [dose(10, "Morning", "08:00", { clockKind: "stated" })],
       pending: [],
     });
     expect(groups.map((g) => g.bucket)).toEqual(["Morning", "Evening"]);
-    expect(groups[0].rows.map((r) => r.id)).toEqual([
-      "serving:1",
-      "dose:10",
-    ]);
+    expect(groups[0].rows.map((r) => r.id)).toEqual(["serving:1", "dose:10"]);
     expect([groups[0].servings, groups[0].doses]).toEqual([1, 1]);
   });
 
@@ -181,8 +181,18 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     const groups = buildDayLedger({
       servings: [],
       doses: [
-        dose(1, "Morning", "07:07", morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })),
-        dose(2, "Morning", "07:07", morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })),
+        dose(
+          1,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          2,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
         dose(3, "Morning", "10:07", morningStack()),
         dose(4, "Morning", "10:07", morningStack()),
       ],

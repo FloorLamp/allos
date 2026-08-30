@@ -73,7 +73,10 @@ async function removeServingRow(page: Page, eventId: string): Promise<void> {
     page,
     row.getByRole("button", { name: /^Actions for the/ })
   );
-  await settledClick(page, page.getByTestId(`ledger-serving-remove-${eventId}`));
+  await settledClick(
+    page,
+    page.getByTestId(`ledger-serving-remove-${eventId}`)
+  );
   await expect(row).toHaveCount(0);
 }
 
@@ -130,9 +133,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
 
   // THE PIN: the serving MOVED. Evening gained exactly one and Morning is back where
   // it started — an increment-without-decrement bug would leave Morning inflated.
-  await expect
-    .poll(() => slotTotal(page, "Evening"))
-    .toBe(eveningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 1);
   await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
   // The Morning button count for the group is back to its pre-tap value too.
   await expect(page.getByTestId("count-nuts_seeds")).toHaveText(
@@ -222,9 +223,7 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
 
   // The tallies follow the row that actually left: Evening is down by exactly one and
   // Morning never moves (the serving had already left it).
-  await expect
-    .poll(() => slotTotal(page, "Evening"))
-    .toBe(eveningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 1);
   await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
   await expect(page.getByTestId("count-shellfish")).toHaveText(
     String(eveningCountBefore + 1)
@@ -236,8 +235,12 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await removeServingRow(page, untouchedId);
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(page.getByTestId(`ledger-serving-${correctedId}`)).toHaveCount(0);
-  await expect(page.getByTestId(`ledger-serving-${untouchedId}`)).toHaveCount(0);
+  await expect(page.getByTestId(`ledger-serving-${correctedId}`)).toHaveCount(
+    0
+  );
+  await expect(page.getByTestId(`ledger-serving-${untouchedId}`)).toHaveCount(
+    0
+  );
   await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore);
   await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
 });
@@ -270,7 +273,10 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   // the unforgiving one, sitting beside a group "−" whose mistap costs one tap.
   const row = page.getByTestId(`ledger-serving-${eventId}`);
   await row.getByRole("button", { name: /^Actions for the/ }).click();
-  await settledClick(page, page.getByTestId(`ledger-serving-remove-${eventId}`));
+  await settledClick(
+    page,
+    page.getByTestId(`ledger-serving-remove-${eventId}`)
+  );
   await expect(page.getByText("Serving removed.")).toBeVisible();
   await expect(row).toHaveCount(0);
   await expect(page.getByTestId("count-berries")).toHaveText(
@@ -292,10 +298,9 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const restoredId = await newRowId(page, idsBefore);
-  await expect(page.getByTestId(`ledger-serving-${restoredId}`)).toHaveAttribute(
-    "data-group",
-    "berries"
-  );
+  await expect(
+    page.getByTestId(`ledger-serving-${restoredId}`)
+  ).toHaveAttribute("data-group", "berries");
 
   // Leave the fixture as found.
   await removeServingRow(page, restoredId);

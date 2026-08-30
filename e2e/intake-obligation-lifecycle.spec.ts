@@ -100,7 +100,8 @@ async function expandDueGroups(page: Page): Promise<void> {
   const n = await groups.count();
   for (let i = 0; i < n; i++) {
     const row = groups.nth(i);
-    if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
+    if ((await row.getAttribute("aria-expanded")) === "false")
+      await row.click();
   }
 }
 

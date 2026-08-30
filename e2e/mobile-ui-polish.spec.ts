@@ -360,7 +360,9 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
       await page.setViewportSize({ width, height: 900 });
       // Only Food carries an intake context bar since #3987 retired the Supplements
       // tab's day chrome; the frost rule is asserted on the bar that survives.
-      for (const surface of [{ href: "/nutrition", testId: "food-log-context" }]) {
+      for (const surface of [
+        { href: "/nutrition", testId: "food-log-context" },
+      ]) {
         await page.goto(surface.href);
         const context = page.getByTestId(surface.testId);
         await expect(context).toBeVisible();
