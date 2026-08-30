@@ -140,7 +140,10 @@ describe("the usual-routine offer's window and its placement window (#3265)", ()
       )
     ).toEqual({ kind: "active" });
     expect(
-      resolveDashboardTiming(mealTimeWindows([8 * 60, 13 * 60, 20 * 60]), atEight)
+      resolveDashboardTiming(
+        mealTimeWindows([8 * 60, 13 * 60, 20 * 60]),
+        atEight
+      )
     ).toEqual({ kind: "active" });
   });
 });
