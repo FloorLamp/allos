@@ -85,6 +85,33 @@ function seedFlapping(): void {
   ]);
 }
 
+function seedThirdHealthyRow(): void {
+  withDb((db) => {
+    db.prepare(
+      `UPDATE integration_connections SET status = 'connected'
+       WHERE profile_id = ? AND source_id = 'oura'`
+    ).run(PROFILE_ID);
+    db.prepare(
+      `INSERT INTO integration_sync_events
+         (profile_id, source_id, at, ok, inserted, updated, unchanged)
+       VALUES (?, 'oura', ?, 1, 1, 0, 0)`
+    ).run(PROFILE_ID, at(0));
+  });
+}
+
+function restoreRemovedOura(): void {
+  withDb((db) => {
+    db.prepare(
+      `DELETE FROM integration_sync_events
+       WHERE profile_id = ? AND source_id = 'oura' AND at = ?`
+    ).run(PROFILE_ID, at(0));
+    db.prepare(
+      `UPDATE integration_connections SET status = 'disconnected'
+       WHERE profile_id = ? AND source_id = 'oura'`
+    ).run(PROFILE_ID);
+  });
+}
+
 // No run has succeeded inside the tolerance — the escalation boundary. The failure
 // PATTERN is the same shape the calm fixture above has; the only thing that changed is
 // how long ago the last success was, which is the whole point of #2263.
@@ -110,6 +137,39 @@ function clearFixture(): void {
 }
 
 test.afterAll(() => clearFixture());
+
+test("connected-source timestamps form one desktop column without a phone overhang (#3972)", async ({
+  page,
+}) => {
+  seedFlapping();
+  seedThirdHealthyRow();
+  try {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto("/data?section=review");
+    const dataPage = page.getByTestId("data-page");
+    const timestamps = dataPage
+      .getByTestId("sources-healthy")
+      .getByTestId("sync-timestamp-compact");
+    await expect(timestamps).toHaveCount(3);
+
+    const rightEdges = await timestamps.evaluateAll((nodes) =>
+      nodes.map((node) => node.getBoundingClientRect().right)
+    );
+    for (const edge of rightEdges.slice(1)) {
+      expect(edge).toBeCloseTo(rightEdges[0], 0);
+    }
+    expect((await dataPage.boundingBox())!.width).toBeLessThanOrEqual(1152.5);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const widths = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      content: document.documentElement.scrollWidth,
+    }));
+    expect(widths.content).toBeLessThanOrEqual(widths.viewport);
+  } finally {
+    restoreRemovedOura();
+  }
+});
 
 test("a flapping source is amber Intermittent on all three surfaces and escalates nowhere", async ({
   page,

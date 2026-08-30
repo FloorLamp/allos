@@ -16,6 +16,7 @@ import IntegrationsGrid from "@/components/IntegrationsGrid";
 import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
+import PageContainer from "@/components/PageContainer";
 import CoverageSection from "@/app/(app)/data/CoverageSection";
 import TrashSection from "@/app/(app)/data/TrashSection";
 import { getImportJobs } from "@/app/(app)/data/actions";
@@ -220,8 +221,10 @@ export default async function DataPage(
   }
 
   return (
-    <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
-      {activeSection}
-    </TabFirstPage>
+    <PageContainer width="wide" className="mx-auto">
+      <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
+        {activeSection}
+      </TabFirstPage>
+    </PageContainer>
   );
 }
