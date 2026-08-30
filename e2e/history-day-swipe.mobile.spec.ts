@@ -20,7 +20,7 @@ const NEXT_DAY = "2026-03-16";
 const PREV_DAY = "2026-03-14";
 
 function dayUrl(date: string): string {
-  return `/timeline?from=${date}&to=${date}`;
+  return `/history?day=${date}`;
 }
 
 // A swiped day change is a CLIENT navigation: the URL only commits once the RSC

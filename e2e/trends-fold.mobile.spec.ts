@@ -106,7 +106,7 @@ test.describe("the custom From/To form collapses behind a Custom… disclosure (
   }) => {
     // DateRangeControl is shared, so this is the regression guard for the OTHER
     // surface that mounts it (the metric detail pages are the third).
-    await page.goto("/timeline");
+    await page.goto("/history");
     // Since #1517 B the Timeline's own controls collapse behind a one-line filter
     // bar at phone width, so the shared control has to be reached before its own
     // #1455 collapse can be asserted. The nesting is the point: two collapses, one

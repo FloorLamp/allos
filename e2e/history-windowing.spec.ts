@@ -9,7 +9,7 @@ import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Timeline windowing (issue #2657).
 //
-// `/timeline` at its default "All · All dates" unrolled 47,251px of individual event
+// `/history` at its default "All · All dates" unrolled 47,251px of individual event
 // cards at 390px, and OPENED on far-future goal target dates — the reader's entry
 // point was speculative scheduling rather than their own recent history. The feed now
 // folds: the future to one line, the last 14 days event-grained, everything older to
@@ -159,7 +159,7 @@ test.describe("timeline windowing (#2657)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/timeline");
+      await page.goto("/history");
 
       // The very first thing in the feed is the future fold, not a December day group.
       const first = page.locator("#timeline-feed section").first(); // first-ok: asserts WHICH element leads the feed — the assertion is about position
@@ -200,7 +200,7 @@ test.describe("timeline windowing (#2657)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/timeline");
+      await page.goto("/history");
 
       await followLink(
         page,
@@ -242,7 +242,7 @@ test.describe("timeline windowing (#2657)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/timeline");
+      await page.goto("/history");
 
       await followLink(
         page,
@@ -270,7 +270,7 @@ test.describe("timeline windowing (#2657)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/timeline");
+      await page.goto("/history");
 
       const oldest = page.getByRole("link", { name: "Oldest" });
       const href = await oldest.getAttribute("href");
@@ -307,7 +307,7 @@ const YEAR_GOALS = [
 ] as const;
 
 test.describe("timeline year roll-up (#2657)", () => {
-  const YEAR_FEED = `/timeline?category=goal` as const;
+  const YEAR_FEED = `/history?kind=goal` as const;
 
   test("an earlier year is one card, and neither its months nor its days are rendered", async ({
     browser,

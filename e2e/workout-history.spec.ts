@@ -206,6 +206,6 @@ test("an empty calendar day is selectable and still reaches Timeline", async ({
   await expect(panel).toContainText("Nothing logged this day");
   await expect(panel.getByRole("link", { name: /Timeline/ })).toHaveAttribute(
     "href",
-    `/timeline?from=${date}&to=${date}#timeline-day-${date}`
+    `/history?day=${date}`
   );
 });

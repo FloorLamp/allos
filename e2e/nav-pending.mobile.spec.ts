@@ -62,9 +62,9 @@ test("a day swipe reports pending in the day bar, and a second swipe is dropped 
   page,
 }) => {
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto(`/timeline?from=${DAY}&to=${DAY}`);
+  await page.goto(`/history?day=${DAY}`);
   await hydrated(page);
   const next = page.getByTestId("timeline-day-next");
   await expect(next).toBeVisible();
@@ -100,9 +100,9 @@ test("a slow day swipe raises the top-edge indicator (#2869)", async ({
   // the day bar can be scrolled out of view under the shell chrome, and a
   // gesture answered only where you are not looking is not answered.
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto(`/timeline?from=${DAY}&to=${DAY}`);
+  await page.goto(`/history?day=${DAY}`);
   await hydrated(page);
   await expect(page.getByTestId("timeline-day-nav")).toBeVisible();
 

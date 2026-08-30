@@ -239,9 +239,9 @@ test("a day arrow shows the day opening, and five taps dispatch one navigation (
   // guard, on a control whose whole purpose is being tapped again and again.
   const DAY = "2026-03-15";
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto(`/timeline?from=${DAY}&to=${DAY}`);
+  await page.goto(`/history?day=${DAY}`);
   const prev = page.getByTestId("timeline-day-prev");
   await expect(prev).toBeVisible();
 
@@ -308,9 +308,9 @@ test("a timeline range chip shows pending in place, and absorbs repeat taps (#28
   page,
 }) => {
   const nav = heldNavigation();
-  await page.route("**/timeline?*", nav.handler);
+  await page.route("**/history?*", nav.handler);
 
-  await page.goto("/timeline");
+  await page.goto("/history");
   const chip = page.getByTestId("timeline-pill-30D");
   await expect(chip).toBeVisible();
 

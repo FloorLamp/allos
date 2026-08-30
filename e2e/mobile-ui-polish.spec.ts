@@ -320,11 +320,10 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
       // EVERY day link, not a sampled one: a hit box that grew over its neighbour
       // would still leave the first link's href correct.
       const hrefs = await drawer
-        .locator('a[href^="/timeline?from="]')
+        .locator('a[href^="/history?day="]')
         .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
       expect(hrefs.length).toBeGreaterThan(0);
-      const shape =
-        /^\/timeline\?from=(\d{4}-\d{2}-\d{2})&to=\1#timeline-day-\1$/;
+      const shape = /^\/history\?day=\d{4}-\d{2}-\d{2}$/;
       expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
       // Nothing in the drawer sits past the viewport: the calendar gives up the
       // drawer's own side padding to buy those 44px columns, so this is the check

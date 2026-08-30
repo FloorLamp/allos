@@ -572,7 +572,7 @@ test("the Cycling overview, ride detail, and Timeline form one navigation loop",
       .getByRole("combobox", { name: "Metric" })
   ).toHaveValue("power");
 
-  await page.goto("/timeline?category=activity");
+  await page.goto("/history?kind=activity");
   await expect(
     page.getByRole("link", {
       name: "Strava morning ride",

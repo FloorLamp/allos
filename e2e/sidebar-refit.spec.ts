@@ -112,7 +112,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     // through the grid's own bounded month navigation until a month holds one —
     // the seeded profile's events are not guaranteed to sit in the current month,
     // and an assertion that only holds in some months is not an assertion.
-    const marked = panel.locator('a[href^="/timeline?from="]');
+    const marked = panel.locator('a[href^="/history?day="]');
     const previous = panel.getByLabel("Previous month");
     for (let back = 0; back < 24 && (await marked.count()) === 0; back++) {
       if (await previous.isDisabled()) break;
@@ -123,7 +123,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     const href = (await anyMarked.getAttribute("href"))!;
     const day = /from=(\d{4}-\d{2}-\d{2})/.exec(href)![1];
     await anyMarked.click();
-    await expect(page).toHaveURL(new RegExp(`/timeline\\?from=${day}`));
+    await expect(page).toHaveURL(new RegExp(`/history\\?day=${day}`));
     await expect(page.locator(`#timeline-day-${day}`)).toBeVisible();
     // …AND THE POPOVER ENDS WITH IT (#3905). `open` is state in a layout App
     // Router does not remount, so the grid used to stay anchored to the sidebar

@@ -26,7 +26,7 @@ import { workerDbPath } from "./worker-env";
 //      situation is active).
 //
 // Fixture (#868): a dedicated login over two dedicated profiles — see
-// e2e/logins/timeline.ts for why the auto-expand's three states cannot share one
+// e2e/logins/history.ts for why the auto-expand's three states cannot share one
 // profile. Deep-past days, navigation + client toggles only, no writes, so it is
 // repeat-safe under --repeat-each.
 
@@ -34,7 +34,7 @@ const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 
 function dayUrl(date: string): string {
-  return `/timeline?from=${date}&to=${date}`;
+  return `/history?day=${date}`;
 }
 
 // The sick profile's id, so the spec can switch the session's active profile to it
@@ -218,7 +218,7 @@ test.describe("Timeline mobile chrome budget (#1517)", () => {
       //    elements. Switching is a session-level Server Action — the viewport it
       //    was driven from is not part of what this test asserts.
       await page.setViewportSize(DESKTOP);
-      await page.goto("/timeline");
+      await page.goto("/history");
       const trigger = page.getByTestId("profile-identity-bar");
       await expect(trigger).toBeEnabled();
       await trigger.click();

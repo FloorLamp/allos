@@ -402,7 +402,7 @@ test.describe("menstrual cycle (#714)", () => {
   });
 
   test("Timeline day header shows the cycle phase/period chip", async () => {
-    await page.goto("/timeline");
+    await page.goto("/history");
     await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts a cycle phase chip renders — order-agnostic presence
   });
 

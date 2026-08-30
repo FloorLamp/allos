@@ -27,7 +27,7 @@ test.describe("Visit detail page", () => {
     page,
   }) => {
     // Filter the timeline to visits so the entry is unambiguous.
-    await page.goto("/timeline?category=visit");
+    await page.goto("/history?kind=visit");
 
     // The most recent visit renders as a clickable entry titled by its type, whose
     // link targets the new per-visit detail route (not the old list page).

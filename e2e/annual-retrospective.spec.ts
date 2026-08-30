@@ -89,7 +89,7 @@ test.afterAll(() => clearYears());
 test("Timeline links to the year without spending a permanent nav row (#2762)", async ({
   page,
 }) => {
-  await page.goto("/timeline");
+  await page.goto("/history");
   await expect(page.getByTestId("timeline-retrospective-link")).toHaveAttribute(
     "href",
     "/retrospective"

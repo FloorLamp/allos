@@ -195,7 +195,7 @@ test("a registry route reached from its consumers highlights its PARENT entry (#
   // the normal rule. Since #3079 this ALSO exercises group auto-expansion — the
   // Timeline row is only in the DOM at all because navigating to a grouped child
   // force-expands its group (isGroupActive).
-  await page.goto("/timeline");
+  await page.goto("/history");
   await expect(nav.getByRole("link", { name: "Timeline" })).toHaveAttribute(
     "aria-current",
     "page"
@@ -326,7 +326,7 @@ test("navigating to any grouped child auto-expands its group and lights exactly 
   const nav = page.locator("aside nav");
   const HREFS: Record<string, string> = {
     Upcoming: "/upcoming",
-    Timeline: "/timeline",
+    Timeline: "/history",
     Wellness: "/wellness",
     Longevity: "/longevity",
     Household: "/household",

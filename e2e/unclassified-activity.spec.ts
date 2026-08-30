@@ -132,7 +132,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
     password: E2E_MEMBER_PASSWORD,
   });
   try {
-    await member.goto(`/timeline?from=${CHILD_DATE}&to=${CHILD_DATE}`);
+    await member.goto(`/history?day=${CHILD_DATE}`);
     const row = member.getByText(CHILD_TITLE).first(); // first-ok: the ONLY row on this deep-past single-day view is the one this spec planted
     await expect(row).toBeVisible({ timeout: 20_000 });
     await row.click();
@@ -154,7 +154,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
       .getByTestId("confirm-dialog")
       .getByRole("button", { name: "Delete", exact: true })
       .click(); // confirm-delete-ok: the URL check below IS the server settle — leaveDeletedActivityPage navigates only once `onDeleted` has fired — and deleteActivityFromForm cannot be used here because it dismisses the very toast the Undo below has to press
-    await expect(member).toHaveURL(/\/timeline$/);
+    await expect(member).toHaveURL(/\/history$/);
     await member.getByRole("button", { name: "Undo" }).click();
     await expect(member.getByText("Restored.")).toBeVisible();
   } finally {

@@ -54,7 +54,7 @@ test.describe("Weekly recap + milestones (#32)", () => {
   test("timeline surfaces the milestone entry under the Milestone filter", async ({
     page,
   }) => {
-    await page.goto("/timeline?category=milestone");
+    await page.goto("/history?kind=milestone");
     await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // first-ok: asserts the milestone line renders — order-agnostic presence
     // The milestone badge labels the category on the card. Scoped to a feed entry:
     // the #1517 collapsed filter bar renders a (hidden) "Milestone · All dates"

@@ -83,7 +83,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
   // The timeline's "Supplement doses confirmed" event for today still lists the
   // confirmed dose — retired, not cascaded — and its expanded detail shows the
   // amount SNAPSHOTTED at confirm time (500 mg), not the post-edit 1000 mg.
-  await page.goto("/timeline");
+  await page.goto("/history");
   const confirmedEvent = page
     .locator("details")
     .filter({ hasText: "Supplement doses confirmed" })

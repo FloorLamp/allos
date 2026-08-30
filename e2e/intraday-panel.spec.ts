@@ -30,12 +30,12 @@ const WIDE = '[data-variant="wide"]';
 /** The fixture's intraday day IS the profile's today. Resolved from the page
  *  rather than by recomputing the run's frozen clock here. */
 async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
-  await page.goto("/timeline");
+  await page.goto("/history");
   const date = (await page
     .locator("[id^='timeline-day-']")
     .first() // first-ok: spec-owned profile, newest day is the fixture's today
     .getAttribute("id"))!.replace("timeline-day-", "");
-  await page.goto(`/timeline?from=${date}&to=${date}`);
+  await page.goto(`/history?day=${date}`);
   return date;
 }
 
@@ -225,7 +225,7 @@ test.describe("Timeline intraday panel (#1068)", () => {
       // Three days back the fixture profile has ONLY a weigh-in — a real feed
       // event with no clock time, no HR, no sleep, no windowed workout. The day
       // renders; the panel is data-gated away (no empty frame).
-      await member.goto("/timeline");
+      await member.goto("/history");
       const dayIds = await member
         .locator("[id^='timeline-day-']")
         .evaluateAll((nodes) =>
@@ -233,7 +233,7 @@ test.describe("Timeline intraday panel (#1068)", () => {
         );
       const quiet = dayIds.at(-1)!;
 
-      await member.goto(`/timeline?from=${quiet}&to=${quiet}`);
+      await member.goto(`/history?day=${quiet}`);
       await expect(
         member.getByRole("heading", { name: "Body metrics logged" })
       ).toBeVisible();

@@ -70,7 +70,7 @@ const OLDEST_MONTH = DATES.oldest.slice(0, 7);
 const LAST_YEAR_MONTH = DATES.lastYear.slice(0, 7);
 const LAST_YEAR = DATES.lastYear.slice(0, 4);
 
-const FEED = "/timeline?category=goal" as const;
+const FEED = "/history?kind=goal" as const;
 
 function withDb<T>(fn: (handle: Database.Database) => T): T {
   const handle = new Database(DB_PATH);
@@ -472,9 +472,7 @@ test.describe("the rail's column on a phone (#3403)", () => {
     // has one period, which is below SCRUBBER_MIN_TICKS, so no rail renders — and
     // the surfaces underneath must then use the full column rather than carrying an
     // empty 28px band for a strip that is not there.
-    await page.goto(
-      `/timeline?category=goal&from=${DATES.mid}&to=${DATES.mid}`
-    );
+    await page.goto(`/history?kind=goal&from=${DATES.mid}&to=${DATES.mid}`);
     await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
     // The feed itself rendered — a range that fell through to the empty state would

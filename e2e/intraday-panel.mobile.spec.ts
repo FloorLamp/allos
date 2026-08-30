@@ -30,12 +30,12 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/timeline");
+      await member.goto("/history");
       const date = (await member
         .locator("[id^='timeline-day-']")
         .first() // first-ok: spec-owned profile, newest day is the fixture's today
         .getAttribute("id"))!.replace("timeline-day-", "");
-      await member.goto(`/timeline?from=${date}&to=${date}`);
+      await member.goto(`/history?day=${date}`);
 
       const panel = member.getByTestId("intraday-panel");
       await expect(panel).toBeVisible();
@@ -74,12 +74,12 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/timeline");
+      await member.goto("/history");
       const date = (await member
         .locator("[id^='timeline-day-']")
         .first() // first-ok: spec-owned profile, newest day is the fixture's today
         .getAttribute("id"))!.replace("timeline-day-", "");
-      await member.goto(`/timeline?from=${date}&to=${date}`);
+      await member.goto(`/history?day=${date}`);
 
       // The insight IS on this day, in the list below.
       await expect(member.getByText("AI insight").first()).toBeVisible(); // first-ok: spec-owned profile, one insight seeded on this day

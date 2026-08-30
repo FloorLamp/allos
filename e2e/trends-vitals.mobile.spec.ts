@@ -161,11 +161,7 @@ test.describe("the retired Today strip (#3387)", () => {
       await expect(link).toHaveText("View today on Timeline");
 
       const day = await todayFromBodyLink(member);
-      await followLink(
-        member,
-        link,
-        new RegExp(`/timeline\\?from=${day}&to=${day}`)
-      );
+      await followLink(member, link, new RegExp(`/history\\?day=${day}`));
 
       // The retired card's destination remains reachable from the Body section.
       await expect(member.getByTestId("intraday-panel")).toBeVisible();

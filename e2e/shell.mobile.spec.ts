@@ -94,7 +94,7 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
   test("hides on scroll-down and returns on scroll-up", async ({ page }) => {
     // The Timeline is the app's tallest read-only surface on the shared seed
     // (~3 weeks of day sections), so there is real scroll range at 390px wide.
-    await page.goto("/timeline");
+    await page.goto("/history");
     const chrome = await chromeReady(page);
     await expect(chrome).toHaveAttribute("data-hidden", "false");
 
@@ -133,7 +133,7 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
   test("keeps dock More reachable after a top-chrome hide/reveal cycle", async ({
     page,
   }) => {
-    await page.goto("/timeline");
+    await page.goto("/history");
     await chromeReady(page);
     await scrollTo(page, 1400);
     await expect(page.getByTestId(CHROME)).toHaveAttribute(
@@ -436,7 +436,7 @@ test.describe("the nav drawer declares itself a modal (#3463)", () => {
   test("declares role, name and aria-modal, and Tab cannot leave it", async ({
     page,
   }) => {
-    await page.goto("/timeline");
+    await page.goto("/history");
     const drawer = await openMobileDrawer(page);
 
     await expect(drawer).toHaveAttribute("role", "dialog");
@@ -485,7 +485,7 @@ test.describe("the nav drawer declares itself a modal (#3463)", () => {
   test("Escape and the backdrop both dismiss it, and focus goes back to More", async ({
     page,
   }) => {
-    await page.goto("/timeline");
+    await page.goto("/history");
     const drawer = await openMobileDrawer(page);
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
@@ -514,7 +514,7 @@ test.describe("reduced motion (#1416 F)", () => {
   test("the drawer, the sheet and the chrome all still work — they just snap", async ({
     page,
   }) => {
-    await page.goto("/timeline");
+    await page.goto("/history");
     await chromeReady(page);
 
     // The drawer reaches BOTH states with no animation scheduled: usePresence

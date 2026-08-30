@@ -19,6 +19,7 @@ import { today } from "@/lib/db";
 import {
   getDisplayFormatPrefs,
   getHomeLocation,
+  getProfileAge,
   getTimezone,
   getUnitPrefs,
 } from "@/lib/settings";
@@ -79,6 +80,8 @@ import {
   type HistoryKind,
   type HistoryRow,
 } from "@/lib/history-format";
+import { TIMELINE_EMPTY_ACTIONS } from "@/lib/timeline-format";
+import { isTrainingRelevant } from "@/lib/life-stage";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import {
   parseTimelineOpen,
@@ -978,14 +981,35 @@ export default async function HistoryPage(props: {
         </div>
       ) : null}
 
+      {/* THE TWO EMPTY STATES ARE DIFFERENT MESSAGES (#1410), and the difference is
+          the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED
+          view is fixed by widening the filter. Offering "log an activity" to someone
+          who just tapped the Immunizations chip answers a question they did not ask.
+
+          INHERITED, NOT INVENTED. This shipped on `/timeline` and the phase-1
+          re-housing brought the messages across without the DOORS — a gap nothing
+          caught, because the spec that asserts them was still pointed at the route
+          that still had them. Deleting the route is what surfaced it. */}
       {rowCount === 0 ? (
-        <EmptyState
-          message={
-            kind || media || day
-              ? "Nothing recorded here yet."
-              : "Nothing recorded yet. Anything logged shows up here."
-          }
-        />
+        kind || family || media || day ? (
+          <EmptyState
+            testId="history-empty-filtered"
+            message="Nothing recorded here yet."
+          />
+        ) : (
+          <EmptyState
+            testId="history-empty"
+            message="Nothing recorded yet. Anything logged shows up here."
+            // The training door is gated on the SUBJECT's life stage, exactly as the
+            // timeline gated it: a next action the profile cannot take is worse than
+            // one fewer door.
+            actions={TIMELINE_EMPTY_ACTIONS.filter(
+              (action) =>
+                isTrainingRelevant(getProfileAge(actingProfileId)) ||
+                !action.href.startsWith("/training")
+            )}
+          />
+        )
       ) : null}
 
       {/* THE FEED CONTAINER TAKES NO RAIL GUTTER, and that is the #3920 shape rather

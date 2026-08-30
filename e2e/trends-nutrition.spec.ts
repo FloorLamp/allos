@@ -115,14 +115,14 @@ test("a day tap opens the day panel; the Timeline stays one link away (#1166)", 
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("day-history-day-item")).not.toHaveCount(0);
 
-  // The Timeline link inside the panel carries the single-day shape.
-  const link = panel.getByRole("link", { name: /Timeline/ });
+  // The record link inside the panel carries the single-day shape.
+  const link = panel.getByRole("link", { name: /History/ });
   await expect(link).toHaveAttribute(
     "href",
-    /\/timeline\?from=.*&to=.*#timeline-day-/
+    /\/history\?day=\d{4}-\d{2}-\d{2}$/
   );
-  await followLink(page, link, /\/timeline\?from=/);
-  await expect(page).toHaveURL(/\/timeline\?from=/);
+  await followLink(page, link, /\/history\?day=/);
+  await expect(page).toHaveURL(/\/history\?day=/);
 });
 
 // #2417: the dose calendar's "what did I take that day" is the cross-item dose

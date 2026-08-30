@@ -225,7 +225,7 @@ test.describe("Weather & UV integration (#1172)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/timeline");
+      await member.goto("/history");
       // The seeded walk today logged 120 daylight-outdoor minutes → the minutes chip
       // (the offline #571 behavior) AND, because live UV is cached, the UV badge on
       // top of it (the #1172 enrichment). Scope to the fixture's own day header.
@@ -275,7 +275,7 @@ test.describe("Weather & UV integration (#1172)", () => {
 
       // The three-day hot spell makes today NOTABLE, so the Timeline day header
       // carries its conditions summary. Quiet days carry none.
-      await member.goto("/timeline");
+      await member.goto("/history");
       const context = member.getByTestId("timeline-weather-context").first(); // first-ok: fixture-owned single notable day
       await expect(context).toBeVisible();
       await expect(context).toContainText("Heatwave");

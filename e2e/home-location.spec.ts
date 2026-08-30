@@ -10,7 +10,7 @@ import { settledFill } from "./helpers";
 test("timeline day headers show sunrise/sunset daylight chips", async ({
   page,
 }) => {
-  await page.goto("/timeline");
+  await page.goto("/history");
   const chip = page.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
   await expect(chip).toBeVisible();
   // Sunrise/sunset are rendered as HH:MM times.

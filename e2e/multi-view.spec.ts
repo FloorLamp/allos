@@ -780,11 +780,11 @@ async function enterTimelineMultiView(
   page: Page,
   westId: number
 ): Promise<void> {
-  await page.goto("/timeline");
+  await page.goto("/history");
   await openProfileSwitcher(page);
   await settledClick(page, page.getByTestId(`view-toggle-${westId}`));
   await expectInView(page, 2);
-  await page.goto("/timeline");
+  await page.goto("/history");
   await expectInView(page, 2);
 }
 
@@ -805,7 +805,7 @@ test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
     );
 
     // Single view: only EAST's activity, no strip, no chips, no divergence chrome.
-    await page.goto("/timeline");
+    await page.goto("/history");
     await expect(
       page.getByText(TL_EAST_ACTIVITY, { exact: false })
     ).toBeVisible();
@@ -900,7 +900,7 @@ test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
     await followLink(
       page,
       page.getByTestId("timeline-mode-interleaved"),
-      /\/timeline$/
+      /\/history$/
     );
     await expect(page.getByTestId("timeline-by-person")).toHaveCount(0);
 

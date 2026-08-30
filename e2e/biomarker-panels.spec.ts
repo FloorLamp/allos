@@ -63,7 +63,7 @@ function medicalMonthsQuery(): string {
 test("the Timeline titles lab draws by clinical panel, not the lab vendor (#1502)", async ({
   page,
 }) => {
-  await page.goto(`/timeline?category=medical${medicalMonthsQuery()}`);
+  await page.goto(`/history?kind=lab${medicalMonthsQuery()}`);
 
   // A clinically-named event is present…
   await expect(

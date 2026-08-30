@@ -7,23 +7,23 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TL_EMPTY } from "./fixture-logins";
 // seeded on this profile at all.
 const A_QUIET_DAY = "2026-01-18";
 
-// The Timeline's base empty state names a next action (issue #1410).
+// The record's base empty state names a next action (issue #1410).
 //
-// A brand-new account landing on the Timeline used to be told "No timeline events
-// yet." and nothing else — the app's own good empty states name the next action.
+// A brand-new account landing here used to be told "No timeline events yet." and
+// nothing else — the app's own good empty states name the next action.
 // The two cases this spec separates are
 // the whole design: an EMPTY ACCOUNT is fixed by putting data in, a FILTERED feed is
 // fixed by widening the filter, and offering "log an activity" to someone who just
 // clicked the Immunization pill would be answering a question they didn't ask.
 //
 // Fixture hygiene (#868): a DEDICATED login over a DEDICATED profile that holds
-// nothing at all (e2e/seed/timeline.ts — seedTimelineEmpty). "Empty" is not a state
+// nothing at all (e2e/seed/history.ts — seedTimelineEmpty). "Empty" is not a state
 // any shared-seed profile can be put into, and a spec must not delete its way there.
 // Read-only throughout, so the profile is still empty for the next --repeat-each
 // pass.
 
-test.describe("timeline base empty state (#1410)", () => {
-  test("an empty account is offered the doors its timeline fills from", async ({
+test.describe("the record's base empty state (#1410)", () => {
+  test("an empty account is offered the doors the record fills from", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
@@ -31,10 +31,10 @@ test.describe("timeline base empty state (#1410)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await page.goto("/timeline");
-      const empty = page.getByTestId("timeline-empty");
+      await page.goto("/history");
+      const empty = page.getByTestId("history-empty");
       await expect(empty).toBeVisible();
-      await expect(empty).toContainText("No timeline events yet.");
+      await expect(empty).toContainText("Nothing recorded yet.");
 
       // Several distinct sources, not one arbitrary CTA: something you did, something
       // you measured, something a clinic gave you.
@@ -54,18 +54,18 @@ test.describe("timeline base empty state (#1410)", () => {
         empty.getByRole("link", { name: "Log an activity" }),
         /\/training/
       );
-      await page.goto("/timeline");
+      await page.goto("/history");
       await followLink(
         page,
-        page.getByTestId("timeline-empty").getByRole("link", {
+        page.getByTestId("history-empty").getByRole("link", {
           name: "Add a body metric",
         }),
         /\/trends/
       );
-      await page.goto("/timeline");
+      await page.goto("/history");
       await followLink(
         page,
-        page.getByTestId("timeline-empty").getByRole("link", {
+        page.getByTestId("history-empty").getByRole("link", {
           name: "Import a document",
         }),
         /\/data/
@@ -83,17 +83,17 @@ test.describe("timeline base empty state (#1410)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      // A category pill: the message names the category and offers no next action.
-      await page.goto("/timeline?category=activity");
-      const filtered = page.getByTestId("timeline-empty-filtered");
+      // A kind chip: the message stays bare and offers no next action.
+      await page.goto("/history?kind=activity");
+      const filtered = page.getByTestId("history-empty-filtered");
       await expect(filtered).toBeVisible();
-      await expect(filtered).toContainText("No activity events yet.");
+      await expect(filtered).toContainText("Nothing recorded here yet.");
       await expect(filtered.getByRole("link")).toHaveCount(0);
-      await expect(page.getByTestId("timeline-empty")).toHaveCount(0);
+      await expect(page.getByTestId("history-empty")).toHaveCount(0);
 
       // A date window is a filter too — same reasoning, same bare message.
-      await page.goto(`/timeline?from=${A_QUIET_DAY}&to=${A_QUIET_DAY}`);
-      const ranged = page.getByTestId("timeline-empty-filtered");
+      await page.goto(`/history?day=${A_QUIET_DAY}`);
+      const ranged = page.getByTestId("history-empty-filtered");
       await expect(ranged).toBeVisible();
       await expect(ranged.getByRole("link")).toHaveCount(0);
     } finally {
