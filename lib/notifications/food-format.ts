@@ -26,6 +26,7 @@ import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
   correctionBodyStatement,
+  correctionHintLine,
   correctionPickerActions,
   correctionPickerTitle,
   FOOD_TIME_PREFIXES,
@@ -328,7 +329,16 @@ export interface FoodNudgeRenderOpts {
   // the bursts but not the bound would render exactly the unbounded button this issue took
   // off the keyboard. Pairing them makes that combination unspellable rather than silently
   // dropping the rows.
-  corrections?: { bursts: readonly CorrectionBurst[]; now: Date };
+  //
+  // `hasCorrectedAnyTime` is the hint's retirement gate (#2874), answered by the gather
+  // (lib/queries/correction-history.ts) because this renderer is DB-free. It rides here
+  // beside the bursts for the same reason `now` does: the two are only ever read
+  // together, and the sentence they decide is about these chips.
+  corrections?: {
+    bursts: readonly CorrectionBurst[];
+    now: Date;
+    hasCorrectedAnyTime?: boolean;
+  };
   // The profile's timezone, for the correction rows' wall-clock labels. Only read when
   // there are corrections to render.
   tz?: string;
@@ -505,9 +515,13 @@ export function renderFoodNudge(
       opts.picker && tz
         ? correctionPickerTitle("when did you eat", opts.picker.burst, tz)
         : corrections
-          ? // Says what the chips now SAY (#2206): each one names the time it will store,
-            // so the sentence only has to explain that they can be pressed again.
-            `${GLYPH.eventTime} Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time.`
+          ? // The hint, owned by the substrate every chip surface shares and retiring
+            // once this profile has corrected any time at all (#2874) — never a
+            // sentence this renderer spells for itself.
+            correctionHintLine(
+              FOOD_TIME_PREFIXES,
+              corrections.hasCorrectedAnyTime ?? false
+            )
           : null,
       // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
       // the stored time — the row's label states it too, but Telegram truncates buttons

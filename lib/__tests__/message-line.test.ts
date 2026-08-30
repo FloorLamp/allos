@@ -368,9 +368,14 @@ const ALLOW: { module: string; includes: string; why: string }[] = [
     why: "A headline CLAUSE, not a line: the headline is a comma-joined phrase ('4 workouts, 2 PRs') and this is one of its parts, where the em dash is ordinary prose punctuation inside a single clause (#837). Nothing here has a head and qualifiers.",
   },
   {
-    module: "lib/notifications/food-format.ts",
-    includes: "Ate earlier than you tapped?",
-    why: "A HINT PARAGRAPH under the correction chips (#2264), not a line: one sentence explaining what the chips do, where the em dash is ordinary prose punctuation inside that sentence. It read as a quoted string until #2392 gave its glyph a registry reference, which is the only reason the scan can see it at all — the words are unchanged.",
+    module: "lib/notifications/correction-rows.ts",
+    includes: "Ate earlier?",
+    why: "A HINT PARAGRAPH under the correction chips (#2264), not a line: one sentence explaining what the chips do, where the em dash is ordinary prose punctuation inside that sentence. #2874 moved it out of renderFoodNudge into the domain declaration it belongs to, shortened it, and made it CONDITIONAL — correctionHintLine renders it on a food nudge carrying a correctable burst only until this profile has corrected any time in any domain, after which it retires and nothing replaces it.",
+  },
+  {
+    module: "lib/notifications/correction-rows.ts",
+    includes: "Took it earlier?",
+    why: "The dose twin of the hint above (#2874), added because the dose nudge has carried the identical chips since #2020 and explained them nowhere. Same shape, same prose em dash, same retirement: withDoseCorrections renders it through correctionHintLine on a message with a correctable burst and no open picker, until this profile has corrected any time in any domain.",
   },
   {
     module: "lib/notifications/preventive-format.ts",
