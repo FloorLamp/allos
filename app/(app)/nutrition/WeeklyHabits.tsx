@@ -221,8 +221,11 @@ export default function WeeklyHabits({
         </ul>
       )}
 
-      <Disclosure>
-        <summary className="flex min-h-11 cursor-pointer list-none items-center text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400">
+      <Disclosure data-testid="track-habit-fold">
+        <summary
+          data-testid="track-habit-summary"
+          className="flex min-h-11 cursor-pointer list-none items-center text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
+        >
           Track a habit
         </summary>
         <form

@@ -404,7 +404,7 @@ export default function DayLedger({
         <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
           <button
             type="button"
-            data-testid={`ledger-due-${row.bucket}`}
+            data-testid={`ledger-due-group-${row.bucket}`}
             data-doses={ids.join(",")}
             aria-expanded={expanded}
             onClick={() => toggle(row.id)}
@@ -425,7 +425,7 @@ export default function DayLedger({
           </button>
           {doseWritable && (
             <Button
-              data-testid={`ledger-take-all-${row.bucket}`}
+              data-testid={`ledger-takeall-${row.bucket}`}
               aria-label={`Take all ${doses.length}: ${dosesPhrase(doses)}`}
               disabled={bulk.blocked(ids.join(","))}
               onClick={() => resolveAll(ids)}

@@ -1,6 +1,8 @@
 import {
   getIntakeItems,
   getIntakeDoses,
+  getTakenDoseIds,
+  getSkippedDoseIds,
   getRetiredDoses,
   getIntakeAdherenceEvidence,
   getIntakePairs,
@@ -29,6 +31,7 @@ import {
   getIntakeCatalogOptions,
   getIntakeDoseHistoryForItems,
 } from "@/lib/queries";
+import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { activeByKey, activeFindings } from "@/lib/findings";
 import {
   buildAdherencePatternFindings,
@@ -96,6 +99,7 @@ import {
   doseDueOn,
   isPostWorkoutReady,
   OBLIGATION_ORDER,
+  timeBucket,
   OBLIGATION_LABELS,
   CONDITION_LABELS,
   WORKOUT_CONDITIONS,
@@ -413,11 +417,15 @@ export default async function SupplementsTab({
   // row level or an alternating pair would show both amounts every day.
   const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
-  // An off-cadence row lands HERE — visible under "Not scheduled today" with its
-  // cadence named — rather than vanishing. Same discoverability contract as the Held
-  // section: an absence the user can see and explain is safe; a silent one is not.
+  // TIMELESS, NOT "NOT DUE TODAY" (#3987). This fold used to hold everything the
+  // CURRENT DAY did not owe — an off-cadence row, a `may` item, a rest-day one — which
+  // was a day question asked on what is now a management surface, and it answered
+  // differently every morning. The stack list is the whole stack; what folds away is
+  // the items that name no time of day at all, which is a property of the item rather
+  // than of today. Whether a dose is owed right now is the Day ledger's statement.
+  const isTimeless = (item: Item) => timeBucket(item.dose.time_of_day) === "Anytime";
   const notScheduled = activeSupplementItems.filter(
-    (i) => !doseDueOn(i.supplement, i.dose, ctx) && !isHeld(i.supplement)
+    (i) => !isHeld(i.supplement) && isTimeless(i)
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
@@ -622,12 +630,31 @@ export default async function SupplementsTab({
   // still owed is the Day ledger's statement now, and it is the only one: this row used
   // to carry both a take/skip control and a Taken/Skipped/Missed badge, which is exactly
   // the "the same dose rendered twice" the redesign exists to end.
+  // THE LEDGER'S OWN SETS (#3987), read here so this tab can tell which doses the Day
+  // surface is already speaking for. `pendingDayDoses` is the ledger's due half; the
+  // taken/skipped ids are its resolved half.
+  const takenToday = getTakenDoseIds(profile.id, todayStr);
+  const skippedToday = getSkippedDoseIds(profile.id, todayStr);
+  const ledgerStatedDoseIds = new Set<number>([
+    ...pendingDayDoses(profile.id, todayStr).map((d) => d.doseId),
+    ...takenToday,
+    ...skippedToday,
+  ]);
+
   const renderRow = (it: Item) => {
+    // WHO IS STATING THIS DOSE TODAY. The Day ledger states every dose the day OWES
+    // (`pendingDayDoses`) and every dose it RESOLVED (taken or skipped), so those rows
+    // get no control here — the same fact, twice, is the defect #3987 closes. Read off
+    // the ledger's OWN sets rather than re-deriving dueness, so the two surfaces cannot
+    // disagree about which of them is speaking.
+    const statedByLedger = ledgerStatedDoseIds.has(it.dose.id);
     return (
       <EditableSupplementRow
         key={it.dose.id}
         supplement={it.supplement}
         dose={it.dose}
+        isTaken={statedByLedger ? undefined : takenToday.has(it.dose.id)}
+        isSkipped={statedByLedger ? undefined : skippedToday.has(it.dose.id)}
         doses={dosesBySupp.get(it.supplement.id) ?? []}
         retiredDoses={retiredBySupp.get(it.supplement.id) ?? []}
         allIntakeItems={intakeItems}
@@ -661,7 +688,7 @@ export default async function SupplementsTab({
   // went with the schedule, and the keep-apart notices moved to the ledger's due rows
   // rather than being dropped.
   const scheduledItems = activeSupplementItems
-    .filter((item) => !isHeld(item.supplement))
+    .filter((item) => !isHeld(item.supplement) && !isTimeless(item))
     .sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
   const secondarySchedule = (
     <>
@@ -687,7 +714,7 @@ export default async function SupplementsTab({
       {notScheduled.length > 0 && (
         <Disclosure data-testid="not-scheduled-section">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200">
-            <span>More supplements ({notScheduled.length})</span>
+            <span>Not scheduled ({notScheduled.length})</span>
             <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
           <div className="mt-2 space-y-3">

@@ -287,10 +287,10 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     seedServing();
     await phone(page);
 
-    // ── The food log's own "Logged <day>" list ──────────────────────────────────
+    // ── The Day ledger's own serving rows (#3987 absorbed the "Logged <day>" list)
     await page.goto(`/nutrition?date=${DAY}`);
     const logRow = page
-      .getByTestId("food-logged-list")
+      .getByTestId("day-ledger")
       .locator("li[data-group]")
       .first(); // first-ok: the anatomy claim is about any row of the list, not a chosen one
     await expect(logRow).toBeVisible();

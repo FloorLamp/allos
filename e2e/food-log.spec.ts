@@ -87,63 +87,83 @@ test("button counts are labeled for the selected meal and day", async ({
   );
 });
 
-test("compact food rows identify eat-more and eat-less guidance", async ({
+test("a food row is one dense line: icon, name, stepper (#3987)", async ({
   page,
 }) => {
+  // THE REMOVAL AND ITS CONVERSE, in one test. The eat-more/eat-less tags and the
+  // per-row serving sentence are gone for everyone (owner rejected per-profile
+  // sizing) — but the row still has to SAY WHICH GROUP IT IS and still has to carry
+  // the tier, which is why the tint on the icon is asserted here beside the badge's
+  // absence. An absence assertion alone passes just as happily on a row that lost
+  // its identity too.
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // This project's viewport is 1280×900, so the badge on screen is the one the shared
-  // FoodRowLabel renders into the `md:block` mount (#2305). Before that component existed
-  // the testid lived only on the `md:hidden` phone copy, and `toHaveText` — which does not
-  // require visibility — passed against a hidden element while the rendered badge was
-  // covered by nothing. `toBeVisible()` is the half that would have caught it, so it comes
-  // first and stays.
   await revealFoodGroup(page, "cruciferous");
-  const eatMore = page.getByTestId("food-tier-cruciferous");
-  await expect(eatMore).toBeVisible();
-  await expect(eatMore).toHaveText("Eat more");
-  await expect(
-    page.getByTestId("food-group-cruciferous").getByTestId("food-group-icon")
-  ).toHaveClass(/text-emerald-500/);
+  const row = page.getByTestId("food-group-cruciferous");
+  await expect(row.getByTestId("food-tier-cruciferous")).toHaveCount(0);
+  await expect(row).not.toContainText("Eat more");
+  // The serving sentence ("1 cup") is gone from the row and the phone disclosure that
+  // existed only to unfold it went with it.
+  await expect(row).not.toContainText("cup");
+  await expect(page.getByTestId("detail-cruciferous")).toHaveCount(0);
+  await expect(page.getByTestId("detail-static-cruciferous")).toHaveCount(0);
 
-  // A `limit` group is no longer guaranteed a quick slot (#2225 deleted the tier quota),
-  // so this may reach `processed_meat` through the overflow disclosure. Either way the
-  // badge is rendered by the same row component, and asserting it directly — visible, with
-  // its text — is now a claim about what a person sees rather than about the DOM.
+  // THE CONVERSE: name, tier tint, and both stepper halves are still on the row.
+  await expect(row.getByTestId("food-name-cruciferous")).toBeVisible();
+  await expect(row.getByTestId("food-name-cruciferous")).toHaveText(
+    "Cruciferous vegetables"
+  );
+  await expect(row.getByTestId("food-group-icon")).toHaveClass(
+    /text-emerald-500/
+  );
+  await expect(row.getByTestId("log-cruciferous")).toBeVisible();
+
   await revealFoodGroup(page, "processed_meat");
-  const eatLess = page.getByTestId("food-tier-processed_meat");
-  await expect(eatLess).toBeVisible();
-  await expect(eatLess).toHaveText("Eat less");
-  await expect(
-    page.getByTestId("food-group-processed_meat").getByTestId("food-group-icon")
-  ).toHaveClass(/text-amber-500/);
+  const limitRow = page.getByTestId("food-group-processed_meat");
+  await expect(limitRow.getByTestId("food-tier-processed_meat")).toHaveCount(0);
+  await expect(limitRow).not.toContainText("Eat less");
+  await expect(limitRow.getByTestId("food-group-icon")).toHaveClass(
+    /text-amber-500/
+  );
+
+  // ONE LINE. The row's rendered height is within a line-box of the stepper's own
+  // box — measured as a RELATIONSHIP, because "the row is 56px" says nothing about
+  // whether a second line is wrapping inside it.
+  const [rowBox, stepBox] = await Promise.all([
+    row.boundingBox(),
+    row.getByTestId("log-cruciferous").boundingBox(),
+  ]);
+  expect(rowBox).not.toBeNull();
+  expect(stepBox).not.toBeNull();
+  expect(rowBox!.height).toBeLessThan(stepBox!.height + 24);
 });
 
-test("the visible food row names its group and tier at BOTH viewports (#2305)", async ({
+test("the minus is not drawn until there is something to remove (#3987)", async ({
   page,
 }) => {
-  // The badge and name are one component with two breakpoint mounts, so the pair a person
-  // can see must be the pair carrying the unsuffixed / `-mobile` testids at each width —
-  // and exactly one of the two mounts is ever on screen.
-  const slug = "cruciferous";
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  const slug = "eggs";
   await revealFoodGroup(page, slug);
-
-  await expect(page.getByTestId(`food-name-${slug}`)).toBeVisible();
-  await expect(page.getByTestId(`food-tier-${slug}`)).toBeVisible();
-  await expect(page.getByTestId(`food-name-${slug}-mobile`)).toBeHidden();
-  await expect(page.getByTestId(`food-tier-${slug}-mobile`)).toBeHidden();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  const mobileName = page.getByTestId(`food-name-${slug}-mobile`);
-  const mobileTier = page.getByTestId(`food-tier-${slug}-mobile`);
-  await expect(mobileName).toBeVisible();
-  await expect(mobileName).toHaveText("Cruciferous vegetables");
-  await expect(mobileTier).toBeVisible();
-  await expect(mobileTier).toHaveText("Eat more");
-  await expect(page.getByTestId(`food-tier-${slug}`)).toBeHidden();
+  const count = page.getByTestId(`count-${slug}`);
+  const before = Number((await count.textContent())?.trim() || "0");
+  // Reach zero for this meal, whatever the fixture left behind.
+  for (let i = 0; i < before; i++) {
+    await settledClick(page, page.getByTestId(`undo-${slug}`));
+  }
+  await expect(count).toHaveText("0");
+  await expect(page.getByTestId(`undo-${slug}`)).toHaveCount(0);
+  // AND IT COMES BACK. A permanently absent minus would satisfy the line above.
+  await settledClick(page, page.getByTestId(`log-${slug}`));
+  await expect(count).toHaveText("1");
+  await expect(page.getByTestId(`undo-${slug}`)).toBeVisible();
+  // Restore the fixture.
+  await settledClick(page, page.getByTestId(`undo-${slug}`));
+  for (let i = 0; i < before; i++) {
+    await settledClick(page, page.getByTestId(`log-${slug}`));
+  }
+  await expect(count).toHaveText(String(before));
 });
 
 test("the quick rows are the head of the ranking — nothing in the overflow outranks them (#2225)", async ({
@@ -198,7 +218,10 @@ test("dietary preferences can be edited in a modal without leaving the food log"
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  const open = page.getByTestId("food-preferences-open-desktop");
+  // ONE preferences affordance at every width since #3987 — the Meals-cards header
+  // that carried the desktop twin retired with the cards.
+  await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(0);
+  const open = page.getByTestId("food-preferences-open");
   await expect(open).toBeVisible();
   await expect(open).not.toHaveAttribute("href");
   await open.click();
@@ -261,33 +284,19 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  const mealLayouts = await page
+  // THE MEALS CARDS ARE GONE AND THE CHOICE THEY CARRIED IS NOT (#3987). Their totals
+  // are the ledger's group headings; their SELECTION is this control, beside the rows
+  // it targets — three segments, on one line, in the shared segmented idiom.
+  await expect(page.getByTestId("food-meal-summary")).toHaveCount(0);
+  const mealBoxes = await page
     .getByTestId("food-meal-slots")
-    .locator("button")
+    .locator('[data-segmented-option]')
     .evaluateAll((buttons) =>
-      buttons.map((button) => {
-        const firstChild = button.firstElementChild;
-        return {
-          offset: firstChild
-            ? firstChild.getBoundingClientRect().top -
-              button.getBoundingClientRect().top
-            : Number.NaN,
-          justifyContent: getComputedStyle(button).justifyContent,
-        };
-      })
+      buttons.map((button) => button.getBoundingClientRect())
     );
-  expect(mealLayouts).toHaveLength(3);
-  expect(
-    mealLayouts.every(({ justifyContent }) => justifyContent === "flex-start")
-  ).toBe(true);
-  expect(
-    mealLayouts.every(
-      ({ offset }) => Math.abs(offset - mealLayouts[0].offset) < 1
-    )
-  ).toBe(true);
-  await expect(page.getByTestId("food-meal-summary")).toHaveCSS(
-    "border-top-width",
-    "0px"
+  expect(mealBoxes).toHaveLength(3);
+  expect(mealBoxes.every((box) => Math.abs(box.y - mealBoxes[0].y) < 1)).toBe(
+    true
   );
 
   const slug = "cruciferous";
@@ -319,15 +328,17 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await settledClick(page, page.getByTestId(`log-${slug}`));
   await expect(olderCount).toHaveText(String(olderBefore + 1));
   await expect(olderCount).toHaveClass(/text-slate-700/);
-  const eveningItem = page.getByTestId(`food-meal-item-evening-${slug}`);
-  await expect(eveningItem).toBeVisible();
+  // The serving is STATED ONCE, in the ledger, under the meal it landed in (#3987).
+  const eveningGroup = page.getByTestId("ledger-group-evening");
+  await expect(eveningGroup).toBeVisible();
+  await expect(eveningGroup).toContainText("Cruciferous vegetables");
 
-  // All meals remain visible at once. Selecting Morning changes the logging target,
-  // but the serving stays visible in the Evening card and never appears in Morning.
+  // Selecting Morning changes the logging TARGET only: the serving stays where it
+  // happened and never migrates to the group being aimed at.
   await page.getByTestId("food-slot-morning").click();
-  await expect(eveningItem).toBeVisible();
-  await expect(page.getByTestId(`food-meal-item-morning-${slug}`)).toHaveCount(
-    0
+  await expect(eveningGroup).toContainText("Cruciferous vegetables");
+  await expect(page.getByTestId("ledger-group-morning")).not.toContainText(
+    "Cruciferous vegetables"
   );
   await expect(olderCount).toHaveText("0");
   await expect(olderCount).toHaveClass(/text-slate-400/);
@@ -423,68 +434,40 @@ test("the header shows today's total, ticking up on log and back on undo", async
   await expect.poll(read).toBe(before);
 });
 
-test.describe("tapping a category expands its serving detail on mobile", () => {
+test.describe("the dense row keeps its anatomy on a phone (#3987)", () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test("the truncated serving line expands in place on tap", async ({
-    page,
-  }) => {
+  test("one line, one name mount, the icon centred on it", async ({ page }) => {
+    // The disclosure this replaces existed ONLY to unfold the serving sentence, and
+    // the sentence is gone, so the row has nothing left to expand. What has to survive
+    // is the anatomy the disclosure's geometry test was really about: the leading icon
+    // stays optically centred on the name, at the width where the row is tightest.
     await page.goto("/nutrition");
     await revealFoodGroup(page, "leafy_greens");
 
-    const toggle = page.getByTestId("detail-leafy_greens");
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-
-    // Collapsed: the serving line is clamped to one line.
-    const desc = toggle.locator("span span").last();
-    const collapsedH = (await desc.boundingBox())!.height;
+    await expect(page.getByTestId("detail-leafy_greens")).toHaveCount(0);
+    // ONE name mount now — the `-mobile` twin went with the breakpoint fork.
+    await expect(
+      page.getByTestId("food-name-leafy_greens-mobile")
+    ).toHaveCount(0);
     const row = page.getByTestId("food-group-leafy_greens");
+    const name = row.getByTestId("food-name-leafy_greens");
+    await expect(name).toBeVisible();
     const icon = row.getByTestId("food-group-icon");
-    // The phone mount of the shared label (#2305) — the one on screen at this viewport.
-    const name = row.getByTestId("food-name-leafy_greens-mobile");
-    const collapsedRowBox = (await row.boundingBox())!;
-    const collapsedIconBox = (await icon.boundingBox())!;
-    const collapsedNameBox = (await name.boundingBox())!;
-    const collapsedIconOffset = collapsedIconBox.y - collapsedRowBox.y;
+    const [rowBox, iconBox, nameBox] = await Promise.all([
+      row.boundingBox(),
+      icon.boundingBox(),
+      name.boundingBox(),
+    ]);
     expect(
       Math.abs(
-        collapsedIconBox.y +
-          collapsedIconBox.height / 2 -
-          (collapsedNameBox.y + collapsedNameBox.height / 2)
+        iconBox!.y + iconBox!.height / 2 - (nameBox!.y + nameBox!.height / 2)
       )
     ).toBeLessThan(3);
-
-    // Tap the label → it expands downward without recentering the leading icon.
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const expandedH = (await desc.boundingBox())!.height;
-    const expandedRowBox = (await row.boundingBox())!;
-    const expandedIconBox = (await icon.boundingBox())!;
-    const expandedIconOffset = expandedIconBox.y - expandedRowBox.y;
-    expect(expandedH).toBeGreaterThan(collapsedH);
-    expect(Math.abs(expandedIconOffset - collapsedIconOffset)).toBeLessThan(1);
-
-    // Tap again → collapses back.
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // The row is one line: its height is the stepper's box plus padding, not two.
+    const stepBox = (await row.getByTestId("log-leafy_greens").boundingBox())!;
+    expect(rowBox!.height).toBeLessThan(stepBox.height + 24);
   });
-});
-
-test("food serving details are always visible and not expandable above mobile", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1024, height: 800 });
-  await page.goto("/nutrition");
-  await revealFoodGroup(page, "leafy_greens");
-
-  await expect(page.getByTestId("detail-leafy_greens")).toBeHidden();
-  const detail = page.getByTestId("detail-static-leafy_greens");
-  await expect(detail).toBeVisible();
-  await expect(detail).toContainText(
-    "A cup of raw (or ½ cup cooked) spinach, kale, chard, romaine"
-  );
-  await expect(detail).not.toHaveAttribute("aria-expanded", /.*/);
 });
 
 test("the Trends → Nutrition tab is the over-time view, not the duplicate rollup (#1166)", async ({
@@ -678,8 +661,21 @@ test("a protocol deep link pins its group, and the protein control still sits by
 // the product's own ⋯ → "Remove this serving" — so the shared profile is left as found
 // and nothing exact-counts a seeded row.
 
+// THE DAY LEDGER'S SERVING ROWS (#3987). The LOGGED-TODAY list retired into it; the
+// rows carry the same `data-group`/`data-slot` attributes they always did, so the
+// fixture discipline below is unchanged — only the container it reads from moved.
 function loggedListRows(page: Page) {
-  return page.getByTestId("food-logged-list").locator("li[data-group]");
+  return page.getByTestId("day-ledger").locator("li[data-group]");
+}
+
+// THE STATEMENT IS BEHIND A FOLD NOW (#3273's ruled shape). Idempotent: the tests
+// below open it once and it stays open for the rest of their run.
+async function openWhenFold(page: Page): Promise<void> {
+  const fold = page.getByTestId("food-eating-time");
+  const open = await fold.evaluate(
+    (el) => (el as HTMLDetailsElement).open === true
+  );
+  if (!open) await hydratedClick(page, page.getByTestId("food-when-summary"));
 }
 
 async function loggedListIds(page: Page): Promise<string[]> {
@@ -697,7 +693,7 @@ async function newlyLoggedId(page: Page, before: string[]): Promise<string> {
     throw new Error(
       `expected exactly one new serving row, saw ${added.length}: ${added.join(", ")}`
     );
-  return added[0].replace("food-logged-", "");
+  return added[0].replace("ledger-serving-", "");
 }
 
 function eatingTimeOf(eventId: string): {
@@ -747,12 +743,12 @@ async function stateEatingTime(page: Page, hhmm: string): Promise<void> {
 }
 
 async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
-  const row = page.getByTestId(`food-logged-${eventId}`);
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
   await hydratedClick(
     page,
     row.getByRole("button", { name: /^Actions for the/ })
   );
-  await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
+  await settledClick(page, page.getByTestId(`ledger-serving-remove-${eventId}`));
   await expect(row).toHaveCount(0);
 }
 
@@ -762,8 +758,13 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The affordance is offered, and untouched it asserts nothing. The shared control
-  // NEVER defaults to now (#2236 invariant 3): the field is empty on arrival.
+  // The affordance is offered — as a fold, closed, because it is a question most taps
+  // never answer (#3987) — and untouched it asserts nothing. The shared control NEVER
+  // defaults to now (#2236 invariant 3): the field is empty on arrival.
+  await expect(page.getByTestId("food-when-summary")).toHaveText(
+    "Happened earlier?"
+  );
+  await openWhenFold(page);
   await expect(page.getByTestId("food-when-time")).toHaveValue("");
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     "recorded with no eating time"
@@ -793,6 +794,7 @@ test("the control's Now fills an absolute local time, and it is what lands (#205
 
   // Not a "now" MODE — the button FILLS the field with the absolute local time it
   // means, so what will be written is on screen and adjustable before the tap.
+  await openWhenFold(page);
   await hydratedClick(page, page.getByTestId("food-when-now"));
   const field = page.getByTestId("food-when-time");
   await expect(field).not.toHaveValue("");
@@ -833,8 +835,9 @@ test("an earlier hour states an absolute time, and it is what lands (#2053)", as
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // The day half is FIXED — the statement is a today-only affordance — so the control
-  // renders it as text rather than as a picker that could disagree with the tab.
+  await openWhenFold(page);
+  // The day half is FIXED to the SELECTED day, so the control renders it as text
+  // rather than as a picker that could disagree with the tab.
   await expect(page.getByTestId("food-when-date")).toHaveText("Today");
 
   // Every offered hour is one the write will accept: the control truncates today's
@@ -856,7 +859,7 @@ test("an earlier hour states an absolute time, and it is what lands (#2053)", as
   expect(stamped.time_source).toBe("stated");
   // The stated wall time is what the row carries — resolved server-side in the profile's
   // timezone, so the browser never converted it.
-  await expect(page.getByTestId(`food-logged-${eventId}`)).toBeVisible();
+  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toBeVisible();
   expect(stamped.occurred_at).not.toBeNull();
   expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
     frozenNow().getTime()
@@ -865,7 +868,7 @@ test("an earlier hour states an absolute time, and it is what lands (#2053)", as
   // time a statement replaced": the logged list names this serving by the hour that was
   // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
   // control's own option label is what the row ends up reading.
-  await expect(page.getByTestId(`food-logged-${eventId}`)).toContainText(hhmm);
+  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toContainText(hhmm);
 
   await removeLoggedServing(page, eventId);
 });
@@ -880,6 +883,7 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   // e2e clock is pinned to 13:mm local (Midday under the default 11:00/15:00
   // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
   const filingSlot = EARLIER_HOUR_SLOT;
+  await openWhenFold(page);
   await stateEatingTime(page, EARLIER_HOUR);
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
@@ -896,50 +900,63 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
     `and land in ${filingSlot}`
   );
 
-  const filingTotal = page.getByTestId(
-    `food-slot-total-${filingSlot.toLowerCase()}`
-  );
-  const tabTotal = page.getByTestId(
-    `food-slot-total-${otherTab.toLowerCase()}`
-  );
-  const filingBefore = Number((await filingTotal.textContent())!.trim());
-  const tabBefore = Number((await tabTotal.textContent())!.trim());
-
   await revealFoodGroup(page, "nuts_seeds");
   const before = await loggedListIds(page);
-  // The DERIVED section's total ticks on the tap itself — the optimistic update
-  // places the serving where the chip said it would land, not in the cell being
-  // looked at. Asserted right after the click, before the action settles.
-  await page.getByTestId("log-nuts_seeds").click();
-  await expect(filingTotal).toHaveText(String(filingBefore + 1));
-  await expect(tabTotal).toHaveText(String(tabBefore));
+  await settledClick(page, page.getByTestId("log-nuts_seeds"));
 
-  // Settled: the server files it under the same derived meal (no meal_slot echo was
-  // stored — the row's window comes from the stated instant).
+  // The server files it under the DERIVED meal (no meal_slot echo was stored — the
+  // row's window comes from the stated instant), and the ledger states it there and
+  // ONLY there: the tab that was being looked at gains nothing.
   await expect(loggedListRows(page)).toHaveCount(before.length + 1);
   const eventId = await newlyLoggedId(page, before);
-  await expect(page.getByTestId(`food-logged-${eventId}`)).toHaveAttribute(
-    "data-slot",
-    filingSlot
-  );
-  await expect(filingTotal).toHaveText(String(filingBefore + 1));
-  await expect(tabTotal).toHaveText(String(tabBefore));
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
+  await expect(row).toHaveAttribute("data-slot", filingSlot);
+  await expect(
+    page.getByTestId(`ledger-group-${filingSlot.toLowerCase()}`)
+  ).toContainText("Nuts and seeds");
+  expect(
+    await page
+      .getByTestId(`ledger-group-${otherTab.toLowerCase()}`)
+      .locator(`[data-testid="ledger-serving-${eventId}"]`)
+      .count()
+  ).toBe(0);
 
   await removeLoggedServing(page, eventId);
 });
 
-test("the eating-time statement is a today-only affordance (#2053)", async ({
+test("the time question relabels on a past day and its answer is per-day (#4118)", async ({
   page,
 }) => {
+  // THE OWNER AMENDMENT. The statement used to be withheld entirely on a backfill,
+  // because "now" is meaningless there. It is not withheld any more — "8pm on Tuesday"
+  // is a perfectly honest thing to say about a meal being reconstructed — but the
+  // QUESTION changes, because a bare tap on a past day means the meal slot and no
+  // instant rather than "now".
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(page.getByTestId("food-eating-time")).toBeVisible();
+  await expect(page.getByTestId("food-when-summary")).toHaveText(
+    "Happened earlier?"
+  );
 
-  // "Now" is meaningless on a backfill, and a seven-day-old serving genuinely has no
-  // stated eating time — which is exactly what the NULL default is for.
   await hydratedClick(page, page.getByTestId("food-day-yesterday"));
-  await expect(page.getByTestId("food-eating-time")).toHaveCount(0);
-
-  await hydratedClick(page, page.getByTestId("food-day-today"));
   await expect(page.getByTestId("food-eating-time")).toBeVisible();
+  await expect(page.getByTestId("food-when-summary")).toHaveText("Set time?");
+  await openWhenFold(page);
+  await expect(page.getByTestId("food-when-date")).toHaveText("Yesterday");
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    "with no time until you set one"
+  );
+
+  // STICKY FOR THE BATCH, AND THE BATCH IS A DAY. A time set for yesterday is shown
+  // in the summary so nothing is silently in force, and it is NOT in force on today.
+  await stateEatingTime(page, EARLIER_HOUR);
+  await expect(page.getByTestId("food-when-set")).toHaveText(EARLIER_HOUR);
+  await hydratedClick(page, page.getByTestId("food-day-today"));
+  await expect(page.getByTestId("food-when-summary")).toHaveText(
+    "Happened earlier?"
+  );
+  await expect(page.getByTestId("food-when-set")).toHaveCount(0);
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    "recorded with no eating time"
+  );
 });

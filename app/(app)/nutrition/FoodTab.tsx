@@ -32,8 +32,17 @@ import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import type { FoodGroup } from "@/lib/food-groups";
-import { assessProteinAdequacy } from "@/lib/protein";
-import { fiberBasisIsFloor } from "@/lib/fiber";
+import {
+  assessProteinAdequacy,
+  proteinIntakeSummary,
+  proteinTargetSummary,
+  type ProteinAdequacy,
+} from "@/lib/protein";
+import {
+  fiberBasisIsFloor,
+  fiberIntakeSummary,
+  fiberTargetSummary,
+} from "@/lib/fiber";
 import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
@@ -122,6 +131,58 @@ function WeeklyFiberLine({ adequacy }: { adequacy: FiberAdequacy }) {
         </span>
       </span>
     </p>
+  );
+}
+
+// THE METHODOLOGY, NOT A SECOND STATEMENT. These lines live behind the nutrients
+// card's "How estimates work" fold, and they say what the figures are MADE OF — a
+// non-tracked basis is a floor, an unknown-unit supplement is noted, a day holding both
+// a health-app reading and an in-app log names both. #3987's "stated once" is about
+// what the rail RENDERS; a folded explanation of how a number was reached is not a
+// third rendering of the number, and dropping it would take the honesty caveats with
+// it.
+function NutrientEstimateDetails({
+  protein,
+  fiber,
+}: {
+  protein: ProteinAdequacy | null;
+  fiber: FiberAdequacy | null;
+}) {
+  return (
+    <>
+      {protein && (
+        <div data-testid="protein-estimate-details">
+          <p>
+            <span className="font-medium">Protein intake: </span>
+            <span data-testid="protein-intake">
+              {proteinIntakeSummary(protein.intake)}
+            </span>
+          </p>
+          <p className="mt-1">
+            <span className="font-medium">Protein target: </span>
+            <span data-testid="protein-target">
+              {proteinTargetSummary(protein.target)}
+            </span>
+          </p>
+        </div>
+      )}
+      {fiber && (
+        <div data-testid="fiber-estimate-details">
+          <p>
+            <span className="font-medium">Fiber intake: </span>
+            <span data-testid="fiber-intake">
+              {fiberIntakeSummary(fiber.intake)}
+            </span>
+          </p>
+          <p className="mt-1">
+            <span className="font-medium">Fiber target: </span>
+            <span data-testid="fiber-target">
+              {fiberTargetSummary(fiber.target)}
+            </span>
+          </p>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -427,6 +488,12 @@ export default async function FoodTab({
           embedded
           title="Nutrients"
           headingLevel={3}
+          details={
+            <NutrientEstimateDetails
+              protein={day.proteinAssessment}
+              fiber={day.fiber}
+            />
+          }
         >
           {(day.protein || day.proteinAssessment) && (
             <ProteinAdequacyCard
@@ -551,6 +618,12 @@ export default async function FoodTab({
             >
               <NutrientsCard
                 embedded
+                details={
+                  <NutrientEstimateDetails
+                    protein={proteinAdequacy}
+                    fiber={fiberToday}
+                  />
+                }
               >
                 {(proteinToday || proteinAdequacy) && (
                   <ProteinAdequacyCard

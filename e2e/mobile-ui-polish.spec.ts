@@ -103,34 +103,22 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     const kebab = page.getByTestId("overflow-menu-trigger").first(); // first-ok: every supplement row renders one kebab (see comment) — order-agnostic
     await expectPhoneTapTargets(page, "supplement row kebab", [kebab]);
 
-    // Dose take/skip circles render on any due, active dose. When present, both
-    // clear 40px and don't overlap (a mis-tap between taken and skipped on a
-    // medication is a real correctness cost). Scope BOTH circles to the SAME
-    // dose-status control — a page-wide first-match on each testid can pair circles
-    // from two different rows, whose boxes bear no spatial relation (the CI
-    // failure mode this replaces).
-    // The 40px sizing applies to the CIRCLE variant; the pill variant (compact
-    // by design) also renders on this page, so target circles explicitly.
-    const control = page
-      .locator('[data-testid="dose-status"][data-variant="circle"]')
-      .first(); // first-ok: one dose-status control; BOTH its circles are read from this SAME control (see comment) — order-agnostic
-    if ((await control.count()) > 0) {
-      const take = control.getByTestId("dose-take");
-      const skip = control.getByTestId("dose-skip");
-      // Effective, and DISJOINT: the circles render the control box now, and the
-      // control's own padding plus its `gap-3` are what keep the two hit regions
-      // from meeting over the same point (#3938).
-      await expectPhoneTapTargets(page, "dose circles", [take, skip], {
+    // THE TWO DOSE VERBS MOVED, AND THE MIS-TAP COST DID NOT (#3987). The circle
+    // pair used to sit on this row; resolving a day's dose is the Day ledger's now,
+    // so the Take/Skip pair is measured THERE — same claim, same page family, on the
+    // surface that has them. A mis-tap between taken and skipped is a real
+    // correctness cost, so the two hit regions must clear the floor AND be disjoint.
+    await page.goto("/nutrition");
+    const dueRow = page.locator('[data-testid^="ledger-due-group-"]').first(); // first-ok: the pair is read from ONE row (see comment) — order-agnostic
+    if ((await dueRow.count()) > 0) {
+      await dueRow.click();
+      const take = page.locator('[data-testid^="ledger-take-"]').first(); // first-ok: same expanded row
+      const skip = page.locator('[data-testid^="ledger-skip-"]').first(); // first-ok: same expanded row
+      await expectPhoneTapTargets(page, "ledger dose verbs", [take, skip], {
         disjoint: true,
       });
-      const tBox = await take.boundingBox();
-      const sBox = await skip.boundingBox();
-      expect(tBox).not.toBeNull();
-      expect(sBox).not.toBeNull();
-      // Within one control (a no-wrap flex row) the skip circle sits fully to
-      // the right of the take circle, with the widened gap between them.
-      expect(sBox!.x).toBeGreaterThanOrEqual(tBox!.x + tBox!.width);
     }
+    await page.goto("/nutrition?tab=supplements");
 
     // Only the identity line yields to the action buttons. Supporting text starts
     // below that top row and spans beneath the buttons instead of carrying their
@@ -341,68 +329,27 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
   test("Food and supplement controls scroll with their tab context", async ({
     page,
   }) => {
-    for (const surface of [
-      { href: "/nutrition", testId: "food-log-context" },
-      {
-        href: "/nutrition?tab=supplements",
-        testId: "intake-schedule-context",
-      },
-    ]) {
-      await page.goto(surface.href);
-      const controls = page.getByTestId(surface.testId);
-      await expect(controls).toBeVisible();
-      await expect
-        .poll(() =>
-          controls.evaluate((element) => getComputedStyle(element).position)
-        )
-        .toBe("static");
-    }
+    // ONE INTAKE CONTEXT BAR NOW (#3987): the day lens is the Day ledger's, so the
+    // Supplements tab has no day chrome of its own to keep in the viewport.
+    await page.goto("/nutrition");
+    const controls = page.getByTestId("food-log-context");
+    await expect(controls).toBeVisible();
+    await expect
+      .poll(() =>
+        controls.evaluate((element) => getComputedStyle(element).position)
+      )
+      .toBe("static");
 
-    const supplementDate = page.getByTestId("supplement-day-menu-trigger");
-    await expect(
-      page
-        .getByTestId("supplement-context-heading")
-        .getByTestId("supplement-day-menu-trigger")
-    ).toBeVisible();
-    await expect(supplementDate).toHaveAttribute("data-button-control", "");
-    await expect(supplementDate).toHaveAccessibleName("Choose day to review");
-    await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
-    await supplementDate.click();
-    const supplementDateMenu = page.getByTestId("supplement-day-menu");
-    await expect(supplementDateMenu).toBeVisible();
-    await supplementDateMenu
-      .getByRole("menuitemradio", { name: "Yesterday" })
-      .click();
-    await expect(
-      page.getByTestId("supplement-context-heading")
-    ).toHaveAccessibleName("Yesterday Supplements");
-    await supplementDate.click();
-    await page
-      .getByTestId("supplement-day-menu")
-      .getByRole("menuitemradio", { name: "Today" })
-      .click();
-    await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
-      /^(?:\d+\/\d+ taken|0 scheduled)$/
+    await page.goto("/nutrition?tab=supplements");
+    await expect(page.getByTestId("intake-schedule-context")).toHaveCount(0);
+    await expect(page.getByTestId("supplement-day-menu-trigger")).toHaveCount(
+      0
     );
+    await expect(page.getByTestId("supplement-slot-selector")).toHaveCount(0);
     const addIntakeItem = page.getByTestId("supplement-add-toggle");
     await expect(addIntakeItem.locator("svg")).toBeVisible();
     await expect(addIntakeItem.getByText("Add supplement")).toBeHidden();
     await expectPhoneTapTargets(page, "add supplement", [addIntakeItem]);
-
-    const slots = page.getByTestId("supplement-slot-selector");
-    const [all, morning, midday, evening] = await settledBoxes([
-      slots.getByTestId("supplement-slot-all"),
-      slots.getByTestId("supplement-slot-morning"),
-      slots.getByTestId("supplement-slot-midday"),
-      slots.getByTestId("supplement-slot-evening"),
-    ]);
-    expect(all.x).toBeLessThan(morning.x);
-    expect(morning.x).toBeLessThan(midday.x);
-    expect(midday.x).toBeLessThan(evening.x);
-    expect(all.y).toBeCloseTo(morning.y, 0);
-    expect(morning.y).toBeCloseTo(midday.y, 0);
-    expect(midday.y).toBeCloseTo(evening.y, 0);
-    expect(evening.height).toBeGreaterThanOrEqual(48);
     await expectNoClippedContent(page);
   });
 
@@ -411,13 +358,9 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
   }) => {
     for (const width of [800, 1100]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const surface of [
-        { href: "/nutrition", testId: "food-log-context" },
-        {
-          href: "/nutrition?tab=supplements",
-          testId: "intake-schedule-context",
-        },
-      ]) {
+      // Only Food carries an intake context bar since #3987 retired the Supplements
+      // tab's day chrome; the frost rule is asserted on the bar that survives.
+      for (const surface of [{ href: "/nutrition", testId: "food-log-context" }]) {
         await page.goto(surface.href);
         const context = page.getByTestId(surface.testId);
         await expect(context).toBeVisible();

@@ -27,6 +27,7 @@ import {
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
 import type { PoolChipData } from "@/lib/queries/intake";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
@@ -54,6 +55,8 @@ import { isOnDemand } from "@/lib/intake-schedule";
 export default function EditableSupplementRow({
   supplement,
   dose,
+  isTaken,
+  isSkipped,
   doses,
   retiredDoses = [],
   allIntakeItems,
@@ -76,6 +79,22 @@ export default function EditableSupplementRow({
 }: {
   supplement: IntakeItem;
   dose: IntakeDose;
+  /**
+   * TODAY'S RESOLUTION, ONLY WHERE THIS ROW IS THE ONE STATING IT (#3987).
+   *
+   * The Day ledger states every dose the day OWES and every dose the day RESOLVED, so
+   * a row that appears there must not restate it here — that is the duplication the
+   * redesign exists to end. What the ledger cannot reach is a dose the day never owed
+   * and nobody logged: a `may` item, an off-cadence row, a situation-inactive one.
+   * #2419's guarantee is that those are still ONE TAP away, and this is where that tap
+   * lives now.
+   *
+   * ABSENT means "the ledger is stating this dose" — not "false". Making it optional
+   * rather than a `showControl` flag is deliberate: there is no way to ask for the
+   * control without also supplying the state it renders, so the two cannot come apart.
+   */
+  isTaken?: boolean;
+  isSkipped?: boolean;
   doses: IntakeDose[];
   // Retired doses of this item (#2131), for the edit form's Restore affordance.
   retiredDoses?: IntakeDose[];
@@ -199,14 +218,23 @@ export default function EditableSupplementRow({
           </div>
         </div>
         <div className="col-start-2 row-start-1 flex shrink-0 items-center gap-3 text-xs">
-          {/* NO DAY CONTROL HERE ANY MORE (#3987). This row was the second place a
-            day's dose was stated — a take/skip control and a Taken/Skipped/Missed
-            badge, beside the Day ledger's own row for the same dose. Resolving a dose
-            is the ledger's job now, on the surface that shows what the day holds; this
-            row is management: what the item IS, what it is for, what it interacts
-            with, and its history. The write cores are untouched — #2419's "one tap
-            away for every active item" is satisfied by the ledger's due rows, which
-            gate on the item's state and the row's day exactly as this did. */}
+          {/* ONE TAP AWAY, FOR EVERY ACTIVE ITEM (#2419) — on the rows the Day ledger
+            cannot reach. The gate is the item's state and the row's DAY, never its
+            dueness: dueness gates NUDGING, and logging is a statement about what
+            happened. So a `may` item, an off-cadence row and a situation-inactive one
+            all keep their tap here, while a dose the ledger already states (owed, or
+            resolved today) renders no control at all — because it has one THERE, and
+            two would be the duplication #3987 retired. A paused item has none either,
+            matching setDoseStatus's own refusals. The logged day is TODAY: a tap says
+            "I took this now", it never claims the item was scheduled. */}
+          {!!s.active && isTaken !== undefined && (
+            <DoseStatusControl
+              doseId={dose.id}
+              taken={isTaken}
+              skipped={isSkipped ?? false}
+              variant="circle"
+            />
+          )}
           <OverflowMenu
             kind="Supplement"
             itemName={s.name}
