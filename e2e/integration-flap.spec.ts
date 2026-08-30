@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
+import { expectNoClippedContent } from "./helpers";
 
 // #1880/#2263: flapping is not failing, and what separates them is SILENCE. A
 // source alternating Failed/Refreshed with a recent success is `intermittent` — a
@@ -161,11 +162,7 @@ test("connected-source timestamps form one desktop column without a phone overha
     expect((await dataPage.boundingBox())!.width).toBeLessThanOrEqual(1152.5);
 
     await page.setViewportSize({ width: 390, height: 844 });
-    const widths = await page.evaluate(() => ({
-      viewport: document.documentElement.clientWidth,
-      content: document.documentElement.scrollWidth,
-    }));
-    expect(widths.content).toBeLessThanOrEqual(widths.viewport);
+    await expectNoClippedContent(page);
   } finally {
     restoreRemovedOura();
   }
