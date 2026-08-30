@@ -299,6 +299,15 @@ node -e '
     if(why.length) console.log(`  (excluded: ${why.join(", ")}, plus needs-human and parked)`);
   }' "$TMP"/issues.*
 
+# 4b. Release-notes lag. The batch falls behind SILENTLY — #4077 caught four
+#     uncovered user-visible merges by hand — so the digest shows the lag
+#     where the orchestrator already looks. The gather script owns the
+#     arithmetic; it needs a read token, and its absence is said, not skipped.
+echo "--- release notes ---"
+node "$REPO_DIR/scripts/orchestration/release-notes-gather.mjs" --check 2>/dev/null ||
+  echo "  (lag check unavailable — needs GH_TOKEN/GITHUB_TOKEN or gh auth)"
+echo
+
 # 5. Advance the anchor only on a full, non-peek run: a --peek or --since read
 #    must not move what "since last catch-up" means for the next one.
 echo
