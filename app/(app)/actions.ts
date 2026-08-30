@@ -183,8 +183,10 @@ export async function snoozeAttention(formData: FormData) {
   revalidateRoute("/upcoming");
 }
 
-// Dismiss one dashboard attention atom: hide it indefinitely (until restored
-// from the Upcoming page). Profile-scoped via the shared writer.
+// Dismiss one dashboard attention atom: hide it until it is restored from the
+// Upcoming page. Profile-scoped via the shared writer. A flagged-biomarker atom
+// posts the analyte acknowledgment key, which since #3225 also ends at the next draw
+// of that marker family (lib/queries/upcoming/suppressions.ts).
 export async function dismissAttention(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const signalKey = String(formData.get("signal_key") ?? "").trim();
