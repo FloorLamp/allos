@@ -423,7 +423,14 @@ test.describe("the day is stated once, and the chrome is measured", () => {
     // THE MEASUREMENT (#3987's chrome gate). The redesign's goal is LESS, so less is
     // measured: the y of the FIRST LEDGER ROW — of any kind, since a dose row can
     // legitimately lead the day — at 430x932. Reported in the PR body.
-    const firstRow = ledger.locator("ul > li").first(); // first-ok: the topmost row IS the measurement — order is the point
+    // `[data-testid="ledger-rows"] > li` and NOT `ul > li`: the keep-apart notices
+    // render ABOVE the rows inside the same section and are arbitrary server-rendered
+    // content, so they can carry their own list — and one inside a collapsed disclosure
+    // has no box at all, which made this measurement fail with `expected null not to be
+    // null` on a day whose due doses happened to raise a notice. Whether they appear
+    // depends on shared-profile state, so it read as a flake. The measurement means the
+    // first LEDGER ROW; now it says so.
+    const firstRow = ledger.locator('[data-testid="ledger-rows"] > li').first(); // first-ok: the topmost row IS the measurement — order is the point
     const box = await firstRow.boundingBox();
     expect(box).not.toBeNull();
     // eslint-disable-next-line no-console

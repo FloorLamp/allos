@@ -631,7 +631,12 @@ export default function DayLedger({
                   anti-drop gate): it is current safety advice about what to take
                   together, so it belongs beside the taps, not on a management list. */}
               {warnings}
-              <ul className={LOGGED_EVENT_LIST}>{group.rows.map(renderRow)}</ul>
+              {/* Named, because `warnings` above is arbitrary server-rendered content
+                  that can carry its own list — so "the ledger's rows" has to be
+                  addressable as itself rather than as the first `ul` in the section. */}
+              <ul data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
+                {group.rows.map(renderRow)}
+              </ul>
             </section>
           );
         })
