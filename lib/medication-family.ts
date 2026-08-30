@@ -44,11 +44,11 @@ const DELIVERY_ROUTES = [
   ["ophthalmic", /\b(?:ophthalmic|ophth)\b/i],
   ["otic", /\b(?:otic|aural)\b/i],
   ["nasal", /\b(?:nasal|intranasal(?:ly)?)\b/i],
-  ["topical", /\b(?:topical(?:ly)?|transdermal(?:ly)?)\b/i],
-  [
-    "injected",
-    /\b(?:intravenous(?:ly)?|intramuscular(?:ly)?|subcutaneous(?:ly)?)\b/i,
-  ],
+  ["topical", /\btopical(?:ly)?\b/i],
+  ["transdermal", /\btransdermal(?:ly)?\b/i],
+  ["intravenous", /\b(?:intravenous(?:ly)?|iv)\b/i],
+  ["intramuscular", /\b(?:intramuscular(?:ly)?|im)\b/i],
+  ["subcutaneous", /\b(?:subcutaneous(?:ly)?|sq|sc)\b/i],
   ["rectal", /\b(?:rectal(?:ly)?|per[\s-]+rectum)\b/i],
   ["sublingual", /\b(?:sublingual(?:ly)?)\b/i],
 ] as const;

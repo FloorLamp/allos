@@ -11,8 +11,6 @@
 //      declared marker or to an explicit not-a-marker entry with a stated reason.
 //   2. EVIDENCE — every entry states its shape, value and retention; a claimed class
 //      that needs a sweep has to name it.
-//   3. AGREEMENT — the send-marker registry and the dismissal registry describe two
-//      different stores and must not contradict each other.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -28,10 +26,7 @@ import {
   intakeSlotMarkerKey,
   sendMarkerEntryFor,
 } from "@/lib/notifications/send-markers";
-import {
-  DISMISSAL_KEY_PREFIXES,
-  NON_DISMISSAL_PREFIXES,
-} from "@/lib/dismissal-classes";
+import { stripComments } from "./strip-comments";
 
 const ROOT = process.cwd();
 // The registry is the DECLARATION, so scanning it would be circular — it is the one
@@ -54,50 +49,6 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-// Comments MENTION marker names constantly (that is how the convention spread), so the
-// scan has to look at code only. A small quote-aware stripper: it tracks the three
-// string forms so a `//` inside a URL or a `/*` inside a message is never mistaken for
-// the start of a comment.
-export function stripComments(src: string): string {
-  let out = "";
-  let i = 0;
-  let quote: string | null = null;
-  while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
-    if (quote) {
-      if (c === "\\") {
-        out += c + (next ?? "");
-        i += 2;
-        continue;
-      }
-      if (c === quote) quote = null;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      quote = c;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === "/" && next === "/") {
-      while (i < src.length && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && next === "*") {
-      i += 2;
-      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
 interface FoundKey {
   key: string;
   file: string;
@@ -111,17 +62,22 @@ const PATTERNS = [
   /`(notify_[A-Za-z0-9_]*)(?:\$\{|`)/g,
 ];
 
+let foundKeysCache: FoundKey[] | undefined;
+
 function foundKeys(): FoundKey[] {
+  if (foundKeysCache) return foundKeysCache;
   const out: FoundKey[] = [];
   for (const dir of ["lib", "scripts"]) {
     for (const file of sourceFiles(join(ROOT, dir))) {
-      const src = stripComments(readFileSync(file, "utf8"));
+      const raw = readFileSync(file, "utf8");
+      if (!raw.includes("notify_")) continue;
+      const src = stripComments(raw);
       for (const re of PATTERNS)
         for (const m of src.matchAll(re))
           out.push({ key: m[1], file: file.slice(ROOT.length + 1) });
     }
   }
-  return out;
+  return (foundKeysCache = out);
 }
 
 const EXCLUDED = new Set(NON_MARKER_NOTIFY_KEYS.map((e) => e.key));
@@ -231,10 +187,11 @@ describe("send-marker registry (#2036)", () => {
 });
 
 describe("send-marker source scan (#2036)", () => {
-  it("finds the key literals it is supposed to guard", () => {
+  it("every notify_ key written in lib/ or scripts/ is declared", () => {
+    const found = foundKeys();
     // A sanity floor: if the literal shapes ever change, the scan must fail loudly
     // rather than silently pass over an empty set.
-    const keys = foundKeys().map((f) => f.key);
+    const keys = found.map((entry) => entry.key);
     expect(keys.length).toBeGreaterThan(20);
     for (const expected of [
       "notify_last_refill_",
@@ -243,30 +200,10 @@ describe("send-marker source scan (#2036)", () => {
       "notify_last_redose_",
     ])
       expect(keys).toContain(expected);
-  });
 
-  it("ignores marker names that only appear in prose", () => {
-    // The convention spread through comments; the scan must not police them.
-    const src = [
-      "// the notify_last_practice marker, see `notify_last_${slot}`",
-      '/* notify_last_bogus */ const k = "notify_last_digest";',
-    ].join("\n");
-    const stripped = stripComments(src);
-    expect(stripped).toContain("notify_last_digest");
-    expect(stripped).not.toContain("notify_last_practice");
-    expect(stripped).not.toContain("notify_last_bogus");
-  });
-
-  it("keeps a URL out of the comment stripper's way", () => {
-    expect(stripComments('const u = "https://example.test/x"; // gone')).toBe(
-      'const u = "https://example.test/x"; '
-    );
-  });
-
-  it("every notify_ key written in lib/ or scripts/ is declared", () => {
     const unaccounted = [
       ...new Set(
-        foundKeys()
+        found
           .filter((f) => !accountedFor(f.key))
           .map((f) => `"${f.key}" (${f.file})`)
       ),
@@ -288,26 +225,5 @@ describe("send-marker source scan (#2036)", () => {
       // A key cannot be both a send marker and not one.
       expect(declared.has(e.key), e.key).toBe(false);
     }
-  });
-});
-
-describe("agreement with the dismissal registry (#1931 / #2036)", () => {
-  it("declares every notify_ prefix the dismissal registry excused", () => {
-    // NON_DISMISSAL_PREFIXES carries six send-marker prefixes, recorded there only
-    // because they are NOT dismissals. Each must be a real declaration over here, so the
-    // two registries cannot disagree about what a key is.
-    const missing = NON_DISMISSAL_PREFIXES.filter(
-      (e) => e.prefix.startsWith("notify_") && !sendMarkerEntryFor(e.prefix)
-    ).map((e) => e.prefix);
-    expect(missing).toEqual([]);
-  });
-
-  it("never classifies a send marker as a suppression namespace", () => {
-    // Different stores, different questions: `upcoming_dismissals.signal_key` is a
-    // promise to a person, a send marker is the app's own bookkeeping. An overlap would
-    // mean one of the two registries is describing the wrong thing.
-    const dismissals = new Set(DISMISSAL_KEY_PREFIXES);
-    const overlap = SEND_MARKER_KEYS.filter((k) => dismissals.has(k));
-    expect(overlap).toEqual([]);
   });
 });

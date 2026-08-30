@@ -160,6 +160,12 @@ describe("medicationDuplicationNote / isIndistinguishableFamily (#3069 / #3125)"
       item({ id: 2, name: "Ibuprofen 800 mg" }),
     ];
     expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(
+      isIndistinguishableFamily([
+        item({ id: 3, name: "Epinephrine 1 mg/mL IV injection" }),
+        item({ id: 4, name: "Epinephrine 1 mg/mL IM injection" }),
+      ])
+    ).toBe(false);
     expect(medicationDuplicationNote(members)).toEqual({
       title: "Ibuprofen appears in 2 active medications",
       detail:

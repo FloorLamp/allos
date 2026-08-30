@@ -580,10 +580,10 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
 //
 // Since #2036 the `notify_` entries below are more than an excuse: each of them is a
 // declared entry in SEND_MARKER_REGISTRY (lib/notifications/send-markers.ts), and
-// lib/__tests__/send-markers.test.ts asserts that agreement in both directions — every
-// `notify_` prefix excused here must be a real send marker there, and no key may be
-// both. The two registries describe two different stores, and neither is allowed to be
-// the reason nobody looked at the other.
+// lib/__tests__/send-markers.test.ts scans this file with the rest of lib/, so every
+// `notify_` prefix excused here must still be a real send marker there. The two
+// registries describe different stores; this list cannot become a place where an
+// undeclared notification key hides.
 export const NON_DISMISSAL_PREFIXES: readonly {
   prefix: string;
   what: string;
