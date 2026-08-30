@@ -4,6 +4,7 @@ import {
   redactSecrets,
   buildDetail,
   parseErrorLine,
+  VENDOR_SECRET_PREFIXES,
 } from "../error-log-format";
 
 describe("capDetail", () => {
@@ -369,117 +370,62 @@ describe("redactSecrets: boundaries", () => {
   });
 });
 
-// #2965 question 3, ruled 2026-08-16: a vendor-published prefix is a credential
-// wherever it stands, so it masks with NO adjacent key — the one place a
-// denylist is well-founded, because the vendor guarantees the shape.
+// #2965 allows a vendor-published prefix to mask with NO adjacent key. #3013
+// narrows that exception to credentials this deployment can actually hold and
+// bodies with a digit, so ordinary glued prose survives.
 //
 // Fixtures assembled at runtime for the reason the header gives: a committed
 // vendor-prefixed literal is exactly what the scanner exists to catch.
 describe("redactSecrets: vendor-prefixed credentials (#2965)", () => {
-  const STRIPE = ["sk", "live", "abc123DEADBEEF456xyz"].join("_");
-  const GITHUB = ["ghp", "AAAABBBBCCCCDDDDEEEE1111"].join("_");
-  const SLACK = ["xoxb", "111", "222", "abcdEFGH"].join("-");
-  const STRIPE_PREFIX = ["sk", "live", ""].join("_");
+  const ANTHROPIC_PREFIX = ["sk", "ant", ""].join("-");
+  const ANTHROPIC = `${ANTHROPIC_PREFIX}api03-AAbbCCddEEffGGhhIIjjKKllMM`;
+  const RETIRED = [
+    ["sk", "live", "abc123DEADBEEF456xyz"].join("_"),
+    ["ghp", "AAAABBBBCCCCDDDDEEEE1111"].join("_"),
+    ["xoxb", "111", "222", "abcdEFGH"].join("-"),
+  ];
 
-  it("masks all three with no key, no scheme word and no URL around them", () => {
-    const out = redactSecrets(`${STRIPE} ${GITHUB} ${SLACK}`);
-    expect(out).toBe("sk_live_*** ghp_*** xoxb-***");
+  it("registers only a credential this deployment consumes (#3013)", () => {
+    expect(VENDOR_SECRET_PREFIXES).toEqual([
+      { prefix: "sk-ant-", credentialEnv: "ANTHROPIC_API_KEY" },
+    ]);
   });
 
-  it("masks one sitting in prose, where no other rule can see it", () => {
-    // The shape-and-key design cannot reach this: there is no key, the value is
-    // not opaque-token shaped, and it is not in a URL.
-    const out = redactSecrets(`upstream rejected ${GITHUB} while syncing`);
-    expect(out).not.toContain(GITHUB);
-    expect(out).toBe("upstream rejected ghp_*** while syncing");
-  });
-
-  it("masks one in an Error stack, which never goes through the replacer", () => {
-    const err = new Error(`push failed with ${GITHUB}`);
-    const out = buildDetail({ err })!;
-    expect(out).not.toContain(GITHUB);
-  });
-
-  it("masks on the profile-facing surface and the admin log alike", () => {
-    // One chokepoint (#2978): the profile column calls redactSecrets directly,
-    // the admin log goes through buildDetail's replacer. Neither may be the
-    // weaker of the two.
-    const message = `Stripe rejected the key ${STRIPE}`;
-    expect(redactSecrets(message)).not.toContain(STRIPE);
-    expect(buildDetail({ note: message })!).not.toContain(STRIPE);
-    expect(buildDetail({ err: new Error(message) })!).not.toContain(STRIPE);
-  });
-
-  it("keeps the prefix, so the error still says whose credential it was", () => {
-    expect(redactSecrets(`refresh failed for ${SLACK}`)).toContain("xoxb-***");
-  });
-
-  it("stays idempotent — a masked value is not re-masked into something else", () => {
-    for (const s of [STRIPE, GITHUB, SLACK, `token=${STRIPE}`]) {
-      const once = redactSecrets(s);
-      expect(redactSecrets(once)).toBe(once);
-    }
-  });
-
-  // The other direction, and the one that costs a data subject something: since
-  // #2935 this string is read in a browser, so a false positive destroys an
-  // error someone needs to act on.
-  it("LEAVES benign strings that a looser prefix rule would have eaten", () => {
-    const benign = [
-      "SQLITE_CONSTRAINT: UNIQUE constraint failed: body_metrics.profile_id",
-      "connect ECONNREFUSED 10.0.7.31:8443 (allos-worker-02.internal)",
-      "Basic Metabolic Panel import failed for 3 rows",
-      "/home/user/allos/lib/integrations/withings.ts:214:11",
-      "GET https://api.ouraring.com/v2/usercollection/daily_activity?start_date=2026-08-01",
-      "rotate the ghp_ token before Friday",
-      "skin_fold_measurement recorded",
-      // The HYPHEN prefix, with its hyphen (#3000). The fixture here used to be
-      // "xoxb is not a token", which drops the hyphen and so tests the one form
-      // that could never match — it proved nothing about the prefix it names.
-      "the xoxb- prefix marks a bot token",
-    ];
-    for (const s of benign) expect(redactSecrets(s)).toBe(s);
-  });
-
-  // The floor separates a credential from a prose mention on WHITESPACE, and
-  // that is all it does. Condition 2 of the rule now says so; this executes it,
-  // in both directions, so the next reader gets the true boundary rather than
-  // the comment's earlier claim that a bare mention is always safe.
-  it("draws the prose boundary where the rule says it does, not where it read", () => {
-    // Survives: the next character ends the match.
-    for (const s of [
-      "rotate the ghp_ token before Friday",
-      "the xoxb- prefix marks a bot token",
-      "prefixes: ghp_, xoxb-, sk_live_",
-    ]) {
-      expect(redactSecrets(s)).toBe(s);
-    }
-    // Masks: eight or more identifier characters ride on the prefix, which is
-    // indistinguishable from a credential and is accepted as such.
-    expect(redactSecrets("xoxb-prefixed tokens are bot tokens")).toBe(
-      "xoxb-*** tokens are bot tokens"
-    );
-    expect(redactSecrets("rotate the ghp_token_before_friday")).toBe(
-      "rotate the ghp_***"
-    );
-  });
-
-  // #3000/D5: the sixteen prefixes shipped first covered Stripe, GitHub and
-  // Slack, none of which this deployment integrates. The key it does hold was
-  // missing, so it leaked in exactly the two contexts the exception was for.
-  it("masks the one vendor key this deployment actually holds", () => {
-    const ANTHROPIC = ["sk", "ant", "api03", "AAbbCCddEEffGGhhIIjjKKllMM"].join(
-      "-"
-    );
+  it("masks the deployed vendor key with no surrounding context", () => {
     expect(redactSecrets(`AI authentication failed for ${ANTHROPIC}`)).toBe(
       "AI authentication failed for sk-ant-***"
     );
-    expect(
-      redactSecrets(`Error: 401 authentication_error using ${ANTHROPIC}`)
-    ).toBe("Error: 401 authentication_error using sk-ant-***");
-    expect(
-      buildDetail({ err: new Error(`401 using ${ANTHROPIC}`) })!
-    ).not.toContain(ANTHROPIC);
+  });
+
+  it("uses the same rule for profile copy, structured detail, and Error stacks", () => {
+    const message = `401 authentication_error using ${ANTHROPIC}`;
+    expect(redactSecrets(message)).not.toContain(ANTHROPIC);
+    expect(buildDetail({ note: message })!).not.toContain(ANTHROPIC);
+    expect(buildDetail({ err: new Error(message) })!).not.toContain(ANTHROPIC);
+  });
+
+  it("keeps the prefix and stays idempotent", () => {
+    const once = redactSecrets(ANTHROPIC);
+    expect(once).toBe("sk-ant-***");
+    expect(redactSecrets(once)).toBe(once);
+  });
+
+  it("does not mask vendors the deployment does not hold without context", () => {
+    for (const credential of RETIRED) {
+      expect(redactSecrets(credential)).toBe(credential);
+      expect(redactSecrets(`token=${credential}`)).toBe("token=***");
+    }
+  });
+
+  it("requires a digit in the body so a glued prose mention survives", () => {
+    const prose = "sk-ant-prefixedcredentials are discussed here";
+    expect(redactSecrets(prose)).toBe(prose);
+    expect(redactSecrets(`${ANTHROPIC_PREFIX}credentialbody`)).toBe(
+      `${ANTHROPIC_PREFIX}credentialbody`
+    );
+    expect(redactSecrets(`${ANTHROPIC_PREFIX}credential1body`)).toBe(
+      "sk-ant-***"
+    );
   });
 
   // #3000/D1 — the ORDER, which is the half a behavioural test misses.
@@ -502,7 +448,7 @@ describe("redactSecrets: vendor-prefixed credentials (#2965)", () => {
     ];
     for (const t of templates) {
       for (const sep of [".", "/", "+", "="]) {
-        const vendor = `${STRIPE_PREFIX}${BODY}${sep}${TAIL}`;
+        const vendor = `${ANTHROPIC_PREFIX}${BODY}${sep}${TAIL}`;
         const control = `zz_zzzz_${BODY}${sep}${TAIL}`;
         const vendorOut = redactSecrets(t(vendor));
         const controlOut = redactSecrets(t(control));
