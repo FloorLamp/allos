@@ -613,7 +613,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/bio-age-inputs-card-scan.test.ts",
     "lib/__tests__/card-mode-boundary.test.ts",
     "lib/__tests__/chrome-refresh-scan.test.ts",
-    "lib/__tests__/cycle-offer-renderers.test.ts",
     "lib/__tests__/date-locale-guard.test.ts",
     "lib/__tests__/db-template-key.test.ts",
     "lib/__tests__/disclaimers.test.ts",
