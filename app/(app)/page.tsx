@@ -1823,7 +1823,11 @@ async function renderDashboard(
           sourceOrder: sourceOrder++,
         },
         on,
-        proteinToday.todayIntake?.basis === "tracked" ? "external" : "manual",
+        // `both-sources` carries integration data too (#3903), so it is external.
+        proteinToday.todayIntake?.basis === "tracked" ||
+        proteinToday.todayIntake?.basis === "both-sources"
+          ? "external"
+          : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
       // ROW ONLY (#3365). This reading can reach no card lane — it carries no rank

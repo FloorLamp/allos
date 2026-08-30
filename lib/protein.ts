@@ -8,21 +8,31 @@
 // source-priority chain (issue #824):
 //   - `tracked`   — an integration's protein_g (Health Connect protein_grams → protein_g;
 //                   surfaced on Trends → Nutrition → Macros & fiber, #1166). A measured
-//                   FULL-DAY total, so it OVERRIDES the sum below. "Full-day" is a claim
-//                   about a COMPLETE day: TODAY's reading is a running partial, which is
-//                   why today's row marks it as a floor too (#3903, proteinTodayLineParts).
+//                   day total, and on TODAY only ever a FLOOR: getMetricDailyTotals SUMs
+//                   the day's samples and an integration writes one per meal as it syncs,
+//                   so at 09:00 the reading is breakfast (#3903).
 //   - `estimated` — servings × per-serving grams from the food-group catalog (#579 rollup,
 //                   reused, never a second engine). A FLOOR by construction — incidental
 //                   protein from untracked foods is invisible.
 //   - `logged`    — direct protein grams from the Food-tab quick-add (#824,
 //                   lib/protein-daily-totals-write.ts) — protein powder's only home, since the
 //                   whole-foods catalog has no shake group.
-// When there's no tracked reading, `estimated` and `logged` SUM — a manual grams entry is
-// a PARTIAL ADDITION, never an eraser of the food-group estimate (a common shape: log a
-// shake's 30 g AND tap the eggs/dairy you also ate). The sum is still a FLOOR (untracked
-// foods remain invisible), so every surface's copy says so ("a floor — actual likely
-// higher"). The `basis` names the composition: `combined` (both parts), `logged` (grams
-// only), or `estimated` (food groups only).
+// `estimated` and `logged` SUM — a manual grams entry is a PARTIAL ADDITION, never an
+// eraser of the food-group estimate (a common shape: log a shake's 30 g AND tap the
+// eggs/dairy you also ate). The sum is still a FLOOR (untracked foods remain invisible),
+// so every surface's copy says so ("a floor — actual likely higher"). The `basis` names
+// the composition: `combined` (both parts), `logged` (grams only), or `estimated` (food
+// groups only).
+//
+// TRACKED vs THE IN-APP SUM: THE LARGER FLOOR (#3903, owner ruling 2026-08-29). A tracked
+// reading used to OVERRIDE the sum. That made this the one basis where connecting a health
+// app could take the same person, same day, same logged food from 70 g to 20 g — the
+// number DOWN and the stated confidence UP, since the overriding branch also carried no
+// hedge. It now takes the MAX. Both inputs are floors on the same true total, so their max
+// is a floor as well: nothing is double-counted (SUM was rejected — a shake entered in
+// both places would count twice) and nothing is discarded (keeping the override was
+// rejected — it hid the profile's own logging). The property a reader can rely on:
+// connecting an integration can no longer LOWER the number.
 //
 // Goal-scaled target (proteinTarget): a bodyweight-scaled g/kg band by training goal.
 // Lean body mass is PREFERRED when available (lean_mass_kg) because g/kg-total overshoots
@@ -35,22 +45,40 @@ import { foodGroupBySlug } from "./food-groups";
 import { shiftDateStr } from "./date";
 import { trailingAverage } from "./trailing-average";
 
-// ---- Intake: tracked OVERRIDES (estimated + logged) ------------------------
+// ---- Intake: max(tracked, estimated + logged) ------------------------------
 
 // The composition of the per-day intake figure:
-//   tracked   — a measured full-day total (overrides the sum).
-//   combined  — the estimated food-group floor PLUS manually-logged grams.
-//   logged    — manually-logged grams only (no protein-bearing food groups logged).
-//   estimated — the food-group floor only (no manual grams).
-export type ProteinBasis = "tracked" | "combined" | "logged" | "estimated";
+//   tracked      — an integration's reading, with nothing logged in-app that day.
+//   both-sources — an integration's reading AND in-app logging; the figure is the LARGER
+//                  of the two floors. Distinct from `combined`, which names two COLUMNS of
+//                  the app's own ledger; this names two independent SOURCES.
+//   combined     — the estimated food-group floor PLUS manually-logged grams.
+//   logged       — manually-logged grams only (no protein-bearing food groups logged).
+//   estimated    — the food-group floor only (no manual grams).
+//
+// EVERY SITE THAT READS `basis !== "tracked"` AS "THIS IS A FLOOR" IS ALREADY CORRECT for
+// `both-sources`, which is why adding it needed no sweep: the value means "the max of two
+// floors", and that is a floor. Audited at all seven such sites when it was added
+// (proteinAdequacyDetail, proteinIntakeSummary, lib/nutrition-day.ts, ProteinGauge,
+// NutritionSnapshot, ProteinAdequacyCard's data-basis, app/(app)/page.tsx's provenance) —
+// the last of which needed the opposite fix and got it: `both-sources` carries integration
+// data, so its provenance is `external`, not `manual`.
+export type ProteinBasis =
+  | "tracked"
+  | "both-sources"
+  | "combined"
+  | "logged"
+  | "estimated";
 
 export interface ProteinIntake {
-  // Per-day grams. For every non-`tracked` basis this is a FLOOR (see module header).
+  // Per-day grams. Always a FLOOR on today (see module header).
   grams: number;
   basis: ProteinBasis;
-  // The two floor components that add to `grams` for a non-`tracked` basis, so a
-  // surface can name the composition honestly ("90 g estimated + 30 g logged"). Both
-  // are 0 for a `tracked` basis (the measured total overrides the sum).
+  // The app's OWN two components, so a surface can name the composition honestly ("90 g
+  // estimated + 30 g logged"). They report the in-app ledger, NOT a decomposition of
+  // `grams`: under `both-sources` where the integration's reading is the larger floor,
+  // `grams` is that reading while these still say what the profile logged here. They are
+  // 0 only when the profile logged nothing here.
   estimatedGrams: number;
   loggedGrams: number;
 }
@@ -75,11 +103,12 @@ export function estimatedProteinGrams(servings: ProteinServing[]): number {
   return grams;
 }
 
-// Compose the intake (issue #824): a measured `tracked` reading OVERRIDES; otherwise the
-// estimated food-group floor and the manually-logged grams SUM (a manual entry is a
-// partial addition, never an eraser of the estimate). Each input is an already-per-day
-// figure the gather computed (an average over the days that carry it). Returns null when
-// no basis has any signal (no tracked reading and neither floor component present).
+// Compose the intake (issue #824, #3903): the estimated food-group floor and the
+// manually-logged grams SUM (a manual entry is a partial addition, never an eraser of the
+// estimate), and a measured `tracked` reading is taken against that sum as the LARGER
+// FLOOR rather than overriding it (module header). Each input is an already-per-day figure
+// the gather computed (an average over the days that carry it). Returns null when no basis
+// has any signal (no tracked reading and neither floor component present).
 export function proteinIntake(args: {
   dailyTracked: number | null;
   // Direct protein grams from the Food-tab quick-add (#824); null/omitted when the
@@ -87,18 +116,21 @@ export function proteinIntake(args: {
   dailyLogged?: number | null;
   dailyEstimated: number;
 }): ProteinIntake | null {
-  if (args.dailyTracked != null && args.dailyTracked > 0)
-    return {
-      grams: args.dailyTracked,
-      basis: "tracked",
-      estimatedGrams: 0,
-      loggedGrams: 0,
-    };
+  const tracked =
+    args.dailyTracked != null && args.dailyTracked > 0 ? args.dailyTracked : 0;
   const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
   const logged =
     args.dailyLogged != null && args.dailyLogged > 0 ? args.dailyLogged : 0;
-  const grams = estimated + logged;
-  if (grams <= 0) return null;
+  const inApp = estimated + logged;
+  if (tracked <= 0 && inApp <= 0) return null;
+  const grams = Math.max(tracked, inApp);
+  if (tracked > 0)
+    return {
+      grams,
+      basis: inApp > 0 ? "both-sources" : "tracked",
+      estimatedGrams: estimated,
+      loggedGrams: logged,
+    };
   const basis: ProteinBasis =
     estimated > 0 && logged > 0
       ? "combined"
@@ -292,6 +324,12 @@ export function proteinBasisPhrase(basis: ProteinBasis): string {
   switch (basis) {
     case "tracked":
       return "from the daily total your health app sends";
+    // Both records exist, so both are named — even though the figure printed is only the
+    // LARGER of them. Naming just the winner is what made the old override unreadable:
+    // the person could not tell which of their two records they were looking at, or that
+    // the other one had been considered at all.
+    case "both-sources":
+      return "from your food log and your health app";
     case "combined":
       return "from foods and logged protein";
     case "logged":
@@ -312,6 +350,8 @@ export function proteinIntakeSummary(intake: ProteinIntake): string {
   switch (intake.basis) {
     case "tracked":
       return `~${g(intake.grams)} g/day from your tracked intake`;
+    case "both-sources":
+      return `≈${g(intake.grams)} g/day — the larger of your food log and your health app (${FLOOR_CAVEAT})`;
     case "combined":
       return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.loggedGrams)} g logged (${FLOOR_CAVEAT})`;
     case "logged":
@@ -613,17 +653,28 @@ export function proteinTodayLineParts(t: ProteinToday): ProteinTodayLineParts {
 const UNLOGGED_FOODS_SENTENCE =
   "Foods you haven't logged aren't counted, so your real total may be higher.";
 
-// `tracked` IS A FLOOR TOO, for two reasons and neither of them is unlogged food —
-// which is why it cannot reuse the sentence above (#3903). TODAY's tracked figure is a
-// RUNNING PARTIAL: getMetricDailyTotals sums the day's samples and an integration writes
-// one per meal record as it syncs, so at 09:00 it is breakfast. And a positive tracked
-// reading OVERRIDES the profile's own food log and quick-added grams (proteinIntake), so
-// what they entered here is not in the number either — which is what made this the one
-// basis where connecting a health app could LOWER the figure and remove every hedge from
-// it at the same time. Same discipline as its sibling: the LEDGER, not behaviour, and
-// "may", because a fully-synced day with nothing logged here is at equality.
-const UNSYNCED_TRACKED_SENTENCE =
-  "Only what your health app has sent so far is counted — what you log here isn't — so your real total may be higher.";
+// `tracked` IS A FLOOR TOO, and not because of unlogged food — which is why it cannot
+// reuse the sentence above (#3903). TODAY's tracked figure is a RUNNING PARTIAL:
+// getMetricDailyTotals sums the day's samples and an integration writes one per meal
+// record as it syncs, so at 09:00 it is breakfast.
+//
+// THIS SENTENCE WAS REWRITTEN WHEN THE OVERRIDE RETIRED, and the old one is the reason to
+// be careful here. It read "Only what your health app has sent so far is counted — what
+// you log here isn't — so your real total may be higher." That middle clause was true ONLY
+// BY VIRTUE OF THE OVERRIDE: it described in-app logging being discarded. Now that the
+// figure is max(tracked, in-app), in-app logging IS counted, and `tracked` is reached only
+// when the profile logged nothing here at all — so the clause had become false in both of
+// its halves at once. A sentence whose truth rests on a behaviour is a sentence that goes
+// stale silently when the behaviour changes; this one names the LEDGER instead, like its
+// sibling above. "may", because a fully-synced day is at equality.
+const UNSENT_MEALS_SENTENCE =
+  "Meals your health app hasn't sent yet aren't counted, so your real total may be higher.";
+
+// `both-sources`: two incomplete ledgers, so the floor has two reasons at once and the
+// sentence carries both. It is the longest of the three because it is the only state where
+// both are true — not because the state deserves more words.
+const UNLOGGED_AND_UNSENT_SENTENCE =
+  "Foods you haven't logged and meals your health app hasn't sent aren't counted, so your real total may be higher.";
 
 // THE ROW STATES, THE HOVER EXPLAINS (#3257) — the band's derivation, where today's
 // grams came from, and why a floor basis is not the whole day, in one string both
@@ -663,7 +714,11 @@ export function proteinTodayExplanation(t: ProteinToday): string {
   return [
     `Goal ${proteinTargetSummary(t.target)}.`,
     basis ? `Today's total is ${proteinBasisPhrase(basis)}.` : null,
-    basis === "tracked" ? UNSYNCED_TRACKED_SENTENCE : UNLOGGED_FOODS_SENTENCE,
+    basis === "tracked"
+      ? UNSENT_MEALS_SENTENCE
+      : basis === "both-sources"
+        ? UNLOGGED_AND_UNSENT_SENTENCE
+        : UNLOGGED_FOODS_SENTENCE,
   ]
     .filter(Boolean)
     .join(" ");
