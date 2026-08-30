@@ -11,6 +11,9 @@ import {
   releaseNotesPage,
   RELEASE_NOTE_KINDS,
   WHATS_NEW_PAGE_ENTRIES,
+  CATEGORIZED_SINCE,
+  CONCISE_TITLE_LENGTH,
+  groupDayEntries,
 } from "@/lib/release-notes";
 import shipped from "@/lib/release-notes.json";
 
@@ -305,5 +308,131 @@ describe("releaseNotesPage", () => {
     );
     // The newest day leads page 1: "what did the image I just pulled bring me".
     expect(first.days[0].date).toBe(shippedNotes.days[0].date);
+  });
+});
+
+// THE CATEGORIZED, TIGHTER CONTRACT (owner, 2026-08-31): days from
+// CATEGORIZED_SINCE require a category from the closed list and an ≤80-char
+// title; earlier days keep the contract they shipped under. Grouping renders
+// MOST VISIBLE FIRST — the arithmetic is pure, so it is pinned here.
+describe("categories and the concise contract", () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    pr: 1,
+    title: "T",
+    issues: [],
+    ...over,
+  });
+
+  it("requires a category from the cutoff day, not before", () => {
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ date: CATEGORIZED_SINCE, entries: [entry()] })],
+      })
+    ).toThrow(/category/);
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ date: "2026-08-30", entries: [entry()] })],
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects a category outside the closed list, any day", () => {
+    expect(() =>
+      parseReleaseNotes({
+        days: [day({ entries: [entry({ category: "Vibes" })] })],
+      })
+    ).toThrow(/expected one of/);
+  });
+
+  it("caps a cutoff-day title at CONCISE_TITLE_LENGTH; older days keep 120", () => {
+    const long = "x".repeat(CONCISE_TITLE_LENGTH + 1);
+    expect(() =>
+      parseReleaseNotes({
+        days: [
+          day({
+            date: CATEGORIZED_SINCE,
+            entries: [entry({ title: long, category: "General" })],
+          }),
+        ],
+      })
+    ).toThrow(/at most 80/);
+    expect(() =>
+      parseReleaseNotes({ days: [day({ entries: [entry({ title: long })] })] })
+    ).not.toThrow();
+  });
+
+  it("the shipped newest day already meets the tighter shape", () => {
+    // The 2026-08-29 batch was hand-tightened when the contract landed; this
+    // keeps that true so /whats-new page 1 stays grouped and concise.
+    const notes = parseReleaseNotes(shipped);
+    const newest = notes.days[0];
+    for (const e of newest.entries) {
+      expect(e.category).toBeDefined();
+      expect(e.title.length).toBeLessThanOrEqual(CONCISE_TITLE_LENGTH);
+    }
+  });
+});
+
+describe("groupDayEntries — most visible first", () => {
+  const e = (
+    pr: number,
+    category: string | undefined,
+    kind?: string
+  ): Record<string, unknown> => ({
+    pr,
+    title: `t${pr}`,
+    issues: [],
+    ...(kind ? { kind } : {}),
+    ...(category ? { category } : {}),
+  });
+  const parsedDay = (entries: Record<string, unknown>[]) =>
+    parseReleaseNotes({ days: [day({ entries })] }).days[0];
+
+  it("a group holding a feature outranks fix-only groups, whatever the file order", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Interface", "fix"),
+        e(2, "Training", "feature"),
+        e(3, "Interface", "fix"),
+      ])
+    );
+    expect(groups.map((g) => g.category)).toEqual(["Training", "Interface"]);
+  });
+
+  it("inside a group, features lead and file order breaks ties", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Training", "fix"),
+        e(2, "Training", "feature"),
+        e(3, "Training", "fix"),
+      ])
+    );
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([2, 1, 3]);
+    // Positions survive reordering, so render keys stay unique and stable.
+    expect(groups[0].entries.map((x) => x.position)).toEqual([1, 0, 2]);
+  });
+
+  it("equally visible groups tie-break by feature count, then declaration order", () => {
+    const groups = groupDayEntries(
+      parsedDay([
+        e(1, "Sleep", "feature"),
+        e(2, "Training", "feature"),
+        e(3, "Training", "feature"),
+      ])
+    );
+    expect(groups.map((g) => g.category)).toEqual(["Training", "Sleep"]);
+    const declared = groupDayEntries(
+      parsedDay([e(1, "Sleep", "feature"), e(2, "Training", "feature")])
+    );
+    expect(declared.map((g) => g.category)).toEqual(["Training", "Sleep"]);
+  });
+
+  it("a legacy day without categories is ONE headerless group, in kind order", () => {
+    const groups = groupDayEntries(
+      parsedDay([e(1, undefined, "fix"), e(2, undefined, "feature")])
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].category).toBeNull();
+    expect(groups[0].entries.map((x) => x.entry.pr)).toEqual([2, 1]);
   });
 });

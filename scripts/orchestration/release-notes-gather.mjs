@@ -5,6 +5,12 @@
 //
 // Usage:
 //   node scripts/orchestration/release-notes-gather.mjs [--since YYYY-MM-DD]
+//   node scripts/orchestration/release-notes-gather.mjs --check
+//
+// --check prints ONE line — how many user-visible-looking merges the notes
+// have not covered — and always exits 0. It exists for catchup-digest.sh:
+// the batch used to fall behind silently (#4077 caught four uncovered merges
+// by hand), and a lag nobody is shown is a lag nobody closes.
 //
 // Default --since is the newest day in lib/release-notes.json, INCLUSIVE —
 // same-day merges after that batch shipped would otherwise be dropped, so the
@@ -41,6 +47,7 @@ if (!token) {
 }
 
 const args = process.argv.slice(2);
+const check = args.includes("--check");
 const sinceFlag = args.indexOf("--since");
 const notes = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "lib/release-notes.json"), "utf8")
@@ -60,6 +67,7 @@ const INTERNAL_GUESS = [
   /^Release notes\b/i,
   /^Bump /,
   /\b(runbook|orchestrat|e2e|flake|shard|worktree|dispatch)\b/i,
+  /\b(merge-gate|watermark|reconcil\w*|taxonomy|brevity|catch-up digest)\b/i,
 ];
 
 function gh(pathname) {
@@ -108,6 +116,25 @@ for (let page = 1; page <= 10; page++) {
 merged.sort((a, b) => a.date.localeCompare(b.date) || a.n - b.n);
 
 const candidates = merged.filter((p) => !p.internal);
+
+if (check) {
+  // Covered = named by ANY day's entries — a same-day batch that already
+  // shipped must not re-flag its own PRs.
+  const covered = new Set(
+    (notes.days ?? []).flatMap((d) => d.entries.map((e) => e.pr))
+  );
+  const uncovered = candidates.filter((p) => !covered.has(p.n));
+  console.log(
+    uncovered.length
+      ? `release notes: ${uncovered.length} user-visible-looking merge(s) ` +
+          `uncovered since ${since} (#${uncovered.map((p) => p.n).join(", #")}) ` +
+          "— batch them (dispatch.md §Release notes); the [internal?] guess " +
+          "may excuse some"
+      : `release notes: current through ${since}`
+  );
+  process.exit(0);
+}
+
 console.log(
   `${merged.length} PRs merged to main since ${since} (inclusive) — ` +
     `${candidates.length} release-note candidates, ${merged.length - candidates.length} guessed internal.\n`

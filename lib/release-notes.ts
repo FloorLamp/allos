@@ -32,8 +32,40 @@ export type ReleaseNoteKind = (typeof RELEASE_NOTE_KINDS)[number];
  * the entry, its changes are bullets. `MAX_TITLE_LENGTH` and the body refusal in
  * `parseEntry` are what keep verbosity from creeping back; detail that an
  * operator genuinely needs goes in the day's `operatorNotes`.
+ *
+ * TIGHTENED AND CATEGORIZED from `CATEGORIZED_SINCE` (owner, 2026-08-31): a
+ * day on or after that date requires every entry to carry a `category` from
+ * the closed list and to fit `CONCISE_TITLE_LENGTH`. Earlier days keep the
+ * contract they were written under — shipped copy is not rewritten
+ * wholesale — and render ungrouped when uncategorized.
  */
 export const MAX_TITLE_LENGTH = 120;
+export const CONCISE_TITLE_LENGTH = 80;
+export const CATEGORIZED_SINCE = "2026-08-31";
+
+/**
+ * Where a change lives, in the words a person using the app would use — the
+ * grouping header on /whats-new. Closed on purpose: a free-text category is a
+ * new near-duplicate every batch. Declaration order is the tie-break when two
+ * groups are equally visible (see `groupDayEntries`).
+ */
+export const RELEASE_NOTE_CATEGORIES = [
+  "Training",
+  "Nutrition",
+  "Medications",
+  "Medical",
+  "Sleep",
+  "Trends",
+  "History",
+  "Reminders",
+  "Connected apps",
+  "Household",
+  "Documents",
+  "Interface",
+  "Security",
+  "General",
+] as const;
+export type ReleaseNoteCategory = (typeof RELEASE_NOTE_CATEGORIES)[number];
 
 export type ReleaseNoteEntry = {
   /** The merged pull request number. */
@@ -42,6 +74,8 @@ export type ReleaseNoteEntry = {
   title: string;
   /** Optional classification; renders as a chip when present. */
   kind?: ReleaseNoteKind;
+  /** Where the change lives. Required for days on/after CATEGORIZED_SINCE. */
+  category?: ReleaseNoteCategory;
   /** Issue numbers the entry closes/addresses (may be empty). */
   issues: number[];
 };
@@ -103,7 +137,11 @@ function requireArray(v: unknown, path: string): unknown[] {
   return v;
 }
 
-function parseEntry(v: unknown, path: string): ReleaseNoteEntry {
+function parseEntry(
+  v: unknown,
+  path: string,
+  concise: boolean
+): ReleaseNoteEntry {
   if (!isRecord(v)) throw new ReleaseNotesError(path, "expected an object");
   const kindRaw = v.kind;
   let kind: ReleaseNoteKind | undefined;
@@ -127,17 +165,39 @@ function parseEntry(v: unknown, path: string): ReleaseNoteEntry {
         "is an upgrade action"
     );
   }
+  const categoryRaw = v.category;
+  let category: ReleaseNoteCategory | undefined;
+  if (categoryRaw !== undefined) {
+    if (
+      typeof categoryRaw !== "string" ||
+      !(RELEASE_NOTE_CATEGORIES as readonly string[]).includes(categoryRaw)
+    ) {
+      throw new ReleaseNotesError(
+        `${path}.category`,
+        `expected one of ${RELEASE_NOTE_CATEGORIES.join(", ")}`
+      );
+    }
+    category = categoryRaw as ReleaseNoteCategory;
+  } else if (concise) {
+    throw new ReleaseNotesError(
+      `${path}.category`,
+      `days from ${CATEGORIZED_SINCE} group by category (owner, 2026-08-31) — ` +
+        `pick one of ${RELEASE_NOTE_CATEGORIES.join(", ")}`
+    );
+  }
   const title = requireString(v.title, `${path}.title`);
-  if (title.length > MAX_TITLE_LENGTH) {
+  const cap = concise ? CONCISE_TITLE_LENGTH : MAX_TITLE_LENGTH;
+  if (title.length > cap) {
     throw new ReleaseNotesError(
       `${path}.title`,
-      `expected at most ${MAX_TITLE_LENGTH} characters (a bullet, not a paragraph) — got ${title.length}`
+      `expected at most ${cap} characters (a bullet, not a paragraph) — got ${title.length}`
     );
   }
   return {
     pr: requirePositiveInt(v.pr, `${path}.pr`),
     title,
     ...(kind ? { kind } : {}),
+    ...(category ? { category } : {}),
     issues: requireArray(v.issues, `${path}.issues`).map((n, i) =>
       requirePositiveInt(n, `${path}.issues[${i}]`)
     ),
@@ -150,8 +210,9 @@ function parseDay(v: unknown, path: string): ReleaseNoteDay {
   if (!ISO_DATE.test(date)) {
     throw new ReleaseNotesError(`${path}.date`, "expected a YYYY-MM-DD date");
   }
+  const concise = date >= CATEGORIZED_SINCE;
   const entries = requireArray(v.entries, `${path}.entries`).map((e, i) =>
-    parseEntry(e, `${path}.entries[${i}]`)
+    parseEntry(e, `${path}.entries[${i}]`, concise)
   );
   if (entries.length === 0) {
     throw new ReleaseNotesError(
@@ -291,6 +352,69 @@ export function releaseNotesPage(
     total,
     shown: days.reduce((n, day) => n + day.entries.length, 0),
   };
+}
+
+/** One category's slice of a day, with each entry's original position. */
+export type ReleaseNoteGroup = {
+  category: ReleaseNoteCategory | null;
+  entries: Array<{ entry: ReleaseNoteEntry; position: number }>;
+};
+
+const KIND_RANK: Record<ReleaseNoteKind, number> = {
+  feature: 0,
+  perf: 1,
+  fix: 2,
+  security: 3,
+};
+const kindRank = (entry: ReleaseNoteEntry): number =>
+  entry.kind ? KIND_RANK[entry.kind] : KIND_RANK.fix;
+
+/**
+ * A day's entries grouped by category, MOST VISIBLE FIRST (owner, 2026-08-31):
+ * groups are ordered by the most prominent kind they contain (a new capability
+ * outranks polish), then by how many new capabilities they hold, then by the
+ * closed list's declaration order; inside a group, features lead and file
+ * order breaks ties. Uncategorized entries (pre-CATEGORIZED_SINCE days) form
+ * one null group that renders headerless — legacy days look exactly as they
+ * always did. Pure; positions survive for stable render keys.
+ */
+export function groupDayEntries(day: ReleaseNoteDay): ReleaseNoteGroup[] {
+  const byCategory = new Map<
+    ReleaseNoteCategory | null,
+    ReleaseNoteGroup["entries"]
+  >();
+  day.entries.forEach((entry, position) => {
+    const key = entry.category ?? null;
+    const list = byCategory.get(key) ?? [];
+    list.push({ entry, position });
+    byCategory.set(key, list);
+  });
+  const groups: ReleaseNoteGroup[] = [...byCategory.entries()].map(
+    ([category, entries]) => ({
+      category,
+      entries: entries
+        .slice()
+        .sort(
+          (a, b) =>
+            kindRank(a.entry) - kindRank(b.entry) || a.position - b.position
+        ),
+    })
+  );
+  const best = (g: ReleaseNoteGroup) =>
+    Math.min(...g.entries.map((e) => kindRank(e.entry)));
+  const features = (g: ReleaseNoteGroup) =>
+    g.entries.filter((e) => kindRank(e.entry) === 0).length;
+  const declared = (g: ReleaseNoteGroup) =>
+    g.category === null
+      ? RELEASE_NOTE_CATEGORIES.length
+      : RELEASE_NOTE_CATEGORIES.indexOf(g.category);
+  groups.sort(
+    (a, b) =>
+      best(a) - best(b) ||
+      features(b) - features(a) ||
+      declared(a) - declared(b)
+  );
+  return groups;
 }
 
 /** External link to a merged PR. External URLs stay plain strings (#285). */

@@ -72,16 +72,14 @@ closed taxonomy, and `needs-human` handling.
 
 ## Tooling
 
-- Every entry script answers `-h`/`--help` with its own header and exits
-  before any side effect (`script-help.test.ts` pins it) — probing an
-  unfamiliar script is always safe.
+- Every entry script answers `-h`/`--help` with its header and exits before
+  any side effect (`script-help.test.ts` pins it) — probing is always safe.
 - `dispatch-brief.mjs`: manage dispatches, the sole landing candidate, and
   validated priority/lane state; deliver every emitted role update. `list`
   flags 3x-median idleness or a dispatch with no worktree and no branch.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
-  The DB and E2E-hygiene gates run only when the diff touches what they cover.
-  A format rewrite re-verifies the directive-reading gates it can invalidate.
-  Both vitest gates carry a 60 s per-test ceiling here; CI keeps 15 s.
+  DB and E2E-hygiene run only when the diff touches them; a format rewrite
+  re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
 - `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
@@ -94,7 +92,9 @@ closed taxonomy, and `needs-human` handling.
 
 ## Release notes
 
-- Release notes are orchestrator bookkeeping in `lib/release-notes.json`.
-- Make at most one batch per day. Use one concise title-only bullet per
-  user-visible change; omit internal work.
-- Keep entries append-only. Put upgrade actions in that day's `operatorNotes`.
+- Orchestrator bookkeeping in `lib/release-notes.json`: one batch a day at
+  most, entries append-only, upgrade actions in the day's `operatorNotes`.
+- One bullet per user-visible change: ≤80 characters, product words, and a
+  `category` from `RELEASE_NOTE_CATEGORIES` — `lib/release-notes.ts` validates
+  both; the app groups each day by category, most visible first.
+- The digest prints the uncovered lag (`--check`); non-zero = the batch is due.

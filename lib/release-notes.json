@@ -5,189 +5,220 @@
       "entries": [
         {
           "pr": 3964,
-          "title": "Log a supplement you took yesterday from the quick-log sheet, or a whole morning stack in one tap",
+          "title": "Log yesterday's supplement — or a whole morning stack — from the quick-log sheet",
           "kind": "feature",
-          "issues": [3936]
+          "issues": [3936],
+          "category": "Medications"
         },
         {
           "pr": 3967,
-          "title": "History rows keep naming what they are on a phone, instead of collapsing to a bare date",
+          "title": "History rows keep their names on a phone instead of collapsing to a date",
           "kind": "fix",
-          "issues": [3937, 3904]
+          "issues": [3937, 3904],
+          "category": "History"
         },
         {
           "pr": 3968,
-          "title": "A weight or distance you typed in pounds or miles is recorded in the units you typed",
+          "title": "A weight or distance typed in pounds or miles is saved in the units you typed",
           "kind": "fix",
-          "issues": [3942, 3944, 3945]
+          "issues": [3942, 3944, 3945],
+          "category": "Interface"
         },
         {
           "pr": 3983,
-          "title": "A connected app stops asking you to reconnect when its server answered with an empty error",
+          "title": "A connected app stops asking you to reconnect over an empty server error",
           "kind": "fix",
-          "issues": [3798]
+          "issues": [3798],
+          "category": "Connected apps"
         },
         {
           "pr": 3989,
           "title": "A reminder for an earlier day counts the medicines you actually owed that day",
           "kind": "fix",
-          "issues": [3973]
+          "issues": [3973],
+          "category": "Reminders"
         },
         {
           "pr": 4003,
-          "title": "Segmented controls, checkboxes and calendar days match the height of everything beside them",
+          "title": "Segmented controls, checkboxes and calendar days match their neighbors' height",
           "kind": "fix",
-          "issues": [3954]
+          "issues": [3954],
+          "category": "Interface"
         },
         {
           "pr": 4005,
-          "title": "An imported PDF previews in the app instead of showing a browser error page",
+          "title": "An imported PDF previews in the app instead of a browser error page",
           "kind": "fix",
-          "issues": [3975]
+          "issues": [3975],
+          "category": "Documents"
         },
         {
           "pr": 4010,
           "title": "Adherence dots stop reading 'nothing was owed' on days a supplement existed",
           "kind": "fix",
-          "issues": [3988, 3951]
+          "issues": [3988, 3951],
+          "category": "Medications"
         },
         {
           "pr": 4013,
-          "title": "A bulk correction won't apply under different units than you previewed it in",
+          "title": "A bulk correction won't apply under different units than you previewed",
           "kind": "fix",
-          "issues": [3962, 3982]
+          "issues": [3962, 3982],
+          "category": "Interface"
         },
         {
           "pr": 4016,
-          "title": "Doses, food, practices, substances and body readings are one record you can scroll and correct in place",
+          "title": "Doses, food, practices and readings are one record you can correct in place",
           "kind": "feature",
-          "issues": [3958]
+          "issues": [3958],
+          "category": "History"
         },
         {
           "pr": 4022,
           "title": "A past-day reminder counts the workout you logged that day",
           "kind": "fix",
-          "issues": [4019, 4011, 3997, 4020]
+          "issues": [4019, 4011, 3997, 4020],
+          "category": "Reminders"
         },
         {
           "pr": 4030,
-          "title": "A reminder for a past day keeps the doses you owed that day, even after you have travelled",
+          "title": "A past day's reminder keeps the doses you owed that day, even after travel",
           "kind": "fix",
-          "issues": [4025, 4026]
+          "issues": [4025, 4026],
+          "category": "Reminders"
         },
         {
           "pr": 4031,
-          "title": "The date picker and the sidebar calendar show the same months, weekdays and bounds",
+          "title": "The date picker and the sidebar calendar show the same months and bounds",
           "kind": "fix",
-          "issues": [3744, 3750, 3752]
+          "issues": [3744, 3750, 3752],
+          "category": "Interface"
         },
         {
           "pr": 4032,
-          "title": "The Trends chart menu keeps the keyboard focus where you put it while the page scrolls behind it",
+          "title": "The Trends chart menu keeps keyboard focus while the page scrolls behind it",
           "kind": "fix",
-          "issues": [4028]
+          "issues": [4028],
+          "category": "Trends"
         },
         {
           "pr": 4034,
-          "title": "An exercise states its equipment in one line, with the picker a tap away instead of six controls",
+          "title": "An exercise states its equipment in one line, with the picker a tap away",
           "kind": "feature",
-          "issues": [3349]
+          "issues": [3349],
+          "category": "Training"
         },
         {
           "pr": 4034,
           "title": "Confirmations, failures and pull-to-refresh answer with a short buzz on a phone",
           "kind": "feature",
-          "issues": [3699]
+          "issues": [3699],
+          "category": "Interface"
         },
         {
           "pr": 4042,
           "title": "Filter menus stop cutting off long options like “Complete blood count”",
           "kind": "fix",
-          "issues": [3748]
+          "issues": [3748],
+          "category": "Interface"
         },
         {
           "pr": 4046,
-          "title": "An exercise’s target, sides and effort options sit behind one control that names them",
+          "title": "An exercise's target, sides and effort sit behind one control that names them",
           "kind": "feature",
-          "issues": [3349]
+          "issues": [3349],
+          "category": "Training"
         },
         {
           "pr": 4048,
           "title": "A dose's stated time reads the same whatever time zone the server runs in",
           "kind": "fix",
-          "issues": [4047]
+          "issues": [4047],
+          "category": "Medications"
         },
         {
           "pr": 4052,
-          "title": "A lab result that has just become notable shows its value on the dashboard, not only that it is flagged",
+          "title": "A lab result that just became notable shows its value on the dashboard",
           "kind": "fix",
-          "issues": [3201]
+          "issues": [3201],
+          "category": "Medical"
         },
         {
           "pr": 4055,
-          "title": "Folds open and close smoothly instead of snapping, and still open instantly under reduced motion",
+          "title": "Folds open and close smoothly, and still open instantly under reduced motion",
           "kind": "feature",
-          "issues": [3676, 3677]
+          "issues": [3676, 3677],
+          "category": "Interface"
         },
         {
           "pr": 4056,
-          "title": "Signing out a device now reaches it: the health record it kept offline is cleared when it next connects",
+          "title": "Signing out a device reaches it — its offline record clears on next connect",
           "kind": "security",
-          "issues": [3053, 3041]
+          "issues": [3053, 3041],
+          "category": "Security"
         },
         {
           "pr": 4058,
           "title": "The sleep page shows your usual sleep and wake times",
           "kind": "feature",
-          "issues": [3266]
+          "issues": [3266],
+          "category": "Sleep"
         },
         {
           "pr": 4060,
-          "title": "Say when it happened when you log a bowel movement, a practice or food you ate earlier",
+          "title": "Say when it happened when logging a bowel movement, practice or earlier meal",
           "kind": "feature",
-          "issues": [3273]
+          "issues": [3273],
+          "category": "History"
         },
         {
           "pr": 4061,
           "title": "A connected app is marked disconnected only when the provider actually says so",
           "kind": "fix",
-          "issues": [3980]
+          "issues": [3980],
+          "category": "Connected apps"
         },
         {
           "pr": 4062,
-          "title": "Add a past entry without leaving the record, and opening a month keeps you where you tapped",
+          "title": "Add a past entry without leaving the record; opening a month keeps your place",
           "kind": "fix",
-          "issues": [4045]
+          "issues": [4045],
+          "category": "History"
         },
         {
           "pr": 4067,
-          "title": "Correct a family member's entry from the shared record, when you have write access to them",
+          "title": "Correct a family member's entry from the shared record, with write access",
           "kind": "feature",
-          "issues": [4009]
+          "issues": [4009],
+          "category": "Household"
         },
         {
           "pr": 4071,
           "title": "A workout the device could not save offline no longer turns up later anyway",
           "kind": "fix",
-          "issues": [3170]
+          "issues": [3170],
+          "category": "Training"
         },
         {
           "pr": 4074,
           "title": "The phone menu shows each section's pages without opening the section first",
           "kind": "feature",
-          "issues": [3343]
+          "issues": [3343],
+          "category": "Interface"
         },
         {
           "pr": 4075,
           "title": "Log a symptom, a well day, or mark an illness from the quick logger",
           "kind": "feature",
-          "issues": [4064]
+          "issues": [4064],
+          "category": "Medical"
         },
         {
           "pr": 4081,
-          "title": "See how often a symptom shows up, month by month, and whether it is getting worse",
+          "title": "See how often a symptom shows up monthly, and whether it is getting worse",
           "kind": "feature",
-          "issues": [1852]
+          "issues": [1852],
+          "category": "Trends"
         }
       ]
     },
