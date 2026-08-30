@@ -11,6 +11,7 @@
 // tested rather than inside a JSX handler.
 
 import type { StatedTimeRefusal } from "./stated-time";
+import type { SleepWindowRefusal } from "./vitals-input";
 
 export interface BodyMetricRawInput {
   weight: string | null;
@@ -82,6 +83,15 @@ const MEASUREMENT_TIME_NOTE: Record<StatedTimeRefusal, string> = {
   malformed: "it couldn't be read",
 };
 
+// The same sentence one field over, for a night's clocks (#1851). Both notices can
+// appear at once — one sitting can state a time the gate refuses AND a window the
+// store cannot hold — so they read as two clauses rather than replacing each other.
+const SLEEP_WINDOW_NOTE: Record<SleepWindowRefusal, string> = {
+  unstorable: "Bed and wake times weren't saved — that pair isn't one night.",
+  "shorter-than-stated-sleep":
+    "Bed and wake times were cleared — the hours are longer than that window.",
+};
+
 // The confirmation the measurements form raises after a successful save.
 //
 // A refusal is a NOTICE, not a failure: the reading LANDED, so this stays the
@@ -94,9 +104,13 @@ const MEASUREMENT_TIME_NOTE: Record<StatedTimeRefusal, string> = {
 // and its Time is one tap away in the same form.
 export function measurementsSavedText(
   saved: string,
-  statedTimeRefused?: StatedTimeRefusal
+  statedTimeRefused?: StatedTimeRefusal,
+  sleepWindowRefused?: SleepWindowRefusal
 ): string {
-  return statedTimeRefused
+  const base = statedTimeRefused
     ? `${saved} without the time — ${MEASUREMENT_TIME_NOTE[statedTimeRefused]}.`
     : saved;
+  return sleepWindowRefused
+    ? `${base} ${SLEEP_WINDOW_NOTE[sleepWindowRefused]}`
+    : base;
 }

@@ -656,12 +656,12 @@ describe("actual atomic dashboard manifests", () => {
   // #3723 batches additive metric totals, recovering two statements for the
   // bodybuilder and four for the biohacker while preserving source election.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 241,
-    "marathon-runner": 240,
-    household: 270,
-    pregnant: 237,
-    "diabetic-cgm": 248,
-    biohacker: 254,
+    bodybuilder: 240,
+    "marathon-runner": 239,
+    household: 269,
+    pregnant: 236,
+    "diabetic-cgm": 247,
+    biohacker: 253,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
