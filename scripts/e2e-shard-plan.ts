@@ -33,6 +33,7 @@
 // command line. Exactness only ever bought balance precision. See SPEC_FILE_RE
 // in lib/e2e-shard-plan.ts — and `--verify` below, which is where the superset
 // claim is actually checked against Playwright.
+import "./load-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

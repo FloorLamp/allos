@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { chmodSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { makeTmpDir } from "./tmp-dir";
 import {
   assertPartition,
   isSpecFile,
@@ -23,7 +23,7 @@ const files = (n: number): string[] =>
 
 describe("the Playwright file-list boundary", () => {
   it("does not parse import-time stdout as the JSON report", () => {
-    const bin = mkdtempSync(path.join(os.tmpdir(), "allos-e2e-list-"));
+    const bin = makeTmpDir("e2e-list");
     const fakeNpx = path.join(bin, "npx");
     writeFileSync(
       fakeNpx,
