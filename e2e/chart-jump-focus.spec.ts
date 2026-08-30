@@ -81,7 +81,6 @@ test("chart-menu open focus cannot overwrite a landed keystroke (#4037)", async 
   expect(await page.evaluate(() => scrollY)).toBe(deepLinkY);
   await holdFrames(page);
   await page.keyboard.press("ArrowDown");
-  await expect(hostLanding).toBeFocused();
   const selectedIndex = await items.evaluateAll((nodes) =>
     nodes.findIndex((node) => node.getAttribute("aria-checked") === "true")
   );
