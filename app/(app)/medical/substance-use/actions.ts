@@ -17,7 +17,6 @@ import {
   substanceDef,
   substanceLabel,
   substanceNameError,
-  validateSubstanceName,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
@@ -32,7 +31,7 @@ import {
   instrumentMaxTotal,
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
-import { profileVocabulary } from "@/lib/vocabulary-store";
+import { validateProfileSubstanceName } from "@/lib/vocabulary-store";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
 import {
   logSubstanceUnitCore,
@@ -264,9 +263,9 @@ export async function trackSubstanceUseAction(
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id)))
     return { ok: false, error: MINOR_REFUSAL };
-  const name = validateSubstanceName(
-    String(formData.get("name") ?? ""),
-    profileVocabulary("substance", profile.id)
+  const name = validateProfileSubstanceName(
+    profile.id,
+    String(formData.get("name") ?? "")
   );
   if (!name.ok) return { ok: false, error: substanceNameError(name.reason) };
   const logged = logOneUnit(profile.id, name.key, webOrigin(formData));
