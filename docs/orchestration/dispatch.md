@@ -64,7 +64,10 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Per-unit pipeline
 
-1. Read the issue body and every comment, WHOLE — `issue-read.mjs <n>` never
+1. Read the issue body and every comment, WHOLE, and CHECK IT IS STILL OPEN —
+   other sessions work this tracker, so re-read before dispatching and again
+   before the lane opens its PR (2026-08-30: a lane finished against an issue
+   another session had closed 46 minutes earlier) — `issue-read.mjs <n>` never
    truncates and flags rulings sitting in a body's tail. Never read a tracker item
    through a character slice: owner rulings append to body ends (2026-08-30).
 2. Generate the dispatch brief and record the branch in the task list.

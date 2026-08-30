@@ -56,6 +56,19 @@ function readOne(n) {
   const isPr = Boolean(issue.pull_request);
 
   banner("=", `#${n} ${isPr ? "[PR]" : "[issue]"} ${issue.title}`);
+  // Other sessions work this same tracker. An item closed since the brief was
+  // written is dispatched work already done: measured 2026-08-30, when #4127 was
+  // filed, dispatched, and then closed by another session's PR while the lane was
+  // still running. The state line below prints it either way; a closed item shouts.
+  if (issue.state !== "open") {
+    banner(
+      "!",
+      `THIS ITEM IS ${issue.state.toUpperCase()}` +
+        `${issue.state_reason ? ` (${issue.state_reason})` : ""} — closed ${issue.closed_at}.\n` +
+        `Do not dispatch against it. If a lane is already running on it, STOP that lane and\n` +
+        `diff its work against what actually shipped before spending anything more.`
+    );
+  }
   console.log(
     `state=${issue.state}  labels=${issue.labels.map((l) => l.name).join(",") || "(none)"}`
   );

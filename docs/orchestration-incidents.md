@@ -1628,3 +1628,43 @@ you have without reading to the end.
 **Never read a tracker item through a character slice.** Use `issue-read.mjs`, or read
 the whole body. A `needs-human` label costs a week of somebody's backlog; it is not a
 thing to apply from a partial read.
+
+## A lane worked an issue another session had already closed (2026-08-30)
+
+The orchestrator filed #4127 (fiber carries the same override #3903 retires for
+protein), the owner ruled it generalizes, and it was dispatched as its own lane.
+Forty-six minutes later another session merged `36e1ad9b` — substantively the
+same change, under the same `both-sources` name — and #4127 closed `completed`.
+The lane reported a finished, gated, banked branch against work already on
+`main`.
+
+Nothing about the lane was wrong. It ran a clean census, found two sites past the
+brief, measured its mutation, and asked five good questions. All of it was spent.
+
+The failure is orchestration's and it is specific: **this tracker has more than
+one session on it, and an issue's state at dispatch time is not its state at
+report time.** The brief already tells every lane to premise-audit against `main`
+before writing — but that audit asks "is the work still needed", which a lane
+answers by grepping for symbols, and the symbols were still absent when it
+looked. It never asks "has someone else taken this", and nothing prompted it to
+re-check on the way out.
+
+Two cheap things that would each have caught it: reading the issue before
+dispatching a lane against it (it was open then, so this one would not have —
+but it costs nothing), and re-reading it before the lane opens its PR (it was
+closed by then).
+
+`issue-read.mjs` now shouts when an item is closed, naming the state, the reason
+and the close time, and saying to stop any lane already running on it. That
+covers both moments, because it is the same command either way.
+
+**What was salvageable, and the reason to look rather than just drop the branch:**
+the shipped fix passes `unknownSupplement` straight through whenever `tracked > 0`,
+where the lane derived it as `unknownSupplement && tracked <= inApp`. Two
+independent answers to one question is worth knowing about even when the
+duplicate work is wasted — and the lane's census had also established that **no
+e2e fixture anywhere seeds a tracked fiber reading beside in-app fiber**, so the
+`both-sources` surface shipped with no rendered coverage. That gap is now live in
+merged code and would have gone unrecorded if the branch had simply been deleted.
+
+**Ask a stood-down lane what its work proves about what shipped, before discarding it.**
