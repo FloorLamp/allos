@@ -108,18 +108,31 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
 
       // Scroll deep into the day's events. The nav rides the shell chrome, so it
       // travels away with the top bar on the way DOWN (the #1485 F contract) …
-      const deep = await scrollTo(page, 1200);
+      //
+      // MEASURED AGAINST THE PAGE, NOT AGAINST A CONSTANT. This scrolled to a flat
+      // 1200 and required 400 to remain after backing off 300 — numbers taken from
+      // `/timeline`, whose two-line event CARDS made the busy day roughly twice as
+      // tall as the record's one-line rows. Measured here at 390px, the same day is
+      // ~700px of scroll, so the old floor failed on a page that behaves correctly.
+      // The claim was never about a pixel count: it is that an upward scroll brings
+      // the nav back while the reader is STILL in the day's events rather than back
+      // at its top. So the floor is the day's own scrollable height.
+      const maxScroll = await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight
+      );
       expect(
-        deep,
+        maxScroll,
         "the busy day should be scrollable at phone width"
-      ).toBeGreaterThan(400);
+      ).toBeGreaterThan(300);
+      const deep = await scrollTo(page, maxScroll);
       await expect(nav).toHaveAttribute("data-hidden", "true");
 
       // … and comes straight back on any upward scroll, STILL deep in the page —
       // which is the whole fix: prev/next day is reachable mid-day, where before it
-      // had scrolled off with the events.
-      const stillDeep = await scrollTo(page, deep - 300);
-      expect(stillDeep).toBeGreaterThan(400);
+      // had scrolled off with the events. A THIRD of the way back up, so the reveal
+      // is asserted somewhere that is unambiguously not the top.
+      const stillDeep = await scrollTo(page, Math.round(deep * 0.66));
+      expect(stillDeep).toBeGreaterThan(deep / 3);
       await expect(nav).toHaveAttribute("data-hidden", "false");
       // ONE SETTLED SNAPSHOT, not two raw reads (#2437's family; measured here on
       // #3079's CI shard). `data-hidden` flips at the START of the chrome's

@@ -237,9 +237,16 @@ test.describe("the day view's intraday panel (#1068)", () => {
       const quiet = dayIds.at(-1)!;
 
       await member.goto(`/history?day=${quiet}`);
+      // THE POSITIVE CONTROL, RE-POINTED. It named the heading "Body metrics logged"
+      // — `/timeline`'s card title for its day-aggregate body event. The record reads
+      // body natively as its own Logs kind (one row per reading, titled by the
+      // measure, one line and therefore no heading), so that locator now resolves to
+      // nothing and "the panel is absent" would have passed on a page that rendered
+      // no day at all. Keyed on the row's kind, which is what the day is being
+      // asserted to contain.
       await expect(
-        member.getByRole("heading", { name: "Body metrics logged" })
-      ).toBeVisible();
+        member.locator('[data-testid="history-row"][data-history-kind="body"]')
+      ).not.toHaveCount(0);
       await expect(member.getByTestId("intraday-panel")).toHaveCount(0);
     } finally {
       await member.context().close();
