@@ -714,7 +714,7 @@ test("#3932 a filled sub-panel cancels and re-spends its card gutter only below 
 
   const unfilledPadding = await card.evaluate((host) => {
     const probe = document.createElement("div");
-    probe.className = "subpanel-inset-sm p-3";
+    probe.className = "subpanel-inset-sm p-3 hover:bg-slate-50";
     host.append(probe);
     const style = getComputedStyle(probe);
     const result = [style.paddingRight, style.paddingLeft];
