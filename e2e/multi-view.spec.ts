@@ -25,11 +25,6 @@ import {
   MULTI_OWNER_ACTIVITY_A,
   MULTI_OWNER_ACTIVITY_B,
   MULTI_SHARED_ACTIVITY,
-  E2E_LOGIN_TL_MULTI,
-  TL_EAST_PROFILE,
-  TL_WEST_PROFILE,
-  TL_EAST_ACTIVITY,
-  TL_WEST_ACTIVITY,
   MULTI_OWNER_VISIT,
   MULTI_SHARED_VISIT,
   E2E_LOGIN_MVMEDS,
@@ -756,157 +751,23 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 // the non-acting member's row wears a subject chip. Spec-OWNED fixtures (read-only
 // viewing + the per-session view-set, so nothing persistent to reset).
 
-// Resolve the two timeline fixture profile ids (spec-owned, so a name lookup is stable).
-function timelineProfileIds(): { eastId: number; westId: number } {
-  const dbPath = workerDbPath();
-  const db = new Database(dbPath);
-  try {
-    db.pragma("busy_timeout = 5000");
-    const idOf = (name: string): number =>
-      (
-        db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
-          id: number;
-        }
-      ).id;
-    return { eastId: idOf(TL_EAST_PROFILE), westId: idOf(TL_WEST_PROFILE) };
-  } finally {
-    db.close();
-  }
-}
-
-// Toggle the WEST profile into the view via the profile menu, then reload the timeline
-// so the multi-view feed renders with the popover closed (no stale overlay).
-async function enterTimelineMultiView(
-  page: Page,
-  westId: number
-): Promise<void> {
-  await page.goto("/history");
-  await openProfileSwitcher(page);
-  await settledClick(page, page.getByTestId(`view-toggle-${westId}`));
-  await expectInView(page, 2);
-  await page.goto("/history");
-  await expectInView(page, 2);
-}
-
-test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
-  test("single view unchanged; multi view merges both members with per-member Today badges + non-acting chip", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { eastId, westId } = timelineProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TL_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    // Acting profile is EAST (lowest id / first accessible).
-    await expect(page.getByTestId("profile-identity-bar")).toContainText(
-      TL_EAST_PROFILE
-    );
-
-    // Single view: only EAST's activity, no strip, no chips, no divergence chrome.
-    await page.goto("/history");
-    await expect(
-      page.getByText(TL_EAST_ACTIVITY, { exact: false })
-    ).toBeVisible();
-    await expect(
-      page.getByText(TL_WEST_ACTIVITY, { exact: false })
-    ).toHaveCount(0);
-    await expectInView(page, 1);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-    await expect(
-      page.locator('[data-testid^="timeline-daymark-"]')
-    ).toHaveCount(0);
-    await expect(page.getByTestId("timeline-mode-toggle")).toHaveCount(0);
-
-    // Enter multi view (WEST toggled in).
-    await enterTimelineMultiView(page, westId);
-
-    // Both members' activities are merged in.
-    await expect(
-      page.getByText(TL_EAST_ACTIVITY, { exact: false })
-    ).toBeVisible();
-    await expect(
-      page.getByText(TL_WEST_ACTIVITY, { exact: false })
-    ).toBeVisible();
-
-    // The NON-acting (WEST) event wears a subject chip; the acting (EAST) event never
-    // does (its subject is implied by the view strip).
-    const westRow = page
-      .getByTestId("timeline-event")
-      .filter({ hasText: TL_WEST_ACTIVITY });
-    await expect(westRow.getByTestId(`subject-chip-${westId}`)).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${eastId}"]`)
-    ).toHaveCount(0);
-
-    // Divergent-day honesty: the SAME instant is a different local date for each, so
-    // BOTH members have a "Today" day-group, each badged with its own subject.
-    await expect(
-      page
-        .locator(`[data-testid="timeline-daymark-${eastId}"]`)
-        .filter({ hasText: "Today" })
-    ).toBeVisible();
-    await expect(
-      page
-        .locator(`[data-testid="timeline-daymark-${westId}"]`)
-        .filter({ hasText: "Today" })
-    ).toBeVisible();
-
-    await page.context().close();
-  });
-
-  test("by-person toggle groups the merged timeline under per-member sections", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { eastId, westId } = timelineProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TL_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    await enterTimelineMultiView(page, westId);
-
-    // Default is interleaved (merged date bands, no per-member sections).
-    await expect(page.getByTestId("timeline-mode-toggle")).toBeVisible();
-    await expect(page.getByTestId("timeline-by-person")).toHaveCount(0);
-
-    // Switch to by-person: each member gets its own section with its own activity.
-    await followLink(
-      page,
-      page.getByTestId("timeline-mode-by-person"),
-      /group=by-person/
-    );
-    await expect(page.getByTestId("timeline-by-person")).toBeVisible();
-    // The LINK binding of SegmentedControl states its selection with
-    // `aria-current`, and "page" here because the two segments are genuinely
-    // different views of the timeline (#2535). Until then this was `aria-pressed`
-    // on an <a href>, which role="link" does not support — so no assistive
-    // technology announced which mode was in effect. The unselected segment
-    // carries no state attribute, which is how aria-current says "not current".
-    await expect(page.getByTestId("timeline-mode-by-person")).toHaveAttribute(
-      "aria-current",
-      "page"
-    );
-    await expect(
-      page.getByTestId("timeline-mode-interleaved")
-    ).not.toHaveAttribute("aria-current");
-    const eastSection = page.getByTestId(`timeline-member-section-${eastId}`);
-    const westSection = page.getByTestId(`timeline-member-section-${westId}`);
-    await expect(eastSection).toContainText(TL_EAST_ACTIVITY);
-    await expect(westSection).toContainText(TL_WEST_ACTIVITY);
-
-    // Toggle back to interleaved.
-    await followLink(
-      page,
-      page.getByTestId("timeline-mode-interleaved"),
-      /\/history$/
-    );
-    await expect(page.getByTestId("timeline-by-person")).toHaveCount(0);
-
-    await page.context().close();
-  });
-});
+// ── THE TIMELINE'S MULTI-VIEW TESTS RETIRED WITH THE ROUTE (#3958 phase 2) ──
+//
+// Two cases stood here, and neither has a subject on the record:
+//
+//   • the BY-PERSON toggle, which grouped a merged feed under per-member sections.
+//     #3958 rules "No view switcher" outright — the page follows the acting profile,
+//     the sidebar is the one profile switcher, and the merged household view survives
+//     only as the chip-less deep-linked `?view=everyone` (#1463). `byPersonTimelines`
+//     is still exported and now has no consumer. Deliberate, not dropped.
+//
+//   • the DIVERGENT-DAY marks across the date line. `mergeMemberTimelines` still
+//     computes them and the record does not render them — that one is a GAP rather
+//     than a decision, recorded as such on #3958 rather than built here.
+//
+// The record's merged view is covered by e2e/history-everyone.spec.ts: per-row
+// subject attribution, the ⋯ gated on the row's own profile, and a correction driven
+// on another member's row landing on that member.
 
 // ── Tier-1b bespoke lists adopt multi-view (issue #1359) ──────────────────────
 // Two flat SUB-lists of otherwise-bespoke surfaces convert: the Visits "Past"

@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import { expectPhoneTapTargets, hydratedClick } from "./helpers";
 import { expandTrendsContext } from "./trends-chrome";
-import { expandTimelineFilters } from "./timeline-chrome";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9
 // screens on chrome before the first chart: the always-open From/To card, a
@@ -101,21 +100,21 @@ test.describe("the custom From/To form collapses behind a Custom… disclosure (
     await expect(page.locator("#trends-from")).toBeVisible();
   });
 
-  test("the Timeline gets the same collapse from the shared control", async ({
+  // RE-POINTED FROM `/timeline` TO THE METRIC DETAIL PAGE. This guarded the SHARED
+  // `DateRangeControl` on a SECOND host, and that host was the timeline — whose own
+  // filter block had to be expanded first (#1517 B) before the #1455 collapse inside
+  // it could be asserted. #3958 phase 2 deleted that route, and the record mounts no
+  // range control at all ("no 7D/30D/90D chips, no From/To card"), so there is no
+  // nested collapse there to assert. The metric pages are the third host the note
+  // below already named, and they mount the control directly — one collapse rather
+  // than two, which is the whole of what changed.
+  test("a metric page gets the same collapse from the shared control", async ({
     page,
   }) => {
-    // DateRangeControl is shared, so this is the regression guard for the OTHER
-    // surface that mounts it (the metric detail pages are the third).
-    await page.goto("/history");
-    // Since #1517 B the Timeline's own controls collapse behind a one-line filter
-    // bar at phone width, so the shared control has to be reached before its own
-    // #1455 collapse can be asserted. The nesting is the point: two collapses, one
-    // per question ("which filters" then "which custom window").
-    await expandTimelineFilters(page);
+    await page.goto("/trends/metric/weight");
 
     await expect(page.getByTestId("custom-range-toggle")).toBeVisible();
     await expect(page.getByTestId("custom-range-panel")).toBeHidden();
-    await expect(page.locator("#timeline-from")).toBeHidden();
   });
 });
 

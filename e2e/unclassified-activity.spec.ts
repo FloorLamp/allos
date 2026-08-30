@@ -138,7 +138,7 @@ test("a minor still sees its own unspecified session (#3067/#2272)", async ({
     await row.click();
     await expect(member).toHaveURL(/\/training\/activity\/\d+$/);
     const ledger = member.getByTestId("activity-ledger-navigation");
-    await expect(ledger.getByRole("link", { name: "timeline" })).toBeVisible();
+    await expect(ledger.getByRole("link", { name: "history" })).toBeVisible();
     await expect(
       ledger.getByRole("link", { name: "training log" })
     ).toHaveCount(0);

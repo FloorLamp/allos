@@ -60,17 +60,24 @@ function medicalMonthsQuery(): string {
   }
 }
 
-test("the Timeline titles lab draws by clinical panel, not the lab vendor (#1502)", async ({
+test("the record titles lab draws by clinical panel, not the lab vendor (#1502)", async ({
   page,
 }) => {
-  await page.goto(`/history?kind=lab${medicalMonthsQuery()}`);
+  // `&show=` is a MEASUREMENT, not a preference: the record narrows feed kinds in
+  // memory, so a lab view reads the newest `show` events across all sixteen feed
+  // categories and keeps the labs among them. On this densely seeded profile the
+  // default 200 does not reach the seeded panels. Recorded as an open question on
+  // #3958 — this spec's subject is the TITLING, not the window.
+  await page.goto(`/history?kind=lab&show=1000${medicalMonthsQuery()}`);
 
-  // A clinically-named event is present…
+  // A clinically-named row is present… ROWS, NOT HEADINGS: `/timeline` drew each
+  // event as a card with an <h3>; #3958 rules the record one line per row at every
+  // viewport, so the panel name is the row's TITLE. Scoped to `history-row` so a
+  // match cannot come from a neighbouring surface's text.
+  const rows = page.getByTestId("history-row");
+  await expect(rows.filter({ hasText: "Lipids results" })).not.toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Lipids results" })
-  ).not.toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Complete blood count results" })
+    rows.filter({ hasText: "Complete blood count results" })
   ).not.toHaveCount(0);
 
   // …and the vendor titles the feed used to lead with are gone. (Safe as an

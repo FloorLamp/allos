@@ -26,7 +26,7 @@
 
 import { db, today } from "./db";
 import { zonedDateParts } from "./date";
-import { isMinor, isTrainingRelevant } from "./life-stage";
+import { isMinor } from "./life-stage";
 import {
   getDisplayFormatPrefs,
   getProfileAge,
@@ -909,7 +909,21 @@ export function gatherHistoryLog(
       endDate: until,
       limit,
       units,
-      includeTrainingEvents: isTrainingRelevant(getProfileAge(profileId)),
+      // THE RECORD IS A PROFILE-OWNED DATA SURFACE, so training events are NOT
+      // life-stage gated here — `/timeline` said exactly that in its own words
+      // ("Training categories and every activity type remain visible at every life
+      // stage") and passed no gate at all, which is the default this now takes.
+      //
+      // Phase 2b gated it on `isTrainingRelevant` and its comment claimed parity
+      // with the timeline; the timeline had no such gate, so the claim was wrong and
+      // the effect was that a minor's OWN logged sessions vanished from their own
+      // record. #3067/#2272 rule the opposite, and e2e/unclassified-activity.spec.ts
+      // is that rule's guard — it went on passing only because it was still pointed
+      // at `/timeline`. Deleting that route is what surfaced it.
+      //
+      // The life-stage gates that DO belong are on the training PRODUCT (the dock
+      // slot, the nav row, the hub) — what a profile is offered, not what it
+      // recorded. A record that hides a person's own data is not a record.
     });
     for (const event of events) {
       const kind = FEED_KIND[event.category];
