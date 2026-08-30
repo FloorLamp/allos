@@ -208,9 +208,17 @@ export function localDayMinutes(tz: string, dateStr: string): number {
   // Date and throw. Report the ORDINARY day, so a caller keying an EXCLUSION on this
   // drops nothing on a garbage date.
   if (!isRealIsoDate(dateStr)) return 1440;
-  const start = zonedWallTimeToUtc(tz, dateStr, "00:00");
-  const next = zonedWallTimeToUtc(tz, shiftDateStr(dateStr, 1), "00:00");
-  if (!start || !next) return 1440;
+  const midnight = (day: string) => {
+    const instant = zonedWallTimeToUtc(tz, day, "00:00");
+    return instant && dateStrInTz(tz, instant) === day ? instant : null;
+  };
+  const start = midnight(dateStr);
+  if (!start) return 0;
+  const tomorrow = shiftDateStr(dateStr, 1);
+  // A date-line change can delete tomorrow. Measure through to the following
+  // real midnight so the last real day keeps its full length.
+  const next = midnight(tomorrow) ?? midnight(shiftDateStr(tomorrow, 1));
+  if (!next) return 1440;
   const minutes = (next.getTime() - start.getTime()) / 60000;
   return Number.isFinite(minutes) ? minutes : 1440;
 }
