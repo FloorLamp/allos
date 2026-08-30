@@ -6,6 +6,11 @@ import {
   type IntakeFactKey,
 } from "@/lib/intake-facts";
 import { nextRuleId } from "@/lib/intake-rules";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 // The summary row (#3216 decision 5). These assertions name WHICH FACTS THE ROW
 // STATES and which it leaves to the trailing affordance — never the chips' copy. A
@@ -120,13 +125,23 @@ describe("intake fact summary (#3216)", () => {
     );
   });
 
-  it("kind decides which optional facts even exist", () => {
+  it("kind decides clinical facts, not shared composition or purpose", () => {
     const supp = intakeFactSummary(base({ kind: "supplement" }));
     const med = intakeFactSummary(base({ kind: "medication" }));
     expect(supp.more).toContain("composition");
-    expect(med.more).not.toContain("composition");
+    expect(med.more).toContain("composition");
+    expect(med.more).toContain("purpose");
     expect(med.more).toContain("indication");
     expect(supp.more).not.toContain("indication");
+  });
+
+  it("seeds both medication editors from the item read", () => {
+    const source = fs.readFileSync(
+      path.join(REPO, "app/(app)/medications/MedicationCard.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("ingredients={ingredients}");
+    expect(source).toContain("purposes={parseItemPurposes(s.purposes_json)}");
   });
 
   it("further dose rows read back as 'also [amount] at [slot]'", () => {
