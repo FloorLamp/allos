@@ -38,8 +38,18 @@ import { CORRECTED_MARK_MS } from "../correction-time";
 // on.
 const CORRECTED_MARK_S = CORRECTED_MARK_MS / 1000;
 
-// STRICTLY GREATER. The issue's rule is "differ by MORE than the tolerance": a difference
-// at or under it is clock jitter between two stamps of one request, not a correction.
+// STRICTLY GREATER. The rule is "differ by MORE than the tolerance": a difference at or
+// under it is clock jitter between two stamps of one request, not a correction.
+//
+// THE MARKER'S OWN TEST IS `>=`, and the two therefore part company on EXACTLY 60.000 s
+// and nowhere else — a row a hair over an even minute from its tap would say
+// "(corrected)" while the hint still taught. Said out loud because it is the kind of
+// asymmetry a later reader would "fix" in whichever direction they met first: the
+// constant is shared deliberately and the comparison is the ruling's wording. The chat's
+// own writers cannot reach the disputed second — CORRECTION_CHIP_MINUTES steps are 30 and
+// 60 minutes and the picker writes whole hours — and the app's sheets edit day + hour;
+// the STATED-instant paths in lib/food-log-write.ts were not audited to that grain. If it
+// ever needs settling, settle it in ONE place: this line and correction-time's marker.
 const FOOD_CORRECTION_STMT = hoistedStatement(
   `SELECT 1 AS found
      FROM food_log_events
@@ -67,15 +77,11 @@ const DOSE_CORRECTION_STMT = hoistedStatement(
 );
 
 export function hasCorrectedFoodTime(profileId: number): boolean {
-  return (
-    FOOD_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined
-  );
+  return FOOD_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined;
 }
 
 export function hasCorrectedDoseTime(profileId: number): boolean {
-  return (
-    DOSE_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined
-  );
+  return DOSE_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined;
 }
 
 // The gate itself: one OR, so no surface can ask a per-domain version of this question.
