@@ -97,6 +97,11 @@ export interface MediaInputProps {
   triggerContent?: ReactNode;
   // Test id for the one real input, so a spec can setInputFiles on it.
   inputTestId?: string;
+  // DOM id for the one real input. A consumer with a `<label htmlFor>` shortcut
+  // elsewhere on the page (the episode page's "Add photo") keeps it: the label
+  // opens the native picker, and the picked files land in the same confirm step
+  // every other way in lands in, so the shortcut is a shortcut and not a bypass.
+  inputId?: string;
   // What the picker accepts. Image-only by default; a consumer accepting other
   // bytes says so, and only the `image/*` ones are re-encoded client-side.
   accept?: string;
@@ -143,6 +148,7 @@ export default function MediaInput({
   triggerTestId = "media-input-open",
   triggerContent,
   inputTestId = "media-input-file",
+  inputId,
   accept = "image/*",
   multiple = false,
   name,
@@ -523,6 +529,7 @@ export default function MediaInput({
       <input
         ref={fileInputRef}
         type="file"
+        id={inputId}
         accept={accept}
         multiple={multiple}
         name={name}

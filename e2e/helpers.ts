@@ -47,7 +47,7 @@ import { roundControlBoxExtraLines } from "./control-box-lines";
 //
 // 1c. The interaction is a FILE PICK whose `onChange` fires a Server Action (there
 //    is no click to drive — the input is hidden behind a label):
-//        → settledUpload(page, input, files)
+//        → settledUpload(page, input, files)  — the pick STAGES, the confirm posts
 //    Same guarantee, same correlated predicate as settledClick — they share
 //    armActionPost, because "did this interaction's action complete?" is one
 //    question and a helper family must not answer it two ways (#1952).
@@ -2776,13 +2776,22 @@ export async function settledFillSave(
   await awaitAutosaveSettled(scope);
 }
 
-// Set files on a file `<input>` and await the Server-Action POST the resulting
-// change fires — the settledClick idiom for an upload input (which has no click to
-// drive). A hidden camera/file input's `onChange` submits a Server Action (upload
-// + `revalidatePath`); we arm the POST wait BEFORE `setInputFiles` (so a fast
-// upload can't resolve in the gap), then await it, so the follow-up `expect(...)`
-// runs against the durably-applied strip rather than a bare timed count poll.
-// WORKS when the change definitely fires exactly one Server Action (the upload).
+// Hand files to a <MediaInput> and await the Server-Action POST its CONFIRM
+// fires — the settledClick idiom for an upload surface.
+//
+// THE POST MOVED (#3286) and this comment used to describe where it was: the
+// pick itself used to submit, because a hidden input's `onChange` went straight
+// to the action. It no longer does. Files are STAGED by the pick and committed
+// by the confirm, which is what lets a batch be listed per file and a drop or a
+// paste arrive by the same route — so the wait is armed around the confirm
+// CLICK, and arming it around `setInputFiles` would wait for a POST that the
+// pick no longer makes.
+//
+// We arm the POST wait BEFORE the click (so a fast upload can't resolve in the
+// gap), then await it, so the follow-up `expect(...)` runs against the durably-
+// applied strip rather than a bare timed count poll. WORKS when the confirm
+// fires exactly one Server Action per file; a multi-file batch posts once per
+// file, so pass a single file here.
 //
 // The wait goes through the SAME armActionPost predicate settledClick uses
 // (#1952). It used to be the pre-#1958 "any same-origin POST", which was the same
@@ -2799,20 +2808,22 @@ export async function settledUpload(
   opts: { timeout?: number; url?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 20_000;
+  await input.setInputFiles(files);
+  const submit = page.getByTestId("media-input-submit");
+  await expect(submit).toBeVisible();
   const here = new URL(page.url());
   const wait = armActionPost(page, here, { timeout, url: opts.url });
   try {
     // Same synchronous turn as the interaction, exactly as in settledClick.
     wait.begin();
-    await Promise.all([wait.settled, input.setInputFiles(files)]);
+    await Promise.all([wait.settled, submit.click()]);
   } catch (err) {
     throw wait.diagnose(
       err,
       "settledUpload",
-      `The input's onChange must submit a Server Action. If this upload posts to ` +
-        `a route handler instead, it is not a settledUpload site — await the ` +
-        `route's own response. If it posts somewhere other than this route, pass ` +
-        `{ url }.`
+      `The confirm must submit a Server Action. If this upload posts to a route ` +
+        `handler instead, it is not a settledUpload site — await the route's own ` +
+        `response. If it posts somewhere other than this route, pass { url }.`
     );
   } finally {
     wait.release();

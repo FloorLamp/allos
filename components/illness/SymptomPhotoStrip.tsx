@@ -301,6 +301,7 @@ export default function SymptomPhotoStrip({
             triggerLabel={pending ? "Adding…" : "Add photo"}
             triggerTestId="symptom-photo-add"
             inputTestId="symptom-photo-input"
+            inputId="episode-symptom-photo-input"
             className="btn-ghost btn-sm"
             multiple
             disabled={pending}

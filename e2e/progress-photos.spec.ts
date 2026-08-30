@@ -21,9 +21,10 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// Progress photos over the shared photo core (#1119): the native-capture
-// FALLBACK path end to end (CI has no camera, so getUserMedia is denied and
-// PhotoCapture drops to its file input — exactly the fallback contract), the
+// Progress photos over the shared photo core (#1119), through the shared
+// add-media surface (#3286): the FILE path end to end (CI has no camera, so the
+// dialog's chooser leads and the picker is the way in — exactly the ordering
+// contract), the drop and paste ways in, the phone-width camera ordering, the
 // pose-tagged upload → gallery grid → lightbox → delete round trip, the
 // two-date compare timeline with the onion-skin overlay toggle, the serve
 // route's session/id scoping, and the data-gated nav entry flipping on for a
@@ -72,6 +73,25 @@ function fixtureProfileId(): number {
         .prepare("SELECT id FROM profiles WHERE name = ?")
         .get(PROGRESS_PHOTOS_PROFILE) as { id: number }
     ).id;
+  } finally {
+    handle.close();
+  }
+}
+
+// Row count for this fixture's profile — the batch test's "two files in, two
+// rows out" reads the store rather than the grid, because the grid is what a
+// single write would also change.
+function countPhotos(): number {
+  const handle = new Database(DB_PATH);
+  try {
+    return (
+      handle
+        .prepare(
+          `SELECT COUNT(*) AS n FROM progress_photos
+            WHERE profile_id IN (SELECT id FROM profiles WHERE name = ?)`
+        )
+        .get(PROGRESS_PHOTOS_PROFILE) as { n: number }
+    ).n;
   } finally {
     handle.close();
   }
@@ -605,4 +625,150 @@ test("retagging a photo's pose moves it between comparison series, leaving the f
   } finally {
     await page.context().close();
   }
+});
+
+// THE FOUR WAYS IN, AND THE ORDER THEY ARRIVE IN (#3286).
+//
+// The owner's report was a desktop where camera had never been granted: the
+// dialog opened onto "Camera access is blocked for this app", padlock
+// instructions as its first line, and a green "Open camera" as the primary —
+// the only path that could not work, pushed hardest. The tests above cover the
+// blocked-camera ordering; these cover the ways in that did not exist at all,
+// and the phone ordering they must not have cost.
+test.describe("the ways into the add-media dialog (#3286)", () => {
+  // Drop and paste both hand the dialog a real File built IN THE PAGE, because
+  // neither gesture can be delivered from Playwright: an OS file-drag has no
+  // Playwright API, and a synthetic clipboard write cannot carry file data. The
+  // event is the real one either way — the component sees the same DataTransfer
+  // shape a browser would give it.
+  async function handOver(
+    page: Page,
+    how: "drop" | "paste",
+    bytes: Buffer
+  ): Promise<void> {
+    await page.getByTestId("media-input-dropzone").evaluate(
+      (zone, payload) => {
+        const dt = new DataTransfer();
+        dt.items.add(
+          new File([new Uint8Array(payload.bytes)], payload.name, {
+            type: "image/jpeg",
+          })
+        );
+        if (payload.how === "drop") {
+          zone.dispatchEvent(
+            new DragEvent("drop", { dataTransfer: dt, bubbles: true })
+          );
+        } else {
+          document.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })
+          );
+        }
+      },
+      { how, name: `${how}.jpg`, bytes: Array.from(bytes) }
+    );
+  }
+
+  test.beforeEach(async ({ page }) => {
+    // No camera API, so the ordering decision is made with no async input and
+    // the dialog lands on the chooser deterministically.
+    await primeCameraFallback(page);
+  });
+
+  for (const how of ["drop", "paste"] as const) {
+    test(`${how} stages a photo, from the chooser the desktop opens on`, async ({
+      page,
+    }) => {
+      await page.goto("/progress");
+      await page.getByTestId("photo-capture-open").click();
+
+      // THE PRIMARY IS Choose file, and NOTHING has said "camera" — the whole
+      // defect, asserted as the state of the dialog on arrival.
+      await expect(page.getByTestId("media-input-choose")).toBeVisible();
+      await expect(page.getByTestId("media-input-camera-error")).toHaveCount(0);
+      await expect(
+        page.getByTestId("media-input-camera-recovery")
+      ).toHaveCount(0);
+
+      await handOver(page, how, await jpeg({ r: 30, g: 90, b: 160 }));
+
+      // It reached the SAME confirm step a pick reaches — one landing, four ways
+      // in — with the file named, which is what makes a batch readable.
+      await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
+      await expect(page.getByTestId("media-input-selected")).toContainText(
+        `${how}.jpg`
+      );
+    });
+  }
+
+  test("a batch stages every file by name and commits them one by one", async ({
+    page,
+  }) => {
+    await page.goto("/progress");
+    const before = countPhotos();
+    await page.getByTestId("photo-capture-file").setInputFiles([
+      { name: "batch-a.jpg", mimeType: "image/jpeg", buffer: await jpeg({ r: 10, g: 20, b: 30 }) },
+      { name: "batch-b.jpg", mimeType: "image/jpeg", buffer: await jpeg({ r: 40, g: 50, b: 60 }) },
+    ]);
+
+    // PER FILE, not a count: a batch where one file is refused has to be able to
+    // say which one, and it can only do that if the files are named here.
+    const staged = page.getByTestId("media-input-selected");
+    await expect(staged).toContainText("batch-a.jpg");
+    await expect(staged).toContainText("batch-b.jpg");
+    await expect(page.getByTestId("media-input-submit")).toHaveText(
+      "Add 2 files"
+    );
+
+    await page.locator("#progress-date").fill("2026-03-04");
+    await settledClick(page, page.getByTestId("media-input-submit"));
+    await expect(page.getByTestId("media-input-selected")).toHaveCount(0);
+    // Two files in, two rows out — one interaction, per-file writes.
+    await expect(() => expect(countPhotos()).toBe(before + 2)).toPass({
+      timeout: 20_000,
+    });
+  });
+});
+
+// THE PHONE ORDERING (#3286 AC2). The camera still leads where a camera is the
+// plausible primary — that is the half the desktop fix must not have cost, and
+// it is asserted with a REAL granted camera rather than by reading a class.
+test("a phone-width viewport with a working camera opens the viewfinder", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 64;
+          canvas.height = 64;
+          canvas.getContext("2d")!.fillRect(0, 0, 64, 64);
+          return (
+            canvas as HTMLCanvasElement & {
+              captureStream: (fps?: number) => MediaStream;
+            }
+          ).captureStream(1);
+        },
+      },
+    });
+  });
+  await page.goto("/progress");
+  await page.getByTestId("photo-capture-open").click();
+
+  // The viewfinder, not the chooser — today's behaviour, unchanged.
+  await expect(page.getByTestId("media-input-video")).toBeVisible();
+  await expect(page.getByTestId("media-input-choose")).toHaveCount(0);
+
+  // …and the file path is not BURIED: it is one labelled control away, on the
+  // same screen. Before #3286 the equivalent escape said "Upload a file
+  // instead" from a fallback the phone rarely saw.
+  const toFile = page.getByTestId("media-input-use-file");
+  await expect(toFile).toBeVisible();
+  await toFile.click();
+  await expect(page.getByTestId("media-input-choose")).toBeVisible();
+  // The dialog reached the chooser without a camera failure, so it says nothing
+  // about permissions here either.
+  await expect(page.getByTestId("media-input-camera-error")).toHaveCount(0);
 });
