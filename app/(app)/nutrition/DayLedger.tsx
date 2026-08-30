@@ -487,7 +487,10 @@ export default function DayLedger({
             <span className="min-w-0 flex-1 max-sm:truncate">
               {TIME_BUCKET_LABELS[row.bucket]} doses
               <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {doses.length} due
+                {/* "due" is present tense. Past the write window the day is over and
+                    nothing about it is still owed, so the row states what the record
+                    holds instead of what the schedule wanted. */}
+                {doses.length} {doseWritable ? "due" : "not recorded"}
               </span>
             </span>
           </button>

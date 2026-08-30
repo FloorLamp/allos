@@ -19,7 +19,10 @@ import { TimezoneProvider } from "@/components/TimezoneProvider";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { buildDayLedger } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
-import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
+import {
+  FoodSelectedDateProvider,
+  useFoodSelectedDate,
+} from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
@@ -139,6 +142,35 @@ function PostProfileNoteOnLayout({
   return null;
 }
 
+// THE SLOT DIMENSION OF THE PROJECTION, made observable on purpose.
+//
+// A correction is a MOVE: it decrements one meal coordinate and increments another, and
+// `applyPlacements([outcome.from, outcome.to])` publishes both halves in one state.
+// Until #3987 the Meals cards rendered `food-slot-total-<meal>` and this suite read the
+// destination half through them incidentally; the ledger replaced those cards with rows
+// derived from SERVER props, which the optimistic projection does not touch. That left
+// the day total ("1 serving") and the mounted meal's own count as the only reads — and
+// a move changes neither the number of servings the day holds nor, at the remount site,
+// anything the assertions looked at. Dropping `outcome.to` from the publish therefore
+// went green across the whole pure tier.
+//
+// So the probe reads the projection directly, both halves, on every mount in this suite.
+// It is not a surface: it exists because the dimension the defect lives in stopped being
+// rendered anywhere, and an invariant nothing observes is not protected.
+function SlotProjectionProbe() {
+  const { activeDate, slotCountsByDate } = useFoodSelectedDate();
+  const counts = slotCountsByDate[activeDate];
+  return (
+    <>
+      {(["Morning", "Midday", "Evening"] as const).map((slot) => (
+        <span key={slot} data-testid={`projection-slot-${slot.toLowerCase()}`}>
+          {counts?.[slot]?.cruciferous ?? 0}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function barTree({
   profileId = 7,
   day = DAY,
@@ -180,6 +212,7 @@ function barTree({
             />
             {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
             {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
+            <SlotProjectionProbe />
           </FoodSelectedDateProvider>
         </ToastProvider>
       </ActiveProfileProvider>
@@ -593,9 +626,101 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => correction.resolve(outcome));
 
+    // THE MEAL COUNT IS THE DISCRIMINATOR, and the day total is not. The defect this
+    // test exists to catch is a correction from the UNMOUNTED bar leaking into the
+    // remounted provider's projection — a Morning→Evening MOVE. A move does not change
+    // how many servings the day holds, so `food-day-total` reads "1 serving" whether
+    // the leak happened or not: it is invariant under the exact bug. The bar is mounted
+    // on Morning, so `count-cruciferous` is Morning's count for this group — 1 if the
+    // correction was correctly ignored, 0 if it leaked through.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
     expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
+    // Both halves off the projection, for completeness — though here they are belt to
+    // the toast's braces rather than the discriminator: the PROVIDER was replaced too,
+    // so the unmounted bar's `applyPlacements` closure addresses a dead setState and no
+    // guard is what keeps the projection still. The case below replaces only the bar and
+    // is where these two lines actually bite.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
+  });
+
+  // THE REACHABLE HALF of the same defect. In the remount case above the provider itself
+  // is replaced, so the unmounted bar's `applyPlacements` closure addresses a dead
+  // setState and the projection is out of the leak's reach whatever the guard does. Here
+  // the PROVIDER SURVIVES and only the bar is replaced — the stale continuation's
+  // publish would land on live state, moving a serving the person is looking at from
+  // Morning to Evening on the strength of an interaction that is no longer current.
+  it("does not move a serving when a replaced bar's correction resolves late", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 74,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const outcome = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({ profileId: 7, day, slot: "Morning" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+
+    // Same `providerKey`: the projection this bar was editing is still mounted and
+    // still reachable. Only the bar is new.
+    view.rerender(
+      barTree({
+        profileId: 7,
+        day,
+        slot: "Morning",
+        barKey: "replacement-live-provider-bar",
+      })
+    );
+    await act(async () => correction.resolve(outcome));
+
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+    expect(screen.queryByText("Serving corrected.")).toBeNull();
   });
 
   it("rejects an old interaction note after an A to B to A profile cycle", async () => {
@@ -1313,6 +1438,12 @@ describe("FoodLogBar projection publication", () => {
     // visual receipt's queued frame has deliberately not run.
     expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
+    // The DESTINATION half, which nothing else here observes: `count-cruciferous` is
+    // Morning's count and the day total is invariant under a move, so publishing only
+    // `outcome.from` would satisfy both of the lines above while the serving vanished
+    // from the projection entirely.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("1");
     expect(frames).toHaveLength(1);
   });
 });

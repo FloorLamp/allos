@@ -266,6 +266,104 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     expect(groups[0].rows.map((r) => r.kind)).toEqual(["stack"]);
   });
 
+  // R1 (adversarial, #4323): the key that keeps WRITTEN doses apart was
+  // (bucket, stack, minute) while the key that assigned OPEN doses was (bucket, stack).
+  // Two taps of one routine in one bucket therefore made two rows that each claimed the
+  // same pending doses: one dose on two rows, its Take control rendered twice, and the
+  // labels summing past the routine's size. Reproduced at the DB tier too, from four
+  // ordinary `markDoseTaken` calls and nothing else.
+  it("never puts one open dose on two stack rows of the same routine", () => {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: [
+        dose(
+          1,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          2,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(3, "Morning", "10:07", morningStack()),
+        dose(4, "Morning", "10:07", morningStack()),
+      ],
+      pending: [
+        pending(90, "Morning", "Morning stack"),
+        pending(91, "Morning", "Morning stack"),
+      ],
+    });
+    const rows = groups[0].rows;
+    const stacks = rows.filter((r): r is LedgerStack => r.kind === "stack");
+    expect(stacks).toHaveLength(2);
+    const seen = new Map<number, number>();
+    for (const st of stacks)
+      for (const o of st.open)
+        seen.set(o.doseId, (seen.get(o.doseId) ?? 0) + 1);
+    expect([...seen.values()]).toEqual([]);
+    // Neither row can own them, so they state themselves once, on the due row.
+    const due = rows.find((r) => r.kind === "due");
+    expect(due?.kind === "due" && due.doses.map((d) => d.doseId)).toEqual([
+      90, 91,
+    ]);
+    // And both written rows read honestly as whole taps rather than "2 of 4" twice.
+    expect(stacks.map(stackLabel)).toEqual(["2 doses", "2 doses"]);
+  });
+
+  // R2 (adversarial, #4323): the collapse key was the WRITE minute and the rendered
+  // clock is the ADMINISTRATION instant. `updateHistoricalDose` moves `occurred_at` and
+  // deliberately never touches `recorded_at` (#2228/#2876), so a member corrected to
+  // three hours earlier kept its tap-mates' write minute and the row went on stating one
+  // timestamp for two doses the record says were hours apart — the ruling's exact
+  // prohibition, reached from the other side.
+  it("drops a member whose stated clock no longer matches its tap-mates", () => {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: [
+        dose(
+          1,
+          "Morning",
+          "08:07",
+          morningStack({ writeMinute: "2026-08-30T08:07", hhmm: "08:07" })
+        ),
+        dose(
+          2,
+          "Morning",
+          "08:07",
+          morningStack({ writeMinute: "2026-08-30T08:07", hhmm: "08:07" })
+        ),
+        // Same tap, amended to 05:15.
+        dose(
+          3,
+          "Morning",
+          "05:15",
+          morningStack({
+            writeMinute: "2026-08-30T08:07",
+            hhmm: "05:15",
+            clockKind: "stated",
+          })
+        ),
+      ],
+      pending: [],
+    });
+    const rows = groups[0].rows;
+    const stacks = rows.filter((r): r is LedgerStack => r.kind === "stack");
+    expect(stacks).toHaveLength(1);
+    expect(stacks[0].hhmm).toBe("08:07");
+    expect(stacks[0].written.map((d) => d.logId)).toEqual([1, 2]);
+    // The amended dose states its own time, on its own row, above the 08:07 stack.
+    const amended = rows.find((r) => r.kind === "dose");
+    expect(amended?.kind === "dose" && amended.hhmm).toBe("05:15");
+    expect(rows.map((r) => r.kind)).toEqual(["dose", "stack"]);
+    // Every member of a stack row shares that row's clock — which is what lets the
+    // expanded members render without one.
+    for (const st of stacks)
+      expect(new Set(st.written.map((d) => d.hhmm)).size).toBe(1);
+  });
+
   it("leaves a due dose of another routine in the bucket's due row", () => {
     const groups = buildDayLedger({
       servings: [],

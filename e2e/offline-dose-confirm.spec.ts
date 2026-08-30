@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import { type Page } from "@playwright/test";
 import { workerAuthPath } from "./worker-env";
-import { hydratedClick } from "./helpers";
+import { expandLedgerDueGroups, hydratedClick, ledgerDoseRow } from "./helpers";
 // #1427: a dose confirm tapped with no signal is queued and replayed through the
 // SAME write core every other confirm path uses (markDoseTaken), which answers with
 // a typed outcome. Two ends of that contract are driven here in the real app:
@@ -47,12 +47,22 @@ async function createMorningSupplement(page: Page, name: string) {
   return row;
 }
 
+// The item's MANAGEMENT row, on the Supplements tab (edit, delete, history). Since
+// #3987 the page lists each dose once, so no time-bucket scoping is needed — and the
+// day's take/skip is not here at all; it is `ledgerDoseRow`'s, on the Food tab.
 function morningRow(page: Page, name: string) {
   return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
     .filter({ hasText: name });
+}
+
+// The same dose on the surface that OWNS the day. Confirming is a statement about
+// today, so it happens where today is stated.
+async function ledgerRow(page: Page, name: string) {
+  await page.goto("/nutrition?tab=food");
+  await expandLedgerDueGroups(page);
+  return ledgerDoseRow(page, name);
 }
 
 async function deleteIntakeItem(page: Page, name: string) {
@@ -73,11 +83,12 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   context,
 }) => {
   const name = `Offline Dose Iron ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
-  const row = await createMorningSupplement(page, name);
+  await createMorningSupplement(page, name);
 
   // The dead-reception moment: the pills are in your hand, the network isn't there.
+  const ledger = await ledgerRow(page, name);
   await context.setOffline(true);
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  await ledger.getByRole("button", { name: "Mark taken" }).click();
 
   // Queued, not failed — and the badge says so.
   await expect(
@@ -93,8 +104,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
 
   // DURABLE: a fresh server render shows the dose taken — this is the assertion the
   // optimistic client state can't fake.
-  await page.goto("/nutrition?tab=supplements");
-  const reloaded = morningRow(page, name);
+  const reloaded = await ledgerRow(page, name);
   await expect(
     reloaded.getByRole("button", { name: "Mark not taken" })
   ).toHaveAttribute("aria-pressed", "true");
@@ -105,11 +115,13 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   // Nothing resurrects or double-logs on a further reload (the on-load flush runs
   // again against an empty queue).
   await page.reload();
+  await expandLedgerDueGroups(page);
   await expect(
-    morningRow(page, name).getByRole("button", { name: "Mark not taken" })
+    ledgerDoseRow(page, name).getByRole("button", { name: "Mark not taken" })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
+  await page.goto("/nutrition?tab=supplements");
   await deleteIntakeItem(page, name);
 });
 
@@ -119,8 +131,9 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   browser,
 }) => {
   const name = `Offline Dose Zinc ${Date.now()}`; // clock-ok: unique fixture-name suffix, never a stored timestamp
-  const row = await createMorningSupplement(page, name);
+  await createMorningSupplement(page, name);
   const origin = new URL(page.url()).origin;
+  const row = await ledgerRow(page, name);
 
   // Tap ✅ with no signal — the confirm goes into the queue.
   await context.setOffline(true);
@@ -137,8 +150,9 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   // offline-nav-ok: this navigation is the SECOND context's, which was never taken
   // offline — the offline half of this test (the tap above) loads no shell at all, so
   // the #3002 service-worker bypass has nothing to fake here.
-  await otherPage.goto(`${origin}/nutrition?tab=supplements`);
-  const otherRow = morningRow(otherPage, name);
+  await otherPage.goto(`${origin}/nutrition?tab=food`);
+  await expandLedgerDueGroups(otherPage);
+  const otherRow = ledgerDoseRow(otherPage, name);
   await otherRow.getByRole("button", { name: "Skip this dose" }).click();
   await expect(
     otherRow.getByRole("button", { name: "Undo skip" })
@@ -157,8 +171,7 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
   // DURABLE: the deliberate skip stands; the replayed confirm did not overwrite it.
-  await page.goto("/nutrition?tab=supplements");
-  const reloaded = morningRow(page, name);
+  const reloaded = await ledgerRow(page, name);
   await expect(
     reloaded.getByRole("button", { name: "Undo skip" })
   ).toHaveAttribute("aria-pressed", "true");
@@ -166,5 +179,6 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
     reloaded.getByRole("button", { name: "Mark taken" })
   ).toHaveAttribute("aria-pressed", "false");
 
+  await page.goto("/nutrition?tab=supplements");
   await deleteIntakeItem(page, name);
 });

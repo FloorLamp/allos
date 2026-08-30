@@ -2,7 +2,13 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { comboboxRows, hydratedClick, settledClick } from "./helpers";
+import {
+  comboboxRows,
+  expandLedgerDueGroups,
+  hydratedClick,
+  ledgerDoseRow,
+  settledClick,
+} from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
@@ -672,12 +678,12 @@ test("a refused dose tap settles READY AGAIN — the retry it asks for is not ab
   await closeEditor(page, addCard);
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addCard).toHaveCount(0);
-  const row = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
-    .filter({ hasText: name });
-  const take = row.getByTestId("dose-take");
+  // THE TAP IS THE DAY'S, so it happens where the day is stated (#3987): the
+  // Supplements tab is where this item was created, the Day ledger is where its dose
+  // is owed. The management row below is reached again for cleanup.
+  await page.goto("/nutrition?tab=food");
+  await expandLedgerDueGroups(page);
+  const take = ledgerDoseRow(page, name).getByTestId("dose-take");
   await expect(take).toBeVisible();
 
   await context.setOffline(true);
@@ -698,7 +704,12 @@ test("a refused dose tap settles READY AGAIN — the retry it asks for is not ab
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
   await context.setOffline(false);
 
-  // Cleanup: the fixture supplement goes with the test.
+  // Cleanup: the fixture supplement goes with the test, from the tab that owns it.
+  await page.goto("/nutrition?tab=supplements");
+  const row = page
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
+    .filter({ hasText: name });
   await hydratedClick(
     page,
     row.getByRole("button", { name: "Supplement actions" })

@@ -23,7 +23,7 @@ import { bestKnownInstant } from "../row-instants";
 import { detailSegment } from "../history-format";
 import { doseBucketOn } from "../intake-schedule";
 import type { LedgerDose } from "../day-ledger";
-import { getIntakeDoses, getRetiredDoses } from "./intake/schedule";
+import { getIntakeDosesForHistory } from "./intake/schedule";
 
 type DayDoseLogRow = {
   id: number;
@@ -67,11 +67,15 @@ export function getDayDoseLedger(
     )
     .all(profileId, date) as DayDoseLogRow[];
   if (rows.length === 0) return [];
+  // `getIntakeDosesForHistory` and NOT `getIntakeDoses` + `getRetiredDoses`: the union
+  // was wrong in a way only a past day shows. Only the first of the two attaches
+  // `versions`, so a dose that sat in Evening and was later RETIRED lost its history and
+  // `doseBucketOn` fell back to reading the current row — re-filing yesterday's taken
+  // dose under whatever slot the retired row happens to carry now. The history reader is
+  // the one that answers this exact question: every dose row, retired included, with its
+  // effective-dated schedule attached (#1973, #2131).
   const schedules = new Map(
-    [...getIntakeDoses(profileId), ...getRetiredDoses(profileId)].map((d) => [
-      d.id,
-      d,
-    ])
+    getIntakeDosesForHistory(profileId).map((d) => [d.id, d])
   );
   const tz = getTimezone(profileId);
   const out: LedgerDose[] = [];

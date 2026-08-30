@@ -99,7 +99,6 @@ import {
   doseDueOn,
   isPostWorkoutReady,
   OBLIGATION_ORDER,
-  timeBucket,
   OBLIGATION_LABELS,
   CONDITION_LABELS,
   WORKOUT_CONDITIONS,
@@ -142,7 +141,6 @@ import {
 } from "./intake-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
-import { IconChevronDown } from "@tabler/icons-react";
 import HistoricalDoseLauncher from "@/components/intake/HistoricalDoseLauncher";
 import { isHistoricalDoseDateAccepted } from "@/lib/dose-log-window";
 import Disclosure from "@/components/Disclosure";
@@ -417,17 +415,17 @@ export default async function SupplementsTab({
   // row level or an alternating pair would show both amounts every day.
   const activeSupplementItems = itemsFor((s) => !isMed(s) && !!s.active);
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
-  // TIMELESS, NOT "NOT DUE TODAY" (#3987). This fold used to hold everything the
-  // CURRENT DAY did not owe — an off-cadence row, a `may` item, a rest-day one — which
-  // was a day question asked on what is now a management surface, and it answered
-  // differently every morning. The stack list is the whole stack; what folds away is
-  // the items that name no time of day at all, which is a property of the item rather
-  // than of today. Whether a dose is owed right now is the Day ledger's statement.
-  const isTimeless = (item: Item) =>
-    timeBucket(item.dose.time_of_day) === "Anytime";
-  const notScheduled = activeSupplementItems.filter(
-    (i) => !isHeld(i.supplement) && isTimeless(i)
-  );
+  // NO "NOT SCHEDULED" FOLD (#3987). It used to hold everything the CURRENT DAY did
+  // not owe — an off-cadence row, a `may` item, a rest-day one — which was a day
+  // question asked on what is now a management surface, and it answered differently
+  // every morning. Whether a dose is owed right now is the Day ledger's statement, so
+  // the question has left this page entirely and the list is simply the stack.
+  //
+  // FOLDING THE TIMELESS ITEMS INSTEAD was the first attempt and was worse: a
+  // supplement added without a time of day — which the add form does not require —
+  // landed straight inside a COLLAPSED disclosure, so the thing you had just created
+  // was not on screen. An item you own is not a secondary state. Held and Paused
+  // still fold below, because those genuinely are.
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
   // Medications render on their own page (#746); this tab is supplements only, so
@@ -689,7 +687,7 @@ export default async function SupplementsTab({
   // went with the schedule, and the keep-apart notices moved to the ledger's due rows
   // rather than being dropped.
   const scheduledItems = activeSupplementItems
-    .filter((item) => !isHeld(item.supplement) && !isTimeless(item))
+    .filter((item) => !isHeld(item.supplement))
     .sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
   const secondarySchedule = (
     <>
@@ -710,18 +708,6 @@ export default async function SupplementsTab({
             ))}
           </div>
         </section>
-      )}
-
-      {notScheduled.length > 0 && (
-        <Disclosure data-testid="not-scheduled-section">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200">
-            <span>Not scheduled ({notScheduled.length})</span>
-            <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="mt-2 space-y-3">
-            {notScheduled.map((item) => renderRow(item))}
-          </div>
-        </Disclosure>
       )}
 
       {paused.length > 0 && (

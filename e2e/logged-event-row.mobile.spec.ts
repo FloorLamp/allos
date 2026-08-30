@@ -237,13 +237,11 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     await page.goto("/nutrition?tab=supplements");
 
     // The fixture item carries no scheduled time of day, so the supplements tab
-    // files it under "More supplements" — a closed <details>. Opening it is the
-    // route to the panel, and it keeps the fixture this spec's own rather than
-    // borrowing a seeded supplement whose dose count nothing here controls.
-    await hydratedClick(
-      page,
-      page.locator('[data-testid="not-scheduled-section"] summary')
-    );
+    // lists it in the stack like any other item — #3987 retired the "not scheduled"
+    // fold, which asked a DAY question on what is now a management surface (and hid a
+    // freshly added item behind a closed disclosure). Keeping the fixture this spec's
+    // own still matters: it borrows no seeded supplement whose dose count nothing
+    // here controls.
     const card = page
       .locator('[data-testid="supplement-row"]')
       .filter({ hasText: ITEM });
@@ -445,12 +443,8 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // the cross-item LEDGER here until #3958 deleted that route; the panel is the
     // same component at item scope, which is what makes it the honest stand-in.
     await page.goto("/nutrition?tab=supplements");
-    // The fixture item carries no scheduled time of day, so the tab files it under
-    // "More supplements" — a closed <details>, exactly as the panel test above.
-    await hydratedClick(
-      page,
-      page.locator('[data-testid="not-scheduled-section"] summary')
-    );
+    // The fixture item is in the stack list, unfolded, exactly as in the panel test
+    // above (#3987).
     const card = page
       .locator('[data-testid="supplement-row"]')
       .filter({ hasText: ITEM });

@@ -324,14 +324,22 @@ export default async function FoodTab({
   // THE DAY LEDGER (#3987 phase 1) — one statement of the day, per bounded date, built
   // by lib/day-ledger.ts from two gathers this page already had reason to make.
   //
-  // THE DUE HALF IS BOUNDED BY THE WRITE WINDOW, not by the picker: `doseLogDays` is the
-  // PAST half of the window `markDoseTaken`/`markDoseSkipped` enforce, so the ledger can
-  // never offer a tap the core would refuse and never withhold one it would accept.
-  // Beyond it a day still renders its RESOLVED rows — the record outlives the window —
-  // and simply has nothing to tap, which is the issue's "past-day dosing honors the
-  // window" ruling in the one place that can hold it.
-  const doseWritableDates = doseLogDays(date);
-  const doseWritable = new Set(doseWritableDates);
+  // THE WRITE WINDOW BOUNDS THE TAPS, NOT THE STATEMENT. `doseLogDays` is the PAST half
+  // of the window `markDoseTaken`/`markDoseSkipped` enforce, so `doseWritable` decides
+  // whether a due row is tappable — the ledger can never offer a tap the core would
+  // refuse and never withhold one it would accept.
+  //
+  // It does NOT decide whether the day SAYS what it owed. Bounding the gather by the
+  // window was the earlier shape and it was wrong twice over: it made `DayLedger`'s
+  // read-only "Not recorded" row unreachable, and it rendered "Nothing logged yet." for a
+  // day that owed two doses — a day-chip four days back answered "which doses did I miss
+  // on Thursday?" before this rebuild (`SupplementsTab`'s `historicalStatus`, across all
+  // seven picker days) and would have stopped answering it on four of the seven. The
+  // issue's ruling is "beyond it they render read-only state", which is a statement, not
+  // a silence. So the pending half is gathered for EVERY picker day and the window only
+  // chooses the rendering.
+  const doseWritable = new Set(doseLogDays(date));
+  const doseWritableDates = [...doseWritable];
   // SUPPLEMENTS ONLY, on both halves. `pendingDayDoses` is kind-neutral — it also
   // serves the quick-log sheet, which covers medications — so the ledger applies the
   // same `isMed` exclusion the schedule it replaces applied, and the same one its
@@ -343,9 +351,9 @@ export default async function FoodTab({
       .map((item) => item.id)
   );
   const pendingByDate = new Map(
-    doseWritableDates.map((day) => [
-      day,
-      pendingDayDoses(profile.id, day).filter((dose) =>
+    mealDays.map((day) => [
+      day.date,
+      pendingDayDoses(profile.id, day.date).filter((dose) =>
         supplementItemIds.has(dose.itemId)
       ),
     ])
@@ -368,9 +376,7 @@ export default async function FoodTab({
           clockKind: event.eatenAt ? "stated" : "logged",
         })),
         doses: getDayDoseLedger(profile.id, day.date),
-        pending: doseWritable.has(day.date)
-          ? (pendingByDate.get(day.date) ?? [])
-          : [],
+        pending: pendingByDate.get(day.date) ?? [],
       }),
     ])
   );

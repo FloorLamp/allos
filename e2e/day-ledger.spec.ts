@@ -356,10 +356,25 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     );
     // Beyond the window the day still STATES what it owed — the record outlives the
     // write window — and offers nothing to tap.
-    await expect(page.getByTestId("day-ledger")).toBeVisible();
+    //
+    // THE ABSENCE IS NOT THE ASSERTION. `toHaveCount(0)` on the bulk control passes on
+    // an EMPTY page exactly as happily as on the intended one, and an empty page is what
+    // this surface actually shipped for a while: the pending half was gathered only
+    // inside the write window, so a day four back rendered "Nothing logged yet." for a
+    // day that owed doses. So the statement is asserted first and the absence second.
+    const outsideDue = page.locator('[data-testid^="ledger-due-group-"]');
+    await expect(outsideDue.first()).toBeVisible(); // first-ok: any due group proves the day still states what it owed
+    await expect(page.getByTestId("day-ledger-empty")).toHaveCount(0);
     await expect(page.locator('[data-testid^="ledger-takeall-"]')).toHaveCount(
       0
     );
+    // And expanding it states the doses themselves as record, not as offers.
+    await hydratedClick(page, outsideDue.first()); // first-ok: same group
+    const outsideDose = page
+      .locator('[data-testid^="ledger-due-dose-"]')
+      .first(); // first-ok: any named dose row — order-agnostic
+    await expect(outsideDose).toContainText("Not recorded");
+    await expect(outsideDose.getByRole("button")).toHaveCount(0);
   });
 });
 
@@ -398,9 +413,11 @@ test.describe("the day is stated once, and the chrome is measured", () => {
         .getByTestId("food-quick-rows")
         .locator('li[data-testid^="food-group-"]')
     ).not.toHaveCount(0);
-    // The day's census, once, in the header.
+    // The day's census, once, in the header — and a POSITIVE count. `/\d+ servings?/`
+    // matches "0 servings", so the whole converse above would have been undone by one
+    // regex: an empty day states its emptiness in exactly that grammar.
     await expect(page.getByTestId("day-ledger-census")).toContainText(
-      /\d+ servings?/
+      new RegExp(`^${ids.length} servings?\\b`)
     );
 
     // THE MEASUREMENT (#3987's chrome gate). The redesign's goal is LESS, so less is

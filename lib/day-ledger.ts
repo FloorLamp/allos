@@ -60,10 +60,27 @@ export interface LedgerDose extends LedgerRowBase {
 /**
  * ONE COMPOSED WRITE, collapsed (#2458's bundle, read back).
  *
- * Keyed on (bucket, stack, write minute) — the composed tap's own identity — and NEVER
- * on the bucket alone: two doses of one stack taken hours apart did not share a tap and
- * must not share a timestamp. A stack with unresolved members states "4 of 6"; a single
- * check over a partial stack is a claim the day does not support.
+ * Keyed on (bucket, stack, write minute, clock) — and NEVER on the bucket alone: two
+ * doses of one stack taken hours apart did not share a tap and must not share a
+ * timestamp (#3987's ruling, verbatim). A stack with unresolved members states "4 of 6";
+ * a single check over a partial stack is a claim the day does not support.
+ *
+ * WHY THE CLOCK IS IN THE KEY AND NOT JUST THE WRITE MINUTE. The write minute is the
+ * TAP's identity; `hhmm` is what the row STATES. Those are the same field only until
+ * somebody amends one member: `updateHistoricalDose` moves `occurred_at` and
+ * deliberately never touches `recorded_at` (#2228/#2876), so a dose corrected to "I
+ * actually took this at 5:15" keeps the 8:07 write minute. Keyed on the minute alone the
+ * row would have gone on stating 8:07 for a dose the record says was three hours
+ * earlier — the exact thing the ruling forbids, arrived at from the other direction. So
+ * a member whose stated clock no longer matches its tap-mates steps OUT of the collapse
+ * and states its own time. Every member of a stack row shares that row's clock by
+ * construction, which is why the expanded members carry no clock of their own.
+ *
+ * WHAT "COMPOSED" ACTUALLY MEANS HERE. Nothing records that a tap was composed: the
+ * bundle is INFERRED from a shared write minute. Two independent single taps of the same
+ * routine that happen to land in one minute therefore read as one composed row. That is
+ * a deliberate limit of reading #2458's bundle back out of the log rather than a bug in
+ * this module — closing it needs a write-side bundle id, which is not phase 1's to add.
  */
 export interface LedgerStack {
   kind: "stack";
@@ -177,8 +194,14 @@ export function buildDayLedger(input: {
     }
     // Fixed-width fields joined by the unit separator, the `doseSortKey` idiom: it
     // sorts below every printable character and cannot occur in a bucket, a stack
-    // label or a timestamp, so no pair of distinct triples can mint one key.
-    const key = [dose.bucket, dose.stack, dose.writeMinute].join(KEY_SEP);
+    // label or a timestamp, so no pair of distinct tuples can mint one key.
+    const key = [
+      dose.bucket,
+      dose.stack,
+      dose.writeMinute,
+      dose.clockKind,
+      dose.hhmm,
+    ].join(KEY_SEP);
     const existing = stacks.get(key);
     if (existing) existing.written.push(dose);
     else
@@ -200,8 +223,25 @@ export function buildDayLedger(input: {
       loose.push(...stack.written);
     }
   }
+  // THE OPEN MEMBERS BELONG TO ONE ROW OR TO NONE.
+  //
+  // A partial stack states "4 of 6" and expands to the doses it still owes, which means
+  // it CLAIMS those doses off the bucket's due row. That claim is only well-founded when
+  // the bucket holds a single stack row for the routine: with two rows — two taps of one
+  // routine, or one tap with a member amended out of it — there is no fact saying which
+  // of them the open doses belong to, and letting each take a copy put one dose on two
+  // rows, double-rendered its Take control, and made the two labels sum past the
+  // routine's size ("2 of 4" twice for a routine of six). The day is stated once, so an
+  // unownable open dose stays where it always had an honest home: the bucket's due row.
+  const rowsPerRoutine = new Map<string, number>();
+  for (const stack of stacks.values()) {
+    const routine = [stack.bucket, stack.stack].join(KEY_SEP);
+    rowsPerRoutine.set(routine, (rowsPerRoutine.get(routine) ?? 0) + 1);
+  }
   const claimed = new Set<number>();
   for (const stack of stacks.values()) {
+    if (rowsPerRoutine.get([stack.bucket, stack.stack].join(KEY_SEP)) !== 1)
+      continue;
     for (const dose of input.pending) {
       if (dose.stack === stack.stack && dose.bucket === stack.bucket) {
         stack.open.push(dose);
