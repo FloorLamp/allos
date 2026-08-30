@@ -38,6 +38,10 @@ const reply = (body) => {
   process.exit(0);
 };
 if (method === "POST" && url.endsWith("/graphql")) {
+  if (state.graphqlStatus) {
+    process.stdout.write("{}\\n" + state.graphqlStatus);
+    process.exit(0);
+  }
   reply({
     data: {
       repository: {
@@ -54,6 +58,9 @@ if (method === "POST" && url.endsWith("/graphql")) {
 if (url.includes("/check-runs")) {
   reply({ total_count: state.checkRuns.length, check_runs: state.checkRuns });
 }
+if (url.includes("/comments")) {
+  reply(url.includes("page=1") ? (state.reviewComments ?? []) : []);
+}
 if (url.includes("/reviews")) {
   reply(url.includes("page=1") ? state.reviews : []);
 }
@@ -67,6 +74,8 @@ interface Fixture {
   reviews?: unknown[];
   checkRuns?: unknown[];
   threads?: unknown[];
+  graphqlStatus?: number;
+  reviewComments?: unknown[];
 }
 
 const green = (name: string) => ({
@@ -94,6 +103,8 @@ function fixture(overrides: Fixture) {
     ],
     checkRuns: overrides.checkRuns ?? [green("lint"), green("test")],
     threads: overrides.threads ?? [],
+    graphqlStatus: overrides.graphqlStatus,
+    reviewComments: overrides.reviewComments ?? [],
   };
 }
 
@@ -234,6 +245,35 @@ describe("merge-gate.mjs", () => {
     expect(run.status).toBe(1);
     expect(run.stdout).toContain("1 unresolved review thread");
     expect(run.stdout).toContain("lib/dri.ts");
+  });
+
+  it("opens over REST when GraphQL is refused and NO comment threads exist", () => {
+    // The #4231 degrade: the orchestrator's container 403s every GraphQL
+    // call, and exit 2's "re-invoke" never terminated — three passing steps
+    // could not open the gate. Zero top-level review comments is a
+    // REST-observable proof that zero threads are unresolved.
+    const run = runGate({ graphqlStatus: 403 });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("proven over REST");
+  });
+
+  it("closes as resolution-UNKNOWN when GraphQL is refused and threads exist", () => {
+    const run = runGate({
+      graphqlStatus: 403,
+      reviewComments: [
+        { id: 1, path: "lib/dri.ts", body: "is this scoped?" },
+        { id: 2, in_reply_to_id: 1, path: "lib/dri.ts", body: "yes — see L40" },
+      ],
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("resolution UNKNOWN");
+    // Replies never double-count: one parent + one reply is ONE thread.
+    expect(run.stdout).toContain("1 review-comment thread(s)");
+  });
+
+  it("still treats a non-403 GraphQL failure as transient (exit 2)", () => {
+    const run = runGate({ graphqlStatus: 502 });
+    expect(run.status).toBe(2);
   });
 
   it("closes on a draft PR — PRs open READY", () => {

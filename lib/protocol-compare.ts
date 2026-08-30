@@ -57,7 +57,7 @@ export interface OutcomeComparison {
   meanDelta: number | null;
   medianDelta: number | null;
   betterness: Betterness;
-  // True when either window has no reading — the shift can't be computed.
+  // True when either window has too few readings for an honest comparison.
   insufficient: boolean;
   // A one-line, honest description ("Resting heart rate −3.2 bpm vs the 8 weeks
   // prior (n=42 during vs 40 before)"), or an insufficient-data note.
@@ -81,6 +81,8 @@ export interface CompareOptions {
   // (the "nearest draw before" rule for sparse labs). Default true.
   baselineNearestFallback?: boolean;
 }
+
+export const DEFAULT_POOLED_MIN = 3;
 
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -180,8 +182,9 @@ export function compareOutcome(
       ? intervention.median - baseline.median
       : null;
 
-  const insufficient = baseline.n === 0 || intervention.n === 0;
-  const betterness = judge(direction, meanDelta);
+  const insufficient =
+    baseline.n < DEFAULT_POOLED_MIN || intervention.n < DEFAULT_POOLED_MIN;
+  const betterness = judge(direction, insufficient ? null : meanDelta);
 
   let framing: string;
   if (insufficient || meanDelta == null) {
@@ -249,8 +252,6 @@ export interface PooledCompareOptions {
   minDuring?: number;
   minBaseline?: number;
 }
-
-export const DEFAULT_POOLED_MIN = 3;
 
 // Pool an outcome's during-samples (the union of every window) against the pooled
 // baseline (the union of each window's equal-length pre-span, MINUS any date that is

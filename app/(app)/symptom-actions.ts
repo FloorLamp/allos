@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
@@ -35,9 +36,9 @@ import {
 } from "@/lib/symptom-text-map";
 
 // Server write-path for the symptom log (issue #799). The one-tap dashboard card and the
-// Timeline day-view entry post here; each action owns the auth gate + validation +
+// record's day view post here; each action owns the auth gate + validation +
 // revalidation and delegates the SQL / worst-severity / #203 semantics to the auth-blind
-// lib cores. Symptoms surface on the dashboard (illness-gated card) and the Timeline, so
+// lib cores. Symptoms surface on the dashboard (illness-gated card) and on `/history`, so
 // both are revalidated.
 
 // The bar reconciles its optimistic chip to the server's authoritative severity (the
@@ -84,10 +85,17 @@ function revalidateSymptoms(): void {
 // `profileId`: when present the write is gated by requireProfileWriteAccess(target) — the
 // #31 cross-profile gate that asserts the target is reachable AND write; when absent the
 // write hits the session's ACTIVE profile via requireWriteAccess(). The default
-// dashboard/Timeline symptom mounts send no profileId and are unaffected. The gate is
-// inlined in EACH action (never a shared helper) so the write-access scanner
+// dashboard/record symptom mounts send no profileId and are unaffected. The gate is
+// inlined in each of THESE actions (never a shared helper) so the write-access scanner
 // (lib/__tests__/actions-write-access.test.ts) sees a literal requireWriteAccess() in
-// every action body; the write cores stay auth-blind profileId-first (#319).
+// their bodies; the write cores stay auth-blind profileId-first (#319).
+//
+// `editSymptom` IS THE ONE EXCEPTION AND IT IS DELIBERATE. It is not a bar action — the
+// record's ⋯ is its only caller — so it reads the ROW subject field `profile_id`
+// through the shared gateItemProfile(), with an allowlist entry naming that gate. Two
+// spellings of one subject is not a shape this lane invented; converging #858's
+// `profileId` onto #1328's `profile_id` would have to move every bar action and the
+// bar's own `withTarget` with them, which is its own change.
 
 // Log (tap) a symptom at a severity — keeps the day's WORST severity (a tap only raises).
 export async function logSymptom(
@@ -126,13 +134,25 @@ export async function logSymptom(
 export async function editSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#3958's multiprofile clause / #2106).
+  // This action's only caller is the record's ⋯, which posts the row's own
+  // `profile_id` the way every other correction on that page does — so it takes the
+  // shared gateItemProfile() rather than the #858 `profileId` its neighbours here
+  // read. Both resolve to requireProfileWriteAccess(target); they differ only in the
+  // field name, and this one is spelled the way a RECORD ROW spells its subject.
+  //
+  // Before this it gated the session and wrote `profile.id`, and `setSymptomSeverityCore`
+  // is keyed on (profile, symptom, date) rather than on a row id — so a ⋯ on another
+  // member's symptom row would not have been refused, it would have silently written
+  // the ACTING profile's own log for that symptom and day. That is why the record drew
+  // no menu there at all until now.
+  const profileId = await gateItemProfile(formData);
   const symptom = String(formData.get("symptom") ?? "");
   const outcome = setSymptomSeverityCore(
-    profile.id,
+    profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profile.id),
+    parseDate(formData, profileId),
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     String(formData.get("note") ?? "")
   );
