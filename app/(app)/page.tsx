@@ -1729,12 +1729,14 @@ async function renderDashboard(
         ),
         <DashboardAtomCard
           title={`${protocol.name} adherence`}
-          value={protocol.adherence.label}
+          value={protocol.adherence.value}
+          detail={protocol.adherence.detail}
           href={protocol.href}
         />,
         {
           label: "Adherence",
-          value: protocol.adherence.label,
+          value: protocol.adherence.value,
+          detail: protocol.adherence.detail,
           href: protocol.href,
           moment: { title: protocol.name, href: protocol.href },
         }
