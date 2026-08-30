@@ -77,7 +77,7 @@ function walk(root: string, sub: string): string[] {
 interface SourceFile {
   rel: string;
   src: string;
-  code: string;
+  code?: string;
 }
 
 // The real checkout is immutable for this test run, yet the six repository
@@ -96,11 +96,17 @@ function sources(root: string, sub: string): SourceFile[] {
     return {
       rel: path.relative(root, absolute).split(path.sep).join("/"),
       src,
-      code: stripComments(src),
     };
   });
   if (root === REPO) repositorySources.set(sub, loaded);
   return loaded;
+}
+
+// Most consumers need raw imports/exports or a cheap keyword gate. Comment-strip
+// only the candidates that need a code-only projection; eagerly scanning `lib/`
+// walked generated migrations and datasets that cannot name a web surface.
+function codeOf(file: SourceFile): string {
+  return (file.code ??= stripComments(file.src));
 }
 
 /** Every exported action in `app/` that READS a posted surface. */
@@ -281,6 +287,7 @@ const CLAIMING_SURFACES = [
   "dashboard-widget",
   "quick-log",
 ] as const;
+const HAS_LITERAL_RE = new RegExp(`["'](?:${CLAIMING_SURFACES.join("|")})["']`);
 const LITERAL_RE = new RegExp(`["'](${CLAIMING_SURFACES.join("|")})["']`, "g");
 
 /**
@@ -333,8 +340,18 @@ export function literalUniverse(root: string): { rel: string; src: string }[] {
   for (const sub of ["app", "lib"] as const) {
     for (const file of sources(root, sub)) {
       if (!file.rel.endsWith(".ts")) continue;
-      if (sub === "lib" && !MECHANISM_RE.test(file.code)) continue;
-      out.push({ rel: file.rel, src: file.code });
+      if (sub === "lib") {
+        // Raw gating can admit a comment but cannot hide code. Confirm against the
+        // code projection so the bounded lib/ universe keeps its original verdict.
+        if (!MECHANISM_RE.test(file.src)) continue;
+        const code = codeOf(file);
+        if (!MECHANISM_RE.test(code)) continue;
+        out.push({ rel: file.rel, src: code });
+      } else {
+        // app/ is deliberately unconditional; hardcodingActions does the literal
+        // gate before paying to strip an individual candidate.
+        out.push({ rel: file.rel, src: file.src });
+      }
     }
   }
   return out;
@@ -345,10 +362,13 @@ export function hardcodingActions(
 ): { action: string; file: string; surface: string }[] {
   const out: { action: string; file: string; surface: string }[] = [];
   for (const { rel, src } of literalUniverse(root)) {
+    if (!HAS_LITERAL_RE.test(src)) continue;
+    const code = stripComments(src);
+    if (!HAS_LITERAL_RE.test(code)) continue;
     const bounds: { name: string; at: number }[] = [];
-    for (const m of src.matchAll(EXPORT_RE))
+    for (const m of code.matchAll(EXPORT_RE))
       bounds.push({ name: m[1], at: m.index ?? 0 });
-    for (const m of src.matchAll(LITERAL_RE)) {
+    for (const m of code.matchAll(LITERAL_RE)) {
       const at = m.index ?? 0;
       let owner: string | null = null;
       for (const b of bounds) if (b.at < at) owner = b.name;
@@ -397,7 +417,7 @@ function mountingsOf(
  */
 export function unjustifiedLiterals(root: string): string[] {
   const every = [...sources(root, "app"), ...sources(root, "components")].map(
-    (file) => ({ rel: file.rel, src: file.code })
+    (file) => ({ rel: file.rel, src: codeOf(file) })
   );
   const out: string[] = [];
   for (const { action, file, surface } of hardcodingActions(root)) {
@@ -524,7 +544,7 @@ let repositoryMountGraph: MountGraph | undefined;
 export function mountGraph(root: string): MountGraph {
   if (root === REPO && repositoryMountGraph) return repositoryMountGraph;
   const files = [...sources(root, "app"), ...sources(root, "components")].map(
-    (file) => ({ rel: file.rel, src: file.code })
+    (file) => ({ rel: file.rel, src: codeOf(file) })
   );
   const known = new Set(files.map((f) => f.rel));
   const mountedBy = new Map(files.map((f) => [f.rel, new Set<string>()]));
