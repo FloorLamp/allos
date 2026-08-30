@@ -284,8 +284,10 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     // THE ASSERTION THE DEFECT FAILS: 19:43 is on screen, and it must not be in the
     // payload. `editPracticeSession` writes what it is handed, so this is the whole
     // difference between "logged 19:43" and a session claiming to have happened then.
-    expect(fd.time).toBe("");
-    expect(fd.time).not.toBe("19:43");
+    expect(fd.start_time).toBe("");
+    expect(fd.start_time).not.toBe("19:43");
+    // The END rides along on the same terms, and a tap never states one.
+    expect(fd.end_time).toBe("");
     // And the fields the action rewrites from what it reads are still carried, so a
     // duration correction cannot clear the note.
     expect(fd.notes).toBe("evening wind-down");
@@ -312,7 +314,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
-    expect(only("editPracticeSession").time).toBe("07:15");
+    expect(only("editPracticeSession").start_time).toBe("07:15");
   });
 
   it.each(["kg", "lb"] as const)(
@@ -569,7 +571,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       {
         id: "5",
         date: "2026-08-18",
-        time: "07:15",
+        start_time: "07:15",
+        end_time: "",
         duration_min: "25",
         notes: "evening wind-down",
       },

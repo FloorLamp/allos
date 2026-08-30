@@ -138,7 +138,8 @@ describe("logPractice action (#1259)", () => {
       fd({
         id,
         date: today(profile.id),
-        time: "07:30",
+        start_time: "07:30",
+        end_time: "07:50",
         duration_min: 20,
         notes: "Morning",
       })
@@ -147,7 +148,9 @@ describe("logPractice action (#1259)", () => {
       kind: "updated",
       session: {
         id,
-        time: "07:30",
+        start_time: "07:30",
+        // The END the form stated, written and read back (#3142).
+        end_time: "07:50",
         duration_min: 20,
         notes: "Morning",
       },
@@ -489,7 +492,7 @@ describe("logPractice — the stated session time (#3273)", () => {
       )
       .all(profileId) as {
       date: string;
-      time: string | null;
+      start_time: string | null;
       duration_min: number | null;
       notes: string | null;
       logged_via: string;
@@ -497,7 +500,7 @@ describe("logPractice — the stated session time (#3273)", () => {
   }
 
   it.each([
-    // field on the post          expected `time`   what the sheet is doing
+    // field on the post          expected `start_time`   what the sheet is doing
     [
       undefined,
       "tap",
@@ -505,16 +508,16 @@ describe("logPractice — the stated session time (#3273)", () => {
     ],
     ["07:05", "07:05", 'a stated "Happened earlier?" minute'],
     ["", null, "the field present and empty — nobody said, honestly stored"],
-  ])("time=%s writes %s", async (field, expected, _why) => {
+  ])("start_time=%s writes %s", async (field, expected, _why) => {
     const login = createLogin();
     const profile = createProfile(`when-${expected}`, login.id);
     actAs(login, profile);
     const tapHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
 
-    await logPractice(fd({ practice: "Sauna", time: field }));
+    await logPractice(fd({ practice: "Sauna", start_time: field }));
 
     const [row] = logged(profile.id);
-    expect(row.time).toBe(expected === "tap" ? tapHhmm : expected);
+    expect(row.start_time).toBe(expected === "tap" ? tapHhmm : expected);
     // Nothing ELSE moved. The one-tap row is the row it always was — the duration and
     // notes a details submit would carry stay absent, and the day is still today's.
     expect(row).toMatchObject({
@@ -529,10 +532,15 @@ describe("logPractice — the stated session time (#3273)", () => {
     const profile = createProfile("two-stated", login.id);
     actAs(login, profile);
 
-    await logPractice(fd({ practice: "Sauna", time: "07:05" }));
-    const second = await logPractice(fd({ practice: "Sauna", time: "19:40" }));
+    await logPractice(fd({ practice: "Sauna", start_time: "07:05" }));
+    const second = await logPractice(
+      fd({ practice: "Sauna", start_time: "19:40" })
+    );
 
     expect(second).toMatchObject({ kind: "logged", count: 2 });
-    expect(logged(profile.id).map((r) => r.time)).toEqual(["07:05", "19:40"]);
+    expect(logged(profile.id).map((r) => r.start_time)).toEqual([
+      "07:05",
+      "19:40",
+    ]);
   });
 });

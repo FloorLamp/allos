@@ -106,7 +106,7 @@ describe("one practice session: delete → undo (#2038)", () => {
     expect(back[0]).toMatchObject({
       practice: "Breathwork",
       date,
-      startTime: "07:30",
+      start_time: "07:30",
       duration_min: 12,
       notes: "box breathing before work",
     });

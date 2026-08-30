@@ -26,7 +26,7 @@ import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { zonedDateParts } from "@/lib/date";
 
-// The run's rotating instance timezone: `practice_logs.time` is a profile-LOCAL wall
+// The run's rotating instance timezone: `practice_logs.start_time` is a profile-LOCAL wall
 // clock, so the expected minute has to be read in the same zone the app writes it in.
 const PINNED_TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 

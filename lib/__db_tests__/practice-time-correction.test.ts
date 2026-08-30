@@ -231,8 +231,8 @@ describe("the corrected time is what the scheduler reads", () => {
     ).run(pid);
     expect(
       inferPracticeSchedule(pid, "Sauna").hour,
-      "modalHour reads practice_logs.time, so a corrected burst must move the " +
-        "typical hour the retimed nudge fires at (#2188)"
+      "modalHour reads practice_logs.start_time, so a corrected burst must move " +
+        "the typical hour the retimed nudge fires at (#2188)"
     ).toBe(19);
     expect(tz).toBe("Europe/Berlin");
   });

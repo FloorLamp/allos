@@ -407,7 +407,7 @@ describe("Fitbit Takeout import", () => {
       {
         practice: "Meditation",
         date: "2026-06-24",
-        time: "11:00",
+        start_time: "11:00",
         duration_min: 30,
         source: "fitbit-takeout",
         external_id: "fitbit-takeout:90000000005",
