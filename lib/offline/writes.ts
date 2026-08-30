@@ -301,18 +301,23 @@ function upsertManualSample(
     `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
      ON CONFLICT DO UPDATE SET
-       value = excluded.value, date = excluded.date`
+       value = excluded.value, date = excluded.date,
+       -- The natural key (migration 083) is (profile, metric, source, origin,
+       -- started_at) — the END is NOT in it. Without this, re-stating a night with
+       -- the same bedtime and a new wake clock updated the value in place and left
+       -- the old end instant behind: a window whose length no longer matched the
+       -- hours printed beside it. Point rows are unaffected (end equals start).
+       ended_at = excluded.ended_at`
   ).run(profileId, metric, date, startedAt, endedAt, value);
 }
 
 // ONE manual sleep row per profile-day, whichever shape the sitting used (#1851).
 //
-// `metric_samples`' natural key is (profile, metric, source, started_at, ended_at)
-// and `sleep_min` is ADDITIVE, so a duration-only night filed at midnight and a
-// stated bed/wake window are two keys that would read one night as two. Every other
-// manual row for the day therefore goes BEFORE the upsert — keyed on the whole
-// window, not just its start, because re-stating the same bedtime with a different
-// wake clock is a different key that no `ON CONFLICT` can reach.
+// `metric_samples`' natural key is the START instant and `sleep_min` is ADDITIVE, so
+// a duration-only night filed at midnight and a stated bed/wake window are two keys
+// that would read one night as two. Every other manual row for the day therefore
+// goes BEFORE the upsert, which then corrects in place — keeping the row id the
+// Sleep log's per-reading delete addresses.
 //
 // A sitting that states NO window keeps whatever window the day's manual row
 // already has: correcting the hours on the Sleep page — a form that knows only a
@@ -373,9 +378,8 @@ function upsertManualSleep(
     db.prepare(
       `DELETE FROM metric_samples
         WHERE profile_id = ? AND metric = ? AND source = 'manual'
-          AND origin IS NULL AND date = ?
-          AND NOT (started_at = ? AND ended_at = ?)`
-    ).run(profileId, SLEEP_METRIC, date, startedAt, endedAt);
+          AND origin IS NULL AND date = ? AND started_at <> ?`
+    ).run(profileId, SLEEP_METRIC, date, startedAt);
     upsertManualSample(profileId, SLEEP_METRIC, date, value, {
       startedAt,
       endedAt,
