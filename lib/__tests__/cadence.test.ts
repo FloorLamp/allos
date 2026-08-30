@@ -402,6 +402,9 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
     // has no sentence to carry the direction; a sentence does, and pasting the annotation
     // in produces "over the Alcohol (weekly cap) cap".
     expect(cadenceScopeNoun("substance", "alcohol")).toBe("Alcohol");
+    // A custom key is already its display spelling; it must not fall through to the
+    // generic chip label and become "Kratom (weekly cap)" (#3279).
+    expect(cadenceScopeNoun("substance", "Kratom")).toBe("Kratom");
     expect(cadenceScopeNoun("group", "Upper")).toBe("Upper body");
   });
 });
