@@ -2303,7 +2303,7 @@ describe("composition stacking (#2856)", () => {
       ["1 capsule"],
       [
         { name: "Magnesium L-Threonate", amount: 1000, unit: "mg" },
-        { name: "Mag L-Threonate", amount: 1, unit: "g" },
+        { name: "Mag L-Threonate", amount: 1_000_000, unit: "mcg" },
       ]
     );
     const [total] = summarizeStack([splitCompound], 40, "male");
