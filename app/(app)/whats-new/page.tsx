@@ -9,6 +9,7 @@ import PaginationControls from "@/components/PaginationControls";
 import { clampPage } from "@/lib/pagination";
 import {
   WHATS_NEW_PAGE_ENTRIES,
+  groupDayEntries,
   hasUnseenNotes,
   issueUrl,
   loadReleaseNotes,
@@ -121,55 +122,71 @@ export default async function WhatsNewPage(props: {
               </h2>
               {/* One concise bullet per change (owner directive, 2026-08-13): the
                   title IS the entry — the validator refuses bodies — so the day
-                  card reads as one scannable list. Inline layout, not flex: an li
-                  with display:flex drops its ::marker. */}
-              <ul className="list-disc space-y-1.5 pl-5">
-                {day.entries.map((entry, entryIndex) => {
-                  const chip = entry.kind ? KIND_CHIP[entry.kind] : null;
-                  return (
-                    <li
-                      key={releaseNoteEntryKey(entry, entryIndex)}
-                      className="text-sm leading-relaxed text-slate-800 dark:text-slate-200"
-                      data-testid="whats-new-entry"
-                    >
-                      {chip && (
-                        <span
-                          className={`mr-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
+                  card reads as one scannable list. Grouped by category, most
+                  visible group first (owner, 2026-08-31); a legacy day without
+                  categories is one headerless group and reads as before.
+                  Inline layout, not flex: an li with display:flex drops its
+                  ::marker. */}
+              {groupDayEntries(day).map((group) => (
+                <div
+                  key={group.category ?? "(uncategorized)"}
+                  data-testid="whats-new-category"
+                  data-category={group.category ?? undefined}
+                >
+                  {group.category && (
+                    <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                      {group.category}
+                    </h3>
+                  )}
+                  <ul className="list-disc space-y-1.5 pl-5">
+                    {group.entries.map(({ entry, position: entryIndex }) => {
+                      const chip = entry.kind ? KIND_CHIP[entry.kind] : null;
+                      return (
+                        <li
+                          key={releaseNoteEntryKey(entry, entryIndex)}
+                          className="text-sm leading-relaxed text-slate-800 dark:text-slate-200"
+                          data-testid="whats-new-entry"
                         >
-                          {chip.label}
-                        </span>
-                      )}
-                      {entry.title}{" "}
-                      <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                        {/* Repo links are EXTERNAL URLs, so plain strings (#285).
+                          {chip && (
+                            <span
+                              className={`mr-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
+                            >
+                              {chip.label}
+                            </span>
+                          )}
+                          {entry.title}{" "}
+                          <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                            {/* Repo links are EXTERNAL URLs, so plain strings (#285).
                             The run also WRAPS (#3867): `ml-2` was a gap, not a
                             break opportunity, so seven adjacent anchors read as
                             one word and ran off a 390px phone. Same 8px, now
                             breakable — and the nowrap moves onto each `issue #N`. */}
-                        <a
-                          href={pullRequestUrl(entry.pr)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
-                        >
-                          #{entry.pr}
-                        </a>
-                        {entry.issues.map((issue) => (
-                          <a
-                            key={issue}
-                            href={issueUrl(issue)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline-offset-2 whitespace-nowrap hover:text-slate-700 hover:underline dark:hover:text-slate-200"
-                          >
-                            issue #{issue}
-                          </a>
-                        ))}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+                            <a
+                              href={pullRequestUrl(entry.pr)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+                            >
+                              #{entry.pr}
+                            </a>
+                            {entry.issues.map((issue) => (
+                              <a
+                                key={issue}
+                                href={issueUrl(issue)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline-offset-2 whitespace-nowrap hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+                              >
+                                issue #{issue}
+                              </a>
+                            ))}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
               {day.operatorNotes.length > 0 && (
                 <div
                   className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3"
