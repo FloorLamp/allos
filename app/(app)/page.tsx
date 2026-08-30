@@ -1825,7 +1825,7 @@ async function renderDashboard(
         on,
         // `both-sources` carries integration data too (#3903), so it is external.
         proteinToday.todayIntake?.basis === "tracked" ||
-        proteinToday.todayIntake?.basis === "both-sources"
+          proteinToday.todayIntake?.basis === "both-sources"
           ? "external"
           : "manual",
         mealTimeWindows(nowMealAnchors)

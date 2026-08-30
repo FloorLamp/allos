@@ -64,11 +64,7 @@ import { trailingAverage } from "./trailing-average";
 // the last of which needed the opposite fix and got it: `both-sources` carries integration
 // data, so its provenance is `external`, not `manual`.
 export type ProteinBasis =
-  | "tracked"
-  | "both-sources"
-  | "combined"
-  | "logged"
-  | "estimated";
+  "tracked" | "both-sources" | "combined" | "logged" | "estimated";
 
 export interface ProteinIntake {
   // Per-day grams. Always a FLOOR on today (see module header).
