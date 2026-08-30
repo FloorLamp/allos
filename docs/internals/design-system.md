@@ -158,8 +158,9 @@ filter-link path while preserving their pending and scroll-restoration behavior.
 
 The card **frame** is removed on a phone, not tightened. Below `sm` a `.card`, a
 `.card-quiet` and a sub-panel tier give up their border, their radius and their
-shadow; they keep their `--surface` fill and their vertical rhythm. Content sits
-at the page gutter, and the page has **one left edge**.
+shadow; they keep their fill and vertical rhythm. A painted sub-panel cancels
+and re-spends its card's gutter; an unfilled one keeps zero inline padding.
+Content sits at the page gutter, and the page has **one left edge**.
 
 **A band's FILL is full-bleed; its CONTENT keeps the page gutter.** #3673 took
 the frame off and left the fill where it was — a filled surface inset by the page
@@ -228,20 +229,20 @@ Three spacing layers stack on a 390px line. The page gutter (16px) and the card
 gutter (`p-4` below `sm`) were both at the platform floor and were **not**
 tightened — a text line inside a card was ~83% of a 390px viewport. **#3673
 removed the card's frame below `sm` and #3920 moved its fill to the viewport
-edge**, so a card spends the page gutter and nothing else spends a second one:
-the tiers below step the **vertical** inset only, and the horizontal one is zero. Their desktop values,
-and the whole convention at `sm` and up, are unchanged. Pick a tier by what the
-element carries **today**; add the class, change nothing else.
+edge**, so an unfilled tier spends no second gutter. A painted tier keeps its
+grouping tint by cancelling and re-spending the card's gutter (#3932). Desktop
+values, and the whole convention at `sm` and up, are unchanged. Pick a tier by
+what the element carries **today**; add the class, change nothing else.
 
-| carries today                         | add                 | phone                       |
-| ------------------------------------- | ------------------- | --------------------------- |
-| sub-panel `p-4` (16), or `p-4 sm:p-5` | `subpanel-inset`    | 12px vertical, 0 horizontal |
-| sub-panel `p-3` (12)                  | `subpanel-inset-sm` | 10px vertical, 0 horizontal |
-| sub-panel `p-2.5` (10)                | `subpanel-inset-xs` | 8px vertical, 0 horizontal  |
-| seam `mb-6` (24)                      | `section-seam`      | 16px                        |
-| seam `mb-8` (32)                      | `section-seam-lg`   | 24px                        |
-| stack `space-y-10` (40)               | `section-stack`     | 24px                        |
-| stack `space-y-6` (24)                | `section-stack-sm`  | 16px                        |
+| carries today                         | add                 | phone                                                     |
+| ------------------------------------- | ------------------- | --------------------------------------------------------- |
+| sub-panel `p-4` (16), or `p-4 sm:p-5` | `subpanel-inset`    | 12px vertical; unfilled 0 horizontal, painted card gutter |
+| sub-panel `p-3` (12)                  | `subpanel-inset-sm` | 10px vertical; unfilled 0 horizontal, painted card gutter |
+| sub-panel `p-2.5` (10)                | `subpanel-inset-xs` | 8px vertical; unfilled 0 horizontal, painted card gutter  |
+| seam `mb-6` (24)                      | `section-seam`      | 16px                                                      |
+| seam `mb-8` (32)                      | `section-seam-lg`   | 24px                                                      |
+| stack `space-y-10` (40)               | `section-stack`     | 24px                                                      |
+| stack `space-y-6` (24)                | `section-stack-sm`  | 16px                                                      |
 
 Every tier is a `max-sm:` override carrying `!`, and both halves are
 load-bearing. `max-sm:` compiles to a rule that emits **only** inside
