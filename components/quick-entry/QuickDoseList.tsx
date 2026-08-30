@@ -17,6 +17,7 @@ import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 import {
+  localDate,
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
@@ -82,6 +83,7 @@ export default function QuickDoseList({
   onDone: () => void;
 }) {
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
   // gather mid-list would reorder rows under the user's finger.
@@ -159,6 +161,28 @@ export default function QuickDoseList({
   }, [resolved, doses, pastDays, today, onDone]);
 
   async function confirm(dose: QuickEntryDose) {
+    // Capture before the online attempt: a dead-spot fallback must retain the tap's
+    // actual instant, matching DoseStatusControl's queue contract.
+    const tappedAt = new Date();
+    const queue = async () => {
+      const kept =
+        (await enqueue("dose", localDate(tappedAt), {
+          doseId: dose.doseId,
+          clientTakenAt: tappedAt.toISOString(),
+        })) === "kept";
+      if (!kept) {
+        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+        return;
+      }
+      toast("Dose saved offline — will sync when you reconnect.");
+      markResolved(today, [dose.doseId]);
+    };
+    const online =
+      typeof navigator === "undefined" || navigator.onLine !== false;
+    if (!online) {
+      await queue();
+      return;
+    }
     // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
     // action, so the sheet declares itself (#3087). The value comes from the host
     // region rather than being asserted here.
@@ -167,7 +191,11 @@ export default function QuickDoseList({
     let result;
     try {
       result = await markTaken(fd);
-    } catch {
+    } catch (err) {
+      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+        await queue();
+        return;
+      }
       toast("Couldn't log that dose. Try again.", { tone: "error" });
       return;
     }

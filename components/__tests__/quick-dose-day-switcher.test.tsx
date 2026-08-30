@@ -1,6 +1,13 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
+import { localDate } from "@/lib/offline/queue";
+
+const mocks = vi.hoisted(() => ({
+  toast: vi.fn(),
+  enqueue: vi.fn(),
+  markTaken: vi.fn(),
+}));
 
 // #3936. The switcher's job is to say what the accepted window IS, so the guards below
 // are about the SHAPE of the offer — three days, today first, every past day listed
@@ -11,9 +18,9 @@ import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (formData: FormData) => formData,
 }));
-vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
+vi.mock("@/components/Toast", () => ({ useToast: () => mocks.toast }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
 }));
 // The ledger stands in for the real one, but its `tap` RUNS the write and settles it —
 // a `tap: vi.fn()` stub would make every click a no-op and quietly pass any assertion
@@ -28,13 +35,17 @@ vi.mock("@/components/useOptimisticLedger", () => ({
     }) => op.settle(await op.write()),
   }),
 }));
-vi.mock("@/app/(app)/upcoming/actions", () => ({ markTaken: vi.fn() }));
+vi.mock("@/app/(app)/upcoming/actions", () => ({
+  markTaken: mocks.markTaken,
+}));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   resolveDayDoses: vi.fn(),
 }));
 
 import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 const resolveDayDosesMock = vi.mocked(resolveDayDoses);
+
+afterEach(() => vi.restoreAllMocks());
 
 const TODAY = "2026-08-28";
 
@@ -85,6 +96,54 @@ function renderSheet() {
     />
   );
 }
+
+describe("today's quick dose uses the shared offline contract (#3272)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("queues the tap instant and confirms the offline capture", async () => {
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    mocks.enqueue.mockResolvedValue("kept");
+    const before = Date.now();
+    renderSheet();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
+    });
+    const after = Date.now();
+
+    expect(mocks.markTaken).not.toHaveBeenCalled();
+    const [kind, date, payload] = mocks.enqueue.mock.calls[0]!;
+    expect({ kind, doseId: payload.doseId }).toEqual({
+      kind: "dose",
+      doseId: DAILY_DOSE,
+    });
+    expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
+    expect(date).toBe(localDate(new Date(payload.clientTakenAt)));
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "Dose saved offline — will sync when you reconnect."
+    );
+  });
+
+  it("keeps the typed online refusal and does not queue it", async () => {
+    mocks.markTaken.mockResolvedValue({
+      ok: true,
+      outcome: "already-skipped",
+    });
+    renderSheet();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
+    });
+
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(mocks.toast).toHaveBeenCalledWith(
+      "Not logged — this dose is marked skipped",
+      { tone: "error" }
+    );
+    expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
+  });
+});
 
 describe("the quick-log dose sheet's day switcher (#3936)", () => {
   it("offers exactly the days the server sent, today first", () => {
