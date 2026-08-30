@@ -8,8 +8,8 @@
 //
 // Intake composition (fiberIntake):
 //   - `tracked`      — an integration's fiber_g daily total (Health Connect
-//                      dietary_fiber_grams → fiber_g). A measured FULL-DAY total that
-//                      already includes any supplements taken, so it OVERRIDES the sum.
+//                      dietary_fiber_grams → fiber_g). A measured day total, taken as
+//                      already covering any supplement the person swallowed.
 //   - `estimated`    — servings × per-serving fiber_g from the food-group catalog (the
 //                      #976 fiber_g column, reused through estimatedFiberGrams). A FLOOR
 //                      by construction — incidental fiber from untracked foods is
@@ -22,11 +22,22 @@
 //                      contributes 0 g and sets `unknownSupplement`, and the surface notes
 //                      "fiber supplement taken (grams unknown)" rather than fabricating a
 //                      figure.
-// When there's no tracked reading, `estimated` and `supplemented` SUM. The sum is still a
-// FLOOR (untracked foods stay invisible), so every non-tracked surface's copy says so.
-// The `basis` names the composition, extending the #824 `combined` precedent:
+// `estimated` and `supplemented` SUM. The sum is still a FLOOR (untracked foods stay
+// invisible), so every non-tracked surface's copy says so. The `basis` names the
+// composition, extending the #824 `combined` precedent:
 //   `combined` (both parts) / `estimated` (foods only) / `supplemented` (doses only) /
-//   `tracked` (a measured total).
+//   `tracked` (a measured total, nothing logged here) / `both-sources` (both, at the
+//   larger of the two floors).
+//
+// TRACKED vs THE IN-APP SUM: THE LARGER FLOOR (#4127, owner ruling 2026-08-30, generalizing
+// #3903's for protein — one question gets one answer). A tracked reading used to OVERRIDE
+// the sum, which made this the one basis where connecting a health app could LOWER the
+// figure: the profile's own food log and confirmed doses dropped out of it entirely. It now
+// takes the MAX. Both inputs are floors on the same true total, so their max is a floor as
+// well: nothing is double-counted (SUM was rejected — the chia/flax overlap below would
+// count twice) and nothing is discarded (the override was rejected — it hid in-app
+// logging). The property a reader can rely on: connecting an integration can no longer
+// LOWER the number.
 //
 // Target (fiberTarget): the DRI Adequate Intake bands (IOM 2005) by age + sex — a flat
 // g/day figure, NOT mass-scaled (fiber's DRI isn't). The 14 g/1000 kcal basis exists but
@@ -37,16 +48,34 @@ import type { Sex } from "./types";
 import { foodGroupBySlug } from "./food-groups";
 import { parseQuantity } from "./dri";
 
-// ---- Intake: tracked OVERRIDES (estimated + supplemented) ------------------
+// ---- Intake: max(tracked, estimated + supplemented) -----------------------
 
-export type FiberBasis = "tracked" | "combined" | "estimated" | "supplemented";
+// The composition of the per-day intake figure:
+//   tracked      — an integration's reading, with nothing logged in-app that day.
+//   both-sources — an integration's reading AND in-app logging; the figure is the LARGER
+//                  of the two floors. Distinct from `combined`, which names two COLUMNS of
+//                  this app's own ledger (foods + doses); this names two independent
+//                  SOURCES.
+//   combined     — the estimated food-group floor PLUS confirmed dose grams.
+//   estimated    — the food-group floor only.
+//   supplemented — dose grams only (or a lone dose whose grams are unknown).
+//
+// EVERY SITE THAT READS `basis !== "tracked"` AS "THIS IS A FLOOR" IS ALREADY CORRECT for
+// `both-sources`: the value means "the max of two floors", and that is a floor. Audited at
+// all four when it was added — fiberBasisIsFloor (FiberGauge, the Food tab's "+"),
+// fiberAdequacyDetail, NutritionSnapshot, and lib/nutrition-day.ts. FiberAdequacyCard's
+// `data-basis` echoes the value rather than testing it, so it needs nothing.
+export type FiberBasis =
+  "tracked" | "both-sources" | "combined" | "estimated" | "supplemented";
 
 export interface FiberIntake {
-  // Per-day grams. For every non-`tracked` basis this is a FLOOR (see module header).
+  // Per-day grams. A FLOOR on every basis but `tracked` (see module header).
   grams: number;
   basis: FiberBasis;
-  // The two floor components that add to `grams` for a non-`tracked` basis (both 0 for a
-  // `tracked` basis, whose measured total overrides the sum).
+  // This app's OWN two components, so a surface can name the composition honestly. They
+  // report the in-app ledger, NOT a decomposition of `grams`: under `both-sources`, where
+  // the integration's reading can be the larger floor, `grams` is that reading while these
+  // still say what the profile logged here. They are 0 only when nothing was logged here.
   estimatedGrams: number;
   supplementedGrams: number;
   // True when a CONFIRMED fiber supplement dose was taken but its grams couldn't be
@@ -141,8 +170,9 @@ export function fiberDoseGrams(amount: string | null): FiberDoseGrams {
   return { grams: 0, known: false };
 }
 
-// Compose the intake (issue #976): a measured `tracked` reading OVERRIDES; otherwise the
-// estimated food-group floor and the supplemented dose grams SUM. Each input is an
+// Compose the intake (issues #976, #4127): the estimated food-group floor and the
+// supplemented dose grams SUM, and a measured `tracked` reading is taken against that sum
+// as the LARGER FLOOR rather than overriding it (module header). Each input is an
 // already-per-day figure the gather computed (an average over the days that carry it).
 // Returns null when no basis has any signal AND no unknown-grams fiber supplement was
 // taken — a lone unknown-unit dose still surfaces (grams 0) so the honest note renders.
@@ -153,23 +183,31 @@ export function fiberIntake(args: {
   unknownSupplement?: boolean;
 }): FiberIntake | null {
   const unknownSupplement = !!args.unknownSupplement;
-  if (args.dailyTracked != null && args.dailyTracked > 0)
-    return {
-      grams: args.dailyTracked,
-      basis: "tracked",
-      estimatedGrams: 0,
-      supplementedGrams: 0,
-      // A measured total already includes what was taken — the unknown-grams caveat is
-      // moot on a tracked basis.
-      unknownSupplement: false,
-    };
+  const tracked =
+    args.dailyTracked != null && args.dailyTracked > 0 ? args.dailyTracked : 0;
   const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
   const supplemented =
     args.dailySupplemented != null && args.dailySupplemented > 0
       ? args.dailySupplemented
       : 0;
-  const grams = estimated + supplemented;
-  if (grams <= 0 && !unknownSupplement) return null;
+  // The in-app ledger's own floor: this app's two columns, summed.
+  const inApp = estimated + supplemented;
+  if (tracked <= 0 && inApp <= 0 && !unknownSupplement) return null;
+  if (tracked > 0)
+    return {
+      grams: Math.max(tracked, inApp),
+      basis: inApp > 0 ? "both-sources" : "tracked",
+      estimatedGrams: estimated,
+      supplementedGrams: supplemented,
+      // RE-DERIVED, not forced false (#4127). This flag used to be hard `false` here, under
+      // the comment "a measured total already includes what was taken — the caveat is moot
+      // on a tracked basis". That was true only BY VIRTUE OF THE OVERRIDE: the figure was
+      // the health app's alone, so an unquantified dose was already inside it. Under the
+      // max the caveat is live again whenever the IN-APP side is the figure being shown,
+      // because on that side the dose contributed 0 g. It stays moot only where the tracked
+      // reading is strictly the larger, which is the only case the old reasoning covered.
+      unknownSupplement: unknownSupplement && tracked <= inApp,
+    };
   const basis: FiberBasis =
     estimated > 0 && supplemented > 0
       ? "combined"
@@ -181,7 +219,7 @@ export function fiberIntake(args: {
             // amount we can't quantify.
             "supplemented";
   return {
-    grams,
+    grams: inApp,
     basis,
     estimatedGrams: estimated,
     supplementedGrams: supplemented,
@@ -305,9 +343,10 @@ export function fiberAdequacySignalKey(): string {
   return `${FIBER_ADEQUACY_PREFIX}shortfall`;
 }
 
-// Whether a basis is a FLOOR (everything but a measured `tracked` total). The gauge and
-// the copy read "at least N g" for a floor and state the figure directly for a tracked
-// reading — the #767 floor discipline, one predicate so the surfaces can't disagree.
+// Whether a basis is a FLOOR (everything but a measured `tracked` total — `both-sources`
+// included, since the max of two floors is a floor). The gauge and the copy read "at least
+// N g" for a floor and state the figure directly for a tracked reading — the #767 floor
+// discipline, one predicate so the surfaces can't disagree.
 export function fiberBasisIsFloor(basis: FiberBasis): boolean {
   return basis !== "tracked";
 }
@@ -327,7 +366,8 @@ export const UNKNOWN_SUPPLEMENT_NOTE =
   "a fiber supplement was taken (grams unknown)";
 
 // The intake summary line. Only `tracked` reads as a measured total; every other basis
-// carries the floor caveat, and `combined` names the composition. The unknown-supplement
+// carries the floor caveat, `combined` names the composition and `both-sources` names both
+// records. The unknown-supplement
 // note is appended whenever a confirmed fiber dose couldn't be quantified.
 export function fiberIntakeSummary(intake: FiberIntake): string {
   const unknown = intake.unknownSupplement
@@ -336,6 +376,11 @@ export function fiberIntakeSummary(intake: FiberIntake): string {
   switch (intake.basis) {
     case "tracked":
       return `~${g(intake.grams)} g/day from your tracked intake`;
+    // Both records exist, so both are named, even though the figure printed is only the
+    // LARGER of them. Naming just the winner is what made the old override unreadable:
+    // the person could not tell which of their two records they were looking at.
+    case "both-sources":
+      return `≈${g(intake.grams)} g/day — the larger of what you log here and your health app (${FLOOR_CAVEAT})${unknown}`;
     case "combined":
       return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.supplementedGrams)} g from supplements (${FLOOR_CAVEAT})${unknown}`;
     case "supplemented":
@@ -363,14 +408,13 @@ export function fiberAdequacyTitle(a: FiberAdequacy): string {
   }
 }
 
-// The informational, never-prescriptive detail. Every non-`tracked` basis is stated as a
-// floor — the shortfall is NOT asserted, since untracked foods stay invisible; only a
-// `tracked` measured total states the gap directly. Always closes with the informational
-// framing.
+// The informational, never-prescriptive detail. Every floor basis is stated as a floor —
+// the shortfall is NOT asserted, since untracked foods stay invisible; only a `tracked`
+// measured total states the gap directly. Always closes with the informational framing.
 export function fiberAdequacyDetail(a: FiberAdequacy): string {
   const intake = fiberIntakeSummary(a.intake);
   const target = fiberTargetSummary(a.target);
-  const isFloor = a.intake.basis !== "tracked";
+  const isFloor = fiberBasisIsFloor(a.intake.basis);
   let lead: string;
   if (a.status === "below") {
     lead = isFloor

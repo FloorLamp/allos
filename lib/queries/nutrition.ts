@@ -1525,6 +1525,14 @@ export function getConfirmedIntakeDosesInRange(
 // Windowing mirrors protein: intake is a PER-DAY average over this week (same
 // weekWindowStart), each basis averaged over the distinct days that carry it (so a partial
 // week isn't diluted by unlogged days).
+//
+// WHAT THE MAX MEANS ON A WEEKLY AVERAGE (#4127). Every input below is already a per-day
+// figure, so fiberIntake compares two per-day floors and `both-sources` means here exactly
+// what it means on a single day: the larger of the two, named as both records. Only ONE of
+// the two harms the ruling addresses reaches this surface — the DISCARD (a week with a
+// tracked reading dropped the profile's own logging out of the figure) — and the max is
+// what fixes it. The running-partial harm does not: today is one seventh of this window
+// and past days are complete, where getFiberOnDate can be handed today outright.
 export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
   const weekStart = weekWindowStart(profileId);
 
