@@ -238,4 +238,17 @@ describe("the harness reads the shared rule rather than a second copy of it", ()
     expect(guard).not.toMatch(/overlapEpsilonPx\s*[:=]\s*\d/);
     expect(guard).not.toMatch(/controlHeightTolerancePx\s*[:=]\s*\d/);
   });
+
+  it("derives the ellipsis exemption from paintedRect (#3977)", () => {
+    const probe = codeOf("scripts", "ux-geometry-census.mjs");
+    const start = probe.indexOf("const insideEllipsisTruncation");
+    const end = probe.indexOf("const clipped =", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const exemption = probe.slice(start, end);
+    expect(exemption).toContain("paintedRect(el)");
+    expect(exemption).not.toContain("getBoundingClientRect");
+    expect(exemption).not.toContain("overflowX");
+  });
 });
