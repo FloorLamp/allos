@@ -3202,11 +3202,12 @@ be logged", which is the drift being fixed. If ±2 days is too generous,
 `DOSE_LOG_DATE_WINDOW_DAYS` moves the button, the Telegram tap, the web path and the
 offline replay together. The resulting lifetimes:
 
-| family                                                                       | button lives                                            | bounded by                              |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------- |
-| `intake-dose`, `escalation`, `food`                                          | through the end of D+2                                  | `isDoseDateAccepted`                    |
-| `household-round`, `mood`                                                    | until the next nudge, or local midnight                 | the #1945 rotation, then `tapDateGuard` |
-| `workout-draft`, `preventive`, `refill`, `symptom`, `practice`, `food-optin` | while the family's own `dead` predicate says it is live | that predicate alone                    |
+| family                                                                       | button lives                                            | bounded by                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------- |
+| `intake-dose`, `escalation`                                                  | through the end of D+2                                  | `isDoseDateAccepted`                               |
+| `food`                                                                       | until the next food nudge, or the end of D+2            | the #947/#1945 rotation, then `isDoseDateAccepted` |
+| `household-round`, `mood`                                                    | until the next nudge, or local midnight                 | the #1945 rotation, then `tapDateGuard`            |
+| `workout-draft`, `preventive`, `refill`, `symptom`, `practice`, `food-optin` | while the family's own `dead` predicate says it is live | that predicate alone                               |
 
 Two couplings this creates. `DOSE_LOG_DATE_WINDOW_DAYS` (2) must stay strictly below
 `MESSAGE_POINTER_RETENTION_DAYS` (3): past retention the pointer is pruned and the
@@ -3235,6 +3236,11 @@ the nudge's declared window and a NULL instant, the same shape the `/history` do
 writes). The residual #947 gap the rollover used to close — the last food nudge of an
 evening keeping a live keyboard until a next send that may never come — is now closed by
 the `expired` branch at D+3 instead, three days later and with the honest sentence.
+The #947/#1945 POINTER ROTATION IS UNTOUCHED, which is why `food` needs its own row
+above rather than sitting with the dose families: every send still strips the previous
+food keyboard (`telegram.ts`, asserted in `reconcile-registry.ts`), so in practice a food
+nudge usually ends at the NEXT one and the D+2 sweep bound is what governs the last nudge
+of a day — the case where no next send comes.
 
 **A failed edit is CLASSIFIED, never assumed dead (#1885).** The transport used to
 throw a bare `Error` for every Bot API failure alike, so the sweep's catch dropped

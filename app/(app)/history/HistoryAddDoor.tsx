@@ -17,7 +17,10 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { logFoodServing } from "@/app/(app)/nutrition/actions";
 import { logUsualRoutine, usualRoutineOffersOn } from "@/app/(app)/actions";
-import { usualRoutinePhrase } from "@/lib/usual-routine";
+import {
+  usualRoutineAnswerText,
+  usualRoutinePhrase,
+} from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { logPractice } from "@/app/(app)/wellness/actions";
 import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
@@ -179,9 +182,16 @@ export default function HistoryAddDoor({
   // re-read the feed so the row the reader just wrote is IN the record they are
   // looking at. Without the refresh the door would write silently and read as dead —
   // the same complaint as the redirect it replaces.
+  //
+  // `announce` EXISTS BECAUSE ONE CALLER CAN PARTLY SUCCEED (#4118). The four forms
+  // each write one row, so "Added to the record." is the whole truth for them. The
+  // composed bundle writes several, and its typed outcome reports each dose
+  // separately — so it supplies its own sentence rather than being flattened into a
+  // confirm it did not earn (#232). Optional, so nothing else has to know.
   async function submit(
     fd: FormData,
-    run: (fd: FormData) => Promise<string | null>
+    run: (fd: FormData) => Promise<string | null>,
+    announce?: () => string
   ): Promise<void> {
     setError(null);
     setPending(true);
@@ -196,7 +206,7 @@ export default function HistoryAddDoor({
       setError(failure);
       return;
     }
-    toast("Added to the record.");
+    toast(announce?.() ?? "Added to the record.");
     close();
     router.refresh();
   }
@@ -231,18 +241,52 @@ export default function HistoryAddDoor({
               data-doses={offer.doses.map((d) => d.id).join(",")}
               aria-label={`Your usual ${offer.window} on ${when.date}: ${phrase}`}
               className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
-              onClick={() =>
-                void submit(stampLoggedVia(new FormData()), async (fd) => {
-                  fd.set("meal_slot", offer.window);
-                  fd.set("date", when.date);
-                  // Both lists are UPPER BOUNDS the core intersects with what still
-                  // stands on that day — never an instruction to write outside it.
-                  fd.set("groups", offer.food.map((f) => f.slug).join(","));
-                  fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
-                  const outcome = await logUsualRoutine(fd);
-                  return outcome.ok ? null : outcome.error;
-                })
-              }
+              onClick={() => {
+                // THE ANSWER NAMES WHAT WAS WRITTEN, NEVER WHAT WAS OFFERED. The core
+                // reports every dose separately and refuses to assume any of them away
+                // (lib/usual-routine-write.ts), and `ok: true` only means the bundle
+                // wrote SOMETHING — so a flat "Added to the record." here would tell a
+                // person their creatine was logged when the day was outside the dose
+                // half's own ±2 window and nothing was. That is the unconditional
+                // confirm #232 forbids, on the one surface that can reach those days:
+                // the dashboard has no date field and the Telegram tap is gated to ±2.
+                let answer: string | null = null;
+                void submit(
+                  stampLoggedVia(new FormData()),
+                  async (fd) => {
+                    fd.set("meal_slot", offer.window);
+                    fd.set("date", when.date);
+                    // Both lists are UPPER BOUNDS the core intersects with what still
+                    // stands on that day — never an instruction to write outside it.
+                    fd.set("groups", offer.food.map((f) => f.slug).join(","));
+                    fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
+                    const outcome = await logUsualRoutine(fd);
+                    if (!outcome.ok) return outcome.error;
+                    // `usualRoutineAnswerText` — the SAME sentence the dashboard
+                    // control and the Telegram ack render, so three surfaces cannot
+                    // round one outcome three ways. The logged/refused split is spelled
+                    // as the dashboard spells it rather than through
+                    // `usualRoutineDoseLogged`, which lives beside the write core and
+                    // would pull the database into this client bundle.
+                    const wrote = new Set(outcome.groups.map((g) => g.groupKey));
+                    const landed = (o: string) =>
+                      o === "logged" || o === "logged-off-day";
+                    answer = usualRoutineAnswerText(
+                      offer.food
+                        .filter((f) => wrote.has(f.slug))
+                        .map((f) => f.name),
+                      outcome.doses
+                        .filter((d) => landed(d.outcome))
+                        .map((d) => d.name),
+                      outcome.doses
+                        .filter((d) => !landed(d.outcome))
+                        .map((d) => d.name)
+                    );
+                    return null;
+                  },
+                  () => answer ?? "Added to the record."
+                );
+              }}
             >
               <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {`Your usual ${offer.window} (${offer.food.length + offer.doses.length})`}

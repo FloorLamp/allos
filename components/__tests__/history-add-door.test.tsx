@@ -59,10 +59,28 @@ vi.mock("@/app/(app)/trends/body-actions", () => ({
 // prove the sequencing rather than assume it.
 const offerReads: string[] = [];
 let offerReply: (date: string) => Promise<UsualOffer[]> = async () => [];
+// WHAT THE COMPOSED WRITE ANSWERED. Steerable, because `ok: true` does NOT mean every
+// half landed: the core reports each dose separately and a day outside the dose half's
+// own +/-2 window comes back `stale-dose` with the servings still committed. A mock
+// fixed at `doses: []` can never reach that branch, which is exactly how the door
+// shipped reporting a flat success for a write it had only partly performed.
+type UsualReply = {
+  ok: boolean;
+  window?: string;
+  groups?: { groupKey: string; servings: number; mealServings: number }[];
+  doses?: { doseId: number; name: string; outcome: string }[];
+  error?: string;
+};
+let usualReply: () => UsualReply = () => ({
+  ok: true,
+  window: "Morning",
+  groups: [],
+  doses: [],
+});
 vi.mock("@/app/(app)/actions", () => ({
   logUsualRoutine: async (fd: FormData) => {
     record("logUsualRoutine")(fd);
-    return { ok: true, window: "Morning", groups: [], doses: [] };
+    return usualReply();
   },
   usualRoutineOffersOn: async (date: string) => {
     offerReads.push(date);
@@ -74,7 +92,12 @@ const refreshed: number[] = [];
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => refreshed.push(1) }),
 }));
-vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
+// THE TOAST IS AN ASSERTION SUBJECT, not scenery (#4118). It was a no-op mock, so the
+// door could report a success it had not achieved and nothing here could see it.
+const toasts: string[] = [];
+vi.mock("@/components/Toast", () => ({
+  useToast: () => (text: string) => toasts.push(text),
+}));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 
 beforeEach(() => {
@@ -82,6 +105,8 @@ beforeEach(() => {
   refreshed.length = 0;
   offerReads.length = 0;
   offerReply = async () => [];
+  toasts.length = 0;
+  usualReply = () => ({ ok: true, window: "Morning", groups: [], doses: [] });
   cleanup();
 });
 
@@ -453,6 +478,72 @@ describe("the composed usual on the add door", () => {
       );
     });
     expect(screen.queryByTestId("history-add-usual")).toBeNull();
+  });
+
+  // ── THE ANSWER NAMES WHAT WAS WRITTEN (#232, #4118) ────────────────────────
+  //
+  // `ok: true` means the bundle wrote SOMETHING, not that every half landed. The food
+  // half reaches six days back and the dose half two (its own `isDoseDateAccepted`
+  // window, coupled to Telegram pointer retention), so on four of the seven days this
+  // door offers, the servings commit and every dose comes back `stale-dose`. The core
+  // reports each dose separately and refuses to assume any away; the door must not
+  // flatten that into a confirm it did not earn — and this door is the ONLY surface
+  // that can reach those days, since the dashboard has no date field and the Telegram
+  // tap is gated to the dose window.
+  //
+  // BOTH DIRECTIONS ON ONE SHAPE. A test that only asserted the refusal would pass on a
+  // door that reported every tap as a failure.
+  it.each([
+    [
+      "a dose the day is out of reach for",
+      [{ doseId: 41, name: "Creatine", outcome: "stale-dose" }],
+      ["Logged Berries and Fermented foods", "Creatine not logged"],
+      ["1 dose taken"],
+    ],
+    [
+      "every dose landing",
+      [{ doseId: 41, name: "Creatine", outcome: "logged" }],
+      ["Logged Berries and Fermented foods", "1 dose taken"],
+      ["not logged"],
+    ],
+    [
+      "a dose logged off its own day",
+      [{ doseId: 41, name: "Creatine", outcome: "logged-off-day" }],
+      ["1 dose taken"],
+      ["not logged"],
+    ],
+  ] as const)(
+    "%s: the toast says so",
+    async (_why, doses, mustSay, mustNotSay) => {
+      usualReply = () => ({
+        ok: true,
+        window: "Morning",
+        groups: [
+          { groupKey: "berries", servings: 1, mealServings: 1 },
+          { groupKey: "fermented", servings: 1, mealServings: 1 },
+        ],
+        doses: [...doses],
+      });
+      open("food", [MORNING_OFFER]);
+      await act(async () => fireEvent.click(usualButton()));
+
+      expect(toasts).toHaveLength(1);
+      for (const phrase of mustSay) expect(toasts[0]).toContain(phrase);
+      for (const phrase of mustNotSay)
+        expect(toasts[0], `toast claimed "${phrase}"`).not.toContain(phrase);
+      // NEVER the flat confirm, which is what shipped and is what made a refused dose
+      // read as a success.
+      expect(toasts[0]).not.toBe("Added to the record.");
+    }
+  );
+
+  it("still says the plain sentence for the four per-item forms", async () => {
+    // The converse at the OTHER end: `announce` is optional, so a form that writes one
+    // row must keep the sentence it always had. Without this, moving the composed
+    // bundle's answer into `submit` could have silently re-worded every door.
+    open("practice");
+    await submit("practice");
+    expect(toasts).toEqual(["Added to the record."]);
   });
 
   it("leaves the per-item form exactly where it was", async () => {
