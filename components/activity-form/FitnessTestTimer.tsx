@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { FitnessPictogram } from "@/components/fitness-pictograms";
 import IconButton from "@/components/IconButton";
+import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useWakeLock } from "@/components/useWakeLock";
 import { useHaptics } from "@/components/useHaptics";
 import { formatSeconds } from "@/lib/duration";
@@ -74,6 +75,7 @@ export default function FitnessTestTimer({
 
   // Keep the screen awake only while the takeover is open (holding a plank / a stance).
   useWakeLock(expanded);
+  useLockBodyScroll(expanded);
 
   // Best-effort end cue: a short WebAudio chime + a vibration. Both degrade silently where
   // denied (no AudioContext, autoplay blocked, no Vibration API) — the visual/aria end
