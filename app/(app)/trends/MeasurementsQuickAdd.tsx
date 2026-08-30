@@ -32,6 +32,7 @@ import {
 } from "@/lib/measurement-entry";
 import {
   MEASUREMENTS_PARTIAL_REFUSED_MESSAGE,
+  MEASUREMENTS_WAIST_REFUSED_MESSAGE,
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
@@ -49,9 +50,12 @@ export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 // NOTHING; the partial one when the body half is already in the queue and only the
 // vitals were refused (#3118) — the badge would otherwise say "1 queued offline"
 // under a sentence saying nothing was saved.
-function refusedMessage(captured: "refused" | "partial"): string {
-  return captured === "partial"
-    ? MEASUREMENTS_PARTIAL_REFUSED_MESSAGE
+function refusedMessage(
+  captured: "refused" | "partial" | "partial-waist"
+): string {
+  if (captured === "partial") return MEASUREMENTS_PARTIAL_REFUSED_MESSAGE;
+  return captured === "partial-waist"
+    ? MEASUREMENTS_WAIST_REFUSED_MESSAGE
     : OFFLINE_CAPTURE_REFUSED_MESSAGE;
 }
 
@@ -437,12 +441,23 @@ export default function MeasurementsQuickAdd({
     const rememberWritten = (): void => {
       if (written) rememberGroup(profileId, written);
     };
+    const resetForm = (): void => {
+      const form = formRef.current;
+      if (!form) return;
+      const waistField = form.elements.namedItem("waist_circ");
+      if (waistField instanceof HTMLInputElement) waistField.defaultValue = "";
+      const waistUnit = form.elements.namedItem("waist_circ_unit");
+      if (waistUnit instanceof HTMLSelectElement) {
+        for (const option of waistUnit.options) option.defaultSelected = false;
+        waistUnit.options[0].defaultSelected = true;
+      }
+      form.reset();
+    };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
-    // kind. (Neither the growth pair nor the waist tape reading has a queue flow —
-    // both write metric_samples through their own cores — so an entry holding only
-    // those is reported as "unqueueable" rather than silently dropped.)
+    // kind. Growth, composition, and waist-only entries remain unqueueable; when a
+    // waist accompanies body metrics, the body intent can still be kept (#4142).
     //
     // "refused" is the device declining the capture (#3038): nothing will sync,
     // so the caller says the shared sentence and every success step — the toast,
@@ -468,9 +483,10 @@ export default function MeasurementsQuickAdd({
     // sentence exists to prevent. So a close falls back to the shared sentence, which is
     // then simply true: nothing is queued and no badge says otherwise.
     const queueOffline = async (): Promise<
-      "queued" | "refused" | "partial" | "unqueueable"
+      "queued" | "refused" | "partial" | "partial-waist" | "unqueueable"
     > => {
-      if (hasGrowth || hasWaist || hasComposition) return "unqueueable";
+      if (hasGrowth || hasComposition || (hasWaist && (!hasBody || hasVitals)))
+        return "unqueueable";
       let keptBody = false;
       if (hasBody) {
         const kept = await enqueue("body-metric", date, {
@@ -487,6 +503,21 @@ export default function MeasurementsQuickAdd({
         if (kept !== "kept") return "refused";
         keptBody = true;
       }
+      if (hasWaist) {
+        const form = formRef.current;
+        const waistField = form?.elements.namedItem("waist_circ");
+        if (waistField instanceof HTMLInputElement) {
+          waistField.defaultValue = String(waist.waistCirc);
+        }
+        const waistUnit = form?.elements.namedItem("waist_circ_unit");
+        if (waistUnit instanceof HTMLSelectElement) {
+          for (const option of waistUnit.options) {
+            option.defaultSelected = option.selected;
+          }
+        }
+        rememberWritten();
+        return "partial-waist";
+      }
       if (hasVitals) {
         // The sitting's one stated time travels with the vitals intent too
         // (#2154): a queued evening BP keeps its statement, and an explicitly
@@ -501,7 +532,7 @@ export default function MeasurementsQuickAdd({
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
-      formRef.current?.reset();
+      resetForm();
       tempUnitDetection.reset();
       refreshSummaries();
       return "queued";
@@ -510,7 +541,7 @@ export default function MeasurementsQuickAdd({
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const captured = await queueOffline();
       if (captured === "queued") return;
-      if (captured === "refused" || captured === "partial") {
+      if (captured !== "unqueueable") {
         toast(refusedMessage(captured), { tone: "error" });
         return;
       }
@@ -524,7 +555,7 @@ export default function MeasurementsQuickAdd({
       if (shouldQueueOffline(navigator.onLine !== false, err)) {
         const captured = await queueOffline();
         if (captured === "queued") return;
-        if (captured === "refused" || captured === "partial") {
+        if (captured !== "unqueueable") {
           toast(refusedMessage(captured), { tone: "error" });
           return;
         }
@@ -544,7 +575,7 @@ export default function MeasurementsQuickAdd({
         saved.sleepWindowRefused
       )
     );
-    formRef.current?.reset();
+    resetForm();
     tempUnitDetection.reset();
     refreshSummaries();
     onSaved?.();
