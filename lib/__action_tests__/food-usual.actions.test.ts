@@ -267,9 +267,10 @@ describe("logUsualFood on a past day", () => {
         logged_via: "dashboard-widget",
       })
     );
-    expect(
-      eventsOn(profile.id, anchor).map((r) => r.logged_via)
-    ).toEqual(["dashboard-widget", "dashboard-widget"]);
+    expect(eventsOn(profile.id, anchor).map((r) => r.logged_via)).toEqual([
+      "dashboard-widget",
+      "dashboard-widget",
+    ]);
   });
 
   it.each([

@@ -1124,7 +1124,8 @@ function applyFoodIntent(
     if (outcome.kind === "invalid-date") {
       return {
         status: "rejected",
-        reason: "That day isn't one this can be logged on, so it wasn't logged.",
+        reason:
+          "That day isn't one this can be logged on, so it wasn't logged.",
       };
     }
     return { status: "done" };

@@ -1663,11 +1663,7 @@ async function handleFoodLog(
   );
   await answerCallbackQuery(
     cq.id,
-    foodLogAnswerText(
-      outcome,
-      food.group,
-      backfilling ? food.date : undefined
-    )
+    foodLogAnswerText(outcome, food.group, backfilling ? food.date : undefined)
   );
   const wrote = outcome.kind === "logged" ? profileId : undefined;
 

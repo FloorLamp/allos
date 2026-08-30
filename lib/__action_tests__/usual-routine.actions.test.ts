@@ -450,30 +450,36 @@ describe("logUsualRoutine on a past day", () => {
   it.each([
     ["a day past the food reach", -7],
     ["tomorrow", 1],
-  ] as const)("refuses %s, writing neither half anywhere", async (why, delta) => {
-    const { profile, anchor, creatine } = seedWithHole(
-      `routine-out${delta}`,
-      99
-    );
-    const target = shiftDateStr(anchor, delta);
-    const before = servings(profile.id, target);
-    const res = await logUsualRoutine(
-      fd({
-        meal_slot: "Morning",
-        groups: "berries,fermented",
-        dose_ids: String(creatine),
-        date: target,
-      })
-    );
-    expect(res, why).toEqual({ ok: false, error: "That day is out of range." });
-    // The target day already carries the seeded habit on the past-day case, so the
-    // claim is that it is UNCHANGED — asserting "empty" there would be false about a
-    // correct tree, and asserting only the target day would miss a fallback landing
-    // somewhere else.
-    expect(servings(profile.id, target)).toEqual(before);
-    expect(servings(profile.id, anchor)).toEqual([]);
-    expect(doseLogs(profile.id, target)).toEqual([]);
-    expect(doseLogs(profile.id, anchor)).toEqual([]);
-    expect(auditRows(profile.id)).toEqual([]);
-  });
+  ] as const)(
+    "refuses %s, writing neither half anywhere",
+    async (why, delta) => {
+      const { profile, anchor, creatine } = seedWithHole(
+        `routine-out${delta}`,
+        99
+      );
+      const target = shiftDateStr(anchor, delta);
+      const before = servings(profile.id, target);
+      const res = await logUsualRoutine(
+        fd({
+          meal_slot: "Morning",
+          groups: "berries,fermented",
+          dose_ids: String(creatine),
+          date: target,
+        })
+      );
+      expect(res, why).toEqual({
+        ok: false,
+        error: "That day is out of range.",
+      });
+      // The target day already carries the seeded habit on the past-day case, so the
+      // claim is that it is UNCHANGED — asserting "empty" there would be false about a
+      // correct tree, and asserting only the target day would miss a fallback landing
+      // somewhere else.
+      expect(servings(profile.id, target)).toEqual(before);
+      expect(servings(profile.id, anchor)).toEqual([]);
+      expect(doseLogs(profile.id, target)).toEqual([]);
+      expect(doseLogs(profile.id, anchor)).toEqual([]);
+      expect(auditRows(profile.id)).toEqual([]);
+    }
+  );
 });

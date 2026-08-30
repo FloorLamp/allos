@@ -1153,9 +1153,7 @@ export function tapDateGuard(
 // (#1719) is a today-shaped tap on someone else's behalf and is deliberately not a
 // backfill surface.
 export type FoodTapDateGuard =
-  | { kind: "current-day" }
-  | { kind: "recent-day" }
-  | { kind: "stale-date" };
+  { kind: "current-day" } | { kind: "recent-day" } | { kind: "stale-date" };
 
 export function foodTapDateGuard(
   tokenDate: string,

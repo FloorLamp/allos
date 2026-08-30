@@ -401,7 +401,8 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
     for (let d = 1; d <= 22; d++) {
       if (d === hole) continue;
       const date = shiftDateStr(anchor, -d);
-      for (const g of ["fermented", "berries"]) tap(sp.profileId, g, date, "08:00:00");
+      for (const g of ["fermented", "berries"])
+        tap(sp.profileId, g, date, "08:00:00");
     }
     return { profileId: sp.profileId, anchor };
   }
@@ -453,7 +454,11 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
     // what `getFoodRegularity` excludes. Asserted on the ROW, because the guard reads
     // the column and not the outcome object.
     const chat = "5552470";
-    const { profileId, anchor } = seedStaleMessageProfile("TG4118-via", chat, 1);
+    const { profileId, anchor } = seedStaleMessageProfile(
+      "TG4118-via",
+      chat,
+      1
+    );
     const target = shiftDateStr(anchor, -1);
     const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, target, {
       window: "Morning",

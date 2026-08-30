@@ -350,7 +350,13 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     // there — this pins that the two paths agree on the observable outcome.
     const { profileId, anchor } = seedPair("usual-atomic-empty");
     expect(
-      logUsualFoodCore(profileId, "Morning", anchor, ["red_meat", "alcohol"], "page")
+      logUsualFoodCore(
+        profileId,
+        "Morning",
+        anchor,
+        ["red_meat", "alcohol"],
+        "page"
+      )
     ).toEqual({ kind: "nothing-to-log" });
     expect(writtenToday(profileId, anchor)).toEqual({
       counters: [],
@@ -393,7 +399,14 @@ describe("usual-backfilled rows are not evidence, and everything else still is",
     via: LoggedVia
   ) {
     for (const group of ["fermented", "berries"])
-      logFoodServingCore(profileId, group, date, via, `${date}T08:00:00Z`, "Morning");
+      logFoodServingCore(
+        profileId,
+        group,
+        date,
+        via,
+        `${date}T08:00:00Z`,
+        "Morning"
+      );
   }
 
   it.each([
@@ -515,7 +528,14 @@ describe("usual-backfilled rows are not evidence, and everything else still is",
     // Under the gate, and there is therefore nothing to tap — so the pair is written
     // the way a person on that day would have: two ordinary taps.
     for (const group of ["fermented", "berries"])
-      logFoodServingCore(profileId, group, anchor, "page", `${anchor}T08:00:00Z`, "Morning");
+      logFoodServingCore(
+        profileId,
+        group,
+        anchor,
+        "page",
+        `${anchor}T08:00:00Z`,
+        "Morning"
+      );
 
     expect(getFoodRegularity(profileId).Morning?.observedDays).toBe(
       FOOD_REGULARITY_MIN_WINDOW_DAYS

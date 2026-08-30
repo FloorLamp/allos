@@ -66,7 +66,7 @@ export const LOGGED_VIA_MEANING: Record<LoggedVia, string> = {
   page: "the domain page's own form",
   "offline-replay": "a queued write replayed by /api/offline-replay",
   "usual-backfill":
-    "the composed \"your usual <window>\" one-tap, aimed at a PAST day (#4118) — a person acted, but on a day they were reconstructing rather than living",
+    'the composed "your usual <window>" one-tap, aimed at a PAST day (#4118) — a person acted, but on a day they were reconstructing rather than living',
   import:
     "not a user interaction; the row came from an importer (`source` names which, where the write path has one)",
 };
