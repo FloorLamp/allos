@@ -1989,6 +1989,14 @@ than trusting the seed to stay that way. `protein-quickadd.spec` has followed th
 first half for a long time ("Add→undo leaves the fixture as found"), on a
 dedicated fixture, for precisely this hazard.
 
+**Shared app vocabulary is not fixture identity (#4087).** `berries`, `legumes`,
+`cough`, `Ibuprofen`, and the names in the practice picker can be written by any
+spec on profile 1. A count or cleanup scoped only by one of those names still
+counts or deletes a neighbour's row. Address the row the test created (an id or
+high-water mark), narrow it to the exact dates the test seeded, or restore the
+prior state from `afterEach`/`finally`. A deliberately fictional, uniquely named
+fixture may use its name as identity; a catalog or picker value may not.
+
 ### Reproducing one — a green shard proves nothing
 
 DB-per-worker means a colliding pair only collides when Playwright puts both

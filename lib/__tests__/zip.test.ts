@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import zlib from "node:zlib";
 import { readZip, isZip, ZipError } from "@/lib/zip";
+
+afterEach(() => vi.restoreAllMocks());
 
 // Build a minimal but valid ZIP (central directory + EOCD) from a set of files,
 // so we can test the reader without a zip dependency. CRC fields are left 0 —
@@ -97,24 +99,24 @@ describe("readZip aggregate caps", () => {
     expect(() => readZip(buildZip(many))).toThrow(/too many entries/i);
   });
 
-  // This case deflates/inflates ~288 MiB. In isolation it finishes in well under a
-  // second, but under FULL parallel vitest load on a busy machine the CPU-bound zlib
-  // work can starve past vitest's old implicit 5 s default and flake the local gate
-  // (#1349; CI's fresh runners never reproduce it). The `}, 30_000)` that bought
-  // that headroom was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002), and the tier's
-  // 15 000 ms already covers it: the whole file reads 2 016 ms across 7 tests on the
-  // green CI run at f1742fa6d, and this test is ~82% of it — ~9x margin.
   it("refuses when the total decompressed size crosses the aggregate cap", () => {
-    // MAX_TOTAL_BYTES is 256 MiB. Six highly-compressible 48 MiB members (each under
-    // the 64 MiB per-entry cap) sum to 288 MiB — the aggregate tally trips before
-    // the whole archive is materialized. One shared source buffer keeps the test's
-    // own memory bounded (~48 MiB); the compressed archive is tiny.
-    const chunk = Buffer.alloc(48 * 1024 * 1024, 0x78); // 48 MiB of 'x'
+    // Real DEFLATE behavior is covered by the round trips above. This test owns the
+    // aggregate tally, so give the parser six logical 48 MiB inflate results without
+    // spending 288 MiB of CPU and memory to manufacture them (#1349).
+    const logicalEntryBytes = 48 * 1024 * 1024;
+    const inflate = vi.spyOn(zlib, "inflateRawSync").mockReturnValue({
+      length: logicalEntryBytes,
+    } as unknown as ReturnType<typeof zlib.inflateRawSync>);
     const members = Array.from({ length: 6 }, (_, i) => ({
       name: `big${i}.bin`,
-      data: chunk,
+      data: Buffer.from("x"),
     }));
+
     expect(() => readZip(buildZip(members))).toThrow(/total size/i);
+    expect(inflate).toHaveBeenCalledTimes(6);
+    expect(inflate).toHaveBeenCalledWith(expect.any(Buffer), {
+      maxOutputLength: 64 * 1024 * 1024,
+    });
   });
 
   it("still accepts a normal small multi-entry package", () => {

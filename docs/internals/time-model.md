@@ -38,7 +38,10 @@ about instants only, and `date` semantics are untouched throughout.
 `lib/clock.ts` adds the seam wrappers: `instantNow()` beside `sqlNow()`. Which
 of the two a write site binds is decided by the **column's** declared
 convention, never by the site's taste; the choice between the seam and real
-time is the unchanged #1534 rule (day-semantic ⇒ seam, duration ⇒ real time).
+time is the #1534 rule (day-semantic ⇒ seam, duration ⇒ real time). The one
+exception is the persisted, cross-process post-workout claim lease: its anchor
+must be a wall-clock instant because a monotonic timer cannot cross processes,
+and both its canonical writer and age comparison read the seam.
 
 Why this shape rather than SQLite's own `datetime('now')`:
 
