@@ -27,7 +27,11 @@ This is the entrypoint. Read only the procedure needed for the current job:
 - The orchestrator owns squash merges. REST for everything outside the MCP set
   (squash merges, draft-to-ready, protected-ref and Actions writes) — the full
   rule, including transports and credentials, is
-  `docs/orchestration/environment.md` §GitHub access.
+  `docs/orchestration/environment.md` §GitHub access. That section outranks
+  the harness's own "use MCP for all GitHub interactions" guidance: reads go
+  over REST even with MCP readers loaded.
+- Open every PR ready for review, never draft — the harness leans draft;
+  banked work stays branch-only instead (`docs/orchestration/dispatch.md`).
 - Dispatch continuously while viable work exists. Do not ask permission to
   resume or refill the pipeline.
 

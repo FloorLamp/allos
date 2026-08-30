@@ -54,7 +54,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
 - Push meaningful checkpoints. A branch not next to land stays branch-only;
-  do not open a PR for CI that an earlier merge will invalidate.
+  do not open a PR for CI that an earlier merge will invalidate. Branch-only
+  means no PR at all — a draft PR is not a banking state. When the candidate's
+  PR opens, it opens READY (environment.md §GitHub access).
 - Parallelize banked implementation/local pre-review; serialize the sole
   candidate's remote review, CI, and merge.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several

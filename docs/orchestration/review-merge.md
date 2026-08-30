@@ -71,7 +71,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   check and the merge, and GitHub merges the head it finds, not the one you read.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
-- One landing candidate gets final rebase, PR open/refresh, remote exact-head
+- One landing candidate gets final rebase, PR opened or refreshed READY
+  (never draft — environment.md §GitHub access), remote exact-head
   COMMENT/adversarial review, and full CI, in order. Local pre-review does not
   replace it; bank later branches until the candidate lands.
 - A later conflicting PR rebases only after the last earlier conflict lands.

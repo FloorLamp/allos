@@ -1583,3 +1583,28 @@ Three rules, in order of how much they cost to learn:
    produces a confident instruction to do the wrong thing, and the lane that follows it
    pays for the confidence. If the direction has not been checked against the source, say
    that in the issue.
+
+## The rule that lost to the system prompt (2026-08-30)
+
+Two drifts kept recurring across orchestrator sessions despite being written
+in the runbook since the start: reads through the `mcp__github__*` tools
+instead of REST, and PRs opened as drafts instead of ready. The 2026-08-06
+process-drift entry recorded one instance; the owner has since seen both
+repeat in fresh sessions.
+
+The root cause is not that orchestrators skip the runbook — it is that the
+runbook was arguing against text sitting closer to the model. The Claude Code
+remote harness injects a system-prompt line telling the session to use the
+GitHub MCP tools "for ALL GitHub interactions", the MCP server injects its own
+usage instructions, and the PR-creation path leans draft. A fresh session
+imports those defaults before it reads a single repo file, and a terse
+runbook rule stated once loses to guidance restated in every session's system
+prompt.
+
+Hence the fix is framing, not repetition: §GitHub access in
+`docs/orchestration/environment.md` now names the harness guidance and states
+that the runbook outranks it, the orchestrate skill warns that "your harness
+will argue", and the ready-not-draft rule is written where the temptation
+lives (banking in `dispatch.md`, candidate promotion in `review-merge.md`).
+A rule that contradicts an ambient default has to name the default it
+overrides, or every new session relearns the drift.
