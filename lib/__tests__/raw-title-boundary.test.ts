@@ -25,8 +25,16 @@ function tsxFiles(root: string): string[] {
 
 function rawTitleFindings(source: string): string[] {
   // JSX parsing cannot create an attribute spelling that is absent from source.
-  // Keep the AST verdict for candidates without building guaranteed-empty trees.
+  // Nor can it turn an arbitrary component into an intrinsic owner or a registered
+  // passthrough import. `[^<]*` deliberately crosses `>` inside an attribute value,
+  // so this stays a lossless gate rather than trying to parse JSX with a regex.
   if (!/\btitle\s*=/.test(source)) return [];
+  const couldReachIntrinsic = /<[a-z][^<]*\btitle\s*=/.test(source);
+  const couldReachPassthrough = [...TITLE_PASSTHROUGH_IMPORTS.keys()].some(
+    (specifier) => source.includes(specifier)
+  );
+  if (!couldReachIntrinsic && !couldReachPassthrough) return [];
+
   const file = ts.createSourceFile(
     "source.tsx",
     source,
