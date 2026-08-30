@@ -51,7 +51,7 @@ import type { PanelId } from "./biomarker-panels";
 import type { GrowthMetric } from "./growth";
 import type { IntegrationId } from "./types/integrations";
 import type { IntakeItemKind } from "./types/intake";
-import type { HistoryFamily, HistoryLogKind } from "./history-format";
+import type { HistoryFamily, HistoryKind } from "./history-format";
 
 export type AppRoute = Route;
 
@@ -152,13 +152,15 @@ export function intakeHref(kind: IntakeItemKind): AppRoute {
 export function historyHref(
   params: {
     family?: HistoryFamily;
-    kind?: HistoryLogKind;
+    kind?: HistoryKind;
     class?: "supplement" | "medication";
     item?: string;
     media?: boolean;
     day?: string;
     everyone?: boolean;
     open?: readonly string[];
+    /** The rollup lines opened in Everything (#3958 phase 2), one key per entry. */
+    expand?: readonly string[];
     show?: number;
   } = {}
 ): AppRoute {
@@ -172,6 +174,7 @@ export function historyHref(
   if (params.day) sp.set("day", params.day);
   if (params.everyone) sp.set("view", "everyone");
   for (const key of params.open ?? []) sp.append("open", key);
+  for (const key of params.expand ?? []) sp.append("expand", key);
   if (params.show != null) sp.set("show", String(params.show));
   const qs = sp.toString();
   // Spelled as literals rather than through a `${base}` variable so Next's typedRoutes

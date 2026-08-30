@@ -195,6 +195,7 @@ function openRow(
   render(
     <HistoryRows
       rows={rows}
+      actingProfileId={ACTING}
       writableProfileIds={writableProfileIds}
       doseItems={[
         {
@@ -926,6 +927,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
             },
           }),
         ]}
+        actingProfileId={ACTING}
         writableProfileIds={[ACTING, WRITABLE]}
         doseItems={[]}
         maxDates={{ [ACTING]: ACTING_TODAY }}
