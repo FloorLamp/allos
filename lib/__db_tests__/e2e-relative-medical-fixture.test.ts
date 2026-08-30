@@ -88,21 +88,16 @@ describe("profile-1 undated documents follow the illness fixture clock (#3949)",
 
   it("would red when the documents are pinned back to the old fixed clock", () => {
     const profileId = newProfile();
+    const runDay = "2026-08-30";
     const oldFixed = new Map(
       PROFILE_ONE_UNDATED_DOCUMENT_UPLOADS.map((fixture) => [
         fixture.filename,
         `${fixture.filename === "e2e-produced-panels.xml" ? "2026-07-09" : "2026-07-08"} ${fixture.wallTime}:00`,
       ])
     );
-    const varyingDays: string[] = [];
-    for (let dayIndex = 0; dayIndex < RUN_DAY_COUNT; dayIndex++) {
-      const runDay = shiftDateStr(FIRST_RUN_DAY, dayIndex);
-      const signatures = membershipSignatures(profileId, runDay, (filename) =>
-        oldFixed.get(filename)!
-      );
-      if (signatures.size > 1) varyingDays.push(runDay);
-    }
-    expect(varyingDays.length).toBeGreaterThan(0);
-    expect(varyingDays).toContain("2026-08-30");
+    const signatures = membershipSignatures(profileId, runDay, (filename) =>
+      oldFixed.get(filename)!
+    );
+    expect(signatures.size).toBeGreaterThan(1);
   });
 });
