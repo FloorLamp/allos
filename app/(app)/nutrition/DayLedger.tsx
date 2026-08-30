@@ -285,7 +285,11 @@ export default function DayLedger({
             </span>
           )}
         </LoggedEventRow>
-        <span className="flex shrink-0 items-center gap-1.5">
+        {/* `gap-3`, not a tighter one: both verbs render the control box, whose
+            `--control-reach` extends the hit region 6px per side, so anything under
+            12px lets the two own the same point — and a mis-tap between taken and
+            skipped is a real correctness cost (#3938). */}
+        <span className="flex shrink-0 items-center gap-3">
           <Button
             data-testid={`ledger-take-${dose.doseId}`}
             disabled={single.blocked(`${dose.doseId}->taken`)}

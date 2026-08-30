@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -92,6 +93,17 @@ function dropItem(db: Database.Database, itemId: number | null): void {
   db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
 }
 
+// The Day ledger collapses a bucket's still-due doses into ONE row with a bulk
+// Take-all (#3987/#3936), so the individual names are behind that fold.
+async function expandDueGroups(page: Page): Promise<void> {
+  const groups = page.locator('[data-testid^="ledger-due-group-"]');
+  const n = await groups.count();
+  for (let i = 0; i < n; i++) {
+    const row = groups.nth(i);
+    if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
+  }
+}
+
 test("a `may` item is tracked on its page, off the due list, and inside the available disclosure (#1505)", async ({
   page,
 }) => {
@@ -118,6 +130,7 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
     ).toBeVisible();
     await page.goto("/nutrition?tab=food");
     const ledger = page.getByTestId("day-ledger");
+    await expandDueGroups(page);
     await expect(ledger).toContainText(HIGH_NAME);
     await expect(ledger).not.toContainText(LOW_NAME);
 
@@ -199,6 +212,7 @@ test("accepting a demotion suggestion moves the item into the available disclosu
         .filter({ hasText: ABANDONED_NAME })
     ).toBeVisible();
     await page.goto("/nutrition?tab=food");
+    await expandDueGroups(page);
     await expect(page.getByTestId("day-ledger")).not.toContainText(
       ABANDONED_NAME
     );
@@ -379,6 +393,7 @@ test("a situation-inactive item logs in one tap from More supplements, and the s
         .filter({ hasText: SITUATION_ITEM })
     ).toBeVisible();
     await page.goto("/nutrition?tab=food");
+    await expandDueGroups(page);
     await expect(page.getByTestId("day-ledger")).toContainText(SITUATION_ITEM);
   } finally {
     dropItem(db, itemId);

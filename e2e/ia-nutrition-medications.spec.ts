@@ -114,7 +114,7 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     .getByTestId("intake-item-name")
     .boundingBox();
   const supplementActionBox = await mustRow
-    .getByRole("button", { name: /^Actions for/ })
+    .getByRole("button", { name: /^Supplement actions for/ })
     .boundingBox();
   expect(supplementNameBox).not.toBeNull();
   expect(supplementActionBox).not.toBeNull();
@@ -189,6 +189,18 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 });
 
+// The Day ledger collapses a bucket's still-due doses into ONE row with a bulk
+// Take-all (#3987/#3936), so the individual names are behind that fold. Every dose
+// assertion below opens them first.
+async function expandDueGroups(page: Page): Promise<void> {
+  const groups = page.locator('[data-testid^="ledger-due-group-"]');
+  const n = await groups.count();
+  for (let i = 0; i < n; i++) {
+    const row = groups.nth(i);
+    if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
+  }
+}
+
 test("a newly scheduled supplement does not appear on earlier days", async ({
   page,
 }) => {
@@ -203,7 +215,7 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
         .prepare(
           `INSERT INTO intake_items
              (profile_id, name, active, kind, obligation, condition, source, created_at)
-           VALUES (1, ?, 1, 'supplement', 'may', 'daily', 'manual', ?)`
+           VALUES (1, ?, 1, 'supplement', 'should', 'daily', 'manual', ?)`
         )
         .run(name, createdAt).lastInsertRowid
     );
@@ -217,13 +229,17 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
     // lifetime bound it existed to demonstrate — an item created today is not owed on
     // an earlier day — is now the Day ledger's, on the Food tab, where the day lives.
     await page.goto("/nutrition?tab=supplements");
+    // `.toBeVisible` WITHOUT ITS PARENTHESES was a no-op here before #3987 touched
+    // this test, so the today half of "appears today, not earlier" had never run.
     await expect(
       page.getByTestId("intake-item-name").filter({ hasText: name })
     ).toBeVisible();
     await page.goto("/nutrition?tab=food");
     const ledger = page.getByTestId("day-ledger");
+    await expandDueGroups(page);
     await expect(ledger).toContainText(name);
     await page.getByTestId("food-day-yesterday").click();
+    await expandDueGroups(page);
     await expect(ledger).not.toContainText(name);
   } finally {
     if (itemId != null) {

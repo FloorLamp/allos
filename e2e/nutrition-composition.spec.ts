@@ -240,10 +240,14 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     const rollup = habits.getByTestId("food-weekly-rollup");
     const rollupRows = rollup.locator(":scope > li");
     expect(await rollupRows.count()).toBeGreaterThan(0);
-    const trackedRow = rollup.locator("li").filter({
-      has: page.locator('[data-testid^="habit-pace-"]'),
-    });
-    expect(await trackedRow.count()).toBeGreaterThan(0);
+    // Every row of the one list is a group row. (That a TRACKED group carries its
+    // target and pace on that same row is asserted where a tracked group exists —
+    // training-routine-scope.spec.ts and food-habits.spec.ts, on the profile that has
+    // one; this fixture profile tracks no habits, so asserting it here would be a
+    // claim about an empty set.)
+    await expect(rollup.locator(':scope > li:not([data-testid^="rollup-"])')).toHaveCount(
+      0
+    );
     // Weekly servings keep their visible hierarchy: most logged first, name for ties.
     const rollupValues = await rollupRows.evaluateAll((rows) =>
       rows.map((row) => {

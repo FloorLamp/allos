@@ -73,7 +73,11 @@ import { buildDayLedger, type LedgerGroup, type LedgerServing } from "@/lib/day-
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { doseLogDays } from "@/lib/dose-log-window";
-import { getFindingSuppressions, getIntakePairs } from "@/lib/queries";
+import {
+  getFindingSuppressions,
+  getIntakeItems,
+  getIntakePairs,
+} from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { separatePairWarnings } from "@/lib/intake-pairs";
 import { Notice } from "@/components/Notice";
@@ -323,8 +327,23 @@ export default async function FoodTab({
   // window" ruling in the one place that can hold it.
   const doseWritableDates = doseLogDays(date);
   const doseWritable = new Set(doseWritableDates);
+  // SUPPLEMENTS ONLY, on both halves. `pendingDayDoses` is kind-neutral — it also
+  // serves the quick-log sheet, which covers medications — so the ledger applies the
+  // same `isMed` exclusion the schedule it replaces applied, and the same one its
+  // resolved half (`getDayDoseLedger`) applies in SQL. Medications keep their own
+  // page: the umbrella ruling this redesign inherits rather than re-decides.
+  const supplementItemIds = new Set(
+    getIntakeItems(profile.id)
+      .filter((item) => item.kind !== "medication")
+      .map((item) => item.id)
+  );
   const pendingByDate = new Map(
-    doseWritableDates.map((day) => [day, pendingDayDoses(profile.id, day)])
+    doseWritableDates.map((day) => [
+      day,
+      pendingDayDoses(profile.id, day).filter((dose) =>
+        supplementItemIds.has(dose.itemId)
+      ),
+    ])
   );
   const ledgerByDate: Record<string, LedgerGroup[]> = Object.fromEntries(
     mealDays.map((day) => [
