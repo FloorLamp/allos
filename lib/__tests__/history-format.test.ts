@@ -106,7 +106,11 @@ describe("the URL grammar", () => {
   it.each([
     ["dose", "dose"],
     ["DOSE", "dose"],
-    ["sleep", undefined],
+    // Phase 2's kinds resolve now — that is what shipping them means. The degrade
+    // rule is asserted on the cases that still cannot resolve.
+    ["sleep", "sleep"],
+    ["cycle", "cycle"],
+    ["nonsense", undefined],
     ["", undefined],
     [undefined, undefined],
   ])("resolves ?kind=%s to %s", (raw, expected) => {

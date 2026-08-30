@@ -76,6 +76,8 @@ function parseEpisodeTarget(formData: FormData): EpisodeTarget {
 function revalidateSymptoms(): void {
   revalidateRoute("/");
   revalidateRoute("/timeline");
+  // Symptoms are a Logs kind on the record since #3958 phase 2, correctable there.
+  revalidateRoute("/history");
 }
 
 // Cross-profile write gating for the illness Now group (issue #858). The hero lets a caregiver

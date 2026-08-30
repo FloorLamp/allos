@@ -36,6 +36,9 @@ export type CycleCreateResult =
 function revalidateCycle() {
   revalidateRoute("/medical/cycles");
   revalidateRoute("/timeline");
+  // The record lists cycle markers under Life since #3958 phase 2, and it is a
+  // correction surface for them — so a write from either side has to reach it.
+  revalidateRoute("/history");
   revalidateRoute("/");
 }
 
