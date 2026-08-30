@@ -129,7 +129,7 @@ describe("medicationFamilies (#1027 / #482)", () => {
 // family (one name key, no strength telling any two members apart) is duplicate
 // RECORDS and says so; every other family keeps the #1027 therapeutic-duplication
 // copy byte-for-byte, reassurance included.
-describe("medicationDuplicationNote / isIndistinguishableFamily (#3069)", () => {
+describe("medicationDuplicationNote / isIndistinguishableFamily (#3069 / #3125)", () => {
   const EXISTING_EVIDENCE =
     "Informational — tracking an OTC and a prescription strength separately " +
     "is often deliberate; this note only makes the shared ingredient visible.";
@@ -160,6 +160,12 @@ describe("medicationDuplicationNote / isIndistinguishableFamily (#3069)", () => 
       item({ id: 2, name: "Ibuprofen 800 mg" }),
     ];
     expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(
+      isIndistinguishableFamily([
+        item({ id: 3, name: "Epinephrine 1 mg/mL IV injection" }),
+        item({ id: 4, name: "Epinephrine 1 mg/mL IM injection" }),
+      ])
+    ).toBe(false);
     expect(medicationDuplicationNote(members)).toEqual({
       title: "Ibuprofen appears in 2 active medications",
       detail:
@@ -190,6 +196,33 @@ describe("medicationDuplicationNote / isIndistinguishableFamily (#3069)", () => 
     expect(medicationDuplicationNote(members).title).toBe(
       "Albuterol is recorded 2 times"
     );
+  });
+
+  it("the same stated delivery form stays indistinguishable", () => {
+    const members = [
+      item({ id: 1, name: "Albuterol 2.5 mg/3 mL nebulizer solution" }),
+      item({ id: 2, name: "albuterol (2.5 MG/3ML) solution for nebulization" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(true);
+    expect(medicationDuplicationNote(members).title).toBe(
+      "Albuterol is recorded 2 times"
+    );
+  });
+
+  it("different stated delivery routes keep the cautious therapeutic-duplication copy", () => {
+    const members = [
+      item({ id: 1, name: "Albuterol 2.5 mg HFA inhaler" }),
+      item({ id: 2, name: "Albuterol 2.5 mg nebulizer solution" }),
+    ];
+    expect(isIndistinguishableFamily(members)).toBe(false);
+    expect(medicationDuplicationNote(members)).toEqual({
+      title: "Albuterol appears in 2 active medications",
+      detail:
+        "Albuterol 2.5 mg HFA inhaler + Albuterol 2.5 mg nebulizer solution " +
+        "share the same active ingredient, so their doses count together toward " +
+        "the redose window and daily max.",
+      evidence: EXISTING_EVIDENCE,
+    });
   });
 
   it("two provably different concentrations stay distinguishable even with a numerator-only sibling (pairwise, not first-vs-rest)", () => {
