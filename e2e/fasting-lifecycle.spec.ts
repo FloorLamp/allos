@@ -6,6 +6,10 @@ import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { zonedWallTimeToUtc, utcInstant } from "@/lib/date";
 import { FAST_MAX_HOURS } from "@/lib/fasting";
+import {
+  foodEventHighWater,
+  removeFoodEventsAfter,
+} from "./food-ledger-fixture";
 
 // The fasting lifecycle in the real app (#2756) and the stand-down it feeds (#2757).
 //
@@ -846,7 +850,15 @@ async function revealFoodGroup(page: Page, slug: string): Promise<void> {
 }
 
 test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
+  let foodEventId: number;
+
+  test.beforeEach(() => {
+    foodEventId = foodEventHighWater();
+  });
   test.beforeEach(clearFasts);
+  test.afterEach(() => {
+    removeFoodEventsAfter(foodEventId, ["legumes"]);
+  });
   test.afterAll(clearFasts);
 
   test("logging a serving OFFERS to end the fast, and declining changes nothing", async ({
