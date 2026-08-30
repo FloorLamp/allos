@@ -188,9 +188,10 @@ export function detectUnitMislabel(
 // #2337 and migration 176 undid: a post-meal 120 mg/dL beside a CMP's fasting `65-99` is
 // entirely normal, and the CGM persona's every post-meal reading would light up.
 //
-// STILL UNIMPLEMENTED, on purpose: a per-entry opt-out for a curation ruling that means
-// "do not mark this analyte at all". That is the owner call recorded on #2799; guessing a
-// default would be worse than a small follow-up.
+// THE OWNER RULING (#2941): band-less means only "we publish no band of our own"; it
+// does not silence the lab's printed range, and there is deliberately no per-entry
+// opt-out. Noise on a specific analyte is fixed in that entry's curation, not by making
+// the app quieter than the report the person is holding.
 // ---------------------------------------------------------------------------
 
 // The lab-stated flags — a verdict the SOURCE's printed range implies, never one of
