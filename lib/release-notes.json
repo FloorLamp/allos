@@ -44,6 +44,12 @@
           "title": "The dashboard's everything list stops repeating pages the menu already carries",
           "kind": "fix",
           "issues": [3366]
+        },
+        {
+          "pr": 4210,
+          "title": "Type the times you went to bed and got up, and a night your wearable missed fills its own gap",
+          "kind": "feature",
+          "issues": [1851]
         }
       ]
     },
