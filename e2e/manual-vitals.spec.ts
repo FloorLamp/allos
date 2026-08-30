@@ -134,7 +134,10 @@ test("the measurements form takes water, lean/bone mass and respiratory rate (#1
   ] as const) {
     await page.goto(`/trends/metric/${slug}?from=2000-01-01&to=2100-01-01`);
     const rows = page.getByTestId("metric-readings-table").locator("tbody tr");
-    await expect(rows).toHaveCount(1);
-    await expect(rows).toContainText(shown);
+    // The slug is in the message because the four share one loop and one line: a
+    // bare "expected 1, received 0" here names no metric, and the whole point of
+    // the loop is that each of the four can fail on its own.
+    await expect(rows, slug).toHaveCount(1);
+    await expect(rows, slug).toContainText(shown);
   }
 });
