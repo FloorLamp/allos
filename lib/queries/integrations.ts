@@ -78,6 +78,7 @@ import {
   ACTIVITY_MIDNIGHT_CANDIDATE_SQL,
   ACTIVITY_MIDNIGHT_CANDIDATE_CLOCKS,
 } from "@/lib/import-review/candidate-sql";
+import { getUnreadableDoseAmounts } from "@/lib/queries/data-quality";
 
 // Read side of the integration sync-event debug log. Every statement here is
 // PROFILE-SCOPED (WHERE profile_id = ? AND source_id = ?): the setup-page panels and
@@ -232,15 +233,18 @@ export function getLatestSyncEventPerSource(
 }
 
 // How many items the Data → Review inbox wants the user's attention on — the count
-// behind the profile-menu badge. Two contributions (issue #10): integrations
-// CURRENTLY in a failed state (self-clearing on the next good sync) PLUS unresolved
-// detected duplicate/conflict pairs. Both are profile-scoped. The failing set is read
+// behind the profile-menu badge: integrations currently in a failed state, unresolved
+// detected duplicate/conflict pairs, and unreadable dose amounts. All are profile-scoped. The failing set is read
 // per-source (issue #304) so a broken integration can't be missed just because a
 // chatty source crowds a global-N window.
 export function getImportReviewCount(profileId: number): number {
   // getImportIssues folds in the expired-Health-Connect-token signal (#607), so the
   // badge count matches the Issues list exactly — one source for both.
-  return getImportIssues(profileId).length + getReviewPairCount(profileId);
+  return (
+    getImportIssues(profileId).length +
+    getReviewPairCount(profileId) +
+    getUnreadableDoseAmounts(profileId).length
+  );
 }
 
 // A synthetic failing sync event for an expired Health Connect ingest token (#607).
