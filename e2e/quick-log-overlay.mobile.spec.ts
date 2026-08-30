@@ -105,7 +105,7 @@ function shellProfileId(): number {
 // The single practice row this spec's tap wrote, for the #2204 assertions that are
 // about the STORE rather than about the screen.
 function readShellPracticeLog(): {
-  time: string | null;
+  start_time: string | null;
   duration_min: number | null;
 } {
   const db = openDb();
@@ -116,7 +116,7 @@ function readShellPracticeLog(): {
           WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
       )
       .get(shellProfileId()) as {
-      time: string | null;
+      start_time: string | null;
       duration_min: number | null;
     };
   } finally {
@@ -915,7 +915,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
     await expect(row.getByTestId("practice-today-count")).toContainText(
       "1 session logged"
     );
-    expect(readShellPracticeLog().time).toBe(
+    expect(readShellPracticeLog().start_time).toBe(
       zonedDateParts(PINNED_TZ, frozenNow()).hhmm
     );
 
@@ -931,7 +931,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
     await expect(row.getByTestId("practice-today-count")).toContainText(
       "2 sessions logged"
     );
-    expect(readShellPracticeLog().time).toBe("07:05");
+    expect(readShellPracticeLog().start_time).toBe("07:05");
 
     // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. Multi-session days are the point
     // of this surface, so a surviving 07:05 would stamp the evening's session with the
@@ -941,7 +941,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
     await expect(row.getByTestId("practice-today-count")).toContainText(
       "3 sessions logged"
     );
-    expect(readShellPracticeLog().time).toBe(
+    expect(readShellPracticeLog().start_time).toBe(
       zonedDateParts(PINNED_TZ, frozenNow()).hhmm
     );
   } finally {
@@ -1025,7 +1025,7 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     // reschedules this practice's own nudge.
     const logged = readShellPracticeLog();
     expect(logged.duration_min).toBe(20);
-    expect(logged.time).toMatch(/^\d{2}:\d{2}$/);
+    expect(logged.start_time).toMatch(/^\d{2}:\d{2}$/);
 
     // Durable, and from SERVER-rendered state: the Wellness card's week count moved,
     // which is only true if the tap wrote through the shared practice store.
