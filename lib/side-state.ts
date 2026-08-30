@@ -12,9 +12,9 @@
 // `lib/__tests__/side-state.test.ts` is its teeth:
 //
 //   1. REFLECTION — every family's registry module exists and exports the named
-//      symbol; every named guard test exists and actually references that symbol,
-//      so a census row cannot point at a registry that moved or a guard that
-//      stopped guarding.
+//      symbol, and every named guard test exists, so a census row cannot point at a
+//      registry or guard that moved. Each guard owns its own form of proof: some
+//      consume the symbol directly, while the DB guards prove the behavior it names.
 //   2. THE CATEGORY SCAN — a quoted key literal shaped like side-state
 //      (SIDE_STATE_KEY_SHAPES) appearing in lib/ or scripts/ must belong to a
 //      registered family's store or be listed in NON_SIDE_STATE_KEYS with what it
