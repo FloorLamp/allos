@@ -39,7 +39,12 @@ export interface StrandedDraft {
 
 export type DraftAssertionScope =
   | { kind: "shared"; profileId: typeof SHARED_PROFILE_ID }
-  | { kind: "spec-owned"; profileId: number; profileName: string };
+  | {
+      kind: "spec-owned";
+      profileId: number;
+      profileName: string;
+      ownerLogin: string;
+    };
 
 /** The standing guard's explicit permission to repair profile 1. */
 export const SHARED_PROFILE_DRAFT_SCOPE: DraftAssertionScope = {
@@ -164,10 +169,12 @@ export function strandedDraftMessage(
  * A sweep is safe only in one of two scopes: profile 1, whose automatic per-test
  * guard serialises ownership, or a fixture profile the calling spec owns outright.
  * The latter has no numeric shortcut: the caller must declare the profile's stable
- * name, and the helper checks that name before deleting anything. That makes a copy
- * onto somebody else's fixture fail at the precondition instead of quietly erasing
- * its rows. The assertion lives here with the live-draft signature so every caller
- * both reports and repairs the same condition.
+ * name and owner login. The helper checks both the name and that this is the only
+ * login granted to the profile before deleting anything; e2e-hygiene independently
+ * proves that only the declaring spec signs in as that login. That makes a copy onto
+ * somebody else's fixture fail at the precondition instead of quietly erasing its
+ * rows. The assertion lives here with the live-draft signature so every caller both
+ * reports and repairs the same condition.
  */
 export function assertNoStrandedDrafts(
   dbPath: string = workerDbPath(),
@@ -195,6 +202,25 @@ export function assertNoStrandedDrafts(
         throw new Error(
           `Draft assertion expected owned fixture profile ${scope.profileId} to be ` +
             `"${scope.profileName}", but found ${actual ? `"${actual.name}"` : "no profile"}.`
+        );
+      const grants = db
+        .prepare(
+          `SELECT l.username, lp.access
+             FROM login_profiles lp
+             JOIN logins l ON l.id = lp.login_id
+            WHERE lp.profile_id = ?
+            ORDER BY l.username`
+        )
+        .all(scope.profileId) as Array<{ username: string; access: string }>;
+      if (
+        grants.length !== 1 ||
+        grants[0].username !== scope.ownerLogin ||
+        grants[0].access !== "write"
+      )
+        throw new Error(
+          `Owned fixture profile ${scope.profileId} is not exclusively granted with ` +
+            `write access to ${scope.ownerLogin}; found ` +
+            `${grants.map((grant) => `${grant.username}:${grant.access}`).join(", ") || "no grants"}.`
         );
     } finally {
       db.close();

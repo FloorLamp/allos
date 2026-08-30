@@ -106,6 +106,7 @@ test.describe("Own-profile + not-self write affordances (issue #1013)", () => {
         kind: "spec-owned",
         profileId: otherId,
         profileName: OWN_OTHER_PROFILE,
+        ownerLogin: E2E_LOGIN_OWN,
       });
     }
   });

@@ -632,6 +632,8 @@ const isFixtureLoginsModule = (name: string) =>
 // A constant used within this many characters after a sign-in opener counts as
 // "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
 const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
+const SPEC_OWNED_DRAFT_SCOPE_RE =
+  /kind:\s*["']spec-owned["'][\s\S]{0,300}?ownerLogin:\s*(E2E_LOGIN_[A-Z0-9_]+)/g;
 // Fixture logins that are deliberately never signed in as, with WHY. Keep this list
 // short — each entry is a login the family page carries forever.
 const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
@@ -1344,6 +1346,40 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("a spec-owned draft sweep belongs to the only spec that signs into its owner login", () => {
+    const files = specFiles().filter((f) => f.name.endsWith(".spec.ts"));
+    const declarations: Array<{ file: string; login: string }> = [];
+    const rawDeclarations: string[] = [];
+
+    for (const file of files) {
+      rawDeclarations.push(
+        ...(file.code.match(/kind:\s*["']spec-owned["']/g) ?? [])
+      );
+      for (const match of file.code.matchAll(SPEC_OWNED_DRAFT_SCOPE_RE))
+        declarations.push({ file: file.name, login: match[1] });
+    }
+
+    expect(declarations.length).toBe(rawDeclarations.length);
+    expect(declarations.length).toBeGreaterThan(0);
+    for (const declaration of declarations) {
+      const signInFiles = files
+        .filter((file) =>
+          [...file.code.matchAll(SIGNIN_WINDOW_RE)].some((window) =>
+            new Set<string>(window[0].match(LOGIN_CONST_NAME_RE) ?? []).has(
+              declaration.login
+            )
+          )
+        )
+        .map((file) => file.name);
+      expect(
+        signInFiles,
+        `${declaration.login} is declared as a spec-owned draft profile by ` +
+          `${declaration.file}, but is signed into by ${signInFiles.join(", ") || "no spec"}. ` +
+          `A destructive sweep is safe only when that login belongs to this one spec.`
+      ).toEqual([declaration.file]);
+    }
   });
 
   it("no NEW raw INSERT INTO profiles in an e2e/*.ts (use createFixtureProfile)", () => {
