@@ -78,13 +78,24 @@ describe("temperature reply flow parsers", () => {
 // round would log a dose confirmation to YESTERDAY — for someone else's medication, in
 // the surface built for caregivers. Two independent guards, both pinned here.
 describe("household round staleness (#1719)", () => {
-  it("one date guard serves every live-keyboard surface", () => {
-    // The food nudge (#947) and the round read the SAME pure decision, so they can't
-    // drift on what "still today" means.
+  it("the round's guard is EXACT-DAY, and no longer the food nudge's", () => {
+    // The round stayed exact-day when #4118 widened the food nudge to its message's
+    // date ±2, and that divergence is the point of this assertion rather than an
+    // oversight in it. A household round is a today-shaped tap on SOMEBODY ELSE's
+    // medication — the surface built for caregivers — and #4118 explicitly left the
+    // check-off family out of the backfill story. So the two guards now DISAGREE about
+    // yesterday, deliberately, and this pins that they do.
     expect(tapDateGuard("2026-07-28", "2026-07-28").kind).toBe("current-day");
     expect(tapDateGuard("2026-07-27", "2026-07-28").kind).toBe("stale-date");
-    expect(foodTapDateGuard("2026-07-27", "2026-07-28")).toEqual(
-      tapDateGuard("2026-07-27", "2026-07-28")
+    expect(foodTapDateGuard("2026-07-27", "2026-07-28").kind).toBe(
+      "recent-day"
+    );
+    // …and they still agree on both ends: the same day logs, a far-off day refuses.
+    expect(foodTapDateGuard("2026-07-28", "2026-07-28").kind).toBe(
+      "current-day"
+    );
+    expect(foodTapDateGuard("2026-07-20", "2026-07-28").kind).toBe(
+      "stale-date"
     );
   });
 
