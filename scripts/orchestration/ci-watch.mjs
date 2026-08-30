@@ -230,8 +230,10 @@ for (;;) {
         console.error(`  ${r.conclusion}: ${r.name}  ${r.html_url}`);
       console.error(
         "Before diagnosing the branch: a job can be stamped `failure` with every step green —\n" +
-          "read the STEPS; a red with no failing step is infrastructure, and a rerun (via MCP\n" +
-          "rerun_failed_jobs, only once all jobs completed) is the answer."
+          "read the STEPS; a red with no failing step is infrastructure, and a rerun —\n" +
+          "only once ALL jobs completed — is the answer:\n" +
+          '  curl -X POST -H "Authorization: Bearer $GH_TOKEN" \\\n' +
+          "    https://api.github.com/repos/<owner>/<repo>/actions/runs/<run-id>/rerun-failed-jobs"
       );
       process.exit(1);
     }
