@@ -1037,7 +1037,6 @@ describe("deliberately uncurated analytes (#2313)", () => {
       // The derived depot ratios. The two mass INDICES left this list in #2322 —
       // they divide by height rather than by a segment and have published
       // population references, so they are curated entries now (asserted below).
-      "Android/Gynoid Ratio",
       "Trunk to Legs Fat Ratio",
     ];
     for (const name of declared) {
@@ -1047,6 +1046,18 @@ describe("deliberately uncurated analytes (#2313)", () => {
     }
     // ONE decision, shared by the whole family — not fifty separate opinions.
     expect(new Set(declared.map((n) => uncuratedAnalyte(n))).size).toBe(1);
+  });
+
+  it("gives the Android/Gynoid ratio its own decline reason (#2768)", () => {
+    expect(uncuratedAnalyte("Android/Gynoid Ratio")).toEqual({
+      kind: "out-of-scope",
+      reason:
+        "Android/Gynoid Ratio is arithmetic over two regions of one DEXA scan, not an independently measured analyte. It stays visible on the scan rather than becoming its own trend.",
+    });
+
+    expect(uncuratedAnalyte("Trunk to Legs Fat Ratio")?.reason).toContain(
+      "no population reference range"
+    );
   });
 
   it("leaves the whole-body totals a DEXA also prints CURATED (#2319)", () => {
