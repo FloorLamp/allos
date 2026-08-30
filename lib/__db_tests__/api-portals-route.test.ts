@@ -178,22 +178,14 @@ describe("GET /api/documents/portals — the gate", () => {
     const res = await GET(req(strangerToken));
     expect(res.status).toBe(403);
   });
-
-  it("serves a member with write access to at least one profile", async () => {
-    const res = await GET(req(writerToken));
-    expect(res.status).toBe(200);
-    expect((await res.json()).ok).toBe(true);
-  });
-
-  it("serves an admin (write everywhere by role)", async () => {
-    const res = await GET(req(adminToken));
-    expect(res.status).toBe(200);
-  });
 });
 
 describe("GET /api/documents/portals — the shape", () => {
   it("returns each portal's slug, name, software and accounts", async () => {
-    const body = await (await GET(req(writerToken))).json();
+    const res = await GET(req(writerToken));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
     const portals = body.portals as {
       slug: string;
       name: string;
@@ -213,25 +205,11 @@ describe("GET /api/documents/portals — the shape", () => {
     expect(baptist.accounts).toEqual([
       { slug: "default", name: "Default login", implicit: true },
     ]);
-  });
-
-  it("orders accounts implicit-first, then by name, and flags implicit honestly", async () => {
-    const body = await (await GET(req(writerToken))).json();
-    const ochsner = (
-      body.portals as { slug: string; accounts: unknown[] }[]
-    ).find((p) => p.slug === "test-ochsner-mychart")!;
     expect(ochsner.accounts).toEqual([
       { slug: "default", name: "Default login", implicit: true },
       { slug: "dad", name: "Dad", implicit: false },
       { slug: "mom", name: "Mom", implicit: false },
     ]);
-  });
-
-  it("names the registry rows the card shows, keyed the way the wire spells them", async () => {
-    const body = await (await GET(req(writerToken))).json();
-    const ochsner = (
-      body.portals as { slug: string; accounts: { slug: string }[] }[]
-    ).find((p) => p.slug === "test-ochsner-mychart")!;
     // The slugs a tool writes into local config are exactly the stored ones — the whole
     // point of the endpoint is that these two can never diverge by transcription.
     expect(portalById(ochsnerId)!.slug).toBe(ochsner.slug);
@@ -246,7 +224,8 @@ describe("GET /api/documents/portals — the shape", () => {
 
 describe("GET /api/documents/portals — the disclosure boundary", () => {
   it("carries no patient labels — mapped, ignored or pending", async () => {
-    const body = await (await GET(req(writerToken))).json();
+    const raw = await (await GET(req(writerToken))).text();
+    const body = JSON.parse(raw);
     const strings = allStrings(body).join(" ");
     expect(strings).not.toContain("TESTPATIENT");
     expect(strings).not.toContain("BOUND");
@@ -256,11 +235,6 @@ describe("GET /api/documents/portals — the disclosure boundary", () => {
     expect(allKeys(body)).not.toContain("profileId");
     expect(allKeys(body)).not.toContain("identities");
     expect(allKeys(body)).not.toContain("pending");
-  });
-
-  it("carries no URL-shaped field anywhere", async () => {
-    const res = await GET(req(writerToken));
-    const raw = await res.text();
     // Over the RAW serialization, so nothing hides in a nested object or an array.
     expect(raw).not.toMatch(/https?:\/\//i);
     expect(raw.toLowerCase()).not.toContain("://");
@@ -277,10 +251,6 @@ describe("GET /api/documents/portals — the disclosure boundary", () => {
     ]) {
       expect(keys).not.toContain(banned);
     }
-  });
-
-  it("exposes exactly the declared key set and nothing more", async () => {
-    const body = await (await GET(req(writerToken))).json();
     expect(Object.keys(body).sort()).toEqual(["ok", "portals"]);
     for (const p of body.portals as Record<string, unknown>[]) {
       expect(Object.keys(p).sort()).toEqual([
@@ -354,6 +324,7 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
     const strings = allStrings(body).join(" ");
     expect(strings).not.toContain(FOREIGN_PORTAL);
     expect(strings).not.toContain(FOREIGN_ACCOUNT);
+    expect(strings).not.toContain("TESTPATIENT");
     // …and the writer still gets its own household's portals, so the endpoint was
     // scoped, not blanked.
     expect(slugs).toContain("test-ochsner-mychart");
@@ -373,7 +344,9 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
       "dad",
       "default",
     ]);
-    expect(allStrings(body).join(" ")).not.toContain("Mom");
+    const strings = allStrings(body).join(" ");
+    expect(strings).not.toContain("Mom");
+    expect(strings).not.toContain("TESTPATIENT");
     // Its own portal is there in full, both accounts.
     const own = (
       body.portals as { slug: string; accounts: { slug: string }[] }[]
@@ -387,7 +360,9 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
   it("hands an admin the full registry", async () => {
     // No admin branch in the reader: an admin reaches every profile, so every claimed
     // account satisfies the same clause an ordinary member's does.
-    const body = await (await GET(req(adminToken))).json();
+    const res = await GET(req(adminToken));
+    expect(res.status).toBe(200);
+    const body = await res.json();
     const portals = body.portals as {
       slug: string;
       accounts: { slug: string }[];
@@ -408,16 +383,6 @@ describe("GET /api/documents/portals — the reachability boundary (#1796)", () 
     // The instance-wide truth is unchanged underneath — the endpoint filters, the
     // registry itself did not shrink.
     expect(portalById(foreignPortalId)!.slug).toBe("test-foreign-clinic");
-  });
-
-  it("still carries no patient labels once scoping is in play", async () => {
-    // The scoped read joins portal_identities to decide visibility; the labels it joins
-    // on must not ride back out with the answer.
-    for (const token of [writerToken, foreignToken, adminToken]) {
-      const strings = allStrings(await (await GET(req(token))).json()).join(
-        " "
-      );
-      expect(strings).not.toContain("TESTPATIENT");
-    }
+    expect(allStrings(body).join(" ")).not.toContain("TESTPATIENT");
   });
 });
