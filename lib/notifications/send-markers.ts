@@ -24,10 +24,6 @@
 //   2. EVIDENCE PER CLASS. Every entry states its tail shape, its stored value, its
 //      cadence and its retention. `name-keyed-swept` additionally has to NAME the sweep,
 //      and `legacy` has to state its residue.
-//   3. AGREEMENT with lib/dismissal-classes.ts: every `notify_`-prefixed entry in that
-//      file's NON_DISMISSAL_PREFIXES must be a namespace declared here, and no send
-//      marker may also be a dismissal namespace. The two registries describe two
-//      different stores and must not overlap.
 //
 // NO SCHEMA CHANGE, NO POLICY CHANGE. Markers stay in the tiers they already live in;
 // this is knowledge about them. In particular the SAFETY STANDING of the dose-escalation
