@@ -150,6 +150,13 @@ test.describe("strength load contexts render as labeled lanes (#1610)", () => {
       "data-suggested",
       "1"
     );
+    await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
+      /^from [\d.]+ kg$/
+    );
+    await expect(form.getByTestId("goal-fact-startingFrom")).toHaveAttribute(
+      "data-suggested",
+      "1"
+    );
 
     // The lift has been logged on two machines whose loads aren't comparable, so a
     // WEIGHT target has to say which one — the alternative is silently taking the

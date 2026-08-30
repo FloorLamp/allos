@@ -184,6 +184,13 @@ test.describe("goals can target a lab value (#1853)", () => {
       const kindChip = form.getByTestId("goal-fact-kind");
       await expect(kindChip).toHaveText("Lab or vital");
       await expect(kindChip).toHaveAttribute("data-suggested", "1");
+      await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
+        /^from [\d.]+%$/
+      );
+      await expect(form.getByTestId("goal-fact-startingFrom")).toHaveAttribute(
+        "data-suggested",
+        "1"
+      );
 
       // The unit label and the reference hint follow the picked analyte, so the
       // number is typed beside the thresholds the app already holds rather than
