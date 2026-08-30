@@ -22,6 +22,7 @@ export * from "./queries/coaching";
 export * from "./queries/reported-burden";
 export * from "./queries/nutrition";
 export * from "./queries/correction-history";
+export * from "./queries/day-ledger";
 export * from "./queries/symptoms";
 export * from "./queries/mood";
 export * from "./queries/mood-anxiety";

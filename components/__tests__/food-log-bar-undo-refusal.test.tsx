@@ -17,7 +17,12 @@ import {
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
-import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
+import { buildDayLedger } from "@/lib/day-ledger";
+import type { DisplayFormatPrefs } from "@/lib/settings";
+import {
+  FoodSelectedDateProvider,
+  useFoodSelectedDate,
+} from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
@@ -137,6 +142,35 @@ function PostProfileNoteOnLayout({
   return null;
 }
 
+// THE SLOT DIMENSION OF THE PROJECTION, made observable on purpose.
+//
+// A correction is a MOVE: it decrements one meal coordinate and increments another, and
+// `applyPlacements([outcome.from, outcome.to])` publishes both halves in one state.
+// Until #3987 the Meals cards rendered `food-slot-total-<meal>` and this suite read the
+// destination half through them incidentally; the ledger replaced those cards with rows
+// derived from SERVER props, which the optimistic projection does not touch. That left
+// the day total ("1 serving") and the mounted meal's own count as the only reads — and
+// a move changes neither the number of servings the day holds nor, at the remount site,
+// anything the assertions looked at. Dropping `outcome.to` from the publish therefore
+// went green across the whole pure tier.
+//
+// So the probe reads the projection directly, both halves, on every mount in this suite.
+// It is not a surface: it exists because the dimension the defect lives in stopped being
+// rendered anywhere, and an invariant nothing observes is not protected.
+function SlotProjectionProbe() {
+  const { activeDate, slotCountsByDate } = useFoodSelectedDate();
+  const counts = slotCountsByDate[activeDate];
+  return (
+    <>
+      {(["Morning", "Midday", "Evening"] as const).map((slot) => (
+        <span key={slot} data-testid={`projection-slot-${slot.toLowerCase()}`}>
+          {counts?.[slot]?.cruciferous ?? 0}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function barTree({
   profileId = 7,
   day = DAY,
@@ -174,14 +208,44 @@ function barTree({
               excludedGroups={[]}
               slot={slot}
               slotBoundaries={{ midday: 660, evening: 900 }}
+              dayLedger={ledgerFor(day)}
             />
             {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
             {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
+            <SlotProjectionProbe />
           </FoodSelectedDateProvider>
         </ToastProvider>
       </ActiveProfileProvider>
     </TimezoneProvider>
   );
+}
+
+// The Day ledger the page mount hands down (#3987), derived from the SAME day fixture
+// the bar gets — exactly as `FoodTab` derives it — so a test that seeds an event gets a
+// ledger row for it without maintaining a second fixture that could disagree.
+function ledgerFor(day: FoodLogDay) {
+  return {
+    groupsByDate: {
+      [day.date]: buildDayLedger({
+        servings: day.events.map((event) => ({
+          kind: "serving" as const,
+          id: `serving:${event.id}`,
+          eventId: event.id,
+          slug: event.groupKey,
+          name: event.name,
+          bucket: event.mealSlot,
+          hhmm: event.eatenAt ?? event.loggedTime,
+          clockKind: event.eatenAt ? ("stated" as const) : ("logged" as const),
+        })),
+        doses: [],
+        pending: [],
+      }),
+    },
+    doseWritableDates: [day.date],
+    prefs: { timeFormat: "24h", dateFormat: "iso" } as DisplayFormatPrefs,
+    keepApart: [],
+    dayContext: null,
+  };
 }
 
 function mountBar(options: Parameters<typeof barTree>[0] = {}) {
@@ -199,6 +263,7 @@ function twoBarTree({ showFirst = true, day = DAY } = {}) {
         excludedGroups={[]}
         slot="Midday"
         slotBoundaries={{ midday: 660, evening: 900 }}
+        dayLedger={ledgerFor(day)}
       />
     </FoodSelectedDateProvider>
   );
@@ -364,14 +429,14 @@ describe("FoodLogBar projection publication", () => {
       },
     };
     const view = mountBar({ profileId: 7, day: profileSeven });
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("1");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
 
     view.rerender(barTree({ profileId: 8, day: profileEight }));
 
     // Plain totals derive directly from the provider projection, so this
     // proves subject reset independently of RollingNumber's visual lifecycle.
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
   });
 
@@ -435,7 +500,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-71"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-71"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -451,7 +516,7 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => {});
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
@@ -544,7 +609,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-74"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -561,10 +626,238 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => correction.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("1");
-    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("0");
+    // THE MEAL COUNT IS THE DISCRIMINATOR, and the day total is not. The defect this
+    // test exists to catch is a correction from the UNMOUNTED bar leaking into the
+    // remounted provider's projection — a Morning→Evening MOVE. A move does not change
+    // how many servings the day holds, so `food-day-total` reads "1 serving" whether
+    // the leak happened or not: it is invariant under the exact bug. The bar is mounted
+    // on Morning, so `count-cruciferous` is Morning's count for this group — 1 if the
+    // correction was correctly ignored, 0 if it leaked through.
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
+    // Both halves off the projection, for completeness — though here they are belt to the
+    // toast's braces rather than the discriminator. The PROVIDER was replaced too, so the
+    // unmounted bar's `applyPlacements` closure addresses a dead setState.
+    //
+    // AND THE PROJECTION HERE IS DEFENDED TWICE, which matters to anyone reading one of
+    // the guards and wondering whether it still does anything. Establishing that took
+    // four mutations, not one: the epoch guard (`areServingMutationsCurrent`) removed
+    // alone leaks the TOAST at both stale sites and moves no projection;
+    // `commitProjection`'s mount guard (`barMountedRef`, via `isMountedProfile`) removed
+    // alone changes nothing at all, because the epoch guard has already returned; and
+    // with BOTH removed this case still passes its two projection lines while the case
+    // below reds. So neither guard alone is falsifiable HERE, and a reader who deletes
+    // one and sees nothing change must not conclude it is dead.
+    //
+    // THEY ARE NOT REDUNDANT — they cover different cases, and no single test shows both:
+    //   • the MOUNT guard covers the replaced-bar case (the case below: provider alive,
+    //     bar swapped, the stale continuation still holding a live setState);
+    //   • the EPOCH guard covers the SUPERSEDED-correction case, where nothing unmounts
+    //     at all — "refuses a superseded correction that resolves after a newer one",
+    //     above. Forcing the epoch guard open reds it with `expected '1' to be '0'`;
+    //     removing the mount guard alone leaves it green at 20/20, because the bar
+    //     never went away and there is no mount check left to do the work.
+    // Delete either one and some real defect stops being refused.
+    //
+    // The case below replaces only the bar, leaving the provider live, and is where these
+    // two lines bite.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
+  });
+
+  // THE EPOCH GUARD'S OWN CASE, where NOTHING UNMOUNTS (#4323 review). The two stale
+  // -write guards cover different defects and the suite only demonstrated one of them:
+  // every other stale case here replaces the bar, the provider, or both, so
+  // `commitProjection`'s mount check answers first and `areServingMutationsCurrent` is
+  // never the line doing the work. Its justification lived in prose, and a prose guard
+  // is not a guard.
+  //
+  // Here one bar stays mounted throughout and two corrections overlap on it: A moves the
+  // serving Morning->Evening and is left in flight; B moves it Morning->Midday and
+  // resolves fully. A then lands last. A is superseded — B is the correction the person
+  // actually completed — so A must be refused, and no mount check can refuse it because
+  // nothing ever unmounted.
+  it("refuses a superseded correction that resolves after a newer one", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: { Morning: { cruciferous: 1 }, Midday: {}, Evening: {} },
+      events: [
+        {
+          id: 74,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const toEvening = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const toMidday = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Midday",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+
+    // A superseded correction also asks the server for current truth. Pin that answer
+    // to the state B left behind, so a reconcile is a no-op and the ONLY thing this
+    // case can be measuring is whether A's own placement leaked.
+    actions.readFoodServingTruth.mockReset();
+    actions.readFoodServingTruth.mockResolvedValue({
+      ok: true,
+      servings: 1,
+      mealServings: { Morning: 0, Midday: 1, Evening: 0 },
+    });
+    const slow = deferred<typeof toEvening>();
+    actions.updateFoodLogEvent.mockReturnValueOnce(slow.promise);
+    mountBar({ profileId: 7, day, slot: "Morning" });
+
+    const openCorrection = () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /^Actions for the Cruciferous vegetables serving/,
+        })
+      );
+      fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
+    };
+
+    // Correction A — Morning to Evening, left in flight.
+    openCorrection();
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+
+    // Correction B — Morning to Midday, resolves completely. Same bar, same provider.
+    actions.updateFoodLogEvent.mockResolvedValueOnce(toMidday);
+    openCorrection();
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Midday" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("food-correct-save"));
+    });
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("1");
+
+    // THE FIXTURE'S REACH: B really did land, so A really is superseded rather than
+    // merely late. Without this the case could pass with both corrections refused.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
+
+    // A lands last. The epoch guard is the only thing that can refuse it.
+    await act(async () => slow.resolve(toEvening));
+
+    expect(screen.getByTestId("projection-slot-midday").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
+  });
+
+  // THE REACHABLE HALF of the same defect. In the remount case above the provider itself
+  // is replaced, so the unmounted bar's `applyPlacements` closure addresses a dead
+  // setState and the projection is out of the leak's reach whatever the guard does. Here
+  // the PROVIDER SURVIVES and only the bar is replaced — the stale continuation's
+  // publish would land on live state, moving a serving the person is looking at from
+  // Morning to Evening on the strength of an interaction that is no longer current.
+  it("does not move a serving when a replaced bar's correction resolves late", async () => {
+    const day: FoodLogDay = {
+      ...DAY,
+      counts: { cruciferous: 1 },
+      slotCounts: {
+        Morning: { cruciferous: 1 },
+        Midday: {},
+        Evening: {},
+      },
+      events: [
+        {
+          id: 74,
+          groupKey: "cruciferous",
+          name: GROUP.name,
+          date: DATE,
+          mealSlot: "Morning",
+          eatenAt: null,
+          loggedTime: "08:00",
+        },
+      ],
+    };
+    const outcome = {
+      ok: true,
+      from: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Morning",
+        servings: 1,
+        mealServings: 0,
+      },
+      to: {
+        date: DATE,
+        groupKey: "cruciferous",
+        mealSlot: "Evening",
+        servings: 1,
+        mealServings: 1,
+      },
+    } as const;
+    const correction = deferred<typeof outcome>();
+    actions.updateFoodLogEvent.mockReturnValue(correction.promise);
+    const view = mountBar({ profileId: 7, day, slot: "Morning" });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /^Actions for the Cruciferous vegetables serving/,
+      })
+    );
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
+    fireEvent.change(screen.getByTestId("food-correct-slot"), {
+      target: { value: "Evening" },
+    });
+    fireEvent.click(screen.getByTestId("food-correct-save"));
+
+    // Same `providerKey`: the projection this bar was editing is still mounted and
+    // still reachable. Only the bar is new.
+    view.rerender(
+      barTree({
+        profileId: 7,
+        day,
+        slot: "Morning",
+        barKey: "replacement-live-provider-bar",
+      })
+    );
+    await act(async () => correction.resolve(outcome));
+
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("1");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
+    expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
+    expect(screen.queryByText("Serving corrected.")).toBeNull();
   });
 
   it("rejects an old interaction note after an A to B to A profile cycle", async () => {
@@ -622,7 +915,7 @@ describe("FoodLogBar projection publication", () => {
     view.rerender(barTree({ profileId: 7, day: returnedProfileSeven }));
     await act(async () => add.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("5 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("5");
     expect(screen.queryByText("Food interaction note.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
@@ -678,7 +971,7 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => add.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
     expect(
       screen.getByText(/Same-profile interaction note\./).textContent
@@ -1062,7 +1355,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-remove-90"));
+    fireEvent.click(screen.getByTestId("ledger-serving-remove-90"));
     fireEvent.click(
       within(screen.getByTestId("second-food-bar")).getByTestId(
         "log-cruciferous"
@@ -1252,7 +1545,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-51"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-51"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -1280,9 +1573,14 @@ describe("FoodLogBar projection publication", () => {
     // Both consumers read the same provider projection. The raw meal totals and
     // row count prove it is already Morning=0/Evening=1 even though the
     // visual receipt's queued frame has deliberately not run.
-    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
-    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
+    // The DESTINATION half, which nothing else here observes: `count-cruciferous` is
+    // Morning's count and the day total is invariant under a move, so publishing only
+    // `outcome.from` would satisfy both of the lines above while the serving vanished
+    // from the projection entirely.
+    expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
+    expect(screen.getByTestId("projection-slot-evening").textContent).toBe("1");
     expect(frames).toHaveLength(1);
   });
 });

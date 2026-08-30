@@ -110,40 +110,33 @@ describe("offline replay — profile attribution (issue #599)", () => {
     expect(bodyMetricsFor(profileA.id, notes)).toBe(0);
   });
 
-  it("(b) REJECTS a stamped intent for a profile the login can't write — nothing written", async () => {
-    // Member granted ONLY A. B exists but is NOT theirs.
+  it("(b) REJECTS stamped intents for ungranted and read-only profiles", async () => {
     const member = createLogin({ role: "member" });
     const profileA = createProfile("RejectA", member.id);
-    const profileB = createProfile("RejectB"); // ungranted to this member
+    const denied = createProfile("RejectB"); // ungranted to this member
+    const readOnly = createProfile("RoB", member.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(member.id, readOnly.id);
     actAs(member, profileA);
 
-    const notes = uniqueKey();
+    const deniedNotes = uniqueKey();
+    const readOnlyNotes = uniqueKey();
     const { status, body } = await replay([
-      bodyMetricIntent(profileB.id, notes),
+      bodyMetricIntent(denied.id, deniedNotes),
+      bodyMetricIntent(readOnly.id, readOnlyNotes),
     ]);
 
     expect(status).toBe(200); // per-intent honesty, not a blanket 4xx
     expect(body.results?.[0].status).toBe("rejected");
     expect(body.results?.[0].reason).toMatch(/permission/i);
-    // Not applied to B (no access) AND not silently rerouted onto the active A.
-    expect(bodyMetricsFor(profileB.id, notes)).toBe(0);
-    expect(bodyMetricsFor(profileA.id, notes)).toBe(0);
-  });
-
-  it("(b2) REJECTS a stamped intent when the grant on the target is read-only", async () => {
-    const member = createLogin({ role: "member" });
-    const profileA = createProfile("RoA", member.id);
-    const profileB = createProfile("RoB", member.id);
-    // Downgrade the member's grant on B to read-only.
-    db.prepare(
-      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
-    ).run(member.id, profileB.id);
-    actAs(member, profileA);
-
-    const notes = uniqueKey();
-    const { body } = await replay([bodyMetricIntent(profileB.id, notes)]);
-    expect(body.results?.[0].status).toBe("rejected");
-    expect(bodyMetricsFor(profileB.id, notes)).toBe(0);
+    expect(body.results?.[1].status).toBe("rejected");
+    expect(body.results?.[1].reason).toMatch(/permission/i);
+    // Neither intent lands on its target or silently reroutes onto active A.
+    expect(bodyMetricsFor(denied.id, deniedNotes)).toBe(0);
+    expect(bodyMetricsFor(readOnly.id, readOnlyNotes)).toBe(0);
+    expect(bodyMetricsFor(profileA.id, deniedNotes)).toBe(0);
+    expect(bodyMetricsFor(profileA.id, readOnlyNotes)).toBe(0);
   });
 
   it("(c) applies a stamped DOSE intent to its captured profile, and ownership still gates it", async () => {
@@ -372,40 +365,37 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     }
   });
 
-  it("surfaces the PAUSED-item refusal instead of silently confirming", async () => {
+  it("surfaces paused-item and retired-dose refusals with their reasons", async () => {
     const admin = createLogin();
-    const profile = createProfile(`Paused ${uniqueKey()}`);
+    const profile = createProfile(`Unavailable ${uniqueKey()}`);
     actAs(admin, profile);
-    const itemId = seedItem(profile.id, { active: 0, quantityOnHand: 5 });
-    const doseId = seedDose(itemId);
+    const pausedItem = seedItem(profile.id, {
+      active: 0,
+      quantityOnHand: 5,
+    });
+    const pausedDose = seedDose(pausedItem);
+    const retiredDose = seedDose(seedItem(profile.id), 1);
     const date = today(profile.id);
 
-    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
+    const { body } = await replay([
+      doseIntent(pausedDose, profile.id, date),
+      doseIntent(retiredDose, profile.id, date),
+    ]);
     expect(body.results?.[0].status).toBe("rejected");
     expect(body.results?.[0].reason).toMatch(/paused/i);
-    expect(logFor(doseId, date)).toBeUndefined();
+    expect(body.results?.[1].status).toBe("rejected");
+    expect(body.results?.[1].reason).toMatch(/no longer on the schedule/i);
+    expect(logFor(pausedDose, date)).toBeUndefined();
+    expect(logFor(retiredDose, date)).toBeUndefined();
     expect(
       (
         db
           .prepare(
             "SELECT quantity_on_hand AS q FROM intake_items WHERE id = ?"
           )
-          .get(itemId) as { q: number }
+          .get(pausedItem) as { q: number }
       ).q
     ).toBe(5);
-  });
-
-  it("surfaces the retired-dose refusal with a reason", async () => {
-    const admin = createLogin();
-    const profile = createProfile(`Retired ${uniqueKey()}`);
-    actAs(admin, profile);
-    const doseId = seedDose(seedItem(profile.id), 1);
-    const date = today(profile.id);
-
-    const { body } = await replay([doseIntent(doseId, profile.id, date)]);
-    expect(body.results?.[0].status).toBe("rejected");
-    expect(body.results?.[0].reason).toMatch(/no longer on the schedule/i);
-    expect(logFor(doseId, date)).toBeUndefined();
   });
 
   it("resolves an already-confirmed dose as already-done, never a second log", async () => {
@@ -566,15 +556,17 @@ describe("offline replay — workout sessions (issue #1596)", () => {
       .all(profileId, title) as { id: number; date: string; type: string }[];
   }
 
-  it("creates the session + its sets exactly once, converting the CAPTURED unit", async () => {
+  it("creates the captured-date session + sets exactly once, converting its unit", async () => {
     const admin = createLogin();
     const profile = createProfile(`SetReplay ${uniqueKey()}`);
     actAs(admin, profile);
     setStoredAge(profile.id, 30);
     const title = `Offline squats ${uniqueKey()}`;
-    const date = today(profile.id);
+    const captured = shiftDateStr(today(profile.id), -2);
 
-    const intent = setIntent(profile.id, title, date);
+    const intent = setIntent(profile.id, title, captured, {
+      date: today(profile.id), // a fields/date mismatch loses to the intent stamp
+    });
     expect((await replay([intent])).body.results?.[0].status).toBe("done");
     // The SAME idempotency key (racing flush triggers) is a no-op duplicate…
     expect((await replay([intent])).body.results?.[0].status).toBe("duplicate");
@@ -582,7 +574,7 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     // …so exactly ONE activity row exists, with its two sets in submitted order.
     const rows = activityRows(profile.id, title);
     expect(rows).toHaveLength(1);
-    expect(rows[0].date).toBe(date);
+    expect(rows[0].date).toBe(captured);
     expect(rows[0].type).toBe("strength");
     const sets = db
       .prepare(
@@ -624,20 +616,6 @@ describe("offline replay — workout sessions (issue #1596)", () => {
     expect(activityRows(profile.id, victimTitle)).toHaveLength(1);
     expect(activityRows(profile.id, title)).toHaveLength(1);
     expect(activityRows(profile.id, title)[0].id).not.toBe(victimId);
-  });
-
-  it("lands on the intent's CAPTURED date, not the fields' (the #28 stamp is authoritative)", async () => {
-    const admin = createLogin();
-    const profile = createProfile(`SetDate ${uniqueKey()}`);
-    actAs(admin, profile);
-    setStoredAge(profile.id, 30);
-    const captured = shiftDateStr(today(profile.id), -2);
-    const title = `Two days ago ${uniqueKey()}`;
-    const intent = setIntent(profile.id, title, captured, {
-      date: today(profile.id), // a fields/date mismatch loses to the stamp
-    });
-    expect((await replay([intent])).body.results?.[0].status).toBe("done");
-    expect(activityRows(profile.id, title)[0].date).toBe(captured);
   });
 
   it("replays as a COMPLETED session — never the live-draft signature the dock resurrects", async () => {
@@ -872,7 +850,9 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       `${date}T09:00:00.000Z`,
       eatenAt
     );
-    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+    const { body } = await replay([intent]);
+    expect(body.results?.[0].status).toBe("done");
+    expect(body.results?.[0].timeNotice).toBeUndefined();
 
     expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
       { occurred_at: eatenAt, time_source: "stated" },
@@ -903,7 +883,9 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       "Morning",
       `${date}T09:00:00.000Z`
     );
-    expect((await replay([intent])).body.results?.[0].status).toBe("done");
+    const { body } = await replay([intent]);
+    expect(body.results?.[0].status).toBe("done");
+    expect(body.results?.[0].timeNotice).toBeUndefined();
 
     expect(eventTimes(profile.id, date, "leafy_greens")).toEqual([
       { occurred_at: null, time_source: null },
@@ -957,33 +939,6 @@ describe("offline replay — food quick-adds (issue #1596)", () => {
       times.every((t) => t.occurred_at === null && t.time_source === null)
     ).toBe(true);
     expect(servingsFor(profile.id, date, "berries")).toBe(3);
-  });
-
-  // The other half of the ruling, and the one a "just add a toast" fix gets wrong: a
-  // replay with NOTHING to report must report nothing. `unstated` is not `refused`.
-  it("reports no notice when the statement survived, or when there never was one", async () => {
-    const admin = createLogin();
-    const profile = createProfile(`FoodQuietTime ${uniqueKey()}`);
-    actAs(admin, profile);
-    const date = today(profile.id);
-    const good = utcInstant(
-      zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!
-    );
-
-    for (const stated of [good, undefined]) {
-      const res = await replay([
-        servingIntent(
-          profile.id,
-          date,
-          "legumes",
-          "Morning",
-          `${date}T09:00:00.000Z`,
-          stated
-        ),
-      ]);
-      expect(res.body.results?.[0].status).toBe("done");
-      expect(res.body.results?.[0].timeNotice).toBeUndefined();
-    }
   });
 
   // #2311 — the SAME channel, for the surface #2296 did not reach. A queued weigh-in

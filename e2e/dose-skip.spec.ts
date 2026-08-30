@@ -23,10 +23,24 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
 
+  // THE DAY MOVED (#3987): a dose's taken/skipped/clear state is the Day ledger's, on
+  // the Food tab, where the day is. The Supplements tab is management now — it is
+  // where this dose was CREATED, two steps up, and it states nothing about today.
+  //
+  // THE ROW IS ADDRESSED BY ITS DOSE, NOT BY ITS PLACE. A ledger separates what the
+  // day still OWES from what it has RECORDED, so resolving this dose moves it from
+  // the bucket's due row to a recorded row of its own — a different `<li>`, with the
+  // same control on it. Re-deriving the locator after every transition is what makes
+  // the tri-state assertions below claims about the DOSE rather than about an element that
+  // is allowed to move.
+  await page.goto("/nutrition?tab=food");
+  const morning = page.getByTestId("ledger-group-morning");
+  await morning.locator('[data-testid^="ledger-due-group-"]').click();
   const row = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
+    .getByTestId("day-ledger")
+    .locator(
+      'li[data-testid^="ledger-due-dose-"], li[data-testid^="ledger-dose-"]'
+    )
     .filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
@@ -74,7 +88,13 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   );
 
   // ── Clean up: delete the supplement so the fixture is left as found ──────────
-  await row.getByRole("button", { name: "Supplement actions" }).click();
+  // Deleting an ITEM is a management act, on the tab that manages the stack.
+  await page.goto("/nutrition?tab=supplements");
+  await page
+    .getByTestId("supplement-row")
+    .filter({ hasText: NAME })
+    .getByRole("button", { name: "Supplement actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.locator("div.card").filter({ hasText: NAME })).toHaveCount(
