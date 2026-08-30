@@ -54,7 +54,11 @@ test.describe("Multi-file medical upload (issue #1008)", () => {
 
     // The multi-select picker: hand the input three files at once, and commit
     // the staged set (#3286 stages a batch per file before it is committed).
-    await stageMediaFiles(page, "medical-upload-input", [csv(1), csv(2), csv(3)]);
+    await stageMediaFiles(page, "medical-upload-input", [
+      csv(1),
+      csv(2),
+      csv(3),
+    ]);
 
     // The chosen files are listed before submit.
     const selected = page.getByTestId("medical-upload-selected");

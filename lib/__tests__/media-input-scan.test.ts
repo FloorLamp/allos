@@ -152,7 +152,10 @@ describe("one add-media surface (#3286)", () => {
 describe("the media-input reader", () => {
   it.each([
     ['<input type="file" accept="image/*" />', [1]],
-    ['<input type="file" accept="video/*,audio/*" capture="environment" />', [1]],
+    [
+      '<input type="file" accept="video/*,audio/*" capture="environment" />',
+      [1],
+    ],
     // The tag that started the issue: attributes across lines, an arrow inside a
     // brace, and the accept two lines from the tag name.
     [
@@ -171,7 +174,7 @@ describe("the media-input reader", () => {
     ['<input type="file" accept=".zip,application/zip" />', []],
     // A computed accept is the owner's own shape, and the first draft of this
     // predicate could not see it.
-    ["<input type=\"file\" accept={accept} multiple={multiple} />", [1]],
+    ['<input type="file" accept={accept} multiple={multiple} />', [1]],
     ['<input type="text" accept="image/*" />', []],
     ['<IconImage type="file" accept="image/*" />', []],
     ['// a bare <input type="file" accept="image/*"> used to live here', []],

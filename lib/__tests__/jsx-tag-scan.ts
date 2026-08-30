@@ -14,7 +14,9 @@ import { fileURLToPath } from "node:url";
 // all. A scan that miscounts in either direction is worse than none, because the
 // work it invents looks justified.
 
-export const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+export const REPO = path.resolve(
+  fileURLToPath(new URL("../..", import.meta.url))
+);
 
 function skipString(s: string, i: number): number {
   const q = s[i];
