@@ -129,7 +129,14 @@ export function dayCountsLabel(servings: number, doses: number): string {
 // A stated row sorts above every filing-time row; within each half the clock decides,
 // and the id is the total-order tie-break (code units, never localeCompare — the
 // #3958/#4016 argument: a collation that answers 0 for two distinct ids leaves the sort
-// unstable). A due row is the least-timed thing on the surface and closes its group.
+// unstable).
+//
+// A DUE ROW CLOSES ITS GROUP, and that position is PROVISIONAL (#3987, open with the
+// owner). The argument for last is that a due row is the least-timed thing on the
+// surface, so it belongs below even the untimed. The argument for first is that it is
+// the only ACTIONABLE row, and actionable is what a person scans for. The design
+// session's mock is the visual reference and settles it; until it does, `due` sorting
+// last is a choice this constant makes visible rather than a fact it asserts.
 const KEY_SEP = "\u001f";
 
 const RANK = { stated: "0", logged: "1", due: "2" } as const;
