@@ -70,6 +70,20 @@ import {
   formatFastDuration,
 } from "@/lib/fasting";
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
+import { buildDayLedger, type LedgerGroup, type LedgerServing } from "@/lib/day-ledger";
+import { getDayDoseLedger } from "@/lib/queries/day-ledger";
+import { pendingDayDoses } from "@/lib/queries/usual-routine";
+import { doseLogDays } from "@/lib/dose-log-window";
+import { getFindingSuppressions, getIntakePairs } from "@/lib/queries";
+import { activeByKey } from "@/lib/findings";
+import { separatePairWarnings } from "@/lib/intake-pairs";
+import { TIME_BUCKETS } from "@/lib/intake-schedule";
+import { workoutDaySubtitleLabel } from "@/lib/intake-schedule";
+import {
+  getActivitiesByDate,
+  isPredictedWorkoutDay,
+} from "@/lib/queries/training";
+import { isTrainingRelevant } from "@/lib/life-stage";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
 // #579) — the INPUT half of nutrition.
@@ -295,6 +309,75 @@ export default async function FoodTab({
             : formatWeekdayDate(day.date, formatPrefs),
     })
   );
+  // THE DAY LEDGER (#3987 phase 1) — one statement of the day, per bounded date, built
+  // by lib/day-ledger.ts from two gathers this page already had reason to make.
+  //
+  // THE DUE HALF IS BOUNDED BY THE WRITE WINDOW, not by the picker: `doseLogDays` is the
+  // PAST half of the window `markDoseTaken`/`markDoseSkipped` enforce, so the ledger can
+  // never offer a tap the core would refuse and never withhold one it would accept.
+  // Beyond it a day still renders its RESOLVED rows — the record outlives the window —
+  // and simply has nothing to tap, which is the issue's "past-day dosing honors the
+  // window" ruling in the one place that can hold it.
+  const doseWritableDates = doseLogDays(date);
+  const doseWritable = new Set(doseWritableDates);
+  const pendingByDate = new Map(
+    doseWritableDates.map((day) => [day, pendingDayDoses(profile.id, day)])
+  );
+  const ledgerByDate: Record<string, LedgerGroup[]> = Object.fromEntries(
+    mealDays.map((day) => [
+      day.date,
+      buildDayLedger({
+        servings: day.events.map(
+          (event): LedgerServing => ({
+            kind: "serving",
+            id: `serving:${event.id}`,
+            eventId: event.id,
+            slug: event.groupKey,
+            name: event.name,
+            bucket: event.mealSlot,
+            // The EATING time where one was captured, else the filing time — with the
+            // answer saying which, so the ledger renders "logged 8:06pm" for a row
+            // nobody timed rather than a bare clock claiming an eating minute (#3958).
+            hhmm: event.eatenAt ?? event.loggedTime,
+            clockKind: event.eatenAt ? "stated" : "logged",
+          })
+        ),
+        doses: getDayDoseLedger(profile.id, day.date),
+        pending: doseWritable.has(day.date)
+          ? (pendingByDate.get(day.date) ?? [])
+          : [],
+      }),
+    ])
+  );
+  // KEEP-APART GUIDANCE RENDERS WHERE THE DUE DOSES ARE (#3987's anti-drop gate): it is
+  // advice about what not to take together, so it belongs beside the taps rather than on
+  // a management list. Current safety, never a historical claim, so it is computed for
+  // TODAY only — exactly the scope the retired schedule gave it. Filtered through the
+  // findings bus (#435) so a dismissal here or on Upcoming silences both.
+  const intakePairs = getIntakePairs(profile.id);
+  const ledgerSuppressions = getFindingSuppressions(profile.id);
+  const todaysPending = pendingByDate.get(date) ?? [];
+  const keepApart = TIME_BUCKETS.map((bucket) => ({
+    bucket: bucket as string,
+    warnings: activeByKey(
+      separatePairWarnings(
+        todaysPending.filter((d) => d.bucket === bucket).map((d) => d.itemId),
+        intakePairs
+      ),
+      (w) => w.key,
+      ledgerSuppressions,
+      date
+    ),
+  })).filter((entry) => entry.warnings.length > 0);
+  // The workout/rest context line the retired schedule carried (#3987's anti-drop
+  // gate). Day-shaped, so it moves to the day surface; absent where training is not
+  // tracked, which is the same gate the schedule applied.
+  const ledgerDayContext = isTrainingRelevant(getProfileAge(profile.id))
+    ? workoutDaySubtitleLabel(
+        isPredictedWorkoutDay(profile.id, date),
+        getActivitiesByDate(profile.id, date).length > 0
+      )
+    : null;
   const rollup = getWeeklyFoodRollup(profile.id);
   const suggestions = getFoodSuggestions(profile.id);
   // Goal-scaled protein adequacy (#767): the ONE gather the coaching finding also reads.
@@ -481,6 +564,13 @@ export default async function FoodTab({
                   testId="food-ledger-link"
                 />
               }
+              dayLedger={{
+                groupsByDate: ledgerByDate,
+                doseWritableDates,
+                prefs: formatPrefs,
+                keepApart,
+                dayContext: ledgerDayContext,
+              }}
               proteinQuickAdd={
                 <ProteinQuickAdd
                   key="protein-quickadd"
