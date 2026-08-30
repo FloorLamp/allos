@@ -18,6 +18,7 @@ import {
   MEDICAL_UPLOAD_BATCH_CAP,
   MEDICAL_UPLOAD_TOAST_KEY,
 } from "@/lib/upload-gate";
+import { formatBytes } from "@/lib/format-bytes";
 
 // Upload form for medical documents. The submit button stays disabled until at
 // least one file is chosen. Two kinds of upload share this one control: a lab
@@ -30,27 +31,23 @@ import {
 // to own its own: an offscreen `name="file"` input under two viewport-shaped
 // affordances (a dashed drop zone above `sm`, two equal Upload/Camera buttons
 // below it), with a hand-rolled DataTransfer forwarding drops into the input and
-// a <PhotoCapture> mount for the camera. All of that MOVED into MediaInput —
-// this form is now a consumer of the very drop-zone mechanism it donated, and
-// the photo surfaces get it too, which is the point of the consolidation. Gained
-// here in the trade: paste-from-clipboard, and a camera path that no longer
+// a <PhotoCapture> mount for the camera. All of that MOVED into MediaInput, so
+// this form is now a consumer of the drop-zone mechanism it donated and the photo
+// surfaces get it too. Gained in the trade: paste, and a camera that no longer
 // hides behind a `sm:hidden` row.
 //
-// The dashed zone is this form's `triggerContent`, so dropping a stack of PDFs
-// onto the page works exactly as before — MediaInput's trigger is itself a drop
-// target — and `name="file"` still lands on ONE real input, MediaInput's, inside
-// this <form>. Multi-file (#1008) is `multiple`: every selected file rides the
-// same `file` FormData key, the action ingests them sequentially under a ~20-file
-// soft cap, and the chosen files are listed before submit.
+// The dashed zone is this form's `triggerContent`, so dropping a stack of PDFs on
+// the page works as before (MediaInput's trigger is itself a drop target), and
+// `name="file"` still lands on ONE real input inside this <form>. Multi-file
+// (#1008) is `multiple`: every file rides the same `file` key, the action ingests
+// them sequentially under a ~20-file soft cap, and they are listed before submit.
 //
-// Camera capture (#1423, #1993): a phone can photograph a paper document straight
-// into the same submit. The image presets are the DOCUMENT ones, because a preset
-// tuned for skin tone is not tuned for something a downstream extraction has to
-// read. MediaInput's picker is image-and-document wide here, and its `capture`
-// behaviour is a live viewfinder rather than a `capture` attribute on this input
-// — which is what lets one input accept PDFs, zips and spreadsheets without
-// mobile Chrome opening the camera INSTEAD of the file picker and taking
-// health-record exports off the phone entirely.
+// Camera capture (#1423, #1993) uses the DOCUMENT presets, because a preset tuned
+// for skin tone is not tuned for something a downstream extraction has to read.
+// Its viewfinder replaces the old `capture` ATTRIBUTE, which is what lets one
+// input accept PDFs, zips and spreadsheets: `capture` makes mobile Chrome open
+// the camera INSTEAD of the file picker, taking health-record exports off the
+// phone entirely. That hazard is gone at the root rather than worked around.
 //
 // Immediate feedback (issue #102): the inline imports table that used to show a
 // processing spinner next to this form moved into Data → Review, so a bare
@@ -214,7 +211,7 @@ export default function UploadForm({
             <li key={`${f.name}-${i}`} className="flex justify-between gap-3">
               <span className="truncate">{f.name}</span>
               <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                {formatSize(f.size)}
+                {formatBytes(f.size)}
               </span>
             </li>
           ))}
@@ -264,12 +261,4 @@ export default function UploadForm({
       )}
     </form>
   );
-}
-
-// Compact human size for the selected-files list (bytes → KB/MB, one decimal).
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
 }

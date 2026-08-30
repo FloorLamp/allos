@@ -27,51 +27,34 @@ import {
   type CameraDialogVariant,
   type CameraKnowledge,
 } from "@/lib/photo/camera-fallback";
+import { formatBytes } from "@/lib/format-bytes";
 
 // THE ONE ADD-MEDIA SURFACE (#3286), over the #1119 pipeline. Every consumer
-// that asks a person for image bytes opens THIS — progress photos, lesion and
-// symptom capture, and the documents form's own doors — so there is one answer
-// to "how do I get a picture in", not one per device the author had in mind.
+// that asks a person for media opens THIS — progress photos, lesion and symptom
+// capture, activity clips, and the documents form's own door — so there is one
+// answer to "how do I get a picture in", not one per device the author had in
+// mind. It puts a face on the pipeline; EXIF-strip, compression and resize are
+// still lib/photo's, client and server, unchanged.
 //
-// It puts a face on the #1119 pipeline; it does not reimplement it. EXIF-strip,
-// compression and resize are still lib/photo's, client and server, unchanged.
-//
-// FOUR WAYS IN, all always available: choose a file, drop onto the dialog,
-// paste from the clipboard, or use the camera. Device-awareness is ORDERING
-// ONLY (lib/photo/camera-fallback's mediaStartStage): a phone-width viewport or
-// a session-granted camera opens the viewfinder exactly as before; everywhere
-// else the chooser leads. The defect that made this one component was the other
-// arrangement — a desktop that had never granted camera opened onto "Camera
-// access is blocked for this app" plus padlock instructions, with a green "Open
-// camera" as the PRIMARY and file-choose demoted to a helper sentence: the one
-// path that could not work was the one being pushed.
-//
-// SO CAMERA COPY IS ATTACHED TO THE CAMERA OPTION, never to the dialog. The
-// recovery instructions render under "Use camera" once an attempt has actually
-// failed, and nowhere else (#3071's standard: say what to do, not how
+// Four ways in, all always available: choose, drop, paste, camera.
+// DEVICE-AWARENESS IS ORDERING ONLY (mediaStartStage) — a phone-width viewport
+// or a session-granted camera opens the viewfinder exactly as before, and
+// everywhere else the chooser leads. The defect that made this one component was
+// the other arrangement: a desktop that had never granted camera opened onto
+// "Camera access is blocked for this app" plus padlock instructions, with a green
+// "Open camera" as the PRIMARY. The one path that could not work was the one
+// being pushed. So CAMERA COPY IS ATTACHED TO THE CAMERA OPTION and renders only
+// after an attempt has actually failed (#3071: say what to do, not how
 // permissions work).
 //
-// CAMERA PATH: getUserMedia live preview with an optional low-opacity
-// ONION-SKIN ghost of the series' last photo, so you frame identically over
-// time. Capture draws to a canvas sized by the pure fitWithin policy — a canvas
-// re-encode carries no EXIF, so this path uploads clean and small by
-// construction. The front camera mirrors the preview (and un-mirrors the pixels
-// at capture, so the saved photo matches reality).
+// The camera captures a canvas frame, which is a JPEG and carries no EXIF. The
+// file paths re-encode too (compressImageBlob) but ONLY `image/*` bytes, so a
+// clip reaches its own pipeline byte-for-byte; the SERVER strips and downscales
+// regardless (never trust the client).
 //
-// FILE PATH: picked, dropped and pasted files are re-encoded client-side too
-// (compressImageBlob), falling back to raw bytes if the browser can't decode
-// them — and only for `image/*` bytes, so a consumer whose media is not an
-// image hands its file through untouched. The SERVER pipeline strips and
-// downscales regardless (never trust the client).
-//
-// BATCH: a `multiple` consumer takes a whole set in one interaction. Confirm
-// lists every file by name and size, so a batch is a list of named things
-// rather than a count, and the consumer posts one toast for the set.
-//
-// FORM CONSUMERS: pass `name` and the one real input carries it, so a
-// <form action={...}> submit ships the files with no second field. That is
-// UploadForm's donor mechanism (drop → DataTransfer → the real input),
-// generalized rather than copied.
+// Pass `name` and the one real input becomes the host <form>'s field, so a form
+// consumer submits with no second field. That is UploadForm's donor mechanism
+// (drop -> DataTransfer -> the real input), generalized rather than copied.
 
 export interface MediaInputProps {
   // Button label for the trigger.
@@ -128,7 +111,6 @@ type Stage =
   | { kind: "confirm"; picked: Picked[] };
 
 const CAMERA_KNOWLEDGE_KEY = "allos:camera-knowledge";
-const CAMERA_FAILURE_KEY = "allos:camera-failure";
 
 const CAMERA_COPY: Record<CameraDialogVariant, string> = {
   blocked: "Camera access is blocked for this app.",
@@ -206,19 +188,15 @@ export default function MediaInput({
     setDragActive(false);
   }, [stopStream]);
 
-  const rememberCamera = useCallback(
-    (knowledge: CameraKnowledge, failure?: CameraDialogVariant) => {
-      cameraKnowledgeRef.current = knowledge;
-      try {
-        sessionStorage.setItem(CAMERA_KNOWLEDGE_KEY, knowledge);
-        if (failure) sessionStorage.setItem(CAMERA_FAILURE_KEY, failure);
-      } catch {
-        // Storage can be unavailable in private contexts; the in-memory session
-        // still prevents every capture from paying the first-failure tax.
-      }
-    },
-    []
-  );
+  const rememberCamera = useCallback((knowledge: CameraKnowledge) => {
+    cameraKnowledgeRef.current = knowledge;
+    try {
+      sessionStorage.setItem(CAMERA_KNOWLEDGE_KEY, knowledge);
+    } catch {
+      // Storage can be unavailable in private contexts; the in-memory session
+      // still prevents every capture from paying the first-failure tax.
+    }
+  }, []);
 
   // Try the camera. On failure we land on the CHOOSER with the reason attached
   // to the camera option — the file paths sit right there, untouched, which is
@@ -228,7 +206,7 @@ export default function MediaInput({
       setError(null);
       const md = navigator.mediaDevices;
       if (!md?.getUserMedia) {
-        rememberCamera("failed", "not-found");
+        rememberCamera("failed");
         setCameraError("not-found");
         setStage({ kind: "chooser" });
         return;
@@ -249,7 +227,7 @@ export default function MediaInput({
             : null,
           permissionStateRef.current
         );
-        rememberCamera(variant === "blocked" ? "denied" : "failed", variant);
+        rememberCamera(variant === "blocked" ? "denied" : "failed");
         setCameraError(variant);
         setReloadOffered(retry && variant === "blocked");
         setStage({ kind: "chooser" });
@@ -301,7 +279,7 @@ export default function MediaInput({
           const update = () => {
             permissionStateRef.current = status.state;
             if (status.state === "granted") rememberCamera("granted");
-            if (status.state === "denied") rememberCamera("denied", "blocked");
+            if (status.state === "denied") rememberCamera("denied");
           };
           update();
           status.onchange = update;
@@ -429,7 +407,7 @@ export default function MediaInput({
           : null,
         permissionStateRef.current
       );
-      rememberCamera(variant === "blocked" ? "denied" : "failed", variant);
+      rememberCamera(variant === "blocked" ? "denied" : "failed");
       setCameraError(variant);
       setStage({ kind: "chooser" });
     }
@@ -729,7 +707,7 @@ export default function MediaInput({
                       <span className="flex justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
                         <span className="truncate">{p.file.name}</span>
                         <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
-                          {formatSize(p.file.size)}
+                          {formatBytes(p.file.size)}
                         </span>
                       </span>
                     </li>
@@ -795,12 +773,4 @@ function reExtension(name: string, type: string): string {
 
 function revoke(picked: Picked[]) {
   picked.forEach((p) => p.url && URL.revokeObjectURL(p.url));
-}
-
-// Compact human size for the selected-files list (bytes → KB/MB, one decimal).
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
 }
