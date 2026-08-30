@@ -67,26 +67,27 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 ## Merge
 
 - Squash merge only a green EXACT HEAD, through the transport this host
-  grants (MCP, else REST `PUT /pulls/N/merge` squash) — the invariants here
-  are transport-independent. Re-read `head.sha` in the same breath as the
-  merge call: GitHub merges the head it finds, not the one you read.
+  grants (MCP, else REST `PUT /pulls/N/merge` squash). Re-read `head.sha` in
+  the same breath as the merge call: GitHub merges the head it finds.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
 - One landing candidate gets final rebase, PR opened or refreshed READY
-  (never draft — environment.md §GitHub access), remote exact-head
-  COMMENT/adversarial review, and full CI, in order. Local pre-review does not
-  replace it; bank later branches until the candidate lands.
+  (never draft — environment.md §GitHub access), exact-head review, and full
+  CI, in order. Local pre-review never replaces it; bank later branches.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the exact candidate commit; the
-  COMMENT review states the reviewed SHA and reviewer — the receipt. Any head
-  change voids it; merge needs that SHA green with zero unresolved findings.
+  COMMENT review states the reviewed SHA and reviewer — the receipt. A head
+  change voids it.
+- **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
+  call.** It checks the whole gate read-only — receipt on the current head,
+  checks green, zero unresolved threads. Exit 0 is the merge precondition;
+  run it after `ci-watch.mjs` settles.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
-- **Check what a merge would CLOSE, with the full keyword set.** Run
-  `node scripts/orchestration/closing-keywords.mjs <pr>`; exit 3 means something
-  closes. It reads all ten keywords from the body AND every commit — the natural
-  three miss the rest, and a missed keyword reads as safe (failure modes).
+- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`; exit 3
+  means something closes. It reads all ten keywords from the body AND every
+  commit — the natural three miss the rest (failure modes).
 - **Require the PR body rewritten in the same push as a rewrite.**
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).

@@ -161,6 +161,10 @@ Squash merge only a GREEN EXACT HEAD, serially, through the transport this
 host grants (MCP where present, else REST — `review-merge.md` §Merge). After
 each merge, recheck every open PR's mergeability.
 
+Gate first, every time: `merge-gate.mjs <pr>` exit 0 — receipt on the current
+head, checks green, zero unresolved threads, verified read-only — is the
+merge precondition. A CLOSED gate lists exactly what to fix.
+
 A later conflicting PR rebases only after the last earlier conflict lands;
 semantic conflicts go back to their author — never hand-integrate feature
 code.

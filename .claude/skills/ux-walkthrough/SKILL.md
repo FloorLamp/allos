@@ -105,9 +105,9 @@ shots", look at that shot before concluding anything.
    subtitle, sentence case, frosted cards, `section-label` groups, one date
    format per context, friendly empty states.
 3. **Dispatch one cross-page consistency reviewer** with the generated
-   `consistency.html` — one DEFAULT desktop capture per route, low zoom, no
-   mobile/expanded/hover, so every tile is comparable. It reports only
-   BETWEEN-page drift: chips, buttons, stat tiles, arrows, link colors.
+   `consistency.html` — one DEFAULT desktop capture per reached route, low
+   zoom, no mobile/expanded/hover, so every tile is comparable. It reports
+   only BETWEEN-page drift: chips, buttons, stat tiles, arrows, link colors.
 4. **Name every review dimension in every brief** — hierarchy / text /
    layout, plus the ones prior reviews silently dropped:
 
@@ -144,8 +144,9 @@ Shape notes, each load-bearing when reading a run's receipts:
   corpus (`scripts/seed-long-names.ts`). Never combined with `SEED_RNG`;
   `run.json` records `UX_SEED=dirty` + `SEED_DIAL_SHAPE=dirty`.
 - **One-cycle (#3489 D5)** stores exactly two periods 28 days apart — one
-  completed interval, deliberately below the three-sample honesty gate, so
-  `/medical/cycles` shows the "appears after 3" line and no stat tiles.
+  completed interval, deliberately below the three-sample honesty gate:
+  `/medical/cycles` shows the "appears after 3" line, no stat tiles;
+  `run.json` records `SEED_DIAL_SHAPE=one-cycle`.
 - The `middleState` dial is a named-shape registration point: numbered
   `SEED_RNG` looks keep their baseline value; future threshold−1 states
   register there rather than shifting existing seed vectors.

@@ -25,6 +25,7 @@
 // import that comes back hollow aborts before planning, because against an
 // empty set this script's plan is "delete everything".
 
+import "../load-env";
 import { execFileSync } from "node:child_process";
 import { KNOWN_LABELS } from "./reconcile-tracker-core";
 import { helpGuard } from "./usage.mjs";
