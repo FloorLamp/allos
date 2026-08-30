@@ -185,7 +185,7 @@ test.describe("goals can target a lab value (#1853)", () => {
       await expect(kindChip).toHaveText("Lab or vital");
       await expect(kindChip).toHaveAttribute("data-suggested", "1");
       await expect(form.getByTestId("goal-fact-startingFrom")).toHaveText(
-        /^from [\d.]+ %$/
+        /^from [\d.]+%$/
       );
       await expect(form.getByTestId("goal-fact-startingFrom")).toHaveAttribute(
         "data-suggested",
