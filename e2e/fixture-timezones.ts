@@ -9,8 +9,9 @@ import type Database from "better-sqlite3";
 // local is `DEFAULT_INTAKE_REMINDER_MINUTES.Midday`, so a profile that follows it
 // sits at the centre of a `mealTimeWindows` window at every UTC start hour. A
 // profile pinned to UTC instead has a local minute-of-day equal to the run's real
-// UTC start hour, so any dashboard candidate carrying meal-window timing (the
-// composed-morning offer, protein-today) resolves `expired` for it once the last
+// UTC start hour, so any dashboard candidate carrying meal-window timing
+// (protein-today; the composed-morning offer carried it too until #3265 gave it the
+// food-slot window it is actually about) resolves `expired` for it once the last
 // meal window closes — and an expired candidate is dropped from EVERY lane, so
 // `openDashboardAll` cannot rescue it. That made one spec red for the ~3 hours of
 // each day a run started in [21:00, 24:00) UTC and green the other 21. So: do NOT
