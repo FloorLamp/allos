@@ -14,7 +14,14 @@ import {
   getProfileFoodTelegram,
   getProfilesByTelegramChatId,
 } from "@/lib/settings";
-import { getFoodServingsOnDate } from "@/lib/queries";
+import {
+  getFoodRegularity,
+  getFoodServingsOnDate,
+  getUsualFoodOffer,
+} from "@/lib/queries";
+import { logFoodServingCore } from "@/lib/food-log-write";
+import { USUAL_BACKFILL } from "@/lib/logged-via";
+import { FOOD_REGULARITY_MIN_WINDOW_DAYS } from "@/lib/food-regularity";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
 import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
@@ -185,5 +192,125 @@ describe("food opt-in prompt tap", () => {
   it("ignores an opt-in tap from an unmapped chat", async () => {
     await handleCallbackQuery(cq(`foodoptin:${p.profileId}:yes`, OTHER_CHAT));
     expect(getProfileFoodTelegram(p.profileId)).toBe(false);
+  });
+});
+
+// ── A BACKFILLED TAP IS NOT EVIDENCE (#4118) ─────────────────────────────────
+//
+// The evidence guard exists so the composed `usual:` bundle cannot become the reason it
+// is offered again. The food buttons sit on the SAME keyboard as that bundle and write
+// the same ledger, so once #4118 let them land on a past day they became a second route
+// into the loop: two taps on a stale keyboard, stamped with their surface, would count as
+// a morning nobody logged and manufacture the offer.
+//
+// So the handler substitutes `usual-backfill` from the same date comparison the write
+// core makes. Asserted end to end through the real dispatcher, in both directions and
+// with the CONSEQUENCE — the offer — as the subject, because a stamp assertion alone
+// would not show what the stamp is for.
+describe("a food tap onto a past day cannot manufacture the habit it would offer", () => {
+  // One morning short of the gate, with the target day empty: the only thing between
+  // this profile and a standing usual offer is one more observed morning.
+  //
+  // EVERY WINDOW IS SEEDED, not just Morning, and the reason is the same-day case below.
+  // A contemporaneous tap records its own instant as the eating time (#2019), so the
+  // window it lands in is whatever the profile's clock says NOW is — which for a db test
+  // is the hour the suite happens to run. Seeding one short in all three makes the
+  // converse assertion deterministic at every run hour instead of green for eleven hours
+  // a day, which is the shape #3260 was.
+  function seedOneShort(tag: string, chat: string) {
+    const sp = seedProfile(tag);
+    seedLoginTelegram(sp.profileId, chat);
+    const anchor = today(sp.profileId);
+    for (let d = 2; d <= FOOD_REGULARITY_MIN_WINDOW_DAYS; d++) {
+      const date = shiftDateStr(anchor, -d);
+      for (const at of ["08:00:00", "12:00:00", "19:00:00"])
+        for (const g of ["berries", "fermented"])
+          logFoodServingCore(sp.profileId, g, date, "page", `${date}T${at}Z`);
+    }
+    return { profileId: sp.profileId, anchor };
+  }
+
+  /** The windows the measure can currently speak about, and how many days each saw. */
+  function observed(profileId: number): Record<string, number> {
+    const measure = getFoodRegularity(profileId);
+    return Object.fromEntries(
+      Object.entries(measure)
+        .filter(([, m]) => m != null)
+        .map(([w, m]) => [w, m!.observedDays])
+    );
+  }
+
+  it("stamps usual-backfill, and the offer it would have created does not appear", async () => {
+    const chat = "5550401";
+    const { profileId, anchor } = seedOneShort("tg-food-backfill", chat);
+    const y = shiftDateStr(anchor, -1);
+    // Every window is one morning short of the gate, so NOTHING can be offered yet.
+    expect(observed(profileId)).toEqual({});
+
+    for (const group of ["berries", "fermented"])
+      await handleCallbackQuery(
+        cq(`food:${profileId}:Morning:${y}:${group}`, chat)
+      );
+
+    // The servings really landed on that day — the guard must not be data loss.
+    expect(getFoodServingsOnDate(profileId, y).get("berries")).toBe(1);
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, y)
+    ).toEqual([{ logged_via: USUAL_BACKFILL }]);
+    // …and the measure cannot see them, so the seventh morning was never observed and
+    // no offer stands anywhere. THIS is the assertion the stamp exists for.
+    expect(observed(profileId)).toEqual({});
+    for (const window of ["Morning", "Midday", "Evening"] as const)
+      expect(getUsualFoodOffer(profileId, window, anchor)).toEqual([]);
+  });
+
+  it("a SAME-DAY tap still stamps its surface and still counts", async () => {
+    // The converse on the same shape. A guard that stamped every Telegram tap
+    // `usual-backfill` would satisfy the test above and would silently delete the
+    // proactive nudge — the app's main food surface — from the evidence entirely.
+    const chat = "5550402";
+    const { profileId, anchor } = seedOneShort("tg-food-sameday", chat);
+    for (const group of ["berries", "fermented"])
+      await handleCallbackQuery(
+        cq(`food:${profileId}:Morning:${anchor}:${group}`, chat)
+      );
+
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, anchor)
+    ).toEqual([{ logged_via: "telegram-nudge" }]);
+    // Exactly one window crossed the gate — whichever one the tap's own instant fell in
+    // — and it saw the full count. The measure counted the tap, which is the whole
+    // claim; WHICH window it was is the run hour's business, not this test's.
+    const seen = observed(profileId);
+    expect(Object.values(seen)).toEqual([FOOD_REGULARITY_MIN_WINDOW_DAYS]);
+  });
+
+  it("the protein button follows the same rule", async () => {
+    // `__protein__` rides `food_log_events` too, so a backfilled shake is a row the
+    // regularity read would otherwise count as a morning that was logged.
+    const chat = "5550403";
+    const { profileId, anchor } = seedOneShort("tg-food-protein-backfill", chat);
+    const y = shiftDateStr(anchor, -1);
+    await handleCallbackQuery(
+      cq(`foodprotein:${profileId}:Morning:${y}:30`, chat)
+    );
+    expect(
+      db
+        .prepare(
+          `SELECT DISTINCT logged_via FROM food_log_events
+            WHERE profile_id = ? AND date = ?`
+        )
+        .all(profileId, y)
+    ).toEqual([{ logged_via: USUAL_BACKFILL }]);
   });
 });

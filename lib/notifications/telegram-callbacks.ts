@@ -134,6 +134,7 @@ import { usualRoutineAnswerText } from "../usual-routine";
 import { foodGroupName } from "../food-groups";
 import { readOfferRow } from "./offer-store";
 import { isDoseDateAccepted } from "../dose-log-window";
+import { USUAL_BACKFILL } from "../logged-via";
 import {
   USUAL_OFFER_FAMILY,
   type StoredUsualOffer,
@@ -1652,10 +1653,18 @@ async function handleFoodLog(
     profileId,
     food.group,
     food.date,
-    // NOT the module-level NUDGE (#3087). `/food` re-renders the same builder the tick
-    // sends, so the two are indistinguishable at this handler; the token carries which
-    // keyboard minted the button, marked at the mint site.
-    food.origin,
+    // NOT the module-level NUDGE (#3087) — the token carries which keyboard minted the
+    // button, because `/food` re-renders the same builder the tick sends and the two are
+    // otherwise indistinguishable here.
+    //
+    // …EXCEPT ON A BACKFILL, WHERE THE DAY OUTRANKS THE SURFACE (#4118). A tap onto a
+    // day that has ended is evidence of nothing: `getFoodRegularity` excludes exactly
+    // `usual-backfill`, and stamping the surface here would let these buttons
+    // manufacture the very habit the `usual:` bundle one row up is derived from —
+    // backfill two mornings from a stale keyboard and the third is offered because of
+    // them. The core makes the same substitution from the same comparison; this path
+    // does not go through it, so it makes it here. A same-day tap is untouched.
+    backfilling ? USUAL_BACKFILL : food.origin,
     tapAt,
     backfilling ? food.window : undefined,
     backfilling ? undefined : { eatenAt: tapAt, source: "tap" },
@@ -1734,8 +1743,11 @@ async function handleFoodProtein(
     profileId,
     token.date,
     token.grams,
-    // Same axis, same token marker as the food-group button beside it (#3087).
-    token.origin,
+    // Same axis, same token marker as the food-group button beside it (#3087), and the
+    // same backfill substitution for the same reason (#4118): `__protein__` rides
+    // `food_log_events`, so a backfilled shake is a row the regularity read would
+    // otherwise count as evidence about a day nobody was living.
+    backfilling ? USUAL_BACKFILL : token.origin,
     tapAt,
     backfilling ? token.window : undefined,
     backfilling ? undefined : { eatenAt: tapAt, source: "tap" },

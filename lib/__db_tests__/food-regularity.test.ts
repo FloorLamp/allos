@@ -410,6 +410,13 @@ describe("usual-backfilled rows are not evidence, and everything else still is",
       );
   }
 
+  // THE STAMP DECIDES, NOT THE SURFACE — and `telegram-nudge` is here to pin that the
+  // guard is narrow, not that a Telegram tap is always evidence. Since #4118 a Telegram
+  // food button can itself land on a past day, and when it does the HANDLER substitutes
+  // `usual-backfill` from the same date comparison the write core uses, so such a row
+  // never reaches this row of the table. That substitution is asserted where it is made
+  // (lib/__db_tests__/telegram-food.test.ts), because it is the handler's decision and
+  // not this measure's.
   it.each([
     ["page", "page", true],
     ["telegram-nudge", "telegram-nudge", true],
@@ -561,6 +568,39 @@ describe("usual-backfilled rows are not evidence, and everything else still is",
 describe("usualRoutineDayOffers", () => {
   // A habit in TWO windows, with a hole at day 3 back so both stand on that day and
   // neither stands on the days already logged.
+  // The two-window habit plus a Morning-declared dose, aged behind the lifetime bound
+  // (#430/#1442 — a dose born today is owed on no past day, so an un-aged fixture would
+  // assert about an empty rider and pass whatever the bound did).
+  function seedWithDose(name: string, hole: number) {
+    const { profileId, anchor } = seedTwoWindows(name, hole);
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, obligation, condition)
+           VALUES (?, 'Creatine', 'supplement', 1, 'should', 'daily')`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    const dose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '1 scoop', 'morning', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    const born = `${shiftDateStr(anchor, -60)} 09:00:00`;
+    db.prepare(`UPDATE intake_items SET created_at = ? WHERE id = ?`).run(
+      born,
+      itemId
+    );
+    db.prepare(`UPDATE intake_item_doses SET created_at = ? WHERE id = ?`).run(
+      born,
+      dose
+    );
+    return { profileId, anchor, dose };
+  }
+
   function seedTwoWindows(name: string, hole: number) {
     const { profileId, anchor } = makeProfile(name);
     for (let d = 1; d <= 14; d++) {
@@ -600,6 +640,29 @@ describe("usualRoutineDayOffers", () => {
       []
     );
   });
+
+  it.each([
+    ["inside the dose window", -2, true],
+    ["one day past the dose window", -3, false],
+    ["the last day in food reach", -USUAL_BACKFILL_WINDOW_DAYS, false],
+  ] as const)(
+    "%s: the offer names doses = %s, so the button cannot promise a refusal",
+    (_why, delta, named) => {
+      // THE TWO HALVES REACH DIFFERENT DISTANCES. Past `isDoseDateAccepted`'s window
+      // every named dose comes back `stale-dose` having written nothing, so an offer
+      // that still listed them would put a count and a name on a button for writes the
+      // core refuses. Both sides of the edge, because "no doses past day 2" would pass
+      // on an offer that never names a dose at all.
+      const { profileId, anchor, dose } = seedWithDose(`door-dose${delta}`, -delta);
+      const offers = usualRoutineDayOffers(profileId, shiftDateStr(anchor, delta));
+      expect(offers.length).toBeGreaterThan(0);
+      const morning = offers.find((o) => o.window === "Morning")!;
+      // The FOOD half is unaffected either way — this bound narrows the rider, never
+      // the offer itself.
+      expect(morning.food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
+      expect(morning.doses.map((d) => d.id)).toEqual(named ? [dose] : []);
+    }
+  );
 
   it.each([
     ["the last day in reach", -USUAL_BACKFILL_WINDOW_DAYS, false],

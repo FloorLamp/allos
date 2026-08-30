@@ -36,6 +36,7 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import { foodGroupBySlug } from "../food-groups";
 import { isUsualBackfillDateAccepted } from "../food-regularity";
+import { isDoseDateAccepted } from "../dose-log-window";
 import {
   usualRoutineOffer,
   type UsualRoutineDose,
@@ -356,7 +357,19 @@ export function usualRoutineDayOffers(
   profileId: number,
   date: string
 ): UsualRoutineDayOffer[] {
-  if (!isUsualBackfillDateAccepted(today(profileId), date)) return [];
+  const t = today(profileId);
+  if (!isUsualBackfillDateAccepted(t, date)) return [];
+  // THE TWO HALVES DO NOT REACH EQUALLY FAR, so the offer must not promise as if they
+  // did (#4118). The food half reaches `USUAL_BACKFILL_WINDOW_DAYS` back; the dose half
+  // is `markDoseTaken`'s own `isDoseDateAccepted` window (±2, coupled to Telegram
+  // pointer retention), and beyond it every named dose comes back `stale-dose` having
+  // written nothing. Rendering those doses would put a count and a name on a button for
+  // writes the core will refuse — the label-is-a-promise rule broken by the surface that
+  // quotes it — so past the dose window the offer is honestly FOOD-ONLY.
+  //
+  // Asked through the dose predicate rather than through a second constant, so if #4305
+  // widens the dose reach this corrects itself instead of going quietly stale.
+  const dosesReachable = isDoseDateAccepted(t, date);
   const offers: UsualRoutineDayOffer[] = [];
   for (const window of FOOD_SLOTS) {
     const offer = getUsualRoutineOffer(profileId, window, date);
@@ -367,11 +380,13 @@ export function usualRoutineDayOffers(
         slug,
         name: foodGroupBySlug(slug)?.name ?? slug,
       })),
-      doses: offer.doses.map((d) => ({
-        id: d.doseId,
-        name: d.name,
-        stack: d.stack ?? null,
-      })),
+      doses: dosesReachable
+        ? offer.doses.map((d) => ({
+            id: d.doseId,
+            name: d.name,
+            stack: d.stack ?? null,
+          }))
+        : [],
     });
   }
   return offers;

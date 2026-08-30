@@ -1465,13 +1465,29 @@ export function getProteinOnDate(
 // composition comes from getProteinOnDate; today's formatter adds the adequacy gather's
 // current-week marker. It preserves the in-progress 0 g gauge when the week has protein
 // history but today does not.
-export function getProteinToday(profileId: number): ProteinToday | null {
-  const t = today(profileId);
+export function getProteinToday(
+  profileId: number,
+  // WHICH DAY (#4118). Defaults to the profile's today, which is what every web caller
+  // wants and what this function was named for. The Telegram food nudge passes the day
+  // the MESSAGE is for: since the sweep may now rebuild a message up to two days old,
+  // a `today()` resolved in here painted the CURRENT day's protein figure onto a past
+  // day's nudge — beside a tally, a button count and a gap notice that were all
+  // date-correct — and announced "goal reached" about a day on which it was not.
+  date: string = today(profileId)
+): ProteinToday | null {
+  const t = date;
   const onDate = getProteinOnDate(profileId, t);
 
   // Weekly marker — EXACTLY the adequacy computation's daily-average figure (#221), read
   // from the SAME gather so the two can never disagree. WEEK-TO-DATE: it is the number
   // the weekly adequacy verdict is reached on, and the gauge's marker labels it as such.
+  //
+  // THE ONE FIELD `date` DOES NOT MOVE, stated rather than left to be discovered:
+  // `getProteinAdequacy` is week-to-date as of NOW and has no dated form. No caller
+  // passing a past `date` renders it — the food nudge reads only
+  // `proteinTodayLineParts`, which uses `todayGrams` and `target` — so this is a
+  // documented limit of the dated read and not a live wrong number. A future surface
+  // that wants a past day's weekly marker has to date-resolve the adequacy gather.
   const weeklyAverageGrams =
     getProteinAdequacy(profileId)?.intake.grams ?? null;
 
@@ -1481,7 +1497,7 @@ export function getProteinToday(profileId: number): ProteinToday | null {
 
   if (onDate) return { ...onDate, weeklyAverageGrams, trailing };
 
-  // Nothing logged TODAY yet. Suppress only for a profile that has no protein data
+  // Nothing logged on that day yet. Suppress only for a profile that has no protein data
   // AT ALL (a bodyweight-only profile that has never logged) — never a bare "0 g"
   // nudge or empty gauge for them.
   //

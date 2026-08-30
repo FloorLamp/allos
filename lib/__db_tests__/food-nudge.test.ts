@@ -12,6 +12,9 @@ import { today } from "@/lib/db";
 import { setProfileSetting, setProfileBirthdate } from "@/lib/settings";
 import { setProfileSubstanceTelegram } from "@/lib/settings/notifications";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
+import { shiftDateStr } from "@/lib/date";
+import { db } from "@/lib/db";
 import { buildFoodNudge } from "@/lib/notifications/food";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -165,5 +168,100 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
     } finally {
       setProfileSetting(c.profileId, "dietary_excluded_groups", "[]");
     }
+  });
+});
+
+// ── A REBUILT NUDGE IS ABOUT ITS OWN DAY, INCLUDING ITS PROTEIN LINE (#4118) ──
+//
+// Once the sweep began honouring a food keyboard for two days after its message, the
+// hourly tick started REBUILDING past-day nudges — and every figure on that render was
+// read for the message's day except one. `getProteinToday` resolved `today()` inside
+// itself, so a D−1 message was repainted with the CURRENT day's grams and the CURRENT
+// day's "goal reached" verdict, beside a tally and button counts that were correct.
+//
+// That is a false health claim in the notification tier, it persists (`food` is
+// `reissuable: false`, so the message stays live until the next food nudge — for ever if
+// they stop), and it is repainted every tick. The fix is the DATE, not the guard.
+describe("a past-day rebuild states that day's protein, and says whose day it is", () => {
+  it("does not paint today's grams — or its verdict, or the word Today — onto yesterday", () => {
+    const sp = seedProfile("nudge-past-protein");
+    const anchor = today(sp.profileId);
+    const y = shiftDateStr(anchor, -1);
+    // A big day today, a small one yesterday, chosen so the two are far apart and one
+    // clears its goal band while the other does not — the defect showed today's figure
+    // AND today's verdict on yesterday's message.
+    expect(
+      addProteinGramsCore(sp.profileId, y, 11, "page", `${y}T08:00:00Z`).kind
+    ).toBe("logged");
+    expect(
+      addProteinGramsCore(sp.profileId, anchor, 137, "page", `${anchor}T08:00:00Z`)
+        .kind
+    ).toBe("logged");
+    // A serving on EACH day, so both messages carry a tally line — the "Today:" label
+    // is only rendered when there is something to tally, and a converse asserted on a
+    // message that has no tally at all asserts nothing.
+    logFoodServingCore(sp.profileId, "leafy_greens", y, "page", `${y}T08:10:00Z`);
+    logFoodServingCore(
+      sp.profileId,
+      "leafy_greens",
+      anchor,
+      "page",
+      `${anchor}T08:10:00Z`
+    );
+
+    // The figure each message states, read out of the rendered line rather than pinned
+    // as a literal: the day's total is the quick-add PLUS that day's estimated
+    // contribution from the servings, so a hardcoded number would be asserting the
+    // estimator's arithmetic instead of the day the line is about.
+    const grams = (body: string) => Number(/Protein: (\d+) g/.exec(body)?.[1]);
+
+    const past = plainBody(buildFoodNudge(sp.profileId, "Morning", y)!.body);
+    const live = plainBody(buildFoodNudge(sp.profileId, "Morning", anchor)!.body);
+
+    // TWO DAYS, TWO FIGURES. The defect made them the same number; this is the shortest
+    // statement of that being over.
+    expect(grams(past)).toBeLessThan(grams(live));
+    expect(grams(past)).toBeLessThan(50);
+    expect(grams(live)).toBeGreaterThan(130);
+    // And above all the VERDICT does not travel: "goal reached" on a day the person was
+    // nowhere near their band is the false health claim this pins.
+    expect(past).not.toContain("goal reached");
+    // …nor may any line on a past-day message call that day "Today".
+    expect(past).not.toContain("Today:");
+    expect(past).toContain(y);
+
+    // THE CONVERSE, same profile, same builder: today's message still says Today and
+    // still reaches its goal. Without it, "never says goal reached" and "never says
+    // Today:" would both pass on a build that had lost the lines altogether.
+    expect(live).toContain("Today:");
+    expect(live).toContain("goal reached");
+  });
+
+  it("the no-target day-grams line names the day too", () => {
+    // The OTHER protein line (#1073): a protein tracker with no bodyweight gets a bare
+    // grams sentence with no band, and it hardcoded the word "today" the same way. A
+    // bare profile row, because `seedProfile` seeds a weight and would take the branch
+    // above instead — a fixture that never reaches the line it is about asserts nothing.
+    const profileId = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('nudge-past-protein-notarget')")
+        .run().lastInsertRowid
+    );
+    const anchor = today(profileId);
+    const y = shiftDateStr(anchor, -1);
+    expect(
+      addProteinGramsCore(profileId, y, 22, "page", `${y}T08:00:00Z`).kind
+    ).toBe("logged");
+
+    const past = plainBody(buildFoodNudge(profileId, "Morning", y)!.body);
+    expect(past).toContain(`22 g on ${y}`);
+    expect(past).not.toContain("22 g today");
+    // The converse: the same line on the live message still reads "today".
+    expect(
+      addProteinGramsCore(profileId, anchor, 40, "page", `${anchor}T08:00:00Z`).kind
+    ).toBe("logged");
+    expect(
+      plainBody(buildFoodNudge(profileId, "Morning", anchor)!.body)
+    ).toContain("40 g today");
   });
 });
