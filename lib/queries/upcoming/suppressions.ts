@@ -89,13 +89,87 @@ function getFindingSuppressionsUncached(
     });
   return m;
 }
+// The flagged-result acknowledgment namespace. Spelled once here so the re-arm scan
+// below and the orphan sweep further down cannot drift apart.
+const BIOMARKER_FLAG_PREFIX = "biomarker-flag:";
+
+// A row in a NON_IDENTITY category is not a backing reading (#2318): an `assessment`
+// never flags, so it can neither hold an acknowledgment up nor count as a draw.
+const BACKING_READING = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
+  () => "?"
+).join(",")})`;
+
+// The latest instant a reading ARRIVED for each of the named biomarker families.
+// Grouped on the same `lower(biomarkerFamilyKey())` expression the orphan sweep
+// compares against, which is the SQL twin of the JS `biomarkerFlagDismissalKey`
+// suffix — so the two sides of the comparison are the same identity by construction.
+const FAMILY_LAST_ARRIVAL_SQL = `SELECT lower(${biomarkerFamilyKey()}) AS family,
+          MAX(created_at) AS arrived
+     FROM medical_records
+    WHERE profile_id = ? AND ${BACKING_READING}
+    GROUP BY family`;
+
+// Drop the flagged-result acknowledgments a NEW DRAW has re-armed (#3225).
+//
+// Owner ruling 2026-08-20, amending #564: acknowledge writes the flag key — one
+// state, not two — so the COUPLING half of #564 stands untouched (a dismiss on the
+// flag or on the trajectory still silences both). What is narrowed is HOW LONG: the
+// dismissal lasts until the next draw of that marker family, not indefinitely. The
+// follow-up ruling fixes what a draw is: ANY new reading of that family. Not "a
+// worse one" — that needs a per-analyte direction, and getting one backwards is
+// silent. Not "one whose flag differs" — 200 -> 260 is still `high`, so the very
+// case the ruling was made on would stay silent. So this reads only WHEN the reading
+// arrived, never its value or its flag.
+//
+// Read-side on purpose. Every path that can add a reading — a manual entry, a
+// document import, an integration sync — re-arms without a sweep it has to remember
+// to call, and the one derivation keeps every consumer of the key (the dashboard
+// flag, the Trends trajectory watch, the digest, the Upcoming restore list) agreeing
+// about what is currently silenced. Nothing is deleted here: re-acknowledging upserts
+// `dismissed_at` forward, so the row is self-healing, and a row whose readings are
+// all GONE is still cleanupOrphanBiomarkerDismissals' job.
+//
+// STRICTLY later: a reading that already existed when you acknowledged is a reading
+// you saw. `created_at` and `dismissed_at` are both `datetime('now')` UTC strings, so
+// they compare lexically on one clock. SNOOZES are untouched — a snooze already
+// self-expires, and the ruling narrows the permanence of a DISMISS.
+//
+// Costs nothing on the overwhelmingly common profile: the family scan runs only when
+// the profile actually holds a dismissed flag acknowledgment.
+function dropReArmedFlagAcks(
+  profileId: number,
+  suppressions: Map<string, SuppressionRecord>
+): void {
+  const acked = new Map<string, string>();
+  for (const [key, rec] of suppressions) {
+    if (key.startsWith(BIOMARKER_FLAG_PREFIX) && rec.dismissed_at != null)
+      acked.set(key.slice(BIOMARKER_FLAG_PREFIX.length), rec.dismissed_at);
+  }
+  if (acked.size === 0) return;
+  const rows = db
+    .prepare(FAMILY_LAST_ARRIVAL_SQL)
+    .all(profileId, ...NON_IDENTITY_CATEGORIES) as {
+    family: string;
+    arrived: string | null;
+  }[];
+  for (const row of rows) {
+    const dismissedAt = acked.get(row.family);
+    if (dismissedAt != null && row.arrived != null && row.arrived > dismissedAt)
+      suppressions.delete(`${BIOMARKER_FLAG_PREFIX}${row.family}`);
+  }
+}
+
 // The dashboard's explicitly read-only attention census may open a short-lived
 // read snapshot. Server Actions and notification ticks do not, preserving the
 // write-then-read and cross-process freshness constraints documented above.
 export const getFindingSuppressions = snapshotCached(
   "upcoming.finding-suppressions",
   (profileId: number) => String(profileId),
-  getFindingSuppressionsUncached
+  (profileId: number) => {
+    const suppressions = getFindingSuppressionsUncached(profileId);
+    dropReArmedFlagAcks(profileId, suppressions);
+    return suppressions;
+  }
 );
 
 // ---- Generalized suppression writers (issue #39) ----
@@ -160,9 +234,8 @@ export function cleanupOrphanBiomarkerDismissals(profileId: number): void {
   // A row in a NON_IDENTITY category is not a backing reading (#2318): an
   // `assessment` never flags and never comes due for a retest, so a dismissal
   // backed only by one can never fire again — exactly the de-orphan condition.
-  const backing = `category NOT IN (${NON_IDENTITY_CATEGORIES.map(
-    () => "?"
-  ).join(",")})`;
+  // Same predicate the re-arm scan above uses, spelled once.
+  const backing = BACKING_READING;
   db.prepare(
     `DELETE FROM upcoming_dismissals
        WHERE profile_id = ?
