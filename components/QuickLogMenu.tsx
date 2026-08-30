@@ -198,7 +198,7 @@ export default function QuickLogMenu({
   const shown = segments.find((s) => s.id === segment) ?? segments[0];
   const maxRows = maxLogSheetRows(segments);
   const hasGatheredOffers = Boolean(
-    context && (context.routine || context.dueDoses.count > 0)
+    context && (context.routine || context.dueDoses.items.length > 0)
   );
   const reduceMotion = usePrefersReducedMotion();
   const arrivePlan = microMotionPlan("arrive", reduceMotion);
@@ -272,7 +272,7 @@ export default function QuickLogMenu({
                 />
               )}
               <div className="flex flex-col gap-1">
-                {context.dueDoses.count > 0 && (
+                {context.dueDoses.items.length > 0 && (
                   <SheetRow
                     testId="log-sheet-chip-doses"
                     icon="pill"

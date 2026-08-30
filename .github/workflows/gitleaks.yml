@@ -7,11 +7,10 @@ name: gitleaks
 # gitleaks binary and runs it directly, so it needs no marketplace action and no
 # license key.
 #
-# WHAT EACH TRIGGER SCANS, and it is not the same thing (#2969, ruled
-# 2026-08-16). The PR and merge-queue checks scan the PR RANGE — the commits
-# this branch adds on top of its base. The `push` trigger keeps `--all`, which
-# is every ref in the checkout, so a branch's own history is still fully audited
-# the moment it is pushed.
+# WHAT EACH TRIGGER SCANS (#2969, #3046). PR, merge-queue and push checks scan
+# only the commits added by that branch/event. A weekly or manually dispatched
+# run scans `--all`, preserving repository-wide coverage without letting one
+# branch's credential-shaped fixture fail an unrelated branch.
 #
 # Why: `--all` on the PR check made one branch's credential-shaped fixture red
 # `gitleaks` on EVERY open PR, naming a file those PRs never touched, and the
@@ -20,16 +19,14 @@ name: gitleaks
 # was a re-audit of history nobody had touched, because the push trigger already
 # catches a branch's own secrets.
 #
-# ACCEPTED COST, recorded so nobody re-derives it as a bug: the continuous
-# whole-repo re-audit (~30x/day) drops to per-push-per-branch. A secret
-# committed long ago and never re-pushed is caught only by whatever periodic
-# scan exists. If that gap matters the answer is a SCHEDULED `--all` scan —
-# a separate decision nobody has taken — not restoring `--all` here.
 on:
   pull_request:
   merge_group:
   push:
     branches-ignore: [main]
+  schedule:
+    - cron: "37 4 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,8 +35,8 @@ jobs:
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      # Full history, still. The push scan reads every ref; the PR scan needs the
-      # base commit to resolve a range at all; and the explainer answers "is this
+      # Full history, still. The scheduled/manual scan reads every ref; branch
+      # scans need their base commits; and the explainer answers "is this
       # already in base, and which ref carries it" with `merge-base` and
       # `for-each-ref`, neither of which works on a shallow clone.
       - uses: actions/checkout@v7
@@ -119,9 +116,8 @@ jobs:
       #
       # So the range now depends on the event:
       #   pull_request / merge_group → `<base>..HEAD`, this branch's own commits.
-      #   push (non-main branches)   → `--all`, unchanged.
-      # The push scan is what keeps a branch's own history audited; the PR scan
-      # stops one branch's fixture from redding everyone else's check.
+      #   push (non-main branches)   → `<before>..HEAD`, this push's commits.
+      #   schedule / manual          → `--all`, the repository-wide audit.
       #
       # NEVER SILENTLY NARROW. A scanner that quietly scans less than it claims
       # is the failure this whole family of fixes exists to prevent; a noisy
@@ -156,9 +152,9 @@ jobs:
       # names the ref that carries it. It also states the recovery step that is
       # not guessable — the scan reads COMMITS, not tips, so a follow-up deletion
       # commit does not clear it; only an amend, a rebase, or deleting the branch
-      # does. Narrowing the range makes the "from another ref" case rarer on a PR;
-      # it does not make it impossible, because the fallback and the push scan
-      # both still read every ref.
+      # does. Narrowing makes the "from another ref" case rare on branch checks;
+      # it remains possible only on a fail-closed fallback or the explicit
+      # repository-wide scheduled/manual scan.
       #
       # `--redact` is what makes the report safe to read back: Secret and Match
       # come through as REDACTED, so nothing here can print secret material into a
@@ -171,17 +167,22 @@ jobs:
           GITLEAKS_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
           GITLEAKS_EVENT: ${{ github.event_name }}
           GITLEAKS_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          GITLEAKS_PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -uo pipefail
           report="$RUNNER_TEMP/gitleaks-report.json"
 
-          # `--all` for a push; the PR range for everything else, with the base
-          # sha preferred over the base ref because the ref moves under a
-          # long-lived PR and the sha is the base this PR was actually built on.
+          # Scheduled/manual runs keep the whole-ref audit. Branch-scoped events
+          # prefer the exact event base, then the base ref if that commit is no
+          # longer in the checkout.
           log_opts="--all"
-          if [ "$GITLEAKS_EVENT" != "push" ]; then
+          if [ "$GITLEAKS_EVENT" != "schedule" ] && [ "$GITLEAKS_EVENT" != "workflow_dispatch" ]; then
             base=""
-            for cand in "$GITLEAKS_BASE_SHA" "$GITLEAKS_BASE_REF"; do
+            event_base="$GITLEAKS_BASE_SHA"
+            if [ "$GITLEAKS_EVENT" = "push" ]; then
+              event_base="$GITLEAKS_PUSH_BEFORE"
+            fi
+            for cand in "$event_base" "$GITLEAKS_BASE_REF"; do
               if [ -n "$cand" ] && git rev-parse --verify --quiet "${cand}^{commit}" >/dev/null; then
                 base="$cand"
                 break
@@ -192,8 +193,10 @@ jobs:
               # Rung 2: the sha this PR was built on is gone, so the base BRANCH
               # stood in. Still a range scan, still the same policy — but not
               # against the same commit, so it does not happen quietly.
-              if [ -n "$GITLEAKS_BASE_SHA" ] && [ "$base" != "$GITLEAKS_BASE_SHA" ]; then
+              if [ "$GITLEAKS_EVENT" != "push" ] && [ -n "$GITLEAKS_BASE_SHA" ] && [ "$base" != "$GITLEAKS_BASE_SHA" ]; then
                 echo "::warning title=gitleaks used the base BRANCH, not the base commit::The base commit ${GITLEAKS_BASE_SHA} is not in this checkout — a force-pushed or garbage-collected base — so the scan used ${base}..HEAD instead. That is a real base, but not the one this pull request was built on."
+              elif [ "$GITLEAKS_EVENT" = "push" ] && [ -n "$GITLEAKS_PUSH_BEFORE" ] && [ "$base" != "$GITLEAKS_PUSH_BEFORE" ]; then
+                echo "::warning title=gitleaks used the base BRANCH, not the previous tip::The previous branch tip ${GITLEAKS_PUSH_BEFORE} is not in this checkout, so the scan used ${base}..HEAD instead."
               fi
             else
               echo "::warning title=gitleaks scanned every ref::Could not resolve the base commit for this ${GITLEAKS_EVENT}, so the scan fell back to --all. A finding may come from another branch; the explainer below says which."

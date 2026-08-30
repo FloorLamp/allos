@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_MERGE_SETS, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // Issues #199/#200: merging must never destroy the discarded row's logged sets — they
 // are re-parented onto the keeper — and the conflict preview surfaces how many sets
 // are moving. The e2e seed (e2e/seed-events) plants two same-day MANUAL strength rows
@@ -7,85 +9,80 @@ import { followLink } from "./helpers";
 // Bench Press) and "Set merge dupe" (two sets: Back Squat, Deadlift). This drives the
 // flow: open the merge, confirm the dialog shows the "2 logged sets" line, merge, and
 // prove all three sets end up on the keeper (nothing lost to the FK cascade).
-// THE MERGE IS THE POINT, so this row cannot be restored (#3946). "Set merge dupe" is
-// seeded on the SHARED profile for this test alone (e2e/seed/merge.ts) and
-// merging consumes it; putting it back by hand would be a second producer of a
-// row the seed owns. Its sets are re-parented onto the keeper, which is what the test proves.
-// Declared here rather than exempted by name: nothing anywhere holds a list of
-// specs this guard skips, and #3260's caveat stands — nothing checks that this
-// `why` is still true.
-test.use({
-  sharedProfileLeftovers: {
-    why:
-      "The merge under test consumes this seeded row; restoring it would " +
-      "re-seed rather than clean up, and no other spec addresses it.",
-    titles: ["Set merge dupe"],
-  },
-});
-
+// THE MERGE IS THE POINT, so this row cannot be restored. Its fixture and login
+// own a dedicated profile (#3965/#868), which keeps consuming the discarded row
+// from changing profile 1 for any later reader on the worker.
 test("merging re-parents the discarded row's sets onto the keeper, shown in the preview (#199)", async ({
-  page,
+  browser,
 }) => {
-  await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_MERGE_SETS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  const keeperRow = page
-    .locator('[id^="activity-"]')
-    .filter({ hasText: "Set merge keeper" });
-  await expect(keeperRow).toHaveCount(1);
-  await expect(page.getByText("Set merge dupe")).toBeVisible();
+    const keeperRow = page
+      .locator('[id^="activity-"]')
+      .filter({ hasText: "Set merge keeper" });
+    await expect(keeperRow).toHaveCount(1);
+    await expect(page.getByText("Set merge dupe")).toBeVisible();
 
-  // Open the keeper's canonical record, which owns its exercise rows and menu.
-  await followLink(
-    page,
-    keeperRow.getByRole("link", { name: "Set merge keeper", exact: true }),
-    /\/training\/activity\/\d+$/
-  );
-  const keeperCard = page.getByTestId("training-activity-page");
-  await expect(keeperCard).toBeVisible();
-  // Before the merge the keeper shows only its own exercise. Target the
-  // exercise drill-in link by its EXACT accessible name — a substring getByText
-  // would also match the card's "Can't be saved as-is — …" fault badge, which echoes
-  // the exercise name (the seeded set has no equipment picked).
-  await expect(
-    keeperCard.getByRole("link", { name: "Bench Press", exact: true })
-  ).toBeVisible();
+    // Open the keeper's canonical record, which owns its exercise rows and menu.
+    await followLink(
+      page,
+      keeperRow.getByRole("link", { name: "Set merge keeper", exact: true }),
+      /\/training\/activity\/\d+$/
+    );
+    const keeperCard = page.getByTestId("training-activity-page");
+    await expect(keeperCard).toBeVisible();
+    // Before the merge the keeper shows only its own exercise. Target the
+    // exercise drill-in link by its EXACT accessible name — a substring getByText
+    // would also match the card's "Can't be saved as-is — …" fault badge, which echoes
+    // the exercise name (the seeded set has no equipment picked).
+    await expect(
+      keeperCard.getByRole("link", { name: "Bench Press", exact: true })
+    ).toBeVisible();
 
-  // Open the record's overflow (⋯) menu → "Merge with…" → pick the dupe.
-  await keeperCard.getByRole("button", { name: "Activity actions" }).click();
-  await page.getByTestId("merge-with").click();
-  await page
-    .getByTestId("merge-target")
-    .filter({ hasText: "Set merge dupe" })
-    .click();
+    // Open the record's overflow (⋯) menu → "Merge with…" → pick the dupe.
+    await keeperCard.getByRole("button", { name: "Activity actions" }).click();
+    await page.getByTestId("merge-with").click();
+    await page
+      .getByTestId("merge-target")
+      .filter({ hasText: "Set merge dupe" })
+      .click();
 
-  // Because the durations disagree, the conflict preview opens — and it now spells
-  // out how many logged sets will move onto the keeper (#199).
-  const dialog = page.getByTestId("merge-conflict-dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId("merge-set-count")).toContainText(
-    "2 logged sets"
-  );
+    // Because the durations disagree, the conflict preview opens — and it now spells
+    // out how many logged sets will move onto the keeper (#199).
+    const dialog = page.getByTestId("merge-conflict-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("merge-set-count")).toContainText(
+      "2 logged sets"
+    );
 
-  // Confirm the merge (keeper-wins on the duration conflict — no override).
-  await dialog.getByTestId("merge-conflict-confirm").click();
+    // Confirm the merge (keeper-wins on the duration conflict — no override).
+    await dialog.getByTestId("merge-conflict-confirm").click();
 
-  // The discarded row is merged away; the keeper survives.
-  await expect(page.getByText("Set merge dupe")).toHaveCount(0);
+    // The discarded row is merged away; the keeper survives.
+    await expect(page.getByText("Set merge dupe")).toHaveCount(0);
 
-  // Reload the canonical record for a deterministic server render: the keeper now
-  // carries ALL three sets — its own plus the two re-parented from the discarded
-  // row (none lost).
-  await page.reload();
-  const merged = page.getByTestId("training-activity-page");
-  // Exact role-name locators again, so the fault badge's echo of an exercise name
-  // can't create a strict-mode ambiguity.
-  await expect(
-    merged.getByRole("link", { name: "Bench Press", exact: true })
-  ).toBeVisible();
-  await expect(
-    merged.getByRole("link", { name: "Back Squat", exact: true })
-  ).toBeVisible();
-  await expect(
-    merged.getByRole("link", { name: "Deadlift", exact: true })
-  ).toBeVisible();
+    // Reload the canonical record for a deterministic server render: the keeper now
+    // carries ALL three sets — its own plus the two re-parented from the discarded
+    // row (none lost).
+    await page.reload();
+    const merged = page.getByTestId("training-activity-page");
+    // Exact role-name locators again, so the fault badge's echo of an exercise name
+    // can't create a strict-mode ambiguity.
+    await expect(
+      merged.getByRole("link", { name: "Bench Press", exact: true })
+    ).toBeVisible();
+    await expect(
+      merged.getByRole("link", { name: "Back Squat", exact: true })
+    ).toBeVisible();
+    await expect(
+      merged.getByRole("link", { name: "Deadlift", exact: true })
+    ).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
 });

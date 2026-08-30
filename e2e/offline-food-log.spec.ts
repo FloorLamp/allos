@@ -3,6 +3,10 @@ import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { hydratedClick, settledClick, settledSelect } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
+import {
+  foodEventHighWater,
+  removeFoodEventsAfter,
+} from "./food-ledger-fixture";
 
 // #1596: the food quick-adds — a one-tap food-group serving and the protein-grams
 // control — queue while offline and replay through the same write cores on
@@ -18,6 +22,14 @@ async function revealFoodGroup(page: Page, slug: string) {
     await expect(row).toBeVisible();
   }
 }
+
+let foodEventId: number;
+test.beforeEach(() => {
+  foodEventId = foodEventHighWater();
+});
+test.afterEach(() => {
+  removeFoodEventsAfter(foodEventId, ["nuts_seeds", "berries"]);
+});
 
 test("a food serving tapped offline queues, then syncs exactly once on reconnect (#1596)", async ({
   page,

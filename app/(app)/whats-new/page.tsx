@@ -14,6 +14,7 @@ import {
   loadReleaseNotes,
   newestNoteDate,
   pullRequestUrl,
+  releaseNoteEntryKey,
   releaseNotesPage,
   type ReleaseNoteKind,
 } from "@/lib/release-notes";
@@ -123,11 +124,11 @@ export default async function WhatsNewPage(props: {
                   card reads as one scannable list. Inline layout, not flex: an li
                   with display:flex drops its ::marker. */}
               <ul className="list-disc space-y-1.5 pl-5">
-                {day.entries.map((entry) => {
+                {day.entries.map((entry, entryIndex) => {
                   const chip = entry.kind ? KIND_CHIP[entry.kind] : null;
                   return (
                     <li
-                      key={entry.pr}
+                      key={releaseNoteEntryKey(entry, entryIndex)}
                       className="text-sm leading-relaxed text-slate-800 dark:text-slate-200"
                       data-testid="whats-new-entry"
                     >

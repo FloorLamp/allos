@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { preinstalledChromium } from "./lib/e2e-chromium";
+import { resolveChromiumExecutable } from "./lib/e2e-chromium.mjs";
 import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
 
 // Browser end-to-end tier (issue: always browser-test UI features). Separate
@@ -17,7 +17,7 @@ import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
 // working directory). E2E_PORT moves the whole range at once — a sandbox with a
 // narrow allowed port range sets it.
 const PORT_BASE = Number(process.env.E2E_PORT ?? 3100);
-const executablePath = preinstalledChromium();
+const executablePath = resolveChromiumExecutable();
 
 // Freeze the app clock for the whole run (issue #990). The template seed and every
 // worker server boot under this instant, so `lib/clock.ts`'s `now()` — and every

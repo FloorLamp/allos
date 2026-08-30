@@ -56,6 +56,14 @@ export type ReleaseNoteDay = {
 
 export type ReleaseNotes = { days: ReleaseNoteDay[] };
 
+/** Unique identity within a day's static entry list, including repeated PRs. */
+export function releaseNoteEntryKey(
+  entry: ReleaseNoteEntry,
+  position: number
+): string {
+  return `${entry.pr}:${position}`;
+}
+
 /**
  * Typed failure for a malformed notes file. Thrown by `parseReleaseNotes` with a
  * `path` naming the offending field, so the schema test (and CI) points at the

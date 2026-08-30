@@ -31,8 +31,9 @@ export default function PracticeHeatmap({
   className?: string;
 }) {
   const density = densityClasses(data.columns.length);
+  const unit = data.unit ?? "session";
   const summary = `${data.totalSessions} ${
-    data.totalSessions === 1 ? "session" : "sessions"
+    data.totalSessions === 1 ? unit : `${unit}s`
   } across ${data.activeDays} ${
     data.activeDays === 1 ? "active day" : "active days"
   }`;
@@ -87,9 +88,7 @@ export default function PracticeHeatmap({
             cell.outside
               ? []
               : [
-                  `${cell.date} — ${cell.count} ${
-                    cell.count === 1 ? "session" : "sessions"
-                  }`,
+                  `${cell.date} — ${cell.count} ${cell.count === 1 ? unit : `${unit}s`}`,
                 ]
           )
         )}

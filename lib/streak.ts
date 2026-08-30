@@ -33,24 +33,22 @@ export function currentStreak(today: string, dates: string[]): number {
   // matching the day boundaries used everywhere else. If today has no activity,
   // allow yesterday to anchor the run; otherwise there is no current run.
   //
-  // KNOWN, DELIBERATE, AND CONSERVATIVE (#3294). DST-immune is not skip-immune. An
+  // KNOWN CALENDAR-LABEL LIMIT (#3294, #3906). DST-immune is not skip-immune. An
   // EASTWARD skip can delete a whole profile-local calendar date — a zone realigning
   // across the date line (Pacific/Apia has no 2011-12-30, Pacific/Kiritimati no
   // 1994-12-31), or a travel switch jumping more than 24h (Pago Pago → Kiritimati is
-  // 25). The deleted date can never be in `dates`, so this walk reads it as a gap and
-  // stops: the run is reported from the skip forward only. It UNDERCOUNTS, and only
-  // ever undercounts — a day nobody lived cannot become a day they trained. The sole
-  // caller is the coaching overtraining nudge, which reads the count as a magnitude,
-  // so short means the rest advice arrives late, never that it cries wolf.
+  // 25). When `dates` contains only days the profile lived, the deleted label is
+  // absent, so this walk reads it as a gap and reports only the run after the skip.
   //
-  // Not "fixed" here, because both available repairs can INVENT a day, which is the
-  // strictly worse error. Skipping an absent date because the CURRENT zone has no such
-  // date would erase a real rest day for anyone who spent it in a zone that did have
-  // one and moved afterwards — a stored activity `date` is a day attribution made at
-  // log time (#94), not re-projected on a zone change. And the travel switch history
-  // (lib/travel-timezone.ts) is a bounded, best-effort profile setting, not a complete
-  // record of where the profile was, so it cannot prove a day never happened either.
-  // Pinned, both directions, in lib/__tests__/streak.test.ts.
+  // This function cannot establish that input condition. A stored activity `date` is
+  // a log-time attribution (#94), not re-projected on a zone change, and this module
+  // neither writes nor validates it. If `dates` does contain the deleted label, that
+  // label bridges the gap and the result can exceed the number of days lived. The
+  // coaching overtraining nudge repeats this count, so either direction matters.
+  // Calendar labels alone cannot distinguish a deleted day from a real rest day, and
+  // travel-switch history is bounded and best-effort; changing or bounding the nudge
+  // therefore remains a separate product decision. Both observed input shapes are
+  // recorded in lib/__tests__/streak.test.ts.
   let cur = today;
   if (!set.has(cur)) {
     cur = shiftDateStr(cur, -1);

@@ -7,11 +7,14 @@
 //   • unset            ⇒ real time — zero behavior change, so production is inert.
 //   • set to an instant ⇒ that fixed instant, every call.
 //
-// This seam covers only DATE-DERIVATION paths — today()/window/range/dueness and the
+// This seam covers DATE-DERIVATION paths — today()/window/range/dueness and the
 // relative-date labels computed from them (plus the seed math that anchors fixtures to
-// the same "today"). It must NEVER be used for durations, timers, session TTLs, log
-// timestamps, or Playwright's own waiting — those keep real time. And it NEVER
-// monkey-patches the global Date: timers and the runtime keep the real clock.
+// the same "today"). It also owns the one persisted, cross-process duration anchor:
+// notify_post_workout_claims.claimed_at. That lease needs a wall-clock instant (a
+// monotonic timer cannot cross processes), and its age comparison reads this same seam.
+// Other durations, timers, session TTLs, log timestamps, and Playwright's own waiting
+// keep real time. The seam NEVER monkey-patches global Date; timers and the runtime
+// keep the real clock.
 //
 // ALLOS_TEST_NOW is a TEST HOOK, not an operator knob — it is intentionally absent
 // from .env.example. A boot-time warning (see lib/migrations/boot-tasks.ts) makes a
@@ -52,8 +55,8 @@ export function now(): Date {
 // `date(col)`, a `.slice(0, 10)`, a `YYYY-MM-DD` string comparison, or a per-day
 // GROUP BY that meets a `today()`-derived value. Pure audit stamps keep SQL's real
 // clock on purpose: "last modified" displays, session/token expiry, lease claims,
-// rate-limit windows, and retention cutoffs are all DURATIONS, and the clock seam
-// must never be used for durations (see the header above).
+// rate-limit windows, and retention cutoffs are all DURATIONS, and stay on the real
+// clock (see the single cross-process lease exception in the header above).
 //
 // In production the override is unset, so this is byte-identical to what SQLite
 // would have written — the rewrite is inert outside the e2e suite.
@@ -65,7 +68,8 @@ export function sqlNow(): string {
 // the same seam as sqlNow(), for a column that has been moved onto the UTC+`Z`
 // convention. Which of the two a write site binds is decided by the COLUMN's declared
 // convention, never by the site's taste; the choice between the seam and real time is
-// the unchanged #1534 rule (day-semantic ⇒ seam, duration ⇒ real time).
+// the #1534 rule (day-semantic ⇒ seam, duration ⇒ real time), with the persisted
+// cross-process claim lease exception documented in the header above.
 export function instantNow(): string {
   return utcInstant(now());
 }

@@ -208,10 +208,12 @@ function intakeFormCensus(): IntakeFormCensus {
   const callers: [string, string][] = [];
   const violations: string[] = [];
   for (const file of [...sourceFiles("app"), ...sourceFiles("components")]) {
-    const result = scanIntakeFormSource(
-      file,
-      fs.readFileSync(path.join(REPO, file), "utf8")
-    );
+    const text = fs.readFileSync(path.join(REPO, file), "utf8");
+    // Every supported import, re-export, require(), and import() spelling names
+    // IntakeItemForm literally. Raw-prefilter before asking TypeScript for an AST;
+    // parsing cannot turn a non-match into one.
+    if (!text.includes("IntakeItemForm")) continue;
+    const result = scanIntakeFormSource(file, text);
     callers.push(...result.callers);
     violations.push(...result.violations);
   }
@@ -271,7 +273,7 @@ describe("IntakeItemForm's locked-kind boundary", () => {
     });
   });
 
-  it("has exactly the six shipped literal-kind callers", () => {
+  it("has exactly the five shipped literal-kind callers", () => {
     const census = intakeFormCensus();
     expect(census.violations, census.violations.join("\n")).toEqual([]);
     expect(census.callers).toEqual(EXPECTED_CALLERS);

@@ -93,13 +93,49 @@ function censusFiles(): string[] {
 }
 
 describe("no display surface casings a stored name, in the four mechanisms this rule can see", () => {
+  type CensusFile = {
+    relative: string;
+    source: string;
+    renderSites?: ReturnType<typeof nameRenderSites>;
+    casingHits?: ReturnType<typeof nameCasingHits>;
+    cssSites?: ReturnType<typeof cssCasingClassSites>;
+    cssHits?: ReturnType<typeof cssCasingOverNameHits>;
+  };
+
   // Six assertions take different projections of the same immutable TSX corpus.
-  // Keep its bytes beside its path instead of reopening every file for each one.
+  // Keep bytes and computed projections beside the path. Each projection also has
+  // a lossless raw gate: comment blanking and regex matching cannot create the
+  // subject tokens, so a raw non-candidate cannot become a finding.
   const files = censusFiles().map((absolute) => ({
-    absolute,
     relative: path.relative(REPO, absolute),
     source: fs.readFileSync(absolute, "utf8"),
-  }));
+  })) as CensusFile[];
+
+  const hasNameSubject = (source: string): boolean =>
+    /(?<!class)name\b/i.test(source);
+  const hasCasingCall = (source: string): boolean =>
+    /(?:case|capitali[sz]e)\s*\(/i.test(source);
+  const hasCssCasing = (source: string): boolean =>
+    /\b(?:uppercase|lowercase|capitalize)\b|textTransform/.test(source);
+
+  const renderSitesFor = (file: CensusFile) =>
+    (file.renderSites ??= hasNameSubject(file.source)
+      ? nameRenderSites(file.source)
+      : []);
+  const casingHitsFor = (file: CensusFile) =>
+    (file.casingHits ??=
+      hasNameSubject(file.source) && hasCasingCall(file.source)
+        ? nameCasingHits(file.source)
+        : []);
+  const cssSitesFor = (file: CensusFile) =>
+    (file.cssSites ??= hasCssCasing(file.source)
+      ? cssCasingClassSites(file.source)
+      : []);
+  const cssHitsFor = (file: CensusFile) =>
+    (file.cssHits ??=
+      hasNameSubject(file.source) && hasCssCasing(file.source)
+        ? cssCasingOverNameHits(file.source)
+        : []);
 
   it("read enough of the tree for the sweep to mean anything", () => {
     expect(
@@ -112,10 +148,7 @@ describe("no display surface casings a stored name, in the four mechanisms this 
   });
 
   it("found the name renders it is meant to be examining", () => {
-    const total = files.reduce(
-      (n, file) => n + nameRenderSites(file.source).length,
-      0
-    );
+    const total = files.reduce((n, file) => n + renderSitesFor(file).length, 0);
     expect(
       total,
       `the census saw ${total} name render sites — below the ` +
@@ -125,8 +158,12 @@ describe("no display surface casings a stored name, in the four mechanisms this 
   });
 
   it("still sees the surface the issue was filed about", () => {
-    const source = fs.readFileSync(path.join(REPO, NAMED_SUBJECT), "utf8");
-    const sites = nameRenderSites(source);
+    const subject = files.find((file) => file.relative === NAMED_SUBJECT);
+    expect(
+      subject,
+      `${NAMED_SUBJECT} must remain in the census corpus`
+    ).toBeDefined();
+    const sites = renderSitesFor(subject!);
     expect(
       sites.map((s) => s.text),
       `${NAMED_SUBJECT} renders the medication name #3480 is about; the census ` +
@@ -136,9 +173,7 @@ describe("no display surface casings a stored name, in the four mechanisms this 
 
   it("finds no casing transform on a rendered name", () => {
     const offenders = files.flatMap((file) =>
-      nameCasingHits(file.source).map(
-        (h) => `${file.relative}:${h.line}  {${h.text}}`
-      )
+      casingHitsFor(file).map((h) => `${file.relative}:${h.line}  {${h.text}}`)
     );
     expect(
       offenders,
@@ -150,18 +185,13 @@ describe("no display surface casings a stored name, in the four mechanisms this 
   });
 
   it("found the casing classes it is meant to be examining", () => {
-    const total = files.reduce(
-      (n, file) => n + cssCasingClassSites(file.source).length,
-      0
-    );
+    const total = files.reduce((n, file) => n + cssSitesFor(file).length, 0);
     expect(total).toBeGreaterThanOrEqual(CSS_CASING_FLOOR);
   });
 
   it("finds no casing class over a rendered name", () => {
     const offenders = files.flatMap((file) =>
-      cssCasingOverNameHits(file.source).map(
-        (h) => `${file.relative}:${h.line}  ${h.text}`
-      )
+      cssHitsFor(file).map((h) => `${file.relative}:${h.line}  ${h.text}`)
     );
     expect(
       offenders,

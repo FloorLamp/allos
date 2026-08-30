@@ -26,6 +26,7 @@ export interface ProtocolHeatmap {
   truncated: boolean;
   totalSessions: number;
   activeDays: number;
+  unit?: "session" | "dose";
 }
 
 export const MAX_PROTOCOL_HEATMAP_WEEKS = 53;
@@ -37,7 +38,8 @@ export function buildProtocolHeatmap(
   days: readonly ProtocolDayUsage[],
   start: string,
   end: string,
-  weekStart = 0
+  weekStart = 0,
+  unit: "session" | "dose" = "session"
 ): ProtocolHeatmap {
   const grid = dayGrid({
     start,
@@ -72,5 +74,6 @@ export function buildProtocolHeatmap(
     truncated: grid.truncated,
     totalSessions: inWindowDays.reduce((sum, day) => sum + day.count, 0),
     activeDays: inWindowDays.length,
+    unit,
   };
 }

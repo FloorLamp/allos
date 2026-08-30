@@ -21,6 +21,7 @@ import {
   SIDE_STATE_FAMILIES,
   SIDE_STATE_KEY_SHAPES,
 } from "@/lib/side-state";
+import { stripComments } from "./strip-comments";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const DECLARATION = "lib/side-state.ts";
@@ -58,7 +59,10 @@ function rel(full: string): string {
   return path.relative(REPO, full).split(path.sep).join("/");
 }
 
+let sourceFilesCache: { rel: string; text: string }[] | undefined;
+
 function sourceFiles(): { rel: string; text: string }[] {
+  if (sourceFilesCache) return sourceFilesCache;
   const out: { rel: string; text: string }[] = [];
   for (const d of ["lib", "scripts"]) {
     for (const full of walk(path.join(REPO, d))) {
@@ -68,52 +72,8 @@ function sourceFiles(): { rel: string; text: string }[] {
       out.push({ rel: r, text: fs.readFileSync(full, "utf8") });
     }
   }
-  return out;
-}
-
-/**
- * Comments MENTION retired key names constantly (`starred_biomarkers` alone
- * appears in three doc comments), so the scan reads CODE only — the same reason
- * the send-marker scan strips comments. Minimal quote-aware stripper: tracks the
- * three string forms so a `//` inside a string never starts a comment, and
- * blanks comment bodies (preserving newlines for line numbers).
- */
-export function stripComments(text: string): string {
-  let out = "";
-  let i = 0;
-  let mode: "code" | "line" | "block" | '"' | "'" | "`" = "code";
-  while (i < text.length) {
-    const c = text[i];
-    const next = text[i + 1];
-    if (mode === "code") {
-      if (c === "/" && next === "/") mode = "line";
-      else if (c === "/" && next === "*") mode = "block";
-      else if (c === '"' || c === "'" || c === "`") mode = c;
-      out += mode === "line" || mode === "block" ? " " : c;
-    } else if (mode === "line") {
-      if (c === "\n") mode = "code";
-      out += c === "\n" ? c : " ";
-    } else if (mode === "block") {
-      if (c === "*" && next === "/") {
-        mode = "code";
-        out += "  ";
-        i += 2;
-        continue;
-      }
-      out += c === "\n" ? c : " ";
-    } else {
-      // Inside a string: emit verbatim, honor escapes, close on the open quote.
-      if (c === "\\") {
-        out += c + (next ?? "");
-        i += 2;
-        continue;
-      }
-      if (c === mode) mode = "code";
-      out += c;
-    }
-    i++;
-  }
-  return out;
+  sourceFilesCache = out;
+  return sourceFilesCache;
 }
 
 /** Quoted literals starting with a side-state shape, as `{ literal, line }`. */
@@ -143,6 +103,19 @@ export function sideStateLiterals(
   return out;
 }
 
+let sideStateFilesCache:
+  { rel: string; literals: { literal: string; line: number }[] }[] | undefined;
+
+function sideStateFiles() {
+  if (sideStateFilesCache) return sideStateFilesCache;
+  sideStateFilesCache = sourceFiles()
+    // Only a file containing a declared prefix can produce a finding. At conversion,
+    // the old scan ran the comment scanner over 1,301 files; 18 passed this raw gate.
+    .filter(({ text }) => SIDE_STATE_KEY_SHAPES.some((s) => text.includes(s)))
+    .map(({ rel: r, text }) => ({ rel: r, literals: sideStateLiterals(text) }));
+  return sideStateFilesCache;
+}
+
 describe("the side-state census (issue #2087)", () => {
   it("declares every family completely, with no duplicates", () => {
     expect(SIDE_STATE_FAMILIES.length).toBeGreaterThanOrEqual(6);
@@ -163,7 +136,7 @@ describe("the side-state census (issue #2087)", () => {
     }
   });
 
-  it("every registry module exists and exports its named symbol", () => {
+  it("every registry and guard path still resolves", () => {
     for (const f of SIDE_STATE_FAMILIES) {
       const full = path.join(REPO, f.registryModule);
       expect(
@@ -179,14 +152,20 @@ describe("the side-state census (issue #2087)", () => {
         `${f.family}: ${f.registryModule} no longer exports ${f.registrySymbol} — ` +
           "update the census row to the registry's new home"
       ).toBe(true);
+      expect(
+        fs.existsSync(path.join(REPO, f.guard)),
+        `${f.family}: ${f.guard} is gone — update the census row to its guard's new home`
+      ).toBe(true);
     }
   });
 
   it("no side-state-shaped key literal lives outside the census", () => {
     const known = new Set(NON_SIDE_STATE_KEYS.map((k) => k.literal));
     const offenders: string[] = [];
-    for (const { rel: r, text } of sourceFiles()) {
-      for (const { literal, line } of sideStateLiterals(text)) {
+    const live = new Set<string>();
+    for (const { rel: r, literals } of sideStateFiles()) {
+      for (const { literal, line } of literals) {
+        live.add(literal);
         if (!known.has(literal)) offenders.push(`${r}:${line} — "${literal}"`);
       }
     }
@@ -198,17 +177,9 @@ describe("the side-state census (issue #2087)", () => {
         "NON_SIDE_STATE_KEYS with what it actually is:\n" +
         offenders.join("\n")
     ).toEqual([]);
-  });
-
-  it("every argued-out literal still exists somewhere — no stale allowlist", () => {
-    const files = sourceFiles();
-    const stale: string[] = [];
-    for (const { literal } of NON_SIDE_STATE_KEYS) {
-      const held = files.some(({ text }) =>
-        sideStateLiterals(text).some((l) => l.literal === literal)
-      );
-      if (!held) stale.push(literal);
-    }
+    const stale = NON_SIDE_STATE_KEYS.filter(
+      ({ literal }) => !live.has(literal)
+    ).map(({ literal }) => literal);
     expect(
       stale,
       `NON_SIDE_STATE_KEYS entries with nothing left to excuse — delete them so ` +

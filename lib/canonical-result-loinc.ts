@@ -149,6 +149,15 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "4537-7": "Erythrocyte Sedimentation Rate (ESR)", // ESR by Westergren (mm/h)
   "30341-2": "Erythrocyte Sedimentation Rate (ESR)", // ESR in Blood (method-less; mm/h)
 
+  // ── Gut / stool ────────────────────────────────────────────────────────────
+  // Verified against the official LOINC records (component + property + stool
+  // system): https://loinc.org/38445-3, https://loinc.org/25907-7, and
+  // https://loinc.org/31843-6. Issue #3168 reported invalid code 32047-8 for the
+  // last observation; 31843-6 is the method-less H. pylori stool-antigen term.
+  "38445-3": "Fecal Calprotectin", // Calprotectin [Mass/mass] in Stool (ug/g)
+  "25907-7": "Pancreatic Elastase-1, Stool", // Pancreatic elastase [Mass/mass] in Stool (ug/g)
+  "31843-6": "H. pylori Stool Antigen", // H. pylori Ag [Presence] in Stool
+
   // ── Liver / pancreas ────────────────────────────────────────────────────────
   "2324-2": "Gamma-Glutamyl Transferase (GGT)", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
   "10834-0": "Globulin", // Globulin [Mass/volume] in Serum by calculation (g/dL)

@@ -793,6 +793,44 @@ which never navigate, so no shell has to come from anywhere and the page's own P
 is exactly what the emulation does block. That distinction is the rule's scope: only
 navigating while offline needs the precondition.
 
+## Offline: open the form AFTER the disconnect, or you never asked (2026-08-30, #4091)
+
+Every offline spec written before this one goes online → open the form →
+`setOffline(true)` → act. That ordering proves a **write queues** once you are
+inside a form. It cannot prove you can **get into the form**, because the getting
+in already happened on a live connection —
+`quick-log-overlay.mobile.spec.ts` says so in its own comment.
+
+What it cost: on #4083 the dashboard's inline weight widget was retired, which
+removed the last offline-reachable weigh-in, and **every guard stayed green**. The
+retirement census asserts the quick-log sheet _offers_ the measurements row — a
+statement about membership. Reachability is a **precondition membership never
+had**, and the retired mount had none because it was server-rendered inline while
+every replacement went through `loadQuickEntry`, a Server Action, which offline
+rejects.
+
+**The rule, which was implicit and load-bearing until now: a surface is
+offline-reachable exactly when OPENING it needs no Server Action** — server-rendered
+inline, or client state the app shell already holds. Anything gathered on open is
+online-only by construction. So `loadQuickEntry` may not be on the critical path of
+a surface people are expected to reach with no connection, and the measurements
+form's props are resolved in the shell instead
+(`lib/quick-entry-measurements.ts`).
+
+`e2e/offline-reachability.mobile.spec.ts` is where that claim is tested: the
+connection dies **first, after full hydration**, and only then does the test reach
+for the surface. Hydration first is not optional — a tap that lands before React
+claims the node is swallowed with no error (#2742) and reads exactly like a
+reachability failure.
+
+It is a **hand-written list, one test per surface**, not a scan: the census that
+finds the candidates is "what does a person reach while offline", which no grep can
+answer. Two surfaces qualify today, because both have a real opening step — the
+quick logger's measurements row, and the activity editor (propped from the shell,
+so `openCreate` is client state). The inline controls — the food bar, the dose
+rows, the mobility chips — have no opening step at all: you are standing on their
+page or you are not, and navigating offline is the `/offline` shell's subject.
+
 ## A retry cannot converge on a control that covers itself (2026-08-13, #2662)
 
 `document-capture.mobile` and `progress-photos` both waited for the native file
@@ -1950,6 +1988,14 @@ depends on something NOT being there says so where the state is created rather
 than trusting the seed to stay that way. `protein-quickadd.spec` has followed the
 first half for a long time ("Add→undo leaves the fixture as found"), on a
 dedicated fixture, for precisely this hazard.
+
+**Shared app vocabulary is not fixture identity (#4087).** `berries`, `legumes`,
+`cough`, `Ibuprofen`, and the names in the practice picker can be written by any
+spec on profile 1. A count or cleanup scoped only by one of those names still
+counts or deletes a neighbour's row. Address the row the test created (an id or
+high-water mark), narrow it to the exact dates the test seeded, or restore the
+prior state from `afterEach`/`finally`. A deliberately fictional, uniquely named
+fixture may use its name as identity; a catalog or picker value may not.
 
 ### Reproducing one — a green shard proves nothing
 

@@ -121,9 +121,14 @@ describe("DestinationLink", () => {
   });
 
   it("finds no raw rightward indicator inside next/link", () => {
-    const findings = sourceFiles().flatMap((file) =>
-      handRolledIndicators(file, fs.readFileSync(path.join(REPO, file), "utf8"))
-    );
+    const findings = sourceFiles().flatMap((file) => {
+      const source = fs.readFileSync(path.join(REPO, file), "utf8");
+      // The AST rule only visits locally imported next/link elements. Parsing
+      // cannot create that module specifier, so raw non-importers are irrelevant.
+      return source.includes("next/link")
+        ? handRolledIndicators(file, source)
+        : [];
+    });
     expect(findings).toEqual([]);
   });
 

@@ -5,7 +5,7 @@ import {
   isConvertible,
   sameUnit,
 } from "@/lib/unit-conversions";
-import { displayUnit } from "@/lib/display-unit";
+import { displayUnit, shouldDisplayMedicalValueUnit } from "@/lib/display-unit";
 
 // #3493 item 2. The equivalence machinery below has stripped UCUM's brackets and
 // annotations since #1018 — for MATCHING. The display side never did, so an imported
@@ -69,6 +69,20 @@ describe("displayUnit (#3493/#3545)", () => {
     ] as const) {
       expect(sameUnit(raw, canonical)).toBe(true);
       expect(displayUnit(raw)?.toLowerCase()).toBe(canonical.toLowerCase());
+    }
+  });
+});
+
+describe("shouldDisplayMedicalValueUnit (#3969)", () => {
+  it("keeps units for quantities, including bounded values and titers", () => {
+    for (const value of ["0.28", "<0.1", "1:160"]) {
+      expect(shouldDisplayMedicalValueUnit(value)).toBe(true);
+    }
+  });
+
+  it("omits units from word-only qualitative results", () => {
+    for (const value of ["NOT DETECTED", "Positive", "Reactive", "TNP"]) {
+      expect(shouldDisplayMedicalValueUnit(value)).toBe(false);
     }
   });
 });

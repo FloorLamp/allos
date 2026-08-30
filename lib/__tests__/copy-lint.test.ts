@@ -143,24 +143,35 @@ function walk(dir: string): string[] {
   return out;
 }
 
-function sourceFiles(): { rel: string; text: string }[] {
-  const files: { rel: string; text: string }[] = [];
+type SourceFile = { rel: string; text: string; code?: string };
+
+let sourceFilesCache: SourceFile[] | undefined;
+function sourceFiles(): SourceFile[] {
+  if (sourceFilesCache) return sourceFilesCache;
+  const files: SourceFile[] = [];
   for (const dir of SCAN_DIRS) {
     for (const full of walk(path.join(REPO, dir))) {
       const rel = path.relative(REPO, full).split(path.sep).join("/");
       if (rel.includes("__tests__")) continue;
       if (rel.endsWith(".test.ts") || rel.endsWith(".test.tsx")) continue;
       if (EXCLUDE_SUBPATH.some((prefix) => rel.startsWith(prefix))) continue;
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
+      const text = fs.readFileSync(full, "utf8");
+      files.push({ rel, text });
     }
   }
   for (const rel of SCAN_FILES) {
-    files.push({ rel, text: fs.readFileSync(path.join(REPO, rel), "utf8") });
+    const text = fs.readFileSync(path.join(REPO, rel), "utf8");
+    files.push({ rel, text });
   }
-  return files;
+  sourceFilesCache = files;
+  return sourceFilesCache;
 }
 
-function crossProfileSourceFiles(): { rel: string; text: string }[] {
+function codeFor(file: SourceFile): string {
+  return (file.code ??= stripComments(file.text));
+}
+
+function crossProfileSourceFiles(): SourceFile[] {
   return sourceFiles().filter(
     ({ rel, text }) =>
       rel.endsWith(".tsx") &&
@@ -180,68 +191,72 @@ function isInternalLine(line: string): boolean {
   );
 }
 
-function crossProfileVoiceViolations(rel: string, text: string): string[] {
+function crossProfileVoiceViolations(
+  rel: string,
+  text: string,
+  code = stripComments(text)
+): string[] {
   const violations: string[] = [];
-  stripComments(text)
-    .split("\n")
-    .forEach((line, index) => {
-      if (isInternalLine(line)) return;
-      if (
-        /\b(?:you|your)\b/i.test(line) &&
-        !CROSS_PROFILE_VOICE_ALLOW.some(
-          (entry) => entry.file === rel && line.includes(entry.substring)
-        )
-      ) {
-        violations.push(
-          `${rel}:${index + 1} — second-person copy in: ${line.trim()}`
-        );
-      }
-    });
+  code.split("\n").forEach((line, index) => {
+    if (isInternalLine(line)) return;
+    if (
+      /\b(?:you|your)\b/i.test(line) &&
+      !CROSS_PROFILE_VOICE_ALLOW.some(
+        (entry) => entry.file === rel && line.includes(entry.substring)
+      )
+    ) {
+      violations.push(
+        `${rel}:${index + 1} — second-person copy in: ${line.trim()}`
+      );
+    }
+  });
   return violations;
 }
 
 describe("copy-lint: user-facing tone standard (issue #945)", () => {
   it("has no banned error phrasing or 'please' in user-facing copy", () => {
     const violations: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      stripComments(text)
-        .split("\n")
-        .forEach((line, index) => {
-          if (isInternalLine(line)) return;
-          for (const { re, label } of BANNED) {
-            if (re.test(line)) {
-              violations.push(
-                `${rel}:${index + 1} — ${label} in: ${line.trim()}`
-              );
-            }
+    for (const file of sourceFiles()) {
+      if (!BANNED.some(({ re }) => re.test(file.text))) continue;
+      const { rel } = file;
+      const code = codeFor(file);
+      code.split("\n").forEach((line, index) => {
+        if (isInternalLine(line)) return;
+        for (const { re, label } of BANNED) {
+          if (re.test(line)) {
+            violations.push(
+              `${rel}:${index + 1} — ${label} in: ${line.trim()}`
+            );
           }
-        });
+        }
+      });
     }
     expect(violations, violations.join("\n")).toEqual([]);
   });
 
   it('ends every "Couldn\'t …" error string with punctuation', () => {
     const violations: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      stripComments(text)
-        .split("\n")
-        .forEach((line, index) => {
-          if (/\b(aria-label|title)\s*=/.test(line)) return;
-          COULDNT_LITERAL.lastIndex = 0;
-          let match: RegExpExecArray | null;
-          while ((match = COULDNT_LITERAL.exec(line)) !== null) {
-            if (!TERMINAL.test(match[2].trim())) {
-              violations.push(`${rel}:${index + 1} — "${match[2]}"`);
-            }
+    for (const file of sourceFiles()) {
+      if (!/Couldn['’]t/.test(file.text)) continue;
+      const { rel } = file;
+      const code = codeFor(file);
+      code.split("\n").forEach((line, index) => {
+        if (/\b(aria-label|title)\s*=/.test(line)) return;
+        COULDNT_LITERAL.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = COULDNT_LITERAL.exec(line)) !== null) {
+          if (!TERMINAL.test(match[2].trim())) {
+            violations.push(`${rel}:${index + 1} — "${match[2]}"`);
           }
-        });
+        }
+      });
     }
     expect(violations, violations.join("\n")).toEqual([]);
   });
 
   it('avoids "you" and "your" health-data copy on cross-profile surfaces', () => {
-    const violations = crossProfileSourceFiles().flatMap(({ rel, text }) =>
-      crossProfileVoiceViolations(rel, text)
+    const violations = crossProfileSourceFiles().flatMap((file) =>
+      crossProfileVoiceViolations(file.rel, file.text, codeFor(file))
     );
     expect(violations, violations.join("\n")).toEqual([]);
   });

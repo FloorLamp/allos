@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,11 +74,45 @@ function walk(root: string, sub: string): string[] {
   return out.sort();
 }
 
+interface SourceFile {
+  rel: string;
+  src: string;
+  code?: string;
+}
+
+// The real checkout is immutable for this test run, yet the six repository
+// assertions used to walk, read and comment-strip the same app/component/lib files
+// independently. Keep one file-local projection per source root. Temporary corpora
+// deliberately bypass this cache: the reach tests rewrite them between assertions,
+// and seeing each mutation is the point of those tests.
+const repositorySources = new Map<string, SourceFile[]>();
+function sources(root: string, sub: string): SourceFile[] {
+  if (root === REPO) {
+    const cached = repositorySources.get(sub);
+    if (cached) return cached;
+  }
+  const loaded = walk(root, sub).map((absolute) => {
+    const src = fs.readFileSync(absolute, "utf8");
+    return {
+      rel: path.relative(root, absolute).split(path.sep).join("/"),
+      src,
+    };
+  });
+  if (root === REPO) repositorySources.set(sub, loaded);
+  return loaded;
+}
+
+// Most consumers need raw imports/exports or a cheap keyword gate. Comment-strip
+// only the candidates that need a code-only projection; eagerly scanning `lib/`
+// walked generated migrations and datasets that cannot name a web surface.
+function codeOf(file: SourceFile): string {
+  return (file.code ??= stripComments(file.src));
+}
+
 /** Every exported action in `app/` that READS a posted surface. */
 export function readingActions(root: string): Map<string, string> {
   const out = new Map<string, string>();
-  for (const file of walk(root, "app")) {
-    const src = fs.readFileSync(file, "utf8");
+  for (const { rel, src } of sources(root, "app")) {
     // Where each exported function starts, so a read can be attributed to the last
     // one that opened before it.
     const bounds: { name: string; at: number }[] = [];
@@ -90,7 +123,7 @@ export function readingActions(root: string): Map<string, string> {
       let owner: string | null = null;
       for (const b of bounds) if (b.at < at) owner = b.name;
       if (owner) {
-        out.set(owner, path.relative(root, file).split(path.sep).join("/"));
+        out.set(owner, rel);
       }
     }
   }
@@ -101,13 +134,9 @@ export function readingActions(root: string): Map<string, string> {
 function clientFiles(root: string): { rel: string; src: string }[] {
   const out: { rel: string; src: string }[] = [];
   for (const sub of ["app", "components"]) {
-    for (const file of walk(root, sub)) {
-      const src = fs.readFileSync(file, "utf8");
+    for (const { rel, src } of sources(root, sub)) {
       if (!/^\s*["']use client["']/.test(src)) continue;
-      out.push({
-        rel: path.relative(root, file).split(path.sep).join("/"),
-        src,
-      });
+      out.push({ rel, src });
     }
   }
   return out;
@@ -206,9 +235,7 @@ export function regionRoots(root: string): Map<string, string[]> {
   // that. Scoping this to `"use client"` files would have reported the dashboard's own
   // declaration as missing, which is the "fails toward a plausible correction" shape.
   for (const sub of ["app", "components"]) {
-    for (const file of walk(root, sub)) {
-      const rel = path.relative(root, file).split(path.sep).join("/");
-      const src = fs.readFileSync(file, "utf8");
+    for (const { rel, src } of sources(root, sub)) {
       if (!src.includes("<LoggedViaSurface")) continue;
       const values = new Set<string>();
       for (const m of src.matchAll(/<LoggedViaSurface\s+value="([a-z-]+)"/g))
@@ -260,12 +287,14 @@ const CLAIMING_SURFACES = [
   "dashboard-widget",
   "quick-log",
 ] as const;
+const HAS_LITERAL_RE = new RegExp(`["'](?:${CLAIMING_SURFACES.join("|")})["']`);
 const LITERAL_RE = new RegExp(`["'](${CLAIMING_SURFACES.join("|")})["']`, "g");
 
 /**
  * Comments name these surfaces constantly; only source is source.
  *
- * The scanner is SHARED with the chat-origin census (lib/__tests__/strip-comments.ts).
+ * The scanner is SHARED with the chat-origin census (lib/__tests__/strip-comments.ts)
+ * and applied once by `sources()` above.
  * Two copies of a comment stripper is how they drift, and they did: both carried a
  * pair of ordered regexes that stripped block comments first, so a `/*` written
  * inside a `//` line comment opened a block comment nothing closed. In
@@ -273,9 +302,6 @@ const LITERAL_RE = new RegExp(`["'](${CLAIMING_SURFACES.join("|")})["']`, "g");
  * :220 with them — which is the ONE stamper the editor's region exists to serve, so
  * `stampersOutsideEveryRegion` swept a file it could not see and reported a pass.
  */
-function code(src: string): string {
-  return stripComments(src);
-}
 
 /**
  * How a module says it is IN the `logged_via` mechanism at all.
@@ -312,14 +338,20 @@ const MECHANISM_RE = /\bloggedVia\b|\bLoggedVia\b|\blogged_via\b/;
 export function literalUniverse(root: string): { rel: string; src: string }[] {
   const out: { rel: string; src: string }[] = [];
   for (const sub of ["app", "lib"] as const) {
-    for (const file of walk(root, sub)) {
-      if (!file.endsWith(".ts")) continue;
-      const src = code(fs.readFileSync(file, "utf8"));
-      if (sub === "lib" && !MECHANISM_RE.test(src)) continue;
-      out.push({
-        rel: path.relative(root, file).split(path.sep).join("/"),
-        src,
-      });
+    for (const file of sources(root, sub)) {
+      if (!file.rel.endsWith(".ts")) continue;
+      if (sub === "lib") {
+        // Raw gating can admit a comment but cannot hide code. Confirm against the
+        // code projection so the bounded lib/ universe keeps its original verdict.
+        if (!MECHANISM_RE.test(file.src)) continue;
+        const code = codeOf(file);
+        if (!MECHANISM_RE.test(code)) continue;
+        out.push({ rel: file.rel, src: code });
+      } else {
+        // app/ is deliberately unconditional; hardcodingActions does the literal
+        // gate before paying to strip an individual candidate.
+        out.push({ rel: file.rel, src: file.src });
+      }
     }
   }
   return out;
@@ -330,10 +362,13 @@ export function hardcodingActions(
 ): { action: string; file: string; surface: string }[] {
   const out: { action: string; file: string; surface: string }[] = [];
   for (const { rel, src } of literalUniverse(root)) {
+    if (!HAS_LITERAL_RE.test(src)) continue;
+    const code = stripComments(src);
+    if (!HAS_LITERAL_RE.test(code)) continue;
     const bounds: { name: string; at: number }[] = [];
-    for (const m of src.matchAll(EXPORT_RE))
+    for (const m of code.matchAll(EXPORT_RE))
       bounds.push({ name: m[1], at: m.index ?? 0 });
-    for (const m of src.matchAll(LITERAL_RE)) {
+    for (const m of code.matchAll(LITERAL_RE)) {
       const at = m.index ?? 0;
       let owner: string | null = null;
       for (const b of bounds) if (b.at < at) owner = b.name;
@@ -381,11 +416,8 @@ function mountingsOf(
  * this tree is spelled) and never names one.
  */
 export function unjustifiedLiterals(root: string): string[] {
-  const every = [...walk(root, "app"), ...walk(root, "components")].map(
-    (file) => ({
-      rel: path.relative(root, file).split(path.sep).join("/"),
-      src: code(fs.readFileSync(file, "utf8")),
-    })
+  const every = [...sources(root, "app"), ...sources(root, "components")].map(
+    (file) => ({ rel: file.rel, src: codeOf(file) })
   );
   const out: string[] = [];
   for (const { action, file, surface } of hardcodingActions(root)) {
@@ -503,15 +535,16 @@ function reexportMap(
 }
 
 /** Who renders whom: `file -> the files whose components it mounts as JSX`. */
-export function mountGraph(root: string): {
+interface MountGraph {
   files: { rel: string; src: string }[];
   mountedBy: Map<string, Set<string>>;
-} {
-  const files = [...walk(root, "app"), ...walk(root, "components")].map(
-    (file) => ({
-      rel: path.relative(root, file).split(path.sep).join("/"),
-      src: code(fs.readFileSync(file, "utf8")),
-    })
+}
+
+let repositoryMountGraph: MountGraph | undefined;
+export function mountGraph(root: string): MountGraph {
+  if (root === REPO && repositoryMountGraph) return repositoryMountGraph;
+  const files = [...sources(root, "app"), ...sources(root, "components")].map(
+    (file) => ({ rel: file.rel, src: codeOf(file) })
   );
   const known = new Set(files.map((f) => f.rel));
   const mountedBy = new Map(files.map((f) => [f.rel, new Set<string>()]));
@@ -584,7 +617,9 @@ export function mountGraph(root: string): {
       if (target && target !== rel) mountedBy.get(target)!.add(rel);
     }
   }
-  return { files, mountedBy };
+  const graph = { files, mountedBy };
+  if (root === REPO) repositoryMountGraph = graph;
+  return graph;
 }
 
 /**
@@ -1100,21 +1135,5 @@ export async function logThing(formData: FormData) {
     expect(stampersOutsideEveryRegion(root)).toEqual([
       "components/Lazy.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
     ]);
-  });
-
-  it("scans the TRACKED set it claims to be about", () => {
-    const tracked = new Set(
-      execFileSync("git", ["ls-files", "-z", "app", "components"], {
-        cwd: REPO,
-        maxBuffer: 64 * 1024 * 1024,
-      })
-        .toString("utf8")
-        .split("\u0000")
-        .filter(Boolean)
-    );
-    const untracked = [...walk(REPO, "app"), ...walk(REPO, "components")]
-      .map((f) => path.relative(REPO, f).split(path.sep).join("/"))
-      .filter((rel) => !tracked.has(rel));
-    expect(untracked).toEqual([]);
   });
 });

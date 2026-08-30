@@ -274,12 +274,19 @@ test.describe("the record (#3958)", () => {
   }) => {
     seedDay();
 
-    // An unknown kind, a phase-2 family that has not shipped, and a future day: each
-    // falls back rather than 404ing. A record surface you cannot get back to from a
-    // hand-edited URL is not a record.
+    // An unknown kind, an unknown family, and a nonsense item: each falls back to All
+    // rather than 404ing. A record surface you cannot get back to from a hand-edited
+    // URL is not a record.
+    //
+    // `?kind=sleep` AND `?family=clinical` USED TO BE ON THIS LIST and are not any
+    // more, because phase 2 shipped them: sleep is a kind and clinical is a family, so
+    // they resolve now instead of degrading. Leaving them here would have been the
+    // worse half of the trade — a fallback list that admits everything cannot tell
+    // "an invalid deep link degrades" from "nothing is valid", and it would have kept
+    // passing on a tree where the whole registry had stopped resolving.
     for (const url of [
-      "/history?kind=sleep",
-      "/history?family=clinical",
+      "/history?kind=not-a-kind",
+      "/history?family=not-a-family",
       "/history?kind=not-a-kind&item=nonsense",
     ]) {
       await page.goto(url);
@@ -289,6 +296,24 @@ test.describe("the record (#3958)", () => {
         "true"
       );
     }
+
+    // THE CONVERSE, in the same test and against the same chip: the two the phase-2
+    // registry made real select themselves rather than falling back. Asserted as the
+    // difference between two renders, so neither half is satisfiable by a page that
+    // marks nothing current.
+    await page.goto("/history?family=clinical");
+    await expect(
+      page.getByTestId("history-chip-family-clinical")
+    ).toHaveAttribute("aria-current", "true");
+    await expect(page.getByTestId("history-chip-all")).not.toHaveAttribute(
+      "aria-current",
+      "true"
+    );
+    await page.goto("/history?kind=sleep");
+    await expect(page.getByTestId("history-chip-sleep")).toHaveAttribute(
+      "aria-current",
+      "true"
+    );
 
     // A future `?day` clamps to today — symmetric with the Add door's
     // never-the-future rule, and the reason the timeline's future fold is not
@@ -304,9 +329,15 @@ test.describe("the record (#3958)", () => {
   }) => {
     seedDay();
     await phone(page);
-    // A profile with enough history to earn a rail at all: the shared seed spans
-    // months, so the unfiltered record is where the fold spine exists.
-    await page.goto("/history");
+    // ON `?kind=dose`, AND THE ROLLUP BOUNDARY IS WHY. This case ran on the unfiltered
+    // record until phase 2, where the high-frequency log kinds collapse into a rollup
+    // line that by rule draws neither ⋯ nor › — so Everything stopped drawing an
+    // action column at all, and the verdict below went on passing over an EMPTY
+    // candidate set. Measured: 0 candidates on `/history`, and the assertion could not
+    // fail whatever the rail did. Filtered to a kind the page is the plain record, so
+    // this is the view where "a row's action column" still names something; the rail's
+    // lane on the unfiltered view is asserted on card edges by the case below.
+    await page.goto("/history?kind=dose");
     // THE PREMISE BEFORE THE VERDICT: the rail is offered only from two periods up,
     // and `seedDay` plants a row in an earlier calendar month precisely so this is a
     // fact rather than a hope. Without it the case would pass over a page with no
@@ -315,24 +346,38 @@ test.describe("the record (#3958)", () => {
     await expect(rail).toHaveCount(1);
     await expect(rail).toHaveAttribute("data-scrubber-ready", "true");
 
-    const overlap = await page.evaluate(() => {
+    const measured = await page.evaluate(() => {
       const strip = document
         .querySelector('[data-testid="timeline-scrubber"]')!
         .getBoundingClientRect();
       // THE RELATIONSHIP, NOT AN ABSOLUTE: the claim is that the strip and a row's
       // ⋯ do not share pixels, which a distance-from-the-viewport-edge could not
       // see — the rail is fixed to the viewport and the row is inside a gutter.
-      return [
+      const boxes = [
         ...document.querySelectorAll('[data-testid="history-row"] button'),
       ]
         .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.width > 0 && r.right > strip.left)
-        .map((r) => ({
-          right: Math.round(r.right),
-          strip: Math.round(strip.left),
-        }));
+        .filter((r) => r.width > 0);
+      return {
+        candidates: boxes.length,
+        overlap: boxes
+          .filter((r) => r.right > strip.left)
+          .map((r) => ({
+            right: Math.round(r.right),
+            strip: Math.round(strip.left),
+          })),
+      };
     });
-    expect(overlap, JSON.stringify(overlap)).toEqual([]);
+    // THE SECOND PREMISE, kept in the file rather than left to the route choice
+    // above: "never overlaps a row's ACTION COLUMN" is a claim only while some row
+    // still draws one. This is the assertion that CAUGHT the vacuum when the rollup
+    // boundary emptied the candidate set, and it is what would catch the next thing
+    // that empties it.
+    expect(
+      measured.candidates,
+      "no row on the record draws an action control, so the overlap verdict is vacuous"
+    ).toBeGreaterThan(0);
+    expect(measured.overlap, JSON.stringify(measured.overlap)).toEqual([]);
   });
 
   // ── THE RAIL'S LANE, ON RENDERED GEOMETRY (#4045 §2) ──────────────────────

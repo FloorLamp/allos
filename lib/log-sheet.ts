@@ -147,7 +147,7 @@ export const LOG_SHEET_ROW_BLOCK_PX = 66;
 
 /**
  * The context region at its tallest, at 390px. Two offers is the most it can ever
- * hold — `dueDoses.count > 0` and the `resume` arm of `workoutOffer` — and the
+ * hold — a non-empty `dueDoses.items` and the `resume` arm of `workoutOffer` — and the
  * common case is one with no routine control, which is exactly why this number may
  * no longer be spent as a fixed height on the region itself.
  *
@@ -344,23 +344,25 @@ export const LOG_DAY_SOURCES = {
 
 /**
  * The dose context chip names the first two due items, then gives a compact
- * overflow count. `count` is kept separately so a malformed/missing title can
- * still fall back to the old honest count label rather than rendering "Due:".
+ * overflow count. Item ids define that collection, so two arrived dose slots for
+ * one item consume one name and one count unit.
  */
 export function dueDoseChipLabel({
-  count,
-  names,
+  items,
 }: {
-  count: number;
-  names: readonly string[];
+  items: readonly { itemId: number; name: string }[];
 }): string | null {
+  const distinct = [
+    ...new Map(items.map((item) => [item.itemId, item])).values(),
+  ];
+  const count = distinct.length;
   if (count <= 0) return null;
-  const usable = names
-    .map((name) => name.trim())
+  const usable = distinct
+    .map((item) => item.name.trim())
     .filter(Boolean)
     .slice(0, 2);
   if (usable.length === 0)
-    return count === 1 ? "1 dose due" : `${count} doses due`;
+    return count === 1 ? "1 item due" : `${count} items due`;
   const overflow = Math.max(0, count - usable.length);
   return `Due: ${usable.join(", ")}${overflow > 0 ? ` +${overflow}` : ""}`;
 }
