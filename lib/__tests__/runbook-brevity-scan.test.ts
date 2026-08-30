@@ -1,6 +1,8 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { makeTmpDir } from "./tmp-dir";
 
 // The runbook is rules only, short bullets, no prose (owner, 2026-08-13).
 // This scan is the CI tooth: runbook rules had regrown into inline war
@@ -158,16 +160,26 @@ const SKILL_BUDGETS = {
   ".github/pull_request_template.md": { lines: 25, genre: "prose" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
 
-const SKIPPED_DIRS = new Set([".git", "node_modules"]);
+const SKIPPED_DIRS = new Set([".git", ".next", "node_modules"]);
+const SKIPPED_TREES = new Set(["data/uploads"]);
 
-function findAgentFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+function findAgentFiles(dir: string, root = process.cwd()): string[] {
+  let entries: Dirent<string>[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    // Runtime directories may disappear while another test cleans them. They cannot
+    // contain source instructions, so a vanished ignored tree is not a census failure.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return entries.flatMap((entry) => {
     if (SKIPPED_DIRS.has(entry.name)) return [];
     const absolute = path.join(dir, entry.name);
-    if (entry.isDirectory()) return findAgentFiles(absolute);
-    return entry.name === "AGENTS.md"
-      ? [path.relative(process.cwd(), absolute)]
-      : [];
+    const relative = path.relative(root, absolute).replaceAll("\\", "/");
+    if (SKIPPED_TREES.has(relative)) return [];
+    if (entry.isDirectory()) return findAgentFiles(absolute, root);
+    return entry.name === "AGENTS.md" ? [relative] : [];
   });
 }
 
@@ -295,6 +307,18 @@ function brevityViolations(source: string, paragraphLines: number): string[] {
 describe("runbook brevity", () => {
   it("registers every agent and orchestration instruction file", () => {
     expect(guardedFiles()).toEqual(Object.keys(FILE_BUDGETS).sort());
+  });
+
+  it("discovers source instructions without entering runtime uploads", () => {
+    const root = makeTmpDir("runbook-census");
+    mkdirSync(path.join(root, "source"));
+    writeFileSync(path.join(root, "source", "AGENTS.md"), "# Source\n");
+    mkdirSync(path.join(root, "data", "uploads"), { recursive: true });
+    writeFileSync(
+      path.join(root, "data", "uploads", "AGENTS.md"),
+      "# Runtime\n"
+    );
+    expect(findAgentFiles(root, root)).toEqual(["source/AGENTS.md"]);
   });
 
   it("registers every skill under the guard", () => {

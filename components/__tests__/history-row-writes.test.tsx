@@ -289,7 +289,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     expect(fd.notes).toBe("evening wind-down");
   });
 
-  it("practice carries a stated time back unchanged", async () => {
+  it("practice corrects its date and stated time through the shared control", async () => {
     await openEdit([
       row({
         id: "practice:6",
@@ -306,10 +306,19 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         },
       }),
     ]);
+    fireEvent.change(screen.getByTestId("history-practice-when-date"), {
+      target: { value: "2026-08-19" },
+    });
+    fireEvent.change(screen.getByTestId("history-practice-when-time"), {
+      target: { value: "08:30" },
+    });
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
-    expect(only("editPracticeSession").time).toBe("07:15");
+    expect(only("editPracticeSession")).toMatchObject({
+      date: "2026-08-19",
+      time: "08:30",
+    });
   });
 
   it.each(["kg", "lb"] as const)(

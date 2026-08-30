@@ -10,6 +10,7 @@ import {
   type SymptomDomain,
 } from "../symptoms";
 import { rankByRecentFrequency } from "../rank-by-frequency";
+import { daysBetweenDateStr } from "../date";
 import { recentWindowStart } from "./training/common";
 
 export interface SymptomDayEntry {
@@ -151,14 +152,20 @@ export interface SymptomDayRollup {
   symptoms: SymptomDayEntry[];
 }
 
-// Symptom-days in a window, newest-first, each rolled up (count + worst severity + the
-// per-symptom entries) — the timeline groups one event per day from this.
+// Closed windows return every day; an open range requires an explicit SQL day bound.
+// Results are newest-first and rolled up (count + worst severity + entries) per day.
 export function getSymptomDaysInRange(
   profileId: number,
   from: string | undefined,
   to: string | undefined,
-  limit = 250
+  limit?: number
 ): SymptomDayRollup[] {
+  const windowDays = from && to ? daysBetweenDateStr(from, to) : null;
+  if (limit == null && windowDays == null) {
+    throw new Error("An open symptom range requires an explicit day limit.");
+  }
+  const dayLimit = Math.max(0, Math.trunc(limit ?? windowDays! + 1));
+  if (dayLimit === 0) return [];
   const parts: string[] = [];
   const params: (string | number)[] = [profileId];
   if (from) {
@@ -172,11 +179,22 @@ export function getSymptomDaysInRange(
   const where = parts.length ? ` AND ${parts.join(" AND ")}` : "";
   const rows = db
     .prepare(
-      `SELECT date, symptom, severity, note, episode_id AS episodeId FROM symptom_logs
-        WHERE profile_id = ?${where}
-        ORDER BY date DESC, severity DESC, symptom COLLATE NOCASE`
+      `WITH bounded_days AS (
+         SELECT date FROM symptom_logs
+          WHERE profile_id = ?${where}
+          GROUP BY date
+          ORDER BY date DESC
+          LIMIT ?
+       )
+       SELECT s.date, s.symptom, s.severity, s.note, s.episode_id AS episodeId
+         FROM symptom_logs s
+         JOIN bounded_days d ON d.date = s.date
+        WHERE s.profile_id = ?
+        ORDER BY s.date DESC, s.severity DESC, s.symptom COLLATE NOCASE`
     )
-    .all(...params) as (SymptomDayEntry & { date: string })[];
+    .all(...params, dayLimit, profileId) as (SymptomDayEntry & {
+    date: string;
+  })[];
   const byDay = new Map<string, SymptomDayRollup>();
   for (const r of rows) {
     let day = byDay.get(r.date);
@@ -193,5 +211,5 @@ export function getSymptomDaysInRange(
       episodeId: r.episodeId,
     });
   }
-  return Array.from(byDay.values()).slice(0, limit);
+  return Array.from(byDay.values());
 }

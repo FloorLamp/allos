@@ -628,13 +628,13 @@ separates them.
 
 **A shared constant between a spec and the app must come from a LEAF module.** The
 marker was first exported from the hook that logs it. `playwright test --list`
-IMPORTS every spec, and `scripts/e2e-shard-plan.ts --verify` parses that listing's
-JSON off stdout — so the spec's import pulled in the Server Action module, and
-through it `lib/db`, which opened the database and printed `INFO [migrate] …` onto
-the stdout being parsed. CI died on `Unexpected non-whitespace character after JSON
-at position 4`, in a job whose name says nothing about specs. `lib/live-workout.ts`
-would have done the same thing (coaching → lifts → units → settings → db). Only a
-module that imports nothing is safe: `lib/live-session-race-event.ts`. Run
+IMPORTS every spec, so the spec's import pulled in the Server Action module and
+through it `lib/db`. The shard-plan verifier now writes Playwright's JSON reporter
+to its own temporary file, so import-time stdout cannot corrupt the report (#3506).
+Keep shared spec constants in a leaf module anyway: importing a server graph still
+opens the database just to list tests and can have other side effects.
+`lib/live-workout.ts` would do the same thing (coaching → lifts → units → settings
+→ db). Use an import-free leaf such as `lib/live-session-race-event.ts`, then run
 `npx tsx scripts/e2e-shard-plan.ts --verify` after adding any import to a spec.
 
 **Where a race has no network-visible signature, the app has to lend you one.** The

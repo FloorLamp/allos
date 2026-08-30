@@ -47,7 +47,10 @@ export function biomarkerDismissalKey(name: string): string {
 // `dismissTrajectory` writes it, so dismissing EITHER the flag or the analyte's
 // trajectory silences both ("dismiss once, silence everywhere"). A non-family
 // analyte's family key is just its own lowercased name, so its flag key is
-// byte-identical to the pre-#482/#564 form (no stored dismissal breaks). The #203
+// byte-identical to the pre-#482/#564 form (no stored dismissal breaks). Since #3225
+// this acknowledgment is NOT indefinite: the #564 coupling stands, but a dismissal
+// lasts only until the next draw of the family — decided on the read side, in
+// lib/queries/upcoming/suppressions.ts, which is also where the ruling is quoted. The #203
 // cleanup/re-key seams (cleanupOrphanBiomarkerDismissals — family-aware for this key
 // too) cover it (issue #283).
 export function biomarkerFlagDismissalKey(name: string): string {

@@ -73,7 +73,8 @@ type LabRecord = Pick<
 export function recentLabHighlights(
   records: LabRecord[],
   limit = 6,
-  todayStr?: string
+  todayStr?: string,
+  acknowledged?: (name: string) => boolean
 ): RecentLabRow[] {
   // "Notable" = the canonical notability predicate (issue #544/#551, #2799):
   // out-of-range (high/low/abnormal), non-optimal, or outside the lab's own reported
@@ -83,12 +84,24 @@ export function recentLabHighlights(
   // isNotableFlag so a new neutral flag value can't be miscategorized here, and a new
   // notable one can't be silently omitted.
   const notable = (flag: MedicalFlag | null): boolean => isNotableFlag(flag);
+  // Notability is what a marker CLAIMS the lead with, and an acknowledgment spends
+  // that claim (#3225): the owner's 37 chronic notables all came from one panel, so
+  // notable-first alone seats the same six rows until the next draw and the family is
+  // a poster rather than a glance. An acknowledged marker sorts with the ordinary
+  // results — newest-first among them — so the seats go to what has not been seen.
+  // The row's FLAG is untouched: the reading still renders "High", still lists on
+  // /results, still counts as notable everywhere else. Only its precedence moves.
+  //
+  // Callers that pass nothing are byte-identical to the pre-#3225 order, which is
+  // what keeps the digest and the weekly recap out of scope here.
+  const claims = (r: LabRecord): boolean =>
+    notable(r.flag) && !acknowledged?.(r.canonical_name?.trim() || r.name);
   return records
     .filter((r) => r.category !== null && LAB_CATEGORIES.has(r.category))
     .slice()
     .sort((a, b) => {
-      const af = notable(a.flag) ? 0 : 1;
-      const bf = notable(b.flag) ? 0 : 1;
+      const af = claims(a) ? 0 : 1;
+      const bf = claims(b) ? 0 : 1;
       return af - bf || b.date.localeCompare(a.date);
     })
     .slice(0, limit)

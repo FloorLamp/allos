@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { gatherHistoryLog } from "@/lib/history";
-import { zonedWallTimeToUtc } from "@/lib/date";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { setLoginSetting, setProfileSetting } from "@/lib/settings";
 import { logSymptomCore } from "@/lib/symptom-log-write";
 import { createCycleRow } from "@/lib/cycle-store";
@@ -143,6 +143,26 @@ describe("the sleep kind", () => {
 });
 
 describe("the symptom kind", () => {
+  it("looks past a 200-row page across more than 250 symptom-days", () => {
+    const p = profile("history symptom page", "UTC");
+    const loginId = login();
+    for (let ago = 0; ago < 300; ago++) {
+      const date = shiftDateStr("2026-08-28", -ago);
+      logSymptomCore(p, "headache", 2, date, "page", "");
+    }
+    const gather = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "symptom",
+    });
+    expect(gather.hasMore).toBe(true);
+    expect(gather.rows).toHaveLength(200);
+    expect([gather.rows[0].date, gather.rows.at(-1)?.date]).toEqual([
+      "2026-08-28",
+      shiftDateStr("2026-08-28", -199),
+    ]);
+  });
+
   it("is one row per symptom-day, correctable, and earns the Photos filter", () => {
     const tz = "UTC";
     const p = profile("history symptoms", tz);
