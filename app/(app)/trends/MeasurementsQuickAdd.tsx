@@ -45,6 +45,13 @@ import {
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
 
+const BODY_CAPTURE_FIELDS: readonly string[] = [
+  "weight",
+  "body_fat_pct",
+  "resting_hr",
+  "notes",
+];
+
 // Which refusal sentence a queued capture gets. The shared one when the device kept
 // NOTHING; the partial one when the body half is already in the queue and only the
 // vitals were refused (#3118) — the badge would otherwise say "1 queued offline"
@@ -423,6 +430,13 @@ export default function MeasurementsQuickAdd({
         return v == null ? null : String(v);
       })
     );
+    const capturedBodyGroup = MEASUREMENT_GROUPS.find((group) =>
+      measurementGroupSummary(group, (name) => {
+        if (!BODY_CAPTURE_FIELDS.includes(name)) return null;
+        const v = formData.get(name);
+        return v == null ? null : String(v);
+      })
+    );
     // Spelled ONCE and called from BOTH save outcomes (#2068). The memory is about
     // which group the person reached for, not about which transport carried it: a
     // reading queued offline is a reading they logged, and the next sheet must open
@@ -430,8 +444,22 @@ export default function MeasurementsQuickAdd({
     // branch alone, so a day of offline entries silently taught the form nothing.
     // A REFUSED save records nothing — an inline validation error and the
     // sample-only offline case never reach here.
-    const rememberWritten = (): void => {
-      if (written) rememberGroup(profileId, written);
+    const rememberWritten = (group: MeasurementGroup | undefined): void => {
+      if (group) rememberGroup(profileId, group);
+    };
+    const clearCapturedBody = (): void => {
+      const form = formRef.current;
+      if (!form) return;
+      for (const name of BODY_CAPTURE_FIELDS) {
+        const field = form.elements.namedItem(name);
+        if (
+          field instanceof HTMLInputElement ||
+          field instanceof HTMLTextAreaElement
+        ) {
+          field.value = "";
+        }
+      }
+      refreshSummaries();
     };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
@@ -450,9 +478,9 @@ export default function MeasurementsQuickAdd({
     //
     // "partial" is the narrow case that survives that rule (#3118): storage failing
     // BETWEEN the two enqueues, so the body half is kept and the vitals half is not.
-    // It is a refusal — no success toast, no reset, no group memory — but it is not
-    // the shared sentence, because the weight WILL sync and telling someone it did
-    // not is what makes them log it twice.
+    // It gets no success toast, but the kept body's controls are finished: remember
+    // only its UI group and clear only its fields. The refused vitals remain ready
+    // for a retry, so that retry cannot enqueue the body a second time.
     //
     // WHICH IS ONLY TRUE OF ONE OF THE TWO CAUSES, and that is why the queue answers
     // with a cause rather than a boolean. A "failed" vitals half (the quota edge) leaves
@@ -492,10 +520,16 @@ export default function MeasurementsQuickAdd({
           ...vitals,
           occurredAt: s("occurred_at"),
         });
-        if (kept !== "kept")
-          return keptBody && kept === "failed" ? "partial" : "refused";
+        if (kept !== "kept") {
+          if (keptBody && kept === "failed") {
+            rememberWritten(capturedBodyGroup);
+            clearCapturedBody();
+            return "partial";
+          }
+          return "refused";
+        }
       }
-      rememberWritten();
+      rememberWritten(written);
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
       tempUnitDetection.reset();
@@ -528,7 +562,7 @@ export default function MeasurementsQuickAdd({
       setError("Couldn't save these measurements. Try again.");
       return;
     }
-    rememberWritten();
+    rememberWritten(written);
     // The measurements landed; the sitting's stated time may not have (#2311). That
     // is a NOTICE on the ordinary success toast — never `setError`, which would read
     // as "your entry failed" for a reading that is sitting right there — and never a

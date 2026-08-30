@@ -317,7 +317,7 @@ test("a refused measurements save says so and claims nothing", async ({
 // screen showed the pending badge "1 queued offline" AND the shared sentence saying
 // the entry was not saved. Re-entering the whole sitting, as that sentence instructs,
 // duplicates the weight: intents are uuid-keyed, so a re-entry is a distinct write.
-test("a measurements save whose vitals half is refused says which half it kept", async ({
+test("a partial measurements save clears only the half it kept", async ({
   page,
   context,
 }) => {
@@ -330,10 +330,14 @@ test("a measurements save whose vitals half is refused says which half it kept",
   await openMeasurementGroup(page, "vitals");
 
   await context.setOffline(true);
-  await form.getByLabel("Weight", { exact: true }).fill("81.4");
-  await form.getByLabel("Systolic", { exact: true }).fill("118");
-  await form.getByLabel("Diastolic", { exact: true }).fill("76");
-  await form.getByRole("button", { name: "Save measurements" }).click();
+  const weight = form.getByLabel("Weight", { exact: true });
+  const systolic = form.getByLabel("Systolic", { exact: true });
+  const diastolic = form.getByLabel("Diastolic", { exact: true });
+  const save = form.getByRole("button", { name: "Save measurements" });
+  await weight.fill("81.4");
+  await systolic.fill("118");
+  await diastolic.fill("76");
+  await save.click();
 
   // The sentence states the partial truth, and the shared one — which would be a lie
   // about the weight — does not appear beside it.
@@ -349,6 +353,28 @@ test("a measurements save whose vitals half is refused says which half it kept",
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
+  // The kept transport is finished: clear its controls and remember only its UI
+  // group. The refused transport remains an editable retry, even though BP shares
+  // the Vitals disclosure with resting HR (which belongs to the kept transport).
+  await expect(weight).toHaveValue("");
+  await expect(systolic).toHaveValue("118");
+  await expect(diastolic).toHaveValue("76");
+  expect(
+    await page.evaluate(() =>
+      Object.entries(localStorage)
+        .filter(([key]) => key.startsWith("allos:measurements-group:"))
+        .map(([, value]) => value)
+    )
+  ).toEqual(["body"]);
+
+  // Retrying the still-populated refusal must not mint a second body intent. The
+  // forced vitals refusal answers the tap, while both refused values remain ready.
+  await save.click();
+  await expect(page.getByText(OFFLINE_CAPTURE_REFUSED_MESSAGE)).toBeVisible();
+  expect(await queuedIntentCount(page), "queued intents after retry").toBe(1);
+  await expect(weight).toHaveValue("");
+  await expect(systolic).toHaveValue("118");
+  await expect(diastolic).toHaveValue("76");
 
   // RECONNECTING WITH THE REPLAY ROUTE SHUT, which is not fussiness in either
   // direction. Every other test here can go online freely because it refused BOTH
