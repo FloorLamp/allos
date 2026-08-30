@@ -48,6 +48,29 @@ describe("classifyDoseAmount — one bucket each", () => {
     expect(classifyDoseAmount("2000 IU / 100 mcg")).toBe("always-correct");
   });
 
+  it("withholds the certificate when both readers agree on a fragment", () => {
+    expect(readDoseQuantity("400 mg", { structuralSoundness: true })).toEqual({
+      kind: "quantity",
+      value: 400,
+      unit: "mg",
+      structurallySound: true,
+    });
+    expect(readDoseQuantity("1-000 mg", { structuralSoundness: true })).toEqual(
+      {
+        kind: "quantity",
+        value: 0,
+        unit: "mg",
+        structurallySound: false,
+      }
+    );
+    expect(classifyDoseAmount("1-000 mg")).toBe(
+      "agreement-without-certificate"
+    );
+    expect(classifyDoseAmount("100-200 mg")).toBe(
+      "agreement-without-certificate"
+    );
+  });
+
   it("the ZERO case is recoverable and the fix already recovered it", () => {
     expect(classifyDoseAmount("1,000 mg")).toBe("recovered-from-zero");
     expect(classifyDoseAmount("5,000 IU")).toBe("recovered-from-zero");
@@ -93,6 +116,7 @@ describe("censusDoseAmounts — the partition", () => {
   it("splits live from retired and counts every row exactly once", () => {
     const census = censusDoseAmounts([
       { amount: "400 mg", retired: false },
+      { amount: "1-000 mg", retired: false },
       { amount: "1 capsule", retired: false },
       { amount: "1,000 mg", retired: false },
       { amount: "1,000 mg", retired: true },
@@ -102,9 +126,10 @@ describe("censusDoseAmounts — the partition", () => {
       { amount: "2,5 g", retired: false },
       { amount: "10.000 IU", retired: true },
     ]);
-    expect(census.rows).toBe(9);
+    expect(census.rows).toBe(10);
     expect(census.buckets).toEqual({
       "always-correct": { live: 1, retired: 0 },
+      "agreement-without-certificate": { live: 1, retired: 0 },
       "no-quantity": { live: 1, retired: 0 },
       "recovered-from-zero": { live: 1, retired: 1 },
       "recovered-from-wrong": { live: 1, retired: 0 },
