@@ -33,7 +33,12 @@ import {
   doseWindowSince,
   indexTakenByDose,
 } from "../intake-adherence";
-import { doseDueOn, isPostWorkoutReady, timeBucket } from "../intake-schedule";
+import {
+  doseBucketOn,
+  doseDueOn,
+  isPostWorkoutReady,
+  timeBucket,
+} from "../intake-schedule";
 import type { IntakeItem, IntakeDose } from "../types";
 import {
   doseSendSlot,
@@ -358,14 +363,8 @@ function gatherWindowDoses(
     // stay `must` (reminders + missed-dose escalation intact) precisely because the
     // machinery can now say "not today" instead of the user having to silence it.
     if (!doseDueOn(item, dose, ctx)) continue;
-    if (
-      doseSendSlot(
-        item.condition,
-        timeBucket(dose.time_of_day),
-        workoutTimed
-      ) !== slot
-    )
-      continue;
+    const bucket = doseBucketOn(dose, date);
+    if (doseSendSlot(item.condition, bucket, workoutTimed) !== slot) continue;
     // The TRAVEL gate on the SEND path (#3263), the twin of the #1602 calendar gate
     // above: an eastward switch means this dose's hour never arrived on this
     // profile-local day, so there is nothing to remind about. A dose ALREADY
@@ -377,11 +376,7 @@ function gatherWindowDoses(
     // The dueness gate is a claim about the SCHEDULE, which it does not: taking a dose
     // the day never owed is an extra, and re-admitting it would put rows that are never
     // scheduled-due into the unfiltered set the missed-dose escalation reads.
-    if (
-      isExcused(dose.time_of_day, date) &&
-      !taken.has(dose.id) &&
-      !skipped.has(dose.id)
-    )
+    if (isExcused(bucket, date) && !taken.has(dose.id) && !skipped.has(dose.id))
       continue;
     // A dose is "due" on a past date when its item was due that day — workout and
     // situational logic both resolved per-day (situationsOn, #654), never as of now.
@@ -421,7 +416,7 @@ function gatherWindowDoses(
         }),
       dd?.taken ?? new Set<string>(),
       dd?.skipped ?? new Set<string>(),
-      (d) => isExcused(dose.time_of_day, d)
+      (d) => isExcused(doseBucketOn(dose, d), d)
     );
     entries.push({
       dose,
@@ -614,7 +609,7 @@ export function slotSessionForKeyboard(
     const item = items.get(d.item_id);
     if (!item) continue;
     wanted.add(
-      doseSendSlot(item.condition, timeBucket(d.time_of_day), workoutTimed)
+      doseSendSlot(item.condition, doseBucketOn(d, date), workoutTimed)
     );
   }
   const parts: IntakeSlotPart[] = [];

@@ -216,7 +216,7 @@ function isOpaqueTokenExact(v: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Vendor-prefixed credentials (#2965, ruled 2026-08-16)
+// Vendor-prefixed credentials (#2965, narrowed by #3013)
 //
 // Every other rule in this file needs CONTEXT — a key that names a credential,
 // a scheme word, a position in a URL. These need none: the vendor guarantees
@@ -230,70 +230,34 @@ function isOpaqueTokenExact(v: string): boolean {
 // it may hold. So:
 //
 // THE RULE FOR WHAT EARNS A PLACE ON THIS LIST — a prefix belongs here only if
-// all three hold:
+// all four hold:
 //   1. The VENDOR PUBLISHES it as reserved for credentials, in its own
 //      documentation. Not inferred from a sample, not observed in the wild.
 //   2. It is UNAMBIGUOUS AS A PREFIX WITH A BODY ON IT: nothing this app logs —
 //      no English word, clinical term, file path, hostname or identifier — can
-//      begin with it AND continue for eight or more `[A-Za-z0-9_-]` characters.
-//      Stated that way because that is what the regex below actually matches,
-//      and the two are not the same claim (#3000). The shorter version, "no
-//      word can begin with it", was reasoned for the `_` prefixes and is false
-//      for the `-` ones: a hyphen glues straight to the next English word, so
-//      a Slack prefix written immediately before the word "prefixed" reads as a
-//      credential to this rule, as does an underscore prefix written in front
-//      of a snake_case phrase. That cost is accepted — a sentence loses one
-//      word, against a credential that would otherwise print in full — but
-//      condition 2 has to say so rather than imply the case cannot arise. What
-//      condition 2 still rules out, and what the list is checked against, is a
-//      prefix a REAL logged token could carry: the over-redaction corpus test
-//      runs the app's own vocabulary through this rule and requires identity.
-//      (Both examples are spelled out, executed, in that rule's own tests —
-//      not written out here, because a literal in this file is a string in the
-//      corpus, and this file's comments are not vocabulary the app logs.)
+//      begin with it and continue with a credential-shaped body. The body must
+//      be at least eight identifier characters AND contain a digit. Requiring
+//      the digit is deliberate: a hyphen-terminated prefix glued to ordinary
+//      prose survives rather than corrupting text a data subject reads. The
+//      accepted cost is weaker detection for a real all-letter body (#3013).
 //   3. What follows it is the secret itself, so masking the tail costs an
 //      operator nothing they read the error for — the prefix stays, and still
 //      says which vendor's credential was involved.
-// A prefix failing any of the three is a guess, and a list of guesses is the
+//   4. This deployment plausibly HOLDS that vendor credential. The registry
+//      names its environment variable, and the corpus test proves production
+//      code consumes it. A future integration adds its prefix with its key.
+// A prefix failing any of the four is a guess, and a list of guesses is the
 // denylist #2955 removed. Shape-and-key matching remains the general rule; this
 // is the stated exception to it, not the start of a second one.
-const VENDOR_SECRET_PREFIXES = [
-  // Stripe secret and restricted API keys.
-  "sk_live_",
-  "sk_test_",
-  "rk_live_",
-  "rk_test_",
-  // GitHub personal-access (classic and fine-grained), OAuth, user-to-server,
-  // server-to-server and refresh tokens.
-  "ghp_",
-  "gho_",
-  "ghu_",
-  "ghs_",
-  "ghr_",
-  "github_pat_",
-  // Slack bot, user, app-level, refresh and legacy workspace tokens.
-  "xoxb-",
-  "xoxp-",
-  "xoxa-",
-  "xoxr-",
-  "xoxs-",
-  "xapp-",
-  // Anthropic API keys. `lib/ai.ts` and `lib/medical-extract/extract.ts` both
-  // construct an `@anthropic-ai/sdk` client from ANTHROPIC_API_KEY, so this is
-  // the one credential on this list the deployment actually holds — and a 401
-  // from that SDK is exactly the error text these two readers show (#3000).
-  "sk-ant-",
-];
+export const VENDOR_SECRET_PREFIXES = [
+  { prefix: "sk-ant-", credentialEnv: "ANTHROPIC_API_KEY" },
+] as const;
 
-// The body floor is what separates "a credential" from "a prefix named in
-// prose", and it separates them on WHITESPACE: "rotate the ghp_ token" and
-// "the xoxb- prefix" survive because the next character ends the match. A
-// mention that glues the prefix to eight or more identifier characters does
-// mask — see condition 2 above, which states that cost
-// rather than claiming the floor prevents it. The floor also means
-// `<prefix>***` cannot re-match, so redactSecrets stays idempotent.
+// Both body gates are load-bearing: the length rejects a bare prefix and the
+// digit rejects glued prose. `<prefix>***` cannot re-match, so redactSecrets
+// stays idempotent.
 const VENDOR_SECRET_RE = new RegExp(
-  `\\b(${VENDOR_SECRET_PREFIXES.join("|")})[A-Za-z0-9_-]{8,}`,
+  `\\b(${VENDOR_SECRET_PREFIXES.map(({ prefix }) => prefix).join("|")})(?=[A-Za-z0-9_-]{8,})(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]+`,
   "g"
 );
 
@@ -595,8 +559,8 @@ export function redactSecrets(s: string): string {
   // a SUFFIX of the match and leaves `<prefix>***` behind, and every rule above
   // decides by CHARSET — `looksLikeCredential`, `looksLikeAuthCredential`,
   // `isOpaqueToken` all reject a value containing `*`. Running it first
-  // therefore DISARMS them: `code=sk_live_<body>.<tail>` masked to
-  // `code=sk_live_***.<tail>` is a value `maskKeyedValues` will no longer mask
+  // therefore DISARMS them: `code=<prefix><body>.<tail>` masked to
+  // `code=<prefix>***.<tail>` is a value `maskKeyedValues` will no longer mask
   // whole, so the tail survives — the same string with a non-vendor prefix
   // masks entirely. Adding a vendor prefix made the string redact LESS, in a
   // function whose whole job is the opposite. Running last cannot do that: the
