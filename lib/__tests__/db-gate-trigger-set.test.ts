@@ -175,7 +175,7 @@ function resolveSpecifier(fromFile: string, spec: string): string | null {
 }
 
 /** The file a repo-relative specifier loads, trying the extensions vitest would. */
-function resolveFile(rel: string): string | null {
+function resolveFileUncached(rel: string): string | null {
   const abs = path.join(REPO, rel);
   if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return rel;
   for (const ext of [".ts", ".tsx", ".mts", ".mjs", ".js", ".json"]) {
@@ -184,6 +184,16 @@ function resolveFile(rel: string): string | null {
       return path.posix.join(rel, `index${ext}`);
   }
   return null;
+}
+
+// The closure, coverage verdict and depth proof resolve the same immutable tree.
+const resolvedFiles = new Map<string, string | null>();
+function resolveFile(rel: string): string | null {
+  const cached = resolvedFiles.get(rel);
+  if (cached !== undefined) return cached;
+  const resolved = resolveFileUncached(rel);
+  resolvedFiles.set(rel, resolved);
+  return resolved;
 }
 
 type SourceFile = { file: string; src: string };
