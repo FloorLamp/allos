@@ -1583,3 +1583,48 @@ Three rules, in order of how much they cost to learn:
    produces a confident instruction to do the wrong thing, and the lane that follows it
    pays for the confidence. If the direction has not been checked against the source, say
    that in the issue.
+
+## A truncated issue read labelled two fully-ruled P1s `needs-human` (2026-08-30)
+
+The orchestrator read #3903 through a `python3 -c` filter that printed `body[:3200]`.
+The body is 8030 characters and the owner's ruling begins at character 7272. So the
+read returned the issue's _filing_ — including a prior lane's "this half is a product
+decision and it is the owner's" — and none of the answer. On that basis the
+orchestrator applied `needs-human`, assigned the owner, and dispatched an agent
+against half the issue with an explicit fence forbidding it from touching the other
+half. Minutes later it did the same to #3265, whose ruling begins at character 3006
+of 3805 and which additionally recorded that PR #3583 was _cleared to merge_.
+
+The owner caught it in four words: _"this was literally already ruled today."_
+
+Both rulings had been recorded that same day. Nothing had drifted, nothing was
+ambiguous, and no search was needed — the text was in the object already fetched and
+was discarded by the reader.
+
+What makes this worth writing down is that the doctrine was already correct. The
+orchestrate skill says, in as many words, to read candidate issues WHOLE because
+_"owner rulings append to body ends … a truncated read drops exactly the binding
+text."_ It even cites a prior run that filed against a struck ruling this way. Knowing
+the rule did not produce following it, because the truncation was not a decision — it
+was a default in a throwaway one-liner, repeated without thought, and a `[:3200]` in a
+pipe looks like formatting rather than like dropping evidence.
+
+Two second-order costs, both worse than the label itself. The dispatched agent was
+given a _fence_ derived from the missing text, so the error propagated into someone
+else's instructions as a prohibition. And #3265's ruling pointed at a PR closed
+unmerged three days earlier — a ruling with nothing left to act on, which only a whole
+read surfaces.
+
+The fix is tooling, not resolve. `scripts/orchestration/issue-read.mjs` prints an item
+whole, never truncates, and reports where ruling-shaped lines sit as a percentage
+through the body, shouting when any land past the 60% mark. Run on #3903 it prints
+`@ 7272 ( 91% in) ## Owner ruling (2026-08-29)` above the fold. A sweep of all 21 open
+`needs-human` issues with it found two more carrying rulings (#3082, #3472) — both, on
+reading, correctly still gated, because a later audit had found a clause of each
+ruling unexecutable. That is the distinction the tool exists to make cheap: a ruling
+that exists is not the same as a question that is closed, and you cannot tell which
+you have without reading to the end.
+
+**Never read a tracker item through a character slice.** Use `issue-read.mjs`, or read
+the whole body. A `needs-human` label costs a week of somebody's backlog; it is not a
+thing to apply from a partial read.

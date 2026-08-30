@@ -64,7 +64,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 ## Per-unit pipeline
 
-1. Read the issue body and every comment.
+1. Read the issue body and every comment, WHOLE — `issue-read.mjs <n>` never
+   truncates and flags rulings sitting in a body's tail. Never read a tracker item
+   through a character slice: owner rulings append to body ends (2026-08-30).
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
    Promote only the next landing candidate to a PR; keep later verified branches
