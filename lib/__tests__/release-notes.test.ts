@@ -7,6 +7,7 @@ import {
   newestNoteDate,
   parseReleaseNotes,
   pullRequestUrl,
+  releaseNoteEntryKey,
   releaseNotesPage,
   RELEASE_NOTE_KINDS,
   WHATS_NEW_PAGE_ENTRIES,
@@ -44,6 +45,29 @@ describe("parseReleaseNotes", () => {
     // An entry with no kind stays undefined rather than defaulting to a chip.
     expect(notes.days[0].entries[1].kind).toBeUndefined();
     expect(notes.days[0].operatorNotes).toEqual(["run the thing"]);
+  });
+
+  it("keeps separate bullets from the same PR separately identifiable", () => {
+    const notes = parseReleaseNotes({
+      days: [
+        day({
+          entries: [
+            { pr: 12, title: "First change", issues: [3] },
+            { pr: 12, title: "Second change", issues: [4] },
+          ],
+        }),
+      ],
+    });
+
+    expect(notes.days[0].entries.map((entry) => entry.title)).toEqual([
+      "First change",
+      "Second change",
+    ]);
+    expect(
+      notes.days[0].entries.map((entry, index) =>
+        releaseNoteEntryKey(entry, index)
+      )
+    ).toEqual(["12:0", "12:1"]);
   });
 
   it("sorts days newest-first regardless of file order", () => {

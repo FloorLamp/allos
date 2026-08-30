@@ -2,6 +2,8 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
+import { pinnedTimezone } from "./pinned-timezone";
+import { utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import {
   expandUpcomingAggregates,
   hydratedClick,
@@ -39,6 +41,14 @@ function dayBack(back: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// `intake_items.created_at` is an instant whose local day bounds adherence.
+// Build the named 08:00 fixture in the run's pinned profile zone, then store UTC
+// SQL — a naive day + time string crosses the local day in rotating zones.
+function createdAt(back: number): string {
+  const zone = pinnedTimezone(frozenNow().toISOString()).zone;
+  return utcSqlString(zonedWallTimeToUtc(zone, dayBack(back), "08:00")!);
+}
+
 // The frozen run clock's weekday (0=Sun … 6=Sat) — the repo's numbering, so a fixture
 // can be anchored on "today" or "tomorrow" without depending on which day the suite
 // happens to run.
@@ -56,7 +66,7 @@ function seedItem(
   name: string,
   opts: SeedOpts = {}
 ): number {
-  const createdAt = `${dayBack(90)} 08:00:00`;
+  const created = createdAt(90);
   return Number(
     db
       .prepare(
@@ -67,7 +77,7 @@ function seedItem(
       )
       .run(
         name,
-        createdAt,
+        created,
         opts.cadenceKind ?? "daily",
         opts.cadenceWeekdays ?? null
       ).lastInsertRowid
@@ -77,7 +87,7 @@ function seedItem(
 // A supplement fixture for the form round-trip: the shared intake form renders on the
 // supplements tab, and kind is clinical identity — it has no bearing on the calendar.
 function seedSupplement(db: Database.Database, name: string): number {
-  const createdAt = `${dayBack(90)} 08:00:00`;
+  const created = createdAt(90);
   return Number(
     db
       .prepare(
@@ -86,7 +96,7 @@ function seedSupplement(db: Database.Database, name: string): number {
             cadence_kind)
          VALUES (1, ?, 1, 'supplement', 'should', 'daily', 'manual', ?, 'daily')`
       )
-      .run(name, createdAt).lastInsertRowid
+      .run(name, created).lastInsertRowid
   );
 }
 
@@ -97,7 +107,7 @@ function seedDose(
   weekdays: string | null,
   sort = 0
 ): number {
-  const createdAt = `${dayBack(90)} 08:00:00`;
+  const created = createdAt(90);
   return Number(
     db
       .prepare(
@@ -105,7 +115,7 @@ function seedDose(
            (item_id, amount, time_of_day, food_timing, sort, created_at, weekdays)
          VALUES (?, ?, 'Morning', 'any', ?, ?, ?)`
       )
-      .run(itemId, amount, sort, createdAt, weekdays).lastInsertRowid
+      .run(itemId, amount, sort, created, weekdays).lastInsertRowid
   );
 }
 

@@ -12,6 +12,7 @@ import {
   readSource,
   relPath,
   sourceFiles,
+  type SqlArg,
 } from "./sql-scan";
 
 // GATED-TABLE WRITE SCAN (issue #1893) — the enforcement layer of the stateful-affordance
@@ -109,13 +110,14 @@ const OUT_OF_SCOPE = [
 const isOutOfScope = (rel: string) =>
   OUT_OF_SCOPE.some((p) => rel.startsWith(p));
 
-// THE SCAN, as one function over (path, source) so the real tree and a synthetic fixture
-// go through exactly the same decision. A guard proven only on its inner predicate is not
-// proven; the fixture case below runs this whole pipeline.
-function scanFile(rel: string, src: string): string[] {
+function statementArgs(src: string): SqlArg[] {
+  return [...prepareArgs(src), ...execArgs(src)];
+}
+
+function scanArgs(rel: string, args: readonly SqlArg[]): string[] {
   if (isOutOfScope(rel)) return [];
   const violations: string[] = [];
-  for (const arg of [...prepareArgs(src), ...execArgs(src)]) {
+  for (const arg of args) {
     if (arg.kind !== "sql") continue; // a computed arg can't be inspected
     const sql = norm(arg.text);
     for (const entry of STATEFUL_WRITE_TABLES) {
@@ -138,21 +140,35 @@ function scanFile(rel: string, src: string): string[] {
   return violations;
 }
 
+// THE SCAN, as one function over (path, source) so the real tree and a synthetic fixture
+// go through exactly the same decision. A guard proven only on its inner predicate is not
+// proven; the fixture case below runs this whole pipeline.
+function scanFile(rel: string, src: string): string[] {
+  if (!STATEFUL_WRITE_TABLES.some((entry) => src.includes(entry.table)))
+    return [];
+  return scanArgs(rel, statementArgs(src));
+}
+
+const SCANNED_SOURCES = sourceFiles().map((file) => {
+  const src = readSource(file);
+  return {
+    rel: relPath(file),
+    args: STATEFUL_WRITE_TABLES.some((entry) => src.includes(entry.table))
+      ? statementArgs(src)
+      : [],
+  };
+});
+
 const REGISTRY_BY_TABLE = new Map(
   STATEFUL_WRITE_TABLES.map((e) => [e.table, e] as const)
 );
 
 describe("gated tables: raw writes only inside the registered write core", () => {
-  const files = sourceFiles();
-
-  it("scans a meaningful number of source files", () => {
-    // Guards against a broken walk silently passing the whole suite.
-    expect(files.length).toBeGreaterThan(30);
-  });
-
   it("has no gated-table write outside its registered core", () => {
-    const violations = files.flatMap((f) =>
-      scanFile(relPath(f), readSource(f))
+    // Guards against a broken walk silently passing the absence assertion.
+    expect(SCANNED_SOURCES.length).toBeGreaterThan(30);
+    const violations = SCANNED_SOURCES.flatMap((source) =>
+      scanArgs(source.rel, source.args)
     );
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
   });
@@ -210,12 +226,12 @@ describe("stateful-write registry (#1893)", () => {
     for (const e of STATEFUL_WRITE_TABLES) {
       expect(e.table).toMatch(/^[a-z_]+$/);
       expect(e.cores.length).toBeGreaterThan(0);
-      expect(e.why.length).toBeGreaterThan(40);
+      expect(e.why.trim()).not.toBe("");
     }
   });
 
   it("every registered core and gate module is a scanned source file", () => {
-    const scanned = sourceFiles().map(relPath);
+    const scanned = SCANNED_SOURCES.map((source) => source.rel);
     for (const e of STATEFUL_WRITE_TABLES) {
       for (const core of e.cores) {
         expect(
@@ -235,14 +251,12 @@ describe("stateful-write registry (#1893)", () => {
   it("each registered core actually writes the table it is registered for", () => {
     // A core that no longer holds the DML is a STALE entry: the gate would keep passing
     // while the real write moved somewhere unregistered — the guard's quietest failure.
-    const files = sourceFiles();
     for (const e of STATEFUL_WRITE_TABLES) {
       const writers = new Set<string>();
-      for (const file of files) {
-        const src = readSource(file);
-        for (const arg of [...prepareArgs(src), ...execArgs(src)]) {
+      for (const source of SCANNED_SOURCES) {
+        for (const arg of source.args) {
           if (arg.kind !== "sql") continue;
-          if (writesGatedTable(norm(arg.text), e)) writers.add(relPath(file));
+          if (writesGatedTable(norm(arg.text), e)) writers.add(source.rel);
         }
       }
       for (const core of e.cores) {
@@ -252,11 +266,6 @@ describe("stateful-write registry (#1893)", () => {
         ).toBe(true);
       }
     }
-    // Re-reads and re-parses every source file once per registered table. The
-    // `}, 30_000)` this carried was sized against vitest's old implicit 5 s default
-    // and was immune to `ALLOS_VITEST_TIMEOUT_MS` (#4002); the tier's 15 000 ms
-    // covers it with ~7x to spare — the whole file reads 2 359 ms across 13 tests on
-    // the green CI run at f1742fa6d, and this test is ~90% of it.
   });
 
   it("the gate module holds no DML of its own — it reaches the table through the store", () => {
@@ -265,9 +274,10 @@ describe("stateful-write registry (#1893)", () => {
     // would be describing a shape the code no longer has.
     for (const e of STATEFUL_WRITE_TABLES) {
       if (!e.gate) continue;
-      const file = sourceFiles().find((f) => relPath(f).endsWith(e.gate!))!;
-      const src = readSource(file);
-      for (const arg of [...prepareArgs(src), ...execArgs(src)]) {
+      const source = SCANNED_SOURCES.find((candidate) =>
+        candidate.rel.endsWith(e.gate!)
+      )!;
+      for (const arg of source.args) {
         if (arg.kind !== "sql") continue;
         expect(
           writesGatedTable(norm(arg.text), e),

@@ -163,17 +163,17 @@ by component type, so a `<ChartGrid/>` wrapping a `<CartesianGrid/>` renders no
 grid at all. (`ChartLegend` is a real component only because it sits outside the
 recharts tree.)
 
-| Decision         | Rule                                                                                                  | Export                   |
-| ---------------- | ----------------------------------------------------------------------------------------------------- | ------------------------ |
-| Grid             | horizontal-only, solid hairlines. Never a dashed both-axes grid — the loudest "default recharts" tell | `chartGridProps`         |
-| Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                            | `chartAxisProps`         |
-| Dots             | off above 30 points; hollow (surface fill, colored stroke) where they stay                            | `chartLineDot`           |
-| Hover dot        | r ≥ 4, present even when resting dots are off                                                         | `chartActiveDot`         |
-| Label size       | **≥ 10px**, always (a viewBox panel's floor is computed — §6)                                         | `CHART_LABEL_FONT_SIZE`  |
-| Dashes           | a named vocabulary (annotation / reference / target / now / cursor), never a literal                  | `chartDash`              |
-| Tooltip          | one surface, one type size, one hover duration                                                        | `chartTooltipProps`      |
-| Stacked segments | 2px surface gap, so segments read as discrete quantities                                              | `chartStackSegmentProps` |
-| Legend           | every ≥ 2-series chart has one                                                                        | `ChartLegend`            |
+| Decision         | Rule                                                                                                                | Export                             |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Grid             | horizontal-only, solid hairlines. Never a dashed both-axes grid — the loudest "default recharts" tell               | `chartGridProps`                   |
+| Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                                          | `chartAxisProps`                   |
+| Dots             | off above 30 points; exact readings are solid with a surface-colored ring; only inexact bounded readings are hollow | `chartLineDot` / `chartInexactDot` |
+| Hover dot        | r ≥ 4, present even when resting dots are off                                                                       | `chartActiveDot`                   |
+| Label size       | **≥ 10px**, always (a viewBox panel's floor is computed — §6)                                                       | `CHART_LABEL_FONT_SIZE`            |
+| Dashes           | a named vocabulary (annotation / reference / target / now / cursor), never a literal                                | `chartDash`                        |
+| Tooltip          | one surface, one type size, one hover duration                                                                      | `chartTooltipProps`                |
+| Stacked segments | 2px surface gap, so segments read as discrete quantities                                                            | `chartStackSegmentProps`           |
+| Legend           | every ≥ 2-series chart has one                                                                                      | `ChartLegend`                      |
 
 Linked charts use the shared `LineChartCard` `syncId`/`syncMethod` props. When
 sample rates differ, the caller supplies a value-based nearest-time method; it
@@ -441,9 +441,9 @@ and the test pins it.
 declared span, and a `gap-exempt:` chart's x is not a calendar day, so "days between
 readings" is not a question that has an answer there. An aggregated plot (#1938) is
 dense by definition, so the two treatments never coincide. The biomarker DETAIL chart
-(`BiomarkerChartInner`) is deliberately NOT included yet: hollow already means
-"inexact bounded reading" on that chart, and the solid/hollow channel would have to be
-re-decided before a demoted mark can borrow it.
+(`BiomarkerChartInner`) remains outside this reach because it uses a numeric time axis
+and does not opt into `gapFill`. Its hollow mark means "inexact bounded reading";
+sparse emphasis uses mark size, so the fill channel stays reserved for exactness.
 
 ---
 

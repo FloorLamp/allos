@@ -182,6 +182,12 @@
           "title": "Log a symptom, a well day, or mark an illness from the quick logger",
           "kind": "feature",
           "issues": [4064]
+        },
+        {
+          "pr": 4081,
+          "title": "See how often a symptom shows up, month by month, and whether it is getting worse",
+          "kind": "feature",
+          "issues": [1852]
         }
       ]
     },
