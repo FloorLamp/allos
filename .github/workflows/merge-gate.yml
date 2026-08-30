@@ -5,9 +5,10 @@ name: Merge gate
 # orchestrator's interactive run of scripts/orchestration/merge-gate.mjs
 # stays the fast path, and this recomputes the same verdict as the
 # "merge-gate" status on the exact head whenever something that can change
-# the verdict happens — a push, a review (the receipt arrives as one), a
-# thread resolved or unresolved, or CI completing (which flips a pending
-# verdict without another push).
+# the verdict happens — a push, a review (the receipt arrives as one), CI
+# completing (which flips a pending verdict without another push), or a manual
+# dispatch after resolving a thread. GitHub Actions exposes review threads as
+# webhooks, but not as workflow trigger events.
 #
 # The verdict is a STATUS, not this job's conclusion: the job stays green
 # unless the machinery itself breaks, because exit 2 ("CI incomplete — not a
@@ -20,8 +21,6 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   pull_request_review:
     types: [submitted, edited, dismissed]
-  pull_request_review_thread:
-    types: [resolved, unresolved]
   workflow_run:
     workflows: [CI]
     types: [completed]
