@@ -1,6 +1,53 @@
 {
   "days": [
     {
+      "date": "2026-08-30",
+      "entries": [
+        {
+          "pr": 4132,
+          "title": "Water, lean mass, bone mass and respiratory rate can be typed in by hand",
+          "kind": "feature",
+          "issues": [1851]
+        },
+        {
+          "pr": 4136,
+          "title": "The measurements form opens with no connection, so a weigh-in still saves and syncs later",
+          "kind": "fix",
+          "issues": [4091]
+        },
+        {
+          "pr": 4135,
+          "title": "The record covers training, clinical and life entries, and groups a day's logs instead of listing every one",
+          "kind": "feature",
+          "issues": [3958]
+        },
+        {
+          "pr": 4144,
+          "title": "Today's protein counts your food log and your health app together, and never drops when you connect one",
+          "kind": "fix",
+          "issues": [3903]
+        },
+        {
+          "pr": 4156,
+          "title": "Today's fiber counts your food and supplement logs alongside your health app",
+          "kind": "fix",
+          "issues": [4127]
+        },
+        {
+          "pr": 4140,
+          "title": "Your usual evening routine stays one tap away until midnight instead of disappearing at nine",
+          "kind": "fix",
+          "issues": [3265]
+        },
+        {
+          "pr": 4083,
+          "title": "The dashboard's everything list stops repeating pages the menu already carries",
+          "kind": "fix",
+          "issues": [3366]
+        }
+      ]
+    },
+    {
       "date": "2026-08-29",
       "entries": [
         {
