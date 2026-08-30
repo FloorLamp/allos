@@ -13,7 +13,8 @@
 // notify_post_workout_claims.claimed_at. That lease needs a wall-clock instant (a
 // monotonic timer cannot cross processes), and its age comparison reads this same seam.
 // Other durations, timers, session TTLs, log timestamps, and Playwright's own waiting
-// keep real time. The seam NEVER monkey-patches global Date: timers and the runtime do.
+// keep real time. The seam NEVER monkey-patches global Date; timers and the runtime
+// keep the real clock.
 //
 // ALLOS_TEST_NOW is a TEST HOOK, not an operator knob — it is intentionally absent
 // from .env.example. A boot-time warning (see lib/migrations/boot-tasks.ts) makes a
