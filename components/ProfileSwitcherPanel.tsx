@@ -9,14 +9,6 @@ import {
   setViewProfileAction,
 } from "@/app/(app)/profile-context-actions";
 
-// THE switcher panel's content (issue #1801) — one component, both viewports.
-//
-// The mobile top drawer and the desktop sidebar expando are two PRESENTATIONS of
-// this list (see ProfileIdentityBar); the list itself is authored once, per the
-// responsive-variants rule. There is deliberately no `md:` anything in here: a
-// hidden desktop twin is exactly the drift that let the mobile drawer and the
-// desktop sidebar disagree about the profile switcher before #794.
-//
 // TWO VERBS, TWO CONTROLS — the rule the row layout exists to enforce:
 //
 //   * SWITCH TO (the name button) changes the ACTING profile: the write target,

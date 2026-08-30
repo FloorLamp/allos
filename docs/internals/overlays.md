@@ -3,26 +3,17 @@
 Status: shipped (issues #1425, #1469; the decision rule is #1428's owner
 comment)
 
-The app has four edge-anchored overlay surfaces. They share one visual and
+The app has three edge-anchored overlay surfaces. They share one visual and
 gesture system while preserving their different lifecycle outcomes.
 
-## The four surfaces
+## The three surfaces
 
+<!-- prettier-ignore -->
 | Surface                             | Anchor                            | Lifecycle     | Gesture outcome                     |
 | ----------------------------------- | --------------------------------- | ------------- | ----------------------------------- |
 | `components/BottomSheet.tsx`        | bottom                            | transactional | **discard** (dismiss, nothing kept) |
 | `components/MobileNav.tsx` drawer   | left                              | transient     | **close**                           |
 | `components/ActivityOverlay.tsx`    | bottom on phone, right on desktop | **session**   | **minimize** — never discard        |
-| `components/ProfileIdentityBar.tsx` | top                               | transient     | **close**                           |
-
-The profile switcher (#1801) is the only TOP-anchored panel: it drops from the
-identity bar in the phone's top bar, so the target appears where the finger
-already is, and it retreats upward through the bar it came from. A bottom sheet
-would have sent the thumb to the opposite end of the screen from the control
-that opened it. It shares everything else — the scrim, the `--overlay-ms`
-token pair, `useOverlayDrag` (whose axis/sign table gained the `up` row), and
-the drag handle, mounted at the panel's BOTTOM edge because that is the edge
-facing the reader.
 
 The activity workspace is the one that matters. A live workout runs for an
 hour, survives navigation as the minimized bar, and "away" means STILL RUNNING.
@@ -126,11 +117,10 @@ onto `ModalShell` or `components/overlay` stays the default.
 | `components/photo/PhotoGallery.tsx`             | A full-bleed media viewer: black ground, image `object-contain` to the viewport edges, its own left/right paging. A titled `bg-surface` card with padding and a scroll owner is the wrong shape, and swipe-to-dismiss would fight the paging gesture.                                                                                                                                        |
 | `components/activity-form/FitnessTestTimer.tsx` | Must survive being closed. Collapsing the takeover returns the viewer to the entry sheet **with the run still going**, and the host unmounts a dialog when it closes. It is also nested inside an already-scrimmed sheet, so it carries no scrim of its own.                                                                                                                                 |
 | `components/ActivityOverlay.tsx`                | Converged — onto `components/overlay`, not the dialog host. A session that survives navigation, whose drag resolves to **minimize** (#1469). The host is transactional; this is the row above it in the host table.                                                                                                                                                                          |
-| `components/ProfileIdentityBar.tsx`             | Converged onto `components/overlay` the same way, TOP-anchored: the panel drops out of the identity bar and a swipe **up** retreats through it (#1801). A centred host has no anchor to drop from.                                                                                                                                                                                           |
 | `components/MobileNav.tsx`                      | Converged onto `components/overlay` the same way, EDGE-anchored: the drawer travels in from the left screen edge and an edge swipe both opens it and retreats through it (#1416/#2746). A centred card has no edge to travel from. Found by ANATOMY, not by ARIA (#3445), because it declared neither — #3463 closed that: it carries `role="dialog"`, `aria-modal` and the shared trap now. |
 
 **A recorded exception is about presentation, not about the a11y floor.**
-`ActivityOverlay`, `ProfileIdentityBar`, `PhotoGallery` (the photo lightbox) and
+`ActivityOverlay`, `PhotoGallery` (the photo lightbox) and
 `MobileNav` (the phone nav drawer) take the shared `useFocusTrap`. The lightbox
 adopted it as part of this ruling: its Escape lived on the panel's own
 `onKeyDown`, which fires only once focus is inside, and nothing ever put it there

@@ -1,36 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { IconChevronDown } from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
 import ProfileSwitcherPanel from "@/components/ProfileSwitcherPanel";
-import { usePresence } from "@/components/usePresence";
-import { useLockBodyScroll } from "@/components/useLockBodyScroll";
-import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { useHydrated } from "@/components/useHydrated";
-import { useFocusTrap } from "@/components/useFocusTrap";
-import {
-  OverlayDragHandle,
-  overlayMotionClass,
-  useOverlayDrag,
-  OVERLAY_PANEL_BORDER,
-  OVERLAY_PANEL_ELEVATION,
-  OVERLAY_SCRIM,
-} from "@/components/overlay";
-import { motionMs } from "@/lib/motion";
 import { identityBarLabel, identityBarView } from "@/lib/profile-identity";
 
-// A RECORDED EXCEPTION TO THE DIALOG-HOST CONVERGENCE (#3405) — see
-// docs/internals/overlays.md. Like ActivityOverlay it is converged onto
-// components/overlay rather than onto the dialog host, and registered as an
-// OVERLAY_SURFACE in lib/__tests__/overlay-motion-chokepoint.test.ts. Its anatomy
-// is TOP-anchored: the panel drops out of the identity bar it belongs to and a
-// swipe UP retreats through that bar. A centred dialog host has no anchor to drop
-// from and would put the switcher at the opposite edge from the control that opens
-// it.
-//
 // THE identity bar (issue #1801) — the app's one answer to "whose data is this,
 // and who am I acting as?", on every viewport.
 //
@@ -52,35 +29,9 @@ import { identityBarLabel, identityBarView } from "@/lib/profile-identity";
 // it at index 0, which is what makes "the first avatar IS the acting profile" a
 // structural property a browser test can pin.
 //
-// ── Two presentations, ONE content component ─────────────────────────────────
-//
-//   * "mobile"  — the bar takes the wordmark's slot in the phone top bar, and
-//     tapping it drops a TOP drawer: the panel appears where the finger already
-//     is (a bottom sheet would send the thumb to the far end of the screen).
-//     Built from the shared overlay primitives — scrim, motion tokens,
-//     drag-to-dismiss (upward, back through the bar it came from),
-//     reduced-motion — never a bespoke animation (#1469 chokepoint).
-//   * "sidebar" — the bar sits at the TOP of the desktop sidebar and drops an
-//     absolutely positioned container anchored below itself, OVERLAYING the
-//     sidebar's contents (#1823). It used to be a normal flow child, which meant
-//     opening the switcher pushed every nav entry below it down by up to 50vh and
-//     snapped them back on close — desktop was the one viewport where identity
-//     chrome moved unrelated content.
-//
-// Both render the SAME <ProfileSwitcherPanel>; the responsive-variants rule
-// forbids a hidden `md:*` twin of the rows.
-//
-// The portal is required on mobile for the same reason MobileNav's drawer
-// portals: the bar lives inside <ShellChrome>, which TRANSFORMS itself to hide
-// on scroll, and a transformed ancestor turns `position: fixed` into "fixed
-// relative to that ancestor" — which would drag the overlay along with the bar's
-// slide.
-//
 // Gating lives in the CALLERS: the whole apparatus renders only on a
 // multi-profile instance, so a single-profile phone keeps its wordmark and a
 // single-profile sidebar gains nothing.
-
-export type IdentitySurface = "mobile" | "sidebar";
 
 export default function ProfileIdentityBar({
   profiles,
@@ -88,7 +39,6 @@ export default function ProfileIdentityBar({
   viewIds,
   readOnlyIds,
   readOnly,
-  surface,
 }: {
   // Every ACCESSIBLE profile with disambiguated names (#534), resolved once by
   // the app shell from ProfileScope.
@@ -101,7 +51,6 @@ export default function ProfileIdentityBar({
   // The ACTING profile is read-only for this login (#33). The hint rides the bar
   // itself, because that is where "who am I acting as" is already being read.
   readOnly: boolean;
-  surface: IdentitySurface;
 }) {
   const [open, setOpen] = useState(false);
   // Gate the trigger until hydration: pre-hydration a click on this button is
@@ -110,19 +59,9 @@ export default function ProfileIdentityBar({
   // the effect then enables it. Same idiom as ThemeToggle's mount gate.
   const mounted = useHydrated();
   const rootRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const handleRef = useRef<HTMLDivElement>(null);
-  const reduceMotion = usePrefersReducedMotion();
-  const isMobile = surface === "mobile";
-  const drawer = usePresence(
-    isMobile && open,
-    motionMs("switcher", reduceMotion)
-  );
 
-  // Light-dismiss for the DESKTOP expando: an outside pointer-down or Escape.
-  // The mobile drawer gets its own scrim/focus trap below.
   useEffect(() => {
-    if (isMobile || !open) return;
+    if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -135,52 +74,12 @@ export default function ProfileIdentityBar({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [isMobile, open]);
-
-  // Swipe the top drawer UP to dismiss — it retreats through the bar it dropped
-  // from. The grab area is the HANDLE, not the whole panel: the list scrolls
-  // vertically (an admin reaches every profile), so a panel-wide vertical grab
-  // would race its own scroller. Same decision BottomSheet makes.
-  const { suppressMotion } = useOverlayDrag({
-    panelRef,
-    grabRef: handleRef,
-    direction: "up",
-    onOutcome: () => setOpen(false),
-    // The latch expires with the panel it protects (#2725): this drawer's panel
-    // unmounts between opens, so a remounted one is owed its slide again.
-    panelMounted: drawer.mounted,
-    enabled: isMobile && open,
-  });
-
-  useLockBodyScroll(drawer.mounted);
-  useFocusTrap({
-    panelRef,
-    onClose: () => setOpen(false),
-    active: isMobile && open,
-  });
+  }, [open]);
 
   const view = identityBarView(profiles, viewIds, actingProfileId);
   // The auth boundary guarantees the acting profile is accessible; rendering
   // nothing is the honest fallback rather than a bar that cannot name it.
   if (!view) return null;
-
-  // Two homes for one component means two stable hooks for the ROOT — the same
-  // `-mobile` suffix convention the bar's other phone-only control uses
-  // (search-mobile). Both mounts exist in the DOM at every
-  // width (one is `md:hidden`, the other `hidden md:flex`), so a shared testid on
-  // the root would be ambiguous rather than convenient. Everything INSIDE the bar
-  // is reached by scoping to the root instead of by suffixing again — except the
-  // read-only badge, which predates this bar and is asserted unscoped by the #33
-  // specs.
-  const tid = (base: string) => (isMobile ? `${base}-mobile` : base);
-  const phase = drawer.phase === "enter" ? "enter" : "exit";
-  const backdropMotion = overlayMotionClass("scrim", phase, reduceMotion);
-  // A hand-dragged panel owns its transform for the rest of its life (see
-  // useOverlayDrag) — a keyframe class on top would outrank the inline transform
-  // and freeze the drag mid-swipe.
-  const panelMotion = suppressMotion
-    ? ""
-    : overlayMotionClass("top", phase, reduceMotion);
 
   const panel = (
     <ProfileSwitcherPanel
@@ -189,8 +88,7 @@ export default function ProfileIdentityBar({
       viewIds={viewIds}
       readOnlyIds={readOnlyIds}
       // Closing on switch is safe here even though the row is a Server-Action
-      // <form>: the desktop expando stays MOUNTED (it hides via a class), and
-      // the mobile drawer stays mounted for its exit animation — in neither case
+      // <form>: the desktop expando stays MOUNTED (it hides via a class), so neither
       // is the submitting form torn out from under React's dispatch.
       onSelect={() => setOpen(false)}
     />
@@ -199,7 +97,7 @@ export default function ProfileIdentityBar({
   const trigger = (
     <button
       type="button"
-      data-testid={tid("profile-identity-bar")}
+      data-testid="profile-identity-bar"
       data-view-count={view.ordered.length}
       data-acting-profile-id={view.acting.id}
       aria-expanded={open}
@@ -209,11 +107,7 @@ export default function ProfileIdentityBar({
       // fact you need before tapping anything that writes.
       aria-label={identityBarLabel(view.acting.name)}
       onClick={() => setOpen((v) => !v)}
-      className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition sm:min-h-0 ${
-        isMobile
-          ? "press -ml-1 flex-1 hover:bg-slate-100 dark:hover:bg-ink-750"
-          : "w-full border border-black/10 bg-(--ghost) hover:bg-(--ghost-hover) dark:border-white/10"
-      } ${mounted ? "" : "cursor-progress"}`}
+      className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg border border-black/10 bg-(--ghost) px-2 py-1.5 text-sm transition hover:bg-(--ghost-hover) sm:min-h-0 dark:border-white/10 ${mounted ? "" : "cursor-progress"}`}
     >
       <span aria-hidden className="flex shrink-0 items-center -space-x-2">
         {view.avatars.map((p) => {
@@ -263,7 +157,7 @@ export default function ProfileIdentityBar({
       </span>
       {readOnly && (
         <span
-          data-testid={tid("read-only-badge")}
+          data-testid="read-only-badge"
           aria-label={`Viewing ${view.acting.name} — read-only`}
           className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300"
         >
@@ -280,13 +174,12 @@ export default function ProfileIdentityBar({
     </button>
   );
 
-  if (!isMobile) {
-    // `relative` on the wrapper is the panel's containing block — the anchor the
-    // overlay hangs from, and the whole reason the sidebar below stops moving.
-    return (
-      <div ref={rootRef} className="relative">
-        {trigger}
-        {/* Kept mounted (toggled via a class) rather than unmounted: closing on
+  // `relative` on the wrapper is the panel's containing block — the anchor the
+  // overlay hangs from, and the whole reason the sidebar below stops moving.
+  return (
+    <div ref={rootRef} className="relative">
+      {trigger}
+      {/* Kept mounted (toggled via a class) rather than unmounted: closing on
         select must not tear down the <form> before React dispatches its Server
         Action, or the switch is silently dropped. `absolute` changes none of
         that — `hidden` is still display:none on a mounted subtree. Capped +
@@ -305,54 +198,16 @@ export default function ProfileIdentityBar({
         sidebar's top and the panel is capped at 50vh, so it lands on screen, and
         the pathological short-window case scrolls into reach rather than
         vanishing. The heavier fallback (portal + anchor to the trigger's rect,
-        the way the mobile branch does it) stays unspent: it would buy nothing
+        now unused) would buy nothing
         here and would cost the simple focus/dismiss wiring below. */}
-        <div
-          data-testid="profile-switcher-panel"
-          className={`${
-            open ? "flex" : "hidden"
-          } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-(--border) bg-surface p-2 shadow-lg`}
-        >
-          {panel}
-        </div>
+      <div
+        data-testid="profile-switcher-panel"
+        className={`${
+          open ? "flex" : "hidden"
+        } absolute inset-x-0 top-full z-20 mt-1 max-h-[50vh] flex-col overflow-y-auto overscroll-contain rounded-lg border border-(--border) bg-surface p-2 shadow-lg`}
+      >
+        {panel}
       </div>
-    );
-  }
-
-  return (
-    <>
-      {trigger}
-      {drawer.mounted &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div className="fixed inset-0 z-40 md:hidden">
-            <div
-              className={`${OVERLAY_SCRIM} ${backdropMotion}`}
-              onClick={() => setOpen(false)}
-              aria-hidden
-              data-testid="profile-switcher-backdrop"
-            />
-            <div
-              ref={panelRef}
-              data-testid="profile-switcher-panel-mobile"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Switch profile"
-              className={`absolute inset-x-0 top-0 flex max-h-[85vh] flex-col rounded-b-2xl border-b bg-surface pt-[max(0.5rem,env(safe-area-inset-top))] ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${panelMotion}`}
-            >
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1">
-                {panel}
-              </div>
-              {/* The handle sits at the BOTTOM of a TOP-anchored panel — the edge
-              facing the reader is the edge you flick. */}
-              <OverlayDragHandle
-                handleRef={handleRef}
-                testId="profile-switcher-drag-handle"
-              />
-            </div>
-          </div>,
-          document.body
-        )}
-    </>
+    </div>
   );
 }

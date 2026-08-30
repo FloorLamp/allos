@@ -487,9 +487,7 @@ export default function SidebarContent({
       ) : (
         /* The identity bar (#1801) at the TOP of the sidebar and of the drawer —
         "whose data am I looking at, and who am I acting as?" answered before
-        anything else on the surface, and it opens the switcher panel in place.
-        `surface` is the PANEL's anchoring, not a second host boolean: a drawer is
-        a narrow column like the sidebar, so it takes the sidebar's anchoring. */
+        anything else on the surface, and it opens the switcher panel in place. */
         <div className="flex items-center justify-between gap-2">
           {/* `min-w-0 flex-1` is load-bearing, not tidying. A flex item's default
           `min-width: auto` is its MIN-CONTENT width, so without this the bar sizes
@@ -505,7 +503,6 @@ export default function SidebarContent({
               viewIds={viewIds}
               readOnlyIds={readOnlyIds}
               readOnly={readOnly}
-              surface="sidebar"
             />
           </div>
           {closeButton}
