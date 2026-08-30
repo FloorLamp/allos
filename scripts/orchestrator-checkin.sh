@@ -39,6 +39,11 @@
 # --relaunched clears the sticky rescue flag described at RESCUE_FILE below. Pass
 # it only AFTER every dirty tree has been rescued and every dead agent relaunched.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then # the header IS the usage (usage.mjs is the JS twin)
+  sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
+  exit 0
+fi
+
 set -uo pipefail
 
 # THE STAMP MUST SURVIVE A TRUNCATED READ, and this is not a hypothetical
@@ -73,7 +78,11 @@ trap '' PIPE
 ACK_RELAUNCH=0
 [ "${1:-}" = "--relaunched" ] && ACK_RELAUNCH=1
 
-STATE_DIR=${SCRATCH:-/home/user/scratch}
+# One resolver for the state dir (scripts/orchestration/host.mjs), shared with
+# dispatch-brief.mjs so the roster and the ledger agree on every host (#3710).
+# The inline fallback covers a shell with no node on PATH — the measured live
+# container's own layout, so it resolves identically there.
+STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/orchestration/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
 BOOT_FILE="$STATE_DIR/.boot_id"
 SESSION_FILE="$STATE_DIR/.session_id"
 ROSTER="$STATE_DIR/.roster"
@@ -607,6 +616,31 @@ print("\n".join(sorted(b for b,st in state.items() if st=="active")))
 fi
 echo
 
+# 3c. LANE SATURATION — the refill posture, printed where it cannot be walked
+# past. Two measured drifts (owner, 2026-08-30): after a few merges the session
+# sits at one lane; after a recovery it announces "the lanes are empty" and
+# stops. Both misread the roster. An empty or thin roster with holds clear is a
+# DISPATCH ORDER (the refill rule: dispatch continuously while viable work
+# exists, without asking), and "empty" is only an honest terminal state next to
+# the enumerated list of why each remaining issue cannot dispatch.
+lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
+lanes=${lanes:-0}
+echo "--- lanes ---"
+if [ "$lanes" -eq 0 ]; then
+  echo "  0 active — *** AN EMPTY ROSTER IS A DISPATCH ORDER, NOT A REPORT ***"
+  echo "      Rescue done? Then unless a hold above or an owner wind-down governs,"
+  echo "      triage and dispatch NOW (dispatch.md §Dispatch). 'The lanes are empty'"
+  echo "      is only honest beside the list of why every remaining issue is"
+  echo "      blocked, owner-gated, or dependency-bound."
+elif [ "$lanes" -lt 3 ]; then
+  echo "  $lanes active — UNDER-SATURATED unless the queue is truly thin. Refill after"
+  echo "      every merge is the default, without asking; review depth (~3 unreviewed"
+  echo "      PRs) binds before lane count (~5) does (dispatch.md §Dispatch)."
+else
+  echo "  $lanes active"
+fi
+echo
+
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
 #
 # This is the gap that let the session go silent for 35 minutes on 2026-08-12
@@ -748,12 +782,36 @@ if [ "$stale" -gt 0 ]; then
 fi
 if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   echo "  GH_TOKEN: present"
+elif command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+  echo "  GH_TOKEN: unset, gh auth present - reads OK, writes need the variable"
 else
   echo "  GH_TOKEN: *** MISSING - see the credential-loss section of the runbook ***"
 fi
-node24=$(ls -d /opt/nvm/versions/node/v24* 2>/dev/null | head -1)
-echo "  node24: ${node24:-ABSENT - nvm install 24}"
+nodebin=$(node "$(dirname "$0")/orchestration/host.mjs" node-bin 2>/dev/null)
+echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your version manager}"
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
+echo
+
+# 6. Catch-up gate. The digest (catchup-digest.sh) was designed to wrap this
+# recorder, but the runbook routes every wake HERE, so the digest only ran
+# when a prompt happened to name it (owner, 2026-08-30) — the MCP-by-default
+# drift class: a tool that waits to be remembered is a tool that isn't run.
+# So the recorder ROUTES: anchor >= 4h stale (the queue-sweep cadence, or
+# unparseable — BSD date lands here and the digest's own 24h fallback takes
+# over) runs the digest right now, and a check-in cannot skip catching up.
+echo "--- catch-up ---"
+CATCHUP_DUE_SECS=$((4 * 3600))
+catchup_anchor=$(cat "$STATE_DIR/.last_catchup" 2>/dev/null || true)
+catchup_anchor_s=$(date -u -d "$catchup_anchor" +%s 2>/dev/null || echo "")
+now_s=$(date -u +%s)
+if [ -n "$catchup_anchor_s" ] && [ $((now_s - catchup_anchor_s)) -lt "$CATCHUP_DUE_SECS" ]; then
+  echo "  digest anchor $(((now_s - catchup_anchor_s) / 60))m old — due at 4h; \`catchup-digest.sh --peek\` any time"
+else
+  echo "  digest DUE (anchor: ${catchup_anchor:-none}) — running it now:"
+  echo
+  CATCHUP_SKIP_RECORDER=1 bash "$(dirname "$0")/orchestration/catchup-digest.sh" ||
+    echo "  *** digest FAILED — run scripts/orchestration/catchup-digest.sh by hand ***"
+fi
 echo
 
 # Stamp LAST, so a crash mid-check-in still reports the restart next time.

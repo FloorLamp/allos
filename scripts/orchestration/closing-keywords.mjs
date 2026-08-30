@@ -25,6 +25,8 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 export const EXIT = Object.freeze({
   nothingCloses: 0,

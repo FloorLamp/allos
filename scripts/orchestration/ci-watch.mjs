@@ -37,14 +37,17 @@
 // a 10-minute tool cap — exit 2 means "invoke me again", not "green".
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
+helpGuard(process.argv, import.meta.url);
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+const token = resolveReadToken();
 if (!token) {
   console.error(
-    "BLOCKED: neither GH_TOKEN nor GITHUB_TOKEN is set. Refusing to poll —\n" +
-      "an unauthenticated poll reads as 'no failures'. If a container restart\n" +
-      'wiped the token, re-mint with add_repo access:"push" (see the runbook\'s\n' +
-      "credential-loss section), then re-run."
+    "BLOCKED: no GH_TOKEN/GITHUB_TOKEN and no authenticated gh. Refusing to\n" +
+      "poll — an unauthenticated poll reads as 'no failures'. If a container\n" +
+      'restart wiped the token, re-mint with add_repo access:"push" (see the\n' +
+      "runbook's credential-loss section), then re-run."
   );
   process.exit(3);
 }
@@ -227,8 +230,10 @@ for (;;) {
         console.error(`  ${r.conclusion}: ${r.name}  ${r.html_url}`);
       console.error(
         "Before diagnosing the branch: a job can be stamped `failure` with every step green —\n" +
-          "read the STEPS; a red with no failing step is infrastructure, and a rerun (via MCP\n" +
-          "rerun_failed_jobs, only once all jobs completed) is the answer."
+          "read the STEPS; a red with no failing step is infrastructure, and a rerun —\n" +
+          "only once ALL jobs completed — is the answer:\n" +
+          '  curl -X POST -H "Authorization: Bearer $GH_TOKEN" \\\n' +
+          "    https://api.github.com/repos/<owner>/<repo>/actions/runs/<run-id>/rerun-failed-jobs"
       );
       process.exit(1);
     }

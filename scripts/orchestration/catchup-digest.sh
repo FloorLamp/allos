@@ -28,9 +28,15 @@
 # Output also lands in $SCRATCH/catchup-<ts>.log — the raw notes that survive
 # the session.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then # the header IS the usage (usage.mjs is the JS twin)
+  sed -n '2,${/^#/!q;s/^#[[:space:]]\{0,1\}//p;}' "$0"
+  exit 0
+fi
+
 set -uo pipefail
 
-STATE_DIR=${SCRATCH:-/home/user/scratch}
+# Same resolver as orchestrator-checkin.sh and dispatch-brief.mjs (#3710).
+STATE_DIR=${SCRATCH:-$(node "$(dirname "$0")/host.mjs" state-dir 2>/dev/null || echo /home/user/scratch)}
 ANCHOR_FILE="$STATE_DIR/.last_catchup"
 REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo /home/user/allos)
 API="https://api.github.com/repos/FloorLamp/allos"
@@ -60,8 +66,12 @@ LOG="$STATE_DIR/catchup-$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee "$LOG") 2>&1
 
 # 1. Flight recorder first, always. Restart state governs what the rest of the
-#    digest means (an empty roster after a reclaim is news, not calm).
-bash "$REPO_DIR/scripts/orchestrator-checkin.sh"
+#    digest means (an empty roster after a reclaim is news, not calm). The one
+#    exception: the recorder's own catch-up gate invoking THIS script sets the
+#    flag below, because the recorder just ran — without it the two recurse.
+if [ "${CATCHUP_SKIP_RECORDER:-0}" != "1" ]; then
+  bash "$REPO_DIR/scripts/orchestrator-checkin.sh"
+fi
 
 echo
 echo "=== CATCH-UP DIGEST  window ${SINCE} .. ${NOW} ==="
@@ -289,22 +299,7 @@ node -e '
     if(why.length) console.log(`  (excluded: ${why.join(", ")}, plus needs-human and parked)`);
   }' "$TMP"/issues.*
 
-# 5. Incidents filed inside the window — the fires half of the pulse. Headings
-#    carry dates inconsistently, so filter where a date exists and always show
-#    the last three as a floor.
-echo
-echo "--- incident headings (docs/orchestration-incidents.md) ---"
-SINCE_DAY=${SINCE%%T*}
-grep '^## ' "$REPO_DIR/docs/orchestration-incidents.md" | SINCE_DAY="$SINCE_DAY" node -e '
-  let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
-    const lines=d.trim().split("\n"), since=process.env.SINCE_DAY;
-    const dated=lines.filter(l=>{const m=l.match(/\d{4}-\d{2}-\d{2}/);return m&&m[0]>=since;});
-    const show=dated.length?dated:lines.slice(-3);
-    if(!dated.length) console.log(`  (none dated >= ${since}; last three for context)`);
-    for(const l of show) console.log("  "+l.replace(/^## /,""));
-  });'
-
-# 6. Advance the anchor only on a full, non-peek run: a --peek or --since read
+# 5. Advance the anchor only on a full, non-peek run: a --peek or --since read
 #    must not move what "since last catch-up" means for the next one.
 echo
 if [ "$PEEK" = 1 ]; then

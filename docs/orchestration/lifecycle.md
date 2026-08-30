@@ -14,7 +14,9 @@
 - The check-in script and `dispatch-brief.mjs list` are ground truth on wake.
   Read them before acting on anything the prompt asserts, including your own.
 - Post a status pulse every check-in: in flight, merged, queued, and parked or
-  awaiting owner.
+  awaiting owner. Its data half is the catch-up digest, which the check-in
+  script runs itself when the digest's anchor is four hours stale — judgment
+  on the digest stays yours.
 - Sweep open issues about every four hours for filings, labels, and comment
   rulings.
 - Run one adversarial audit over the previous day of merges per session-day.
@@ -36,7 +38,8 @@
 - A failed job whose steps are all green is infrastructure; inspect the steps,
   then rerun.
 - Institutionalize lessons in tooling or the relevant focused runbook file the
-  same day. Put narrative and receipts in `docs/orchestration-incidents.md`.
+  same day — those are the only durable homes. Narrative that fits neither is
+  cut, not relocated; history lives in git.
 
 ## Wind-down
 

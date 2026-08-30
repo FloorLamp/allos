@@ -21,8 +21,11 @@
 // not a dependabot PR); it never guesses a brief.
 
 import { execFileSync } from "node:child_process";
+import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
+helpGuard(process.argv, import.meta.url);
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+const token = resolveReadToken();
 const prNumber = process.argv[2];
 function fail(what) {
   console.error(`dependabot-eval-brief: ${what}`);
@@ -32,7 +35,9 @@ if (!prNumber || !/^\d+$/.test(prNumber)) {
   fail("usage: dependabot-eval-brief.mjs <pr-number>");
 }
 if (!token) {
-  fail('GH_TOKEN/GITHUB_TOKEN missing — re-mint via add_repo access:"push".');
+  fail(
+    'no GH_TOKEN/GITHUB_TOKEN and no authenticated gh — re-mint via add_repo access:"push".'
+  );
 }
 
 function gh(pathname) {
