@@ -228,14 +228,15 @@ read thirty lines downstream, and the recap named the cap from a third module ou
   gone, and a token aimed at it takes the refusal that already exists for one that aged
   out.
 - `gatherRecapInput` drops `scope_kind: "substance"` targets from both cadence cap
-  readers when the gather is `forSend`, which removes the week **verdict** line ("over
+  readers when the gather is `forSend`, including the gather used to generate a stored
+  AI narrative. This removes the week **verdict** line ("over
   the Nicotine cap") and the period **cap-weeks** line ("over the Nicotine cap in 2 of 4
   weeks") — a custom substance names itself on both, since `cadenceScopeNoun` returns the
-  profile's own string. The dashboard recap card, the AI narrative and the year
-  retrospective gather the same facts unfiltered: they are surfaces the profile is
-  standing on, not sends. A stored AI narrative (#421) is written over that in-app recap
-  and pasted into the send in place of the bullets, so it is not covered by this gate
-  (#3909).
+  profile's own string. The dashboard recap card and year retrospective remain
+  unfiltered: they are surfaces the profile is standing on, not sends. The stored AI
+  narrative is safe to paste into the send because it is generated from the gated facts;
+  its in-app card renders the deterministic cap facts beside that prose, preserving the
+  profile's own substance view (#3909).
 
   **This gate can suppress a whole recap, and that is the intended outcome.**
   `renderRecapMessage` returns null on `recap.isEmpty || recap.lines.length === 0`, and

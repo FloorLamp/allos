@@ -155,7 +155,9 @@ export async function generatePeriodRecap(
 ): Promise<GeneratedPeriodRecap> {
   const wu: WeightUnit =
     weightUnit ?? (loginId != null ? getUnitPrefs(loginId).weightUnit : "kg");
-  const recap = getScaleRecap(profileId, period, wu);
+  // A stored narrative can leave through the recap send, so generate from its gated
+  // facts; the in-app card renders deterministic cap facts beside the prose (#3909).
+  const recap = getScaleRecap(profileId, period, wu, { forSend: true });
   const offline = () => composeRecapNarrativeOffline(recap, period);
   // Nothing logged this period — don't burn a usage unit / API call on an empty
   // recap; the deterministic composer already says the right quiet thing.
