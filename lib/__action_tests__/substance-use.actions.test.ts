@@ -877,17 +877,13 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
 // the layer the #1174 e2e (nav-hidden + redirect) structurally can't see. An
 // adult/unknown-age profile is unaffected (the many passing tests above).
 describe("substance-use actions refuse a known minor (#1279)", () => {
-  function minorActor(slug: string) {
+  it("refuses every direct write path without changing any substance store", async () => {
     const login = createLogin();
-    const profile = createProfile(slug, login.id);
+    const profile = createProfile("su-minor-actions", login.id);
     // Stored-age fallback = 15 → isMinor(getProfileAge) true (no birthdate needed).
     setProfileSetting(profile.id, "age", "15");
     actAs(login, profile);
-    return profile;
-  }
 
-  it("recordSubstanceInstrumentAction refuses (in-app administer AND outside total)", async () => {
-    const profile = minorActor("su-minor-instrument");
     const administered = await recordSubstanceInstrumentAction(
       fd({
         instrument: "AUDIT-C",
@@ -906,23 +902,12 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       })
     );
     expect(outside.ok).toBe(false);
-    // Nothing was written for the minor.
-    const n = db
-      .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?")
-      .get(profile.id) as { n: number };
-    expect(n.n).toBe(0);
-  });
 
-  it("logSubstanceUnitAction / undoSubstanceUnitAction refuse (alcohol + nicotine ledgers)", async () => {
-    minorActor("su-minor-log");
     for (const substance of ["alcohol", "nicotine"]) {
       expect((await logSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
       expect((await undoSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
     }
-  });
 
-  it("setSubstanceTargetAction / clearSubstanceTargetAction refuse", async () => {
-    const profile = minorActor("su-minor-target");
     expect(
       (await setSubstanceTargetAction(fd({ substance: "alcohol", cap: "7" })))
         .ok
@@ -930,16 +915,7 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
     expect(
       (await clearSubstanceTargetAction(fd({ substance: "alcohol" }))).ok
     ).toBe(false);
-    const rows = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
-      )
-      .get(profile.id) as { n: number };
-    expect(rows.n).toBe(0);
-  });
 
-  it("historical add/edit/delete actions refuse", async () => {
-    const profile = minorActor("su-minor-history");
     expect(
       await addSubstanceDailyTotalAction(
         fd({ substance: "alcohol", date: "2026-07-01", amount: "2" })
@@ -960,11 +936,22 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
         fd({ id: "1", substance: "alcohol" })
       )
     ).toMatchObject({ kind: "not-found", undoId: null });
-    const rows = db
+
+    // The shared minor boundary stopped every action before any backing store moved.
+    const counts = db
       .prepare(
-        "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?"
+        `SELECT
+           (SELECT COUNT(*) FROM medical_records WHERE profile_id = @profileId) AS records,
+           (SELECT COUNT(*) FROM frequency_targets WHERE profile_id = @profileId) AS targets,
+           (SELECT COUNT(*) FROM food_daily_totals WHERE profile_id = @profileId) AS food,
+           (SELECT COUNT(*) FROM substance_daily_totals WHERE profile_id = @profileId) AS substances`
       )
-      .get(profile.id) as { n: number };
-    expect(rows.n).toBe(0);
+      .get({ profileId: profile.id }) as {
+      records: number;
+      targets: number;
+      food: number;
+      substances: number;
+    };
+    expect(counts).toEqual({ records: 0, targets: 0, food: 0, substances: 0 });
   });
 });
