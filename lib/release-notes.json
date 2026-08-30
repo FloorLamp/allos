@@ -56,6 +56,12 @@
           "title": "One page holds the whole record: the timeline retires and its day view moves in",
           "kind": "feature",
           "issues": [3958, 3343]
+        },
+        {
+          "pr": 4230,
+          "title": "Say you have seen a flagged lab result, and it stops leading until the next draw",
+          "kind": "feature",
+          "issues": [3225]
         }
       ]
     },
