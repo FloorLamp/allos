@@ -23,6 +23,14 @@ import {
 // covers D2/D3/total. Guarded to the flag namespace so this action can only ever
 // write a biomarker acknowledgment key; profile-scoped via dismissFinding.
 //
+// It is ALSO what the clinical-result page's "Seen it" posts (#3225): that control
+// writes the identical analyte acknowledgment, so giving it a second action would be
+// two spellings of one write. The name is narrower than the job — see the key's own
+// header in lib/dismissal-keys.ts for what the key actually covers. Since #3225 the
+// acknowledgment is no longer indefinite: the next draw of the family re-arms it,
+// which is decided on the READ side (lib/queries/upcoming/suppressions.ts), so
+// nothing here changes.
+//
 // The field is `dedupe_key`, the name every findings-bus dismiss form posts (the
 // shared components/FindingRow renders it) — `ack_key` was this surface's own
 // spelling for the same thing and is still accepted so an in-flight form submitted
@@ -37,6 +45,10 @@ export async function dismissTrajectory(formData: FormData): Promise<void> {
   if (!ackKey.startsWith("biomarker-flag:")) return;
   dismissFinding(profile.id, ackKey);
   revalidateRoute("/results/clinical-results");
+  // The result detail page renders the acknowledgment state ("Seen it" vs "Seen —
+  // until the next draw"), so it has to be purged too or the control it was pressed
+  // on keeps offering itself.
+  revalidateRoute("/results/clinical-results/view", "page");
   revalidateRoute("/");
 }
 
