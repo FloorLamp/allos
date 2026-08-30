@@ -62,6 +62,12 @@
           "title": "Say you have seen a flagged lab result, and it stops leading until the next draw",
           "kind": "feature",
           "issues": [3225]
+        },
+        {
+          "pr": 4234,
+          "title": "Record rows open to show where an entry came from and what it links to",
+          "kind": "feature",
+          "issues": [3958, 662, 2920]
         }
       ]
     },
