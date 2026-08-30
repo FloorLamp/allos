@@ -312,14 +312,17 @@ describe("sleepWindowFromClocks: the noon-anchored fold", () => {
     ["01:30", "09:00", false, 450],
     ["13:30", "15:00", true, 1530],
     ["00:00", "00:00", false, 0],
-  ])("%s → %s folds to previous-day=%s, %s minutes", (bed, wake, prev, minutes) => {
-    expect(sleepWindowFromClocks(bed, wake)).toMatchObject({
-      bed,
-      wake,
-      bedOnPreviousDay: prev,
-      minutes,
-    });
-  });
+  ])(
+    "%s → %s folds to previous-day=%s, %s minutes",
+    (bed, wake, prev, minutes) => {
+      expect(sleepWindowFromClocks(bed, wake)).toMatchObject({
+        bed,
+        wake,
+        bedOnPreviousDay: prev,
+        minutes,
+      });
+    }
+  );
 
   it.each([
     ["", "07:00"],

@@ -947,7 +947,7 @@ stored in kilograms; water is the day's total, in litres — typing it again
 corrects the day rather than adding a second entry.
 
 **A night can be typed as bed and wake times** (#1851), not just as hours. The
-Sleep Regularity Index and the consistency strip need to know *when* you slept,
+Sleep Regularity Index and the consistency strip need to know _when_ you slept,
 which a duration cannot say, so the same **Log measurements** form takes the two
 clocks you already know. A bed time at or after midday is read as the evening
 before the date on the form — this field states a night, not a nap. If you also

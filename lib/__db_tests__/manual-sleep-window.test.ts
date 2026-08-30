@@ -65,7 +65,12 @@ function overnights(lastDay: string, nights: number): NormMetricSample[] {
   for (let offset = nights - 1; offset >= 0; offset--) {
     const day = shiftDateStr(lastDay, -offset);
     out.push(
-      session(day, 420, `${shiftDateStr(day, -1)}T23:00:00Z`, `${day}T06:00:00Z`)
+      session(
+        day,
+        420,
+        `${shiftDateStr(day, -1)}T23:00:00Z`,
+        `${day}T06:00:00Z`
+      )
     );
   }
   return out;
@@ -117,9 +122,7 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
     expect(sessions).toHaveLength(30);
     expect(sessions.filter((row) => row.source === "oura")).toHaveLength(29);
     // The typed night is one of them, with the clocks as stated.
-    expect(
-      sessions.find((row) => row.source === "manual")
-    ).toMatchObject({
+    expect(sessions.find((row) => row.source === "manual")).toMatchObject({
       date: missed,
       start: `${shiftDateStr(missed, -1)}T23:30:00Z`,
       end: `${missed}T07:00:00Z`,
@@ -187,7 +190,9 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
       }
       const sessions = getSleepSessions(id);
       expect(sessions).toHaveLength(60);
-      expect(sessions.filter((row) => row.source === "manual")).toHaveLength(30);
+      expect(sessions.filter((row) => row.source === "manual")).toHaveLength(
+        30
+      );
       expect(sessions.filter((row) => row.source === source)).toHaveLength(30);
       expect(getSleepRegularity(id)).not.toBeNull();
     }
@@ -206,7 +211,11 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
   it("still offers no picker for a device stream older than 90 days", () => {
     const id = makeProfile("SleepPickerOutOfRange");
     const wakeDay = today(id);
-    upsertMetricSamples(id, overnights(shiftDateStr(wakeDay, -400), 30), "oura");
+    upsertMetricSamples(
+      id,
+      overnights(shiftDateStr(wakeDay, -400), 30),
+      "oura"
+    );
     insertVitals(id, wakeDay, { bedTime: "23:00", wakeTime: "07:00" }, "page");
 
     const pageWindow = { from: shiftDateStr(wakeDay, -89), to: wakeDay };
@@ -244,19 +253,22 @@ describe("one manual row per night, and what a window costs (#1851)", () => {
   it.each([
     ["a new bedtime", { bedTime: "22:30", wakeTime: "07:00" }, "22:30", 510],
     ["a new wake clock", { bedTime: "23:00", wakeTime: "06:00" }, "23:00", 420],
-  ])("re-stating the night with %s corrects the row", (_l, second, bed, value) => {
-    const id = makeProfile(`SleepOneRow-${bed}`);
-    const day = shiftDateStr(today(id), -1);
-    insertVitals(id, day, { bedTime: "23:00", wakeTime: "07:00" }, "page");
-    insertVitals(id, day, second, "page");
-    const rows = rowsOn(id, day);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      startedAt: `${shiftDateStr(day, -1)}T${bed}:00Z`,
-      endedAt: `${day}T${second.wakeTime}:00Z`,
-      value,
-    });
-  });
+  ])(
+    "re-stating the night with %s corrects the row",
+    (_l, second, bed, value) => {
+      const id = makeProfile(`SleepOneRow-${bed}`);
+      const day = shiftDateStr(today(id), -1);
+      insertVitals(id, day, { bedTime: "23:00", wakeTime: "07:00" }, "page");
+      insertVitals(id, day, second, "page");
+      const rows = rowsOn(id, day);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        startedAt: `${shiftDateStr(day, -1)}T${bed}:00Z`,
+        endedAt: `${day}T${second.wakeTime}:00Z`,
+        value,
+      });
+    }
+  );
 
   // FINDING 2 — the row that stored more hours than its own window said.
   // `{bedTime:"23:00",wakeTime:"07:00"}` then `{sleepHours:"12"}` alone gave
@@ -326,7 +338,12 @@ describe("one manual row per night, and what a window costs (#1851)", () => {
   // — the person's stated clocks discarded, someone else's night kept, no signal.
   it("falls back to a duration-only row when the window cannot be stored", () => {
     const id = makeProfile("SleepTrollRefusal", "Antarctica/Troll");
-    insertVitals(id, "2026-10-25", { bedTime: "22:00", wakeTime: "08:00" }, "page");
+    insertVitals(
+      id,
+      "2026-10-25",
+      { bedTime: "22:00", wakeTime: "08:00" },
+      "page"
+    );
     const outcome = insertVitals(
       id,
       "2026-10-25",
@@ -340,7 +357,10 @@ describe("one manual row per night, and what a window costs (#1851)", () => {
       endedAt: "2026-10-25T00:00:00",
       value: 480,
     });
-    expect(outcome).toMatchObject({ wrote: true, sleepWindowRefused: "unstorable" });
+    expect(outcome).toMatchObject({
+      wrote: true,
+      sleepWindowRefused: "unstorable",
+    });
   });
 
   // THE OTHER DIRECTION of the same zone, because a refusal that fires on every
@@ -426,34 +446,37 @@ describe("a night typed offline replays as the night it was (#1851)", () => {
   it.each([
     ["UTC", "2026-05-13T23:00:00Z", "2026-05-14T07:00:00Z"],
     ["Asia/Tokyo", "2026-05-13T14:00:00Z", "2026-05-13T22:00:00Z"],
-  ])("resolves the stated clocks in the zone at reconnect (%s)", (tz, start, end) => {
-    const id = makeProfile(`SleepReplay-${tz}`, tz);
-    const intent = buildIntent(
-      "vitals",
-      "2026-05-14",
-      {
-        bedTime: "23:00",
-        wakeTime: "07:00",
-        sleepHours: null,
-        hrv: null,
-        systolic: null,
-        diastolic: null,
-        glucose: null,
-        glucoseUnit: null,
-        spo2: null,
-        temperature: null,
-        tempUnit: null,
-      } as VitalsPayload,
-      id
-    );
-    expect(applyIntent(id, intent).status).toBe("done");
-    expect(rowsOn(id, "2026-05-14")[0]).toMatchObject({
-      startedAt: start,
-      endedAt: end,
-      value: 480,
-      source: "manual",
-    });
-  });
+  ])(
+    "resolves the stated clocks in the zone at reconnect (%s)",
+    (tz, start, end) => {
+      const id = makeProfile(`SleepReplay-${tz}`, tz);
+      const intent = buildIntent(
+        "vitals",
+        "2026-05-14",
+        {
+          bedTime: "23:00",
+          wakeTime: "07:00",
+          sleepHours: null,
+          hrv: null,
+          systolic: null,
+          diastolic: null,
+          glucose: null,
+          glucoseUnit: null,
+          spo2: null,
+          temperature: null,
+          tempUnit: null,
+        } as VitalsPayload,
+        id
+      );
+      expect(applyIntent(id, intent).status).toBe("done");
+      expect(rowsOn(id, "2026-05-14")[0]).toMatchObject({
+        startedAt: start,
+        endedAt: end,
+        value: 480,
+        source: "manual",
+      });
+    }
+  );
 
   // Two DIFFERENT idempotency keys, so `alreadyReplayed` never fires: this is a
   // second sitting, not a retried flush, and it has to converge on its own.

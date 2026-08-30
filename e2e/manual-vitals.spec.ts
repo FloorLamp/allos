@@ -151,6 +151,10 @@ test("the measurements form takes a bed and wake time (#1851)", async ({
   page,
 }) => {
   const form = await openMeasurementsForm(page);
+  // The date the form itself will post, so the log row below is addressed exactly
+  // rather than by position — the sleep log is a shared surface and its first row is
+  // whatever the seed put there.
+  const date = await form.locator('input[name="date"]').inputValue();
   await openMeasurementGroup(page, form, "sleep");
   await form.getByLabel("Bed time", { exact: true }).fill("23:15");
   await form.getByLabel("Wake time", { exact: true }).fill("07:05");
@@ -167,6 +171,9 @@ test("the measurements form takes a bed and wake time (#1851)", async ({
   // falls back to the synced night and names itself in the failure:
   //   unexpected value "Aug 30Sunday, August 305hBedtime · 1/1 taken…Naps13:00 → 13:45 · 45m…"
   await page.goto("/sleep");
-  const row = page.getByTestId("sleep-mood-history-row").first();
+  const row = page.locator(
+    `[data-testid="sleep-mood-history-row"][data-date="${date}"]`
+  );
+  await expect(row).toHaveCount(1);
   await expect(row).toContainText("7h 50m");
 });

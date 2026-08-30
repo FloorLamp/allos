@@ -358,8 +358,7 @@ function upsertManualSleep(
               ORDER BY id LIMIT 1`
           )
           .get(profileId, SLEEP_METRIC, date) as
-          | { startedAt: string; endedAt: string }
-          | undefined;
+          { startedAt: string; endedAt: string } | undefined;
         if (existing) {
           const elapsed = Math.round(
             (Date.parse(existing.endedAt) - Date.parse(existing.startedAt)) /

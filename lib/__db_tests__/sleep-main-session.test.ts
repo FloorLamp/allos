@@ -604,7 +604,9 @@ describe("two syncing sources, one nap: per-night resolution (#2603/#1851)", () 
     const { id } = napFlipProfile("SleepStreamNap");
     const sessions = getSleepSessions(id);
     // The #2603 defect was the ring's ten nights leaving the read behind one nap.
-    expect(sessions.filter((row) => row.source === "oura")).toHaveLength(NIGHTS);
+    expect(sessions.filter((row) => row.source === "oura")).toHaveLength(
+      NIGHTS
+    );
     // And the nap is not collateral either: it overlaps none of them, so it is its
     // own cluster and stays. The old stream rule could only keep one of these two.
     expect(sessions.filter((row) => row.source === "health-connect")).toEqual([
@@ -714,9 +716,11 @@ describe("two syncing sources, one nap: per-night resolution (#2603/#1851)", () 
       ],
       "health-connect"
     );
-    expect(getSleepSessions(id).map((row) => row.value).sort()).toEqual([
-      40, 50,
-    ]);
+    expect(
+      getSleepSessions(id)
+        .map((row) => row.value)
+        .sort()
+    ).toEqual([40, 50]);
   });
 
   it("gives an explicit primary source the nights it covers, and STRICT the rest", () => {
@@ -726,9 +730,11 @@ describe("two syncing sources, one nap: per-night resolution (#2603/#1851)", () 
     // reading `getDailySleepSessionsSince` has given the Sleep log since #2552.
     const { id } = napFlipProfile("SleepStreamNapPicked");
     setMetricSourcePriorityEntry(id, "sleep_min", "health-connect");
-    expect(getSleepSessions(id).map((row) => row.value).sort()).toEqual([
-      420, 420, 420, 420, 420, 420, 420, 420, 420, 420, 45,
-    ]);
+    expect(
+      getSleepSessions(id)
+        .map((row) => row.value)
+        .sort()
+    ).toEqual([420, 420, 420, 420, 420, 420, 420, 420, 420, 420, 45]);
     // STRICT (#1642) is the setting that means "only this source, and an uncovered
     // night is a gap" — and it is the escape hatch a profile that has genuinely
     // moved sources reaches for. It still empties the ring's nights.

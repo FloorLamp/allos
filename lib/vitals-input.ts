@@ -640,7 +640,8 @@ export function normalizeVitalsInput(
       metric: SLEEP_METRIC,
       // The NOMINAL length, which insertVitals replaces with the elapsed minutes
       // between the resolved instants unless the sitting stated hours asleep.
-      value: sleepHours != null ? Math.round(sleepHours * 60) : sleepWindow.minutes,
+      value:
+        sleepHours != null ? Math.round(sleepHours * 60) : sleepWindow.minutes,
       window: sleepWindow,
     });
   } else if (sleepHours != null) {
