@@ -496,10 +496,11 @@ export function gatherHistoryLog(
           kind: "practice",
           sessionId: row.id,
           // The correction form REWRITES every field the action reads, so the row
-          // carries what it must post back unchanged — and `time` is the STORED
-          // column, not the resolved instant above it. `hhmm` may be the record
-          // chain's minute; this never is.
-          statedTime: row.time,
+          // carries what it must post back unchanged — and `start_time` is the
+          // STORED column, not the resolved instant above it. `hhmm` may be the
+          // record chain's minute; this never is.
+          statedStart: row.start_time,
+          statedEnd: row.end_time,
           durationMin: row.duration_min,
           notes: row.notes,
         },

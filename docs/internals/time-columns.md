@@ -38,7 +38,7 @@ carries a reason, and the reasons are different facts:
   `substance_daily_totals` records when a use was stored and nothing about when it happened.
 - `not-recorded` — the column exists and this row is NULL. Nobody stated an eating time
   (`food_log_events.occurred_at`); an explicitly untimed practice records no clock
-  (`practice_logs.time`). **A real answer, not a gap to fill.**
+  (`practice_logs.start_time`). **A real answer, not a gap to fill.**
 - `needs-zone` — the value is a local wall clock and no timezone was supplied.
 - `day-only` — the column is a day. `allergies.onset_date` and
   `illness_episodes.started_at` are days despite their `_at`/`_date` names.
@@ -128,8 +128,13 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 - **`food_log_events.eaten_at`** is NULL whenever nobody stated an eating time, and
   `time_source` records whether a present value was a tap contract or a stated one. The
   web bar never defaults it to now (#2019/#2053).
-- **`practice_logs.time`** is a bare local `HH:MM` and often NULL. It is not an instant;
-  resolving it needs the row's `date` and the profile timezone.
+- **`practice_logs.start_time` / `end_time`** are bare local `HH:MM` values and often
+  NULL. They are not instants; resolving either needs the row's `date` and the profile
+  timezone. `start_time` is the session's START — the column was named `time` until
+  #3142 renamed it, and a TAP-stamped value trails the true start by up to a session
+  length. `end_time` is stated in the expanded form only: no tap and no import writes
+  one, and it is never derived from `duration_min`, which `activityWindow` falls back
+  to at read time.
 - **`activities.start_time` / `end_time`** are likewise profile-local `HH:MM` clock
   values. They remain `_time` deliberately because training-rhythm inference reads
   the stated local hour; they are not unconverted instants.
@@ -331,7 +336,8 @@ is what makes a caller immune both to phase 2's renames and to a later conventio
 | `portal_sync_requests` | `expires_at` | planned | instant | bare |  |
 | `portals` | `created_at` | bookkeeping | instant | bare |  |
 | `practice_logs` | `date` | day | day | n/a |  |
-| `practice_logs` | `time` | event | time-of-day | n/a | A profile-local HH:MM, optional (the quick path writes none). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone, which is why eventInstant refuses without one. |
+| `practice_logs` | `start_time` | event | time-of-day | n/a | The START of the session, a profile-local HH:MM, optional (a backdated correction states none). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone, which is why eventInstant refuses without one. It stays the table's `event` column through #3142's rename because it is still the one answer to "when did this happen" — but a TAP-stamped start trails the true start by up to a session length (a "Done" tap fires at or after the end), which is noise at the hour granularity the rhythm inference reads and is what the #2875 chips correct. |
+| `practice_logs` | `end_time` | window-end | time-of-day | n/a | The same profile-local HH:MM as start_time, and NULL for every session nobody stated an end for — which is every tap (#3142: being one-tap is the point) and every import. Never derived from `duration_min`: `activityWindow` falls back to the duration at READ time, so storing that end would turn a derivation into a claim. |
 | `practice_logs` | `created_at` | record | instant | bare |  |
 | `preventive_events` | `date` | day | day | n/a |  |
 | `preventive_events` | `created_at` | record | instant | bare |  |

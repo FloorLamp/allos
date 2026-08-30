@@ -394,15 +394,19 @@ function collectEvents(
           detail: a.notes,
           href: trainingActivityPageHref(a.id),
           sortTime: a.start_time,
-          // The raw local window inputs for the intraday panel's workout block
-          // (#1068) — resolved through the canonical activityWindow(), so an
-          // activity with no start (or no derivable end) simply has no block.
-          clockWindow: {
-            date: a.date,
-            start_time: a.start_time,
-            end_time: a.end_time,
-            duration_min: a.duration_min,
-          },
+          // The raw local window inputs for the intraday panel's block (#1068) —
+          // resolved through the canonical activityWindow(), so an activity with no
+          // start (or no derivable end) simply has no block. One activity is one
+          // session, hence one window; the list is plural because a practice DAY
+          // carries several (#3142).
+          clockWindows: [
+            {
+              date: a.date,
+              start_time: a.start_time,
+              end_time: a.end_time,
+              duration_min: a.duration_min,
+            },
+          ],
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
           iconType: a.type,
@@ -1404,7 +1408,8 @@ function collectEvents(
     .prepare(
       `SELECT date, practice, COUNT(*) AS count,
               GROUP_CONCAT(
-                COALESCE(time, '') || '::' || COALESCE(duration_min, ''),
+                COALESCE(start_time, '') || '::' || COALESCE(end_time, '') ||
+                  '::' || COALESCE(duration_min, ''),
                 '||'
               ) AS sessions
          FROM practice_logs
@@ -1423,15 +1428,13 @@ function collectEvents(
     const sessions = (p.sessions ?? "")
       .split("||")
       .filter(Boolean)
-      .map((pair) => {
-        const idx = pair.lastIndexOf("::");
-        const time = idx >= 0 ? pair.slice(0, idx) : "";
-        const durRaw = idx >= 0 ? pair.slice(idx + 2) : "";
+      .map((triple) => {
+        const [start = "", end = "", durRaw = ""] = triple.split("::");
         const dur = durRaw ? Number(durRaw) : null;
-        return { time, dur };
+        return { start, end, dur };
       });
     const detailItems = sessions.map((s, i) => ({
-      label: s.time || `Session ${i + 1}`,
+      label: s.start || `Session ${i + 1}`,
       value:
         s.dur != null && Number.isFinite(s.dur) ? `${s.dur} min` : "Logged",
     }));
@@ -1445,6 +1448,18 @@ function collectEvents(
         subtitle: p.count === 1 ? "1 session" : `${p.count} sessions`,
         href: historyDayHref(p.date),
         detailItems,
+        // ONE WINDOW PER SESSION (#3142). The day view's intraday panel draws each
+        // one — a block where `activityWindow` can bound it (end, or duration), a
+        // tick where only a start is known — and they all anchor to THIS day-grouped
+        // card, so the panel's "one visibility predicate" still holds: the sessions
+        // travel on the feed's own resolved event and are never a second query.
+        clockWindows: sessions.map((s) => ({
+          date: p.date,
+          start_time: s.start || null,
+          end_time: s.end || null,
+          duration_min:
+            s.dur != null && Number.isFinite(s.dur) ? s.dur : null,
+        })),
       },
       options
     );

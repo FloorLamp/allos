@@ -1345,11 +1345,18 @@ export const TIME_COLUMNS = {
   practice_logs: [
     { column: "date", semantic: "day", grain: "day", convention: "n/a" },
     {
-      column: "time",
+      column: "start_time",
       semantic: "event",
       grain: "time-of-day",
       convention: "n/a",
-      note: "A profile-local HH:MM, optional (the quick path writes none). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone, which is why eventInstant refuses without one.",
+      note: "The START of the session, a profile-local HH:MM, optional (a backdated correction states none). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone, which is why eventInstant refuses without one. It stays the table's `event` column through #3142's rename because it is still the one answer to \"when did this happen\" — but a TAP-stamped start trails the true start by up to a session length (a \"Done\" tap fires at or after the end), which is noise at the hour granularity the rhythm inference reads and is what the #2875 chips correct.",
+    },
+    {
+      column: "end_time",
+      semantic: "window-end",
+      grain: "time-of-day",
+      convention: "n/a",
+      note: "The same profile-local HH:MM as start_time, and NULL for every session nobody stated an end for — which is every tap (#3142: being one-tap is the point) and every import. Never derived from `duration_min`: `activityWindow` falls back to the duration at READ time, so storing that end would turn a derivation into a claim.",
     },
     {
       column: "created_at",

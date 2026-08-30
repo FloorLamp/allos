@@ -36,7 +36,7 @@ import {
   type IntradayHrPoint,
   type IntradayModel,
   type IntradaySleepBlock,
-  type IntradayWorkoutBlock,
+  type IntradayBlock,
 } from "./intraday";
 
 export type IntradayVariant = "compact" | "wide";
@@ -166,11 +166,11 @@ export function intradayGeometry(
   const base = INTRADAY_VARIANTS[variant];
   const hasHr = model.hr != null;
   const hasSleep = model.sleep.length > 0;
-  const hasWorkouts = model.workouts.length > 0;
+  const hasWorkouts = model.blocks.length > 0;
   const hasTicks = model.ticks.length > 0;
   // The bed/wake labels get their own strip above the band: painting them inside
   // it would sit them on the stage sub-bands, and painting them below would cross
-  // the workout row.
+  // the session-block row.
   const sleepLabelH = hasSleep ? base.labelSize + 3 : 0;
 
   let cursor = base.padTop;
@@ -413,7 +413,7 @@ export function sleepEdgeLabels(
   });
 }
 
-export interface WorkoutBlockLayout {
+export interface BlockLayout {
   key: string;
   left: number;
   width: number;
@@ -431,7 +431,7 @@ export interface WorkoutBlockLayout {
  *
  * Almost nothing does. A one-hour session is 1/24th of a 24-hour axis — about 27
  * user units of a 660-unit plot — which holds a 13-unit icon and not much else.
- * That is the honest arithmetic, and it is why `workoutLabels` below places most
+ * That is the honest arithmetic, and it is why `blockLabels` below places most
  * names BESIDE the block instead (#1512 B says "inside/beside"): a name that only
  * ever renders for a six-hour hike would not have fixed the "a 45-minute run and a
  * 45-minute lift look identical" complaint at all.
@@ -439,11 +439,11 @@ export interface WorkoutBlockLayout {
  * Nothing is painted past the block's right edge here — that is `elideToWidth`,
  * not a clip path.
  */
-export function workoutBlockLayout(
+export function blockLayout(
   geo: IntradayGeometry,
-  workout: IntradayWorkoutBlock
-): WorkoutBlockLayout | null {
-  const clipped = clipToView(geo, workout.startMinute, workout.endMinute);
+  block: IntradayBlock
+): BlockLayout | null {
+  const clipped = clipToView(geo, block.startMinute, block.endMinute);
   if (!clipped) return null;
   const left = projectMinute(geo, clipped.startMinute);
   const width = Math.max(
@@ -458,11 +458,11 @@ export function workoutBlockLayout(
   // Inside only when the WHOLE name fits: an elided name inside a narrow block
   // ("Mor…") is less informative than the same name painted in full beside it.
   const fits =
-    budget > 0 && textWidth(workout.title, geo.labelSize) <= budget
-      ? workout.title
+    budget > 0 && textWidth(block.title, geo.labelSize) <= budget
+      ? block.title
       : null;
   return {
-    key: workout.key,
+    key: block.key,
     left,
     width,
     showIcon,
@@ -472,7 +472,7 @@ export function workoutBlockLayout(
   };
 }
 
-export interface WorkoutLabel extends PlacedLabel {
+export interface BlockLabel extends PlacedLabel {
   key: string;
   /** `inside` when the block itself held the name; `beside` when it is painted in
    *  the row's free space just past the block's right edge. */
@@ -480,7 +480,7 @@ export interface WorkoutLabel extends PlacedLabel {
 }
 
 /**
- * Where every workout block's NAME goes (#1512 B), as ONE row layout.
+ * Where every block's NAME goes (#1512 B), as ONE row layout.
  *
  * A 45-minute run and a 45-minute lift are identical rectangles until something
  * names them, and the name only reached the SVG `<title>` — a touch dead end.
@@ -493,26 +493,26 @@ export interface WorkoutLabel extends PlacedLabel {
  * name that would overlap a kept one is dropped rather than smeared. The block,
  * its glyph and its `<title>` are still there — only the redundant text goes.
  */
-export function workoutLabels(
+export function blockLabels(
   geo: IntradayGeometry,
-  workouts: readonly IntradayWorkoutBlock[]
-): WorkoutLabel[] {
+  blocks: readonly IntradayBlock[]
+): BlockLabel[] {
   const items: (RowLabelInput & { mode: "inside" | "beside" })[] = [];
-  for (const workout of workouts) {
-    const layout = workoutBlockLayout(geo, workout);
+  for (const block of blocks) {
+    const layout = blockLayout(geo, block);
     if (!layout) continue;
     const inside = layout.text != null;
     const gap = geo.labelSize * 0.35;
     items.push({
-      key: workout.key,
+      key: block.key,
       mode: inside ? "inside" : "beside",
       x: inside ? layout.textX : layout.left + layout.width + gap,
-      text: workout.title,
+      text: block.title,
       fontSize: geo.labelSize,
       anchor: "start",
       // Longer session wins a collision, and a name the block itself carries
       // outranks one leaning on shared space.
-      priority: workout.endMinute - workout.startMinute + (inside ? 1e6 : 0),
+      priority: block.endMinute - block.startMinute + (inside ? 1e6 : 0),
     });
   }
   const placed = placeRowLabels(items, {

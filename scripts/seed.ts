@@ -2654,7 +2654,7 @@ db.prepare(
 // ~5 weeks of sessions, mostly 3–4 days/week (some days two sessions). Each row is a
 // real session with an optional local time + duration in minutes (canonical).
 const redLightSession = db.prepare(
-  `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, logged_via)
+  `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min, logged_via)
    VALUES (1, 'Red light therapy', ?, ?, ?, ${VIA_SEEDED})`
 );
 for (let d = 34; d >= 0; d--) {

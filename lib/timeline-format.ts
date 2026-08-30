@@ -81,19 +81,24 @@ export interface TimelineEvent {
   // document ≈ visit); "visit" = rows carrying a real encounter link to THIS visit,
   // the encounter detail page's own vocabulary (#1350). Absent when there are no refs.
   linkedRefsScope?: "visit" | "document";
-  // The event's raw LOCAL clock window (issue #1068), carried on the event so the
-  // Timeline day view's intraday panel can draw it as a span from the SAME event
-  // set the feed lists — one gather, two formatters, never a second per-layer
-  // query. Set only where the source row genuinely has a window (activities);
-  // absent everywhere else, which is exactly what data-gates the block layer. The
-  // span itself is resolved by the ONE canonical `activityWindow()` computation
-  // (lib/training-zones), the same one the training-zone aggregation uses.
-  clockWindow?: {
+  // The event's raw LOCAL clock windows (issue #1068), carried on the event so the
+  // day view's intraday panel can draw them from the SAME event set the feed lists —
+  // one gather, two formatters, never a second per-layer query. Set only where the
+  // source rows genuinely have a window; absent everywhere else, which is exactly
+  // what data-gates the block layer. Each span is resolved by the ONE canonical
+  // `activityWindow()` computation (lib/training-zones), the same one the
+  // training-zone aggregation uses.
+  //
+  // PLURAL because an event may stand for several sessions (#3142): an activity card
+  // is one activity and carries one, while a practice card is a practice-DAY and
+  // carries one per session on it. The panel draws a mark per window and anchors
+  // every one of them to this single feed entry.
+  clockWindows?: {
     date: string;
     start_time: string | null;
     end_time: string | null;
     duration_min: number | null;
-  };
+  }[];
 }
 
 // The DOM id of a rendered feed entry (issue #1068). The intraday panel's ticks

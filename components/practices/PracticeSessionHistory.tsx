@@ -22,8 +22,17 @@ import {
 
 function sessionFacts(session: PracticeLog, prefs: DisplayFormatPrefs): string {
   const parts = [formatDateWithYear(session.date, prefs)];
-  if (session.time)
-    parts.push(formatClockValue(session.time, prefs.timeFormat));
+  // The stated WINDOW where there is one, the start alone otherwise (#3142) — the
+  // same "end, else nothing" precedence `activityWindow` applies, never a second
+  // rule. The duration stays its own fact: it is user-stated and may disagree.
+  if (session.start_time) {
+    const start = formatClockValue(session.start_time, prefs.timeFormat);
+    parts.push(
+      session.end_time
+        ? `${start}–${formatClockValue(session.end_time, prefs.timeFormat)}`
+        : start
+    );
+  }
   if (session.duration_min != null) parts.push(`${session.duration_min} min`);
   return parts.join(" · ");
 }
@@ -185,12 +194,29 @@ export default function PracticeSessionHistory({
                 inputClassName="mt-1 w-full"
               />
             </label>
+            {/* START AND END (#3142, owner decision "just migrate time → start").
+                There is no separate "time" concept left to show, so the single Time
+                input became the pair — the same start/end shape the activity form
+                states, and unmodelled by WhenControl for the same reason (see
+                lib/__tests__/time-input-scan.test.ts). Both optional: a session may
+                state a start and no end, and `activityWindow` then derives the end
+                from Duration. */}
             <label className="text-xs text-slate-500 dark:text-slate-400">
-              Time
+              Start
               <input
                 type="time"
-                name="time"
-                defaultValue={session.time ?? ""}
+                name="start_time"
+                defaultValue={session.start_time ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              End
+              <input
+                type="time"
+                name="end_time"
+                defaultValue={session.end_time ?? ""}
+                min={session.start_time ?? undefined}
                 className="input mt-1 w-full"
               />
             </label>

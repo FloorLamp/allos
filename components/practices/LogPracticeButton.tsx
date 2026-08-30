@@ -283,15 +283,16 @@ export default function LogPracticeButton({
         fd.set("practice", practice);
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
-        // No `time` field is set on any path here — its absence is what tells the
-        // write core to stamp the tap instant (#2204 part 2).
+        // No `start_time` field is set on any path here — its absence is what tells
+        // the write core to stamp the tap instant (#2204 part 2). No `end_time`
+        // either: a tap never states a window (#3142).
         const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
         const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
-        if (at) fd.set("time", at);
+        if (at) fd.set("start_time", at);
         return logPractice(fd);
       },
       settle: (outcome) => {
@@ -530,9 +531,20 @@ export default function LogPracticeButton({
                 required
               />
             </label>
+            {/* START AND END (#3142, owner decision). Both optional: the pair is
+                what lets a stated session draw a block on the day view's chart, and
+                a start alone still draws a tick. */}
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Time
-              <input type="time" name="time" className="input mt-1 w-full" />
+              Start
+              <input
+                type="time"
+                name="start_time"
+                className="input mt-1 w-full"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              End
+              <input type="time" name="end_time" className="input mt-1 w-full" />
             </label>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Duration (minutes)

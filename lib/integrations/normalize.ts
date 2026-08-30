@@ -157,7 +157,11 @@ export interface NormPracticeLog {
   external_id: string;
   practice: string;
   date: string;
-  time: string | null;
+  // The session's START (#3142). Every source that sets it already means a start —
+  // the Fitbit takeout maps `log.startTime` here — so the rename made the field
+  // honest rather than changing any value. No source states an END: `end_time` stays
+  // NULL on imported rows and `activityWindow` derives the end from `duration_min`.
+  start_time: string | null;
   duration_min: number | null;
 }
 
@@ -167,20 +171,30 @@ export function upsertPracticeLogs(
   source: string,
   sink?: SyncRowSink
 ): UpsertCounts {
-  const compareCols = ["practice", "date", "time", "duration_min", "source"];
+  // The RENAMED column is in the compare set (#3142), so a re-import of an unchanged
+  // session still classifies as `unchanged`. `end_time` is deliberately absent: no
+  // source states one, so it is not a column this upsert owns and comparing it would
+  // be a claim about a value the importer never writes.
+  const compareCols = [
+    "practice",
+    "date",
+    "start_time",
+    "duration_min",
+    "source",
+  ];
   const find = db.prepare(
-    `SELECT id, edited, practice, date, time, duration_min, source
+    `SELECT id, edited, practice, date, start_time, duration_min, source
        FROM practice_logs WHERE profile_id = ? AND external_id = ?`
   );
   const insert = db.prepare(
     `INSERT INTO practice_logs
-       (profile_id, practice, date, time, duration_min, source, external_id,
-        logged_via)
+       (profile_id, practice, date, start_time, duration_min, source,
+        external_id, logged_via)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const update = db.prepare(
     `UPDATE practice_logs
-        SET practice = ?, date = ?, time = ?, duration_min = ?, source = ?
+        SET practice = ?, date = ?, start_time = ?, duration_min = ?, source = ?
       WHERE id = ? AND profile_id = ?`
   );
   // Fitbit meditations originally landed in activities. Migration 118 moves the
@@ -213,7 +227,7 @@ export function upsertPracticeLogs(
       const post: Record<string, unknown> = {
         practice: row.practice,
         date: row.date,
-        time: row.time,
+        start_time: row.start_time,
         duration_min: row.duration_min,
         source,
       };
@@ -225,7 +239,7 @@ export function upsertPracticeLogs(
         update.run(
           row.practice,
           row.date,
-          row.time,
+          row.start_time,
           row.duration_min,
           source,
           found.id,
@@ -257,7 +271,7 @@ export function upsertPracticeLogs(
         profileId,
         row.practice,
         row.date,
-        row.time,
+        row.start_time,
         row.duration_min,
         source,
         row.external_id,
