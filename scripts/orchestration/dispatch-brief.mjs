@@ -663,6 +663,27 @@ ${landingLines}
   So instrument once, in a throwaway file you delete: count the fixtures, seeds or rows
   that actually reach the forbidden state. A zero is your answer. This costs one run and
   it is what turns "my test passes" into "my test could have failed".
+- DO NOT NAME A CAUSE YOU HAVE NOT LOOKED FOR. A failure signature -- \`sticky\` dying, a
+  null bounding box, an element hidden, a count off by one -- has a small set of textbook
+  causes, and your mind supplies one instantly and fluently. That fluency IS the trap:
+  "this cause would explain the symptom" and "this cause exists in the code in front of
+  me" are different claims, and only the first has been checked. The second is usually
+  one grep away. Measured 2026-08-30, one lane, TWICE in a day: "the quick-entry mount
+  receives no ledger prop, so nothing in this diff renders there" -- true premise, and
+  the mount was three lines away in a file never opened; and "a keep-apart notice above
+  the rows carried its own list inside a collapsed disclosure" -- where that component
+  renders no list and has no disclosure at all. Both went into a PR body and a commit
+  message before either was checked; both were disproven later by the author, by a
+  single grep.
+  So before a cause goes into a commit message, a comment, or a PR body, GREP FOR ITS
+  MECHANISM. Say "a collapsed disclosure hid it" only after grepping that subtree for a
+  disclosure. Say "nothing renders there" only after grepping for the mount. If the
+  mechanism is not there you do not have a cause -- you have a symptom and a guess, and
+  "I DON'T KNOW WHY" IS THE CORRECT THING TO WRITE. A wrong cause is worse than none: it
+  is durable, it is trusted by the next reader, and it sends them somewhere the bug is
+  not. This is the twin of the fixture rule above -- that one asks whether your test can
+  REACH the state it forbids, this one asks whether your explanation EXISTS. Both are one
+  cheap command.
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
   container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
   \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
