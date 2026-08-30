@@ -17,9 +17,10 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { saveFitnessTest } from "@/app/(app)/training/fitness-actions";
+import { getProteinAdequacy } from "@/lib/queries";
 import { actAs, createLogin, createProfile, seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -455,6 +456,79 @@ describe("the cadence rule: functional-fitness markers moved, storage did not", 
       category: "vitals",
       value_num: 30,
       unit: "seconds",
+    });
+  });
+});
+
+// ── #1851: three gaps the form could not take ────────────────────────────────
+//
+// Each of these drives the REAL action with the field names the form posts, and
+// asserts the CANONICAL stored value — a field that renders and writes nothing
+// passes any "the input exists" check, and a lean mass stored in pounds would
+// scale the protein band by 2.2×. The composition half's whole point is the
+// consumer, so the protein case asserts the BAND MOVES, not merely that a number
+// was stored.
+
+describe("addMeasurements — the #1851 manual-entry gaps", () => {
+  it("stores water, lean mass and bone mass in canonical litres and kilograms", async () => {
+    const { profile } = seedActor();
+    await addMeasurements(
+      fd({
+        date: DATE,
+        hydration: "2.4",
+        lean_mass: "130",
+        lean_mass_unit: "lb",
+        bone_mass: "2.9",
+        bone_mass_unit: "kg",
+      })
+    );
+
+    expect(sampleValue(profile.id, "hydration_l")).toBe(2.4);
+    // 130 lb is 58.97 kg — the number the chart, the passport and the protein
+    // band all read. Storing 130 here would be the whole bug.
+    expect(sampleValue(profile.id, "lean_mass_kg")).toBe(58.97);
+    expect(sampleValue(profile.id, "bone_mass_kg")).toBe(2.9);
+    expect(revalidate).toHaveBeenCalled();
+  });
+
+  it("moves the protein band onto the lean basis a hand-entered DEXA figure gives it", async () => {
+    const { profile } = seedActor();
+    const anchor = today(profile.id);
+    db.prepare(
+      "INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)"
+    ).run(profile.id, anchor, 80);
+    // An intake, so the adequacy gather has something to judge the band against.
+    db.prepare(
+      "INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, 'poultry', 2)"
+    ).run(profile.id, anchor);
+
+    const before = getProteinAdequacy(profile.id);
+    expect(before?.target.massBasis).toBe("total");
+    expect(before?.target.massKg).toBe(80);
+
+    await addMeasurements(
+      fd({ date: anchor, lean_mass: "56.4", lean_mass_unit: "kg" })
+    );
+
+    const after = getProteinAdequacy(profile.id);
+    expect(after?.target.massBasis).toBe("lean");
+    expect(after?.target.massKg).toBe(56.4);
+    // The consumer this issue is about: the band itself moves, so the grams the
+    // Food tab shows are scaled by lean mass rather than by total bodyweight.
+    expect(after!.target.gramsLow).toBeLessThan(before!.target.gramsLow);
+    expect(after!.target.gramsHigh).toBeLessThan(before!.target.gramsHigh);
+  });
+
+  it("writes a counted respiratory rate onto the canonical vitals row", async () => {
+    const { profile } = seedActor();
+    await addMeasurements(fd({ date: DATE, respiratory_rate: "22" }));
+
+    expect(medRows(profile.id, "Respiratory Rate")[0]).toMatchObject({
+      date: DATE,
+      category: "vitals",
+      value_num: 22,
+      unit: "breaths/min",
+      source: "manual",
     });
   });
 });

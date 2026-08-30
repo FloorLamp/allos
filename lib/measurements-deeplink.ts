@@ -51,7 +51,7 @@ export function deepLinkFieldId(
 
 // ── The form's GROUPS (issue #2014) ─────────────────────────────────────────
 //
-// The combined form is thirteen fields, and thirteen always-empty boxes to collect
+// The combined form is eighteen fields, and eighteen always-empty boxes to collect
 // the one or two readings someone actually took is the thing its own copy argues
 // against ("fill in only what you measured"). They are disclosed in three groups,
 // exactly one of which is open on mount — chosen by where the person came from.
@@ -93,6 +93,9 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   // exactly what the group's own copy describes. (Its clock time — like the
   // temperature's — is the form's ONE shared Time since #2154's fold.)
   "m-peak-flow": "vitals",
+  // Respiratory rate (#1851). In VITALS with the rest of the clinical set — it is
+  // the one a caregiver is told to count during a fever, beside the temperature.
+  "m-respiratory-rate": "vitals",
   "m-weight": "body",
   "m-body-fat": "body",
   "m-height": "body",
@@ -100,6 +103,14 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   // Waist circumference (#2322). In BODY beside weight and height: it is a body
   // measurement someone takes with a tape in the same sitting they weigh themselves.
   "m-waist-circ": "body",
+  // Lean and bone mass (#1851). In BODY with weight and body fat: they are the
+  // rest of the same composition reading, whether a scale or a DEXA produced it.
+  "m-lean-mass": "body",
+  "m-bone-mass": "body",
+  // Water (#1851). In BODY rather than in a group of its own: it is one number
+  // logged in the same sitting, and a fourth disclosure holding a single field
+  // would cost more than it explains.
+  "m-hydration": "body",
   "m-sleep": "sleep",
   "m-hrv": "sleep",
 };
@@ -161,6 +172,7 @@ export function measurementGroupSummary(
     );
     add(value("glucose"), (v) => `${v} ${value("glucose_unit") ?? "mg/dL"}`);
     add(value("peak_flow"), (v) => `${v} L/min`);
+    add(value("respiratory_rate"), (v) => `${v}/min`);
   } else if (group === "body") {
     add(value("weight"), (v) => `${v} ${value("weight_unit") ?? "kg"}`);
     add(value("body_fat_pct"), (v) => `${v}% fat`);
@@ -173,6 +185,15 @@ export function measurementGroupSummary(
       value("waist_circ"),
       (v) => `${v} ${value("waist_circ_unit") ?? "cm"} waist`
     );
+    add(
+      value("lean_mass"),
+      (v) => `${v} ${value("lean_mass_unit") ?? "kg"} lean`
+    );
+    add(
+      value("bone_mass"),
+      (v) => `${v} ${value("bone_mass_unit") ?? "kg"} bone`
+    );
+    add(value("hydration"), (v) => `${v} L water`);
   } else {
     add(value("sleep_hours"), (v) => `${v} hrs sleep`);
     add(value("hrv"), (v) => `${v} ms HRV`);

@@ -129,6 +129,11 @@ const MEASUREMENT_ENTRY_METRIC: Partial<
   "head-circ": "head-circ",
   "peak-flow": "peak-flow",
   "waist-circ": "waist-circ",
+  // #1851 — each of these now renders its own single-field form on its detail page.
+  "respiratory-rate": "respiratory-rate",
+  "lean-mass": "lean-mass",
+  "bone-mass": "bone-mass",
+  hydration: "hydration",
 };
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
