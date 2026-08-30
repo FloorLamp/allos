@@ -3,6 +3,7 @@
 //
 //   npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
 //   npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply   # writes
+//   … --apply --notify 123,456    # 123/456 are IN FLIGHT: comment even if quiet
 //
 // A plan file is `{ "<issue>": [ { kind, anchor, replacement, reason }, … ] }`,
 // with each entry an `AnchoredPatch`. For every issue it re-reads the CURRENT
@@ -15,10 +16,15 @@
 // guardrail is that the routine never closes an issue. Granting the run a
 // close-capable tool and instructing it not to close things is the same
 // theatre as gating a Server Action in the UI only. So the run is granted THIS
-// and not that: the request payload is constructed from exactly one field,
-// `body`, and there is no branch anywhere in this file that can add a second.
-// `lib/__tests__/reconcile-tracker.test.ts` asserts that as a source scan, and
-// the skill's `allowed-tools` grants no close-capable alternative.
+// and not that: exactly two writes exist, each with a payload constructed from
+// one field — the body PATCH, and a comment POST that announces a body edit to
+// an issue with READERS (a non-empty comment chain, or an in-flight issue
+// named via --notify), because a body PATCH is silent — no notification, no
+// timeline event — and the thread's readers would keep working from the
+// pre-edit text (2026-08-30). Neither endpoint has a field an issue's status
+// could ride in. `lib/__tests__/reconcile-tracker.test.ts` asserts all of that
+// as a source scan, and the skill's `allowed-tools` grants no close-capable
+// alternative.
 //
 // The re-read before each patch is not politeness, it is the anchor contract: the
 // evidence may be hours old, the tracker moves hourly, and a drifted anchor
@@ -36,9 +42,29 @@ import fs from "node:fs";
 import { buildRepoIndex } from "./reconcile-repo-index";
 import { applyPatchPlan, type AnchoredPatch } from "./reconcile-patch";
 import { resolveRunConfig, symbolExists } from "./reconcile-tracker-core";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const config = resolveRunConfig(process.env, process.argv.slice(2));
-const [planFile] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+// --notify 123,456: issues whose body edits get a comment even with an empty
+// comment chain — the orchestrator passes its roster's IN-FLIGHT issues here,
+// because a lane that already read the body works from the pre-edit text and
+// only a comment reaches it (briefs require re-reading comments; a body PATCH
+// is silent — no notification, no timeline event).
+const argvRest = process.argv.slice(2);
+const notify = new Set<string>();
+const positional: string[] = [];
+for (let i = 0; i < argvRest.length; i++) {
+  const arg = argvRest[i];
+  if (arg === "--notify") {
+    for (const n of (argvRest[++i] ?? "").split(",")) {
+      if (n.trim()) notify.add(n.trim());
+    }
+  } else if (!arg.startsWith("--")) {
+    positional.push(arg);
+  }
+}
+const [planFile] = positional;
 const APPLY = process.argv.includes("--apply");
 
 if (!planFile) {
@@ -82,17 +108,26 @@ function authHeaders(): string[] {
  * editing a closed issue's body is a write nobody asked for, onto a record
  * somebody has already finished reading.
  */
-function readIssue(issue: string): { body: string; open: boolean } {
+function readIssue(issue: string): {
+  body: string;
+  open: boolean;
+  comments: number;
+} {
   const one = curlJson(["-X", "GET", ...authHeaders(), issueUrl(issue)]) as {
     body: string | null;
     state?: string;
+    comments?: number;
   };
-  return { body: one.body ?? "", open: one.state !== "closed" };
+  return {
+    body: one.body ?? "",
+    open: one.state !== "closed",
+    comments: one.comments ?? 0,
+  };
 }
 
 /**
- * The one write. The payload is built here, from one field, and this is the
- * only `execFileSync` in the file that is not a GET.
+ * The body write. The payload is built here, from one field; the only other
+ * non-GET in the file is the comment POST below, equally confined.
  */
 function writeBody(issue: string, body: string): void {
   curlJson([
@@ -103,6 +138,48 @@ function writeBody(issue: string, body: string): void {
     JSON.stringify({ body }),
     issueUrl(issue),
   ]);
+}
+
+/**
+ * The visibility write. A body PATCH is SILENT — no notification, no timeline
+ * event — so an issue with readers (a comment chain, or an in-flight lane
+ * named via --notify) also gets a comment saying what changed; without it the
+ * thread's readers keep working from the pre-edit text. The comments endpoint
+ * takes one field and has nowhere for an issue's status to ride, so this stays
+ * inside the routine's no-close guarantee.
+ */
+function writeComment(issue: string, note: string): void {
+  curlJson([
+    "-X",
+    "POST",
+    ...authHeaders(),
+    "--data-binary",
+    JSON.stringify({ body: note }),
+    `${issueUrl(issue)}/comments`,
+  ]);
+}
+
+function reconciliationNote(
+  entries: ReadonlyArray<{ patch: AnchoredPatch; outcome: { ok: boolean } }>
+): string {
+  const lines = entries
+    .filter((e) => e.outcome.ok)
+    .map(
+      (e) =>
+        `- ${e.patch.kind}: ${e.patch.anchor} → ${e.patch.replacement}` +
+        (e.patch.reason ? ` (${e.patch.reason})` : "")
+    );
+  return [
+    "Tracker reconciliation edited this issue's body just now:",
+    "",
+    ...lines,
+    "",
+    "The body above is current; earlier comments and any in-flight brief may " +
+      "quote the pre-edit text.",
+    "",
+    "---",
+    "_Generated by [Claude Code](https://claude.ai/code)_",
+  ].join("\n");
 }
 
 const plan = JSON.parse(fs.readFileSync(planFile, "utf8")) as Record<
@@ -119,7 +196,7 @@ let applied = 0;
 let refused = 0;
 let skipped = 0;
 for (const [issue, patches] of Object.entries(plan)) {
-  const { body: before, open } = readIssue(issue);
+  const { body: before, open, comments } = readIssue(issue);
   if (!open) {
     skipped += patches.length;
     console.log(
@@ -140,9 +217,21 @@ for (const [issue, patches] of Object.entries(plan)) {
     }
   }
   if (body === before) continue;
-  if (APPLY) writeBody(issue, body);
-  else
-    console.log(`#${issue}: ${entries.length} patches, dry run (no --apply)`);
+  const hasReaders = comments > 0 || notify.has(issue);
+  if (APPLY) {
+    writeBody(issue, body);
+    if (hasReaders) {
+      writeComment(issue, reconciliationNote(entries));
+      console.log(
+        `#${issue}: commented (${notify.has(issue) ? "in flight" : `${comments} earlier comments`}) — the body edit alone would be silent`
+      );
+    }
+  } else {
+    console.log(
+      `#${issue}: ${entries.length} patches, dry run (no --apply)` +
+        (hasReaders ? " — would also comment: this thread has readers" : "")
+    );
+  }
 }
 console.log(
   `\napplied ${applied} · refused ${refused}${skipped > 0 ? ` · skipped ${skipped} (closed)` : ""}`

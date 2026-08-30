@@ -606,12 +606,21 @@ describe("the exit codes", () => {
 
   it("exits 2, never 1 or 3, when it cannot read the PR at all", () => {
     // A refusal of a DIFFERENT question than CONSULT: the tool has no facts.
+    // PATH is emptied so the `gh auth token` fallback (host.mjs) cannot
+    // answer on a machine that happens to carry an authenticated gh.
     const run = spawnSync(process.execPath, [SCRIPT, "12345", "--check"], {
       encoding: "utf8",
-      env: { ...process.env, GH_TOKEN: "", GITHUB_TOKEN: "" },
+      env: {
+        ...process.env,
+        GH_TOKEN: "",
+        GITHUB_TOKEN: "",
+        PATH: "/nonexistent",
+      },
     });
     expect(run.status).toBe(EXIT.cannotAnswer);
-    expect(run.stderr).toContain("GH_TOKEN/GITHUB_TOKEN missing");
+    expect(run.stderr).toContain(
+      "No GH_TOKEN/GITHUB_TOKEN and no authenticated gh"
+    );
   });
 
   it("exits 2 on a missing PR number rather than answering", () => {

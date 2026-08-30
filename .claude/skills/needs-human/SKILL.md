@@ -6,44 +6,36 @@ allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), 
 
 # needs-human — the resolution half of the queue
 
-`docs/orchestration.md` §Labels defines how questions ENTER the queue: an agent
-states a SPECIFIC question, the orchestrator applies `needs-human` + assigns the
-owner the same day. This skill is how questions LEAVE it. It runs in an
-interactive session with the owner — it asks; it never decides for them.
+`docs/orchestration/labels.md` defines how questions ENTER the queue: an
+agent states a SPECIFIC question; the orchestrator labels + assigns same-day.
 
-The `reconcile-tracker` skill is the other inflow: its weekly pass FLAGS
-judgment calls instead of making them, and every flag it raises is a
-`needs-human` candidate. The two compose — reconcile finds and labels with the
-owner absent; this skill resolves with the owner present. Neither does the
-other's job.
+This skill is how questions LEAVE it — an interactive session with the
+owner. It asks; it never decides for them.
 
-**Hard guardrails** (the #865 posture): never close an issue · never answer a
-question on the owner's behalf — an unanswered question keeps its label, because
-silence is not consent · record rulings with their REASONING, verbatim in
-intent · scope every supersession narrowly (a ruling about one surface does not
-rewrite the doctrine that governs another) · when the owner's answer contradicts
-recorded doctrine, that tension belongs IN the question's options, stated before
-they answer — never discovered after.
+`reconcile-tracker` is the other inflow: its pass FLAGS judgment calls, and
+every flag is a candidate here. Reconcile finds with the owner absent; this
+skill resolves with the owner present. Neither does the other's job.
+
+**Hard guardrails** (the #865 posture): never close an issue · never answer on
+the owner's behalf (silence is not consent; an unanswered question keeps its
+label) · record rulings with their REASONING · scope supersessions narrowly.
+
+When the owner's answer would contradict recorded doctrine, that tension
+belongs IN the question's options, stated before they answer — never
+discovered after.
 
 ## 0. Transport
 
 **`docs/orchestration/environment.md` §GitHub access governs, in full**: REST
-outside the MCP set, `gh api` or plain `curl` for the same paths, reads
-unauthenticated, writes on `${GH_TOKEN:-$GITHUB_TOKEN}`, PATCH where a sandbox
-refuses DELETE, and no write believed until re-read. Read it there; it is not
-restated here, and where this file shows `gh api X`, that means the path by
-whichever transport you have.
+outside the MCP set, reads unauthenticated, writes on the token variables, PATCH
+where a sandbox refuses DELETE, no write believed until re-read.
 
-What that rule means for THIS sweep, and the reason it is worth naming:
-
-- **`command -v gh` once, at the start.** `gh` is absent in Claude Code remote
-  sessions, which is the session type that most often owns this queue — the
-  skill's first live run discovered that at step 1 rather than step 0.
-- **An unset token does not cancel the sweep.** Steps 1–3 are all reads, so
-  gather, audit and ask run unchanged; only step 4 stops, saying plainly that
-  it can record nothing and handing the owner the drafted rulings. A queue
-  sweep that quits at step 0 over a credential it does not need yet has thrown
-  away the whole conversation with the owner.
+- **`command -v gh` once, at the start** — `gh` is absent in Claude Code
+  remote sessions, the session type that most often owns this queue.
+- **An unset token does not cancel the sweep.** Steps 1–3 are reads; only
+  step 4 stops, saying plainly it can record nothing and handing the owner
+  the drafted rulings. Quitting at step 0 over an unneeded credential throws
+  away the whole conversation.
 
 ## 1. Gather
 
@@ -54,129 +46,89 @@ gh api "repos/OWNER/REPO/issues?labels=needs-human&state=open" \
   --jq '.[] | "\(.number)\t\(if .pull_request then "PR" else "issue" end)\t\(.title)"'
 ```
 
-Cross-check `assignee=OWNER` — the two sets should match (the #2688 contract
-pairs them); a mismatch is itself a finding to repair at the end.
+Cross-check `assignee=OWNER` — the sets should match (#2688 pairs them); a
+mismatch is itself a finding to repair at the end.
 
-**The wider sweep** (optional, and worth it when the owner asks "what needs
-me?" rather than naming the label): flagged questions predating the label die in
-prose. Grep open-issue bodies and the last ~2 weeks of merged-PR bodies for
-`owner call|owner ruling|open question|needs a ruling|flagged for`. Anything
-found that is genuinely open gets the label + assignment ON THE SPOT (that is
-the orchestrator duty this skill is executing), then joins the queue below.
-Discard matches whose bodies already record the ruling inline — resolved calls
-stay in issue prose by convention and are not open questions.
+**The wider sweep**, when the owner asks "what needs me?": flagged questions
+predating the label die in prose. Grep open issues and ~2 weeks of merged PRs
+for `owner call|owner ruling|open question|needs a ruling|flagged for`.
+
+Anything genuinely open gets the label + assignment ON THE SPOT, then joins
+the queue. Discard matches whose bodies already record the ruling inline.
 
 ## 2. Context — audit before asking
 
 For each item, before any question reaches the owner:
 
-- **Read the WHOLE body and EVERY comment, freshly, now.** Not a slice, not a
-  `head`, and never a read cached from earlier in the session. This skill
-  appends its rulings to the END of a body and adds questions as comments, so
-  the newest and most binding text is exactly what a truncated read drops. The
-  failure is not hypothetical: in a live run an agent read an issue's body to
-  its first 3000 characters during unrelated work, missed an owner ruling made
-  hours earlier that same day, and then asked the owner a question whose
-  recommended option contradicted their own morning ruling — the tension
-  surfaced only afterwards, which is precisely what the hard guardrail above
-  forbids. A questioned issue may also have been ruled on since you last looked;
-  re-read it immediately before asking, not once at the start of the sweep.
-- **Find the specific question(s).** The label contract requires them stated.
-  If an item carries the label but no extractable question, that is a defect in
-  the filing — derive the question from the body if it is honestly derivable,
-  otherwise report the item as mislabeled rather than inventing a question.
-  Questions can arrive by comment after filing (a fourth question appended to a
-  three-question issue), so the comment thread is part of the question set, not
-  context around it.
+- **Read the WHOLE body and EVERY comment, freshly, now** — never a slice or
+  a cached read. Rulings append to body ENDS and questions arrive as
+  comments, so truncation drops the most binding text; a live run missed a
+  same-morning ruling and asked a question contradicting it.
+- Re-read immediately before ASKING, not once at sweep start — a ruling can
+  land mid-sweep.
+- **Find the specific question(s).** The label contract requires them
+  stated. No extractable question is a filing defect: derive it honestly or
+  report the item mislabeled — never invent one. The comment thread is part
+  of the question set, not context around it.
 - **Premise-audit against current main.** The question was written against a
-  past tree. Verify the code it describes still exists and still behaves as
-  claimed (a merge since filing may have resolved, moved, or reshaped it).
-  A question whose premise died is reported as resolved-by-events, with the
-  commit that did it — not asked.
-- **Ripeness.** A question conditioned on unshipped work ("decide after living
-  with X" where X has not shipped) is NOT askable. Post a dated note on the
-  issue naming the condition and what agents should treat as the open work
-  meanwhile; the label and assignment STAND (the set stays queryable), and the
-  next sweep re-checks the condition instead of re-asking.
-- **Stakes.** Collect what concretely hangs on the answer: which PR deferred
-  which piece on it, which agent work is blocked. This goes into the question —
-  the owner decides better knowing what an answer unblocks.
+  past tree; a merge may have resolved or reshaped it. A dead premise is
+  reported resolved-by-events with the commit — not asked.
+- **Ripeness.** A question conditioned on unshipped work is NOT askable.
+  Post a dated note naming the condition; label and assignment STAND, and
+  the next sweep re-checks the condition instead of re-asking.
+- **Stakes.** Collect what hangs on the answer — which PR deferred what,
+  which agent work is blocked. The owner decides better knowing what an
+  answer unblocks.
 
 ## 3. Ask
 
-Batch with `AskUserQuestion`, up to 4 questions per call, multiple rounds until
-the queue is drained or the owner stops. Per question:
+Batch with `AskUserQuestion`, up to 4 per call, rounds until drained or the
+owner stops. Per question:
 
-- **Say what it does to the person using the app, in plain English, FIRST.** Not
-  the module, not the function, not the doctrine — what someone trying to do
-  something notices. This is the rule the skill's own first run failed: a
-  question about whether a signifier check should run at Tier 1 came back
-  "explain simply, how does this impact the user", and the answer that actually
-  let the owner decide was three sentences with no identifiers in them — _a
-  child's BMI percentile is saved, but it does not show up in the list you would
-  browse to find it, and the one link that points at it opens a chart that
-  cannot display it. For a child the percentile is the meaningful number, so the
-  useful value is the hard one to find._
-  Write that paragraph BEFORE the options, every time, even when the mechanism
-  seems self-evident — it is self-evident to whoever just read the code, which
-  is exactly why they are the wrong judge of it. If a question genuinely has no
-  user-visible consequence, say so in the same place and explain what it costs
-  instead (agent time, a guard's reach, a doc's truthfulness); "no user impact"
-  is useful context, not a reason to skip the sentence.
-  Symbol names belong AFTER that, for the implementer who reads the ruling later.
-- **Recommendation first**, labeled `(Recommended)`, with the reasoning IN the
-  description — the owner is ratifying or overruling an argument, not picking a
-  label.
-- **Every option carries its cost.** The rejected option's genuine advantages
-  are stated in its description; an option with no stated downside is not an
-  option, it is an ambush.
-- **Name doctrine tensions inside the question.** If an option would supersede
-  a recorded ruling (#NNNN), say which and how far.
-- **Present the full-scope option honestly** beside the incremental one, with
-  its guardrails stated — never silently drop the ambitious shape because it
-  seems too big. Deciding scale is exactly the owner's call, and this owner's
-  record runs toward the fuller piece.
+- **Say what it does to the person using the app, in plain English, FIRST** —
+  not the module or doctrine, but what someone trying to do something
+  notices. The mechanism is self-evident only to whoever just read the code,
+  which is exactly why they are the wrong judge of it.
+- Write that paragraph before the options every time. If a question truly
+  has no user-visible consequence, say so there and state what it costs
+  instead (agent time, a guard's reach). Symbol names come AFTER, for the
+  implementer who reads the ruling later.
+- **Recommendation first**, labeled `(Recommended)`, reasoning IN the
+  description — the owner ratifies or overrules an argument, not a label.
+- **Every option carries its cost.** An option with no stated downside is
+  not an option, it is an ambush.
+- **Name doctrine tensions inside the question** — if an option supersedes a
+  recorded ruling (#NNNN), say which and how far.
+- **Present the full-scope option honestly** beside the incremental one —
+  deciding scale is exactly the owner's call, and this owner's record runs
+  toward the fuller piece.
 
 ## 4. Record — rulings live where implementers read
 
 An answer nobody recorded is a question that will be asked again.
 
-- **Issue-shaped answers** go in the ISSUE BODY as a dated block —
-  `**Owner ruling (YYYY-MM-DD)**` or an `## Owner rulings (date)` section —
-  with the reasoning, not just the verdict. Superseded prose is struck INLINE
-  (`~~old instruction~~ **struck by owner ruling, date**: what governs now and
-  why), so an implementer reading the spec cannot resurrect it. This is the
-  repo's convention: rulings are recorded in the body they amend, the way
-  #2460/#2565/#2579 carry theirs.
-- **PR-shaped answers** (a merge gate, a ratified deviation from the issue's
-  spec) go as a PR COMMENT, and cross-record on the issue when the issue's spec
-  is what was deviated from.
-- **Scope supersessions precisely.** "Ruling X replaces #NNNN on this surface;
-  #NNNN still governs Y" — one sentence of scoping prevents the next agent
-  generalizing a surface ruling into doctrine.
-- **An answer outside the offered options is still a ruling.** The owner may
-  reply in free text — "bigger solid dots" against options that only offered
-  keep / revert. Record it as ruled rather than re-asking, and before recording,
-  CHECK IT AGAINST THE PINNED CONSTRAINTS so the ruling is not an impossible
-  spec: that dot answer met a test asserting a strict radius ladder
-  (`CHART_DOT_R < CHART_SPARSE_DOT_R < CHART_ACTIVE_DOT_R`), so the recorded
-  ruling names the ladder and the headroom inside it. A ruling an implementer
-  cannot satisfy comes straight back to this queue.
-- **The owner may REVISE an earlier ruling, including their own from that
-  morning.** Record it as a dated AMENDMENT that narrows the original inline
-  (`~~absolute phrasing~~ **amended (date): the X half stands, the Y half is
-narrowed to Z**`) rather than rewriting or deleting the original — the
-  reasoning that produced the first ruling is still the reasoning for the part
-  that survives. State exactly what the amendment now permits and, in the same
-  breath, what stays declined, so it cannot be read as reopening everything.
-  Then cross-record on any issue that was filed in tension with the original,
-  because whoever picks that issue up is the person the amendment is for.
+- **Issue-shaped answers** go in the ISSUE BODY as a dated block
+  (`**Owner ruling (YYYY-MM-DD)**`) with the reasoning. Superseded prose is
+  struck INLINE (`~~old~~ **struck by owner ruling, date**: what governs
+now`), the way #2460/#2565/#2579 carry theirs.
+- **PR-shaped answers** (a merge gate, a ratified deviation) go as a PR
+  COMMENT, cross-recorded on the issue when its spec was deviated from.
+- **Scope supersessions precisely** — "X replaces #NNNN on this surface;
+  #NNNN still governs Y" — so the next agent cannot generalize a surface
+  ruling into doctrine.
+- **An answer outside the offered options is still a ruling.** Record it
+  rather than re-asking — but CHECK IT AGAINST PINNED CONSTRAINTS first, so
+  the recorded ruling is not an impossible spec (a free-text dot-size ruling
+  once had to name the radius-ladder test and its headroom).
+- **The owner may REVISE an earlier ruling**, including that morning's.
+  Record a dated AMENDMENT narrowing the original inline — never rewrite or
+  delete it; the original reasoning still carries the surviving part.
+- State what the amendment now permits and what stays declined in the same
+  breath, then cross-record on any issue filed in tension with the original.
 - **Mechanics:** PATCH bodies via REST with a body file
-  (`gh api repos/OWNER/REPO/issues/N -X PATCH -F body=@file.md`), same for
-  comments (`POST .../issues/N/comments -F body=@file.md`). The
-  verify-by-re-reading rule is §GitHub access's, and it is not optional here:
-  a ruling that silently failed to write is a question the owner answered and
-  the tracker never heard.
+  (`gh api repos/OWNER/REPO/issues/N -X PATCH -F body=@file.md`); comments
+  via `POST .../issues/N/comments`. Re-read to verify — a ruling that
+  silently failed to write is an answer the tracker never heard.
 
 ## 5. Un-label, un-assign, route
 
@@ -187,9 +139,8 @@ gh api -X DELETE "repos/OWNER/REPO/issues/N/labels/needs-human"
 gh api -X DELETE "repos/OWNER/REPO/issues/N/assignees" -f "assignees[]=OWNER"
 ```
 
-When `DELETE` is refused by a sandbox classifier (§GitHub access), do both in
-one authenticated PATCH instead — it sets the arrays wholesale, so the labels
-you want are stated positively and `needs-human` is gone by omission:
+When a sandbox refuses `DELETE` (§GitHub access), do both in one PATCH — it
+sets the arrays wholesale, so `needs-human` is gone by omission:
 
 ```bash
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" \
@@ -197,43 +148,36 @@ curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" \
   "https://api.github.com/repos/OWNER/REPO/issues/N"
 ```
 
-**VERIFY BY RE-READING THE ITEM, NEVER THE LIST.** `GET issues?labels=needs-human`
-is served stale for a while after a successful delete: on this skill's first run
-three removals each returned `200`, and the list endpoint immediately afterwards
-still reported all three plus a fourth — four items that had just become one. A
-sweep that trusts that list re-asks questions it already resolved, or reports a
-queue it has already drained. `GET issues/N` and check `labels` per item.
+**VERIFY BY RE-READING THE ITEM, NEVER THE LIST.** The label-filtered list
+serves stale after a successful delete — three removals once returned `200`
+and the list still showed all three. `GET issues/N` per item.
 
-Partially answered → body updated with what was ruled, label and assignment
-stay, the remaining questions enumerated so the next sweep asks only those.
+Partially answered → body updated with what was ruled; label and assignment
+stay; remaining questions enumerated so the next sweep asks only those.
 
 Then route by what the answer was:
 
-- **A merge gate, now satisfied** → merge. Protected-branch merges 403 over
-  REST, so a squash merge is one of the MCP-only writes named in
-  `docs/orchestration/environment.md` §GitHub access. Gate stated but not yet met
-  (e.g. an e2e re-run) → leave the PR to the orchestrator with the gate
-  recorded on it; do not sit polling.
-- **An unblocked issue** → it returns to the ordinary queue by its existing
-  priority label; removing `needs-human` + the assignment IS the return. Note
-  on the issue which deferred pieces are now unblocked, so the next agent
-  starts from the ruling instead of rediscovering it.
-  **Check it HAS a priority label first.** A question-shaped issue is often
-  filed carrying `needs-human` and nothing else, and removing that label then
-  drops it out of every queue rather than returning it to one — the ruling
-  becomes work nobody is holding. Give it a domain + priority by the ordinary
-  calibration before you drop the label, in the same PATCH.
-  Note also what the ruling unblocks ELSEWHERE: a ruling that settles a
-  convention frees the doc or follow-up issue that was waiting to describe it,
-  and that issue's owner has no way to know unless you say so on it.
+- **A merge gate, now satisfied** → merge (protected-branch merges 403 over
+  REST — an MCP-only write, §GitHub access). Gate stated but unmet → leave
+  the PR to the orchestrator with the gate recorded; do not sit polling.
+- **An unblocked issue** → returns to the ordinary queue by its existing
+  priority label; removing `needs-human` + the assignment IS the return.
+  Note which deferred pieces are now unblocked.
+- **Check it HAS a priority label first.** A question-shaped issue often
+  carries `needs-human` and nothing else; dropping the label then removes it
+  from every queue. Give it domain + priority in the same PATCH.
+- Note what the ruling unblocks ELSEWHERE — a settled convention frees the
+  doc or follow-up waiting on it, and its owner cannot know unless you say
+  so on it.
 - **Not ripe** → already noted in step 2; nothing further.
-- **Resolved-by-events** → record what resolved it (the commit/PR), then
+- **Resolved-by-events** → record what resolved it (commit/PR), then
   un-label and un-assign exactly as if answered.
 
 ## 6. Report
 
-Close the session with one summary: items ruled (and which overruled a
-recommendation — say so plainly), items not ripe with their re-check
-conditions, items resolved by events, label-hygiene repairs made, and what is
-now unblocked for agents. Unasked residue (questions found but deliberately
-deferred by the owner) is listed, not dropped.
+One closing summary: items ruled (saying which overruled a recommendation),
+items not ripe with re-check conditions, items resolved by events, hygiene
+repairs, and what is now unblocked.
+
+Unasked residue — questions found but deferred by the owner — is listed,
+not dropped.

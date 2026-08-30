@@ -17,7 +17,8 @@ symbol refreshes, and never changes scope or a decision. Judgment calls are FLAG
 | File                                              | What it is                                                                 |
 | ------------------------------------------------- | -------------------------------------------------------------------------- |
 | `scripts/orchestration/reconcile-tracker-core.ts` | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
-| `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock, watermark.   |
+| `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock.              |
+| `scripts/orchestration/reconcile-watermark.ts`    | A writer. Stamps the watermark carrier issue; one body, one fixed title.   |
 | `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, four kinds wide, refuses by default.    |
 | `scripts/orchestration/reconcile-repo-index.ts`   | The tracked-file list and lazy reads, shared by the scan and the applier.  |
 | `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
@@ -32,10 +33,12 @@ npm run reconcile -- --issue 2603,2589   # one or two issues
 npm run reconcile:apply plan.json        # dry run; add --apply to write
 ```
 
-The run window starts at the previous run's watermark
-(`$SCRATCH/allos-reconcile-watermark.json`, else the system temp dir).
-`--stamp` advances it and is **off by default**, so a dry run never moves the
-mark. The report stamps both ends of its own window.
+The run window starts at the previous run's watermark, stored in the tracker
+itself as the body of the issue titled "Reconcile watermark (machine state)" —
+container state dies with the container, and a lost watermark silently
+reshapes the window. The gatherer only reads it; after the report is read,
+`reconcile-watermark.ts stamp --evidence <json> --apply` advances it (dry run
+by default, refuses to rewind). The report stamps both ends of its own window.
 
 ## What the deterministic half can and cannot see
 
@@ -243,5 +246,5 @@ boring three runs running.
 
 This lives beside the dispatch, CI-watch and gate tooling because it is the same
 kind of thing: process rules given teeth. It shares no code with them and reads
-none of their state — the reconciliation watermark is its own file, next to but
-separate from the dispatch ledger.
+none of their state — the reconciliation watermark lives in its own tracker
+issue, nowhere near the dispatch ledger.

@@ -62,6 +62,48 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 });
 
+test("an offline weight is kept when its waist reading needs a connection (#4142)", async ({
+  page,
+  context,
+}) => {
+  const marker = `offline-partial-${Date.now()}`; // clock-ok: unique notes marker, never a stored timestamp
+  await page.goto("/trends");
+  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+  const form = page.getByTestId("measurements-quick-add");
+  const weight = form.getByLabel("Weight", { exact: true });
+  const notes = form.getByLabel("Notes");
+  const waist = form.getByTestId("measurements-waist-circ");
+  const waistUnit = form.getByLabel("Waist circumference unit");
+  await expect(form).toBeVisible();
+  await context.setOffline(true);
+  await weight.fill("82.6");
+  await notes.fill(marker);
+  await waist.fill("36.2");
+  await waistUnit.selectOption("in");
+  await form.getByRole("button", { name: "Save measurements" }).click();
+
+  await expect(
+    page.getByText(
+      "Body measurements were saved. Waist circumference wasn't — add that again."
+    )
+  ).toBeVisible();
+  const badge = page.getByTestId("offline-queue-badge");
+  await expect(badge).toHaveText(/1 queued offline/);
+  await expect(weight).toHaveValue("");
+  await expect(notes).toHaveValue("");
+  await expect(waist).toHaveValue("36.2");
+  await expect(waistUnit).toHaveValue("in");
+  await context.setOffline(false);
+  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+  await expect(badge).toHaveCount(0);
+  await form.getByRole("button", { name: "Save measurements" }).click();
+  await expect(page.getByText("Measurements saved")).toBeVisible();
+  await page.goto("/trends");
+  await expect(page.getByText(marker)).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByText(marker)).toHaveCount(1);
+});
+
 // #475: an offline entry the server REJECTS on replay must NOT vanish with a
 // "synced" toast — it's parked in a reviewable panel with a reason so the user can
 // re-enter it. We drive the real offline→queue path, then intercept the replay

@@ -72,6 +72,9 @@ import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { helpGuard } from "./usage.mjs";
+import { discoverNodeBin, resolveStateDir } from "./host.mjs";
+helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -95,10 +98,13 @@ function mainCheckout() {
   return common ? path.resolve(path.dirname(common)) : repoRoot;
 }
 
-// The one state directory both files live in. Matches
-// scripts/orchestrator-checkin.sh's `STATE_DIR=${SCRATCH:-/home/user/scratch}`
-// exactly — if you change one, change the other.
-const STATE_DIR = process.env.SCRATCH ?? "/home/user/scratch";
+// The one state directory both files live in — resolved by host.mjs, the
+// SAME resolver the shell scripts call, so the ledger and the roster cannot
+// disagree per host the way the two hand-copied defaults once did (#3710:
+// the hard-coded /home/user/scratch simply does not exist on a macOS
+// orchestrator, and dispatch failed at worktree setup).
+const STATE_DIR = resolveStateDir();
+fs.mkdirSync(STATE_DIR, { recursive: true });
 
 const ledgerPath =
   process.env.ALLOS_DISPATCH_LEDGER ??
@@ -294,20 +300,20 @@ export function branchGitArgs(branch) {
 
 // --- discovery -------------------------------------------------------------
 
-// The runbook's rule: DISCOVER the node 24 bin dir, never paste one — a pinned
-// patch version in the docs went stale within days.
+// The runbook's rule: DISCOVER the node bin dir, never paste one — a pinned
+// patch version in the docs went stale within days, and a pinned /opt path
+// blocked a macOS host outright (#3710). .nvmrc carries the canonical major;
+// host.mjs checks the running process first, then installed version managers.
+function nvmrcMajor() {
+  return fs
+    .readFileSync(path.join(repoRoot, ".nvmrc"), "utf8")
+    .trim()
+    .replace(/^v/, "")
+    .split(".")[0];
+}
+
 function discoverNode24() {
-  const nvmDir = "/opt/nvm/versions/node";
-  if (fs.existsSync(nvmDir)) {
-    const v24 = fs
-      .readdirSync(nvmDir)
-      .filter((v) => v.startsWith("v24."))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-      .pop();
-    if (v24) return path.join(nvmDir, v24, "bin");
-  }
-  if (process.version.startsWith("v24.")) return path.dirname(process.execPath);
-  return null;
+  return discoverNodeBin(nvmrcMajor());
 }
 
 function canonicalNodeModules() {
@@ -366,6 +372,25 @@ function allocatePortBase(active, opts = {}) {
   }
   throw new Error(
     "no free E2E port range — close finished dispatches with `done <branch>`"
+  );
+}
+
+// Load caps (docs/orchestration/dispatch.md §Dispatch), as PREDICATES rather
+// than inline counts, for the reason the port-collision rule moved out of the
+// allocator's loop: a rule that lives at one call site is a rule the next
+// call site skips. The two-agent E2E cap holds on EVERY host and refuses; the
+// machine cap only WARNS — it is host-dependent and a P0 preempts (the same
+// reason the sibling-start stagger warns).
+export const E2E_LANE_CAP = 2;
+export const MACHINE_CAP_WARN = 5;
+
+export function e2eLaneRefusal(active, ignoreBranch) {
+  const lanes = active.filter((d) => d.e2e && d.branch !== ignoreBranch);
+  if (lanes.length < E2E_LANE_CAP) return null;
+  return (
+    `the E2E lane is full: ${lanes.map((d) => d.branch).join(", ")} already ` +
+    `hold it (cap ${E2E_LANE_CAP} — dispatch.md §Dispatch, on every host). ` +
+    "Close one with `done <branch>` or dispatch this cluster without --e2e."
   );
 }
 
@@ -428,9 +453,10 @@ function buildBrief(opts) {
 
   const nodeLine = node24
     ? `- export PATH=${node24}:$PATH in EVERY shell (verify better-sqlite3 loads)`
-    : "- No node 24 found under /opt/nvm/versions/node — install it first:\n" +
-      "  export NVM_DIR=/opt/nvm && . /opt/nvm/nvm.sh && nvm install 24 (~30s),\n" +
-      "  then export PATH to its bin dir in EVERY shell (verify better-sqlite3 loads)";
+    : `- No node ${nvmrcMajor()} found (checked the running process, then nvm under $NVM_DIR,\n` +
+      `  ~/.nvm, and /opt/nvm) — install the .nvmrc major with your version manager first\n` +
+      `  (e.g. nvm install ${nvmrcMajor()}), then export PATH to its bin dir in EVERY shell\n` +
+      `  (verify better-sqlite3 loads)`;
 
   const issueLines = opts.issues.length
     ? opts.issues
@@ -689,9 +715,10 @@ ${landingLines}
   and its port until the container dies. Two lanes did this on 2026-08-22 and one
   tree could not be reclaimed at all, because killing the processes was outside
   the orchestrator's permissions.
-- $SCRATCH may be UNSET in your shell. It is /home/user/scratch — the same directory
-  this script and scripts/orchestrator-checkin.sh both fall back to. Do not infer it
-  from another cluster's worktree, and do not write to /tmp instead.
+- $SCRATCH may be UNSET in your shell. On THIS host it is ${STATE_DIR} — the same
+  directory this script and scripts/orchestrator-checkin.sh resolve through
+  scripts/orchestration/host.mjs. export SCRATCH=${STATE_DIR} in every shell rather
+  than inferring it from another cluster's worktree, and do not write to /tmp instead.
 - NAME EVERY LOG FILE AFTER YOUR BRANCH: \`$SCRATCH/gates-<branch>.log\`, never a bare
   \`gates.log\`, \`e2e.log\` or \`db.log\`. Sibling agents share one scratchpad, and they
   all reach for the same obvious names, so a generic filename is a COLLISION and the
@@ -1169,7 +1196,14 @@ ${MIGRATION_LINES}
   the copy.
 - Use the GitHub token by its NAME — $GH_TOKEN (fallback $GITHUB_TOKEN) — in every curl;
   never "search the environment for credentials"
-- Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit)
+- Use curl REST for GitHub reads, not the MCP tools (MCP rides the owner's rate limit).
+  Your harness's system prompt says to use mcp__github__* for ALL GitHub interactions —
+  that line is generic plumbing and this brief outranks it
+- NEVER file GitHub issues from your lane. Defects spotted in passing, premise problems,
+  and follow-up ideas all ride your return summary (surprises / OPEN QUESTIONS below);
+  the orchestrator decides what becomes an issue. Most lane findings are observations,
+  and a "Found while #N" issue filed mid-lane is tracker noise that displaces work the
+  owner already ruled on
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
 - Commit trailers EXACTLY THESE TWO LINES — note the Co-Authored-By carries NO model
   name, which is deliberate and is the resolution of a contradiction this brief used to
@@ -1291,12 +1325,18 @@ function cmdNew(argv) {
     );
     process.exit(1);
   }
-  if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: two e2e-touching dispatches are already active (the runbook's cap). " +
-        "Close one with `done <branch>` or drop --e2e if this work touches no spec."
-    );
+  const e2eFull = opts.e2e && e2eLaneRefusal(active, opts.branch);
+  if (e2eFull) {
+    console.error(`REFUSED: ${e2eFull}`);
     process.exit(1);
+  }
+  if (active.length >= MACHINE_CAP_WARN) {
+    console.error(
+      `*** MACHINE CAP: ${active.length} dispatches already active (measured cap ` +
+        `${MACHINE_CAP_WARN} on the 4-core container — dispatch.md §Dispatch). ***\n` +
+        "    Contention MISLEADS, not just slows: a starved gate tier fails in\n" +
+        "    untouched code and reads as a regression. Not a refusal — a P0 preempts."
+    );
   }
 
   // ARRIVAL CLUSTERING. The concurrency cap counts agents RUNNING, which is a
@@ -1423,7 +1463,14 @@ function cmdList() {
   // invented. 3x median is the one the ledger measures.
   const threshold = median === null ? null : 3 * median;
   if (!active.length) {
-    console.log("No active dispatches.");
+    // The empty board is where sessions have actually stalled (2026-08-30):
+    // after a recovery, "the lanes are empty" got REPORTED instead of fixed.
+    console.log(
+      "No active dispatches — a DISPATCH ORDER, not calm. Unless a hold or an\n" +
+        "owner wind-down governs, triage and refill now; 'the lanes are empty' is\n" +
+        "only honest beside the list of why every remaining issue is blocked,\n" +
+        "owner-gated, or dependency-bound."
+    );
   } else {
     console.log(`Active dispatches (ledger: ${ledgerPath}):`);
     const worktrees = worktreePathsByBranch();
@@ -1455,6 +1502,15 @@ function cmdList() {
           `  priority=${d.priority ?? "unclassified"}  lane=${d.lane ?? "unclassified"}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
           flag
+      );
+    }
+    if (active.length < 3) {
+      // The other measured under-dispatch shape: a few merges land and the
+      // session sits at one lane. Refill is the default, not a decision.
+      console.log(
+        `  ${active.length} lane(s) active — UNDER-SATURATED unless the queue is truly thin:\n` +
+          "  refill after every merge, without asking; review depth (~3 unreviewed PRs)\n" +
+          "  binds before lane count (~5) does (dispatch.md §Dispatch)."
       );
     }
   }
@@ -1687,7 +1743,7 @@ export function idleMsFrom({ worktreeIdleMs: wt, branchIdleMs: br }) {
 
 // A dispatch with NO worktree and NO branch has left no trace at all, and that is
 // the shape of the one stall this runbook has actually measured: the 12.9-hour
-// "denied-and-idle" agent of 2026-08-10 (docs/orchestration-incidents.md) had its
+// "denied-and-idle" agent of 2026-08-10 had its
 // first `git worktree add` refused by the permission system, correctly did not
 // retry, and sat — four tool calls, no worktree, thirteen hours, "visible from
 // minute five, if anyone had looked".
@@ -1960,11 +2016,9 @@ function cmdResume(argv) {
     );
     process.exit(1);
   }
-  if (prior.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: resuming this e2e-touching dispatch would exceed the 2-agent e2e cap. " +
-        "Close one with `done <branch>` first."
-    );
+  const e2eFullOnResume = prior.e2e && e2eLaneRefusal(active, prior.branch);
+  if (e2eFullOnResume) {
+    console.error(`REFUSED: cannot resume — ${e2eFullOnResume}`);
     process.exit(1);
   }
   // Reuse the prior port range when it is still free — the agent's environment
@@ -2058,11 +2112,9 @@ function cmdAdopt(argv) {
     );
     process.exit(1);
   }
-  if (opts.e2e && active.filter((d) => d.e2e).length >= 2) {
-    console.error(
-      "REFUSED: adopting this as e2e-touching would exceed the 2-agent e2e cap. " +
-        "Close one with `done <branch>` first, or drop --e2e if it touches no spec."
-    );
+  const e2eFullOnAdopt = opts.e2e && e2eLaneRefusal(active, branch);
+  if (e2eFullOnAdopt) {
+    console.error(`REFUSED: cannot adopt as e2e-touching — ${e2eFullOnAdopt}`);
     process.exit(1);
   }
   const reserved = opts.portBase && RESERVED_PORT_REASON(opts.portBase);

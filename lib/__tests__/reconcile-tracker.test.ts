@@ -27,6 +27,9 @@ import {
   decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
+  extractWatermark,
+  KNOWN_LABELS,
+  WATERMARK_ISSUE_TITLE,
   parseStatedPriority,
   planLabelRemovals,
   scoreDomains,
@@ -639,7 +642,7 @@ describe("gatherEvidence", () => {
   });
 });
 
-describe("label hygiene (dispatch.md §Queue labels)", () => {
+describe("label hygiene (docs/orchestration/labels.md)", () => {
   it("flags a doubled priority slot, a missing slot, a missing domain, and a retired label", () => {
     const findings = checkLabelHygiene([
       // The live defect this check exists for: #2701 carried P2 AND parked.
@@ -682,6 +685,71 @@ describe("label hygiene (dispatch.md §Queue labels)", () => {
         issue({ number: 7, labels: ["lib", "cleanup"], state: "closed" }),
       ])
     ).toEqual([]);
+  });
+
+  it("flags a label outside the closed taxonomy, once per stray", () => {
+    // The live drift this catches: GitHub's add-labels endpoint silently
+    // CREATES an unknown label, so `deps` (for `dependencies`), `tooling`
+    // (for `infra`) and friends accumulated repo-side — 16 strays counted
+    // 2026-08-30 — and issues carrying them cluster on nothing. Three of the
+    // sixteen (`testing`, `a11y`, `dashboard`) were later promoted by owner
+    // ruling, which is why the fixtures here use ones that stayed stray.
+    const findings = checkLabelHygiene([
+      issue({ number: 11, labels: ["P3", "intake", "db", "tooling"] }),
+      issue({ number: 12, labels: ["P2", "design", "sleep", "deps"] }),
+    ]);
+    expect(findings).toEqual([
+      {
+        issue: 11,
+        kind: "unknown-label",
+        detail: expect.stringContaining("tooling"),
+      },
+      {
+        issue: 12,
+        kind: "unknown-label",
+        detail: expect.stringContaining("sleep"),
+      },
+      {
+        issue: 12,
+        kind: "unknown-label",
+        detail: expect.stringContaining("deps"),
+      },
+    ]);
+  });
+
+  it("does not double-flag a retired label as also unknown", () => {
+    const findings = checkLabelHygiene([
+      issue({ number: 13, labels: ["P3", "intake", "cleanup"] }),
+    ]);
+    expect(findings).toEqual([
+      {
+        issue: 13,
+        kind: "retired-label",
+        detail: expect.stringContaining("cleanup"),
+      },
+    ]);
+  });
+
+  it("the taxonomy is the union of the four axes and contains no stray", () => {
+    // KNOWN_LABELS is what a filer verifies a label against — never the live
+    // repo list, which validates every past mistake. Pin its composition,
+    // including the three 2026-08-30 promotions (testing/a11y as type color,
+    // dashboard as a domain).
+    for (const l of [
+      "P0",
+      "parked",
+      "training",
+      "dashboard",
+      "bug",
+      "testing",
+      "a11y",
+      "needs-human",
+    ]) {
+      expect(KNOWN_LABELS.has(l)).toBe(true);
+    }
+    for (const l of ["deps", "infrastructure", "sleep", "tooling", "lib"]) {
+      expect(KNOWN_LABELS.has(l)).toBe(false);
+    }
   });
 
   it("rides gatherEvidence into the report's own section", () => {
@@ -1037,9 +1105,55 @@ describe("run configuration", () => {
     });
   });
 
-  it("defaults the watermark stamp OFF so a dry run never advances it", () => {
+  it("still parses --stamp, so the gatherer can refuse it LOUDLY", () => {
+    // Stamping moved to reconcile-watermark.ts when the watermark moved into
+    // the tracker. The flag stays recognized because a silently ignored
+    // --stamp would leave its caller believing the window advanced.
     expect(resolveRunConfig({}, []).stamp).toBe(false);
     expect(resolveRunConfig({}, []).token).toBeNull();
+  });
+});
+
+describe("the watermark carrier issue", () => {
+  const carrier = (body: string): TrackerIssue => ({
+    number: 4200,
+    title: WATERMARK_ISSUE_TITLE,
+    body,
+    state: "open",
+    labels: ["infra", "parked"],
+  });
+  const ordinary: TrackerIssue = {
+    number: 7,
+    title: "Reconcile watermark handling in docs",
+    body: 'mentions "lastRunAt": "1999-01-01T00:00:00Z" in prose',
+    state: "open",
+    labels: ["docs", "P3"],
+  };
+
+  it("splits the carrier out of the sweep and reads its stamp", () => {
+    const stamped = carrier(
+      '```json\n{"lastRunAt":"2026-08-30T09:00:00Z"}\n```'
+    );
+    const { carrier: found, issues } = extractWatermark([ordinary, stamped]);
+    expect(found).toEqual({
+      issueNumber: 4200,
+      lastRunAt: "2026-08-30T09:00:00Z",
+    });
+    // The carrier is machine state, never a sweep subject.
+    expect(issues).toEqual([ordinary]);
+  });
+
+  it("matches on the EXACT title, never on look-alike issues", () => {
+    // An ordinary issue that merely talks about the watermark keeps its place
+    // in the sweep and its prose never becomes the window bound.
+    const { carrier: found, issues } = extractWatermark([ordinary]);
+    expect(found).toEqual({ issueNumber: null, lastRunAt: null });
+    expect(issues).toEqual([ordinary]);
+  });
+
+  it("reports an unparseable carrier body as unstamped, not as a date", () => {
+    const { carrier: found } = extractWatermark([carrier("hand-edited junk")]);
+    expect(found).toEqual({ issueNumber: 4200, lastRunAt: null });
   });
 });
 
@@ -1421,6 +1535,10 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-patch.ts",
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
+    "scripts/orchestration/delete-unknown-labels.ts",
+    "scripts/orchestration/reconcile-watermark.ts",
+    "scripts/orchestration/usage.mjs",
+    "scripts/orchestration/host.mjs",
   ];
   const SKILL = ".claude/skills/reconcile-tracker/SKILL.md";
 
@@ -1472,20 +1590,33 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  // TWO writers now, each confined to a different endpoint, and the point of
-  // this block is that neither confinement rests on intent. The body applier
-  // can name only `body`; the label writer sends no body at all. Everything
-  // else in the toolchain still holds no write verb whatsoever.
+  // FOUR writers now, each confined to a different endpoint, and the point of
+  // this block is that no confinement rests on intent. The body applier can
+  // name only `body`; the label writer sends no body at all; the label deleter
+  // holds one verb against the repo's own label collection and no issue URL
+  // whatsoever; the watermark writer can PATCH one body and CREATE one
+  // fixed-title carrier. Everything else in the toolchain holds no write verb.
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
+    "scripts/orchestration/delete-unknown-labels.ts",
+    "scripts/orchestration/reconcile-watermark.ts",
   ];
 
-  it("the body applier writes one verb and builds its payload from one field", () => {
+  it("the body applier holds two confined writes: body PATCH and comment POST", () => {
+    // The comment POST exists because a body PATCH is SILENT — no
+    // notification, no timeline event — so an issue with a comment chain or
+    // an in-flight lane (--notify) gets its edit announced where its readers
+    // are (2026-08-30). One verb each, one payload field each, and the POST
+    // can reach only the comments collection; neither endpoint has a field an
+    // issue's status could ride in.
     const applier = source("scripts/orchestration/reconcile-apply.ts");
     expect(applier.match(/"PATCH"/g)).toHaveLength(1);
+    expect(applier.match(/"POST"/g)).toHaveLength(1);
     expect(applier).toContain("JSON.stringify({ body })");
-    expect(applier).not.toMatch(/"(?:POST|PUT|DELETE)"/);
+    expect(applier).toContain("JSON.stringify({ body: note })");
+    expect(applier).toContain("${issueUrl(issue)}/comments");
+    expect(applier).not.toMatch(/"(?:PUT|DELETE)"/);
   });
 
   it("the label writer touches only the per-issue LABELS endpoints", () => {
@@ -1507,7 +1638,30 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  it("nothing outside the two writers holds a write verb at all", () => {
+  it("the label deleter holds one verb, aimed only at the repo label collection", () => {
+    const del = source("scripts/orchestration/delete-unknown-labels.ts");
+    // One DELETE, no other verb — and no issue URL anywhere in the file, so
+    // the only thing it can ever remove is a label from the repo's own list.
+    expect(del.match(/"DELETE"/g)).toHaveLength(1);
+    expect(del).not.toMatch(/"(?:PATCH|POST|PUT)"/);
+    expect(del).toContain("/labels/${encodeURIComponent(name)}");
+    expect(del).not.toContain("/issues");
+  });
+
+  it("the watermark writer PATCHes one body and can only CREATE the carrier", () => {
+    // One PATCH whose payload is exactly the applier's shape ({ body }), one
+    // POST whose payload names its title from the pinned constant — so the
+    // only issue it can ever bring into existence is the carrier, and the
+    // only thing it can ever edit is a body. No other verb, no state field.
+    const wm = source("scripts/orchestration/reconcile-watermark.ts");
+    expect(wm.match(/"PATCH"/g)).toHaveLength(1);
+    expect(wm.match(/"POST"/g)).toHaveLength(1);
+    expect(wm).not.toMatch(/"(?:PUT|DELETE)"/);
+    expect(wm).toContain("JSON.stringify({ body })");
+    expect(wm).toContain("title: WATERMARK_ISSUE_TITLE");
+  });
+
+  it("nothing outside the four writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,

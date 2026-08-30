@@ -96,8 +96,8 @@ jobs:
   # e2e-full.yml's census went red three Sundays running, and while nobody was
   # reading those reds the more expensive question went unasked: had it stopped?
   # Nothing could answer it, because "has it run lately" was only ever answerable
-  # by someone remembering to open the Actions tab — the canary failure
-  # docs/orchestration-incidents.md has already billed this repo for three times.
+  # by someone remembering to open the Actions tab — the canary failure this
+  # repo has already been billed for three times.
   #
   # It lives HERE, on every push to main, and NOT on a schedule of its own,
   # because a scheduled canary watching a schedule shares the failure mode it is
