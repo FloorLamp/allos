@@ -1,9 +1,20 @@
 # The record: `/history`
 
-Status: **phase 1 shipped** (#3958). One page is the app's record of what a
+Status: **phase 2 shipped** (#3958). One page is the app's record of what a
 profile logged. It absorbed the four standalone ledger routes — the two dose
 doors, the food door and the practice door — and the shared event-ledger frame
-they mounted (`EventLedgerFrame`, #3484) went with them. `/timeline` is phase 2.
+they mounted (`EventLedgerFrame`, #3484) went with them. Phase 2 added the
+Training, Clinical and Life families with the sleep, symptom and cycle gathers
+and the Everything rollups, then took `/timeline` itself: the route is deleted,
+its day view is `?day=`, and its nav and mobile-dock slots are the record's
+(#3343 Q5, `trainingRelevant ? TRAINING : HISTORY`).
+
+**What did NOT come across, and is phase 2d.** `lib/timeline.ts` still computes
+`linkedRefs` (#662 visit→document lineage), `detailItems` (lab panel breakdowns,
+sleep stages, activity set summaries) and per-event `tone`. Their only renderer
+was the deleted page's `EventCard`; the record's rows are one line and carry no
+disclosure yet, so the data is gathered and shown nowhere. Nothing else reads
+those fields.
 
 **There are no redirects.** The old routes are deleted, every inbound door was
 retargeted at its source, and a surviving reference to one is a bug to fix
@@ -130,13 +141,41 @@ changes and whose page does not is worse than no button.
 one kind, or open a day", and the first half was false: `limit` is applied PER KIND
 inside the gather, so the All view already reads every kind to `show` and the chip
 carries `show` across — the narrowed view returns the identical rows. A sentence that
-sends the reader back to where they are spends their trust as well as their tap. Phase
-2's day view is where "further back" gets a real answer.
+sends the reader back to where they are spends their trust as well as their tap. The
+day view is where "further back" gets a real answer.
+
+**`limit` is per kind for the LOGS kinds only.** Each has its own reader, gated by
+`wants()` before it runs. The sixteen feed kinds share ONE `getTimelineEvents` read
+that is deliberately NOT narrowed — the chips a reader is offered must not depend on
+the filter they already set — so a feed-kind view reads the newest `show` events across
+all sixteen and keeps the matching ones. On a dense profile that window is far
+shallower than the same filter reached on `/timeline`, which pushed the category into
+the query. Open on #3958.
+
+## The day view
+
+`?day=YYYY-MM-DD` is the app's one "that day" anchor, and the same mount: the page
+server-selects the day presentation rather than routing anywhere. Rows are flat — a day
+view lists everything, so no rollups. It carries what `/timeline`'s single-day view
+carried: the **intraday panel** (#1068), the day **context chips** (daylight, UV,
+weather, cycle phase), **prev/next nav** with its swipe (#1425), and the
+**`SymptomLogBar`** mount (#799) — which is why a symptom is not an Add-door kind.
+
+Two rules decide what it draws. Context is **single-subject**: daylight, UV, weather
+and cycle phase are one body's, so `?view=everyone&day=` lists the rows and draws no
+chips. And the panel reads the **resolved row set** (`HistoryGather.dayEvents`), never
+a second query, so a tick can never name something the list below does not show; the
+ticks carry the row's own `feed:`-namespaced anchor, built by the same
+`timelineEntryAnchorId` the row is.
+
+A future `?day=` clamps to today and the nav cannot advance past it — the record ends
+at now.
 
 The **jump rail** (`components/JumpRailScrubber.tsx`) scrubs the
 fold spine and owns a lane via `SCRUBBER_GUTTER_CLASS` rather than overlaying a
-row's action column. The rail is shared with `/timeline` until phase 2 retires
-that route — which is what closed #2816: the overlay chokepoint's rule 5 could
+row's action column. The rail was shared with `/timeline` while both pages
+scrubbed one fold spine; phase 2 retired that route, so the record is its only
+host — which is what closed #2816: the overlay chokepoint's rule 5 could
 only see `addEventListener` recognizers, and a JSX-prop one had landed unlisted.
 
 ## The URL

@@ -2389,7 +2389,7 @@ worker (~0.2 s boot, ~190 MB RSS) against ONE shared production build.
   as CWD**, signs in as admin against that server, and overrides the `baseURL`
   and `storageState` options. Because Playwright fills in missing context
   options from the test's resolved `use` (including for a manual
-  `browser.newContext()`), `page.goto("/timeline")` and `loginAs(browser, …)`
+  `browser.newContext()`), `page.goto("/history")` and `loginAs(browser, …)`
   target this worker's server with no per-spec change.
 - The server's CWD is what isolates every cwd-relative runtime artifact:
   `data/uploads/**`, `data/logs/ai.jsonl`, `data/logs/errors.jsonl`,
