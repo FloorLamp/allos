@@ -2,7 +2,7 @@ import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { fillPeriodDate, openAddPeriodPanel } from "./cycle-helpers";
 import { addFromPicker, ensureUnlogged, settledTap } from "./symptom-helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -71,6 +71,12 @@ function seedFutureGoal(): void {
   });
 }
 
+async function deleteCycle(page: Page, row: Locator): Promise<void> {
+  await hydratedClick(page, row.getByTestId("overflow-menu-trigger"));
+  await hydratedClick(page, page.getByTestId("cycle-delete-button"));
+  await settledClick(page, page.getByRole("button", { name: "Delete period" }));
+}
+
 test.describe("menstrual cycle (#714)", () => {
   let page: Page;
 
@@ -97,6 +103,9 @@ test.describe("menstrual cycle (#714)", () => {
     expect(
       await page.getByTestId("cycle-history-row").count()
     ).toBeGreaterThanOrEqual(3);
+    await expect(
+      page.getByRole("link", { name: "Full history" })
+    ).toHaveAttribute("href", "/history?kind=cycle");
   });
 
   // ── #3482 item 1: one interval is not four measured statistics ─────────────
@@ -232,7 +241,7 @@ test.describe("menstrual cycle (#714)", () => {
     // Cleanup: close it again, then delete the just-created (newest, first) row —
     // restoring the starting count AND the seeded state line / start CTA.
     await settledClick(page, page.getByTestId("period-ended-button"));
-    await settledClick(page, page.getByTestId("cycle-delete-button").first()); // first-ok: deletes the cycle THIS spec is exercising (its own fixture data)
+    await deleteCycle(page, rows.first()); // first-ok: deletes this spec's newest fixture row
     await expect(rows).toHaveCount(before);
     await expect(page.getByTestId("period-started-button")).toBeVisible({
       timeout: 20_000,
@@ -261,10 +270,7 @@ test.describe("menstrual cycle (#714)", () => {
 
       // Cleanup: close and delete the period this test created.
       await settledClick(other, other.getByTestId("period-ended-button"));
-      await settledClick(
-        other,
-        other.getByTestId("cycle-delete-button").first() // first-ok: deletes the cycle THIS spec just created (its own fixture data)
-      );
+      await deleteCycle(other, other.getByTestId("cycle-history-row").first()); // first-ok: this spec's newest fixture row
       await expect(other.getByTestId("period-started-button")).toBeVisible({
         timeout: 20_000,
       });
@@ -294,7 +300,7 @@ test.describe("menstrual cycle (#714)", () => {
     await expect(row).toBeVisible({ timeout: 20_000 });
 
     // Delete it: the toast offers Undo.
-    await settledClick(page, row.getByTestId("cycle-delete-button"));
+    await deleteCycle(page, row);
     await expect(row).toHaveCount(0, { timeout: 20_000 });
     await expect(page.getByText("Period deleted")).toBeVisible();
 
@@ -308,10 +314,7 @@ test.describe("menstrual cycle (#714)", () => {
 
     // Cleanup: delete the restored row (this test's own fixture data), restoring
     // the seeded count for --repeat-each.
-    await settledClick(
-      page,
-      rows.filter({ hasText: note }).getByTestId("cycle-delete-button")
-    );
+    await deleteCycle(page, rows.filter({ hasText: note }));
     await expect(rows).toHaveCount(before, { timeout: 20_000 });
   });
 
@@ -371,7 +374,7 @@ test.describe("menstrual cycle (#714)", () => {
 
     // Cleanup: this test owns the row it created, so it removes it and restores the
     // seeded count for --repeat-each.
-    await settledClick(page, row.getByTestId("cycle-delete-button"));
+    await deleteCycle(page, row);
     await expect(rows).toHaveCount(before, { timeout: 20_000 });
   });
 

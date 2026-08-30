@@ -179,16 +179,12 @@ function resolve(
 }
 
 describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
-  it("resolves the profile's OWN today, not the run's UTC day", () => {
-    const { profile } = seedProfile(`tz-${tz}`, tz);
+  it("resolves the profile's local today and offers exactly the accepted days", async () => {
+    const { profile } = seedProfile(`offer-${tz}`, tz);
     expect(today(profile.id)).toBe(localToday);
     // The instant's UTC day is the 28th; neither zone agrees with it, which is the
     // whole point of running the rest of this file twice.
     expect(localToday).not.toBe(NOW_ISO.slice(0, 10));
-  });
-
-  it("offers exactly the days the write cores accept, and no more", async () => {
-    seedProfile(`offer-${tz}`, tz);
     const data = await loadQuickEntry("dose");
     expect(data.form).toBe("dose");
     if (data.form !== "dose") return;
@@ -229,7 +225,7 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     ]);
   });
 
-  it("writes the whole bucket on the selected past day, and nothing on today", async () => {
+  it("writes taken and skipped doses on selected past days, never today", async () => {
     const { profile, doses } = seedProfile(`stack-${tz}`, tz);
     const day = shiftDateStr(localToday, -1);
     const result = await resolve(day, "taken", [
@@ -246,14 +242,11 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     // The day the tap happened on stays untouched: a backdated write is about the day
     // it names and no other.
     expect(logsOn(profile.id, localToday)).toEqual([]);
-  });
 
-  it("skips a single past dose through the same core", async () => {
-    const { profile, doses } = seedProfile(`skip-${tz}`, tz);
-    const day = shiftDateStr(localToday, -2);
-    const result = await resolve(day, "skipped", [doses.melatonin]);
-    expect(result.ok).toBe(true);
-    expect(logsOn(profile.id, day)).toEqual([
+    const skippedDay = shiftDateStr(localToday, -2);
+    const skipped = await resolve(skippedDay, "skipped", [doses.melatonin]);
+    expect(skipped.ok).toBe(true);
+    expect(logsOn(profile.id, skippedDay)).toEqual([
       { dose_id: doses.melatonin, status: "skipped" },
     ]);
   });
@@ -447,7 +440,7 @@ describe("a moved dose is filed under the slot it occupied that day (#1973)", ()
 
 // ── F4: the DAY is an upper bound too, not just the ids ──────────────────────
 describe("the submitted day is bounded by the days the sheet offers", () => {
-  it("refuses TOMORROW, which the symmetric core window would otherwise accept", async () => {
+  it("refuses tomorrow while accepting every day the sheet offers", async () => {
     const { profile, doses } = seedProfile("forward", "UTC");
     const tomorrow = shiftDateStr(today(profile.id), 1);
     // The cores' own window is symmetric — a late Telegram tap may land either side of
@@ -461,10 +454,7 @@ describe("the submitted day is bounded by the days the sheet offers", () => {
       error: "Couldn't log those doses.",
     });
     expect(logsOn(profile.id, tomorrow)).toEqual([]);
-  });
 
-  it("still accepts every day the sheet DOES offer", async () => {
-    const { profile, doses } = seedProfile("forward-ok", "UTC");
     for (const day of doseLogDays(today(profile.id))) {
       const r = await resolve(day, "taken", [doses.creatine, doses.collagen]);
       expect(r.ok).toBe(true);
@@ -678,17 +668,6 @@ describe("a closed day's training is what the record says, not what a pattern pr
 // uses, the adherence strip included. Taking the today reader to a closed day produced
 // BOTH harms this PR exists to fix, from one abandoned session.
 describe("an abandoned draft is not a training day on a closed day (#3189)", () => {
-  function seedFor(condition: string, label: string) {
-    const login = createLogin();
-    const profile = createProfile(label, login.id);
-    actAs(login, profile);
-    setTimezone(profile.id, "UTC");
-    const doseId = seedDose(profile.id, `${label} dose`, { condition });
-    const day = shiftDateStr(today(profile.id), -1);
-    seedDraftHusk(profile.id, day);
-    return { profile, doseId, day };
-  }
-
   async function offeredOn(date: string): Promise<number[]> {
     const data = await loadQuickEntry("dose");
     if (data.form !== "dose") return [];
@@ -698,20 +677,29 @@ describe("an abandoned draft is not a training day on a closed day (#3189)", () 
     );
   }
 
-  it("does not CONCEAL a rest-day dose the day owed", async () => {
-    const { profile, doseId, day } = seedFor("rest_day", "husk-rest");
+  it("neither conceals a rest-day dose nor offers a pre-workout dose", async () => {
+    const login = createLogin();
+    const profile = createProfile("husk-conditions", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const restDose = seedDose(profile.id, "Rest-day dose", {
+      condition: "rest_day",
+    });
+    const preWorkoutDose = seedDose(profile.id, "Pre-workout dose", {
+      condition: "pre_workout",
+    });
+    const day = shiftDateStr(today(profile.id), -1);
+    seedDraftHusk(profile.id, day);
+
     // The husk made the day look like training, so the rest-day dose read as not due
     // and the sheet said the day had nothing to log.
     expect(getActivitiesByDate(profile.id, day)).toHaveLength(1);
     expect(getActivityDates(profile.id)).not.toContain(day);
-    expect(await offeredOn(day)).toContain(doseId);
-  });
-
-  it("does not OFFER a pre-workout dose the day never owed", async () => {
-    const { doseId, day } = seedFor("pre_workout", "husk-pre");
+    const offered = await offeredOn(day);
+    expect(offered).toContain(restDose);
     // The other direction, and the worse one: a tap here writes `taken` and decrements
     // real stock for a day that asked nothing.
-    expect(await offeredOn(day)).not.toContain(doseId);
+    expect(offered).not.toContain(preWorkoutDose);
   });
 });
 
@@ -723,50 +711,20 @@ describe("an abandoned draft is not a training day on a closed day (#3189)", () 
 // adherence. Deleting that half left every test green, which made it the one new
 // mechanism in this change nothing could see.
 describe("a logged dose proves it existed, and the clamp gives way to it", () => {
-  function seedReconciled(label: string) {
+  it("offers the day and agrees with both strip spans when proof predates the drawn window (#3988)", async () => {
     const login = createLogin();
-    const profile = createProfile(label, login.id);
+    const profile = createProfile("evidence-window", login.id);
     actAs(login, profile);
     setTimezone(profile.id, "UTC");
     // Created TODAY — the cold-start shape the clamp exists for…
-    const doseId = seedDose(profile.id, `${label} dose`, { createdDaysAgo: 0 });
+    const doseId = seedDose(profile.id, "Evidence-window dose", {
+      createdDaysAgo: 0,
+    });
     const itemId = (
       db
         .prepare("SELECT item_id AS id FROM intake_item_doses WHERE id = ?")
         .get(doseId) as { id: number }
     ).id;
-    return { profile, doseId, itemId };
-  }
-
-  it("offers a day the clamp alone would hide, when a log proves the dose was there", async () => {
-    const { profile, doseId, itemId } = seedReconciled("widen");
-    const day = shiftDateStr(today(profile.id), -1);
-    // …with a backfilled administration two days before that. The row is proof the
-    // dose existed then, so yesterday is inside its life after all.
-    db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at, logged_via)
-       VALUES (?, ?, ?, 'taken', ?, 'page')`
-    ).run(
-      doseId,
-      itemId,
-      shiftDateStr(today(profile.id), -2),
-      `${shiftDateStr(today(profile.id), -2)} 09:00:00`
-    );
-
-    const data = await loadQuickEntry("dose");
-    if (data.form !== "dose") throw new Error("expected the dose form");
-    const offered = (
-      data.pastDays.find((d) => d.date === day)?.slots ?? []
-    ).flatMap((slot) => slot.doses.map((d) => d.doseId));
-    expect(offered).toContain(doseId);
-    // And the strip, given the same evidence, calls that day missed — one rule.
-    expect(
-      stripFor(profile.id, itemId).find((d) => d.date === day)!.state
-    ).toBe("missed");
-  });
-
-  it("agrees with the strip even when the proof predates the drawn window (#3988)", async () => {
-    const { profile, doseId, itemId } = seedReconciled("evidence-window");
     const day = shiftDateStr(today(profile.id), -1);
     // The proof is 60 days old — outside the 14-day span the strip DRAWS. That used to
     // decide the answer: the same rule over two evidence sets gave `na` here and

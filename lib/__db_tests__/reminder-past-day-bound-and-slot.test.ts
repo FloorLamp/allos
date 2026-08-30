@@ -91,6 +91,24 @@ function seedDose(
   );
 }
 
+function seedRetimedDose(profileId: number, movedOn: string): number {
+  const doseId = seedDose(
+    profileId,
+    "Re-timed med",
+    "Morning",
+    "daily",
+    "2026-04-01 09:00:00"
+  );
+  const addVersion = db.prepare(
+    `INSERT INTO intake_dose_schedule_versions
+       (dose_id, effective_from, time_of_day, created_at)
+     VALUES (?, ?, ?, ?)`
+  );
+  addVersion.run(doseId, "2026-04-01", "Evening", "2026-04-01 09:00:00");
+  addVersion.run(doseId, movedOn, "Morning", `${movedOn} 09:00:00`);
+  return doseId;
+}
+
 function names(
   profileId: number,
   slot: "Morning" | "Evening" | "PreWorkout",
@@ -215,4 +233,38 @@ describe("#4026 — a cadence inferable today must not move a closed day's send 
       ).toEqual([after]);
     }
   );
+});
+
+describe("#3990 — a re-timed dose keeps its closed-day send slot", () => {
+  it("rebuilds an ordinary prior day in the slot its schedule held then", () => {
+    const profileId = newProfile("UTC");
+    const pastDay = "2026-04-25";
+    const doseId = seedRetimedDose(profileId, "2026-04-26");
+
+    expect(names(profileId, "Evening", pastDay)).toEqual(["Re-timed med"]);
+    expect(names(profileId, "Morning", pastDay)).toEqual([]);
+    expect(
+      slotSessionForKeyboard(profileId, [doseId], [], pastDay).map(
+        (part) => part.slot
+      )
+    ).toEqual(["Evening"]);
+  });
+
+  it("also judges travel excusal against that historical slot", () => {
+    process.env.ALLOS_TEST_NOW = "2026-04-25T14:00:00Z";
+    const profileId = newProfile(NY);
+    const switchDay = today(profileId);
+    seedRetimedDose(profileId, "2026-04-26");
+    switchProfileTimezone(profileId, TOKYO, NY);
+    process.env.ALLOS_TEST_NOW = "2026-04-26T11:00:00Z";
+
+    // The eastward switch skipped the old Evening slot. The current Morning slot
+    // must neither re-file the dose nor erase that historical excusal.
+    expect(names(profileId, "Evening", switchDay)).toEqual([]);
+    expect(names(profileId, "Morning", switchDay)).toEqual([]);
+    expect(
+      collectWindowDoses(profileId, "Morning", "2026-04-26")[0].adherence
+        .excusedDays
+    ).toBe(1);
+  });
 });
