@@ -135,8 +135,8 @@ A row that carries `detailItems` or `linkedRefs` renders its detail segment as t
 toggle, with a chevron outside the truncating span; every other row renders the
 same segment as plain text. The trailing cell was not available — #3958 rules the
 trailing affordance exclusive (⋯ or ›, never both) — and the leading chevron is the
-rollup line's. What was left is the cell the issue itself points at: *"what
-truncates first; long detail lives behind the row's disclosure"*. So the control
+rollup line's. What was left is the cell the issue itself points at: _"what
+truncates first; long detail lives behind the row's disclosure"_. So the control
 sits where the truncation is, costs no width, and is the same on a ⋯ row and a ›
 row.
 
@@ -148,8 +148,8 @@ Open state is **client** state, unlike the folds and the rollups — the split i
 rule: URL-carried when expanding changes what the server must render, client state
 when the content already arrived on the row.
 
-The lineage panel's heading claims exactly what the gather had (#2920): *"From this
-visit"* for rows carrying a real encounter link, the document wording only where the
+The lineage panel's heading claims exactly what the gather had (#2920): _"From this
+visit"_ for rows carrying a real encounter link, the document wording only where the
 import document stands for a single visit. A multi-visit portal export sets neither,
 because a reference chip that cannot honestly name its visit says nothing.
 

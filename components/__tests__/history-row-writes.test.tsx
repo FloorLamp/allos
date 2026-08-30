@@ -1011,9 +1011,9 @@ describe("the record's row disclosure", () => {
     // primitive and this page's geometry assertions measure it, so a panel nested in
     // it would move what they measure however the row looked.
     expect(
-      screen.getByTestId("history-row").querySelector(
-        '[data-testid="history-row-panel"]'
-      )
+      screen
+        .getByTestId("history-row")
+        .querySelector('[data-testid="history-row-panel"]')
     ).toBeNull();
     expect(panel.textContent).toContain("Glucose");
     expect(panel.textContent).toContain("HDL");
@@ -1057,8 +1057,6 @@ describe("the record's row disclosure", () => {
       refs.querySelector('[data-testid="history-linked-scope"]')?.textContent
     ).toBe(heading);
     // The ref is a real deep link to the record's own domain surface, not a chip.
-    expect(
-      refs.querySelector("a")?.getAttribute("href")
-    ).toBe("/medications");
+    expect(refs.querySelector("a")?.getAttribute("href")).toBe("/medications");
   });
 });

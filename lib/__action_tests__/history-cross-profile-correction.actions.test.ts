@@ -213,8 +213,7 @@ function seedCyclePeriod(profileId: number, date: string): number {
 const cycleEndOf = (id: number) =>
   (
     db.prepare("SELECT period_end FROM cycles WHERE id = ?").get(id) as
-      | { period_end: string | null }
-      | undefined
+      { period_end: string | null } | undefined
   )?.period_end ?? null;
 
 const cycleExists = (id: number) =>
@@ -382,7 +381,8 @@ const KINDS: Kind[] = [
       profileId,
     }),
     removeFn: (form) => removeSymptom(form),
-    present: (_id, profileId, date) => symptomSeverityOf(profileId, date) != null,
+    present: (_id, profileId, date) =>
+      symptomSeverityOf(profileId, date) != null,
   },
   {
     name: "cycle",

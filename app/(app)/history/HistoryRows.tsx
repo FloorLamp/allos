@@ -776,81 +776,81 @@ export default function HistoryRows({
     }
     return (
       <Fragment key={row.id}>
-      <li
-        // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
-        // and this list is its detail, so a tick has to have something to scroll to.
-        // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
-        // from the same id, so the two cannot drift into different spellings.
-        // `scroll-mt` keeps the landed row clear of the sticky day header above it.
-        id={timelineEntryAnchorId(row.id)}
-        data-testid="history-row"
-        data-history-kind={row.kind}
-        data-history-row-id={row.id}
-        className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
-      >
-        {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
+        <li
+          // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
+          // and this list is its detail, so a tick has to have something to scroll to.
+          // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
+          // from the same id, so the two cannot drift into different spellings.
+          // `scroll-mt` keeps the landed row clear of the sticky day header above it.
+          id={timelineEntryAnchorId(row.id)}
+          data-testid="history-row"
+          data-history-kind={row.kind}
+          data-history-row-id={row.id}
+          className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
+        >
+          {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
               padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
               base `pr-7` on the same element loses the cascade below `sm` — which is
               exactly the width the rail exists for, and where the ⋯ then sat under
               the strip. A wrapper has no padding of its own to lose to. */}
-        <div
-          // The wrapper that actually SPENDS the rail's lane, named so a test can
-          // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
-          // section reserves nothing, so this element is the only place the "row
-          // content ends short of the edge" half of that rule is observable.
-          data-testid="history-row-content"
-          className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
-        >
-          <LoggedEventRow
-            icon={
-              showGlyphs ? (
-                <Glyph
-                  aria-hidden
-                  className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                  stroke={1.75}
-                />
-              ) : undefined
-            }
+          <div
+            // The wrapper that actually SPENDS the rail's lane, named so a test can
+            // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
+            // section reserves nothing, so this element is the only place the "row
+            // content ends short of the edge" half of that rule is observable.
+            data-testid="history-row-content"
+            className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
           >
-            {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
+            <LoggedEventRow
+              icon={
+                showGlyphs ? (
+                  <Glyph
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                    stroke={1.75}
+                  />
+                ) : undefined
+              }
+            >
+              {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
                 which is what the row grammar buys with its disclosure. */}
-            <span className="flex min-w-0 items-baseline gap-1.5 truncate">
-              {row.href && !canEdit(row) && row.edit == null ? (
-                /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
+              <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+                {row.href && !canEdit(row) && row.edit == null ? (
+                  /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
                      surface owns carries no ⋯, and its pointer is the ONE rightward
                      destination cue the primitive owns — `DestinationLink` draws the
                      chevron and lib/__tests__/destination-link-primitive.test.ts
                      refuses a hand-rolled one inside a link. So the row has exactly one
                      control and one cue, and a row can never show both verbs. */
-                <DestinationLink
-                  href={row.href}
-                  className="inline-flex shrink-0 items-center text-link"
-                  data-testid="history-row-title"
-                >
-                  {row.title}
-                </DestinationLink>
-              ) : row.href ? (
-                <Link
-                  href={row.href}
-                  className="shrink-0 text-link"
-                  data-testid="history-row-title"
-                >
-                  {row.title}
-                </Link>
-              ) : (
-                <span className="shrink-0" data-testid="history-row-title">
-                  {row.title}
-                </span>
-              )}
-              {subject ? (
-                <span
-                  className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
-                  data-testid="history-row-subject"
-                >
-                  {subject}
-                </span>
-              ) : null}
-              {/* THE DISCLOSURE IS THE DETAIL CELL, and that is what makes it fit
+                  <DestinationLink
+                    href={row.href}
+                    className="inline-flex shrink-0 items-center text-link"
+                    data-testid="history-row-title"
+                  >
+                    {row.title}
+                  </DestinationLink>
+                ) : row.href ? (
+                  <Link
+                    href={row.href}
+                    className="shrink-0 text-link"
+                    data-testid="history-row-title"
+                  >
+                    {row.title}
+                  </Link>
+                ) : (
+                  <span className="shrink-0" data-testid="history-row-title">
+                    {row.title}
+                  </span>
+                )}
+                {subject ? (
+                  <span
+                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    data-testid="history-row-subject"
+                  >
+                    {subject}
+                  </span>
+                ) : null}
+                {/* THE DISCLOSURE IS THE DETAIL CELL, and that is what makes it fit
                   this row's grammar rather than porting the feed's card back. #3958
                   rules the row one line at every viewport and the trailing affordance
                   EXCLUSIVE — ⋯ or ›, never both — so a third trailing control was
@@ -862,168 +862,171 @@ export default function HistoryRows({
                   sits outside the truncating span, so the line still ends in an
                   ellipsis when it must), and the title link stays independent —
                   a ⋯ row and a › row disclose the same way. */}
-              {hasPanel(row) ? (
-                <button
-                  type="button"
-                  data-testid="history-row-disclosure"
-                  aria-expanded={openPanelId === row.id}
-                  aria-controls={`${timelineEntryAnchorId(row.id)}-panel`}
-                  onClick={() =>
-                    setOpenPanelId(openPanelId === row.id ? null : row.id)
-                  }
-                  className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                >
-                  <span className="min-w-0 truncate" data-testid="history-row-detail">
+                {hasPanel(row) ? (
+                  <button
+                    type="button"
+                    data-testid="history-row-disclosure"
+                    aria-expanded={openPanelId === row.id}
+                    aria-controls={`${timelineEntryAnchorId(row.id)}-panel`}
+                    onClick={() =>
+                      setOpenPanelId(openPanelId === row.id ? null : row.id)
+                    }
+                    className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    <span
+                      className="min-w-0 truncate"
+                      data-testid="history-row-detail"
+                    >
+                      {row.detail}
+                    </span>
+                    <IconChevronDown
+                      aria-hidden
+                      className={`h-3 w-3 shrink-0 transition ${
+                        openPanelId === row.id ? "rotate-180" : ""
+                      }`}
+                      stroke={2}
+                    />
+                  </button>
+                ) : row.detail ? (
+                  <span
+                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                    data-testid="history-row-detail"
+                  >
                     {row.detail}
                   </span>
-                  <IconChevronDown
-                    aria-hidden
-                    className={`h-3 w-3 shrink-0 transition ${
-                      openPanelId === row.id ? "rotate-180" : ""
-                    }`}
-                    stroke={2}
-                  />
-                </button>
-              ) : row.detail ? (
-                <span
-                  className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
-                  data-testid="history-row-detail"
-                >
-                  {row.detail}
-                </span>
-              ) : null}
-            </span>
-          </LoggedEventRow>
-          {row.clock ? (
-            <span
-              className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
-              data-testid="history-row-clock"
-            >
-              {row.clock}
-            </span>
-          ) : null}
-          {canEdit(row) ? (
-            <OverflowMenu
-              kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
-              itemName={menuName(row)}
-              open={menuOpenId === row.id}
-              onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
-            >
-              {({ close }) => (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="history-row-edit"
-                    onClick={() => {
-                      close();
-                      setEditingId(row.id);
-                    }}
-                    className={MENU_ITEM}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="history-row-delete"
-                    disabled={pendingId === row.id}
-                    onClick={() => {
-                      close();
-                      void remove(row);
-                    }}
-                    className={MENU_ITEM_DANGER}
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-            </OverflowMenu>
-          ) : null}
-        </div>
-      </li>
-      {/* THE PANEL IS THE ROW'S SIBLING, NOT ITS CHILD (#4045 §4 — revealed content
+                ) : null}
+              </span>
+            </LoggedEventRow>
+            {row.clock ? (
+              <span
+                className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+                data-testid="history-row-clock"
+              >
+                {row.clock}
+              </span>
+            ) : null}
+            {canEdit(row) ? (
+              <OverflowMenu
+                kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
+                itemName={menuName(row)}
+                open={menuOpenId === row.id}
+                onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
+              >
+                {({ close }) => (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-testid="history-row-edit"
+                      onClick={() => {
+                        close();
+                        setEditingId(row.id);
+                      }}
+                      className={MENU_ITEM}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-testid="history-row-delete"
+                      disabled={pendingId === row.id}
+                      onClick={() => {
+                        close();
+                        void remove(row);
+                      }}
+                      className={MENU_ITEM_DANGER}
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
+              </OverflowMenu>
+            ) : null}
+          </div>
+        </li>
+        {/* THE PANEL IS THE ROW'S SIBLING, NOT ITS CHILD (#4045 §4 — revealed content
           belongs directly beneath the line that revealed it). A row `<li>` is
           `flex items-center` on the shared primitive and every geometry assertion on
           this page measures it; growing it into a column when a reader opens one
           would move the thing those specs measure. The rollup's revealed rows are
           siblings for the same reason. */}
-      {openPanelId === row.id ? (
-        <li
-          id={`${timelineEntryAnchorId(row.id)}-panel`}
-          data-testid="history-row-panel"
-          data-history-row-id={row.id}
-          className="band card-gutter-action border-t border-(--divider) py-2"
-        >
-          <div
-            className={`min-w-0 text-sm text-slate-600 dark:text-slate-300 ${rowClassName}`}
+        {openPanelId === row.id ? (
+          <li
+            id={`${timelineEntryAnchorId(row.id)}-panel`}
+            data-testid="history-row-panel"
+            data-history-row-id={row.id}
+            className="band card-gutter-action border-t border-(--divider) py-2"
           >
-            {row.detailItems && row.detailItems.length > 0 ? (
-              <dl className="space-y-1">
-                {row.detailItems.map((item, index) => (
-                  <div
-                    key={`${row.id}:detail:${index}:${item.label}`}
-                    className="grid gap-1 sm:grid-cols-[10rem_1fr]"
-                  >
-                    <dt className="font-medium text-slate-700 dark:text-slate-200">
-                      {item.label}
-                    </dt>
-                    <dd>
-                      {item.unit || item.flag ? (
-                        <MedicalValue
-                          value={item.value}
-                          unit={item.unit ?? null}
-                          flag={item.flag ?? null}
-                        />
-                      ) : (
-                        item.value
-                      )}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
-            {/* LINKED CONTEXT (#662), AND ITS HEADING CLAIMS ONLY WHAT THE GATHER HAD
+            <div
+              className={`min-w-0 text-sm text-slate-600 dark:text-slate-300 ${rowClassName}`}
+            >
+              {row.detailItems && row.detailItems.length > 0 ? (
+                <dl className="space-y-1">
+                  {row.detailItems.map((item, index) => (
+                    <div
+                      key={`${row.id}:detail:${index}:${item.label}`}
+                      className="grid gap-1 sm:grid-cols-[10rem_1fr]"
+                    >
+                      <dt className="font-medium text-slate-700 dark:text-slate-200">
+                        {item.label}
+                      </dt>
+                      <dd>
+                        {item.unit || item.flag ? (
+                          <MedicalValue
+                            value={item.value}
+                            unit={item.unit ?? null}
+                            flag={item.flag ?? null}
+                          />
+                        ) : (
+                          item.value
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {/* LINKED CONTEXT (#662), AND ITS HEADING CLAIMS ONLY WHAT THE GATHER HAD
                 (#2920): "From this visit" for rows carrying a real encounter link to
                 this visit, the encounter detail page's own vocabulary; the document
                 wording only where that import document stands for a SINGLE visit.
                 A multi-visit portal export sets neither, because a reference chip
                 that cannot honestly name its visit says nothing. Informational
                 either way — never a causal claim. */}
-            {row.linkedRefs && row.linkedRefs.length > 0 ? (
-              <div
-                data-testid="history-linked-refs"
-                className={row.detailItems?.length ? "mt-3" : ""}
-              >
-                <p
-                  // The heading is addressable on its own, because the two spellings
-                  // it chooses between are a PREFIX of one another (#2920): an
-                  // assertion that can only reach it through the section would have to
-                  // match on containment, and "From this visit" is satisfied by the
-                  // document wording too.
-                  data-testid="history-linked-scope"
-                  className="text-xs font-medium text-slate-500 dark:text-slate-400"
+              {row.linkedRefs && row.linkedRefs.length > 0 ? (
+                <div
+                  data-testid="history-linked-refs"
+                  className={row.detailItems?.length ? "mt-3" : ""}
                 >
-                  {row.linkedScope === "visit"
-                    ? "From this visit"
-                    : "From this visit’s document"}
-                </p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {row.linkedRefs.map((ref, index) => (
-                    <Link
-                      key={`${row.id}:ref:${index}:${ref.label}`}
-                      href={ref.href}
-                      className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-link"
-                    >
-                      {ref.label}
-                    </Link>
-                  ))}
+                  <p
+                    // The heading is addressable on its own, because the two spellings
+                    // it chooses between are a PREFIX of one another (#2920): an
+                    // assertion that can only reach it through the section would have to
+                    // match on containment, and "From this visit" is satisfied by the
+                    // document wording too.
+                    data-testid="history-linked-scope"
+                    className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                  >
+                    {row.linkedScope === "visit"
+                      ? "From this visit"
+                      : "From this visit’s document"}
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {row.linkedRefs.map((ref, index) => (
+                      <Link
+                        key={`${row.id}:ref:${index}:${ref.label}`}
+                        href={ref.href}
+                        className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-link"
+                      >
+                        {ref.label}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : null}
-          </div>
-        </li>
-      ) : null}
+              ) : null}
+            </div>
+          </li>
+        ) : null}
       </Fragment>
     );
   };
