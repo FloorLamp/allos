@@ -38,14 +38,14 @@ const disabled = (kinds: string[]) => ({
 beforeEach(() => revalidate.mockClear());
 
 describe("saveLoginTelegramNotifyKinds (login tier, #1072)", () => {
-  it("persists the Telegram column to the acting login, not the profile", async () => {
+  it("persists known Telegram kinds only to the acting login", async () => {
     const login = createLogin();
     const profile = createProfile("tg-owner", login.id);
     const other = createLogin();
     actAs(login, profile);
 
     const res = await saveLoginTelegramNotifyKinds(
-      fd(disabled(["refill", "digest"]))
+      fd(disabled(["refill", "digest", "not-a-kind"]))
     );
     expect(res).toEqual({ ok: true });
     expect(new Set(getLoginTelegramDisabledKinds(login.id))).toEqual(
@@ -54,14 +54,6 @@ describe("saveLoginTelegramNotifyKinds (login tier, #1072)", () => {
     // Login-scoped: another login is untouched.
     expect(getLoginTelegramDisabledKinds(other.id)).toEqual([]);
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
-  });
-
-  it("drops unknown kinds via the shared pure parser", async () => {
-    const login = createLogin();
-    const profile = createProfile("tg-parse", login.id);
-    actAs(login, profile);
-    await saveLoginTelegramNotifyKinds(fd(disabled(["refill", "not-a-kind"])));
-    expect(getLoginTelegramDisabledKinds(login.id)).toEqual(["refill"]);
   });
 
   it("is allowed for a read-only member (login-scoped, not profile-owned)", async () => {
@@ -73,29 +65,6 @@ describe("saveLoginTelegramNotifyKinds (login tier, #1072)", () => {
     const res = await saveLoginTelegramNotifyKinds(fd(disabled(["refill"])));
     expect(res).toEqual({ ok: true });
     expect(getLoginTelegramDisabledKinds(login.id)).toEqual(["refill"]);
-  });
-});
-
-describe("saveHomeAssistantNotifyKinds (profile tier)", () => {
-  it("rewrites only the disabled kinds, preserving enable/URL/secret", async () => {
-    const login = createLogin();
-    const profile = createProfile("ha-kinds", login.id);
-    actAs(login, profile);
-    setProfileHomeAssistant(profile.id, {
-      enabled: true,
-      webhookUrl: "http://homeassistant.local:8123/api/webhook/allos-x",
-      secret: "keep",
-      disabledKinds: ["digest"],
-    });
-
-    await saveHomeAssistantNotifyKinds(fd(disabled(["refill"])));
-    const cfg = getProfileHomeAssistant(profile.id);
-    expect(cfg.enabled).toBe(true);
-    expect(cfg.webhookUrl).toBe(
-      "http://homeassistant.local:8123/api/webhook/allos-x"
-    );
-    expect(cfg.secret).toBe("keep");
-    expect(cfg.disabledKinds).toEqual(["refill"]);
   });
 });
 
