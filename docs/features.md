@@ -56,7 +56,14 @@ Each member whose episode is still inside its seven-day reopen window gets a cal
 **stays dismissed** across reloads for that reader: the hide is a per-login
 viewing preference, so another caregiver with access to the same person still
 sees the action, and it never changes the episode or its reopen window. Household
-illness history is an independent typed context fact in Show everything.
+illness history is an independent typed context fact; because it is only a link to
+a page the sidebar already carries, Show everything draws that page as a door row
+under **Elsewhere** rather than a card of its own.
+
+Show everything holds no general-purpose write controls. Logging weight, a vital,
+a symptom, a well day, an illness or a period is the quick logger's job — one
+surface for quick writes, reached from anywhere — so the tail is somewhere to
+look rather than somewhere to type.
 
 ### Atomic overview
 
@@ -1179,8 +1186,9 @@ classification, and a course whose prescriber matches a linked visit reads
 "prescribed at the Day-2 visit"); "Illness + visits" also interleaves the
 unlinked routine visits. It's promoted with a calm dashboard link whenever
 anyone in the house is **currently or recently sick** (and receding when the
-house is well) — the dashboard keeps it as a typed illness-context fact in
-**Show everything**, alongside recently-resolved reopen rows; each illness-episode
+house is well) — the dashboard keeps it as a typed illness-context fact, drawn as
+the **Illness episodes** door in **Show everything** alongside recently-resolved
+reopen rows; each illness-episode
 page carries an **"Around the household"**
 card of other members' overlapping or closely adjacent illnesses (a dated fact —
 "overlapped by 4 days", never a cause) and a **Care** line linking the resulting

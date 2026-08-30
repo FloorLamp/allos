@@ -658,7 +658,6 @@ export function syncedAnnouncement(
 // constant rather than inventing a ninth copy):
 //   • components/DoseStatusControl.tsx — dose take/skip
 //   • components/practices/LogPracticeButton.tsx — practice session
-//   • components/dashboard/WeightQuickAdd.tsx — dashboard weigh-in
 //   • components/quick-entry/QuickMoodCheckin.tsx — quick-entry mood
 //   • components/ActivityForm.tsx — close-path workout capture
 //   • app/(app)/nutrition/FoodLogBar.tsx — food serving "+"

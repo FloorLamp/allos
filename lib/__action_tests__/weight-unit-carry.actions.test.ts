@@ -259,11 +259,12 @@ describe("createGoal honors the submitted weight unit (issue #630)", () => {
   });
 });
 
-// The dashboard weight quick-add's payload shape (#2863) — the three fields
-// components/dashboard/WeightQuickAdd.tsx posts, which until now omitted the unit and
-// let a Settings flip between render and submit re-interpret a correctly-typed
-// weigh-in. That the form carries the field is pinned in
-// components/__tests__/weight-quick-add-unit.test.tsx; this is what carrying it BUYS.
+// A quick weigh-in's payload shape (#2863) — the three fields a quick-add form posts,
+// which until #2863 omitted the unit and let a Settings flip between render and submit
+// re-interpret a correctly-typed weigh-in. The dashboard widget that first carried
+// this shape retired with #3366's tail write cards; the surviving quick surface is
+// app/(app)/trends/MeasurementsQuickAdd.tsx, which posts the same hidden
+// `weight_unit`. This is what carrying it BUYS.
 describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", () => {
   it.each([
     // typed under a (kg) label; 82 kg is 180.8 lb, so a pref-read write would have

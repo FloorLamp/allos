@@ -1960,7 +1960,12 @@ const pregnant: SeedPersona = {
       "instrument flow offers a pregnant user.",
   ],
   dashboard: {
-    expect: ["checkin.mood", "cycle.control"],
+    // This persona used to expect `cycle.control` too. #3366 retired the tail's
+    // generic write cards to the quick logger, and a cycle 20 weeks past its last
+    // period has no phase to read, so the pregnant dashboard now carries no cycle
+    // fact at all — the period offer is a sheet row, asserted in the manifest tier's
+    // retirement table.
+    expect: ["checkin.mood"],
     absent: ["weight.bootstrap"],
   },
   apply(ctx) {
