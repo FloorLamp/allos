@@ -301,6 +301,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
       const outcome = logUsualFoodCore(
         profileId,
         "Morning",
+        anchor,
         ["berries", "fermented"],
         "page"
       );
@@ -326,6 +327,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     const outcome = logUsualFoodCore(
       profileId,
       "Morning",
+      anchor,
       ["berries", "fermented"],
       "page"
     );
@@ -345,7 +347,7 @@ describe("logUsualFoodCore lands the whole set or none of it (#2380)", () => {
     // there — this pins that the two paths agree on the observable outcome.
     const { profileId, anchor } = seedPair("usual-atomic-empty");
     expect(
-      logUsualFoodCore(profileId, "Morning", ["red_meat", "alcohol"], "page")
+      logUsualFoodCore(profileId, "Morning", anchor, ["red_meat", "alcohol"], "page")
     ).toEqual({ kind: "nothing-to-log" });
     expect(writtenToday(profileId, anchor)).toEqual({
       counters: [],

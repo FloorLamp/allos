@@ -26,6 +26,8 @@ import type {
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
+import { recordAudit } from "@/lib/audit";
+import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { getActiveFastCached } from "@/lib/queries/fasting";
 import { promptsEndOfFast } from "@/lib/fasting";
 import type { UsualFoodLogged } from "@/lib/food-usual-write";
@@ -265,12 +267,12 @@ export async function undoAttentionDose(
 // The action validates SHAPE only. WHICH groups and WHICH doses may land is the
 // core's question, and it re-derives BOTH halves from fresh server state rather than
 // trusting this form, so a forged, replayed or simply stale submission can never
-// write outside the bundle that currently stands. There is no `date` field: the core
-// resolves the profile's own today, so this path cannot backfill.
+// write outside the bundle that currently stands. The `date` field is optional and
+// defaults to today (#4118); its reach is the CORE's bound, not this parse.
 export async function logUsualRoutine(
   formData: FormData
 ): Promise<UsualRoutineResult> {
-  const { profile } = await requireWriteAccess();
+  const { login, profile } = await requireWriteAccess();
   const rawWindow = String(formData.get("meal_slot") ?? "").trim();
   if (!isFoodSlot(rawWindow))
     return { ok: false, error: "Unknown meal window." };
@@ -284,9 +286,13 @@ export async function logUsualRoutine(
     .filter((id) => Number.isInteger(id) && id > 0);
   if (groups.length === 0 && doseIds.length === 0)
     return { ok: false, error: "Nothing to log." };
+  const day = today(profile.id);
+  const rawDate = String(formData.get("date") ?? "").trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : day;
   const outcome = logUsualRoutineCore(
     profile.id,
     rawWindow,
+    date,
     groups,
     doseIds,
     // READ, NOT NAMED (#3087). This control is not on the attention card: it is the
@@ -298,15 +304,32 @@ export async function logUsualRoutine(
     // does not, exactly as it is everywhere else.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
+  if (outcome.kind === "invalid-date")
+    return { ok: false, error: "That day is out of range." };
   if (outcome.kind === "nothing-to-log")
     return { ok: false, error: "That's already logged." };
+  // A DATED bundle is audited, exactly as `logHistoricalDose` is (#1933's reasoning,
+  // #4118's ruling): writing several servings and several dose confirms onto a day
+  // somebody has already lived through is a retroactive claim about what happened, and
+  // where a caregiver files one it is a claim about somebody else. A contemporaneous tap
+  // is ordinary use and stays unaudited — the ledger rows are their own record. target =
+  // the meal window, detail = the affected date (identifiers and dates only).
+  if (outcome.date !== day) {
+    recordAudit({
+      loginId: login.id,
+      profileId: profile.id,
+      action: AUDIT_ACTIONS.usualBackfill,
+      target: outcome.window,
+      detail: outcome.date,
+    });
+  }
   // The follow-up offer, resolved AFTER the write and only when the bundle actually
   // landed FOOD: confirming a dose is not eating, and prompting "End your fast?" over a
-  // dose-only tap would be the app inferring a meal from a medication.
-  const day = today(profile.id);
+  // dose-only tap would be the app inferring a meal from a medication. The day the write
+  // USED, not today — reconstructing Tuesday is not a reason to end today's fast.
   const endFastOffer =
     outcome.groups.length > 0 &&
-    promptsEndOfFast(getActiveFastCached(profile.id), day, day);
+    promptsEndOfFast(getActiveFastCached(profile.id), outcome.date, day);
   revalidateRoute("/");
   revalidateRoute("/nutrition");
   revalidateRoute("/medications");

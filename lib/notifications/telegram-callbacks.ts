@@ -132,7 +132,8 @@ import {
 } from "../usual-routine-write";
 import { usualRoutineAnswerText } from "../usual-routine";
 import { foodGroupName } from "../food-groups";
-import { readOffer } from "./offer-store";
+import { readOfferRow } from "./offer-store";
+import { isDoseDateAccepted } from "../dose-log-window";
 import {
   USUAL_OFFER_FAMILY,
   type StoredUsualOffer,
@@ -1453,11 +1454,18 @@ async function handleStackTaken(
 // ── NOTHING ON THE WIRE IS TRUSTED ───────────────────────────────────────────
 //
 // The token carries a profile id (a cross-check, like every other tap token) and an
-// OFFER ID. The offer row is read scoped by the CHAT-RESOLVED profile, by family, and
-// by the profile's own `today` — so another profile's offer, another family's payload
-// and yesterday's offer are the same single refusal, and none of them can be told
-// apart by a forged token. No date crosses the wire at all: `today(profileId)` is
-// resolved here and again inside the core, so this path cannot backfill.
+// OFFER ID. The offer row is read scoped by the CHAT-RESOLVED profile and by family, so
+// another profile's offer and another family's payload are the same single refusal, and
+// neither can be told apart by a forged token.
+//
+// ── THE DAY IS THE OFFER'S OWN, NOT `today` (#4118) ──────────────────────────
+//
+// This read used to demand `row.date === today(profileId)`, which deleted the button at
+// midnight while the ✅ dose buttons on the SAME message kept working — the owner's
+// "I can only update the morning supplement times, not food". Now the offer's minted day
+// is gated by `isDoseDateAccepted`, exactly as `standingStackOffer` gates the `stacktake:`
+// button beside it, and that day is what the write, the answer and the rebuild all use.
+// Still no date on the wire: it comes off the stored row, which only this app writes.
 //
 // ── AND THE OFFER IS AN UPPER BOUND, NOT AN INSTRUCTION ──────────────────────
 //
@@ -1488,19 +1496,18 @@ async function handleUsualRoutineTap(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
     return;
   }
-  const date = today(profileId);
-  const offer = readOffer<StoredUsualOffer>(
+  const row = readOfferRow<StoredUsualOffer>(
     profileId,
     USUAL_OFFER_FAMILY,
-    token.offerId,
-    date
+    token.offerId
   );
-  if (!offer) {
-    // Forged, another profile's, or minted on a day that has since rolled over. The
-    // honest refusal, and nothing is written.
+  if (!row || !isDoseDateAccepted(today(profileId), row.date)) {
+    // Forged, another profile's, or minted further back than the window reaches. The
+    // honest refusal, and nothing is written — day 3+ still answers the outdated text.
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
     return;
   }
+  const { payload: offer, date } = row;
   const messageId = cq.message?.message_id;
   const notifyMessageId =
     chatId != null && messageId != null
@@ -1509,6 +1516,7 @@ async function handleUsualRoutineTap(
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
+    date,
     offer.groups,
     offer.doseIds,
     NUDGE,
@@ -1599,13 +1607,13 @@ async function handleFoodLog(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  // Belt-and-suspenders cross-date guard (#947): a stale keyboard from a previous day
-  // can survive (the close-previous strip failed, or the bot restarted between
-  // sends). The token carries its SEND date and handleFoodLog would otherwise write to
-  // it — logging TODAY's tap to yesterday. When the token's date isn't today in the
-  // profile's timezone, log NOTHING and answer honestly (never unconditionally
-  // confirm, #232); a same-day tap from an older window still logs (the date is right).
-  if (foodTapDateGuard(food.date, today(profileId)).kind === "stale-date") {
+  // The cross-date guard (#947, widened by #4118): the token carries its SEND date, and
+  // a keyboard from a previous day can survive (the close-previous strip failed, or the
+  // bot restarted between sends). Inside the message-date window the tap is honoured ON
+  // THE MESSAGE'S OWN DAY, exactly as the ✅ dose buttons on the same message are;
+  // outside it nothing is written and the refusal says so (#232).
+  const dateGuard = foodTapDateGuard(food.date, today(profileId));
+  if (dateGuard.kind === "stale-date") {
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
@@ -1624,6 +1632,16 @@ async function handleFoodLog(
   // THE MESSAGE IS RECORDED ON THE ROW (#2264): the (chat, message) this tap arrived
   // from resolves to its notify_messages pointer, so the correction burst this serving
   // joins renders on THIS message and never on a sibling about some other meal.
+  //
+  // ON A RECENT-DAY TAP THE INSTANT IS NOT A MEASUREMENT ANY MORE, and that is the one
+  // thing the widening had to get right. "I'm eating NOW" is false about a day that has
+  // already ended, so the tap instant is NOT written as an eating time there; the row
+  // takes the nudge's own window as a declared `meal_slot` and a NULL `occurred_at` —
+  // the same "no time was stated" shape the usual bundle and the `/history` door write.
+  // Stamping `now` would have produced a row whose day and whose eating instant
+  // contradict each other, and `foodSlotForProfileEvent` would then have filed a
+  // breakfast under whatever window the tap happened to land in.
+  const backfilling = dateGuard.kind === "recent-day";
   const tapAt = instantNow();
   const messageId = cq.message?.message_id;
   const origin =
@@ -1639,11 +1657,18 @@ async function handleFoodLog(
     // keyboard minted the button, marked at the mint site.
     food.origin,
     tapAt,
-    undefined,
-    { eatenAt: tapAt, source: "tap" },
+    backfilling ? food.window : undefined,
+    backfilling ? undefined : { eatenAt: tapAt, source: "tap" },
     origin
   );
-  await answerCallbackQuery(cq.id, foodLogAnswerText(outcome, food.group));
+  await answerCallbackQuery(
+    cq.id,
+    foodLogAnswerText(
+      outcome,
+      food.group,
+      backfilling ? food.date : undefined
+    )
+  );
   const wrote = outcome.kind === "logged" ? profileId : undefined;
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
@@ -1687,10 +1712,16 @@ async function handleFoodProtein(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
-  if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
+  const dateGuard = foodTapDateGuard(token.date, today(profileId));
+  if (dateGuard.kind === "stale-date") {
     await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
     return;
   }
+  // Same rule as its food-group neighbour sixty lines up (#4118): inside the window the
+  // grams land on the MESSAGE'S day, and no eating instant is invented for a day that
+  // has ended. The nudge's window still rides along as the asserted slot — that is what
+  // `mealSlot` on this core has always been for (#1704).
+  const backfilling = dateGuard.kind === "recent-day";
   // The protein sibling of the food tap's #2019 capture: the same "I'm having this now"
   // contract, the same recorded instant, the same reason no explicit `meal_slot` is
   // written, and the same #2264 message provenance — a protein burst's correction row
@@ -1710,11 +1741,18 @@ async function handleFoodProtein(
     // Same axis, same token marker as the food-group button beside it (#3087).
     token.origin,
     tapAt,
-    undefined,
-    { eatenAt: tapAt, source: "tap" },
+    backfilling ? token.window : undefined,
+    backfilling ? undefined : { eatenAt: tapAt, source: "tap" },
     origin
   );
-  await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
+  await answerCallbackQuery(
+    cq.id,
+    foodProteinAnswerText(
+      outcome,
+      token.grams,
+      backfilling ? token.date : undefined
+    )
+  );
   const wrote = outcome.kind === "logged" ? profileId : undefined;
 
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];

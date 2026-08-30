@@ -81,6 +81,7 @@ import type { DateRange } from "../timeline-format";
 import { foodEventWindow, type FoodLedgerEvent } from "../food-slot-count";
 import { hhmmToMinutes } from "../date";
 import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "../protein-nudge";
+import { USUAL_BACKFILL } from "../logged-via";
 import { CORRECTION_FRESH_MIN } from "../correction-time";
 import type { FoodTapRow } from "../food-log-write";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-daily-totals-write";
@@ -785,6 +786,19 @@ export function getProteinTapsOnDate(profileId: number, date: string): number {
 // slug are dropped: a habit has to be a catalog group, because everything downstream
 // names one to the user.
 //
+// ── THE EVIDENCE GUARD (#4118) ───────────────────────────────────────────────
+//
+// Rows stamped `usual-backfill` are EXCLUDED here, and here only. They are the composed
+// one-tap aimed at a past day, and this measure is what decides that the one-tap should
+// be offered at all — so counting them would let the write manufacture its own reason:
+// backfill three mornings, and the fourth is offered because of the three. Every other
+// reader keeps them, because they record something that happened: the day view, the
+// tallies, adherence, the fasting reads, the rankings.
+//
+// `IS NOT` rather than `!=`: `logged_via` is NULL on every row written before #3087, and
+// `!=` would silently drop all of that history from the measure. SQLite's `IS NOT` is
+// null-safe, so a NULL stamp stays evidence — which it is.
+//
 // Reads a bounded ~3 weeks of one profile's events. Profile-scoped via the
 // food_log_events filter.
 export function getFoodRegularity(profileId: number): FoodRegularity {
@@ -794,9 +808,10 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
     .prepare(
       `SELECT group_key AS name, date, recorded_at, meal_slot, occurred_at
          FROM food_log_events
-        WHERE profile_id = ? AND date >= ? AND date <= ?`
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+          AND logged_via IS NOT ?`
     )
-    .all(profileId, from, t) as FoodLedgerEvent[];
+    .all(profileId, from, t, USUAL_BACKFILL) as FoodLedgerEvent[];
   const tz = getTimezone(profileId);
   const boundaries = profileFoodSlotBoundaries(profileId);
   const events: FoodRegularityEvent[] = [];

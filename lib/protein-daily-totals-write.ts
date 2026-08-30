@@ -16,7 +16,8 @@
 // than 1. Every add also records the amount as the per-profile "last used" preset
 // (scoop sizes repeat), so the quick-add can re-offer it next time.
 
-import { db, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
+import { isRealIsoDate } from "./date";
 import type { LoggedVia } from "./logged-via";
 import { instantNow } from "./clock";
 import { proteinDayCounter } from "./day-counter-ledger-db";
@@ -37,10 +38,13 @@ const MAX_GRAMS_PER_ADD = 300;
 
 // The typed result of an add, so a caller answers from what ACTUALLY happened rather
 // than unconditionally confirming (the markDoseTaken/food-log contract):
-//   logged   — grams were added; `grams` is the day's new manual-protein total.
-//   invalid  — the amount was non-positive or over the per-add cap; nothing written.
+//   logged       — grams were added; `grams` is the day's new manual-protein total.
+//   invalid      — the amount was non-positive or over the per-add cap; nothing written.
+//   invalid-date — the day is malformed or in the FUTURE (#4118); nothing written.
 export type ProteinAddOutcome =
-  { kind: "logged"; grams: number } | { kind: "invalid" };
+  | { kind: "logged"; grams: number }
+  | { kind: "invalid" }
+  | { kind: "invalid-date" };
 
 // The typed result of an undo: grams were removed and `grams` is the day's REMAINING
 // manual-protein total (0 once the row is dropped), or the amount was invalid. Undo is
@@ -86,6 +90,11 @@ export function addProteinGramsCore(
   origin?: FoodWriteOrigin
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
+  // The same not-future bound its food-group sibling gained (#4118), for the same
+  // reason and in the same spelling: the quick-add's day was picker-bounded in markup
+  // only, so a forged POST could put grams on a day that has not happened.
+  if (!isRealIsoDate(date) || date > today(profileId))
+    return { kind: "invalid-date" };
   return writeTx(() => {
     const total = proteinDayCounter.bump(profileId, date, [], grams);
     // Remember this scoop size as the profile's last-used preset.
