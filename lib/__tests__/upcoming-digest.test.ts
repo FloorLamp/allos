@@ -194,6 +194,38 @@ describe("digestHighlights (issue #656)", () => {
       },
     ]);
   });
+
+  it("admits only near-band push domains while preserving med-monitor highlights", () => {
+    const model = buildUpcomingDigest("Sam", [
+      {
+        band: "overdue",
+        label: "Overdue",
+        items: [mkReason("followup", "Follow up", 9, [risk("Review")])],
+      },
+      {
+        band: "today",
+        label: "Today",
+        items: [
+          mk("appointment"),
+          mkReason("mental-health", "Check in", 8, [risk("Private")]),
+        ],
+      },
+      {
+        band: "week",
+        label: "This week",
+        items: [mkReason("med-monitor", "Retest TSH", 2, [risk("Lithium")])],
+      },
+      {
+        band: "later",
+        label: "Later",
+        items: [mkReason("biomarker", "Follow-up DEXA", 10, [risk("DEXA")])],
+      },
+    ])!;
+    expect(model.lines).toEqual(["Today: 1 appointment", "Later: 1 lab"]);
+    expect(model.highlights).toEqual([
+      { title: "Retest TSH", reason: "Lithium" },
+    ]);
+  });
 });
 
 // ---- Naming a small band, and the per-domain phrase (#1819 items 4/5) -----
