@@ -22,29 +22,49 @@ function hr(samples: [string, number][]): OutcomeSeries {
 }
 
 describe("compareProtocol", () => {
+  it("requires three readings per side before judging a comparison", () => {
+    const cmp = compareProtocol(
+      [
+        hr([
+          ["2026-04-30", 60],
+          ["2026-05-01", 55],
+        ]),
+      ],
+      { startDate: "2026-05-01", endDate: "2026-05-01", today: "2026-05-01" }
+    );
+
+    expect(cmp.outcomes[0].insufficient).toBe(true);
+    expect(cmp.outcomes[0].betterness).toBe("unknown");
+    expect(cmp.outcomes[0].framing).toBe(
+      "Not enough readings to compare (baseline n=1, during n=1)."
+    );
+  });
+
   it("computes mean/median shift with n per window and honest framing", () => {
     const cmp = compareProtocol(
       [
         hr([
           ["2026-04-22", 60],
           ["2026-04-28", 62],
+          ["2026-04-30", 61],
           ["2026-05-02", 57],
           ["2026-05-08", 57],
+          ["2026-05-10", 57],
         ]),
       ],
       { startDate: "2026-05-01", endDate: "2026-05-10", today: "2026-05-10" }
     );
     const o = cmp.outcomes[0];
-    expect(o.baseline.n).toBe(2);
+    expect(o.baseline.n).toBe(3);
     expect(o.baseline.mean).toBe(61);
     expect(o.baseline.median).toBe(61);
-    expect(o.intervention.n).toBe(2);
+    expect(o.intervention.n).toBe(3);
     expect(o.intervention.mean).toBe(57);
     expect(o.meanDelta).toBe(-4);
     expect(o.betterness).toBe("better"); // lower resting HR is better
     expect(o.insufficient).toBe(false);
     expect(o.framing).toContain("−4 bpm");
-    expect(o.framing).toContain("n=2 during vs 2 before");
+    expect(o.framing).toContain("n=3 during vs 3 before");
   });
 
   it("window edges: a sample ON the start date is intervention; the day before is baseline", () => {
@@ -63,10 +83,10 @@ describe("compareProtocol", () => {
     expect(o.intervention.n).toBe(1);
     expect(o.intervention.mean).toBe(10);
     expect(o.meanDelta).toBe(-10);
-    expect(o.insufficient).toBe(false);
+    expect(o.insufficient).toBe(true);
   });
 
-  it("sparse labs: falls back to the nearest draw before the start when the baseline window is empty", () => {
+  it("sparse labs: retains the nearest draw but does not judge one reading", () => {
     const ldl: OutcomeSeries = {
       key: "result:LDL Cholesterol",
       label: "LDL Cholesterol",
@@ -87,7 +107,8 @@ describe("compareProtocol", () => {
     expect(o.baseline.mean).toBe(130);
     expect(o.intervention.mean).toBe(110);
     expect(o.meanDelta).toBe(-20);
-    expect(o.insufficient).toBe(false);
+    expect(o.insufficient).toBe(true);
+    expect(o.betterness).toBe("unknown");
   });
 
   it("keeps the stored unit raw while its framing crosses the display boundary", () => {
@@ -99,8 +120,12 @@ describe("compareProtocol", () => {
           unit: "ug/L",
           direction: "higher_better",
           samples: [
+            { date: "2026-04-26", value: 40 },
+            { date: "2026-04-28", value: 40 },
             { date: "2026-04-30", value: 40 },
             { date: "2026-05-01", value: 45 },
+            { date: "2026-05-03", value: 45 },
+            { date: "2026-05-05", value: 45 },
           ],
         },
       ],
@@ -174,7 +199,11 @@ describe("compareProtocol", () => {
       direction: "higher_better",
       samples: [
         { date: "2026-04-25", value: 70 },
+        { date: "2026-04-27", value: 72 },
+        { date: "2026-04-29", value: 71 },
         { date: "2026-05-05", value: 82 },
+        { date: "2026-05-07", value: 80 },
+        { date: "2026-05-09", value: 81 },
       ],
     };
     const cmp = compareProtocol([sri], {
