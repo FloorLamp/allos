@@ -3130,8 +3130,8 @@ shortcuts for common actions, and an icon badge mirroring the **Needs
 attention** count. The badge reflects the last app refresh; notifications remain
 responsible for proactive delivery.
 
-The navigation drawer may show locally stored **Frequent** destinations.
-Visitation history stays on the device and is not added to the health database.
+The navigation drawer shows the same destinations as the desktop sidebar, in the
+same order, with each group's rows inline.
 
 Allos also registers as a share target. Sharing a PDF or document photo from
 another app opens the medical-document pipeline for the active profile. The

@@ -6,7 +6,8 @@ import type { TrackedPractice } from "@/lib/queries/wellness";
 
 // THE FIRST-PRACTICE DOOR (#3066). `/wellness`'s nav row is gated on practice state
 // (#1620, correct for an empty ledger) and every other route onto practices —
-// the Telegram nudges, the habits widget, the trends lens, the frequent-pages row —
+// the Telegram nudges, the habits widget, the trends lens (the frequent-pages row
+// was a fourth until #4102 retired it) —
 // needs a practice to already exist. The quick-log sheet's "Log practice" row is
 // always visible, so the bootstrap lives here: nothing tracked renders the create
 // form, and it must NOT keep rendering it once a practice exists (a bootstrap, not a
