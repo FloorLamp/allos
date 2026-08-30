@@ -114,9 +114,9 @@ async function addPhoto(
   bytes: Buffer,
   opts: { date: string; caption?: string }
 ): Promise<void> {
-  // One real tap must synchronously open the native chooser, with no
-  // intermediate fallback dialog (#2182) — which holds because the caller
-  // staged the no-camera-API precondition before its goto (#2662).
+  // The tap opens the dialog; the helper walks it to the chooser (#3286). The
+  // caller stages the no-camera-API device so the dialog opens on the chooser
+  // rather than the viewfinder (#2662).
   const fileInput = page.getByTestId("photo-capture-file");
   await capturePhotoFile(page, page.getByTestId("photo-capture-open"), {
     name: "capture.jpg",
@@ -124,13 +124,12 @@ async function addPhoto(
     buffer: bytes,
   });
   await expect(fileInput).toHaveClass(/sr-only/);
-  await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
-  await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
+  await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
   await page.locator("#progress-date").fill(opts.date);
   if (opts.caption)
     await page.getByTestId("progress-caption-input").fill(opts.caption);
-  await settledClick(page, page.getByTestId("photo-capture-submit"));
-  await expect(page.getByTestId("photo-capture-preview")).toBeHidden();
+  await settledClick(page, page.getByTestId("media-input-submit"));
+  await expect(page.getByTestId("media-input-preview-0")).toBeHidden();
 }
 
 // THE IN-DOMAIN DOOR (#3284). The #1119 nav gate is data-presence and correct, which
@@ -167,6 +166,7 @@ test("Trends → Body carries the always-visible first-capture door, at phone an
     // Two taps from the census to the capture flow, with no palette involved.
     await page.getByTestId("photo-capture-open").click();
     await expect(page.getByTestId("photo-capture-file")).toHaveCount(1);
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await page.context().close();
   }
@@ -409,7 +409,7 @@ test("crop zoom keeps native range behavior and fixed phone geometry", async ({
   await page.getByRole("button", { name: "Cancel" }).click();
 });
 
-test("a denied auto-open explains recovery, while missing hardware stays picker-only", async ({
+test("the chooser leads on a desktop, and camera copy waits for the camera option (#3286)", async ({
   browser,
 }) => {
   const denied = await loginAs(browser, {
@@ -435,13 +435,22 @@ test("a denied auto-open explains recovery, while missing hardware stays picker-
       });
     });
     await denied.goto("/progress?new=1");
+    // THE #3286 ORDERING, at desktop width with a camera that is denied: the
+    // dialog opens on the CHOOSER, and its primary is Choose file. Nothing says
+    // "camera" until the camera option is invoked — so the recovery list is
+    // absent HERE and present two lines later, from the same page.
+    await expect(denied.getByTestId("media-input-choose")).toBeVisible();
     await expect(
-      denied.getByTestId("photo-capture-blocked-guidance")
-    ).toBeVisible();
+      denied.getByTestId("media-input-camera-recovery")
+    ).toHaveCount(0);
+    await expect(denied.getByTestId("media-input-camera-error")).toHaveCount(0);
+    await denied.getByTestId("media-input-camera").click();
     await expect(
-      denied.getByTestId("photo-capture-camera-retry")
+      denied.getByTestId("media-input-camera-recovery")
     ).toBeVisible();
-    await expect(denied.getByTestId("photo-capture-picker-open")).toBeVisible();
+    // …and the file path is still right there, unmoved, which is the difference
+    // between an option that failed and the dead end this issue was filed for.
+    await expect(denied.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await denied.context().close();
   }
@@ -466,16 +475,16 @@ test("a denied auto-open explains recovery, while missing hardware stays picker-
     });
     await missing.goto("/progress");
     await missing.getByTestId("photo-capture-open").click();
-    await expect(missing.getByTestId("photo-capture-fallback")).toBeVisible();
+    await expect(missing.getByTestId("media-input-choose")).toBeVisible();
+    await missing.getByTestId("media-input-camera").click();
+    // Missing hardware is not blocked permission: its own sentence, and NO
+    // padlock instructions, which would be advice for a setting that is not the
+    // problem.
+    await expect(missing.getByTestId("media-input-camera-error")).toBeVisible();
     await expect(
-      missing.getByTestId("photo-capture-blocked-guidance")
+      missing.getByTestId("media-input-camera-recovery")
     ).toHaveCount(0);
-    await expect(missing.getByTestId("photo-capture-camera-retry")).toHaveCount(
-      0
-    );
-    await expect(
-      missing.getByTestId("photo-capture-picker-open")
-    ).toBeVisible();
+    await expect(missing.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await missing.context().close();
   }

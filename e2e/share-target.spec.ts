@@ -115,22 +115,27 @@ test.describe("PWA share target (issue #1423)", () => {
     }
   });
 
-  test("the DESKTOP upload form keeps its drop zone and offers no camera path", async ({
+  test("the DESKTOP upload form leads with the file path, camera second", async ({
     page,
   }) => {
     await page.goto("/data?section=import");
 
-    // Drag-and-drop is a real gesture here, so the dashed zone stays (#1993).
-    await expect(page.getByTestId("medical-upload-dropzone")).toBeVisible();
-    await expect(page.getByTestId("medical-upload-choose")).toBeVisible();
-    // `capture` does nothing useful on a desktop, so the camera action is not
-    // rendered beside a working drop zone — it used to sit under it as a bare
-    // "Choose File" row. The phone's two-button treatment is covered by
-    // document-capture.mobile.spec.ts.
-    await expect(page.getByTestId("medical-upload-camera")).toBeHidden();
-    // And `capture` never migrated onto the MAIN picker: on an input that also
-    // accepts PDFs/zips/spreadsheets, mobile Chrome opens the camera INSTEAD of
-    // the file picker, which would take health-record exports off the phone.
+    // Drag-and-drop is a real gesture here, so the dashed zone stays (#1993) —
+    // it is now MediaInput's trigger, and a drop on it stages the files.
+    const door = page.getByTestId("medical-upload-choose");
+    await expect(door).toBeVisible();
+    await expect(door).toContainText("drop them here");
+
+    // THE ORDERING (#3286). The camera is not absent on a desktop any more —
+    // hiding it was the other half of the same mistake, since a laptop has a
+    // camera — it is SECOND, inside the dialog, behind the file path.
+    await door.click();
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
+    await expect(page.getByTestId("media-input-camera")).toBeVisible();
+
+    // `capture` never migrated onto the picker: on an input that also accepts
+    // PDFs/zips/spreadsheets, mobile Chrome opens the camera INSTEAD of the file
+    // picker, which would take health-record exports off the phone.
     await expect(page.getByTestId("medical-upload-input")).not.toHaveAttribute(
       "capture",
       /.*/

@@ -7,6 +7,7 @@ import {
   openMeasurementGroup,
   settledClick,
   settledFill,
+  stageMediaFiles,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
@@ -1203,13 +1204,13 @@ test("the Add document row files an upload in place, camera input included", asy
     const overlay = await openQuickEntry(page, "add-document");
     const body = page.getByTestId("quick-entry-body");
     await expect(body).toHaveAttribute("data-form", "document");
-    // The camera capture comes free with the shared form (#1423/#1993) —
-    // "photograph the after-visit summary" works from the sheet with no camera UI
-    // of its own, as one of the phone's two equal actions. The capture flow itself
-    // is document-capture.mobile.spec.ts'.
-    await expect(overlay.getByTestId("medical-upload-camera")).toBeVisible();
+    // The camera capture comes free with the shared add-media surface
+    // (#1423/#1993/#3286) — "photograph the after-visit summary" works from the
+    // sheet with no camera UI of its own, behind the same door as the picker. The
+    // capture flow itself is document-capture.mobile.spec.ts'.
+    await expect(overlay.getByTestId("medical-upload-choose")).toBeVisible();
 
-    await overlay.getByTestId("medical-upload-input").setInputFiles({
+    await stageMediaFiles(page, "medical-upload-input", {
       name: filename,
       mimeType: "text/csv",
       buffer: Buffer.from(
@@ -1284,7 +1285,7 @@ test("the palette reaches the same two surfaces the sheet does", async ({
       "data-form",
       "document"
     );
-    await expect(page.getByTestId("medical-upload-camera")).toBeVisible();
+    await expect(page.getByTestId("medical-upload-choose")).toBeVisible();
     expect(page.url()).toBe(dashboardUrl);
 
     await page.keyboard.press("Escape");

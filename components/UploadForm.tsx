@@ -191,8 +191,10 @@ export default function UploadForm({
             <span>
               <span className="font-medium text-brand-700 dark:text-brand-300">
                 Choose files
-              </span>{" "}
-              or drop them here
+              </span>
+              {/* Naming the drop gesture on a phone is instructions for a
+                  device the reader is not holding. A class, not a branch. */}
+              <span className="hidden sm:inline"> or drop them here</span>
             </span>
           </>
         }
