@@ -259,7 +259,7 @@ The proven workflow for an all-pages consistency audit:
    UX_ROUTES targets) live in the module; run one as e.g.:
 
    ```bash
-   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/timeline \
+   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/history \
      node scripts/ux-walkthrough.mjs --serve pages
    ```
 
