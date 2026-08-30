@@ -232,6 +232,11 @@ export interface VitalsPayload {
   temperature: string | null;
   tempUnit: string | null;
   sleepHours: string | null;
+  // The night's two clocks (#1851). OPTIONAL for the same backward-compatibility
+  // reason as the fields below: an intent queued before they shipped carries
+  // neither, and the server core treats an absent field exactly as an unfilled one.
+  bedTime?: string | null;
+  wakeTime?: string | null;
   hrv: string | null;
   // The counted breathing rate (#1851). OPTIONAL for the same backward-compatibility
   // reason as the fields below: an intent queued before it shipped carries none of
