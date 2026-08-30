@@ -105,7 +105,7 @@ import {
   GROWTH_TRENDS_HREF,
   growthTrendsHref,
   metricDetailHref,
-  timelineDayHref,
+  historyDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
 import type {
@@ -750,10 +750,10 @@ export default async function BodySection({
           A reading logged without a clock time stays off this clock axis. It
           remains available on today&rsquo;s{" "}
           <Link
-            href={timelineDayHref(todayStr)}
+            href={historyDayHref(todayStr)}
             className="font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
-            Timeline
+            History
           </Link>
           .
         </p>
@@ -1654,11 +1654,11 @@ export default async function BodySection({
           </DestinationLink>
         )}
         <DestinationLink
-          href={timelineDayHref(todayStr)}
+          href={historyDayHref(todayStr)}
           data-testid="body-timeline-link"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
         >
-          View today on Timeline
+          View today on History
         </DestinationLink>
       </div>
 

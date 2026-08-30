@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { timelineDayHref } from "../lib/hrefs";
+import { historyDayHref } from "../lib/hrefs";
 
 // The symptom analysis surface (#1852): "how many migraine days last month, and is it
 // getting worse?". `/trends/symptoms` answers it in counts; the chronological record is
@@ -135,7 +135,7 @@ test.describe("symptom trends (#1852)", () => {
          VALUES (?, ?, ?, 2)`
       ).run(PROFILE, day, RECURRING);
 
-      await page.goto(timelineDayHref(day));
+      await page.goto(historyDayHref(day));
       const link = page
         .getByTestId("symptom-log-bar")
         .first() // first-ok: the acting profile's own symptom bar — order-agnostic

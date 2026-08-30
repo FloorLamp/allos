@@ -4,7 +4,7 @@
 // SQLite handle with the auth boundary mocked (setup.ts). Pins: a create lands active with
 // the distance converted to canonical km; a second active plan for the same discipline is
 // refused; complete stamps the date + records a milestone; abandon frees the discipline;
-// delete removes the row; and each write revalidates /training + /timeline.
+// delete removes the row; and each write revalidates /training + /history.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
@@ -63,7 +63,7 @@ describe("createEndurancePlan (#839)", () => {
 
     const paths = revalidate.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/training");
-    expect(paths).toContain("/timeline");
+    expect(paths).toContain("/history");
   });
 
   it("refuses a second active plan for the same discipline", async () => {

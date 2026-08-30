@@ -13,9 +13,9 @@ test.describe("Illness-episode view (#801)", () => {
   test("the Timeline shows an episode story card that opens the detail page", async ({
     page,
   }) => {
-    test.slow(); // local next dev compiles /timeline + /medical/episodes on first hit.
+    test.slow(); // local next dev compiles /history + /medical/episodes on first hit.
 
-    await page.goto("/timeline?category=illness");
+    await page.goto("/history?kind=illness");
 
     // The episode card's title is a link — an "Illness" story headline with "day N".
     const link = page.getByRole("link", { name: /Illness · day \d+/ }).first(); // first-ok: the acting profile's Illness episode headline link — order-agnostic

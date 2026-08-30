@@ -59,7 +59,7 @@ function revalidateProtocols(id?: number) {
   // the per-protocol detail route below still lives under /protocols.
   revalidateRoute("/longevity");
   if (id) revalidateRoute(`/protocols/${id}`);
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/");
 }
 

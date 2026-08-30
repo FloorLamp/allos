@@ -89,7 +89,7 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       const sidebarNav = page.locator("aside nav");
       await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
       await expect(
-        sidebarNav.getByRole("link", { name: "Timeline" })
+        sidebarNav.getByRole("link", { name: "History" })
       ).toBeVisible();
       await expect(page.getByRole("link", { name: "Longevity" })).toHaveCount(
         0

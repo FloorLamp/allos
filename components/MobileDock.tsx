@@ -80,7 +80,7 @@ import {
 const ICONS: Record<DockIcon, typeof IconPlus> = {
   dashboard: IconLayoutDashboard,
   barbell: IconBarbell,
-  timeline: IconTimelineEvent,
+  history: IconTimelineEvent,
   trending: IconTrendingUp,
   menu: IconMenu2,
 };

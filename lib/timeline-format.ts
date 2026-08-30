@@ -310,6 +310,12 @@ export function isTimelineUnfiltered(
 // gave you. Deliberately not one CTA: naming only "log an activity" would tell a
 // reader who came to Allos with a stack of lab PDFs the wrong thing. Every href is
 // `AppRoute`, so a consolidated-away destination is a build error (#285).
+// THE RECORD'S BASE EMPTY STATE (#1410). A brand-new account is told what would put
+// something here, and the three name DISTINCT sources — something you did, something
+// you measured, something a clinic gave you — rather than one arbitrary CTA. It was
+// `/timeline`'s and moved to `/history` with the route's retirement (#3958 phase 2);
+// the name is unchanged because the constant is, and renaming it would touch its
+// tests to say nothing new.
 export const TIMELINE_EMPTY_ACTIONS: ReadonlyArray<{
   href: AppRoute;
   label: string;

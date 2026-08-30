@@ -198,7 +198,7 @@ test("upload → grid → lightbox → compare → delete round trip (fallback c
     const sidebarNav = page.locator("aside nav");
     await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      sidebarNav.getByRole("link", { name: "Timeline" })
+      sidebarNav.getByRole("link", { name: "History" })
     ).toBeVisible();
     await expect(
       sidebarNav.getByRole("link", { name: "Progress photos" })

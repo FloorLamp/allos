@@ -1255,7 +1255,7 @@ async function measureReachCosts(browser) {
   const hubs = [
     ["Training", "/training"],
     ["Nutrition", "/nutrition"],
-    ["Timeline", "/timeline"],
+    ["History", "/history"],
     ["Trends", "/trends"],
     ["Sleep", "/sleep"],
     ["Upcoming", "/upcoming"],

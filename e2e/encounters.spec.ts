@@ -23,13 +23,19 @@ const DB_PATH = workerDbPath();
 // visit entry deep-links to /encounters/[id], and that the detail page renders the
 // captured fields (proving the page actually mounts, not just that the route exists).
 test.describe("Visit detail page", () => {
-  test("a timeline visit entry deep-links to its detail page", async ({
-    page,
-  }) => {
-    // Filter the timeline to visits so the entry is unambiguous.
-    await page.goto("/timeline?category=visit");
+  test("a record visit row deep-links to its detail page", async ({ page }) => {
+    // Filter the record to visits so the entry is unambiguous.
+    // THE `&show=` IS A MEASUREMENT, NOT A PREFERENCE. The record narrows feed kinds
+    // IN MEMORY — deliberately, so `?kind=` cannot change which chips the reader is
+    // offered — which means a feed-kind view reads the newest `show` events across all
+    // SIXTEEN feed categories and keeps the matching ones. On this densely seeded
+    // profile the default 200 does not reach them. Measured: `?kind=visit` renders 0
+    // rows and offers no Visits chip at all; at `show=1000` (HISTORY_MAX_SHOW,
+    // reachable through Load more) the row and the chip both appear. Recorded as an
+    // open question on #3958 — this spec's subject is the deep-link, not the window.
+    await page.goto("/history?kind=visit&show=1000");
 
-    // The most recent visit renders as a clickable entry titled by its type, whose
+    // The most recent visit renders as a clickable row titled by its type, whose
     // link targets the new per-visit detail route (not the old list page).
     const visitLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(visitLink).toBeVisible();

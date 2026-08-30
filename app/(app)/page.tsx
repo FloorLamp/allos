@@ -1159,7 +1159,7 @@ async function renderDashboard(
 
   for (const cockpit of illnessCockpits) {
     const key = cockpit.episodeKey;
-    const href = cockpit.episodeHref ?? "/timeline";
+    const href = cockpit.episodeHref ?? "/history";
     const groupKey = `illness.episode:${key}`;
     const episodeGroup = {
       kind: "illness-episode" as const,
@@ -2488,11 +2488,11 @@ async function renderDashboard(
         ...(line.bare ? {} : { label: line.label }),
         value: line.value,
         detail: recapLineAnnotation(line),
-        href: "/timeline",
+        href: "/history",
         // THE MOMENT (#3365). Six recap facts used to be six identical cards, one
         // line each; the scale and the window they all share is stated once, at the
         // head of the block they fold into.
-        moment: { title: recapMomentTitle, href: "/timeline" },
+        moment: { title: recapMomentTitle, href: "/history" },
       }
     )
   );

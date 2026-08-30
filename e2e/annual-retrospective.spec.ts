@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./helpers";
+import { openCommandPalette } from "./nav";
 import { frozenNow, workerDbPath } from "./worker-env";
 
 // Issue #2179: the annual retrospective — a rendered, user-initiated "year in health"
@@ -86,14 +87,38 @@ test.beforeAll(() => {
 });
 test.afterAll(() => clearYears());
 
-test("Timeline links to the year without spending a permanent nav row (#2762)", async ({
+// #2762 RULES OUT A PERMANENT NAV ROW, NOT REACHABILITY, and the door moved. The
+// year page was reached from `/timeline`'s header action until #3958 phase 2 deleted
+// that route — leaving `/retrospective` with NO in-app door at all, since the palette
+// had never registered it. It does now, and this asserts BOTH halves of the ruling in
+// one place: no standing nav row, and still reachable. An absence assertion alone
+// would pass on an app where the page had become unreachable, which is the failure
+// #2762 exists to avoid rather than to cause.
+test("the year is reachable without spending a permanent nav row (#2762)", async ({
   page,
 }) => {
-  await page.goto("/timeline");
-  await expect(page.getByTestId("timeline-retrospective-link")).toHaveAttribute(
-    "href",
-    "/retrospective"
+  await page.goto("/history");
+
+  // No standing row, in the sidebar or inside the collapsed group it would sit in.
+  const nav = page.locator("aside nav");
+  await nav.getByRole("button", { name: "Plan & review" }).click();
+  await expect(nav.getByRole("link", { name: "Year in review" })).toHaveCount(
+    0
   );
+  // …and the group DID expand, so the absence above is the ruling and not a shut
+  // disclosure: an ungated sibling proves it.
+  await expect(nav.getByRole("link", { name: "History" })).toBeVisible();
+
+  // Reachable, through the palette that now carries it.
+  const input = await openCommandPalette(page);
+  await input.fill("Year in review");
+  const hit = page
+    .getByRole("listbox", { name: "Results" })
+    .getByRole("option")
+    .filter({ hasText: "Year in review" })
+    .first(); // first-ok: one registered page carries this title
+  await expect(hit).toBeVisible();
+  await followLink(page, hit, /\/retrospective$/);
 });
 
 test("the retrospective states the year's count as a record, with no comparison (#2179)", async ({

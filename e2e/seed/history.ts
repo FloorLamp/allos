@@ -20,7 +20,7 @@ import {
 import { seedMemberLogin, fixtureProfileId, grantProfile } from "./common";
 
 // ── Timeline mobile chrome budget (#1517) ───────────────────────────────────
-// One login over two profiles — see e2e/logins/timeline.ts for why the states have
+// One login over two profiles — see e2e/logins/history.ts for why the states have
 // to live on separate profiles. Idempotent: each profile's own fixture rows are
 // cleared and rewritten, so a reused dev server never accumulates them.
 export function seedTimelineChrome(): void {

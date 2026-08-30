@@ -259,7 +259,7 @@ The proven workflow for an all-pages consistency audit:
    UX_ROUTES targets) live in the module; run one as e.g.:
 
    ```bash
-   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/timeline \
+   SEED_PERSONA=household UX_SEED=1 UX_ROUTES=/household,/upcoming,/history \
      node scripts/ux-walkthrough.mjs --serve pages
    ```
 
@@ -267,10 +267,10 @@ The proven workflow for an all-pages consistency audit:
    | ----------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
    | `bodybuilder`     | 28M, heavy 4-day split                                                 | /training /progress /nutrition /longevity |
    | `marathon-runner` | 34F, marathon block, Strava + Health Connect (one run from both)       | /training /equipment /integrations /data  |
-   | `household`       | caregiver over 4 profiles: 40M rising LDL, 76F on 6 meds, sick twins   | /household / /upcoming /timeline /records |
+   | `household`       | caregiver over 4 profiles: 40M rising LDL, 76F on 6 meds, sick twins   | /household / /upcoming /history /records  |
    | `pregnant`        | 31F ~20wks: PHQ-9, ultrasounds, carrier variants; 15-year-old daughter | / /medical/cycles /upcoming /records      |
    | `diabetic-cgm`    | 52M dense glucose + docs; partner with chronic asthma + docs           | /medications /results /upcoming /data     |
-   | `biohacker`       | 36M, 20 supplements, 3 practices, Oura + Withings                      | /nutrition /longevity /sleep /timeline    |
+   | `biohacker`       | 36M, 20 supplements, 3 practices, Oura + Withings                      | /nutrition /longevity /sleep /history     |
 
    Several personas are multi-profile households (profile 1 is the acting
    caregiver; members are created by the persona itself) and several carry

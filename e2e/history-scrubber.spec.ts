@@ -35,7 +35,7 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // rail through the simpler channel proves the same handlers with far less to go wrong.
 //
 // Fixture-OWNED (#868): four goals on the shared default profile, spread so that
-// `?category=goal` has a deterministic spine — one future, three in distinct older
+// `?kind=goal` has a deterministic spine — one future, three in distinct older
 // months of the current year, one comfortably inside the previous calendar year.
 // Planted in beforeAll, removed in afterAll, so both the ABSENCES and the PRESENCES
 // this spec asserts are its own rather than the seed's.
@@ -70,7 +70,25 @@ const OLDEST_MONTH = DATES.oldest.slice(0, 7);
 const LAST_YEAR_MONTH = DATES.lastYear.slice(0, 7);
 const LAST_YEAR = DATES.lastYear.slice(0, 4);
 
-const FEED = "/timeline?category=goal" as const;
+// THE RAIL NEEDS DEPTH, AND `?show=` IS HOW THE RECORD OFFERS IT — but the reason
+// this spec has to ask for it is a FINDING, not a preference, so it is written down
+// here rather than left as a magic param.
+//
+// `/timeline?category=goal` pushed the category into the QUERY, so its 250-event
+// budget was 250 GOALS and reached back years on any profile. The record narrows in
+// memory instead (lib/history.ts: "ONE GATHER, NARROWED IN MEMORY", so `?kind=` cannot
+// change which chips the reader is offered), which means a feed-kind view reads the
+// newest `show` events across ALL SIXTEEN feed categories and then keeps the goals
+// among them. On this shared, densely seeded profile the default 200 covers roughly
+// three months, so the fixture's goals at −100/−160/−220/−400 days fall outside it and
+// the rail has no spine to draw. Measured: at `show` default the strip does not render
+// at all; at 1000 (`HISTORY_MAX_SHOW`, reachable through Load more) every case here
+// passes.
+//
+// That shallowness is the same on every retargeted `?kind=` door and is recorded as an
+// open question on #3958. This spec's subject is the RAIL, so it asks for the depth the
+// rail exists to navigate rather than asserting the gather's window.
+const FEED = "/history?kind=goal&show=1000" as const;
 
 function withDb<T>(fn: (handle: Database.Database) => T): T {
   const handle = new Database(DB_PATH);
@@ -140,7 +158,7 @@ async function pressRail(
   return point;
 }
 
-test.describe("timeline jump rail (#2657 item 4)", () => {
+test.describe("the record's jump rail (#2657 item 4)", () => {
   test.beforeAll(seed);
   test.afterAll(cleanup);
 
@@ -187,7 +205,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
     // parked on top of a card's own links. This is the claim that makes a 44px
     // target safe at all.
     const [card] = await settledBoxes([
-      page.getByTestId(`timeline-fold-${MID_MONTH}`),
+      page.getByTestId(`history-fold-${MID_MONTH}`),
     ]);
     expect(card.x + card.width).toBeLessThanOrEqual(railBox.x);
   });
@@ -244,10 +262,25 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
   test("a released drag positions the scroll and expands NOTHING", async ({
     page,
   }) => {
+    // A SHORT VIEWPORT, AND THE PREMISE ASSERTED. The drag positions a DOCUMENT
+    // scroll offset, so the document has to have one — and the record is compact
+    // enough that this fixture's feed (one recent row plus fold cards) fits a full
+    // -height window, where `/timeline` filled it with a header, a subtitle, a filter
+    // block and a range card that #3958 all removed. Shrinking the window is the
+    // honest way to give the gesture something to move; asserting the premise is what
+    // stops this passing silently on a page that cannot scroll at all, which is
+    // exactly how it failed when the record's feed first replaced the timeline's.
+    await page.setViewportSize({ width: 1280, height: 500 });
     await page.goto(FEED);
     const before = page.url();
-    const month = page.getByTestId(`timeline-fold-${OLDEST_MONTH}`);
+    const month = page.getByTestId(`history-fold-${OLDEST_MONTH}`);
     await expect(month).toHaveAttribute("data-fold-open", "false");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight
+      ),
+      "the feed must be scrollable or the drag asserts nothing"
+    ).toBeGreaterThan(0);
 
     const box = await stripBox(page);
     await pressRail(page, 0.02);
@@ -293,7 +326,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
 
     await expect(page).toHaveURL(new RegExp(`open=${MID_MONTH}`));
     await expect(
-      page.getByTestId(`timeline-fold-${MID_MONTH}-toggle`)
+      page.getByTestId(`history-fold-${MID_MONTH}-toggle`)
     ).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByText(GOALS.mid)).toBeVisible();
   });
@@ -330,7 +363,7 @@ test.describe("timeline jump rail (#2657 item 4)", () => {
   });
 });
 
-test.describe("timeline jump rail under reduced motion (#2657 item 4)", () => {
+test.describe("the record's jump rail under reduced motion (#2657 item 4)", () => {
   // The harness builds its own contexts (DB-per-worker), so the preference rides in
   // through `contextOptions` rather than the bare `reducedMotion` test option — the
   // same shape as the suite's other reduced-motion contexts.
@@ -390,45 +423,18 @@ test.describe("the rail's column on a phone (#3403)", () => {
     }, selector);
   }
 
-  test("the header's action stays on one line and stays tappable", async ({
-    page,
-  }) => {
-    await page.goto(FEED);
-    const link = page.getByTestId("timeline-retrospective-link");
-    await expect(link).toBeVisible();
-    await railReady(page);
-
-    const [linkBox] = await settledBoxes([link]);
-    // ONE LINE. It measured 62px wide and 40px tall — two lines — because
-    // `PageHeader` let the page's long subtitle squeeze the action to the width of
-    // its longest word. The ceiling is its own line box plus the icon's slack, not a
-    // round number: a single line of `text-sm` is 20px and the `h-4` icon fits
-    // inside it, so anything at or under 28 is one line and 40 is two.
-    expect(linkBox.height).toBeLessThanOrEqual(28);
-
-    // …and its right edge belongs to the LINK. `elementFromPoint` is the only
-    // honest form of this: the link is visible, actionable and correctly sized in
-    // every other sense while an invisible 44px strip sits on top of it.
-    const atRightEdge = await link.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.right - 2, r.top + r.height / 2);
-      return {
-        insideLink: el.contains(hit),
-        testid: hit?.getAttribute("data-testid") ?? hit?.tagName ?? null,
-      };
-    });
-    expect(
-      atRightEdge.testid,
-      "the rail is on top of the link's right edge"
-    ).not.toBe("timeline-scrubber");
-    expect(atRightEdge.insideLink).toBe(true);
-  });
+  // THE HEADER-ACTION TEST IS GONE WITH ITS SUBJECT. `/timeline`'s header carried a
+  // "Year in review" link, and #3403's finding was that the rail sat on top of its
+  // right edge — `elementFromPoint` returning the strip while the link looked fine.
+  // The record's header carries no action at all (the ≤140px chrome budget is why),
+  // so there is nothing at that corner to be covered. The rail-vs-content half of
+  // #3403 is still asserted below and in e2e/history.spec.ts.
 
   test("header, controls and feed share one right edge, and it is the rail's left one", async ({
     page,
   }) => {
     await page.goto(FEED);
-    await expect(page.getByTestId("timeline-retrospective-link")).toBeVisible();
+    await expect(page.getByTestId("history-filters")).toBeVisible();
     const rail = strip(page);
     await railReady(page);
     const [railBox] = await settledBoxes([rail]);
@@ -437,22 +443,27 @@ test.describe("the rail's column on a phone (#3403)", () => {
     expect(railBox.width).toBe(TAP_FLOOR_PX);
 
     const edges = {
-      header: await contentRight(
-        page,
-        '[data-testid="timeline-retrospective-link"]'
-      ),
-      controls: await contentRight(page, "#timeline-controls > div"),
-      feed: await contentRight(page, "#timeline-feed"),
+      controls: await contentRight(page, '[data-testid="history-filters"]'),
+      row: await contentRight(page, '[data-testid="history-row-content"]'),
     };
-    // The reserved band equals the intrusion with NOTHING left over: all three
-    // surfaces stop exactly where the rail begins. The feed used to stop at 370 —
-    // 16px short — while the header stopped at 414, 28px too far.
+    // The reserved band equals the intrusion with NOTHING left over: both surfaces
+    // stop exactly where the rail begins. The feed used to stop 16px short.
     expect(edges.controls).toBeCloseTo(railBox.x, 0);
-    expect(edges.feed).toBeCloseTo(railBox.x, 0);
-    // The header's action is right-aligned in its own row, so its own right edge is
-    // the header's content edge.
-    expect(edges.header).toBeLessThanOrEqual(railBox.x + 1);
-    expect(edges.header).toBeGreaterThan(railBox.x - 8);
+    expect(edges.row).toBeCloseTo(railBox.x, 0);
+
+    // AND THE BAND ITSELF STILL REACHES THE EDGE — the converse, without which the
+    // assertion above is satisfied by simply shrinking the whole row. #3920 rules the
+    // fill FULL-BLEED below `sm` with the CONTENT inset, which is two different
+    // elements at two different right edges; a day card reserves nothing here on
+    // purpose (`sm:pr-7`), so measuring the gutter on it would assert the opposite of
+    // the rule. Measured as a relationship between the two boxes, not against a
+    // constant.
+    const band = await page
+      .getByTestId("history-row")
+      .first() // first-ok: the rule is per-row and identical on every one
+      .evaluate((el) => el.getBoundingClientRect().right);
+    expect(band).toBeGreaterThan(edges.row);
+    expect(band).toBeCloseTo(430, 0);
 
     // Nothing bought that by pushing a box past the edge, at either phone width.
     // Element-level and not a document-width comparison: the app shell clips
@@ -460,28 +471,27 @@ test.describe("the rail's column on a phone (#3403)", () => {
     // asserts nothing (#1543).
     for (const width of [430, 390]) {
       await page.setViewportSize({ width, height: 932 });
-      await expect(
-        page.getByTestId("timeline-retrospective-link")
-      ).toBeVisible();
+      await expect(page.getByTestId("history-filters")).toBeVisible();
       await expectNoClippedContent(page);
     }
   });
 
   test("a feed with no rail reserves nothing", async ({ page }) => {
-    // The gutter is gated on the rail existing, and stays gated. A single-day range
+    // The gutter is gated on the rail existing, and stays gated. A single-day view
     // has one period, which is below SCRUBBER_MIN_TICKS, so no rail renders — and
     // the surfaces underneath must then use the full column rather than carrying an
     // empty 28px band for a strip that is not there.
-    await page.goto(
-      `/timeline?category=goal&from=${DATES.mid}&to=${DATES.mid}`
-    );
-    await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+    await page.goto(`/history?kind=goal&day=${DATES.mid}`);
+    await expect(page.getByRole("heading", { name: "History" })).toBeVisible();
     await expect(strip(page)).toHaveCount(0);
-    // The feed itself rendered — a range that fell through to the empty state would
+    // The feed itself rendered — a day that fell through to the empty state would
     // make the padding read 0px for a reason this test is not asserting.
-    await expect(page.locator("#timeline-feed")).toBeVisible();
+    await expect(page.getByTestId("history-day")).toBeVisible();
 
-    for (const selector of ["#timeline-controls > div", "#timeline-feed"]) {
+    for (const selector of [
+      '[data-testid="history-filters"]',
+      '[data-testid="history-day"]',
+    ]) {
       expect(
         await page.evaluate(
           (sel) => getComputedStyle(document.querySelector(sel)!).paddingRight,

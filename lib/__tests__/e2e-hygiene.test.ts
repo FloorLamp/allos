@@ -576,7 +576,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
 //
 // THE ESCAPE, and there is exactly one use: a discard whose OWN next assertion is a
 // server fact the delete alone can satisfy. `unclassified-activity.spec.ts` waits for
-// `/timeline`, and `leaveDeletedActivityPage` navigates only once `onDeleted` has
+// `/history`, and `leaveDeletedActivityPage` navigates only once `onDeleted` has
 // fired; it also presses Undo afterwards, so the helper — which dismisses that very
 // toast — is the wrong tool there rather than a missing one. Mark such a site with a
 // same-line `confirm-delete-ok: <why>` comment on the `.click(` line (the `first-ok`

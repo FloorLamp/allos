@@ -48,7 +48,7 @@ import {
 // docs/internals/server-action-refresh.md.)
 function revalidateImaging() {
   revalidateRoute("/results/imaging");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/profile");
   revalidateRoute("/");
 }

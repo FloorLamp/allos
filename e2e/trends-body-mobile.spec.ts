@@ -521,7 +521,7 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     // which is what this test is about. A goto that changes only the fragment is
     // not a load: the document stays, so the streamed census is not re-assembled
     // and the on-load alignment this pins would never run. Leave the hub first.
-    await page.goto("/timeline");
+    await page.goto("/history");
     await page.goto("/trends?view=all#sleep");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 

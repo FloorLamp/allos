@@ -287,7 +287,7 @@ test.describe("Household view for members (issue #31)", () => {
     // requiresMultiProfile gate goes untested while staying green.
     const soloNav = memberPage.locator("aside nav");
     await soloNav.getByRole("button", { name: "Plan & review" }).click();
-    await expect(soloNav.getByRole("link", { name: "Timeline" })).toBeVisible();
+    await expect(soloNav.getByRole("link", { name: "History" })).toBeVisible();
     await expect(
       memberPage.getByRole("link", { name: "Household" })
     ).toHaveCount(0);

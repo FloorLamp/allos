@@ -20,7 +20,7 @@ import {
   formatMonthDay,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
-import { timelineDayHref } from "@/lib/hrefs";
+import { historyDayHref } from "@/lib/hrefs";
 import { moodFace, moodLabel } from "@/lib/mood";
 import {
   formatHm,
@@ -265,7 +265,7 @@ export default function SleepMoodSection({
                     >
                       <Td slot="title" className="whitespace-nowrap">
                         <Link
-                          href={timelineDayHref(row.date)}
+                          href={historyDayHref(row.date)}
                           className="text-link"
                         >
                           {/* The short date is the CARD's date: below the

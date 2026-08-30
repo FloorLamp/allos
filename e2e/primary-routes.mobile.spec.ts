@@ -7,7 +7,7 @@ const ROUTES = [
   "/", // dashboard
   "/training",
   "/trends",
-  "/timeline",
+  "/history",
   "/sleep",
   "/upcoming",
   "/data",

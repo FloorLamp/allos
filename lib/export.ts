@@ -1591,7 +1591,7 @@ export const DELETE_POLICY = {
     cleanupImmunizations: true,
   },
   goals: { revalidate: ["/training", "/"] },
-  injuries: { revalidate: ["/training", "/timeline", "/"] },
+  injuries: { revalidate: ["/training", "/history", "/"] },
   // A niggle (#2948) is a plain id + profile_id delete: nothing FKs into the table, no
   // counter sits beside it, and liveness is recomputed on read from `last_reported_at`
   // — so removing rows means exactly "these are no longer on record" with nothing left
@@ -1602,7 +1602,7 @@ export const DELETE_POLICY = {
   niggles: {
     revalidate: ["/training", revalidateTarget("/training/activity/[id]"), "/"],
   },
-  endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
+  endurance_plans: { revalidate: ["/training", "/history", "/upcoming", "/"] },
   intake_items: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/records", "/"] },
   conditions: { revalidate: ["/records", "/"] },
@@ -1654,10 +1654,10 @@ export const DELETE_POLICY = {
   // (`equipment` is the precedent for a STATEFUL_WRITE_TABLES-registered table that is
   // also bulk-deletable: a delete is not one of the table's state transitions.)
   fasts: { revalidate: ["/nutrition", "/"] },
-  symptom_logs: { revalidate: ["/", "/timeline"] },
-  cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
+  symptom_logs: { revalidate: ["/", "/history"] },
+  cycles: { revalidate: ["/medical/cycles", "/history", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
-  practice_logs: { revalidate: ["/timeline", "/longevity", "/"] },
+  practice_logs: { revalidate: ["/history", "/longevity", "/"] },
 } satisfies Record<string, DatasetDeletePolicy>;
 
 // The closed union of deletable dataset keys — every key equals its dataset's

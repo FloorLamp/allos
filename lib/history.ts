@@ -26,7 +26,7 @@
 
 import { db, today } from "./db";
 import { zonedDateParts } from "./date";
-import { isMinor, isTrainingRelevant } from "./life-stage";
+import { isMinor } from "./life-stage";
 import {
   getDisplayFormatPrefs,
   getProfileAge,
@@ -69,7 +69,7 @@ import { symptomLabel, severityLabelFor } from "./symptoms";
 import { listCyclePeriods } from "./cycle-store";
 import { cycleDayOnDate, FLOW_LABELS, isFlowLevel } from "./cycle";
 import { formatClockValue } from "./format-date";
-import { getTimelineEvents } from "./timeline";
+import { getTimelineEvents, type TimelineEvent } from "./timeline";
 import type { TimelineCategory } from "./timeline-format";
 
 // A window with no lower bound. The record outlives retirement — a dose taken years
@@ -109,6 +109,25 @@ export interface HistoryGather {
   mediaApplied: boolean;
   /** The subject's own today, in the subject's own timezone. */
   today: string;
+  /**
+   * THE DAY VIEW'S INTRADAY AXIS (#1068, inherited here with `/timeline`'s retirement).
+   *
+   * The feed events this gather actually EMITTED as rows on the requested day, and
+   * empty on every other read — the panel is a day-view surface, so a scrolling feed
+   * pays nothing for it. Handing the panel the resolved list rather than letting it
+   * re-query is what makes "a tick can never name something the list below does not
+   * show" true by construction; capturing at the emit point makes the converse true
+   * too, because a row the reader's `?kind=` dropped never reaches this array.
+   *
+   * Ids are namespaced `feed:` exactly as the rows are, so `timelineEntryAnchorId`
+   * resolves a tick onto the row element that represents the same event.
+   *
+   * NOTHING IS LOST relative to what `/timeline` drew: the five categories this
+   * gather reads natively instead (body, food, substance, practice, symptom) are all
+   * clockless day aggregates in lib/timeline.ts — no `sortTime`, so `clockMinute`
+   * returned null and they contributed no tick there either. Measured, not assumed.
+   */
+  dayEvents: TimelineEvent[];
 }
 
 function wants(opts: HistoryGatherOptions, kind: HistoryKind): boolean {
@@ -882,6 +901,7 @@ export function gatherHistoryLog(
   // SUBJECT's own life stage, exactly as the timeline gates them, so `?view=everyone`
   // inherits the gate per row rather than re-deriving it across a widened query.
   const feedKinds = new Set<HistoryKind>();
+  const dayEvents: TimelineEvent[] = [];
   {
     let feedEmitted = 0;
     const events = getTimelineEvents(profileId, {
@@ -889,7 +909,21 @@ export function gatherHistoryLog(
       endDate: until,
       limit,
       units,
-      includeTrainingEvents: isTrainingRelevant(getProfileAge(profileId)),
+      // THE RECORD IS A PROFILE-OWNED DATA SURFACE, so training events are NOT
+      // life-stage gated here — `/timeline` said exactly that in its own words
+      // ("Training categories and every activity type remain visible at every life
+      // stage") and passed no gate at all, which is the default this now takes.
+      //
+      // Phase 2b gated it on `isTrainingRelevant` and its comment claimed parity
+      // with the timeline; the timeline had no such gate, so the claim was wrong and
+      // the effect was that a minor's OWN logged sessions vanished from their own
+      // record. #3067/#2272 rule the opposite, and e2e/unclassified-activity.spec.ts
+      // is that rule's guard — it went on passing only because it was still pointed
+      // at `/timeline`. Deleting that route is what surfaced it.
+      //
+      // The life-stage gates that DO belong are on the training PRODUCT (the dock
+      // slot, the nav row, the hub) — what a profile is offered, not what it
+      // recorded. A record that hides a person's own data is not a record.
     });
     for (const event of events) {
       const kind = FEED_KIND[event.category];
@@ -901,6 +935,11 @@ export function gatherHistoryLog(
         break;
       }
       feedEmitted += 1;
+      // THE INTRADAY AXIS'S EVENT LIST, captured at the emit point (see `dayEvents`
+      // on HistoryGather). The `feed:` namespacing is the row's, applied here so the
+      // tick and the row it points at agree on one anchor.
+      if (opts.day != null)
+        dayEvents.push({ ...event, id: `feed:${event.id}` });
       const clockKind = feedClockKind(event.category);
       rows.push({
         // NAMESPACED, because a timeline event id and a Logs row id are two id spaces
@@ -964,6 +1003,7 @@ export function gatherHistoryLog(
     ],
     mediaApplied,
     today: todayStr,
+    dayEvents,
   };
 }
 

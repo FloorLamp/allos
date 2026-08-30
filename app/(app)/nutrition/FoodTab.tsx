@@ -207,7 +207,7 @@ export default async function FoodTab({
           Food-group serving logging starts after the first year.
         </p>
         <div className="card" data-testid="nutrition-infant-note">
-          <EmptyState message="This profile is under one year old. The food-group serving log covers the adult habit catalog (leafy greens, whole grains, and so on) — infant feeding isn't tracked here. Growth for this age lives in the Body and Timeline views." />
+          <EmptyState message="This profile is under one year old. The food-group serving log covers the adult habit catalog (leafy greens, whole grains, and so on) — infant feeding isn't tracked here. Growth for this age lives in the Body and History views." />
         </div>
       </div>
     );

@@ -75,7 +75,6 @@ function parseEpisodeTarget(formData: FormData): EpisodeTarget {
 
 function revalidateSymptoms(): void {
   revalidateRoute("/");
-  revalidateRoute("/timeline");
   // Symptoms are a Logs kind on the record since #3958 phase 2, correctable there.
   revalidateRoute("/history");
 }
@@ -350,7 +349,7 @@ export async function logTemperature(
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
   revalidateRoute("/");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   revalidateRoute("/trends");
   revalidateRoute("/results");
   // Event-driven red-flag push (#1025): a reading that crosses a cited line
@@ -418,6 +417,6 @@ export async function activateIllnessForSymptoms(): Promise<FormResult> {
   }
   revalidateRoute("/");
   revalidateRoute("/nutrition");
-  revalidateRoute("/timeline");
+  revalidateRoute("/history");
   return formOk();
 }

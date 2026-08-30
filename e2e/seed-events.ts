@@ -135,7 +135,7 @@ import {
   seedNotifyScope,
   seedNotifyTickLog,
 } from "./seed/notifications";
-import { seedTimelineChrome, seedTimelineEmpty } from "./seed/timeline";
+import { seedTimelineChrome, seedTimelineEmpty } from "./seed/history";
 import { seedTrashZones } from "./seed/trash";
 import {
   seedBodyMobile,

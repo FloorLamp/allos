@@ -1034,7 +1034,8 @@ const PAGES: {
   {
     title: "History",
     href: "/history",
-    keywords: "record log ledger what happened edit history chronological",
+    keywords:
+      "record log ledger what happened edit history chronological events timeline",
   },
   {
     title: "Dose history",
@@ -1062,10 +1063,15 @@ const PAGES: {
     href: "/history?kind=body",
     keywords: "weight body fat resting heart rate readings ledger",
   },
+  // YEAR IN REVIEW. #3343's nav ruling gives this no standing sidebar row — "a
+  // once-a-year commemorative page does not spend permanent nav chrome" — and named
+  // two doors instead: the Timeline's header action and recent-pages. #3958 phase 2
+  // deleted the first, and the palette had never registered the page at all, so this
+  // is what keeps the ruling's "remains reachable" clause true.
   {
-    title: "Timeline",
-    href: "/timeline",
-    keywords: "history chronological events",
+    title: "Year in review",
+    href: "/retrospective",
+    keywords: "annual recap year in review retrospective records story",
   },
   {
     title: "Trends",

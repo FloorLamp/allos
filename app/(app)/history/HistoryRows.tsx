@@ -29,6 +29,7 @@ import {
   IconVirus,
   type TablerIcon,
 } from "@tabler/icons-react";
+import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import DateField from "@/components/DateField";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
@@ -758,10 +759,16 @@ export default function HistoryRows({
     return (
       <li
         key={row.id}
+        // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
+        // and this list is its detail, so a tick has to have something to scroll to.
+        // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
+        // from the same id, so the two cannot drift into different spellings.
+        // `scroll-mt` keeps the landed row clear of the sticky day header above it.
+        id={timelineEntryAnchorId(row.id)}
         data-testid="history-row"
         data-history-kind={row.kind}
         data-history-row-id={row.id}
-        className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
+        className={`${LOGGED_EVENT_ROW} band card-gutter-action scroll-mt-24`}
       >
         {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
               padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
@@ -769,6 +776,11 @@ export default function HistoryRows({
               exactly the width the rail exists for, and where the ⋯ then sat under
               the strip. A wrapper has no padding of its own to lose to. */}
         <div
+          // The wrapper that actually SPENDS the rail's lane, named so a test can
+          // measure it. Below `sm` the band fill is full-bleed (#3920) and the day
+          // section reserves nothing, so this element is the only place the "row
+          // content ends short of the edge" half of that rule is observable.
+          data-testid="history-row-content"
           className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
         >
           <LoggedEventRow

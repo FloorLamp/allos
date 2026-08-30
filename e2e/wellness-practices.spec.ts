@@ -178,7 +178,7 @@ test("with nothing tracked, the always-visible quick-log row offers the first pr
     const sidebarNav = page.locator("aside nav");
     await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      sidebarNav.getByRole("link", { name: "Timeline" })
+      sidebarNav.getByRole("link", { name: "History" })
     ).toBeVisible();
     await expect(
       sidebarNav.getByRole("link", { name: "Wellness", exact: true })
