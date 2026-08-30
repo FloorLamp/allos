@@ -134,6 +134,11 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
+const productionSources = sourceFiles();
+const productionSourceByRel = new Map(
+  productionSources.map(({ rel, text }) => [rel, text])
+);
+
 describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
   it("the scaffold module exists and owns the shared prop bags", () => {
     const src = fs.readFileSync(path.join(REPO, SCAFFOLD), "utf8");
@@ -158,8 +163,9 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
 
   it("no chart hand-rolls a dash pattern — use chartDash from the scaffold", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (rel === SCAFFOLD || VIEWBOX_SVG.has(rel)) continue;
+      if (!text.includes("strokeDasharray")) continue;
       text.split("\n").forEach((line, i) => {
         if (RAW_DASH.test(line)) offenders.push(`${rel}:${i + 1}`);
       });
@@ -176,11 +182,8 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
   it("every fixed-viewBox exemption still exists and still draws its own SVG (no stale entries)", () => {
     const stale: string[] = [];
     for (const rel of VIEWBOX_SVG.keys()) {
-      const abs = path.join(REPO, rel);
-      if (
-        !fs.existsSync(abs) ||
-        !/viewBox=/.test(fs.readFileSync(abs, "utf8"))
-      ) {
+      const source = productionSourceByRel.get(rel);
+      if (source == null || !/viewBox=/.test(source)) {
         stale.push(rel);
       }
     }
@@ -193,8 +196,9 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
 
   it("no chart hand-builds a tooltip surface — use chartTooltipProps", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (rel === SCAFFOLD) continue;
+      if (!text.includes("contentStyle")) continue;
       text.split("\n").forEach((line, i) => {
         if (RAW_TOOLTIP.test(line)) offenders.push(`${rel}:${i + 1}`);
       });
@@ -212,8 +216,9 @@ describe("chart scaffold chokepoint (issue #1445, Part 4b)", () => {
 describe("recharts import chokepoint (issue #1445, Part 4c)", () => {
   it("only the blessed chart-card modules import recharts", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (RECHARTS_MODULES.has(rel)) continue;
+      if (!text.includes("recharts")) continue;
       if (RECHARTS_IMPORT.test(text)) offenders.push(rel);
     }
     expect(
@@ -230,11 +235,8 @@ describe("recharts import chokepoint (issue #1445, Part 4c)", () => {
   it("every blessed recharts module still exists and still imports recharts (no stale entries)", () => {
     const stale: string[] = [];
     for (const rel of RECHARTS_MODULES.keys()) {
-      const abs = path.join(REPO, rel);
-      if (
-        !fs.existsSync(abs) ||
-        !RECHARTS_IMPORT.test(fs.readFileSync(abs, "utf8"))
-      ) {
+      const source = productionSourceByRel.get(rel);
+      if (source == null || !RECHARTS_IMPORT.test(source)) {
         stale.push(rel);
       }
     }
@@ -249,8 +251,10 @@ describe("recharts import chokepoint (issue #1445, Part 4c)", () => {
     const offenders: string[] = [];
     for (const [rel] of RECHARTS_MODULES) {
       if (rel === SCAFFOLD) continue;
-      const src = fs.readFileSync(path.join(REPO, rel), "utf8");
-      if (!/from "\.\/chart-scaffold"/.test(src)) offenders.push(rel);
+      const source = productionSourceByRel.get(rel);
+      if (source == null || !/from "\.\/chart-scaffold"/.test(source)) {
+        offenders.push(rel);
+      }
     }
     expect(
       offenders,
