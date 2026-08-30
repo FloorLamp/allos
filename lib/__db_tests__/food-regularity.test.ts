@@ -653,8 +653,14 @@ describe("usualRoutineDayOffers", () => {
       // that still listed them would put a count and a name on a button for writes the
       // core refuses. Both sides of the edge, because "no doses past day 2" would pass
       // on an offer that never names a dose at all.
-      const { profileId, anchor, dose } = seedWithDose(`door-dose${delta}`, -delta);
-      const offers = usualRoutineDayOffers(profileId, shiftDateStr(anchor, delta));
+      const { profileId, anchor, dose } = seedWithDose(
+        `door-dose${delta}`,
+        -delta
+      );
+      const offers = usualRoutineDayOffers(
+        profileId,
+        shiftDateStr(anchor, delta)
+      );
       expect(offers.length).toBeGreaterThan(0);
       const morning = offers.find((o) => o.window === "Morning")!;
       // The FOOD half is unaffected either way — this bound narrows the rider, never

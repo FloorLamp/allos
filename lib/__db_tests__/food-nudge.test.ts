@@ -194,13 +194,24 @@ describe("a past-day rebuild states that day's protein, and says whose day it is
       addProteinGramsCore(sp.profileId, y, 11, "page", `${y}T08:00:00Z`).kind
     ).toBe("logged");
     expect(
-      addProteinGramsCore(sp.profileId, anchor, 137, "page", `${anchor}T08:00:00Z`)
-        .kind
+      addProteinGramsCore(
+        sp.profileId,
+        anchor,
+        137,
+        "page",
+        `${anchor}T08:00:00Z`
+      ).kind
     ).toBe("logged");
     // A serving on EACH day, so both messages carry a tally line — the "Today:" label
     // is only rendered when there is something to tally, and a converse asserted on a
     // message that has no tally at all asserts nothing.
-    logFoodServingCore(sp.profileId, "leafy_greens", y, "page", `${y}T08:10:00Z`);
+    logFoodServingCore(
+      sp.profileId,
+      "leafy_greens",
+      y,
+      "page",
+      `${y}T08:10:00Z`
+    );
     logFoodServingCore(
       sp.profileId,
       "leafy_greens",
@@ -216,7 +227,9 @@ describe("a past-day rebuild states that day's protein, and says whose day it is
     const grams = (body: string) => Number(/Protein: (\d+) g/.exec(body)?.[1]);
 
     const past = plainBody(buildFoodNudge(sp.profileId, "Morning", y)!.body);
-    const live = plainBody(buildFoodNudge(sp.profileId, "Morning", anchor)!.body);
+    const live = plainBody(
+      buildFoodNudge(sp.profileId, "Morning", anchor)!.body
+    );
 
     // TWO DAYS, TWO FIGURES. The defect made them the same number; this is the shortest
     // statement of that being over.
@@ -244,7 +257,9 @@ describe("a past-day rebuild states that day's protein, and says whose day it is
     // above instead — a fixture that never reaches the line it is about asserts nothing.
     const profileId = Number(
       db
-        .prepare("INSERT INTO profiles (name) VALUES ('nudge-past-protein-notarget')")
+        .prepare(
+          "INSERT INTO profiles (name) VALUES ('nudge-past-protein-notarget')"
+        )
         .run().lastInsertRowid
     );
     const anchor = today(profileId);
@@ -258,7 +273,8 @@ describe("a past-day rebuild states that day's protein, and says whose day it is
     expect(past).not.toContain("22 g today");
     // The converse: the same line on the live message still reads "today".
     expect(
-      addProteinGramsCore(profileId, anchor, 40, "page", `${anchor}T08:00:00Z`).kind
+      addProteinGramsCore(profileId, anchor, 40, "page", `${anchor}T08:00:00Z`)
+        .kind
     ).toBe("logged");
     expect(
       plainBody(buildFoodNudge(profileId, "Morning", anchor)!.body)

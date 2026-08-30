@@ -268,7 +268,9 @@ export default function HistoryAddDoor({
                     // as the dashboard spells it rather than through
                     // `usualRoutineDoseLogged`, which lives beside the write core and
                     // would pull the database into this client bundle.
-                    const wrote = new Set(outcome.groups.map((g) => g.groupKey));
+                    const wrote = new Set(
+                      outcome.groups.map((g) => g.groupKey)
+                    );
                     const landed = (o: string) =>
                       o === "logged" || o === "logged-off-day";
                     answer = usualRoutineAnswerText(

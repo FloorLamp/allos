@@ -299,7 +299,10 @@ describe("a food tap onto a past day cannot manufacture the habit it would offer
     // `__protein__` rides `food_log_events` too, so a backfilled shake is a row the
     // regularity read would otherwise count as a morning that was logged.
     const chat = "5550403";
-    const { profileId, anchor } = seedOneShort("tg-food-protein-backfill", chat);
+    const { profileId, anchor } = seedOneShort(
+      "tg-food-protein-backfill",
+      chat
+    );
     const y = shiftDateStr(anchor, -1);
     await handleCallbackQuery(
       cq(`foodprotein:${profileId}:Morning:${y}:30`, chat)
