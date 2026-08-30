@@ -121,7 +121,7 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     const anyMarked = marked.first(); // first-ok: the claim is "a marked day is a door", true of every cell in the set — the grid renders one link per marked day of the month and this spec plants none, so naming one would be naming a seed fixture this test does not own
     await expect(anyMarked).toBeVisible();
     const href = (await anyMarked.getAttribute("href"))!;
-    const day = /from=(\d{4}-\d{2}-\d{2})/.exec(href)![1];
+    const day = /day=(\d{4}-\d{2}-\d{2})/.exec(href)![1];
     await anyMarked.click();
     await expect(page).toHaveURL(new RegExp(`/history\\?day=${day}`));
     await expect(page.locator(`#timeline-day-${day}`)).toBeVisible();

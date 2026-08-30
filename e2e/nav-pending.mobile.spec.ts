@@ -76,7 +76,7 @@ test("a day swipe reports pending in the day bar, and a second swipe is dropped 
   await expect(
     page.getByTestId("timeline-day-nav").getByRole("status")
   ).toHaveText(/Opening /);
-  expect(new URL(page.url()).searchParams.get("from")).toBe(DAY);
+  expect(new URL(page.url()).searchParams.get("day")).toBe(DAY);
 
   // A second swipe while the first is in flight is dropped, not dispatched — a
   // fresh push would discard the render already running, which is what turned
@@ -84,7 +84,7 @@ test("a day swipe reports pending in the day bar, and a second swipe is dropped 
   await touchSwipe(page, { x: 320, y: 520 }, { x: 110, y: 526 });
 
   nav.release();
-  await expect(page).toHaveURL(new RegExp(`from=${NEXT_DAY}`), {
+  await expect(page).toHaveURL(new RegExp(`day=${NEXT_DAY}`), {
     timeout: 20_000,
   });
   expect(
@@ -111,7 +111,7 @@ test("a slow day swipe raises the top-edge indicator (#2869)", async ({
   await expect(page.getByTestId("nav-progress")).toBeVisible();
 
   nav.release();
-  await expect(page).toHaveURL(new RegExp(`from=${NEXT_DAY}`), {
+  await expect(page).toHaveURL(new RegExp(`day=${NEXT_DAY}`), {
     timeout: 20_000,
   });
   await expect(page.getByTestId("nav-progress")).toHaveCount(0);

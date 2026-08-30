@@ -1,16 +1,29 @@
 import { test, expect } from "./fixtures";
+import type { Page } from "@playwright/test";
 import { settledFill } from "./helpers";
 
 // Per-profile home location + sunrise/sunset daylight chips (issue #570). The seed
-// sets a coarse home location (~NYC) for the default profile, so the timeline day
-// headers show daylight chips, and Settings → Profile shows the coordinate fields
+// sets a coarse home location (~NYC) for the default profile, so the record's day
+// view shows daylight chips, and Settings → Profile shows the coordinate fields
 // prefilled. Everything is computed on the box from the stored coordinates — no
 // external service, no map tiles.
 
-test("timeline day headers show sunrise/sunset daylight chips", async ({
-  page,
-}) => {
+// The record's newest day, read off the page rather than recomputed from the run's
+// frozen clock. The day CONTEXT (daylight, UV, weather, cycle phase) lives on the day
+// view since #3958 phase 2 — the scrolling record's day header is one line and a
+// count — so every chip assertion below opens that day first.
+async function newestDay(page: Page): Promise<string> {
   await page.goto("/history");
+  const id = await page
+    .locator("[id^='timeline-day-']")
+    .first() // first-ok: the newest day group; the assertion is about position
+    .getAttribute("id");
+  expect(id, "the record rendered no day group to open").not.toBeNull();
+  return id!.replace("timeline-day-", "");
+}
+
+test("the day view shows sunrise/sunset daylight chips", async ({ page }) => {
+  await page.goto(`/history?day=${await newestDay(page)}`);
   const chip = page.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
   await expect(chip).toBeVisible();
   // Sunrise/sunset are rendered as HH:MM times.

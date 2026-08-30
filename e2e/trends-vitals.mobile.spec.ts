@@ -43,8 +43,8 @@ async function todayFromBodyLink(page: Page): Promise<string> {
   const href = await page
     .getByTestId("body-timeline-link")
     .getAttribute("href");
-  const match = /from=(\d{4}-\d{2}-\d{2})/.exec(href ?? "");
-  expect(match, `no day in timeline link href: ${href}`).not.toBeNull();
+  const match = /day=(\d{4}-\d{2}-\d{2})/.exec(href ?? "");
+  expect(match, `no day in the record link href: ${href}`).not.toBeNull();
   return match![1];
 }
 
@@ -148,7 +148,7 @@ test.describe("1D keeps Overview tiles-only on mobile (#2152)", () => {
 });
 
 test.describe("the retired Today strip (#3387)", () => {
-  test("renders no duplicate snapshot and keeps the Timeline day link at the Body head", async ({
+  test("renders no duplicate snapshot and keeps the record day link at the Body head", async ({
     browser,
   }) => {
     test.slow();
@@ -158,7 +158,7 @@ test.describe("the retired Today strip (#3387)", () => {
       await expect(member.getByTestId("vitals-today-strip")).toHaveCount(0);
       const link = member.getByTestId("body-timeline-link");
       await expect(link).toBeVisible();
-      await expect(link).toHaveText("View today on Timeline");
+      await expect(link).toHaveText("View today on History");
 
       const day = await todayFromBodyLink(member);
       await followLink(member, link, new RegExp(`/history\\?day=${day}`));
