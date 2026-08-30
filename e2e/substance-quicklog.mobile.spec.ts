@@ -4,11 +4,8 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { hydratedClick, settledClick, settledFill } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
-import {
-  E2E_LOGIN_SUBSTANCE,
-  SUBSTANCE_PROFILE,
-  E2E_MEMBER_PASSWORD,
-} from "./fixture-logins";
+import { E2E_LOGIN_SUBSTANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath } from "./worker-env";
 
 // The quick-log sheet's SUBSTANCE row (issue #3327).
@@ -41,30 +38,98 @@ const PHONE_CONTEXT = {
 // The name is a low-entropy fixture word (#868), and it is a CUSTOM substance on
 // purpose: the row has to offer what #3326 lets a person name, not just the catalog.
 const NAME = "Kava 2";
+const PROFILE = "Substance Quick Log (e2e)";
 
-function clearSubstances(profileName: string): void {
+interface QuickLogFixture {
+  loginId: number;
+  profileId: number;
+  username: string;
+}
+
+function clearSubstanceRows(db: Database.Database, profileId: number): void {
+  // Both ledgers: alcohol rides food_daily_totals (#860/#944) and everything else
+  // rides substance_daily_totals, and the row is gated on EITHER being present, so
+  // clearing one alone would leave the "tracks none" precondition false.
+  db.prepare("DELETE FROM substance_daily_totals WHERE profile_id = ?").run(
+    profileId
+  );
+  db.prepare(
+    `DELETE FROM food_daily_totals
+      WHERE profile_id = ? AND group_key = 'alcohol'`
+  ).run(profileId);
+  db.prepare(
+    `DELETE FROM food_log_events
+      WHERE profile_id = ? AND group_key = 'alcohol'`
+  ).run(profileId);
+  db.prepare(
+    `DELETE FROM frequency_targets
+      WHERE profile_id = ? AND scope_kind = 'substance'`
+  ).run(profileId);
+}
+
+function clearSubstances(profileId: number): void {
   const db = new Database(workerDbPath());
   db.pragma("busy_timeout = 5000");
   try {
-    const id = `(SELECT id FROM profiles WHERE name = ?)`;
-    // Both ledgers: alcohol rides food_daily_totals (#860/#944) and everything else
-    // rides substance_daily_totals, and the row is gated on EITHER being present, so
-    // clearing one alone would leave the "tracks none" precondition false.
-    db.prepare(
-      `DELETE FROM substance_daily_totals WHERE profile_id = ${id}`
-    ).run(profileName);
-    db.prepare(
-      `DELETE FROM food_daily_totals
-        WHERE profile_id = ${id} AND group_key = 'alcohol'`
-    ).run(profileName);
-    db.prepare(
-      `DELETE FROM food_log_events
-        WHERE profile_id = ${id} AND group_key = 'alcohol'`
-    ).run(profileName);
-    db.prepare(
-      `DELETE FROM frequency_targets
-        WHERE profile_id = ${id} AND scope_kind = 'substance'`
-    ).run(profileName);
+    db.transaction(() => clearSubstanceRows(db, profileId)).immediate();
+  } finally {
+    db.close();
+  }
+}
+
+function createQuickLogFixture(): QuickLogFixture {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    let fixture!: QuickLogFixture;
+    db.transaction(() => {
+      // Borrow the shared credential's already-computed fixture hash only; this spec
+      // never grants, signs in as, or writes the shared substance profile.
+      const passwordHash = (
+        db
+          .prepare("SELECT password_hash FROM logins WHERE username = ?")
+          .get(E2E_LOGIN_SUBSTANCE) as { password_hash: string }
+      ).password_hash;
+      const suffix = `${process.pid}`;
+      const username = `e2e_substance_quicklog_${suffix}`;
+      const profileId = createFixtureProfile(db, `${PROFILE} ${suffix}`);
+      const loginId = Number(
+        db
+          .prepare(
+            "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+          )
+          .run(username, passwordHash).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO login_profiles (login_id, profile_id, access)
+         VALUES (?, ?, 'write')`
+      ).run(loginId, profileId);
+      fixture = { loginId, profileId, username };
+    }).immediate();
+    return fixture;
+  } finally {
+    db.close();
+  }
+}
+
+function destroyQuickLogFixture(fixture: QuickLogFixture): void {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  try {
+    db.transaction(() => {
+      clearSubstanceRows(db, fixture.profileId);
+      db.prepare("DELETE FROM sessions WHERE login_id = ?").run(
+        fixture.loginId
+      );
+      db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(
+        fixture.loginId
+      );
+      db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(
+        fixture.loginId
+      );
+      db.prepare("DELETE FROM logins WHERE id = ?").run(fixture.loginId);
+      destroyFixtureProfile(db, fixture.profileId);
+    }).immediate();
   } finally {
     db.close();
   }
@@ -73,23 +138,34 @@ function clearSubstances(profileName: string): void {
 test.describe("quick-log sheet: the substance row (#3327)", () => {
   test.describe.configure({ mode: "serial" });
 
-  let page: Page;
+  let page!: Page;
+  let fixture: QuickLogFixture | undefined;
 
   test.beforeAll(async ({ browser }) => {
-    page = await loginAs(
-      browser,
-      { username: E2E_LOGIN_SUBSTANCE, password: E2E_MEMBER_PASSWORD },
-      PHONE_CONTEXT
-    );
+    fixture = createQuickLogFixture();
+    try {
+      page = await loginAs(
+        browser,
+        { username: fixture.username, password: E2E_MEMBER_PASSWORD },
+        PHONE_CONTEXT
+      );
+    } catch (error) {
+      destroyQuickLogFixture(fixture);
+      fixture = undefined;
+      throw error;
+    }
   });
 
   test.beforeEach(() => {
-    clearSubstances(SUBSTANCE_PROFILE);
+    clearSubstances(fixture!.profileId);
   });
 
   test.afterAll(async () => {
-    clearSubstances(SUBSTANCE_PROFILE);
-    await page.close();
+    try {
+      await page?.close();
+    } finally {
+      if (fixture) destroyQuickLogFixture(fixture);
+    }
   });
 
   test("a profile that tracks no substance gets no row at all", async () => {

@@ -10,7 +10,10 @@ import {
   settledSelect,
 } from "./helpers";
 import { E2E_LOGIN_NOGEAR, E2E_MEMBER_PASSWORD } from "./fixture-logins";
-import { SHARED_PROFILE_ID, takeStrandedDrafts } from "./shared-profile-guard";
+import {
+  assertNoStrandedDrafts,
+  SHARED_PROFILE_DRAFT_SCOPE,
+} from "./shared-profile-guard";
 import { workerDbPath } from "./worker-env";
 
 // WHICH CLICKS IN THIS FILE ARE HYDRATION-SENSITIVE, AND WHICH ARE NOT (#3254).
@@ -383,10 +386,7 @@ test("the strength picker creates and selects a travel machine without losing th
     );
     await expect(row).toHaveCount(0);
   } finally {
-    // The guard's own live-draft signature, taken on the shared profile. Serial
-    // tests plus a per-test guard mean there is never a neighbour's row here to
-    // swallow (the reasoning is spelled out in e2e/stale-build-save.spec.ts).
-    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+    assertNoStrandedDrafts(workerDbPath(), SHARED_PROFILE_DRAFT_SCOPE);
   }
 });
 
@@ -661,10 +661,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
         .filter({ hasText: title })
     ).toHaveCount(0);
   } finally {
-    // The guard's own live-draft signature, taken on the shared profile — the probe is
-    // a draft on profile 1 from its first auto-save, so a failure above must not leave
-    // it behind (same reasoning as the #1611 test above).
-    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+    assertNoStrandedDrafts(workerDbPath(), SHARED_PROFILE_DRAFT_SCOPE);
   }
 });
 
@@ -781,8 +778,6 @@ test("a strength part states its implement, and the registry door is one per for
 
     await deleteActivityFromForm(page);
   } finally {
-    // The guard's own live-draft signature on the shared profile — the probe is a draft
-    // from its first auto-save, so a failure above must not leave it behind.
-    takeStrandedDrafts(workerDbPath(), SHARED_PROFILE_ID);
+    assertNoStrandedDrafts(workerDbPath(), SHARED_PROFILE_DRAFT_SCOPE);
   }
 });

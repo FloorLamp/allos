@@ -80,6 +80,8 @@ db_tier_paths=(
   e2e/seed/session.ts
   e2e/worker-env.ts
   e2e/sync-instants.ts
+  # The profile-scoped draft assertion's DB contract imports this helper directly.
+  e2e/shared-profile-guard.ts
   # Profile-local fixture helpers imported by the date/zone invariant proofs.
   e2e/pinned-timezone.ts
   e2e/seed/profile-time-fixtures.ts
