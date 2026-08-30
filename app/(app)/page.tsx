@@ -31,10 +31,6 @@ import {
   getMetricDailyTotals,
   getVitalsLatestModel,
   getCycleTrackingRelevance,
-  getSymptomSeveritiesOnDate,
-  getSymptomNotesOnDate,
-  getCustomSymptomNames,
-  getSymptomLogOrder,
 } from "@/lib/queries";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
@@ -184,8 +180,6 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import LogReadingButton from "@/components/dashboard/LogReadingButton";
-import WeightQuickAddAtom from "@/components/dashboard/WeightQuickAddAtom";
 import {
   GoalProgressAtom,
   HabitProgressAtom,
@@ -213,16 +207,10 @@ import {
 } from "@/lib/sleep-summary";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import { UsualRoutineAtom } from "@/components/dashboard/NutritionAtoms";
-import CycleControlAtom from "@/components/dashboard/CycleControlAtom";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
-import SymptomLogBar from "../../components/illness/SymptomLogBar";
-import { PICKER_SYMPTOMS } from "@/lib/symptoms";
-import { isTaskConfigured } from "@/lib/ai-resolve";
-import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import HouseholdHistoryPromoLink from "@/components/dashboard/HouseholdHistoryPromoLink";
 import { dismissRecentlyResolved, saveIllnessNowState } from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
@@ -1035,13 +1023,6 @@ async function renderDashboard(
     ? getPrnIntakeItemsForQuickLog(profile.id)
     : [];
 
-  // symptom-log well-day entry (#1300): a compact SymptomLogBar behind the check-in card's
-  // Report reveal, so a well user (severe cramps, a headache) can log symptoms with NO
-  // illness required. Shown ONLY on a WELL day — while illness is active its Now cockpit
-  // above owns symptom logging (so we omit it to avoid the duplicate). Same store + the
-  // suggest-only illness bridge as the Timeline bar (no temperature/day-toggle here).
-  const showWellSymptoms = !activeSick;
-
   // Ongoing N-of-1 protocols reuse the same detail-page computations (comparison,
   // adherence, outcome, and practice) before each fact becomes its own candidate.
   const activeProtocols = adultContentApplicable
@@ -1282,14 +1263,15 @@ async function renderDashboard(
     );
   }
   if (promoteHouseholdHistory) {
+    // NO NODE AND NO ROW. This fact is a link to "Illness episodes" and nothing
+    // else, so Show everything draws the page as a door instead of a card that
+    // restates the sidebar (#3366). It still places, so completeness is unchanged.
     add(
       careCandidates.householdHistory({
         subject: { scope: "login" },
         sourceOrder: sourceOrder++,
       }),
-      <DashboardAtomCard title="Household illness history">
-        <HouseholdHistoryPromoLink />
-      </DashboardAtomCard>
+      undefined
     );
   }
 
@@ -1568,33 +1550,6 @@ async function renderDashboard(
     )
   );
   sourceOrder += checkinPrnItems.length;
-
-  if (showWellSymptoms) {
-    add(
-      dailyCandidates.symptomLog(
-        {
-          subject: profileSubject,
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
-      ),
-      <DashboardAtomCard title="Daily symptoms" testId="symptom-log-atom">
-        <SymptomLogBar
-          showTitle={false}
-          date={on}
-          initial={getSymptomSeveritiesOnDate(profile.id, on)}
-          initialNotes={getSymptomNotesOnDate(profile.id, on)}
-          symptoms={PICKER_SYMPTOMS}
-          customNames={getCustomSymptomNames(profile.id)}
-          rankedKeys={getSymptomLogOrder(profile.id)}
-          suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
-          temperatureUnit={units.temperatureUnit}
-          textIntakeEnabled={isTaskConfigured("symptom-map")}
-        />
-      </DashboardAtomCard>
-    );
-  }
 
   coachingRecs.forEach((rec, index) =>
     add(
@@ -2103,29 +2058,6 @@ async function renderDashboard(
         presence: "current",
       }
     );
-  add(
-    dailyCandidates.vitalLog(
-      {
-        subject: profileSubject,
-        applicable: canWrite,
-        sourceOrder: sourceOrder++,
-      },
-      on,
-      Boolean(vitalsModel)
-    ),
-    <DashboardAtomCard title="Vitals" testId="vitals-log-atom">
-      <LogReadingButton label="Log a vital" />
-    </DashboardAtomCard>,
-    // With no readings yet this fact is a SETUP row rather than an offer, and the
-    // row states the same door the button opens.
-    {
-      label: "Vitals",
-      href: "/trends#body",
-      actionLabel: "Log a vital",
-      presence: vitalsModel ? "current" : "never",
-    }
-  );
-
   if (cycleModel)
     addStandingOnly(
       dailyCandidates.cyclePhase(
@@ -2143,19 +2075,6 @@ async function renderDashboard(
         presence: "current",
       }
     );
-  if (cycleControl)
-    add(
-      dailyCandidates.cycleControl(
-        {
-          subject: profileSubject,
-          applicable: cycleApplicable && canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
-      ),
-      <CycleControlAtom control={cycleControl} />
-    );
-
   if (nextAppt)
     add(
       careCandidates.appointment(
@@ -2324,22 +2243,6 @@ async function renderDashboard(
         href: "/trends#body",
         presence: "current",
       }
-    );
-    add(
-      progressCandidates.weightQuickAdd(
-        {
-          subject: profileSubject,
-          applicable: canWrite,
-          sourceOrder: sourceOrder++,
-        },
-        on
-      ),
-      <WeightQuickAddAtom
-        latest={latestWeight ?? null}
-        weightUnit={units.weightUnit}
-        today={on}
-        subjectName={actingSubjectName}
-      />
     );
   }
 

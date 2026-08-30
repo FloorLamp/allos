@@ -57,11 +57,18 @@ test("eligible closed episodes emit independent reopen actions", async ({
       reopen.filter({ hasText: FOLD_REOPEN_KID_B_SITUATION })
     ).toHaveAttribute("data-kind", "action");
 
-    const history = dashboardCandidatePrefix(page, "household.episode-history");
-    await expect(history).toHaveCount(1);
+    // The household-history fact is a link to a page the nav already carries, so the
+    // tail draws the PAGE as a door instead of a card of its own (#3366) — the fact
+    // still places, which is what keeps the exact-once contract true.
     await expect(
-      history.getByTestId("household-history-promo")
-    ).toHaveAttribute("href", "/medical/episodes");
+      dashboardCandidatePrefix(page, "household.episode-history")
+    ).toHaveCount(0);
+    const door = page.locator(
+      '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
+    );
+    await expect(door).toHaveCount(1);
+    await expect(door).toHaveAttribute("href", "/medical/episodes");
+    await expect(door).toHaveText("Illness episodes");
   } finally {
     await page.context().close();
   }
@@ -82,7 +89,9 @@ test("the household-history action follows its existing 14-day window", async ({
       0
     );
     await expect(
-      dashboardCandidatePrefix(tail, "household.episode-history")
+      tail.locator(
+        '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
+      )
     ).toHaveCount(1);
   } finally {
     await tail.context().close();
@@ -99,8 +108,11 @@ test("the household-history action follows its existing 14-day window", async ({
     await expect(
       dashboardCandidatePrefix(recovered, "illness.reopen:")
     ).toHaveCount(0);
+    // Past the window the fact is not gathered at all, so neither a card nor a door.
     await expect(
-      dashboardCandidatePrefix(recovered, "household.episode-history")
+      recovered.locator(
+        '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
+      )
     ).toHaveCount(0);
   } finally {
     await recovered.context().close();

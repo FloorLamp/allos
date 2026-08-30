@@ -15,10 +15,12 @@ import type { CyclePeriod } from "@/lib/cycle";
 
 // THE #221 PIN for the cycle offer (issue #1892).
 //
-// Three surfaces put a one-tap period button in front of the user — the Cycle page
-// control, the dashboard control atom, and the quick-log sheet's overlay. The whole
-// point of the fix is that they are RENDERERS of one state, not three implementations
-// of one idea, so they can never disagree about which verb is on offer. Nothing about
+// Two surfaces put a one-tap period button in front of the user — the Cycle page
+// control and the quick-log sheet's overlay. (The dashboard control atom was the
+// third until #3366 retired the tail's generic write cards; the quick logger is the
+// app's one quick-write surface.) The whole point of the fix is that they are
+// RENDERERS of one state, not implementations of one idea, so they can never
+// disagree about which verb is on offer. Nothing about
 // that is enforced by types: each surface could perfectly well grow its own
 // `periods.some(p => p.period_end == null)`. This test is what stops it.
 //
@@ -28,7 +30,7 @@ import type { CyclePeriod } from "@/lib/cycle";
 //      each surface reaches that button rather than the predicates, and no surface
 //      imports the plausibility predicates or the phase/day derivations to re-answer
 //      the question locally.
-//   2. BEHAVIOURALLY — the three surfaces are handed one state object and every state
+//   2. BEHAVIOURALLY — both surfaces are handed one state object and every state
 //      of the machine yields one verb, which is what the e2e spec then asserts in the
 //      browser.
 //
@@ -39,15 +41,11 @@ import type { CyclePeriod } from "@/lib/cycle";
 // The shared control every surface renders.
 const OFFER_BUTTON = "components/cycle/PeriodOfferButton.tsx";
 
-// The three surfaces, and what each is.
+// The surfaces, and what each is.
 const RENDERERS = [
   {
     file: "app/(app)/medical/cycles/PeriodQuickActions.tsx",
     what: "the Cycle page's quick-action control (#1681)",
-  },
-  {
-    file: "components/dashboard/CycleControlAtom.tsx",
-    what: "the dashboard control atom (#1892)",
   },
   {
     file: "components/quick-entry/QuickCyclePanel.tsx",
@@ -125,7 +123,7 @@ function period(id: number, start: string, end: string | null): CyclePeriod {
   return { id, period_start: start, period_end: end, flow: null, note: null };
 }
 
-describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)", () => {
+describe("the cycle offer has ONE derivation and two renderers (#1892 / #221)", () => {
   it("every surface renders the shared button and none re-derives the offer", () => {
     for (const { file, what } of RENDERERS) {
       const src = code(file);
@@ -160,6 +158,9 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
     // Each renderer is handed the state; the three places that RESOLVE it are the
     // three server entry points. A fourth caller would mean a surface deciding for
     // itself when to compute the offer — the seam this pin exists to keep shut.
+    // The dashboard still resolves it after #3366 retired its control atom: Standing's
+    // cycle-phase reading is derived from the same state, which is what keeps the day
+    // and phase on the dashboard from being a second derivation.
     const callers = [...offerSources]
       .filter(
         ([rel, source]) =>
@@ -169,7 +170,7 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
       .map(([rel]) => rel);
     expect(callers.sort()).toEqual(
       [
-        // The dashboard page (the control atom).
+        // The dashboard page (Standing's phase reading).
         "app/(app)/page.tsx",
         // The Cycle page.
         "app/(app)/medical/cycles/page.tsx",
