@@ -5,6 +5,7 @@ import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
 import QuickEntryProvider from "@/components/QuickEntryProvider";
+import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import PullToRefresh from "@/components/PullToRefresh";
 import QuickShortcutHandler from "@/components/QuickShortcutHandler";
 import ExtractionToaster from "@/components/ExtractionToaster";
@@ -301,8 +302,13 @@ export default async function AppLayout({
                   OfflineQueueProvider by necessity: the forms it mounts
                   (MeasurementsQuickAdd) queue offline writes, and it
                   renders them as its OWN children, so they must sit under that
-                  provider. It gathers nothing until a sheet row is tapped. */}
-                  <QuickEntryProvider>
+                  provider. It gathers nothing until a sheet row is tapped —
+                  except the measurements props, resolved HERE (#4091) because a
+                  Server Action cannot be on the critical path of a surface people
+                  are expected to reach with no connection. */}
+                  <QuickEntryProvider
+                    measurements={measurementsQuickEntry(login.id, profile.id)}
+                  >
                     <ActivityEditorProvider
                       units={units}
                       suggestions={suggestions}

@@ -3000,8 +3000,9 @@ on the card rather than implying it holds the legal instrument.
 Logging often happens exactly where the signal doesn't: a set at a gym with dead
 reception, a dose on a flight, a weigh-in during an outage. For a small set of
 **idempotent quick-logs** — confirming a **dose taken** or **skipped**
-(Supplements & Meds), a **body-metric** weigh-in (Trends → Overview → body census), a **vitals**
-entry (Trends → Overview → body census), a daily **mood check-in** (the Dashboard "How are you
+(Supplements & Meds), a **body-metric** weigh-in (the quick-log sheet's **Log measurements** row, which
+opens with no connection, or Trends → Overview → body census), a **vitals**
+entry (the same form), a daily **mood check-in** (the Dashboard "How are you
 today?" card — idempotent per day, so a replay updates the day's one entry), a
 **workout session** logged entirely offline (the Training editor: if the
 connection is gone for the whole session, closing the editor queues the
