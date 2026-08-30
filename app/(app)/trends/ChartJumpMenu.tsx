@@ -71,7 +71,12 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
     if (!open) return;
     const index = focusOnOpenIndexRef.current;
     const frame = requestAnimationFrame(() => {
-      optionRefs.current[index]?.focus();
+      if (
+        document.activeElement === triggerRef.current ||
+        document.activeElement === optionRefs.current[0]
+      ) {
+        optionRefs.current[index]?.focus();
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
