@@ -78,25 +78,6 @@ function fixtureProfileId(): number {
   }
 }
 
-// Row count for this fixture's profile — the batch test's "two files in, two
-// rows out" reads the store rather than the grid, because the grid is what a
-// single write would also change.
-function countPhotos(): number {
-  const handle = new Database(DB_PATH);
-  try {
-    return (
-      handle
-        .prepare(
-          `SELECT COUNT(*) AS n FROM progress_photos
-            WHERE profile_id IN (SELECT id FROM profiles WHERE name = ?)`
-        )
-        .get(PROGRESS_PHOTOS_PROFILE) as { n: number }
-    ).n;
-  } finally {
-    handle.close();
-  }
-}
-
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
@@ -722,7 +703,8 @@ test.describe("the ways into the add-media dialog (#3286)", () => {
     test.slow(); // two uploads through the shared pipeline
     const page = await openProgress(browser);
     try {
-      const before = countPhotos();
+      const tiles = page.locator('[data-testid^="photo-gallery-item-"]');
+      const before = await tiles.count();
       await page.getByTestId("photo-capture-file").setInputFiles([
         {
           name: "batch-a.jpg",
@@ -748,10 +730,12 @@ test.describe("the ways into the add-media dialog (#3286)", () => {
       await page.locator("#progress-date").fill("2026-03-04");
       await settledClick(page, page.getByTestId("media-input-submit"));
       await expect(page.getByTestId("media-input-selected")).toHaveCount(0);
-      // Two files in, two rows out — one interaction, per-file writes.
-      await expect(() => expect(countPhotos()).toBe(before + 2)).toPass({
-        timeout: 20_000,
-      });
+      // TWO FILES IN, TWO PHOTOS OUT — one interaction, per-file writes. Counted
+      // on the grid rather than the store: settledClick settles on ONE Server
+      // Action and a batch posts once per file, so the grid's retrying count is
+      // the signal that every one of them landed, and it is the same thing a
+      // person would look at.
+      await expect(tiles).toHaveCount(before + 2, { timeout: 20_000 });
     } finally {
       await page.context().close();
     }
