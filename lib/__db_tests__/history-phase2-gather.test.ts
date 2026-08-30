@@ -238,3 +238,74 @@ describe("the cycle kind", () => {
     expect(rows.every((r) => r.date <= "2026-08-24")).toBe(true);
   });
 });
+
+// THE SEAM PHASE 2D OPENED (#662/#2920). `lib/timeline.ts` composes a visit's lineage
+// refs and a lab panel's per-marker breakdown; the record's rows carry them across so
+// the row's disclosure can draw them. The tier matters: the fields are built by SQL
+// over an import document's siblings, so a unit fixture would be asserting the shape
+// of its own literal rather than that the gather still reaches them.
+describe("the feed rows carry their disclosure content (#3958 phase 2d)", () => {
+  it("brings a visit's document lineage onto its row, scoped", () => {
+    const loginId = login();
+    const p = profile("lineage", "UTC");
+    const date = "2026-08-18";
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, extraction_status, doc_type)
+           VALUES (?, 'lineage-ccd.xml', '', 'done', 'ccd')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, reason, document_id)
+       VALUES (?, ?, 'Ophthalmology', 'blinking', ?)`
+    ).run(p, date, docId);
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, kind, source, document_id)
+       VALUES (?, 'Albuterol', 'medication', 'extracted', ?)`
+    ).run(p, docId);
+
+    const visit = gatherHistoryLog(p, { loginId, limit: 200 }).rows.find(
+      (r) => r.kind === "visit"
+    );
+    expect(visit?.linkedRefs).toEqual([
+      { label: "Medication: Albuterol", href: "/medications" },
+    ]);
+    // ONE ENCOUNTER IN THE DOCUMENT, so document ≈ visit and the heading may say so
+    // (#2920). The scope has to ride ALONG with the refs: "From this visit" is a
+    // prefix of "From this visit's document", so a row that lost this field would
+    // render a heading that still reads like a sentence.
+    expect(visit?.linkedScope).toBe("document");
+  });
+
+  it("brings a lab panel's breakdown onto its row", () => {
+    const loginId = login();
+    const p = profile("panel", "UTC");
+    // TWO ROWS OF ONE PANEL ON ONE DAY, because the breakdown is what the GATHER
+    // assembles by grouping them — a single row would produce a one-item list that a
+    // gather doing no grouping at all would also produce.
+    for (const m of [
+      { name: "Zeta protein", value: "130", unit: "mg/dL", flag: "high" },
+      { name: "Omega protein", value: "55", unit: "mg/dL", flag: "" },
+    ]) {
+      db.prepare(
+        `INSERT INTO medical_records
+           (profile_id, name, value, unit, date, flag, category, panel)
+         VALUES (?, ?, ?, ?, '2026-08-18', ?, 'lab', 'Complete blood count')`
+      ).run(p, m.name, m.value, m.unit, m.flag);
+    }
+
+    const lab = gatherHistoryLog(p, { loginId, limit: 200 }).rows.find(
+      (r) => r.kind === "lab"
+    );
+    // BOTH markers, as one panel's breakdown — the flag rides along, because the
+    // panel's disclosure is where an out-of-range value is legible at all now that
+    // the row itself is one line.
+    expect(lab?.detailItems).toEqual([
+      { label: "Zeta protein", value: "130", unit: "mg/dL", flag: "high" },
+      { label: "Omega protein", value: "55", unit: "mg/dL" },
+    ]);
+  });
+});
