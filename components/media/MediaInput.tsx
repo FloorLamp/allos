@@ -345,8 +345,9 @@ export default function MediaInput({
           .map(async (file) => {
             if (!file.type.startsWith("image/")) return { file, url: null };
             const blob = await compressImageBlob(file, maxEdge, quality);
-            const out = new File([blob], file.name, {
-              type: blob.type || file.type,
+            const type = blob.type || file.type;
+            const out = new File([blob], reExtension(file.name, type), {
+              type,
             });
             return { file: out, url: URL.createObjectURL(out) };
           })
@@ -779,6 +780,17 @@ export default function MediaInput({
       ) : null}
     </>
   );
+}
+
+// A re-encoded file must not keep the old extension. The canvas hands back JPEG
+// whatever went in, so a picked `scan.png` becomes `scan.jpg` — the name is what
+// the import feed and every later listing show, and a .png holding JPEG bytes is
+// a small lie that only ever costs somebody time. When the re-encode fell back
+// to the original bytes the type is unchanged and so is the name.
+function reExtension(name: string, type: string): string {
+  if (type !== "image/jpeg" || /\.jpe?g$/i.test(name)) return name;
+  const dot = name.lastIndexOf(".");
+  return `${dot > 0 ? name.slice(0, dot) : name}.jpg`;
 }
 
 function revoke(picked: Picked[]) {

@@ -31,8 +31,11 @@ import { workerDbPath } from "./worker-env";
 // on a desktop) is e2e/media-input.spec.ts's subject.
 
 const PREFIX = "e2e-doccam-";
-// The name MediaInput hands back for a document capture.
-const CAPTURED_NAME = "document.jpg";
+// A picked or photographed page keeps its own name, with the extension corrected
+// to match the bytes: the client re-encode hands back JPEG, so the `.png` handed
+// in is stored as `.jpg`. (A CAMERA capture, which this runner cannot drive, is
+// the one case with no name of its own; it is called document.jpg.)
+const CAPTURED_NAME = `${PREFIX}snap.jpg`;
 const DB_PATH = workerDbPath();
 
 // A 1x1 PNG — stand-in for a photographed page. It is re-encoded client-side
@@ -82,10 +85,12 @@ test.describe("Document capture on a phone (issue #1993)", () => {
     await expect(page.locator('form input[type="file"]')).toHaveCount(1);
 
     // Naming the drop gesture on a phone would be instructions for a device the
-    // reader is not holding — the door is still one tap either way.
+    // reader is not holding — the door is still one tap either way. Asserted as
+    // VISIBILITY, not as text: the span is hidden by a class, and textContent
+    // reads hidden text perfectly happily.
     const door = page.getByTestId("medical-upload-choose");
     await expect(door).toBeVisible();
-    await expect(door).not.toContainText("drop");
+    await expect(door.getByText("or drop them here")).toBeHidden();
 
     await hydratedClick(page, door);
     // Both ways in, in one place. The camera is a peer of the picker here, not a

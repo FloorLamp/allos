@@ -394,7 +394,12 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
   // "Upload" still names exactly one control on this card, the submit. The two
   // ways in (#1993) now sit together inside the dialog it opens.
   const door = page.getByTestId("medical-upload-choose");
-  await expect(door).toHaveText("Choose files");
+  // useInnerText, because the door also carries a " or drop them here" span that
+  // is hidden by a class below `sm` — naming a drag gesture on a phone would be
+  // instructions for a device the reader is not holding. textContent reads hidden
+  // text happily, so the default matcher would be asserting on something nobody
+  // at this viewport can see.
+  await expect(door).toHaveText("Choose files", { useInnerText: true });
 
   // Assert on the row: inactive panels stay mounted, so a page-wide text query
   // would also read the hidden Paste CSV panel.
