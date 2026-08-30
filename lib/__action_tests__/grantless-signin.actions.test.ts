@@ -94,32 +94,22 @@ beforeEach(() => {
 });
 
 describe("sign-in for a login with no profile access (#1434)", () => {
-  it("refuses honestly instead of silently bouncing", async () => {
-    const { username } = mkLogin();
+  it("refuses honestly without sessions or cookies and audits each attempt", async () => {
+    const { id, username } = mkLogin();
     const state = await signIn(username);
     expect(state.error).toBe(NO_PROFILE_ACCESS);
     expect(state.needsTotp).toBeUndefined();
-  });
-
-  it("mints NO session and sets no cookie", async () => {
-    const { id, username } = mkLogin();
-    await signIn(username);
     await signIn(username);
     // Two attempts, zero sessions — the old behavior showed "2 active sessions"
     // on a login that could never reach a page.
     expect(sessionCount(id)).toBe(0);
     expect(cookiesSet).toEqual([]);
-  });
-
-  it("audits the refusal so the admin has a signal", async () => {
-    const { id, username } = mkLogin();
-    await signIn(username);
     const row = db
       .prepare(
         "SELECT COUNT(*) AS c FROM audit_events WHERE login_id = ? AND action = ?"
       )
       .get(id, AUDIT_ACTIONS.loginNoAccess) as { c: number };
-    expect(row.c).toBe(1);
+    expect(row.c).toBe(2);
   });
 
   it("keeps the credential outcome opaque for a WRONG password", async () => {

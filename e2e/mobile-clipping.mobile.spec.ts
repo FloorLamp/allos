@@ -772,7 +772,7 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     {
       id: "add-document",
       label: "document upload",
-      ready: (sheet) => sheet.getByTestId("medical-upload-actions"),
+      ready: (sheet) => sheet.getByTestId("medical-upload-choose"),
     },
   ];
 

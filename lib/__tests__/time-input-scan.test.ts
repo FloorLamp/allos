@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { findTags, scanDirs, REPO } from "./jsx-tag-scan";
 
 // One "when" control (issue #2236), ratcheted in the repo's established
 // source-scan idiom (`icon-button-tooltip-scan.test.ts`, `page-width-scan.
@@ -25,7 +25,6 @@ import { fileURLToPath } from "node:url";
 // observation, so "when did this happen?" is not its question and it is not
 // expected to migrate.
 
-const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
 
 /** The one legitimate home of a raw event-time input. */
@@ -122,128 +121,20 @@ const HANDROLLED_ALLOW = new Map<
   ],
 ]);
 
-// ── a very small tag reader (the icon-button scan's string/brace skipper) ───
-
-function skipString(s: string, i: number): number {
-  const q = s[i];
-  i++;
-  while (i < s.length) {
-    if (s[i] === "\\") i += 2;
-    else if (s[i] === q) return i + 1;
-    else if (q === "`" && s[i] === "$" && s[i + 1] === "{") {
-      i = skipBraces(s, i + 1);
-    } else i++;
-  }
-  return i;
-}
-
-function skipBraces(s: string, i: number): number {
-  let depth = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"' || c === "'" || c === "`") i = skipString(s, i);
-    else if (c === "/" && s[i + 1] === "/") {
-      const nl = s.indexOf("\n", i);
-      i = nl === -1 ? s.length : nl;
-    } else if (c === "/" && s[i + 1] === "*") {
-      const end = s.indexOf("*/", i);
-      i = end === -1 ? s.length : end + 2;
-    } else {
-      if (c === "{") depth++;
-      else if (c === "}") {
-        depth--;
-        if (depth === 0) return i + 1;
-      }
-      i++;
-    }
-  }
-  return i;
-}
-
 /**
  * Every `<input …>` opening tag whose attributes carry `type="time"`, as line
  * numbers. Attribute values may span lines and contain braces/templates (an
  * onChange arrow's `=>` must not read as the tag's `>`), and a tag mentioned
- * inside a comment is not a tag — both handled by real tokenizing rather than
- * a regex.
+ * inside a comment is not a tag — both handled by the shared reader in
+ * ./jsx-tag-scan rather than by a regex.
  */
 export function rawTimeInputs(text: string): number[] {
-  const out: number[] = [];
-  let i = 0;
-  while (i < text.length) {
-    const c = text[i];
-    if (c === '"' || c === "'" || c === "`") {
-      i = skipString(text, i);
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "/") {
-      const nl = text.indexOf("\n", i);
-      i = nl === -1 ? text.length : nl;
-      continue;
-    }
-    if (c === "/" && text[i + 1] === "*") {
-      const end = text.indexOf("*/", i);
-      i = end === -1 ? text.length : end + 2;
-      continue;
-    }
-    if (c === "<" && text.startsWith("<input", i) && !/\w/.test(text[i + 6])) {
-      const start = i;
-      let j = i + 6;
-      let attrs = "";
-      let closed = false;
-      while (j < text.length) {
-        const a = text[j];
-        if (a === '"' || a === "'" || a === "`") {
-          const end = skipString(text, j);
-          attrs += text.slice(j, end);
-          j = end;
-        } else if (a === "{") {
-          j = skipBraces(text, j);
-        } else if (a === ">") {
-          closed = true;
-          j++;
-          break;
-        } else {
-          attrs += a;
-          j++;
-        }
-      }
-      if (closed && /(?:^|\s)type\s*=\s*"time"/.test(attrs)) {
-        out.push(text.slice(0, start).split("\n").length);
-      }
-      i = j;
-      continue;
-    }
-    i++;
-  }
-  return out;
+  return findTags(text, "input", (attrs) =>
+    /(?:^|\s)type\s*=\s*"time"/.test(attrs)
+  );
 }
 
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === ".next") continue;
-      out.push(...walk(full));
-    } else if (entry.name.endsWith(".tsx")) out.push(full);
-  }
-  return out;
-}
-
-function scanRepo(): Map<string, number[]> {
-  const found = new Map<string, number[]>();
-  for (const d of SCAN_DIRS) {
-    const abs = path.join(REPO, d);
-    if (!fs.existsSync(abs)) continue;
-    for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
-      const lines = rawTimeInputs(fs.readFileSync(full, "utf8"));
-      if (lines.length > 0) found.set(rel, lines);
-    }
-  }
-  return found;
-}
+const scanRepo = () => scanDirs(SCAN_DIRS, rawTimeInputs);
 
 const HOW = [
   'A raw <input type="time"> asks "when did this happen?" without the shared',

@@ -11,7 +11,7 @@
 //
 // Deterministic: :memory:-backed temp DB via setup.ts; no network.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   profileVocabulary,
@@ -53,6 +53,24 @@ function trackTypedSubstance(profileId: number, typed: string): string {
 }
 
 describe("profileVocabulary — the profile's own spellings, first-seen first", () => {
+  it("does not scan stored spellings for a curated symptom tap", () => {
+    const p = newProfile("curated-symptom-fast-path");
+    const scans: string[] = [];
+    const realPrepare = db.prepare.bind(db);
+    const spy = vi.spyOn(db, "prepare").mockImplementation(((sql: string) => {
+      if (/FROM symptom_logs[\s\S]*GROUP BY symptom/.test(sql)) scans.push(sql);
+      return realPrepare(sql);
+    }) as typeof db.prepare);
+    try {
+      expect(logSymptomCore(p, "Fever", 2, "2026-07-01", "page").kind).toBe(
+        "logged"
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    expect(scans).toEqual([]);
+  });
+
   it("orders symptom spellings by the OLDEST row that carries them, not by date", () => {
     const p = newProfile("first-seen-symptom");
     // Logged first, but describing a LATER day…

@@ -1,21 +1,32 @@
-// Pure decisions for PhotoCapture's native-picker fallback (#2182). User
-// activation is a hard browser boundary: a known fallback may click the input
-// synchronously only from a real tap; an auto-open deep link must show a dialog.
+// Pure decisions for the shared media form's camera option (#2182, #3286).
 
 export type CameraKnowledge = "unknown" | "granted" | "denied" | "failed";
-export type CameraStartDecision =
-  "direct-picker" | "try-camera" | "show-fallback";
 
-export function cameraStartDecision(input: {
-  userInitiated: boolean;
+/**
+ * WHICH STAGE THE ADD-MEDIA DIALOG OPENS ON (#3286).
+ *
+ * The dialog is device-aware in its ORDERING, never in its capability: both
+ * stages reach both paths. What moves is which one you land on.
+ *
+ * `camera` only where the camera is a live, plausible primary — a phone-width
+ * viewport, or a camera this session already knows is granted. Everywhere else
+ * the file picker leads, which is the whole defect: a desktop that never
+ * granted camera used to open onto camera-recovery instructions with a green
+ * "Open camera" as the only primary, and the file path demoted to a sentence.
+ *
+ * A camera KNOWN to be denied or broken never leads, on any viewport — a dead
+ * end is a dead end at 390px too.
+ */
+export function mediaStartStage(input: {
   hasGetUserMedia: boolean;
   knowledge: CameraKnowledge;
-}): CameraStartDecision {
-  if (!input.userInitiated) return "show-fallback";
-  if (!input.hasGetUserMedia) return "direct-picker";
+  compactViewport: boolean;
+}): "chooser" | "camera" {
+  if (!input.hasGetUserMedia) return "chooser";
   if (input.knowledge === "denied" || input.knowledge === "failed")
-    return "direct-picker";
-  return "try-camera";
+    return "chooser";
+  if (input.knowledge === "granted") return "camera";
+  return input.compactViewport ? "camera" : "chooser";
 }
 
 export type CameraDialogVariant =
