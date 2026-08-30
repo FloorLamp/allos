@@ -20,6 +20,7 @@ import {
   loadQuickEntry,
   type QuickEntryData,
 } from "@/app/(app)/quick-entry-actions";
+import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import type { QuickEntryForm, QuickEntryPrefill } from "@/lib/quick-log";
 
 // The newest bodies load ON DEMAND (#1525/#1633/#1892). This host is mounted on every
@@ -154,15 +155,26 @@ const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   document: { title: "Add document", ownsHeading: false },
 };
 
+// The measurements payload comes from the SHELL, everything else from the gather —
+// one discriminated union either way, so the body below still switches on `form`.
+type QuickEntryBody = QuickEntryData | MeasurementsQuickEntry;
+
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; data: QuickEntryData }
+  | { status: "ready"; data: QuickEntryBody }
   | { status: "error" };
 
 export default function QuickEntryProvider({
   children,
+  measurements,
 }: {
   children: React.ReactNode;
+  // Resolved in the app shell, not gathered on open (#4091): the measurements
+  // form is the one body here a person is expected to reach with no connection,
+  // and `loadQuickEntry` is a Server Action, which offline rejects. Server-rendered
+  // inline is what made the dashboard's retired weight widget reachable in a gym
+  // basement, and this prop is that same property, kept while the widget goes.
+  measurements: MeasurementsQuickEntry;
 }) {
   const [open, setOpen] = useState(false);
   // The form is RETAINED after close so the panel keeps its content through the
@@ -181,8 +193,16 @@ export default function QuickEntryProvider({
       const token = ++requestRef.current;
       setForm(next);
       setPrefill(nextPrefill ?? null);
-      setState({ status: "loading" });
       setOpen(true);
+      // NO ROUND TRIP for measurements — the props are already here, so the form
+      // mounts on the same tick and offline changes nothing about opening it. This
+      // is the whole of the #4091 fix; a `loading` state would be a lie and an
+      // `error` state is what the Server Action produced with no signal.
+      if (next === "measurements") {
+        setState({ status: "ready", data: measurements });
+        return;
+      }
+      setState({ status: "loading" });
       void loadQuickEntry(next).then(
         (data) => {
           if (requestRef.current === token) setState({ status: "ready", data });
@@ -192,7 +212,7 @@ export default function QuickEntryProvider({
         }
       );
     },
-    []
+    [measurements]
   );
 
   const api = useMemo<QuickEntryApi>(

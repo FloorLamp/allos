@@ -34,6 +34,16 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const APP_GROUP = path.join(REPO, "app", "(app)");
 const COMPONENTS = path.join(REPO, "components");
 
+const SOURCE_CACHE = new Map<string, string>();
+
+function source(file: string): string {
+  const cached = SOURCE_CACHE.get(file);
+  if (cached !== undefined) return cached;
+  const text = fs.readFileSync(file, "utf8");
+  SOURCE_CACHE.set(file, text);
+  return text;
+}
+
 // Pages with a deliberate reason to carry no app page heading. Each entry is a
 // JUSTIFIED exemption, not a backlog — a new page does not get to join this list
 // without one.
@@ -59,21 +69,32 @@ function walk(dir: string): string[] {
 }
 
 // Resolve an import specifier (`@/…` or a relative path) to a file in the repo.
+const IMPORT_RESOLUTION_CACHE = new Map<string, string | null>();
+
 function resolveImport(spec: string, fromFile: string): string | null {
+  const key = `${fromFile}\0${spec}`;
+  if (IMPORT_RESOLUTION_CACHE.has(key)) {
+    return IMPORT_RESOLUTION_CACHE.get(key) ?? null;
+  }
   let base: string;
   if (spec.startsWith("@/")) base = path.join(REPO, spec.slice(2));
   else if (spec.startsWith("."))
     base = path.resolve(path.dirname(fromFile), spec);
-  else return null;
+  else {
+    IMPORT_RESOLUTION_CACHE.set(key, null);
+    return null;
+  }
   for (const candidate of [
     `${base}.tsx`,
     `${base}.ts`,
     path.join(base, "index.tsx"),
   ]) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      IMPORT_RESOLUTION_CACHE.set(key, candidate);
       return candidate;
     }
   }
+  IMPORT_RESOLUTION_CACHE.set(key, null);
   return null;
 }
 
@@ -88,9 +109,9 @@ function rendersPageHeader(
   // keeping the scan cheap; nothing in the tree needs more.
   if (depth > 5 || seen.has(file)) return false;
   seen.add(file);
-  const source = fs.readFileSync(file, "utf8");
-  if (source.includes("PageHeader")) return true;
-  for (const match of source.matchAll(IMPORT_RE)) {
+  const text = source(file);
+  if (text.includes("PageHeader")) return true;
+  for (const match of text.matchAll(IMPORT_RE)) {
     const resolved = resolveImport(match[1], file);
     if (resolved && rendersPageHeader(resolved, seen, depth + 1)) return true;
   }
@@ -151,8 +172,8 @@ describe("every (app) page renders the shared PageHeader", () => {
     for (const page of PAGES) {
       const rel = path.relative(APP_GROUP, page).split(path.sep).join("/");
       if (rel in EXEMPT) continue;
-      const source = fs.readFileSync(page, "utf8");
-      if (isRedirectOnly(source)) continue;
+      const text = source(page);
+      if (isRedirectOnly(text)) continue;
       if (rendersPageHeader(page)) continue;
       if (ancestorLayouts(page).some((l) => rendersPageHeader(l))) continue;
       offenders.push(rel);
@@ -170,8 +191,7 @@ describe("every (app) page renders the shared PageHeader", () => {
     // see, so ask the predicate about one file in each state — the two real
     // forwarders in the app, and the page whose branch-guard redirect used to buy
     // it a silent exemption from the heading rule (#3234).
-    const read = (rel: string) =>
-      fs.readFileSync(path.join(APP_GROUP, rel), "utf8");
+    const read = (rel: string) => source(path.join(APP_GROUP, rel));
     expect(isRedirectOnly(read("appointments/page.tsx"))).toBe(true);
     expect(isRedirectOnly(read("integrations/page.tsx"))).toBe(true);
     expect(isRedirectOnly(read("training/fitness-check/page.tsx"))).toBe(false);
@@ -225,9 +245,7 @@ describe("only the page's own h1 uses the page-title heading scale (#1449)", () 
   });
 
   it("has no section heading competing with the page title", () => {
-    const offenders = FILES.filter((f) =>
-      H1_SCALE.test(fs.readFileSync(f, "utf8"))
-    )
+    const offenders = FILES.filter((f) => H1_SCALE.test(source(f)))
       .map((f) => path.relative(REPO, f).split(path.sep).join("/"))
       .filter((rel) => !(rel in H1_SCALE_OK));
     expect(offenders).toEqual([]);
@@ -239,7 +257,7 @@ describe("only the page's own h1 uses the page-title heading scale (#1449)", () 
       expect(fs.existsSync(full), `${rel} no longer exists`).toBe(true);
       // If the file stopped using page scale, drop it from the list rather than
       // leaving a stale exemption that would silently cover a future regression.
-      expect(H1_SCALE.test(fs.readFileSync(full, "utf8")), rel).toBe(true);
+      expect(H1_SCALE.test(source(full)), rel).toBe(true);
     }
   });
 

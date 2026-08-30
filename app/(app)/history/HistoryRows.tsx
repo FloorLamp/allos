@@ -1,13 +1,33 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import {
+  IconActivity,
+  IconAlertTriangle,
   IconApple,
+  IconBandage,
+  IconBrain,
+  IconCalendarEvent,
+  IconChartLine,
+  IconChevronDown,
+  IconDroplet,
+  IconFileText,
+  IconFlag,
   IconFlame,
+  IconFlask2,
+  IconMoon,
   IconPill,
   IconRipple,
+  IconRun,
   IconScaleOutline,
+  IconScan,
+  IconStethoscope,
+  IconTemperature,
+  IconTrophy,
+  IconVaccine,
+  IconVirus,
+  type TablerIcon,
 } from "@tabler/icons-react";
 import DateField from "@/components/DateField";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
@@ -47,7 +67,23 @@ import {
 } from "@/app/(app)/trends/reading-actions";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
-import { HISTORY_KIND_LABELS, type HistoryRow } from "@/lib/history-format";
+import {
+  HISTORY_KIND_LABELS,
+  type HistoryKind,
+  type HistoryRollup,
+  type HistoryRow,
+} from "@/lib/history-format";
+import type { AppRoute } from "@/lib/hrefs";
+import TimelineFilterLink from "@/components/TimelineFilterLink";
+import DestinationLink from "@/components/DestinationLink";
+import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
+import { LoggedViaField } from "@/components/LoggedViaSurface";
+import {
+  deleteCycleAction,
+  saveCycleAction,
+} from "@/app/(app)/medical/cycles/actions";
+import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
+import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -79,13 +115,41 @@ import { HISTORY_KIND_LABELS, type HistoryRow } from "@/lib/history-format";
 // profile this login cannot write is refused at the action, which is the half a
 // missing button could never prove.
 
-const KIND_GLYPH = {
+// ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
+// vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
+// symbols still knows the record's. Total means a new kind cannot ship without one.
+const KIND_GLYPH: Record<HistoryKind, TablerIcon> = {
   dose: IconPill,
   food: IconApple,
   practice: IconRipple,
   substance: IconFlame,
   body: IconScaleOutline,
-} as const;
+  sleep: IconMoon,
+  symptom: IconTemperature,
+  activity: IconActivity,
+  endurance: IconRun,
+  milestone: IconTrophy,
+  lab: IconChartLine,
+  visit: IconCalendarEvent,
+  imaging: IconScan,
+  medication: IconPill,
+  immunization: IconVaccine,
+  condition: IconStethoscope,
+  allergy: IconAlertTriangle,
+  document: IconFileText,
+  protocol: IconFlask2,
+  goal: IconFlag,
+  illness: IconVirus,
+  injury: IconBandage,
+  cycle: IconDroplet,
+  insight: IconBrain,
+};
+
+/** A day's collapsed log rows, with the href that opens it and its rendered state. */
+export type HistoryRollupLine = HistoryRollup & {
+  href: AppRoute;
+  open: boolean;
+};
 
 // The domain's own delete, adapted to the ONE undoable-delete contract every "remove
 // a logged event" in the app answers to (owner ruling 2026-08-05).
@@ -93,6 +157,17 @@ async function removeFoodServing(fd: FormData) {
   const outcome = await deleteFoodLogEvent(fd);
   return outcome.ok
     ? { undoId: outcome.undoId }
+    : { undoId: null, error: outcome.error };
+}
+
+// The symptom bar's own remove, adapted to the undoable-delete contract. It answers in
+// the bar's `SymptomLogResult` shape (the optimistic chip reconciles to it), and the
+// undo token rides back on the removal itself (#2124) — so the adaptation is a rename,
+// not a second delete path.
+async function removeSymptomDay(fd: FormData) {
+  const outcome = await removeSymptom(fd);
+  return outcome.ok
+    ? { undoId: outcome.undoId ?? null }
     : { undoId: null, error: outcome.error };
 }
 
@@ -105,6 +180,8 @@ async function removeSubstanceDay(fd: FormData) {
 
 export default function HistoryRows({
   rows,
+  rollups = [],
+  actingProfileId,
   writableProfileIds,
   doseItems,
   maxDates,
@@ -114,6 +191,14 @@ export default function HistoryRows({
   showGlyphs = true,
 }: {
   rows: HistoryRow[];
+  /**
+   * The day's collapsed log lines (#3958 phase 2), rendered as the day's FIXED LAST
+   * lines. Empty on every view but Everything — filtered to a family the page is the
+   * plain record, and the day view lists everything.
+   */
+  rollups?: HistoryRollupLine[];
+  /** The acting profile — the subject two domains' correction cores can still only write. */
+  actingProfileId: number;
   /**
    * The profiles this login may WRITE, out of the ones in view (#4009 item 1).
    *
@@ -163,8 +248,19 @@ export default function HistoryRows({
 
   // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one.
   const writable = new Set(writableProfileIds);
+  // TWO DOMAINS GATE THE ACTING PROFILE AND NOTHING ELSE, so their ⋯ is drawn only on
+  // the acting profile's own rows. `editSymptom`, `saveCycleAction` and
+  // `deleteCycleAction` resolve their subject from the SESSION (`requireWriteAccess`)
+  // rather than from a posted `profile_id`, so a ⋯ on Mia's symptom row would have
+  // written Dad's log — silently, and to the wrong person's record. Drawing no menu is
+  // the honest answer until those cores take the row's subject the way the other five
+  // do; the alternative was a button that writes somewhere else. Raised as a follow-up
+  // rather than widened here: three actions in two domains is its own change.
+  const ACTING_ONLY_KINDS = new Set(["symptom", "cycle"]);
   const canEdit = (row: HistoryRow) =>
-    row.edit != null && writable.has(row.profileId);
+    row.edit != null &&
+    writable.has(row.profileId) &&
+    (!ACTING_ONLY_KINDS.has(row.kind) || row.profileId === actingProfileId);
 
   // AND SO IS "TODAY" — the row's subject decides how far forward its date field
   // reaches, for the same reason its zone decides what a wall clock means.
@@ -232,6 +328,23 @@ export default function HistoryRows({
           fd.set("target", edit.target);
           await undoable(deleteMetricReading, fd, {
             deletedMessage: "Reading removed",
+          });
+          break;
+        case "symptom":
+          // (date, symptom) IS the address — `symptom_logs` is UNIQUE on it and every
+          // core in lib/symptom-log-write.ts takes exactly this pair.
+          fd.set("symptom", edit.symptom);
+          fd.set("date", row.date);
+          await undoable(removeSymptomDay, fd, {
+            deletedMessage: "Symptom removed",
+          });
+          break;
+        case "cycle":
+          // The ROW, not the marker: deleting either marker deletes the period they
+          // are two views of, which is what the confirm names.
+          fd.set("id", String(edit.cycleId));
+          await undoable(deleteCycleAction, fd, {
+            deletedMessage: "Period removed",
           });
           break;
       }
@@ -480,6 +593,124 @@ export default function HistoryRows({
             {buttons}
           </form>
         );
+      case "symptom":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("symptom", edit.symptom);
+                fd.set("date", row.date);
+                const outcome = await editSymptom(fd);
+                return outcome.ok
+                  ? { ok: true }
+                  : { ok: false, error: outcome.error };
+              })
+            }
+          >
+            {/* `setSymptomSeverityCore` reads `logged_via` off the post (#3087), so
+                this form has to say which surface it is — without it every correction
+                made here would be stamped with the `page` fallback and the provenance
+                ledger would show the dashboard bar's word for a record-page edit. */}
+            <LoggedViaField />
+            {/* NO DATE FIELD, and that is the store's shape rather than an omission:
+                `symptom_logs` is UNIQUE(profile_id, date, symptom), so moving a
+                symptom-day to another date is a delete plus a re-log, not an edit —
+                and `setSymptomSeverityCore` would silently upsert onto whatever day
+                it was handed, merging two days' worst severities into one. */}
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Severity
+              <select
+                name="severity"
+                defaultValue={edit.severity}
+                className="input mt-1 w-full"
+              >
+                {SYMPTOM_SEVERITY_LEVELS.map((level) => (
+                  <option key={level.value} value={level.value}>
+                    {severityLabelFor(edit.symptom, level.value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {/* `setSymptomSeverityCore` stores the note it is handed, so the field has
+                to be here — the same rewrite-everything contract the practice and
+                substance forms above carry, and the same silent data loss without it. */}
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Note
+              <input
+                type="text"
+                name="note"
+                defaultValue={edit.note ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {buttons}
+          </form>
+        );
+      case "cycle":
+        return (
+          <form
+            className="grid gap-2 sm:grid-cols-2"
+            onSubmit={(event) =>
+              void post(event, async (fd) => {
+                fd.set("id", String(edit.cycleId));
+                const outcome = await saveCycleAction(fd);
+                return outcome.ok
+                  ? { ok: true }
+                  : { ok: false, error: outcome.error };
+              })
+            }
+          >
+            {/* BOTH BOUNDARIES, from either marker. The two rows are one period, and
+                `saveCycleAction` rewrites the whole row through the shared
+                plausibility gate (#1682) — so posting one boundary would clear the
+                other, and the gate's overlap check needs both to be meaningful. */}
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Started
+              <DateField
+                name="period_start"
+                defaultValue={edit.periodStart}
+                max={maxDateFor(row)}
+                required
+                inputClassName="mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Ended
+              <DateField
+                name="period_end"
+                defaultValue={edit.periodEnd ?? ""}
+                max={maxDateFor(row)}
+                inputClassName="mt-1 w-full"
+              />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Flow
+              <select
+                name="flow"
+                defaultValue={edit.flow ?? ""}
+                className="input mt-1 w-full"
+              >
+                <option value="">Not recorded</option>
+                {FLOW_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {FLOW_LABELS[level]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-slate-500 dark:text-slate-400">
+              Note
+              <input
+                type="text"
+                name="note"
+                defaultValue={edit.note ?? ""}
+                className="input mt-1 w-full"
+              />
+            </label>
+            {buttons}
+          </form>
+        );
       case "body":
         return (
           <form
@@ -510,6 +741,146 @@ export default function HistoryRows({
     }
   }
 
+  const renderRow = (row: HistoryRow) => {
+    const Glyph = KIND_GLYPH[row.kind];
+    const subject = subjectNames[row.profileId];
+    if (editingId === row.id) {
+      return (
+        <li
+          key={row.id}
+          data-testid="history-row-editing"
+          className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
+        >
+          {editForm(row, () => setEditingId(null))}
+        </li>
+      );
+    }
+    return (
+      <li
+        key={row.id}
+        data-testid="history-row"
+        data-history-kind={row.kind}
+        data-history-row-id={row.id}
+        className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
+      >
+        {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
+              padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
+              base `pr-7` on the same element loses the cascade below `sm` — which is
+              exactly the width the rail exists for, and where the ⋯ then sat under
+              the strip. A wrapper has no padding of its own to lose to. */}
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
+        >
+          <LoggedEventRow
+            icon={
+              showGlyphs ? (
+                <Glyph
+                  aria-hidden
+                  className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                  stroke={1.75}
+                />
+              ) : undefined
+            }
+          >
+            {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
+                which is what the row grammar buys with its disclosure. */}
+            <span className="flex min-w-0 items-baseline gap-1.5 truncate">
+              {row.href && !canEdit(row) && row.edit == null ? (
+                /* THE › HALF OF THE EXCLUSIVE AFFORDANCE (#3958). A row a richer
+                     surface owns carries no ⋯, and its pointer is the ONE rightward
+                     destination cue the primitive owns — `DestinationLink` draws the
+                     chevron and lib/__tests__/destination-link-primitive.test.ts
+                     refuses a hand-rolled one inside a link. So the row has exactly one
+                     control and one cue, and a row can never show both verbs. */
+                <DestinationLink
+                  href={row.href}
+                  className="inline-flex shrink-0 items-center text-link"
+                  data-testid="history-row-title"
+                >
+                  {row.title}
+                </DestinationLink>
+              ) : row.href ? (
+                <Link
+                  href={row.href}
+                  className="shrink-0 text-link"
+                  data-testid="history-row-title"
+                >
+                  {row.title}
+                </Link>
+              ) : (
+                <span className="shrink-0" data-testid="history-row-title">
+                  {row.title}
+                </span>
+              )}
+              {subject ? (
+                <span
+                  className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                  data-testid="history-row-subject"
+                >
+                  {subject}
+                </span>
+              ) : null}
+              {row.detail ? (
+                <span
+                  className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                  data-testid="history-row-detail"
+                >
+                  {row.detail}
+                </span>
+              ) : null}
+            </span>
+          </LoggedEventRow>
+          {row.clock ? (
+            <span
+              className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
+              data-testid="history-row-clock"
+            >
+              {row.clock}
+            </span>
+          ) : null}
+          {canEdit(row) ? (
+            <OverflowMenu
+              kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
+              itemName={menuName(row)}
+              open={menuOpenId === row.id}
+              onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-row-edit"
+                    onClick={() => {
+                      close();
+                      setEditingId(row.id);
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-testid="history-row-delete"
+                    disabled={pendingId === row.id}
+                    onClick={() => {
+                      close();
+                      void remove(row);
+                    }}
+                    className={MENU_ITEM_DANGER}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          ) : null}
+        </div>
+      </li>
+    );
+  };
+
   return (
     // `band` (app/globals.css) is what a hand-rolled `rounded-xl border bg-surface`
     // frame says when it is really a BAND: below `sm` it goes full-bleed and drops
@@ -521,131 +892,59 @@ export default function HistoryRows({
     // per-surface card frame the flat ban removed, on the one page built to be
     // scanned.
     <ul className={`${LOGGED_EVENT_LIST} band`} data-testid="history-rows">
-      {rows.map((row) => {
-        const Glyph = KIND_GLYPH[row.kind];
-        const subject = subjectNames[row.profileId];
-        if (editingId === row.id) {
-          return (
-            <li
-              key={row.id}
-              data-testid="history-row-editing"
-              className={`band card-gutter-action border-t border-(--divider) py-2 first:border-t-0 ${rowClassName}`}
-            >
-              {editForm(row, () => setEditingId(null))}
-            </li>
-          );
-        }
-        return (
+      {rows.map(renderRow)}
+      {/* THE DAY'S FIXED LAST LINES (#3958). An aggregate has no honest single instant,
+          so it takes a fixed position rather than competing for one in the sort — and
+          an expanded rollup's rows render directly beneath their own line, which is
+          the #4045 §4 lesson about where revealed content belongs.
+
+          NO ⋯ AND NO ›: expand is a rollup's only verb, so the trailing cell is empty
+          and the link is the whole line. `TimelineFilterLink` carries `scroll={false}`,
+          so opening one leaves the reader looking at the line they tapped. */}
+      {rollups.map((rollup) => (
+        <Fragment key={rollup.key}>
           <li
-            key={row.id}
-            data-testid="history-row"
-            data-history-kind={row.kind}
-            data-history-row-id={row.id}
+            data-testid="history-rollup"
+            data-rollup-key={rollup.key}
+            data-rollup-open={rollup.open ? "true" : "false"}
             className={`${LOGGED_EVENT_ROW} band card-gutter-action`}
           >
-            {/* THE RAIL'S LANE IS SPENT HERE, on an inner wrapper rather than as
-                padding on the row. The row's own `px-4` is a `max-sm:` variant, so a
-                base `pr-7` on the same element loses the cascade below `sm` — which is
-                exactly the width the rail exists for, and where the ⋯ then sat under
-                the strip. A wrapper has no padding of its own to lose to. */}
             <div
               className={`flex min-w-0 flex-1 items-center gap-2 ${rowClassName}`}
             >
-              <LoggedEventRow
-                icon={
-                  showGlyphs ? (
-                    <Glyph
-                      aria-hidden
-                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                      stroke={1.75}
-                    />
-                  ) : undefined
-                }
+              <TimelineFilterLink
+                href={rollup.href}
+                testId={`history-rollup-${rollup.key}`}
+                label={rollup.label}
+                ariaExpanded={rollup.open}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
-                {/* ONE LINE, EVERY VIEWPORT: the cluster truncates unconditionally,
-                  which is what the row grammar buys with its disclosure. */}
-                <span className="flex min-w-0 items-baseline gap-1.5 truncate">
-                  {row.href ? (
-                    <Link
-                      href={row.href}
-                      className="shrink-0 text-link"
-                      data-testid="history-row-title"
-                    >
-                      {row.title}
-                    </Link>
-                  ) : (
-                    <span className="shrink-0" data-testid="history-row-title">
-                      {row.title}
-                    </span>
-                  )}
-                  {subject ? (
-                    <span
-                      className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
-                      data-testid="history-row-subject"
-                    >
-                      {subject}
-                    </span>
-                  ) : null}
-                  {row.detail ? (
-                    <span
-                      className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
-                      data-testid="history-row-detail"
-                    >
-                      {row.detail}
-                    </span>
-                  ) : null}
-                </span>
-              </LoggedEventRow>
-              {row.clock ? (
                 <span
-                  className={`${LOGGED_EVENT_TRAILING} whitespace-nowrap`}
-                  data-testid="history-row-clock"
+                  aria-hidden
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500 transition dark:text-slate-400 ${
+                    rollup.open ? "rotate-180" : ""
+                  }`}
                 >
-                  {row.clock}
+                  <IconChevronDown className="h-3.5 w-3.5" stroke={2} />
                 </span>
-              ) : null}
-              {canEdit(row) ? (
-                <OverflowMenu
-                  kind={HISTORY_KIND_LABELS[row.kind].replace(/s$/, "")}
-                  itemName={menuName(row)}
-                  open={menuOpenId === row.id}
-                  onOpenChange={(open) => setMenuOpenId(open ? row.id : null)}
-                >
-                  {({ close }) => (
-                    <>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        data-testid="history-row-edit"
-                        onClick={() => {
-                          close();
-                          setEditingId(row.id);
-                        }}
-                        className={MENU_ITEM}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        data-testid="history-row-delete"
-                        disabled={pendingId === row.id}
-                        onClick={() => {
-                          close();
-                          void remove(row);
-                        }}
-                        className={MENU_ITEM_DANGER}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </OverflowMenu>
-              ) : null}
+                {/* LEFT-ALIGNED IN THE TITLE COLUMN, SPANNING TO THE FAR EDGE
+                    (#3958): a rollup stands for a set, not for a row, so it draws no
+                    phantom trailing cells to line up with the rows above it. */}
+                <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
+                {subjectNames[rollup.profileId] ? (
+                  <span
+                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    data-testid="history-row-subject"
+                  >
+                    {subjectNames[rollup.profileId]}
+                  </span>
+                ) : null}
+              </TimelineFilterLink>
             </div>
           </li>
-        );
-      })}
+          {rollup.open ? rollup.rows.map(renderRow) : null}
+        </Fragment>
+      ))}
     </ul>
   );
 }
