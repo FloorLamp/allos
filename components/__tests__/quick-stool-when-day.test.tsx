@@ -16,6 +16,9 @@ import QuickStoolForm from "@/components/quick-entry/QuickStoolForm";
 // to a running app, and the prop change is exactly what this tier can drive.
 
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
+vi.mock("@/components/OfflineQueueProvider", () => ({
+  useOfflineQueue: () => ({ enqueue: vi.fn() }),
+}));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 vi.mock("@/app/(app)/stool-actions", () => ({ logStoolForm: vi.fn() }));
 // The ledger stands in for the real one and RUNS the write, so a tap is not a no-op

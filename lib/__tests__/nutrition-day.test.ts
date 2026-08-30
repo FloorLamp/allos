@@ -141,6 +141,15 @@ describe("nutritionDayPosition — composing the two existing verdicts", () => {
     });
     expect(floors?.protein?.isFloor).toBe(true);
     expect(floors?.fiber?.isFloor).toBe(true);
+
+    // A day holding BOTH a tracked reading and in-app logging is the max of two floors,
+    // which is a floor — so this reader lands on the hedged side for it (#4127).
+    const both = nutritionDayPosition({
+      date: DATE,
+      protein: null,
+      fiber: fiber({ tracked: 12, estimated: 20 }),
+    });
+    expect(both?.fiber).toMatchObject({ grams: 20, isFloor: true });
   });
 });
 
