@@ -61,8 +61,16 @@ function walk(dir: string): string[] {
   return out;
 }
 
-function sourceFiles(): { rel: string; text: string }[] {
-  const files: { rel: string; text: string }[] = [];
+interface SourceFile {
+  rel: string;
+  text: string;
+  sites?: ReturnType<typeof cardCallSites>;
+}
+
+let sourceFilesCache: SourceFile[] | undefined;
+function sourceFiles(): SourceFile[] {
+  if (sourceFilesCache) return sourceFilesCache;
+  const files: SourceFile[] = [];
   for (const d of SCAN_DIRS) {
     const abs = path.join(REPO, d);
     if (!fs.existsSync(abs)) continue;
@@ -72,7 +80,8 @@ function sourceFiles(): { rel: string; text: string }[] {
       files.push({ rel, text: fs.readFileSync(full, "utf8") });
     }
   }
-  return files;
+  sourceFilesCache = files;
+  return sourceFilesCache;
 }
 
 // Each `<Card` opening tag with the text of its props, up to the tag's own close.
@@ -105,14 +114,18 @@ function cardCallSites(
   return out;
 }
 
+function sitesFor(file: SourceFile): ReturnType<typeof cardCallSites> {
+  return (file.sites ??= cardCallSites(file.text));
+}
+
 describe("day-grain gap chokepoint (issue #2258)", () => {
   it("every day-grain chart card declares its gap policy or its exemption", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
-      for (const site of cardCallSites(text)) {
+    for (const file of sourceFiles()) {
+      for (const site of sitesFor(file)) {
         if (/\bgapFill\b/.test(site.body)) continue;
         if (/gap-exempt:/.test(site.body)) continue;
-        offenders.push(`${rel}:${site.line} <${site.card}>`);
+        offenders.push(`${file.rel}:${site.line} <${site.card}>`);
       }
     }
     expect(
@@ -132,7 +145,7 @@ describe("day-grain gap chokepoint (issue #2258)", () => {
   it("the scan actually finds the call sites it is meant to guard", () => {
     // A guard on the guard: a regex that silently stops matching would turn this
     // whole file into a no-op that passes forever.
-    const found = sourceFiles().flatMap(({ text }) => cardCallSites(text));
+    const found = sourceFiles().flatMap(sitesFor);
     expect(found.length).toBeGreaterThan(20);
     expect(found.some((s) => s.card === "StackedBarCard")).toBe(true);
     expect(found.some((s) => s.card === "BarSparkline")).toBe(true);
