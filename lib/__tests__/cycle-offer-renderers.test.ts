@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { REPO } from "./sql-scan";
+import { stripComments } from "./strip-comments";
 import { STATEFUL_WRITE_TABLES } from "@/lib/stateful-writes";
 import {
   cycleControlState,
@@ -75,11 +76,7 @@ const FORBIDDEN_IN_RENDERERS = [
 // cycleDayOnDate" must not read as a re-derivation. Strip block and line comments (and
 // string-quoted labels stay, which is what the label check wants).
 function code(rel: string): string {
-  return fs
-    .readFileSync(path.join(REPO, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "");
+  return stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
 }
 
 function walk(dir: string, out: string[]): void {
@@ -113,6 +110,17 @@ function renderingSources(): string[] {
     );
 }
 
+const OFFER_SOURCE_NEEDLES = ["cycleOffer", "cycleControlState"];
+const offerSources = new Map(
+  renderingSources().flatMap((rel): [string, string][] => {
+    const source = fs.readFileSync(path.join(REPO, rel), "utf8");
+    if (!OFFER_SOURCE_NEEDLES.some((needle) => source.includes(needle))) {
+      return [];
+    }
+    return [[rel, stripComments(source)]];
+  })
+);
+
 function period(id: number, start: string, end: string | null): CyclePeriod {
   return { id, period_start: start, period_end: end, flow: null, note: null };
 }
@@ -139,10 +147,12 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
   });
 
   it("cycleOffer has exactly one caller in the app: the shared button", () => {
-    const callers = renderingSources().filter(
-      (rel) =>
-        rel !== "lib/cycle-plausibility.ts" && /cycleOffer\(/.test(code(rel))
-    );
+    const callers = [...offerSources]
+      .filter(
+        ([rel, source]) =>
+          rel !== "lib/cycle-plausibility.ts" && /cycleOffer\(/.test(source)
+      )
+      .map(([rel]) => rel);
     expect(callers).toEqual([OFFER_BUTTON]);
   });
 
@@ -150,11 +160,13 @@ describe("the cycle offer has ONE derivation and three renderers (#1892 / #221)"
     // Each renderer is handed the state; the three places that RESOLVE it are the
     // three server entry points. A fourth caller would mean a surface deciding for
     // itself when to compute the offer — the seam this pin exists to keep shut.
-    const callers = renderingSources().filter(
-      (rel) =>
-        rel !== "lib/cycle-plausibility.ts" &&
-        /cycleControlState\(/.test(code(rel))
-    );
+    const callers = [...offerSources]
+      .filter(
+        ([rel, source]) =>
+          rel !== "lib/cycle-plausibility.ts" &&
+          /cycleControlState\(/.test(source)
+      )
+      .map(([rel]) => rel);
     expect(callers.sort()).toEqual(
       [
         // The dashboard page (the control atom).
