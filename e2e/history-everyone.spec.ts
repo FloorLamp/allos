@@ -84,6 +84,16 @@ function resetFixture(): { selfId: number; roId: number; memberId: number } {
          VALUES (?, ?, ?, 'taken')`
       ).run(row.itemId, row.doseId, HXEVERY_DAY);
     }
+    const deleteSymptoms = db.prepare(
+      "DELETE FROM symptom_logs WHERE profile_id = ?"
+    );
+    for (const pid of [selfId, roId, memberId]) deleteSymptoms.run(pid);
+    const insertSymptom = db.prepare(
+      `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+       VALUES (?, ?, ?, ?)`
+    );
+    insertSymptom.run(selfId, HXEVERY_DAY, "headache", 2);
+    insertSymptom.run(roId, HXEVERY_DAY, "nausea", 3);
     return { selfId, roId, memberId };
   } finally {
     db.close();
@@ -219,6 +229,28 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       1
     );
     await expect(roDoseRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
+
+    // The same merged view narrowed to Symptoms contains both members' symptom rows
+    // and no dose neighbour. This is the exact deep link whose earlier unscoped menu
+    // probe mistook for an ignored filter (#4237).
+    await page.goto("/history?kind=symptom&view=everyone");
+    const symptomRows = page.locator(
+      '[data-testid="history-row"][data-history-kind="symptom"]'
+    );
+    await expect(symptomRows).toHaveCount(2);
+    await expect(
+      symptomRows
+        .filter({ hasText: "Headache" })
+        .getByTestId("history-row-subject")
+    ).toHaveText(HXEVERY_SELF_PROFILE);
+    await expect(
+      symptomRows
+        .filter({ hasText: "Nausea" })
+        .getByTestId("history-row-subject")
+    ).toHaveText(HXEVERY_RO_PROFILE);
+    await expect(
+      page.locator('[data-testid="history-row"][data-history-kind="dose"]')
+    ).toHaveCount(0);
   });
 
   test("a correction on a writable member's row lands on that member", async ({
