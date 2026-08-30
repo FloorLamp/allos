@@ -1445,7 +1445,14 @@ function cmdList() {
   // invented. 3x median is the one the ledger measures.
   const threshold = median === null ? null : 3 * median;
   if (!active.length) {
-    console.log("No active dispatches.");
+    // The empty board is where sessions have actually stalled (2026-08-30):
+    // after a recovery, "the lanes are empty" got REPORTED instead of fixed.
+    console.log(
+      "No active dispatches — a DISPATCH ORDER, not calm. Unless a hold or an\n" +
+        "owner wind-down governs, triage and refill now; 'the lanes are empty' is\n" +
+        "only honest beside the list of why every remaining issue is blocked,\n" +
+        "owner-gated, or dependency-bound."
+    );
   } else {
     console.log(`Active dispatches (ledger: ${ledgerPath}):`);
     const worktrees = worktreePathsByBranch();
@@ -1477,6 +1484,15 @@ function cmdList() {
           `  priority=${d.priority ?? "unclassified"}  lane=${d.lane ?? "unclassified"}` +
           `${d.e2e ? "  [e2e]" : ""}${d.issues?.length ? `  issues=${d.issues.join(",")}` : ""}` +
           flag
+      );
+    }
+    if (active.length < 3) {
+      // The other measured under-dispatch shape: a few merges land and the
+      // session sits at one lane. Refill is the default, not a decision.
+      console.log(
+        `  ${active.length} lane(s) active — UNDER-SATURATED unless the queue is truly thin:\n` +
+          "  refill after every merge, without asking; review depth (~3 unreviewed PRs)\n" +
+          "  binds before lane count (~5) does (dispatch.md §Dispatch)."
       );
     }
   }

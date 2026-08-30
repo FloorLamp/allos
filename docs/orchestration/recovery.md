@@ -20,6 +20,8 @@
   onto one puts two writers on a worktree.
 - Resume agents with a precise state summary. Never run background work that
   depends on an ephemeral completion event.
+- Recovery ends with a REFILL, not a report: once every rescue and relaunch is
+  done, triage and dispatch. An empty roster after a restart is a to-do.
 
 ## Lost credentials
 

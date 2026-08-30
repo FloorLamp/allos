@@ -184,7 +184,8 @@ tracker leak), remove the worktree and branch, and update release notes for
 user-visible changes (`lib/release-notes.json`, one batch/day, title-only).
 
 Then REFILL: dispatch continuously while viable work exists, without asking
-permission to resume.
+permission to resume. An empty or one-lane roster — after merges or after a
+recovery — is a dispatch order, not a status to report.
 
 The honest terminal state is "every remaining issue is blocked, owner-gated,
 or dependency-bound" — reach it and say so, with the list.

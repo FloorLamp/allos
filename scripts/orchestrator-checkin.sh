@@ -616,6 +616,31 @@ print("\n".join(sorted(b for b,st in state.items() if st=="active")))
 fi
 echo
 
+# 3c. LANE SATURATION — the refill posture, printed where it cannot be walked
+# past. Two measured drifts (owner, 2026-08-30): after a few merges the session
+# sits at one lane; after a recovery it announces "the lanes are empty" and
+# stops. Both misread the roster. An empty or thin roster with holds clear is a
+# DISPATCH ORDER (the refill rule: dispatch continuously while viable work
+# exists, without asking), and "empty" is only an honest terminal state next to
+# the enumerated list of why each remaining issue cannot dispatch.
+lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
+lanes=${lanes:-0}
+echo "--- lanes ---"
+if [ "$lanes" -eq 0 ]; then
+  echo "  0 active — *** AN EMPTY ROSTER IS A DISPATCH ORDER, NOT A REPORT ***"
+  echo "      Rescue done? Then unless a hold above or an owner wind-down governs,"
+  echo "      triage and dispatch NOW (dispatch.md §Dispatch). 'The lanes are empty'"
+  echo "      is only honest beside the list of why every remaining issue is"
+  echo "      blocked, owner-gated, or dependency-bound."
+elif [ "$lanes" -lt 3 ]; then
+  echo "  $lanes active — UNDER-SATURATED unless the queue is truly thin. Refill after"
+  echo "      every merge is the default, without asking; review depth (~3 unreviewed"
+  echo "      PRs) binds before lane count (~5) does (dispatch.md §Dispatch)."
+else
+  echo "  $lanes active"
+fi
+echo
+
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
 #
 # This is the gap that let the session go silent for 35 minutes on 2026-08-12
