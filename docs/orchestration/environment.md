@@ -8,6 +8,9 @@
   `better-sqlite3` loads.
 - Use one canonical `node_modules` tree from the main checkout. Hard-link it
   into new worktrees as directed by the generated brief.
+- `next build` runs in a worktree whose `node_modules` was HARD-LINKED; a
+  symlinked one fails with `TurbopackInternalError`. Read that error as the
+  link being wrong, never as the build being unavailable here.
 - Create agent worktrees under the shared scratch directory, never inside the
   main checkout. Give every scratch file a branch-unique name.
 - A worktree's `.next` is a real copy, never hard-linked. `node_modules` may
