@@ -438,7 +438,8 @@ function buildBrief(opts) {
     : "Defer them until promotion; the landing candidate's CI runs them.";
 
   const brief = `${opts.task ? `Task: ${opts.task}\n\n` : ""}\
-- Worktree setup: git fetch origin main && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} origin/main
+- Worktree setup: git fetch origin main && BASE_SHA=$(git rev-parse FETCH_HEAD) && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} "$BASE_SHA" && echo "PINNED_BASE_SHA=$BASE_SHA"
+- Keep the printed PINNED_BASE_SHA in your handoff. For any history edit, reset or rewrite against the printed SHA, never against moving \`origin/main\`; sibling worktrees share its remote-tracking ref.
 - cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
 ${landingLines}

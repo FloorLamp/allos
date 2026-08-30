@@ -303,6 +303,25 @@ describe("resumeState", () => {
 });
 
 describe("the dispatch-brief CLI", () => {
+  it("pins the fetched worktree base for any later history rewrite", () => {
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, "new", "--branch", "x/pinned-base"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ALLOS_DISPATCH_LEDGER: ledgerIn(tempDir(), []),
+        },
+      }
+    );
+
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("BASE_SHA=$(git rev-parse FETCH_HEAD)");
+    expect(run.stdout).toContain('echo "PINNED_BASE_SHA=$BASE_SHA"');
+    expect(run.stdout).toContain("reset or rewrite against the printed SHA");
+  });
+
   it("still answers every subcommand it is the only tooling for", () => {
     // A rename or a dropped branch in the dispatcher strands the orchestrator
     // and every agent at once, so the command surface is asserted rather than
