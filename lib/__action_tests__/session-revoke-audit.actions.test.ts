@@ -61,11 +61,15 @@ function sessionCount(loginId: number): number {
 }
 
 describe("admin force sign-out of another login (#1843)", () => {
-  it("records who ended whose sessions, and how many", async () => {
+  it("audits only when the target actually had sessions to end", async () => {
     const admin = createLogin({ role: "admin" });
     const member = createLogin({ role: "member" });
     const profile = createProfile("revoke-admin-path", admin.id);
     actAs(admin, profile);
+
+    const noop = await revokeLoginSessions(fd({ id: member.id }));
+    expect(noop.ok).toBe(true);
+    expect(auditFor(admin.id)).toEqual([]);
 
     seedSession(member.id, `fake-session-a-${member.id}`);
     seedSession(member.id, `fake-session-b-${member.id}`);
@@ -86,17 +90,6 @@ describe("admin force sign-out of another login (#1843)", () => {
     expect(rows[0].detail).toBe("2 session(s)");
   });
 
-  it("writes nothing when the target had no live session", async () => {
-    const admin = createLogin({ role: "admin" });
-    const member = createLogin({ role: "member" });
-    const profile = createProfile("revoke-admin-noop", admin.id);
-    actAs(admin, profile);
-
-    const res = await revokeLoginSessions(fd({ id: member.id }));
-    expect(res.ok).toBe(true);
-    expect(auditFor(admin.id)).toEqual([]);
-  });
-
   it("refuses a non-admin — the gate is on the action, not the navigation", async () => {
     const member = createLogin({ role: "member" });
     const profile = createProfile("revoke-admin-gate", member.id);
@@ -112,24 +105,9 @@ describe("admin force sign-out of another login (#1843)", () => {
 });
 
 describe("a login revoking its own sessions (#1843)", () => {
-  it("records one event per session actually revoked", async () => {
+  it("audits only a session that the login actually revoked", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("revoke-self-one", login.id);
-    actAs(login, profile);
-    const hash = seedSession(login.id, `fake-session-self-${login.id}`);
-
-    await revokeSessionAction(null, fd({ session_id: hash }));
-
-    const rows = auditFor(login.id);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].action).toBe(AUDIT_ACTIONS.sessionRevoke);
-    expect(rows[0].target).toBe(String(login.id));
-    expect(sessionCount(login.id)).toBe(0);
-  });
-
-  it("writes nothing for a session id that revokes nothing", async () => {
-    const login = createLogin({ role: "member" });
-    const profile = createProfile("revoke-self-forged", login.id);
     actAs(login, profile);
     // A stale id (the device was already signed out) and another login's id both
     // land here: revokeSession scopes its DELETE to the caller, so neither ends
@@ -142,6 +120,15 @@ describe("a login revoking its own sessions (#1843)", () => {
 
     expect(auditFor(login.id)).toEqual([]);
     expect(sessionCount(other.id)).toBe(1);
+
+    const own = seedSession(login.id, `fake-session-self-${login.id}`);
+    await revokeSessionAction(null, fd({ session_id: own }));
+
+    const rows = auditFor(login.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action).toBe(AUDIT_ACTIONS.sessionRevoke);
+    expect(rows[0].target).toBe(String(login.id));
+    expect(sessionCount(login.id)).toBe(0);
   });
 
   // THE ACTION ACTUALLY ASKS WHICH SESSION IS CALLING, AND ASKS FOR THE RIGHT ONE.
