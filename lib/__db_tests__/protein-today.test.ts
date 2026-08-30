@@ -120,16 +120,42 @@ describe("getProteinToday (#974)", () => {
     expect(Math.round(gauge!.todayGrams)).toBe(getProteinDailyGrams(p, anchor));
   });
 
-  it("a tracked reading today overrides and labels the basis tracked", () => {
+  it("today's basis names BOTH sources, and the figure is the larger floor (#3903)", () => {
     const p = newProfile("today-tracked");
     const anchor = today(p);
     seedWeight(p, anchor, 80);
-    logFood(p, anchor, "poultry", 1);
+    logFood(p, anchor, "poultry", 1); // ~35 estimated
     seedTrackedProtein(p, anchor, 140);
 
     const t = getProteinToday(p);
-    expect(t?.todayIntake?.basis).toBe("tracked");
+    expect(t?.todayIntake?.basis).toBe("both-sources");
+    // max(140 tracked, ~35 in-app) — the integration wins this one, but the in-app
+    // ledger is reported rather than zeroed, so the hover can name both.
     expect(Math.round(t!.todayGrams)).toBe(140);
+    expect(Math.round(t!.todayIntake!.estimatedGrams)).toBe(35);
+  });
+
+  // THE PROPERTY #3903 EXISTS FOR, read through the real gather rather than asserted
+  // against a constant: connecting an integration mid-day can no longer LOWER the number
+  // the row shows. Under the retired override this same seed went from 95 g to 20 g —
+  // and lost its hedge in the same step, because `tracked` was the one basis with none.
+  it("connecting an integration never LOWERS today's figure (#3903)", () => {
+    const p = newProfile("today-tracked-smaller");
+    const anchor = today(p);
+    seedWeight(p, anchor, 80);
+    logFood(p, anchor, "poultry", 1); // ~35 estimated
+    addProtein(p, anchor, 60); // +60 logged → ~95 in-app
+
+    const before = getProteinToday(p);
+    expect(before?.todayIntake?.basis).toBe("combined");
+
+    // The health app has synced ONE meal so far — a running partial, not a day total.
+    seedTrackedProtein(p, anchor, 20);
+    const after = getProteinToday(p);
+
+    expect(after!.todayGrams).toBe(before!.todayGrams);
+    expect(after?.todayIntake?.basis).toBe("both-sources");
+    expect(Math.round(after!.todayIntake!.loggedGrams)).toBe(60);
   });
 
   // ── The trailing 7-day average (#1917) ────────────────────────────────────────
@@ -166,8 +192,12 @@ describe("getProteinToday (#974)", () => {
     const d1 = shiftDateStr(anchor, -1);
     const d2 = shiftDateStr(anchor, -2);
     const d3 = shiftDateStr(anchor, -3);
-    seedTrackedProtein(p, d1, 120); // a measured total — overrides
-    logFood(p, d1, "poultry", 1); // …so this 35 g estimate does not count
+    // #3903 boundary check: d1 carries BOTH sources, and 120 tracked is the larger of
+    // the two floors, so the day still contributes 120 — the same figure the retired
+    // override produced, for a different reason. The 35 g estimate loses the max; it is
+    // not discarded.
+    seedTrackedProtein(p, d1, 120);
+    logFood(p, d1, "poultry", 1); // 35 estimated — under the 120, so max() keeps 120
     addProtein(p, d2, 60);
     logFood(p, d2, "poultry", 1); // 35 estimated + 60 logged = 95
     logFood(p, d3, "eggs", 1); // estimated only
