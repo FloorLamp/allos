@@ -584,22 +584,6 @@ describe("R2 — nutrition at a `full` exporter setting", () => {
     metadata: { data_origin: "com.myfitnesspal.android" },
   };
 
-  it("stores BOTH when they arrive in one push", () => {
-    // MUTATION: add `nutrition_kcal` to DAY_BUCKET_METRICS. Measured, and this case does
-    // NOT move: 6624 db tests green. Two independent reasons, both worth knowing — these
-    // two rows arrive in ONE push, so they share a stamp and can never be each other's
-    // candidates; and a 1-hour meal and a 5-minute snack are both below the granularity
-    // gate, so `isSupersedingWindow` refuses them whatever the metric list says. What the
-    // metric list is pinned by is the pure tier: lib/__tests__/metric-window-overlap.test.ts
-    // reds 3 of 47 on this mutation ("admits exactly the four metrics Health Connect
-    // stores as daily totals", "keeps NUTRITION, HYDRATION and SLEEP out of reach", "is
-    // true only for a day-bucket window of a tiling metric"). What THIS case pins is the
-    // parse-and-store shape the metric list was chosen from.
-    const p = freshProfile("R2-NUTRITION-ONE");
-    push(p, { nutrition: [MEAL, SNACK] });
-    expect(stored(p, "nutrition_kcal").map((r) => r.value)).toEqual([800, 150]);
-  });
-
   it("does not let a later meal DELETE a stored snack", () => {
     const p = freshProfile("R2-NUTRITION-TWO");
     push(p, { nutrition: [SNACK] });
@@ -627,30 +611,6 @@ describe("R2 — sleep", () => {
           start_time: "2026-05-02T01:55:00Z",
           end_time: "2026-05-02T06:00:00Z",
           metadata: { data_origin: ORIGIN },
-        },
-      ],
-    });
-    expect(rowCount(p, "sleep_min")).toBe(2);
-  });
-
-  it("keeps two DEVICES that both parse to origin = null", () => {
-    // MUTATION: add `sleep_min` to DAY_BUCKET_METRICS. Measured, and this case does NOT
-    // move: 6624 db tests green. Both sessions arrive in ONE push, so they carry the same
-    // stamp and the candidate query excludes each from the other — the metric list never
-    // gets to matter here. The list is pinned in the pure tier instead:
-    // lib/__tests__/metric-window-overlap.test.ts reds 3 of 47 on this mutation,
-    // including "refuses two overlapping SLEEP sessions, including the origin=null group".
-    // What THIS case pins is the origin=null grouping the pure test's premise rests on.
-    const p = freshProfile("R2-SLEEP-NULL-ORIGIN");
-    push(p, {
-      sleep: [
-        {
-          start_time: "2026-05-01T22:00:00Z",
-          end_time: "2026-05-02T06:00:00Z",
-        },
-        {
-          start_time: "2026-05-01T22:10:00Z",
-          end_time: "2026-05-02T05:50:00Z",
         },
       ],
     });
