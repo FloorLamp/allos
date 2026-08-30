@@ -7,6 +7,7 @@ import {
   expectNoClippedContent,
   expectInView,
   hydratedClick,
+  openMobileDrawer,
   settledBoxes,
 } from "./helpers";
 import { loginAs } from "./nav";
@@ -267,7 +268,15 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.context().close();
   });
 
-  test("the identity bar reads as bar content at 390px and names both in-view profiles (#1801)", async ({
+  // #1801's phone assertion, RE-POINTED (#4102). It used to read the top bar's own
+  // mount and check that the control drew no frame — bar CONTENT, not a card
+  // floating in a bar (#1539's finding). That bar retired; the identity now sits at
+  // the top of the More drawer, which is a narrow column like the sidebar, so it is
+  // the SAME sidebar-surface control and it is framed like one. The frame claim
+  // therefore goes with the surface it described; what survives is the part that was
+  // never about the frame — both in-view profiles named, acting first, and the row
+  // fitting its column without clipping.
+  test("the drawer's identity bar names both in-view profiles at 390px, acting first (#1801)", async ({
     browser,
   }) => {
     test.slow();
@@ -281,10 +290,15 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/upcoming");
 
-    // The phone bar carries the identity, not the wordmark (#1801): both in-view
-    // profiles are stacked, acting FIRST and ringed. This is the assertion the
-    // retired view strip used to make about its chips.
-    const bar = page.getByTestId("profile-identity-bar-mobile");
+    // Nothing identity-shaped is on screen until the drawer opens: the dock is the
+    // phone's one chrome and it never carries identity.
+    await expect(page.getByTestId("profile-identity-bar-mobile")).toHaveCount(
+      0
+    );
+    await expect(page.getByTestId("profile-identity-bar")).not.toBeVisible();
+
+    const drawer = await openMobileDrawer(page);
+    const bar = drawer.getByTestId("profile-identity-bar");
     await expect(bar).toBeVisible();
     await expect(bar.getByTestId(`identity-avatar-${ownerId}`)).toBeVisible();
     await expect(bar.getByTestId(`identity-avatar-${sharedId}`)).toBeVisible();
@@ -296,26 +310,19 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
       `${MULTI_OWNER_PROFILE}, ${MULTI_SHARED_PROFILE}`
     );
 
-    // Bar CONTENT, not a card floating inside a bar: the top bar is the surface,
-    // so the identity control draws no frame and no background of its own. Two
-    // translucent layers stacked here in the strip era and page content bled
-    // through the gaps (#1539's finding, inherited by its replacement).
-    const frame = await bar.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { border: s.borderTopWidth, bg: s.backgroundColor };
-    });
-    expect(frame.border, "the bar draws a card border at 390px").toBe("0px");
-    expect(frame.bg, "the bar tints itself at 390px").toBe("rgba(0, 0, 0, 0)");
-
     // Avatars have a FIXED footprint, so a long name costs nothing: the name line
-    // truncates inside the bar instead of pushing the stack off the row.
-    const barBox = await bar.boundingBox();
-    expect(barBox, "the bar should be laid out").not.toBeNull();
-    expect(barBox!.width, "the bar overflows a 390px row").toBeLessThan(390);
+    // truncates inside the bar instead of pushing the stack out of its column.
+    // Measured against the DRAWER that contains it, not against the 390px viewport
+    // — the drawer is the box this row has to fit, and it is narrower.
+    const [barBox, drawerBox] = await settledBoxes([bar, drawer]);
+    expect(
+      barBox.x + barBox.width,
+      "the identity row overflows the drawer's column"
+    ).toBeLessThanOrEqual(drawerBox.x + drawerBox.width + 1);
     await expectNoClippedContent(page);
 
-    // Desktop keeps its own mount at the TOP of the sidebar — same component, same
-    // acting-first ordering, framed like the sidebar control it is.
+    // Desktop renders the SAME control at the top of the sidebar — same component,
+    // same acting-first ordering, same frame.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/upcoming");
     const desktopBar = page.getByTestId("profile-identity-bar");

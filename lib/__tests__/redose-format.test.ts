@@ -104,7 +104,7 @@ describe("redoseCardLabel", () => {
     ).toBe("Max reached · 4 of 4 today");
   });
 
-  it("open window", () => {
+  it("keeps confirmed-max open-window copy unchanged (#4254)", () => {
     expect(redoseCardLabel(status({ open: true, countToday: 2 }))).toBe(
       "Redose OK — min interval passed · 2 of 4 today"
     );
@@ -121,10 +121,10 @@ describe("redoseCardLabel", () => {
     const noMax = (over: Partial<RedoseStatus>) =>
       redoseCardLabel(status({ maxDailyCount: null, ...over }));
     expect(noMax({ open: false, opensInHours: 5, countToday: 1 })).toBe(
-      "Next dose in ~5h · 1 today"
+      "Next dose in ~5h · 1 today · no daily limit on record"
     );
     expect(noMax({ open: true, countToday: 1 })).toBe(
-      "Redose OK — min interval passed · 1 today"
+      "Redose OK — min interval passed · 1 today · no daily limit on record"
     );
   });
 
@@ -134,7 +134,9 @@ describe("redoseCardLabel", () => {
     const label = redoseCardLabel(
       status({ open: true, maxDailyCount: null, countToday: 12 })
     );
-    expect(label).toBe("Redose OK — min interval passed · 12 today");
+    expect(label).toBe(
+      "Redose OK — min interval passed · 12 today · no daily limit on record"
+    );
     expect(label).not.toContain("Max reached");
     expect(label).not.toContain("of");
   });
@@ -142,7 +144,9 @@ describe("redoseCardLabel", () => {
   it("keeps the cross-item tail with no confirmed max", () => {
     expect(
       redoseCardLabel(status({ open: true, maxDailyCount: null }), 2)
-    ).toBe("Redose OK — min interval passed · 1 today across 2 items");
+    ).toBe(
+      "Redose OK — min interval passed · 1 today across 2 items · no daily limit on record"
+    );
   });
 
   it("reserves CTA emphasis for an open window below the daily max", () => {
@@ -243,6 +247,20 @@ describe("prnQuickLogLabel (#1717)", () => {
     });
     expect(label).toBe("Tylenol · 500 mg — 2 today");
     expect(label).not.toContain("Max reached");
+  });
+
+  it("states the same missing-ceiling fact as the in-app card (#4254)", () => {
+    const noMax = status({ maxDailyCount: null });
+    expect(
+      prnQuickLogLabel({
+        name: "Tylenol",
+        dose: "500 mg",
+        status: noMax,
+        countToday: 2,
+        maxDailyCount: null,
+      })
+    ).toBe(`Tylenol · 500 mg — ${redoseCardLabel(noMax)}`);
+    expect(redoseCardLabel(noMax)).toContain("no daily limit on record");
   });
 
   it("says nothing extra when nothing has been logged today", () => {
@@ -363,6 +381,25 @@ describe("mgLabel", () => {
 });
 
 describe("redoseCardLabel × exposure (#1854)", () => {
+  it("keeps amount-ceiling copy unchanged when the count max is null (#4254)", () => {
+    const exposure = prnDayExposure({
+      amounts: ["800 mg"],
+      maxDailyAmountMg: 1200,
+      maxDailyCount: null,
+    });
+    expect(
+      redoseCardLabel({
+        open: true,
+        atMax: exposure!.atMax,
+        countToday: 1,
+        maxDailyCount: null,
+        sinceHours: 7,
+        opensInHours: 0,
+        exposure,
+      })
+    ).toBe("Redose OK — min interval passed · 800 of 1200 mg today");
+  });
+
   it("the card's Max reached verdict and fragment both follow the mg basis", () => {
     const exposure = prnDayExposure({
       amounts: ["800 mg", "800 mg", "800 mg"],

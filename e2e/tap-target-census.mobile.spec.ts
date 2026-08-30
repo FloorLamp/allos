@@ -4,7 +4,7 @@ import { E2E_LOGIN_SICK_SELF } from "./logins/illness";
 import { E2E_LOGIN_MULTI } from "./logins/household";
 import { E2E_LOGIN_SHELL, SHELL_DOSE_ITEM } from "./logins/metrics";
 import { E2E_MEMBER_PASSWORD } from "./logins/shared";
-import { hydratedClick } from "./helpers";
+import { hydratedClick, openMobileDrawer } from "./helpers";
 import { loginAs } from "./nav";
 import {
   CONTROL_BOX_PX,
@@ -110,9 +110,14 @@ test.describe("tap-target rendered census (#3562)", () => {
     );
     try {
       await page.goto("/");
+      // In the DRAWER since #4102 — the phone top bar that used to carry it has
+      // retired — so the control has to be opened before it can be measured. It is
+      // the same sidebar-surface mount, hence the plain testid, scoped to the
+      // drawer because the hidden desktop sidebar carries one too.
+      const drawer = await openMobileDrawer(page);
       await expectEffectiveFloor(
-        "mobile profile identity",
-        page.getByTestId("profile-identity-bar-mobile")
+        "drawer profile identity",
+        drawer.getByTestId("profile-identity-bar")
       );
     } finally {
       await page.context().close();

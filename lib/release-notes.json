@@ -1,6 +1,191 @@
 {
   "days": [
     {
+      "date": "2026-08-30",
+      "entries": [
+        {
+          "pr": 4132,
+          "title": "Water, lean mass, bone mass and respiratory rate can be typed in by hand",
+          "kind": "feature",
+          "issues": [1851]
+        },
+        {
+          "pr": 4136,
+          "title": "The measurements form opens with no connection, so a weigh-in still saves and syncs later",
+          "kind": "fix",
+          "issues": [4091]
+        },
+        {
+          "pr": 4135,
+          "title": "The record covers training, clinical and life entries, and groups a day's logs instead of listing every one",
+          "kind": "feature",
+          "issues": [3958]
+        },
+        {
+          "pr": 4144,
+          "title": "Today's protein takes the larger of your own log and your health app's, so it never falls below what you logged",
+          "kind": "fix",
+          "issues": [3903]
+        },
+        {
+          "pr": 4156,
+          "title": "Today's fiber takes the larger of your health app's reading and your own food and supplement logs",
+          "kind": "fix",
+          "issues": [4127]
+        },
+        {
+          "pr": 4140,
+          "title": "Your usual evening routine stays one tap away until midnight instead of disappearing at nine",
+          "kind": "fix",
+          "issues": [3265]
+        },
+        {
+          "pr": 4083,
+          "title": "The dashboard's everything list stops repeating pages the menu already carries",
+          "kind": "fix",
+          "issues": [3366]
+        },
+        {
+          "pr": 4210,
+          "title": "Type the times you went to bed and got up, and a night your wearable missed fills its own gap",
+          "kind": "feature",
+          "issues": [1851]
+        },
+        {
+          "pr": 4168,
+          "title": "One page holds the whole record: the timeline retires and its day view moves in",
+          "kind": "feature",
+          "issues": [3958, 3343]
+        },
+        {
+          "pr": 4230,
+          "title": "Say you have seen a flagged lab result, and it stops leading until the next draw",
+          "kind": "feature",
+          "issues": [3225]
+        },
+        {
+          "pr": 4234,
+          "title": "Record rows open to show where an entry came from and what it links to",
+          "kind": "feature",
+          "issues": [3958, 662, 2920]
+        },
+        {
+          "pr": 4252,
+          "title": "A practice session records when it started and when it ended, and draws on the day's chart",
+          "kind": "feature",
+          "issues": [3142]
+        },
+        {
+          "pr": 4120,
+          "title": "An inhaler and a nebulizer of the same medicine are no longer called a duplicate record",
+          "kind": "fix",
+          "issues": [3125]
+        },
+        {
+          "pr": 4150,
+          "title": "A date your clock skipped shows zero minutes instead of stretching the day before",
+          "kind": "fix",
+          "issues": [3845]
+        },
+        {
+          "pr": 4166,
+          "title": "A single equipment reading shows its value, unit and date instead of an empty chart",
+          "kind": "fix",
+          "issues": [3235]
+        },
+        {
+          "pr": 4175,
+          "title": "The photo gallery and the fitness-test timer stop the page scrolling behind them",
+          "kind": "fix",
+          "issues": [3256]
+        },
+        {
+          "pr": 4182,
+          "title": "Total mass from a DEXA scan points to your weight trend",
+          "kind": "feature",
+          "issues": [2766]
+        },
+        {
+          "pr": 4188,
+          "title": "A prediction for a past workout day uses what was known that day, not later training",
+          "kind": "fix",
+          "issues": [3991]
+        },
+        {
+          "pr": 4191,
+          "title": "Preventive review offers appear beside the setup rows they belong to",
+          "kind": "feature",
+          "issues": [3113]
+        },
+        {
+          "pr": 4197,
+          "title": "The Android/Gynoid ratio explains that it comes from two regions of one scan",
+          "kind": "fix",
+          "issues": [2768]
+        },
+        {
+          "pr": 4199,
+          "title": "The AREDS zinc warning matches your age instead of assuming the adult limit",
+          "kind": "fix",
+          "issues": [3638]
+        },
+        {
+          "pr": 4200,
+          "title": "As-needed supplements join medications in the dashboard quick log",
+          "kind": "feature",
+          "issues": [3174]
+        },
+        {
+          "pr": 4202,
+          "title": "Bristol stool logs save with no connection and sync when you are back",
+          "kind": "feature",
+          "issues": [3166]
+        },
+        {
+          "pr": 4207,
+          "title": "A clock change at midnight counts as a real day again",
+          "kind": "fix",
+          "issues": [4186]
+        },
+        {
+          "pr": 4224,
+          "title": "An offline weigh-in keeps your weight when the waist measurement needs a connection",
+          "kind": "fix",
+          "issues": [4142]
+        },
+        {
+          "pr": 4235,
+          "title": "Correcting a practice session's date and time in the record works together",
+          "kind": "fix",
+          "issues": [4009]
+        },
+        {
+          "pr": 4260,
+          "title": "Protocol comparisons wait until there is enough data to compare",
+          "kind": "fix",
+          "issues": [4244]
+        },
+        {
+          "pr": 4265,
+          "title": "The dashboard shows how many days you have kept a protocol",
+          "kind": "feature",
+          "issues": [4227]
+        },
+        {
+          "pr": 4275,
+          "title": "One add-media form everywhere: choose a file, drag, paste or use the camera",
+          "kind": "feature",
+          "issues": [3286]
+        },
+        {
+          "pr": 4272,
+          "title": "On a phone the bottom bar is the only chrome: Search moves into it and pages start at the top of the screen",
+          "kind": "feature",
+          "issues": [3343, 4102]
+        }
+      ]
+    },
+    {
       "date": "2026-08-29",
       "entries": [
         {

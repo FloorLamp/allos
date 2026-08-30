@@ -325,11 +325,12 @@ const entries: Entry[] = [
   // Year in review (#2179/#2762) remains user-initiated and ungated, but a
   // once-a-year commemorative page does not spend permanent nav chrome. It was
   // reached from the Timeline's header action until #3958 phase 2 deleted that
-  // route; the command palette registers it now (lib/queries/search.ts) and
-  // recent-pages keeps it in the frequent list, so sparse first years remain
-  // reachable without a standing sidebar row. Whether the RECORD's header should
-  // carry the action the Timeline's did is an open question on #3958 — it is a
-  // header addition on the one page with a stated chrome budget.
+  // route; the command palette registers it now (lib/queries/search.ts), and
+  // since #4102 retired the frequent-shortcut row, the palette is the ONLY door
+  // — a sparse first year is reachable by search and by nothing else. Whether
+  // the RECORD's header should carry the action the Timeline's did is an open
+  // question on #3958 — it is a header addition on the one page with a stated
+  // chrome budget.
   // Sleep (#1066): a data-gated READING surface below Trends — it
   // heads the reading cluster (a one-morning-glance page), and its adjacency to
   // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM

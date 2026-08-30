@@ -56,14 +56,17 @@ test("the dock puts four destinations one tap away and marks the current one", a
   const dock = page.getByTestId("mobile-dock");
   await expect(dock).toBeVisible();
 
-  // Home · Training · Trends · More — the owner's resolved set (#2651). Named
-  // individually rather than counted, so a slot silently swapped for another
-  // fails here.
+  // Home · Training · Search · More — the owner's set (#2651), with the third
+  // slot changed hands by #4102: Search took Trends'. Named individually rather
+  // than counted, so a slot silently swapped for another fails here, and Trends
+  // is named in its ABSENCE because "the set is four" would still pass if the old
+  // slot had merely been joined by the new one.
   await expect(dock.getByTestId("dock-slot-home")).toBeVisible();
   await expect(dock.getByTestId("dock-slot-training")).toBeVisible();
-  await expect(dock.getByTestId("dock-slot-trends")).toBeVisible();
+  await expect(dock.getByTestId("dock-slot-search")).toBeVisible();
   await expect(dock.getByTestId("dock-slot-more")).toBeVisible();
   await expect(dock.getByTestId("dock-log-puck")).toBeVisible();
+  await expect(dock.getByTestId("dock-slot-trends")).toHaveCount(0);
 
   // On the dashboard, Home is the page being viewed.
   await expect(dock.getByTestId("dock-slot-home")).toHaveAttribute(
@@ -71,10 +74,35 @@ test("the dock puts four destinations one tap away and marks the current one", a
     "page"
   );
 
+  // SEARCH IS A TRIGGER, NOT A DESTINATION, so it carries no `aria-current` on
+  // any route — the same honesty More has, for the same reason: the surface it
+  // opens is never "the page". It is also the phone's ONLY search trigger now
+  // that the top bar's magnifier has retired with the bar (#2746/#4102).
+  await expect(dock.getByTestId("dock-slot-search")).not.toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  await expect(dock.getByTestId("dock-slot-search")).toHaveAttribute(
+    "aria-haspopup",
+    "dialog"
+  );
+  // Tapping it opens the #3423 full-screen search surface — the SAME palette the
+  // desktop sidebar's "Search… ⌘K" row opens, addressed by its own field's label
+  // rather than by the palette's internals.
+  await dock.getByTestId("dock-slot-search").click();
+  const searchField = page.getByLabel("Search or run a command");
+  await expect(searchField).toBeVisible();
+  await expect(page.getByTestId("modal-shell")).toHaveAttribute(
+    "data-full-screen-below-md",
+    ""
+  );
+  await page.keyboard.press("Escape");
+  await expect(searchField).toHaveCount(0);
+
   // ONE tap to a destination — the whole point of the issue. The previous cost
   // was hamburger → drawer row.
-  await followLink(page, dock.getByTestId("dock-slot-trends"), /\/trends/);
-  await expect(dock.getByTestId("dock-slot-trends")).toHaveAttribute(
+  await followLink(page, dock.getByTestId("dock-slot-training"), /\/training/);
+  await expect(dock.getByTestId("dock-slot-training")).toHaveAttribute(
     "aria-current",
     "page"
   );

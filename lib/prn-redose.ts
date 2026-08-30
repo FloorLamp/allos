@@ -260,11 +260,13 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // The daily max is OPTIONAL on this path (#1458). "Maximum doses per day" is the
 // field a caregiver is least likely to know offhand, and the single number they want
 // at 2am — when is the next dose OK — is computable from the minimum interval alone.
-// So a null max means only that the ceiling half of the status is unknown: `atMax`
-// is false (an unknown ceiling is never a reached one) and the count fragment drops
-// its "of N". The window half (open / opens-in) needs only the interval and the last
-// administration. The one-shot NOTIFICATION path (redoseNoticeDecision above) keeps
-// requiring both — its gather gate only returns items with both confirmed.
+// So a null max means only that the count-ceiling half of the status is unknown:
+// `atMax` is false (an unknown ceiling is never a reached one) and the count fragment
+// drops its "of N". When no amount ceiling exists either, the shared formatter names
+// that no daily limit is on record (#4254). The window half (open / opens-in) needs
+// only the interval and the last administration. The one-shot NOTIFICATION path
+// (redoseNoticeDecision above) keeps requiring both — its gather gate only returns
+// items with both confirmed.
 export interface RedoseStatus {
   open: boolean; // the minimum interval has elapsed since the last administration
   atMax: boolean; // today's exposure has reached the confirmed ceiling (false when unset)

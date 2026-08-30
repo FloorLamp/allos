@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { followLink, hydratedClick } from "./helpers";
@@ -8,6 +9,7 @@ import {
   loadReleaseNotes,
   pullRequestUrl,
   releaseNotesPage,
+  type ReleaseNoteEntry,
 } from "../lib/release-notes";
 import { workerDbPath } from "./worker-env";
 
@@ -26,6 +28,45 @@ const DB_PATH = workerDbPath();
 
 const NOTES = loadReleaseNotes();
 const NEWEST_DAY = NOTES.days[0];
+
+// Every distinct PR in `entries` draws exactly one link per bullet it has, each
+// pointing at that PR. Shared by the newest-day pass and the repeat proof below.
+async function expectPrLinks(
+  day: Locator,
+  entries: readonly ReleaseNoteEntry[]
+): Promise<void> {
+  const prCounts = new Map<number, number>();
+  for (const entry of entries) {
+    prCounts.set(entry.pr, (prCounts.get(entry.pr) ?? 0) + 1);
+  }
+  for (const [pr, expectedCount] of prCounts) {
+    const links = day.getByRole("link", { name: `#${pr}`, exact: true });
+    await expect(links).toHaveCount(expectedCount);
+    for (let i = 0; i < expectedCount; i++) {
+      await expect(links.nth(i)).toHaveAttribute("href", pullRequestUrl(pr));
+    }
+  }
+}
+
+// The first day, on the first page that renders it WHOLE, where one PR carries
+// more than one bullet. Read from the same checked-in file the page reads, and
+// resolved per PAGE rather than per day because a day can straddle the page
+// bound — half a day's entries would give half the links and a false red.
+const repeat = (() => {
+  const pageCount = releaseNotesPage(NOTES, 1).pageCount;
+  for (let n = 1; n <= pageCount; n++) {
+    for (const day of releaseNotesPage(NOTES, n).days) {
+      const counts = new Map<number, number>();
+      for (const entry of day.entries) {
+        counts.set(entry.pr, (counts.get(entry.pr) ?? 0) + 1);
+      }
+      if ([...counts.values()].some((c) => c > 1)) {
+        return { page: n, date: day.date, entries: day.entries };
+      }
+    }
+  }
+  return null;
+})();
 
 function clearSeenMarker(): void {
   const db = new Database(DB_PATH);
@@ -80,30 +121,12 @@ test.describe("in-app release notes (#1421)", () => {
       for (const entry of first.days[0].entries) {
         await expect(days.nth(0)).toContainText(entry.title);
       }
-      // ONE PR CAN CARRY TWO BULLETS. A PR that closes two unrelated issues gets one
-      // bullet each — #4034 shipped the equipment picker and haptics together — so
-      // `#4034` resolves to two links and a per-entry locator is a strict-mode
-      // violation, not a failure. The pure tier explicitly allows the repeat.
-      // Assert over the DISTINCT PRs and check EVERY link each one drew. Keep the
-      // expected count from the fixture so dropping one repeated link cannot pass
+      // Every PR on the newest day draws exactly as many links as it has bullets.
+      // Assert over the DISTINCT PRs: a per-entry locator goes strict-mode
+      // ambiguous the moment one PR carries two, which is a violation rather than
+      // a failure. Counts come from the fixture, so dropping one link cannot pass
       // as long as another remains.
-      const prCounts = new Map<number, number>();
-      for (const entry of first.days[0].entries) {
-        prCounts.set(entry.pr, (prCounts.get(entry.pr) ?? 0) + 1);
-      }
-      expect([...prCounts.values()].some((count) => count > 1)).toBe(true);
-      for (const [pr, expectedCount] of prCounts) {
-        const links = days
-          .nth(0)
-          .getByRole("link", { name: `#${pr}`, exact: true });
-        await expect(links).toHaveCount(expectedCount);
-        for (let i = 0; i < expectedCount; i++) {
-          await expect(links.nth(i)).toHaveAttribute(
-            "href",
-            pullRequestUrl(pr)
-          );
-        }
-      }
+      await expectPrLinks(days.nth(0), first.days[0].entries);
 
       // Older notes stay reachable rather than dropped: the pager says how much
       // history there is and walks to it.
@@ -123,6 +146,37 @@ test.describe("in-app release notes (#1421)", () => {
           second.days[0].date
         );
         await page.goto("/whats-new");
+      }
+
+      // ONE PR CAN CARRY TWO BULLETS (#4116), PROVEN ON WHICHEVER DAY ACTUALLY
+      // CARRIES ONE. A PR that closes two unrelated issues gets one bullet each —
+      // #4034 shipped the equipment picker and haptics together — so `#4034`
+      // resolves to two links, and the renderer drawing only one is the defect
+      // this proves against.
+      //
+      // It used to be asserted on the NEWEST day, which made it a claim about
+      // today's curation rather than about the renderer: the 2026-08-30 batch is
+      // 29 bullets with every PR distinct, and it turned this case red without
+      // touching a line of product code. This file's own header promises the
+      // opposite ("curating a new release wave doesn't break this spec"), so the
+      // proof now finds the day and walks to its page.
+      //
+      // If the checked-in file ever carries NO repeat at all, `repeat` is null and
+      // the expect below fails loudly — the case is unavailable, which is worth
+      // knowing, rather than quietly passing on nothing.
+      expect(
+        repeat,
+        "lib/release-notes.json carries no PR with two bullets on one page, so the repeat case cannot be exercised"
+      ).not.toBeNull();
+      if (repeat) {
+        if (repeat.page !== 1)
+          await page.goto(`/whats-new?page=${repeat.page}`);
+        const day = page.locator(
+          `[data-testid="whats-new-day"][data-date="${repeat.date}"]`
+        );
+        await expect(day).toHaveCount(1);
+        await expectPrLinks(day, repeat.entries);
+        if (repeat.page !== 1) await page.goto("/whats-new");
       }
 
       // Operator notes render in their own callout, not mixed into the entry list.

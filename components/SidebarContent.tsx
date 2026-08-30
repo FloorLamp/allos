@@ -21,7 +21,6 @@ import {
   LOGOUT_PENDING_ATTR,
 } from "@/lib/logout-tap";
 import SidebarLogButton from "@/components/SidebarLogButton";
-import FrequentPages from "@/components/FrequentPages";
 import EventCalendar from "@/components/EventCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
 import WhatsNewLink from "@/components/WhatsNewLink";
@@ -92,13 +91,21 @@ function raiseLogoutFailure(err: unknown): void {
 //     drawer's pathname effect.
 //   - onClose: when set, renders the drawer's close (✕) button beside the wordmark.
 //   - inDrawer: ONE boolean naming the HOST, not a per-difference style knob, and
-//     the only one this component gets. Two behaviors read it, both of them the
+//     the only one this component gets. Three behaviors read it, all of them the
 //     same shape of decision — "a phone is not a small desktop":
-//       · the #1801 identity bar rides the sidebar's TOP but not the drawer's,
-//         because on a phone the bar lives in the top bar itself (the acting
-//         profile must be answerable without opening anything);
 //       · nav groups fold on the sidebar and render inline in the drawer
-//         (#3343 Q4 — see components/Nav.tsx).
+//         (#3343 Q4 — see components/Nav.tsx);
+//       · the Search… ⌘K row and the "+ Log" row are SIDEBAR-ONLY (#4102). On a
+//         phone the dock owns both triggers — a Search slot and the raised puck —
+//         and a drawer row that re-opens the same shared surface is a second
+//         permanently-listed trigger for a thing already one tap away. The rows
+//         were deleted from the drawer rather than from the app: desktop has no
+//         dock, so there they are the ONLY triggers and they stay.
+//     The identity bar used to read it too, in the opposite direction, and #4102
+//     removed that difference: the bar now rides the top of BOTH surfaces,
+//     because the phone top bar it used to live in has retired. `brandChrome` is
+//     the surviving rule and it is #1801's own, not a host fact — identity chrome
+//     when identity is ambiguous, brand chrome when it isn't.
 //     Anything else that differs by surface belongs behind this same boolean; a
 //     second one would be the parallel contract this repo keeps refusing.
 //
@@ -449,76 +456,100 @@ export default function SidebarContent({
   // column at 796px against 768 of room, and this is the 48 that closes it — so
   // the last thing still below the fold (the What's new / Disclaimer line) comes
   // back above it. A single-profile instance grows no identity bar, so it keeps
-  // the wordmark exactly as before, and so does the phone drawer, whose bar lives
-  // in the top bar and whose close ✕ rides this row.
-  const brandChrome = inDrawer || !multiProfile;
+  // the wordmark exactly as before.
+  //
+  // AND THE DRAWER IS NO LONGER AN EXCEPTION TO IT (#4102). It used to be —
+  // `inDrawer || !multiProfile` — because on a phone the acting profile was
+  // readable in the top bar without opening anything, so repeating it inside the
+  // drawer would have said the same thing twice. That bar has retired, and with
+  // it the reason: the drawer is now the only place the question is answerable,
+  // so the identity bar rides ITS top too, and the ✕ that used to sit beside the
+  // wordmark sits beside whichever of the two this instance renders. A
+  // single-profile instance still shows the wordmark row there, which is the XOR
+  // holding rather than an omission.
+  const brandChrome = !multiProfile;
+  // The drawer's dismissal rides the identity/brand row, so that row must exist
+  // whenever `onClose` does — it always does, since both branches render one.
+  const closeButton = onClose ? (
+    <IconButton type="button" label="Close menu" onClick={onClose}>
+      <IconX className="h-5 w-5" stroke={1.75} />
+    </IconButton>
+  ) : null;
   return (
     <>
-      {brandChrome && (
+      {brandChrome ? (
         <div className="flex items-center justify-between gap-2">
           <Link href="/" className="flex items-center gap-2 rounded-lg px-2">
             <Wordmark markClassName="h-6 w-10" />
           </Link>
-          {onClose && (
-            <IconButton type="button" label="Close menu" onClick={onClose}>
-              <IconX className="h-5 w-5" stroke={1.75} />
-            </IconButton>
-          )}
+          {closeButton}
+        </div>
+      ) : (
+        /* The identity bar (#1801) at the TOP of the sidebar and of the drawer —
+        "whose data am I looking at, and who am I acting as?" answered before
+        anything else on the surface, and it opens the switcher panel in place.
+        `surface` is the PANEL's anchoring, not a second host boolean: a drawer is
+        a narrow column like the sidebar, so it takes the sidebar's anchoring. */
+        <div className="flex items-center justify-between gap-2">
+          {/* `min-w-0 flex-1` is load-bearing, not tidying. A flex item's default
+          `min-width: auto` is its MIN-CONTENT width, so without this the bar sizes
+          itself to the widest it would like to be — two stacked avatars plus both
+          profile names — and overflows its column instead of truncating inside it.
+          Measured when the bar moved into the drawer (#4102): 337.6px of bar in a
+          288px content box, hanging ~50px past the panel's right edge. The sidebar
+          never showed it because the bar had no flex-row parent there. */}
+          <div className="min-w-0 flex-1">
+            <ProfileIdentityBar
+              profiles={profiles}
+              actingProfileId={active.id}
+              viewIds={viewIds}
+              readOnlyIds={readOnlyIds}
+              readOnly={readOnly}
+              surface="sidebar"
+            />
+          </div>
+          {closeButton}
         </div>
       )}
-      {/* The identity bar (#1801) at the TOP of the sidebar — "whose data am I
-      looking at, and who am I acting as?" answered before anything else on the
-      page. Gated on multiProfile: identity chrome when identity is ambiguous,
-      brand chrome when it isn't. */}
-      {!brandChrome && (
-        <ProfileIdentityBar
-          profiles={profiles}
-          actingProfileId={active.id}
-          viewIds={viewIds}
-          readOnlyIds={readOnlyIds}
-          readOnly={readOnly}
-          surface="sidebar"
-        />
+      {/* Global search and the log affordance are the SIDEBAR'S triggers, and
+      since #4102 only the sidebar's. On a phone the dock carries both — a Search
+      slot opening this same palette, and the raised puck opening this same sheet
+      — so a drawer row for either is a second listed trigger for a surface that
+      is already one tap away with the drawer shut. Desktop has no dock, so there
+      these are the only triggers and they are unchanged: the ⌘K palette (mounted
+      once in the app layout, reached here through a custom event) and the #3154
+      anchored log panel, ungated because the per-entry gates inside it decide the
+      content (#2651). */}
+      {!inDrawer && (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              openGlobalSearch();
+              onNavigate?.();
+            }}
+            className="flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm text-slate-500 transition hover:bg-(--ghost-hover) dark:text-slate-400"
+          >
+            <IconSearch className="h-4 w-4 shrink-0" stroke={1.75} />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="hidden rounded-sm border border-black/10 px-1.5 py-0.5 font-mono text-xs text-slate-500 md:inline dark:border-white/10 dark:text-slate-400">
+              ⌘K
+            </kbd>
+          </button>
+          <SidebarLogButton
+            onNavigate={onNavigate}
+            cycleRelevant={relevance.cycle}
+            substanceRelevant={substanceRelevant}
+            logHabitDays={logHabitDays}
+          />
+        </>
       )}
-      {/* Global search trigger — lives in the shared content so it appears in
-      both the desktop sidebar and the mobile drawer. Opens the
-      Cmd-K command palette (mounted once in the app layout) via a custom event;
-      closes the drawer afterward on mobile. */}
-      <button
-        type="button"
-        onClick={() => {
-          openGlobalSearch();
-          onNavigate?.();
-        }}
-        className="flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm text-slate-500 transition hover:bg-(--ghost-hover) dark:text-slate-400"
-      >
-        <IconSearch className="h-4 w-4 shrink-0" stroke={1.75} />
-        <span className="flex-1 text-left">Search…</span>
-        <kbd className="hidden rounded-sm border border-black/10 px-1.5 py-0.5 font-mono text-xs text-slate-500 md:inline dark:border-white/10 dark:text-slate-400">
-          ⌘K
-        </kbd>
-      </button>
-      {/* One log affordance for every profile (#3154): the anchored panel above
-      `md`, the phone's existing log sheet below it. No relevance gate — the
-      per-entry ones inside the menu decide the content (#2651). */}
-      <SidebarLogButton
-        onNavigate={onNavigate}
-        cycleRelevant={relevance.cycle}
-        substanceRelevant={substanceRelevant}
-        logHabitDays={logHabitDays}
-      />
-      {/* Most-visited shortcuts (issue #1416, section E3). Client-side visit
-      counts in localStorage — no schema change, no server round-trip. DRAWER-ONLY
-      since #3154: on desktop the nav these duplicate is one glance below, and
-      after #3079's grouping the list is shorter still. FrequentPages itself makes
-      that call, because it also owns the visit TALLY and that must keep running on
-      every route at every width. Renders nothing until a page clears the "this is
-      a habit" floor, so a fresh login sees no empty section. */}
-      <FrequentPages
-        onNavigate={onNavigate}
-        adultContentAvailable={adultContentAvailable}
-        trainingRelevant={trainingRelevant}
-      />
+      {/* The Frequent shortcuts are GONE (#4102), machinery included. With the
+      dock covering the daily set and Search covering lookups they duplicated
+      both — and they were the nav's only non-deterministic element, which is the
+      dashboard arc's "a system that quietly changes is indistinguishable from a
+      bug" applied to chrome. #1042's "no pinned/frecent nav machinery" now holds
+      without exception. */}
       <Nav
         inDrawer={inDrawer}
         adultContentAvailable={adultContentAvailable}
