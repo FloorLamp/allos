@@ -127,6 +127,7 @@ import {
   tokenPrefix,
 } from "./reconcile-core";
 import {
+  claimViewTokens,
   inertTokens,
   messageExpiry,
   owningFamily,
@@ -1430,6 +1431,7 @@ async function reconcilePointer(
   const legacyRedose =
     pointer.kind === "redose" && tokens.some((t) => tokenPrefix(t) === "prn");
   const inert = inertTokens(tokens, tokenPrefix);
+  const claimView = claimViewTokens(tokens, tokenPrefix);
   const family = owningFamily(tokens, tokenPrefix);
   const reconciler = family ? FAMILIES[family] : null;
 
@@ -1448,6 +1450,7 @@ async function reconcilePointer(
     keyboard: pointer.keyboard,
     dead,
     inert,
+    claimView,
     expired: messageExpiry(family, pointer.date, td),
   });
 

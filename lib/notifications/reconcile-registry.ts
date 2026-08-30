@@ -53,15 +53,25 @@ export type ReconcileFamily =
 // it. What it declines to do is ELECT that family.
 export const HOST_INHERITED = "host";
 
-export interface ReconcilePrefixEntry {
+export type ReconcilePrefixEntry = {
   // The callback token prefix, without its colon.
   prefix: string;
-  // The reconciler that owns messages led by this token — or HOST_INHERITED, meaning
-  // this token never elects one and inherits its host message's instead.
-  family?: ReconcileFamily | typeof HOST_INHERITED;
-  // …or the written reason this button makes no state claim.
-  inert?: string;
-}
+} & (
+  | {
+      // The reconciler that owns messages led by this token — or HOST_INHERITED,
+      // meaning this token never elects one and inherits its host message's instead.
+      family: ReconcileFamily | typeof HOST_INHERITED;
+      inert?: never;
+      expiry?: never;
+    }
+  | {
+      // …or the written reason this button makes no state claim, plus whether the
+      // view still means anything once the message's claims expire.
+      family?: never;
+      inert: string;
+      expiry: "claim-view" | "standalone";
+    }
+);
 
 export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // ── Class 1: state-claim buttons ───────────────────────────────────────────
@@ -182,49 +192,59 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
   // ── Inert: view controls, not state claims ─────────────────────────────────
   {
     prefix: "foodmore",
+    expiry: "claim-view",
     inert:
       "reveals the next page of the SAME nudge's ranked buttons — a stateless view change that logs nothing and claims nothing",
   },
   {
     prefix: "foodless",
+    expiry: "claim-view",
     inert:
       "collapses that expansion one page back (#1807) — the exact mirror of foodmore, pure keyboard view state, and it clamps at the compact default rather than emptying the keyboard",
   },
   {
     prefix: "offer",
+    expiry: "standalone",
     inert:
       "expands the digest's guaranteed-access tail (#1505); the expansion re-resolves the slot AT TAP, so the collapsed button cannot be stale",
   },
   {
     prefix: "offerc",
+    expiry: "standalone",
     inert: "collapses the offer tail back — pure keyboard view state",
   },
   {
     prefix: "plog",
+    expiry: "standalone",
     inert:
       "the on-demand `/practice` list's ✅ button (#1895) — the `prn` shape one domain over: logging a session is additive and valid at any time, the token carries no date, and the list claims nothing about dueness (that is the `pdone` nudge's job, which keeps its own family)",
   },
   {
     prefix: "prn",
+    expiry: "standalone",
     inert:
       "an additive access affordance (#797/#1505): logging an as-needed dose is valid at any time, and the token carries no date, so it never becomes a false claim",
   },
   {
     prefix: "tune",
+    expiry: "standalone",
     inert:
       "opens the digest's per-category preferences (#1714) — a preference control, never a claim about the day",
   },
   {
     prefix: "tunec",
+    expiry: "standalone",
     inert: "closes the ⚙️ Tune panel — pure keyboard view state",
   },
   {
     prefix: "tunet",
+    expiry: "standalone",
     inert:
       "flips one digest category's demotion (#1714); a preference is whatever it currently is and cannot go stale",
   },
   {
     prefix: "actype",
+    expiry: "standalone",
     inert:
       "the post-workout type ask (#2272) — 'your tracker didn't say what this was'. It rides the recap the way `demote` rides a dose reminder, carries an activity id and no date, and its write is a COMPARE-AND-SWAP on the row still being `unclassified`: a session classified in the app since, or absorbed by the duplicate auto-merge (#2271), refuses the tap and says which happened (already-classified / out-of-date) instead of confirming a write that did not occur. That is the difference from the correction chips, which are NOT inert — those expire on a CLOCK nothing can re-check at tap time, so only the sweep can stop them lying. This one cannot lie: it is asked ONCE, and the answer it can still write is the only one it will ever accept.",
   },
@@ -779,6 +799,17 @@ export function inertTokens(
   const out = new Set<string>();
   for (const t of tokens) {
     if (reconcileEntryFor(prefixOf(t))?.inert) out.add(t);
+  }
+  return out;
+}
+
+export function claimViewTokens(
+  tokens: readonly string[],
+  prefixOf: (token: string) => string | null
+): Set<string> {
+  const out = new Set<string>();
+  for (const t of tokens) {
+    if (reconcileEntryFor(prefixOf(t))?.expiry === "claim-view") out.add(t);
   }
   return out;
 }

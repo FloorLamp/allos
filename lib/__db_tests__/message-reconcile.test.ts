@@ -684,6 +684,12 @@ describe("day rollover", () => {
             callback_data: `food:${pid}:Morning:${yd}:leafy_greens`,
           },
         ],
+        [
+          {
+            text: "➕ Show more",
+            callback_data: `foodmore:${pid}:Morning:${yd}`,
+          },
+        ],
       ],
     });
 
@@ -2617,6 +2623,24 @@ describe("the pointer follows a callback edit, not just a send", () => {
     logFoodServingCore(pid, canonicalFoodGroup("leafy_greens")!, date, "page");
     await reconcileProfileMessages(pid);
     expect(countVisibleFoodButtons(liveKeyboard(pid))).toBe(expanded);
+  });
+
+  it("refuses a stale food view control without rebuilding the keyboard", async () => {
+    const pid = newProfile("Stale Sage");
+    seedLoginTelegram(pid, "5552295");
+    const yd = shiftDateStr(today(pid), -1);
+    const token = `foodmore:${pid}:Evening:${yd}`;
+
+    vi.mocked(answerCallbackQuery).mockClear();
+    editText.mockClear();
+    await handleCallbackQuery(
+      tapCq("5552295", 77, token, [
+        [{ text: "➕ Show more", callback_data: token }],
+      ])
+    );
+
+    expect(vi.mocked(answerCallbackQuery).mock.calls.at(-1)?.[1]).toContain(yd);
+    expect(editText).not.toHaveBeenCalled();
   });
 
   it("costs zero Telegram calls on the tick after a tap", async () => {

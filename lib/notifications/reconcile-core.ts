@@ -48,8 +48,8 @@
 // ── INERT BUTTONS ────────────────────────────────────────────────────────────
 //
 // Not every button claims state. "▲ Collapse", "⚙️ Tune", "➕ Show more"/"➖ Show less"
-// and the deep-link buttons are VIEW controls: they cannot go stale and must not keep a
-// fully resolved message alive. They are neither killed nor counted — declared `inert`
+// and the deep-link buttons are VIEW controls and must not keep a fully resolved message
+// alive. They are not counted; the registry says whether they outlive expired claims.
 // in the registry with the reason, so the completeness guard can tell "we thought about
 // this and there is nothing to reconcile" from "nobody thought about this".
 //
@@ -187,7 +187,7 @@ export function keyboardTokens(keyboard: InlineKeyboard): string[] {
 }
 
 // Drop every button whose callback token is in `dead`, then drop rows left empty.
-// Deep-link buttons and inert controls survive by construction — they are never `dead`.
+// Deep links and standalone inert controls survive unless the caller names them here.
 export function stripTokens(
   keyboard: InlineKeyboard,
   dead: ReadonlySet<string>
@@ -232,6 +232,9 @@ export interface ReconcileInput {
   dead: ReadonlySet<string>;
   // Tokens that make no state claim (view controls). Never dead, never counted.
   inert: ReadonlySet<string>;
+  // Inert view controls whose subject is the claims they reveal. They remain inert for
+  // live reconciliation, but expire with those claims instead of surviving alone.
+  claimView?: ReadonlySet<string>;
   // The close reason if the message's date is past what its family's own tap guard
   // still honors (`messageExpiry`), or null while a tap would still be accepted.
   expired: Extract<CloseReason, "rollover" | "expired"> | null;
@@ -250,8 +253,12 @@ export function decideReconcile(input: ReconcileInput): ReconcileDecision {
   const claims = tokens.filter((t) => !input.inert.has(t));
 
   if (input.expired) {
-    if (claims.length === 0) return { action: "none" };
-    const stripped = stripTokens(input.keyboard, new Set(claims));
+    const expiredTokens = new Set(claims);
+    for (const token of tokens) {
+      if (input.claimView?.has(token)) expiredTokens.add(token);
+    }
+    if (expiredTokens.size === 0) return { action: "none" };
+    const stripped = stripTokens(input.keyboard, expiredTokens);
     return stripped.length === 0
       ? { action: "close", reason: input.expired }
       : { action: "strip-all", keyboard: stripped };

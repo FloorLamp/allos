@@ -1766,6 +1766,10 @@ async function handleFoodExpand(
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
     return;
   }
+  if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
+    await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
+    return;
+  }
   const current = countVisibleFoodButtons(rows);
   // The clamp is the whole asymmetry between the two directions: expanding is unbounded
   // (the renderer drops "Show more" once every ranked key is out), collapsing bottoms out
