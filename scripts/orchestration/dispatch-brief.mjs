@@ -68,7 +68,7 @@
 // same defect shape as the two boot-id paths this PR already removed, so both
 // now read one constant.
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -263,16 +263,33 @@ function completedDurationsMs(rows) {
 
 function git(args, { allowFail = false } = {}) {
   try {
-    return execSync(`git ${args}`, {
+    const options = {
       cwd: repoRoot,
       encoding: "utf8",
       timeout: 20_000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    };
+    return (
+      Array.isArray(args)
+        ? execFileSync("git", args, options)
+        : execSync(`git ${args}`, options)
+    ).trim();
   } catch (err) {
     if (allowFail) return null;
     throw err;
   }
+}
+
+export function branchGitArgs(branch) {
+  const localRef = `refs/heads/${branch}`;
+  const remoteRef = `refs/remotes/origin/${branch}`;
+  return {
+    localLog: ["log", "-1", "--format=%cI", localRef],
+    remoteLog: ["log", "-1", "--format=%cI", remoteRef],
+    remoteExists: ["show-ref", "--verify", remoteRef],
+    localExists: ["show-ref", "--verify", localRef],
+    deleteLocal: ["branch", "-D", branch],
+  };
 }
 
 // --- discovery -------------------------------------------------------------
@@ -1644,11 +1661,12 @@ export function commitIdleMs(isoCommitterDate, now = Date.now()) {
  * `refs/heads/<branch>` the instant it lands, with no network.
  */
 function branchIdleMs(branch) {
-  const local = git(`log -1 --format=%cI refs/heads/${branch}`, {
+  const args = branchGitArgs(branch);
+  const local = git(args.localLog, {
     allowFail: true,
   });
   if (local) return commitIdleMs(local);
-  const remote = git(`log -1 --format=%cI refs/remotes/origin/${branch}`, {
+  const remote = git(args.remoteLog, {
     allowFail: true,
   });
   return commitIdleMs(remote);
@@ -1840,10 +1858,8 @@ to close the ledger entry and leave the tree alone.`
   // Hoisted here, and refusing.
   {
     if (!keep) git("fetch --prune origin", { allowFail: true });
-    const remoteAlive =
-      git(`show-ref --verify refs/remotes/origin/${branch}`, {
-        allowFail: true,
-      }) !== null;
+    const args = branchGitArgs(branch);
+    const remoteAlive = git(args.remoteExists, { allowFail: true }) !== null;
     if (!retireVerdict({ remoteAlive, keep }).ok) {
       console.error(
         `REFUSED: origin/${branch} still exists after a prune, so its work has NOT
@@ -1880,10 +1896,9 @@ Merge the PR first, then retire. If the branch is genuinely ABANDONED, pass
   // which IS the merged-and-tidied shape (the #2621 rule), so the local branch
   // is safe to drop. -D, not -d: a squash-merged branch is never an ancestor of
   // main, so -d refuses even though the content landed.
-  if (
-    git(`show-ref --verify refs/heads/${branch}`, { allowFail: true }) !== null
-  ) {
-    if (git(`branch -D ${branch}`, { allowFail: true }) !== null) {
+  const args = branchGitArgs(branch);
+  if (git(args.localExists, { allowFail: true }) !== null) {
+    if (git(args.deleteLocal, { allowFail: true }) !== null) {
       console.log(
         `deleted local branch ${branch} (remote gone — merged and tidied)`
       );
