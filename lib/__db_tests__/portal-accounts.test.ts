@@ -1298,24 +1298,6 @@ describe("discovery — the routine path to a mapping", () => {
     expect(listPendingIdentities()[0].lastOutcome).toBe("discovered");
   });
 
-  it("learns the proxy list even when the reporting patient is itself unmapped", async () => {
-    // FIRST CONTACT: nothing is bound yet, so the run's own identity refuses — but the
-    // list it discovered is exactly what the household needs to map.
-    const res = await SYNC_REPORT(
-      report(memberToken, {
-        status: "downloaded",
-        portal: "ochsner-mychart",
-        patient: "Unknown Reporter",
-        identities: ["Unknown Reporter", "Second Patient"],
-      })
-    );
-    expect(res.status).toBe(404);
-    const labels = listPendingIdentities()
-      .map((p) => p.patientLabel)
-      .sort();
-    expect(labels).toEqual(["Second Patient", "Unknown Reporter"]);
-  });
-
   it("learns the proxy list from a FAILED run that got far enough to see it", async () => {
     bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
     await SYNC_REPORT(
@@ -1425,6 +1407,11 @@ describe("account-level run reports", () => {
     // The refusal still stands — nothing may be filed under a guess.
     expect(res.status).toBe(404);
     expect(syncEventCount()).toBe(0);
+    expect(
+      listPendingIdentities()
+        .map((p) => p.patientLabel)
+        .sort()
+    ).toEqual(["Ruth O'Hara-Smith", "SMITH, ALEX", "Unknown Reporter"]);
 
     // …but the run happened, and the card can now say so.
     const rows = reportsFor(defaultAccount);
