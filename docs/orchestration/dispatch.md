@@ -23,6 +23,9 @@ Two axes are load-bearing, and `reconcile-tracker` flags violations of both
 
 - Use `scripts/orchestration/dispatch-brief.mjs new` for every agent, including
   Agent-tool runs. Adopt any unrecorded live dispatch immediately.
+- The generated setup resolves freshly fetched `main` through `FETCH_HEAD` and
+  prints `PINNED_BASE_SHA`. Record it; any later reset or history rewrite uses
+  that exact SHA, never the shared, moving `origin/main` remote-tracking ref.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced.
 - A `design` issue is dispatchable only when its body records the owner
