@@ -322,7 +322,7 @@ describe("buildIntradayModel — sleep clipping", () => {
   });
 });
 
-describe("buildIntradayModel — workout blocks", () => {
+describe("buildIntradayModel — session blocks", () => {
   it("bounds a block from start_time + duration and links the activity", () => {
     const model = buildIntradayModel(input({ events: [activityEvent("a:1")] }));
     expect(model!.blocks).toHaveLength(1);
@@ -386,6 +386,105 @@ describe("buildIntradayModel — workout blocks", () => {
     const model = buildIntradayModel(input({ events: [activityEvent("a:4")] }));
     expect(model!.blocks).toHaveLength(1);
     expect(model!.ticks).toEqual([]);
+  });
+});
+
+// PRACTICES ON THE AXIS (#3142). A practice card is a practice-DAY, so one event
+// carries one window per session and the panel draws a mark for each — all of them
+// anchored to that single feed entry, which is what keeps the "one visibility
+// predicate" true: the sessions travel on the feed's own resolved event.
+describe("buildIntradayModel — practice sessions", () => {
+  const practiceEvent = (
+    windows: NonNullable<TimelineEvent["clockWindows"]>
+  ): TimelineEvent => ({
+    id: `practice:${DAY}:Sauna`,
+    date: DAY,
+    category: "practice",
+    title: "Sauna",
+    subtitle: `${windows.length} sessions`,
+    clockWindows: windows,
+  });
+
+  const win = (
+    start_time: string | null,
+    end_time: string | null,
+    duration_min: number | null
+  ) => ({ date: DAY, start_time, end_time, duration_min });
+
+  // The two ways a session states a window, and the one way it does not. Both
+  // bounded shapes must draw a BLOCK over the same minutes — `activityWindow`'s own
+  // precedence, reused rather than re-decided — and the unbounded one a TICK.
+  it.each([
+    ["a stated end", win("19:00", "19:25", null), 1140, 1165],
+    ["a start plus a duration", win("19:00", null, 25), 1140, 1165],
+    // end_time WINS over a disagreeing duration: that is the stored precedence, and
+    // a fixture where the two agreed could not tell which one the model read.
+    [
+      "a stated end over a disagreeing duration",
+      win("19:00", "19:25", 90),
+      1140,
+      1165,
+    ],
+  ])("draws a block for %s", (_label, window, startMinute, endMinute) => {
+    const model = buildIntradayModel(
+      input({ events: [practiceEvent([window])] })
+    );
+    expect(model!.blocks).toHaveLength(1);
+    expect(model!.blocks[0]).toMatchObject({
+      startMinute,
+      endMinute,
+      title: "Sauna",
+      anchorId: timelineEntryAnchorId(`practice:${DAY}:Sauna`),
+    });
+    expect(model!.ticks).toEqual([]);
+  });
+
+  it("draws a tick, not an invented span, for a start-only session", () => {
+    const model = buildIntradayModel(
+      input({ events: [practiceEvent([win("19:00", null, null)])] })
+    );
+    expect(model!.blocks).toEqual([]);
+    expect(model!.ticks).toHaveLength(1);
+    expect(model!.ticks[0]).toMatchObject({
+      minute: 1140,
+      label: "Sauna",
+      category: "practice",
+      anchorId: timelineEntryAnchorId(`practice:${DAY}:Sauna`),
+    });
+  });
+
+  it("draws one shape per session on a multi-session day, all on one anchor", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent([
+            win("07:30", "07:50", null), // block
+            win("19:00", null, 25), // block
+            win("12:15", null, null), // tick
+            win(null, null, 30), // nothing at all: no start, no minute to draw
+          ]),
+        ],
+      })
+    );
+    expect(model!.blocks.map((b) => b.startMinute)).toEqual([450, 1140]);
+    expect(model!.ticks.map((t) => t.minute)).toEqual([735]);
+    const anchor = timelineEntryAnchorId(`practice:${DAY}:Sauna`);
+    for (const mark of [...model!.blocks, ...model!.ticks]) {
+      expect(mark.anchorId).toBe(anchor);
+      expect(mark.eventId).toBe(`practice:${DAY}:Sauna`);
+    }
+    // Distinct keys, because three marks share one event id and React (and the
+    // label collision pass) key on them.
+    const keys = [...model!.blocks, ...model!.ticks].map((m) => m.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("stays data-gated: a day of untimed practice ticks draws no panel", () => {
+    expect(
+      buildIntradayModel(
+        input({ events: [practiceEvent([win(null, null, 20)])] })
+      )
+    ).toBeNull();
   });
 });
 
