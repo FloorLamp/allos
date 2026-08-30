@@ -24,45 +24,24 @@ const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
 
 describe("saveLoginTelegram (login tier)", () => {
-  it("persists the channel to the acting login, not the profile", async () => {
-    const login = createLogin();
-    const profile = createProfile("lt-owner", login.id);
-    actAs(login, profile);
-
-    const res = await saveLoginTelegram(
-      fd({ telegram_enabled: "1", telegram_chat_id: "5550123" })
-    );
-    expect(res).toEqual({ ok: true });
-    const chan = getLoginTelegram(login.id);
-    expect(chan.telegramEnabled).toBe(true);
-    expect(chan.telegramChatId).toBe("5550123");
-    // NOT written to the profile tier.
-    expect(getProfileSetting(profile.id, "telegram_chat_id")).toBeUndefined();
-  });
-
-  it("is allowed for a read-only member (the chat is theirs)", async () => {
+  it("lets a read-only member save their login channel and clears review", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("lt-ro", login.id);
     actAs(login, profile, "read");
-    const res = await saveLoginTelegram(
-      fd({ telegram_enabled: "1", telegram_chat_id: "5550777" })
-    );
-    expect(res).toEqual({ ok: true });
-    expect(getLoginTelegram(login.id).telegramChatId).toBe("5550777");
-  });
-
-  it("clears the post-migration review flag on save", async () => {
-    const login = createLogin();
-    const profile = createProfile("lt-review", login.id);
-    actAs(login, profile);
     // Arm the flag the way its ONE writer (migration 105) does — the exported
     // setter was removed with no production caller (#1869 item 3).
     setLoginSetting(login.id, "notify_review_needed", "1");
     expect(getNotifyReviewNeeded(login.id)).toBe(true);
 
-    await saveLoginTelegram(
-      fd({ telegram_enabled: "1", telegram_chat_id: "5550001" })
+    const res = await saveLoginTelegram(
+      fd({ telegram_enabled: "1", telegram_chat_id: "5550777" })
     );
+    expect(res).toEqual({ ok: true });
+    const channel = getLoginTelegram(login.id);
+    expect(channel.telegramEnabled).toBe(true);
+    expect(channel.telegramChatId).toBe("5550777");
+    // The channel belongs to the login, not the selected profile.
+    expect(getProfileSetting(profile.id, "telegram_chat_id")).toBeUndefined();
     expect(getNotifyReviewNeeded(login.id)).toBe(false);
   });
 });
