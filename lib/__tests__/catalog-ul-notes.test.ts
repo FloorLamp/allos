@@ -159,7 +159,7 @@ describe("catalog UL reasons — what a person reads", () => {
     expect(warning.key).toBe("zinc");
     const note = formulationUlNote(warning);
     expect(note).toBe(
-      "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
+      "PreserVision AREDS 2 is above the adult zinc limit by design: it matches " +
         "the AREDS2 eye-health formula. The total is expected for this product."
     );
     const detail = ulWarningDetail(warning, null, note);
@@ -175,6 +175,19 @@ describe("catalog UL reasons — what a person reads", () => {
     // trailing after it.
     expect(detail.indexOf("by design")).toBeLessThan(
       detail.indexOf("Discuss with your clinician")
+    );
+  });
+
+  it("names the adult band but omits its reassurance on a pediatric band", () => {
+    const [warning] = stackUlWarnings(
+      [itemFor(areds, "2 softgels")],
+      8,
+      "male"
+    );
+    expect(warning.ul).toBe(12);
+    expect(formulationUlNote(warning, undefined, 8)).toBe(
+      "PreserVision AREDS 2 is above the adult zinc limit by design: it matches " +
+        "the AREDS2 eye-health formula."
     );
   });
 
@@ -196,7 +209,7 @@ describe("catalog UL reasons — what a person reads", () => {
   it("says nothing when the product's own serving is not above the limit", () => {
     // THE FLOOR. AREDS 2 at ONE softgel is 40 mg — exactly at the adult UL and over
     // nothing. Add a separate 50 mg zinc and the stack is at 90 mg, 2.25x the limit,
-    // and "above the general zinc limit by design" is not true of the 40 mg this
+    // and "above the adult zinc limit by design" is not true of the 40 mg this
     // person takes. A person told a warning is expected stops reading it, which is the
     // exact failure #3156's ruling exists to prevent, pointed the other way.
     const warning = zincWarning([itemFor(areds, "1 softgel"), zincItem(50)]);
@@ -223,7 +236,7 @@ describe("catalog UL reasons — what a person reads", () => {
     expect(warning.total).toBe(130);
     const note = formulationUlNote(warning);
     expect(note).toBe(
-      "PreserVision AREDS 2 is above the general zinc limit by design: it matches " +
+      "PreserVision AREDS 2 is above the adult zinc limit by design: it matches " +
         "the AREDS2 eye-health formula. The rest of this total comes from your other items."
     );
     const detail = ulWarningDetail(warning, null, note);
@@ -370,8 +383,7 @@ describe("catalog UL reasons — the boundaries, on a synthetic catalog", () => 
   // The shipped product moves in 40 mg steps, which cannot land ON either boundary.
   // These do: a blend stating 41 mg per capsule at one or two capsules, so the stated
   // serving totals are exactly 41 and 82 against an adult zinc UL of 40.
-  const REASON =
-    "Made-Up Zinc Blend is above the general zinc limit by design.";
+  const REASON = "Made-Up Zinc Blend is above the adult zinc limit by design.";
   const synthetic: SupplementCatalogEntry[] = [
     {
       name: "Made-Up Zinc Blend",

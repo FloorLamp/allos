@@ -897,9 +897,10 @@ removes a cliff: under the earlier predicate (rest-of-stack ≤ UL) a second 40 
 got "expected" and a 50 mg one got the bare warning, so ten milligrams elsewhere decided
 whether the app reassured. A note that explained someone else's total would teach a
 person to dismiss a real warning — the same "looks like a bug, so it gets ignored"
-failure the ruling exists to prevent, read the other way. OPEN: on a pediatric band the
-adult sentence still renders against a child's lower limit (#3638); that is an unruled
-wording call.
+failure the ruling exists to prevent, read the other way. On a pediatric band the adult
+limit is named precisely, while the adult-only "total is expected" reassurance is
+omitted (#3638); the product explanation itself remains because hiding it restores the
+bare-warning failure this ruling exists to prevent.
 
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the
