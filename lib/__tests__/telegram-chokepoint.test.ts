@@ -81,10 +81,12 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
+const productionSources = sourceFiles();
+
 describe("Telegram channel chokepoint boundary (issue #454)", () => {
   it("the guarded send/edit primitives are imported only by the chokepoint", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (rel === CHOKEPOINT) continue; // the chokepoint is the sole importer
       // Only flag an import that actually pulls a guarded name FROM the transport
       // module — an unrelated local identifier of the same name wouldn't be a
@@ -105,7 +107,7 @@ describe("Telegram channel chokepoint boundary (issue #454)", () => {
 
   it("the raw Bot API send/edit methods are POSTed only from the transport module", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (rel === TRANSPORT) continue; // the transport module owns the raw call()
       for (const method of GUARDED_CALLS) {
         if (
@@ -145,7 +147,7 @@ describe("Telegram channel chokepoint boundary (issue #454)", () => {
 
   it("no builder emits literal Telegram markup — emphasis goes through the rich-text seam", () => {
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (MARKUP_OWNERS.has(rel.split(path.sep).join("/"))) continue;
       if (!rel.split(path.sep).join("/").startsWith("lib/notifications/"))
         continue;
@@ -164,7 +166,7 @@ describe("Telegram channel chokepoint boundary (issue #454)", () => {
       "lib/notifications/telegram-render.ts",
     ]);
     const offenders: string[] = [];
-    for (const { rel, text } of sourceFiles()) {
+    for (const { rel, text } of productionSources) {
       if (allowed.has(rel.split(path.sep).join("/"))) continue;
       if (/\b(renderMessageHtml|renderBodyHtml)\b/.test(stripComments(text))) {
         offenders.push(`${rel} renders wire text itself`);

@@ -326,8 +326,8 @@ const camel = (snake: string): string =>
 
 // Every (event, record) pair the registry declares, in both the SQL spelling and the
 // JS one. Each pair carries the event column's spelling as a cheap `includes` gate:
-// almost no file mentions any of them, so the regex work is skipped outright rather
-// than run ~80 times over every file in the repo.
+// almost no file mentions any of them, so comment stripping and regex work are
+// skipped outright rather than run ~80 times over every file in the repo.
 interface PairPattern {
   needle: string;
   re: RegExp;
@@ -391,6 +391,7 @@ function countPairings(text: string, patterns: PairPattern[]): number {
 describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
   it("freezes every hand-rolled pairing, so the ledger only shrinks", () => {
     const patterns = pairPatterns();
+    const needles = [...new Set(patterns.map(({ needle }) => needle))];
     const counts = new Map<string, number>();
     for (const dir of ["lib", "app", "components", "scripts"]) {
       const abs = path.join(REPO, dir);
@@ -408,7 +409,9 @@ describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
         ) {
           continue;
         }
-        const text = stripComments(fs.readFileSync(full, "utf8"));
+        const source = fs.readFileSync(full, "utf8");
+        if (!needles.some((needle) => source.includes(needle))) continue;
+        const text = stripComments(source);
         const n = countPairings(text, patterns);
         if (n > 0) counts.set(rel, n);
       }
