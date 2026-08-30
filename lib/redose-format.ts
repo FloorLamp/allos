@@ -109,9 +109,9 @@ export function redoseNoticeMessage(input: {
 //   • at the confirmed max → "Max reached · 4 of 4 today"
 //   • window open          → "Redose OK — min interval passed · 2 of 4 today"
 //   • not yet              → "Next dose in ~2h · 1 of 4 today"
-// With NO confirmed daily max (#1458) the ceiling half simply drops — "Next dose in
-// ~5h · 1 today", "Redose OK — min interval passed · 1 today", and never "Max
-// reached", because an unconfigured maximum is not a reached one.
+// With NO confirmed daily ceiling (#1458/#4254), the line names that absence rather
+// than letting an open window imply "within limits". It never says "Max reached",
+// because an unconfigured maximum is not a reached one.
 // `familyMemberCount` (#1027) > 1 appends "across N items" so a counter fed by a
 // same-ingredient sibling's doses says so ("the cross-item counter line").
 export function redoseCardLabel(
@@ -127,8 +127,13 @@ export function redoseCardLabel(
   const across =
     familyMemberCount > 1 ? ` across ${familyMemberCount} items` : "";
   if (status.atMax) return `Max reached · ${count}${across}`;
-  if (status.open) return `Redose OK — min interval passed · ${count}${across}`;
-  return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}`;
+  const missingLimit =
+    status.maxDailyCount == null && status.exposure == null
+      ? " · no daily limit on record"
+      : "";
+  if (status.open)
+    return `Redose OK — min interval passed · ${count}${across}${missingLimit}`;
+  return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}${missingLimit}`;
 }
 
 // A redose window is guidance, not a hard gate: logging always remains available.
