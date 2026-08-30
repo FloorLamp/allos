@@ -95,6 +95,10 @@ export interface LedgerStack {
    * The same stack's doses this day still owes in this bucket. They live HERE rather
    * than in the bucket's due row so the day is stated once: a dose is on exactly one
    * row of the ledger.
+   *
+   * EMPTY when the bucket holds more than one row for this routine — no fact names which
+   * row would own an open dose, and letting each take a copy is how one dose came to be
+   * on two. See the claim loop in `buildDayLedger`.
    */
   open: PendingDayDose[];
 }
@@ -192,9 +196,18 @@ export function buildDayLedger(input: {
       loose.push(dose);
       continue;
     }
-    // Fixed-width fields joined by the unit separator, the `doseSortKey` idiom: it
-    // sorts below every printable character and cannot occur in a bucket, a stack
-    // label or a timestamp, so no pair of distinct tuples can mint one key.
+    // Joined by the unit separator, the `doseSortKey` idiom — it sorts below every
+    // printable character, which is what keeps `stack:` ids ordering sanely.
+    //
+    // WHAT ACTUALLY MAKES THE KEY UNFORGEABLE IS THE FIXED-WIDTH TAIL, not the separator.
+    // `stack` is free text a person types, so it CAN contain a separator; the separator
+    // alone therefore proves nothing. But the tuple is still recoverable from any string
+    // this builds, because everything around the free field is pinned: `bucket` is a
+    // closed enum in first position, and the three fields after `stack` are
+    // fixed-width — a 16-char minute, `stated` or `logged`, a 5-char `HH:MM`. Read from
+    // the right, those three come off unambiguously whatever the label contains, and what
+    // remains between the enum and them is the label. So no pair of distinct tuples can
+    // mint one key, and a label crafted to impersonate another routine's tail cannot.
     const key = [
       dose.bucket,
       dose.stack,
@@ -233,6 +246,26 @@ export function buildDayLedger(input: {
   // rows, double-rendered its Take control, and made the two labels sum past the
   // routine's size ("2 of 4" twice for a routine of six). The day is stated once, so an
   // unownable open dose stays where it always had an honest home: the bucket's due row.
+  //
+  // AND NOT "THE LATEST ROW OWNS THEM", which is the tempting alternative. Picking a row
+  // would be this renderer deciding something the WRITE PATH never recorded: nothing in
+  // the log says a still-open dose was meant for the 10:07 tap rather than the 07:07 one,
+  // so any rule here would be inventing that fact and then rendering it as though the
+  // record held it. Declining to answer is the honest answer; the due row is where an
+  // unanswered dose already belongs.
+  // COUNTED AFTER THE DISSOLUTION LOOP, and the order is load-bearing rather than
+  // incidental. Move this count above it and every conservation property still holds —
+  // each dose stays on exactly one row — while a stack that is about to dissolve into
+  // loose rows still counts toward its routine's total, so a legitimately claimable open
+  // dose is quietly demoted to the due row. Green fuzz, wrong ledger: the two questions
+  // ("is every dose on exactly one row?" and "is it on the RIGHT one?") are answered by
+  // different instruments, and only the first is cheap to fuzz.
+  //
+  // NOTHING IN THE TEST SUITE CATCHES THIS. Lifting the count above the dissolution loop
+  // leaves `lib/__tests__/day-ledger.test.ts` 18/18 green and the concentrated
+  // conservation fuzz green too; it took cases constructed against this exact ordering to
+  // fire. So this comment is the guard, not a test — treat the position as a decision,
+  // and if you move it, write the case first.
   const rowsPerRoutine = new Map<string, number>();
   for (const stack of stacks.values()) {
     const routine = [stack.bucket, stack.stack].join(KEY_SEP);

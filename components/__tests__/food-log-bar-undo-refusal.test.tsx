@@ -635,11 +635,32 @@ describe("FoodLogBar projection publication", () => {
     // correction was correctly ignored, 0 if it leaked through.
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
     expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
-    // Both halves off the projection, for completeness — though here they are belt to
-    // the toast's braces rather than the discriminator: the PROVIDER was replaced too,
-    // so the unmounted bar's `applyPlacements` closure addresses a dead setState and no
-    // guard is what keeps the projection still. The case below replaces only the bar and
-    // is where these two lines actually bite.
+    // Both halves off the projection, for completeness — though here they are belt to the
+    // toast's braces rather than the discriminator. The PROVIDER was replaced too, so the
+    // unmounted bar's `applyPlacements` closure addresses a dead setState.
+    //
+    // AND THE PROJECTION HERE IS DEFENDED TWICE, which matters to anyone reading one of
+    // the guards and wondering whether it still does anything. Establishing that took
+    // four mutations, not one: the epoch guard (`areServingMutationsCurrent`) removed
+    // alone leaks the TOAST at both stale sites and moves no projection;
+    // `commitProjection`'s mount guard (`barMountedRef`, via `isMountedProfile`) removed
+    // alone changes nothing at all, because the epoch guard has already returned; and
+    // with BOTH removed this case still passes its two projection lines while the case
+    // below reds. So neither guard alone is falsifiable HERE, and a reader who deletes
+    // one and sees nothing change must not conclude it is dead.
+    //
+    // THEY ARE NOT REDUNDANT — they cover different cases, and no single test shows both:
+    //   • the MOUNT guard covers the replaced-bar case (the case below: provider alive,
+    //     bar swapped, the stale continuation still holding a live setState);
+    //   • the EPOCH guard covers the SUPERSEDED-correction case, where nothing unmounts
+    //     at all — start correction A (Morning→Evening), fully resolve correction B
+    //     (Morning→Midday), then let A resolve late. Only the epoch guard refuses A;
+    //     forcing it open reds with `expected '1' to be '0'`, and the mount guard makes
+    //     no difference because the bar never went away.
+    // Delete either one and some real defect stops being refused.
+    //
+    // The case below replaces only the bar, leaving the provider live, and is where these
+    // two lines bite.
     expect(screen.getByTestId("projection-slot-morning").textContent).toBe("1");
     expect(screen.getByTestId("projection-slot-evening").textContent).toBe("0");
     expect(screen.queryByText("Serving corrected.")).toBeNull();

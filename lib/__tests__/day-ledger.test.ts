@@ -266,6 +266,64 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     expect(groups[0].rows.map((r) => r.kind)).toEqual(["stack"]);
   });
 
+  // THE OTHER HALF OF THE KEY, guarded alone (#4323 review). `hhmm` and `clockKind` are
+  // two components and the amend case above only moves `hhmm`; without this one, deleting
+  // `clockKind` from the key left the whole file green.
+  //
+  // REACHABLE, not contrived: one composed tap at 08:07 where one member carries a stated
+  // `occurred_at` that happens to land on the same minute the tap was filed, and the other
+  // carries none and falls back to the filing time. Same routine, same bucket, same write
+  // minute, same wall clock — and two DIFFERENT claims about what that clock means. #3958
+  // renders one as "08:07" and the other as "logged 8:07am"; a single collapsed row states
+  // one grammar for every member, so joining them would put an administration time over a
+  // dose nothing timed.
+  it("does not collapse a stated dose with a filed one that shares its minute", () => {
+    const doses = [
+      dose(
+        1,
+        "Morning",
+        "08:07",
+        morningStack({
+          writeMinute: "2026-08-30T08:07",
+          hhmm: "08:07",
+          clockKind: "stated",
+        })
+      ),
+      dose(
+        2,
+        "Morning",
+        "08:07",
+        morningStack({
+          writeMinute: "2026-08-30T08:07",
+          hhmm: "08:07",
+          clockKind: "logged",
+        })
+      ),
+    ];
+    // THE FIXTURE'S OWN REACH, asserted rather than assumed (the brief's rule): these two
+    // agree on every key component but one, so this case can only be answered by
+    // `clockKind`. If a later edit makes them differ elsewhere too, this fails here rather
+    // than silently going green for the wrong reason.
+    expect(doses[0].bucket).toBe(doses[1].bucket);
+    expect(doses[0].stack).toBe(doses[1].stack);
+    expect(doses[0].writeMinute).toBe(doses[1].writeMinute);
+    expect(doses[0].hhmm).toBe(doses[1].hhmm);
+    expect(doses[0].clockKind).not.toBe(doses[1].clockKind);
+
+    const groups = buildDayLedger({ servings: [], doses, pending: [] });
+    const rows = groups[0].rows;
+    // Two loose rows, no stack: a "2 doses" row here would claim both were named.
+    expect(rows.map((r) => r.kind)).toEqual(["dose", "dose"]);
+    expect(
+      rows.filter((r): r is LedgerStack => r.kind === "stack")
+    ).toHaveLength(0);
+    // And the stated one still sorts above the filed one (#3958).
+    expect(rows.map((r) => r.kind === "dose" && r.clockKind)).toEqual([
+      "stated",
+      "logged",
+    ]);
+  });
+
   // R1 (adversarial, #4323): the key that keeps WRITTEN doses apart was
   // (bucket, stack, minute) while the key that assigned OPEN doses was (bucket, stack).
   // Two taps of one routine in one bucket therefore made two rows that each claimed the
@@ -323,19 +381,31 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     const groups = buildDayLedger({
       servings: [],
       doses: [
+        // All three STATED, so `clockKind` is held and `hhmm` is the only field that
+        // moves. The fixture used to vary both at once, which meant either half of the
+        // key could be deleted and this case stayed green — the exact defect class the
+        // brief now names: the fixture confirmed a belief instead of testing a rule.
         dose(
           1,
           "Morning",
           "08:07",
-          morningStack({ writeMinute: "2026-08-30T08:07", hhmm: "08:07" })
+          morningStack({
+            writeMinute: "2026-08-30T08:07",
+            hhmm: "08:07",
+            clockKind: "stated",
+          })
         ),
         dose(
           2,
           "Morning",
           "08:07",
-          morningStack({ writeMinute: "2026-08-30T08:07", hhmm: "08:07" })
+          morningStack({
+            writeMinute: "2026-08-30T08:07",
+            hhmm: "08:07",
+            clockKind: "stated",
+          })
         ),
-        // Same tap, amended to 05:15.
+        // Same tap, amended to 05:15 — still a stated time, just an earlier one.
         dose(
           3,
           "Morning",

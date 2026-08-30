@@ -7,8 +7,10 @@
 // them can be asked over hand-written rows: this is the tier, and the pure suite in
 // `lib/__tests__/day-ledger.test.ts` owns the grouping rules downstream of it.
 //
-// Five of these began as an adversarial lane's attacks on #4323 and are kept verbatim as
-// the reproductions of what they broke.
+// Five of these began as an adversarial lane's attacks on #4323 and keep their ATTACK
+// names, because where a case came from is part of what it teaches. They are the
+// reproductions of what they broke, unchanged except in ATTACK #5, whose quoted `FoodTab`
+// expression had to be updated to the fixed one — the claim it makes is the same.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
