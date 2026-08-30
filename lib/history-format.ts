@@ -38,6 +38,7 @@ import { ALCOHOL_FOOD_GROUP } from "./substance-use";
 import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
 import type { AppRoute } from "./hrefs";
 import type { MergeableRow } from "./timeline-multi";
+import type { TimelineEvent } from "./timeline-format";
 
 // THE CLOSED KIND REGISTRY (#3958), one family at a time and in chip order.
 //
@@ -230,7 +231,10 @@ export type HistoryRowEdit =
        * the row stops saying "logged 19:43" and starts claiming 19:43 as the session.
        * This field exists so the form physically cannot reach the other one.
        */
-      statedTime: string | null;
+      statedStart: string | null;
+      /** The stated END of the window (#3142), NULL for every tap. Rides along for
+       *  the same reason the start does: the action rewrites what it reads. */
+      statedEnd: string | null;
       durationMin: number | null;
       notes: string | null;
     }
@@ -311,6 +315,28 @@ export interface HistoryRow extends MergeableRow {
   /** How many media files this row carries — the Photos filter's whole predicate. */
   media: number;
   edit: HistoryRowEdit | null;
+  /**
+   * WHAT THE ROW CANNOT SAY ON ONE LINE (#662/#2920, #3958 phase 2d).
+   *
+   * The feed's gathers have always computed a lab panel's per-marker breakdown, an
+   * activity's set summaries, a sleep session's stages and a visit's lineage refs.
+   * Their only renderer was `/timeline`'s two-line card; the record's rows are ONE
+   * line and carried no disclosure, so between phase 2c and here the data was
+   * gathered and shown nowhere.
+   *
+   * BOTH FIELDS ARE THE TIMELINE'S OWN TYPES, not restatements of them. A second
+   * spelling of the same shape at this seam is how a formatter and its source drift,
+   * and the composers that build them are unchanged — this row carries them across.
+   *
+   * `linkedScope` says which lineage the refs came from, and the panel's heading
+   * claims exactly that much: "visit" means rows carrying a real encounter link to
+   * THIS visit, "document" means everything the import document produced and is only
+   * ever set where that document stands for a single visit (#2920). Absent with no
+   * refs — a reference chip that cannot honestly name its visit says nothing.
+   */
+  detailItems?: TimelineEvent["detailItems"];
+  linkedRefs?: TimelineEvent["linkedRefs"];
+  linkedScope?: TimelineEvent["linkedRefsScope"];
 }
 
 /**

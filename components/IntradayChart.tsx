@@ -52,16 +52,20 @@ import {
   rowLabel,
   sleepEdgeLabels,
   wantsFineDetail,
-  workoutBlockLayout,
-  workoutLabels,
+  blockLabels,
+  blockLayout,
   zone2Position,
   type IntradayGeometry,
   type IntradayVariant,
   type IntradayView,
 } from "@/lib/intraday-layout";
 
-// Tick color by the event's tone — the SAME tone the feed card renders, so a
-// flagged temperature reads red in both places.
+// Tick color by the event's tone (`TimelineEvent["tone"]`, carried onto the tick by
+// lib/intraday.ts from the SAME resolved event set the day's list is built from).
+// This is now that field's ONLY renderer: the feed card this comment used to point at
+// was `/timeline`'s `EventCard`, deleted with the route in #3958 phase 2c. The record's
+// rows do not colour by tone — a one-line row's colour budget is spent on the title
+// link — so a flagged temperature reads red on the axis and plain in the list.
 const TONE_COLOR: Record<NonNullable<IntradayTick["tone"]>, string> = {
   default: chartNeutral,
   good: chartSeries.brand,
@@ -121,8 +125,8 @@ function intradaySummary(model: IntradayModel): string {
     model.sleep.length > 0
       ? `${model.sleep.length} sleep block${model.sleep.length === 1 ? "" : "s"}`
       : null,
-    model.workouts.length > 0
-      ? `${model.workouts.length} workout${model.workouts.length === 1 ? "" : "s"}`
+    model.blocks.length > 0
+      ? `${model.blocks.length} timed session${model.blocks.length === 1 ? "" : "s"}`
       : null,
     model.ticks.length > 0
       ? `${model.ticks.length} timed entr${model.ticks.length === 1 ? "y" : "ies"}`
@@ -178,8 +182,8 @@ export default function IntradayChart({
   const y = (bpm: number) => projectBpm(geo, bpm);
   const ticks = axisTicks(geo);
   const bedWake = sleepEdgeLabels(geo, model.sleep, clock);
-  const workoutName = new Map(
-    workoutLabels(geo, model.workouts).map((label) => [label.key, label])
+  const blockName = new Map(
+    blockLabels(geo, model.blocks).map((label) => [label.key, label])
   );
   const zoomed = view != null;
 
@@ -496,11 +500,13 @@ export default function IntradayChart({
           />
         )}
 
-        {/* ── Layer 3: workout blocks, NAMED where the width allows ── */}
-        {model.workouts.map((w) => {
-          const layout = workoutBlockLayout(geo, w);
+        {/* ── Layer 3: session blocks, NAMED where the width allows. An activity's
+             window, or a practice session's (#3142) — one shape, because what earns a
+             block is a BOUNDED window and not which ledger the row came from. ── */}
+        {model.blocks.map((w) => {
+          const layout = blockLayout(geo, w);
           if (!layout) return null;
-          const name = workoutName.get(w.key);
+          const name = blockName.get(w.key);
           const block = (
             <>
               <title>{`${w.title} · ${clock(w.startMinute)}–${clock(w.endMinute)}`}</title>
@@ -543,7 +549,7 @@ export default function IntradayChart({
               )}
               {name && (
                 <text
-                  data-testid="intraday-workout-name"
+                  data-testid="intraday-block-name"
                   data-placement={name.mode}
                   x={name.x}
                   y={geo.workTop + geo.workH / 2 + geo.labelSize * 0.35}
@@ -557,7 +563,7 @@ export default function IntradayChart({
             </>
           );
           return (
-            <g key={w.key} data-testid="intraday-workout" data-title={w.title}>
+            <g key={w.key} data-testid="intraday-block" data-title={w.title}>
               {w.href ? (
                 // Progressive enhancement: the anchor IS the pre-hydration and
                 // no-JS behavior (tap scrolls to the feed entry). Once hydrated,

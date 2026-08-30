@@ -920,7 +920,8 @@ describe("the archive's TWO timestamp conventions", () => {
         external_id: "fitbit-takeout:5",
         practice: "Meditation",
         date: "2026-06-13",
-        time: "13:05",
+        // `log.startTime`, and the column now says so (#3142).
+        start_time: "13:05",
         duration_min: 30,
       },
     ]);

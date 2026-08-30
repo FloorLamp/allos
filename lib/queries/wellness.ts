@@ -150,12 +150,12 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(values)})
           ${windowSql}
-        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+        ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC
         LIMIT ?`
     )
     .all(...args) as PracticeLog[];
@@ -206,11 +206,11 @@ export function getPracticeLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND ${where.join(" AND ")}
-        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+        ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC
         LIMIT ? OFFSET ?`
     )
     .all(
@@ -229,7 +229,7 @@ export function getPracticeLedgerOptions(
     .prepare(
       `SELECT value, kind, recency FROM (
          SELECT practice AS value, 'session' AS kind,
-                MAX(date || 'T' || COALESCE(time, '')) AS recency
+                MAX(date || 'T' || COALESCE(start_time, '')) AS recency
            FROM practice_logs
           WHERE profile_id = ?
           GROUP BY practice
@@ -322,7 +322,7 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, time, duration_min, notes,
+        `SELECT id, practice, date, start_time, end_time, duration_min, notes,
                 source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
@@ -368,11 +368,11 @@ export function getWellnessPractices(
   );
   const logs = db
     .prepare(
-      `SELECT id, practice, date, time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ?
-        ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC`
+        ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC`
     )
     .all(profileId) as PracticeLog[];
 
@@ -427,7 +427,7 @@ export function getWellnessPractices(
         usuallyToday:
           predictedOnDay(
             inferPracticeRhythm(
-              item.sessions.map((s) => ({ date: s.date, time: s.time })),
+              item.sessions.map((s) => ({ date: s.date, time: s.start_time })),
               asOf
             ),
             asOf
@@ -519,11 +519,11 @@ export function getTrackedPractices(
   // surface that asks.
   const latestRows = db
     .prepare(
-      `SELECT practice, date, time, id, duration_min FROM (
-         SELECT practice, date, time, id, duration_min,
+      `SELECT practice, date, start_time, id, duration_min FROM (
+         SELECT practice, date, start_time, id, duration_min,
                 ROW_NUMBER() OVER (
                   PARTITION BY practice
-                  ORDER BY date DESC, COALESCE(time, '99:99') DESC, id DESC
+                  ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC
                 ) AS rn
            FROM practice_logs
           WHERE profile_id = ?
@@ -532,15 +532,15 @@ export function getTrackedPractices(
     .all(profileId) as {
     practice: string;
     date: string;
-    time: string | null;
+    start_time: string | null;
     id: number;
     duration_min: number | null;
   }[];
   const latestByIdentity = new Map<string, (typeof latestRows)[number]>();
-  // The recency key, in getPracticeSessions' own order: date, then time with its
-  // null-sorts-last sentinel, then the row id as the tiebreak.
+  // The recency key, in getPracticeSessions' own order: date, then the session start
+  // with its null-sorts-last sentinel, then the row id as the tiebreak.
   const recency = (r: (typeof latestRows)[number]) =>
-    `${r.date} ${r.time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
+    `${r.date} ${r.start_time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
   for (const row of latestRows) {
     const identity = practiceIdentity(row.practice);
     if (!identity) continue;
@@ -744,7 +744,7 @@ function inferPracticeScheduleUncached(
       ? []
       : (db
           .prepare(
-            `SELECT date, time FROM practice_logs
+            `SELECT date, start_time AS time FROM practice_logs
               WHERE profile_id = ? AND practice IN (${inClause(values)})
               ORDER BY date ASC, id ASC`
           )
@@ -1044,7 +1044,7 @@ export interface PracticeTapRow extends TapEvent {
 //
 // 1. THE STORED VALUE IS NOT AN INSTANT. Food stores `occurred_at` and dose stores
 //    `given_at`, both full instants; a practice stores `date` (a profile-local day)
-//    plus `time` (a profile-local "HH:MM"). The substrate works on ISO instants, so
+//    plus `start_time` (a profile-local "HH:MM"). The substrate works on ISO instants, so
 //    the two are COMPOSED in the profile's timezone — server-side (#450), never from
 //    a device clock — and the composition is `eventInstant`, the declared reader for
 //    exactly this shape (lib/row-instants.ts), not a second hand-rolled join. The tap
@@ -1052,18 +1052,25 @@ export interface PracticeTapRow extends TapEvent {
 //    the BARE convention and the substrate parses ISO, so normalizing it by hand here
 //    would be the second spelling.
 //
-// 2. A NULL `time` IS A STATEMENT, AND IT IS LEFT ALONE. `lib/practice-log.ts`'s
-//    contract makes `time` three-valued: an "HH:MM" says the session happened then,
+// 2. A NULL `start_time` IS A STATEMENT, AND IT IS LEFT ALONE. `lib/practice-log.ts`'s
+//    contract makes `start_time` three-valued: an "HH:MM" says the session started then,
 //    `null` says it has NO instant AND THAT IS A DECISION (a backdated correction
 //    outside the profile's today deliberately stays null), and omitted means a tap
 //    with no opinion, which the write core stamps. A chip may only re-time a row that
-//    already carries a time — inventing one for a null row is precisely the
+//    already carries a start — inventing one for a null row is precisely the
 //    fabrication the contract exists to prevent. `eventInstant` already refuses a null
-//    `time` (`not-recorded`), so the mapper below would drop such a row anyway; the SQL
+//    start (`not-recorded`), so the mapper below would drop such a row anyway; the SQL
 //    filter is not redundant with it but a BOUND — without it, a day of untimed rows
 //    could fill the `LIMIT` and push the timed taps a chip is actually about out of the
 //    window. Between them, a null-time row never reaches a burst and no chip can touch
 //    it. `lib/__db_tests__/practice-time-correction.test.ts` pins that from the outside.
+//
+// 2b. A SESSION CARRYING A STATED WINDOW IS NOT A TAP EITHER (#3142, owner decision).
+//    `end_time IS NOT NULL` means somebody used the expanded form and said when the
+//    session ended; the chips correct a TAP's fuzzy stamp, and the form owns
+//    corrections to a stated window. The same predicate is repeated in
+//    `restampPracticeLogsCore`'s re-read, so the burst the renderer bounds and the
+//    burst the write re-derives are the same set.
 //
 // 3. AN IMPORTED SESSION IS NOT A TAP. `external_id` is how an import reaches this
 //    table (it has no `document_id` — see the #2364 note in the reading model), so an
@@ -1083,11 +1090,12 @@ export function getRecentPracticeTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, practice, date, time, created_at, notify_message_id
+      `SELECT id, practice, date, start_time, created_at, notify_message_id
          FROM practice_logs
         WHERE profile_id = ?
           AND created_at >= ?
-          AND time IS NOT NULL
+          AND start_time IS NOT NULL
+          AND end_time IS NULL
           AND external_id IS NULL
         ORDER BY created_at, id
         LIMIT 100`
@@ -1096,7 +1104,7 @@ export function getRecentPracticeTaps(
     id: number;
     practice: string;
     date: string;
-    time: string;
+    start_time: string;
     created_at: string;
     notify_message_id: number | null;
   }[];

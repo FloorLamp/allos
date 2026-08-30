@@ -1332,11 +1332,12 @@ export function applyIntent(
         OFFLINE_REPLAY,
         {
           durationMin: p.durationMin ?? null,
-          // No stated time: the capture happened offline on a device clock, and the write
-          // core's own tap stamp is the profile's clock (#450). A replay landing the next
-          // morning must not stamp the session with the reconnect minute, so this path
-          // states nothing rather than stating something false.
-          time: null,
+          // No stated start: the capture happened offline on a device clock, and the
+          // write core's own tap stamp is the profile's clock (#450). A replay landing
+          // the next morning must not stamp the session with the reconnect minute, so
+          // this path states nothing rather than stating something false. It states no
+          // end either — the queue carries a practice DAY, never a window (#3142).
+          startTime: null,
         }
       );
       if (applied.kind === "invalid-date") {

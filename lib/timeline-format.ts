@@ -82,12 +82,16 @@ export interface TimelineEvent {
   // the encounter detail page's own vocabulary (#1350). Absent when there are no refs.
   linkedRefsScope?: "visit" | "document";
   // The event's raw LOCAL clock window (issue #1068), carried on the event so the
-  // Timeline day view's intraday panel can draw it as a span from the SAME event
-  // set the feed lists — one gather, two formatters, never a second per-layer
-  // query. Set only where the source row genuinely has a window (activities);
-  // absent everywhere else, which is exactly what data-gates the block layer. The
-  // span itself is resolved by the ONE canonical `activityWindow()` computation
-  // (lib/training-zones), the same one the training-zone aggregation uses.
+  // day view's intraday panel can draw it from the SAME event set the feed lists —
+  // one gather, two formatters, never a second per-layer query. Set only where the
+  // source row genuinely has a window; absent everywhere else, which is exactly what
+  // data-gates the block layer. The span is resolved by the ONE canonical
+  // `activityWindow()` computation (lib/training-zones), the same one the
+  // training-zone aggregation uses.
+  //
+  // Carried by an ACTIVITY and by one practice SESSION (#3142) — a practice reaches
+  // the record as one row per session, so each one is its own event with its own
+  // window and its own anchor, and there is nothing plural to model here.
   clockWindow?: {
     date: string;
     start_time: string | null;

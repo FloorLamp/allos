@@ -702,7 +702,6 @@ export default async function HistoryPage(props: {
           href: expandHref(line.key),
           open: expanded.has(line.key),
         }))}
-        actingProfileId={actingProfileId}
         writableProfileIds={writableProfileIds}
         doseItems={doseItems}
         maxDates={maxDates}

@@ -261,16 +261,20 @@ export default function HistoryAddDoor({
               </select>
             </label>
             {/* THE FIELD IS ALWAYS POSTED, AND ITS VALUE IS NOW THE READER'S.
-                `logPractice` reads PRESENCE, not value (#2204): an absent `time`
-                means "you have the clock" and would stamp the filing instant onto a
-                day that is not today, so this stays present unconditionally. What
-                changed is that its value is the wall clock WhenControl collected
-                instead of a hardcoded empty string — and an unstated time still
-                resolves to "", which is the same honest "this session has no
-                minute" the door has always been able to say. */}
+                `logPractice` reads PRESENCE, not value (#2204): an absent
+                `start_time` means "you have the clock" and would stamp the filing
+                instant onto a day that is not today, so this stays present
+                unconditionally. Its value is the wall clock WhenControl collected —
+                and an unstated time still resolves to "", which is the same honest
+                "this session has no minute" the door has always been able to say.
+                The field is `start_time` since #3142 renamed the column; posting the
+                old name would have left the presence gate unsatisfied and stamped
+                the tap instant over what the person actually said. NO `end_time`:
+                this door states a start, and a session's window is the expanded
+                form's to state. */}
             <input
               type="hidden"
-              name="time"
+              name="start_time"
               value={statedHhmm(when.statedAt, tz)}
             />
             <label className="text-xs text-slate-500 dark:text-slate-400">

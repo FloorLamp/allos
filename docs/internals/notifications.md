@@ -1453,7 +1453,7 @@ one-tap surface, never about the field.
 **The one-tap paths feed that inference now (#2204).** `logPracticeSession`
 treats an OMITTED `time` as "the caller is a tap, stamp the profile-local
 instant" — distinct from an explicit `null`, which stays the expanded form's
-"this session has no instant". Until #2202 nothing read `practice_logs.time`, so
+"this session has no instant". Until #2202 nothing read the session start column, so
 the quick sheet and this Done ✅ button both wrote null; once `modalHour` became
 its reader that inverted into a defect where the fastest logging paths starved
 the inference that reschedules their own nudge. The stamp is bounded to the

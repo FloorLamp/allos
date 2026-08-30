@@ -191,7 +191,7 @@ describe("integration_sync_rows provenance (#1333)", () => {
       external_id: "fitbit-takeout:practice-1",
       practice: "Meditation",
       date: "2026-03-03",
-      time: "07:30",
+      start_time: "07:30",
       duration_min: 20,
     };
     writeTx(() =>

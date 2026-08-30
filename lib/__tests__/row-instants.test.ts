@@ -167,14 +167,15 @@ describe("pattern 2 — record-only", () => {
 });
 
 describe("pattern 3 — a single optional event time", () => {
-  // practice_logs.time is a profile-local HH:MM, and the quick path writes none.
+  // practice_logs.start_time is a profile-local HH:MM, and a backdated correction
+  // states none (#3142 renamed the column; the three-valued contract is unchanged).
   it("resolves a wall clock against the row's own day and the profile zone", () => {
-    const row = { date: "2026-03-10", time: "07:30" };
+    const row = { date: "2026-03-10", start_time: "07:30" };
     // 2026-03-10 is inside US DST (it starts March 8), so 07:30 in New York is 11:30Z.
     expect(eventInstant("practice_logs", row, NY)).toEqual({
       known: true,
       at: "2026-03-10T11:30:00Z",
-      column: "time",
+      column: "start_time",
       // Flagged, because this instant moves if the profile's timezone changes.
       derived: true,
     });
@@ -182,24 +183,24 @@ describe("pattern 3 — a single optional event time", () => {
 
   it("refuses rather than guessing UTC when no zone is supplied", () => {
     expect(
-      eventInstant("practice_logs", { date: "2026-03-10", time: "07:30" })
+      eventInstant("practice_logs", { date: "2026-03-10", start_time: "07:30" })
     ).toEqual({
       known: false,
       why: "needs-zone",
-      column: "time",
+      column: "start_time",
     });
   });
 
-  it("practice's null time is an absence, not the created_at stamp", () => {
+  it("practice's null start is an absence, not the created_at stamp", () => {
     const quick = {
       date: "2026-03-10",
-      time: null,
+      start_time: null,
       created_at: "2026-03-10 22:15:00",
     };
     expect(eventInstant("practice_logs", quick, NY)).toEqual({
       known: false,
       why: "not-recorded",
-      column: "time",
+      column: "start_time",
     });
     expect(bestKnownInstant("practice_logs", quick, NY)).toMatchObject({
       known: true,
@@ -212,7 +213,7 @@ describe("pattern 3 — a single optional event time", () => {
     expect(
       eventInstant(
         "practice_logs",
-        { date: "2026-03-10", time: "half seven" },
+        { date: "2026-03-10", start_time: "half seven" },
         NY
       )
     ).toMatchObject({ known: false, why: "unreadable" });

@@ -42,13 +42,18 @@ function optionalNumber(formData: FormData, key: string): number | null {
 // Shared one-tap + expanded-detail action. A missing date means profile-local today;
 // optional duration/notes are written only when the form supplies them.
 //
-// TIME IS PRESENCE-GATED, not value-gated (#2204). The expanded form always renders a
-// time input, so it always POSTS the field — empty when the user left it empty, which
-// is a statement ("this session has no instant") the write core must hear as `null`.
-// A one-tap path posts no `time` field at all, which is a different statement ("I have
-// no opinion, you have the clock") and reaches the core as `undefined`, where it stamps
-// the profile-local tap instant. Collapsing the two with `|| null` is what made every
-// quick tap write a null time; the FormData distinction was already there, unused.
+// THE START IS PRESENCE-GATED, not value-gated (#2204). The expanded form always
+// renders a Start input, so it always POSTS the field — empty when the user left it
+// empty, which is a statement ("this session has no instant") the write core must hear
+// as `null`. A one-tap path posts no `start_time` field at all, which is a different
+// statement ("I have no opinion, you have the clock") and reaches the core as
+// `undefined`, where it stamps the profile-local tap instant. Collapsing the two with
+// `|| null` is what made every quick tap write a null time; the FormData distinction
+// was already there, unused.
+//
+// `end_time` IS NOT PRESENCE-GATED, because it is not three-valued (#3142): a tap
+// never states one, so "absent" and "empty" mean the same thing here — no stated end —
+// and the window falls back to `duration_min` at read time.
 export async function logPractice(
   formData: FormData
 ): Promise<PracticeLogOutcome> {
@@ -66,9 +71,10 @@ export async function logPractice(
     // own surface and the parse refuses anything outside the web subset.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     {
-      time: formData.has("time")
-        ? String(formData.get("time") ?? "").trim() || null
+      startTime: formData.has("start_time")
+        ? String(formData.get("start_time") ?? "").trim() || null
         : undefined,
+      endTime: String(formData.get("end_time") ?? "").trim() || null,
       durationMin: optionalNumber(formData, "duration_min"),
       notes: String(formData.get("notes") ?? "").trim() || null,
     }
@@ -90,7 +96,8 @@ export async function editPracticeSession(
   if (!id) return { kind: "not-found" };
   const outcome = updatePracticeSession(profileId, id, {
     date: String(formData.get("date") ?? "").trim(),
-    time: String(formData.get("time") ?? "").trim() || null,
+    startTime: String(formData.get("start_time") ?? "").trim() || null,
+    endTime: String(formData.get("end_time") ?? "").trim() || null,
     durationMin: optionalNumber(formData, "duration_min"),
     notes: String(formData.get("notes") ?? "").trim() || null,
   });

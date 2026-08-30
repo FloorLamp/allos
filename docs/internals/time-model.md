@@ -2,8 +2,9 @@
 
 Status: partial (phases 0–3 shipped — the ingest boundary, storage, writer
 chokepoint, persisted column-name vocabulary, declared column index, and row-level
-readers. The remaining work is serialization cleanup, not naming. `practice_logs.time`
-and `activities.start_time` / `end_time` stay profile-local clock values by design;
+readers. The remaining work is serialization cleanup, not naming.
+`practice_logs.start_time` / `end_time` and `activities.start_time` / `end_time` stay
+profile-local clock values by design;
 `food_log_events.time_source` stays because it distinguishes an unstated time from a
 stated time the write path refused.)
 

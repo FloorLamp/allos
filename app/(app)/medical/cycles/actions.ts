@@ -2,6 +2,7 @@
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { isFlowLevel, type FlowLevel } from "@/lib/cycle";
@@ -23,11 +24,19 @@ import {
   reopenPeriodCore,
 } from "@/lib/cycle-write";
 
-// Server Actions for the menstrual-cycle log (issue #714). Standard per-profile: every
-// action operates on the session's ACTIVE profile behind requireWriteAccess() (the gate is
-// inlined so the write-access scanner sees a literal call in each body), then delegates to
-// the auth-blind write cores (#319) and revalidates. Cycle data rarely lives in documents,
-// so entry is manual — no AI extraction path.
+// Server Actions for the menstrual-cycle log (issue #714). Per-profile: each action
+// gates its subject in its own body (the gate is inlined so the write-access scanner
+// sees a literal call), then delegates to the auth-blind write cores (#319) and
+// revalidates. Cycle data rarely lives in documents, so entry is manual — no AI
+// extraction path.
+//
+// TWO SUBJECTS, AND WHICH ONE AN ACTION TAKES IS DECIDED BY WHERE IT IS POSTED FROM.
+// The quick taps on this page are declarations by the person acting, so they gate the
+// session's ACTIVE profile with requireWriteAccess(). `saveCycleAction` and
+// `deleteCycleAction` are also the record's corrections, and a correction acts on the
+// row you found (#3958's multiprofile clause), so they take the ROW's `profile_id`
+// through the shared gateItemProfile() and fall back to the acting profile when none
+// is posted — which is exactly what this page's own form posts, so nothing here moves.
 
 export type CycleActionResult = { ok: true } | { ok: false; error: string };
 export type CycleCreateResult =
@@ -134,7 +143,15 @@ export async function reopenPeriodAction(
 export async function saveCycleAction(
   formData: FormData
 ): Promise<CycleCreateResult> {
-  const { profile } = await requireWriteAccess();
+  // THE ROW'S PROFILE, NOT THE ACTING ONE (#3958's multiprofile clause / #2106).
+  // `/history?view=everyone` merges every in-view member's rows and its ⋯ posts the
+  // row's own `profile_id`; `gateItemProfile` gates it through
+  // requireProfileWriteAccess — reachable AND write, redirect otherwise — and falls
+  // back to the acting-profile gate when no subject is posted, which is every form on
+  // the cycles page itself. Until this took a subject the record drew no ⋯ on another
+  // member's cycle row at all, because the write would have landed on the acting
+  // profile's own log.
+  const profileId = await gateItemProfile(formData);
   const id = parseId(formData);
   const start = String(formData.get("period_start") ?? "");
   const endRaw = String(formData.get("period_end") ?? "").trim();
@@ -154,19 +171,19 @@ export async function saveCycleAction(
   // unchanged is never a conflict with itself, and moving one INTO an overlap is refused.
   const refusal = checkPeriodWrite(
     { id, start, end },
-    listCyclePeriods(profile.id),
-    today(profile.id)
+    listCyclePeriods(profileId),
+    today(profileId)
   );
   if (refusal) return { ok: false, error: cycleRefusalMessage(refusal) };
 
   if (id != null) {
-    const existing = getCycleRow(profile.id, id);
+    const existing = getCycleRow(profileId, id);
     if (!existing) return { ok: false, error: "Couldn't find that period." };
-    updateCycleRow(profile.id, id, start, end, flow, note);
+    updateCycleRow(profileId, id, start, end, flow, note);
     revalidateCycle();
     return { ok: true, id };
   }
-  const newId = createCycleRow(profile.id, start, end, flow, note);
+  const newId = createCycleRow(profileId, start, end, flow, note);
   revalidateCycle();
   return { ok: true, id: newId };
 }
@@ -178,10 +195,11 @@ export async function saveCycleAction(
 export async function deleteCycleAction(
   formData: FormData
 ): Promise<{ undoId: number | null; error?: string }> {
-  const { profile } = await requireWriteAccess();
+  // The row's own profile, for the reason saveCycleAction states above.
+  const profileId = await gateItemProfile(formData);
   const id = parseId(formData);
   if (id == null) return { undoId: null, error: "Couldn't find that period." };
-  const outcome = deleteCycleRow(profile.id, id);
+  const outcome = deleteCycleRow(profileId, id);
   if (outcome.kind === "not-found")
     return { undoId: null, error: "Couldn't find that period." };
   revalidateCycle();

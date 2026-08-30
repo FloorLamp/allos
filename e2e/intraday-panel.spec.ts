@@ -64,8 +64,9 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // the previous day) with its deep-stage sub-band.
       await expect(chart.getByTestId("intraday-sleep-block")).toHaveCount(1);
       await expect(chart.getByTestId("intraday-sleep-stage")).toHaveCount(1);
-      // Layer 3 — the windowed ride.
-      const workout = chart.getByTestId("intraday-workout");
+      // Layer 3 — the windowed ride. The block layer is not workout-only since
+      // #3142; this profile logs no practice, so the ride is still the only block.
+      const workout = chart.getByTestId("intraday-block");
       await expect(workout).toHaveCount(1);
       await expect(workout).toHaveAttribute("data-title", INTRADAY_ACTIVITY);
       // Layer 5 — today only.
@@ -125,7 +126,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // The 08:00–09:00 ride is named inside its own block (elided to the block's
       // width), so a 45-minute run and a 45-minute lift are no longer identical
       // rectangles.
-      const name = chart.getByTestId("intraday-workout-name");
+      const name = chart.getByTestId("intraday-block-name");
       await expect(name).toHaveCount(1);
       const drawn = (await name.textContent())!.replace("…", "");
       expect(drawn.length).toBeGreaterThan(0);
@@ -167,7 +168,7 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
       // Tapping the block selects its window. The anchor is still the
       // pre-hydration fallback, so this asserts the ENHANCED behavior.
-      await chart.getByTestId("intraday-workout").click();
+      await chart.getByTestId("intraday-block").click();
       await expect(chart).toHaveAttribute("data-zoomed", "true");
       const reset = chart.getByTestId("intraday-zoom-reset");
       await expect(reset).toBeVisible();
