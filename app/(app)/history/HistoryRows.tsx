@@ -77,6 +77,7 @@ import {
 import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
+import { MedicalValue } from "@/components/ui";
 import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
 import { LoggedViaField } from "@/components/LoggedViaSurface";
 import {
@@ -89,12 +90,13 @@ import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
 // THE ONE-LINE RULE IS A DELIBERATE EXCEPTION to the #3671 compact-card default, and
-// the owner argued it from what this surface is FOR: scanning many rows. So there is
-// no tap-to-disclose here — what truncates first is the detail segment, and a row's
-// long content lives on the record's own page behind the title link. That is also why
-// the rows are `<li>`s on `LoggedEventRow` (#3891's identity half) rather than a
-// `ResponsiveTable`: a table's card mode exists to STACK a row onto several lines,
-// which is the thing this surface may not do.
+// the owner argued it from what this surface is FOR: scanning many rows. What
+// truncates first is the detail segment, and that cell is also the row's DISCLOSURE
+// where there is more than a line's worth to say (#662/#2920, phase 2d — see the
+// detail cell below). The rows are `<li>`s on `LoggedEventRow` (#3891's identity half)
+// rather than a `ResponsiveTable`: a table's card mode exists to STACK a row onto
+// several lines, which is the thing this surface may not do — an OPEN row's panel is a
+// sibling `<li>`, so the row itself is one line whether or not it is open.
 //
 // WHAT THE ⋯ DOES, AND WHAT IT MAY NOT DO. Every branch below posts to the Server
 // Action that domain already had — `deleteAdministration`, `updateFoodLogEvent`,
@@ -242,6 +244,13 @@ export default function HistoryRows({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  // THE OPEN ROW, in client state rather than in the URL — and the split is a rule,
+  // not a preference. The folds and the rollups carry their open state in the URL
+  // because expanding them changes what the SERVER must render; this panel's content
+  // already arrived on the row, so a round trip would buy a longer URL and nothing
+  // else. Same tier as `editingId` and `menuOpenId` beside it: one row at a time, so
+  // opening a second closes the first and the list never grows two panels deep.
+  const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   const itemById = new Map(doseItems.map((item) => [item.id, item]));
 
   // WRITE ACCESS ON THE ROW'S OWN PROFILE (#2106), not on the acting one — for EVERY
@@ -254,6 +263,14 @@ export default function HistoryRows({
   const writable = new Set(writableProfileIds);
   const canEdit = (row: HistoryRow) =>
     row.edit != null && writable.has(row.profileId);
+
+  // WHETHER THIS ROW HAS MORE THAN ITS LINE (#662/#2920, phase 2d). Asked of the ROW's
+  // own content and never of its kind: the feed's gathers set `detailItems` on the
+  // labs, activities, doses and symptom-days that HAVE a breakdown and leave it off
+  // the ones that do not, so a kind-keyed predicate would draw an empty panel's
+  // control on the rows that carry nothing.
+  const hasPanel = (row: HistoryRow) =>
+    (row.detailItems?.length ?? 0) > 0 || (row.linkedRefs?.length ?? 0) > 0;
 
   // AND SO IS "TODAY" — the row's subject decides how far forward its date field
   // reaches, for the same reason its zone decides what a wall clock means.
@@ -758,8 +775,8 @@ export default function HistoryRows({
       );
     }
     return (
+      <Fragment key={row.id}>
       <li
-        key={row.id}
         // THE ROW'S ANCHOR (#1068). The day view's intraday chart is a MAP of the day
         // and this list is its detail, so a tick has to have something to scroll to.
         // Built by the same `timelineEntryAnchorId` the model's ticks are built with,
@@ -833,7 +850,41 @@ export default function HistoryRows({
                   {subject}
                 </span>
               ) : null}
-              {row.detail ? (
+              {/* THE DISCLOSURE IS THE DETAIL CELL, and that is what makes it fit
+                  this row's grammar rather than porting the feed's card back. #3958
+                  rules the row one line at every viewport and the trailing affordance
+                  EXCLUSIVE — ⋯ or ›, never both — so a third trailing control was
+                  never available, and the leading chevron is already spoken for by
+                  the rollup line. What is left is the cell the issue itself points
+                  at: "what truncates first; long detail lives behind the row's
+                  disclosure". The control is therefore exactly where the truncation
+                  happens, it spends no new width (the chevron replaces nothing and
+                  sits outside the truncating span, so the line still ends in an
+                  ellipsis when it must), and the title link stays independent —
+                  a ⋯ row and a › row disclose the same way. */}
+              {hasPanel(row) ? (
+                <button
+                  type="button"
+                  data-testid="history-row-disclosure"
+                  aria-expanded={openPanelId === row.id}
+                  aria-controls={`${timelineEntryAnchorId(row.id)}-panel`}
+                  onClick={() =>
+                    setOpenPanelId(openPanelId === row.id ? null : row.id)
+                  }
+                  className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  <span className="min-w-0 truncate" data-testid="history-row-detail">
+                    {row.detail}
+                  </span>
+                  <IconChevronDown
+                    aria-hidden
+                    className={`h-3 w-3 shrink-0 transition ${
+                      openPanelId === row.id ? "rotate-180" : ""
+                    }`}
+                    stroke={2}
+                  />
+                </button>
+              ) : row.detail ? (
                 <span
                   className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
                   data-testid="history-row-detail"
@@ -891,6 +942,81 @@ export default function HistoryRows({
           ) : null}
         </div>
       </li>
+      {/* THE PANEL IS THE ROW'S SIBLING, NOT ITS CHILD (#4045 §4 — revealed content
+          belongs directly beneath the line that revealed it). A row `<li>` is
+          `flex items-center` on the shared primitive and every geometry assertion on
+          this page measures it; growing it into a column when a reader opens one
+          would move the thing those specs measure. The rollup's revealed rows are
+          siblings for the same reason. */}
+      {openPanelId === row.id ? (
+        <li
+          id={`${timelineEntryAnchorId(row.id)}-panel`}
+          data-testid="history-row-panel"
+          data-history-row-id={row.id}
+          className="band card-gutter-action border-t border-(--divider) py-2"
+        >
+          <div
+            className={`min-w-0 text-sm text-slate-600 dark:text-slate-300 ${rowClassName}`}
+          >
+            {row.detailItems && row.detailItems.length > 0 ? (
+              <dl className="space-y-1">
+                {row.detailItems.map((item, index) => (
+                  <div
+                    key={`${row.id}:detail:${index}:${item.label}`}
+                    className="grid gap-1 sm:grid-cols-[10rem_1fr]"
+                  >
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      {item.label}
+                    </dt>
+                    <dd>
+                      {item.unit || item.flag ? (
+                        <MedicalValue
+                          value={item.value}
+                          unit={item.unit ?? null}
+                          flag={item.flag ?? null}
+                        />
+                      ) : (
+                        item.value
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+            {/* LINKED CONTEXT (#662), AND ITS HEADING CLAIMS ONLY WHAT THE GATHER HAD
+                (#2920): "From this visit" for rows carrying a real encounter link to
+                this visit, the encounter detail page's own vocabulary; the document
+                wording only where that import document stands for a SINGLE visit.
+                A multi-visit portal export sets neither, because a reference chip
+                that cannot honestly name its visit says nothing. Informational
+                either way — never a causal claim. */}
+            {row.linkedRefs && row.linkedRefs.length > 0 ? (
+              <div
+                data-testid="history-linked-refs"
+                className={row.detailItems?.length ? "mt-3" : ""}
+              >
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {row.linkedScope === "visit"
+                    ? "From this visit"
+                    : "From this visit’s document"}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {row.linkedRefs.map((ref, index) => (
+                    <Link
+                      key={`${row.id}:ref:${index}:${ref.label}`}
+                      href={ref.href}
+                      className="rounded-sm bg-(--ghost) px-1.5 py-0.5 text-xs text-link"
+                    >
+                      {ref.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </li>
+      ) : null}
+      </Fragment>
     );
   };
 

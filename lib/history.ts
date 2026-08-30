@@ -966,6 +966,21 @@ export function gatherHistoryLog(
         // corrected on the surface that owns them. #3958 rules the affordance exclusive
         // and provenance decides which — this is the › half.
         edit: null,
+        // THE DISCLOSURE'S CONTENT, carried across unchanged (#662/#2920, phase 2d).
+        // These are the three fields the feed's gathers compute and `/timeline`'s card
+        // was the only thing that ever rendered; the record's row is one line, so they
+        // ride to its disclosure panel instead. Spread conditionally so a row without
+        // them carries no keys at all — `mergeMemberTimelines` compares rows and an
+        // explicit `undefined` is not the same absence.
+        ...(event.detailItems && event.detailItems.length > 0
+          ? { detailItems: event.detailItems }
+          : {}),
+        ...(event.linkedRefs && event.linkedRefs.length > 0
+          ? {
+              linkedRefs: event.linkedRefs,
+              linkedScope: event.linkedRefsScope,
+            }
+          : {}),
       });
     }
   }
