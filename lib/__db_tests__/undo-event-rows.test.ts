@@ -85,7 +85,7 @@ describe("one practice session: delete → undo (#2038)", () => {
     // asserted on more than its existence.
     updatePracticeSession(profileId, id, {
       date,
-      time: "07:30",
+      startTime: "07:30",
       durationMin: 12,
       notes: "box breathing before work",
     });
@@ -106,7 +106,7 @@ describe("one practice session: delete → undo (#2038)", () => {
     expect(back[0]).toMatchObject({
       practice: "Breathwork",
       date,
-      time: "07:30",
+      startTime: "07:30",
       duration_min: 12,
       notes: "box breathing before work",
     });

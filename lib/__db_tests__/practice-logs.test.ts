@@ -484,9 +484,9 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     const t = today(pid);
     // The expanded form ALWAYS posts its time field; empty means "no instant", and
     // silently stamping one there would be the app inventing data the user declined.
-    logPracticeSession(pid, "Sauna", t, "page", { time: null });
+    logPracticeSession(pid, "Sauna", t, "page", { startTime: null });
     // ...and a stated time still wins outright.
-    logPracticeSession(pid, "Sauna", t, "page", { time: "06:30" });
+    logPracticeSession(pid, "Sauna", t, "page", { startTime: "06:30" });
     expect(rows(pid).map((r) => r.time)).toEqual([null, "06:30"]);
   });
 
@@ -505,7 +505,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
       // The quick path states nothing; the modal states the same instant by hand.
       logPracticeSession(tapped, "Breathwork", shiftDateStr(t, back), "page");
       logPracticeSession(typed, "Breathwork", shiftDateStr(t, back), "page", {
-        time: "07:05",
+        startTime: "07:05",
       });
     }
     const hourOf = (pid: number) => modalHour(rows(pid).map((r) => r.time));

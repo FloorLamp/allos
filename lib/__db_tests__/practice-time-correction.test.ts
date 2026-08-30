@@ -260,7 +260,7 @@ describe("a null time is a decision, not a gap", () => {
   it("never appears in a burst and is never given a time by a chip", () => {
     const pid = makeProfile("nulltime");
     // The expanded form's explicit "no instant" statement.
-    logPracticeSession(pid, "Meditation", today(pid), "page", { time: null });
+    logPracticeSession(pid, "Meditation", today(pid), "page", { startTime: null });
     const untimed = lastLogId(pid);
     expect(storedTime(untimed)).toBeNull();
 
@@ -277,7 +277,7 @@ describe("a null time is a decision, not a gap", () => {
   it("a timed sibling's chip does not sweep an untimed row up with it", () => {
     const pid = makeProfile("nulltime-sibling");
     const t = today(pid);
-    logPracticeSession(pid, "Meditation", t, "page", { time: null });
+    logPracticeSession(pid, "Meditation", t, "page", { startTime: null });
     const untimed = lastLogId(pid);
     logPracticeSession(pid, "Sauna", t, "page");
     const timed = lastLogId(pid);

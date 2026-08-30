@@ -63,12 +63,14 @@ function activityEvent(
     sortTime: "08:00",
     iconType: "cardio",
     href: "/training?tab=log#activity-1",
-    clockWindow: {
-      date: DAY,
-      start_time: "08:00",
-      end_time: null,
-      duration_min: 60,
-    },
+    clockWindows: [
+      {
+        date: DAY,
+        start_time: "08:00",
+        end_time: null,
+        duration_min: 60,
+      },
+    ],
     ...over,
   };
 }
@@ -227,7 +229,7 @@ describe("buildIntradayModel — layer gating", () => {
     expect(model).not.toBeNull();
     expect(model!.hr).toBeNull();
     expect(model!.sleep).toEqual([]);
-    expect(model!.workouts).toEqual([]);
+    expect(model!.blocks).toEqual([]);
     expect(model!.ticks).toHaveLength(1);
   });
 
@@ -323,8 +325,8 @@ describe("buildIntradayModel — sleep clipping", () => {
 describe("buildIntradayModel — workout blocks", () => {
   it("bounds a block from start_time + duration and links the activity", () => {
     const model = buildIntradayModel(input({ events: [activityEvent("a:1")] }));
-    expect(model!.workouts).toHaveLength(1);
-    expect(model!.workouts[0]).toMatchObject({
+    expect(model!.blocks).toHaveLength(1);
+    expect(model!.blocks[0]).toMatchObject({
       startMinute: 480,
       endMinute: 540,
       title: "Morning ride",
@@ -338,17 +340,19 @@ describe("buildIntradayModel — workout blocks", () => {
       input({
         events: [
           activityEvent("a:2", {
-            clockWindow: {
-              date: DAY,
-              start_time: "23:00",
-              end_time: "01:00",
-              duration_min: null,
-            },
+            clockWindows: [
+              {
+                date: DAY,
+                start_time: "23:00",
+                end_time: "01:00",
+                duration_min: null,
+              },
+            ],
           }),
         ],
       })
     );
-    expect(model!.workouts[0]).toMatchObject({
+    expect(model!.blocks[0]).toMatchObject({
       startMinute: 1380,
       endMinute: MINUTES_IN_DAY,
       clippedEnd: true,
@@ -361,24 +365,26 @@ describe("buildIntradayModel — workout blocks", () => {
         events: [
           activityEvent("a:3", {
             sortTime: "17:45",
-            clockWindow: {
-              date: DAY,
-              start_time: "17:45",
-              end_time: null,
-              duration_min: null,
-            },
+            clockWindows: [
+              {
+                date: DAY,
+                start_time: "17:45",
+                end_time: null,
+                duration_min: null,
+              },
+            ],
           }),
         ],
       })
     );
-    expect(model!.workouts).toEqual([]);
+    expect(model!.blocks).toEqual([]);
     expect(model!.ticks).toHaveLength(1);
     expect(model!.ticks[0].minute).toBe(1065);
   });
 
   it("does not double-draw a bounded workout as a tick", () => {
     const model = buildIntradayModel(input({ events: [activityEvent("a:4")] }));
-    expect(model!.workouts).toHaveLength(1);
+    expect(model!.blocks).toHaveLength(1);
     expect(model!.ticks).toEqual([]);
   });
 });
@@ -441,14 +447,14 @@ describe("buildIntradayModel — the tick rail", () => {
     const filtered = buildIntradayModel(
       input({ events: visible.filter(feedFilter) })
     )!;
-    expect(full.workouts).toHaveLength(1);
-    expect(filtered.workouts).toEqual([]);
+    expect(full.blocks).toHaveLength(1);
+    expect(filtered.blocks).toEqual([]);
     expect(filtered.ticks.map((t) => t.eventId)).toEqual(
       full.ticks.map((t) => t.eventId)
     );
     expect(
       filtered.ticks.some((t) => t.eventId === "a:9") ||
-        filtered.workouts.some((w) => w.eventId === "a:9")
+        filtered.blocks.some((w) => w.eventId === "a:9")
     ).toBe(false);
   });
 

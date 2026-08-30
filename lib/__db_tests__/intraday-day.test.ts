@@ -177,17 +177,19 @@ describe("getIntradayDay", () => {
         category: "activity",
         title: "Zone 2 base ride",
         sortTime: "08:00",
-        clockWindow: {
-          date: DAY,
-          start_time: "08:00",
-          end_time: "09:00",
-          duration_min: 60,
-        },
+        clockWindows: [
+          {
+            date: DAY,
+            start_time: "08:00",
+            end_time: "09:00",
+            duration_min: 60,
+          },
+        ],
       },
     ];
     const model = getIntradayDay(p, DAY, events);
-    expect(model!.workouts).toHaveLength(1);
-    expect(model!.workouts[0]).toMatchObject({
+    expect(model!.blocks).toHaveLength(1);
+    expect(model!.blocks[0]).toMatchObject({
       startMinute: 480,
       endMinute: 540,
     });

@@ -264,7 +264,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: null,
+          statedStart: null,
+          statedEnd: null,
           durationMin: null,
           notes: "evening wind-down",
         },
@@ -301,7 +302,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 6,
-          statedTime: "07:15",
+          statedStart: "07:15",
+          statedEnd: null,
           durationMin: 20,
           notes: null,
         },
@@ -557,7 +559,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: "07:15",
+          statedStart: "07:15",
+          statedEnd: null,
           durationMin: 25,
           notes: "evening wind-down",
         },
@@ -756,7 +759,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: null,
+          statedStart: null,
+          statedEnd: null,
           durationMin: null,
           notes: null,
         },
