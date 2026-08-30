@@ -105,7 +105,7 @@ describe("mint and verify", () => {
     expect(auth.status).toBe(401);
   });
 
-  it("refuses a malformed, unknown, or wrong-secret credential with the same 401", async () => {
+  it("refuses invalid credentials with the same 401 and never stamps their use", async () => {
     const { id } = await createApiToken(memberId, "laptop", "upload:documents");
     for (const wire of [
       "garbage",
@@ -119,6 +119,10 @@ describe("mint and verify", () => {
       expect(auth.status).toBe(401);
       expect(auth.error).toBe("invalid or missing API token");
     }
+    const row = db
+      .prepare("SELECT last_used_at AS lastUsed FROM api_tokens WHERE id = ?")
+      .get(id) as { lastUsed: string | null };
+    expect(row.lastUsed).toBeNull();
   });
 
   it("refuses a request with no Authorization header at all", async () => {
@@ -133,8 +137,8 @@ describe("mint and verify", () => {
 });
 
 describe("scope", () => {
-  it("refuses a capability the token does not carry, with a distinct 403", async () => {
-    const { token } = await createApiToken(
+  it("refuses a missing capability with a distinct 403 and no use stamp", async () => {
+    const { id, token } = await createApiToken(
       memberId,
       "laptop",
       "upload:documents"
@@ -149,15 +153,6 @@ describe("scope", () => {
     expect(auth.ok).toBe(false);
     if (auth.ok) return;
     expect(auth.status).toBe(403);
-  });
-
-  it("does not stamp last_used_at when the scope check refuses", async () => {
-    const { id, token } = await createApiToken(
-      memberId,
-      "laptop",
-      "upload:documents"
-    );
-    await authenticateApiToken(bearer(token), "read:documents" as never);
     const row = db
       .prepare("SELECT last_used_at AS lastUsed FROM api_tokens WHERE id = ?")
       .get(id) as { lastUsed: string | null };
@@ -183,27 +178,16 @@ describe("last_used_at", () => {
     expect(row.lastUsed).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(listApiTokensForLogin(memberId)[0].lastUsedAt).toBe(row.lastUsed);
   });
-
-  it("is not stamped for a bad secret against a real id", async () => {
-    const { id } = await createApiToken(memberId, "laptop", "upload:documents");
-    await authenticateApiToken(
-      bearer(`${id}.wrong-secret-here-00`),
-      "upload:documents"
-    );
-    const row = db
-      .prepare("SELECT last_used_at AS lastUsed FROM api_tokens WHERE id = ?")
-      .get(id) as { lastUsed: string | null };
-    expect(row.lastUsed).toBeNull();
-  });
 });
 
 describe("revocation", () => {
-  it("a revoked token stops authenticating immediately", async () => {
+  it("revokes once, stops authentication, and leaves only a tombstone", async () => {
     const { id, token } = await createApiToken(
       memberId,
       "laptop",
       "upload:documents"
     );
+    expect(listApiTokensForLogin(memberId)).toHaveLength(1);
     expect(
       (await authenticateApiToken(bearer(token), "upload:documents")).ok
     ).toBe(true);
@@ -216,18 +200,7 @@ describe("revocation", () => {
     // Same generic 401 as an unknown id — a revoked token is not an oracle.
     expect(auth.status).toBe(401);
     expect(auth.error).toBe("invalid or missing API token");
-  });
-
-  it("is a compare-and-swap: the second revoke reports false", async () => {
-    const { id } = await createApiToken(memberId, "laptop", "upload:documents");
-    expect(revokeApiToken(id, memberId, "member")).toBe(true);
     expect(revokeApiToken(id, memberId, "member")).toBe(false);
-  });
-
-  it("drops the token from the listing but keeps the id spent", async () => {
-    const { id } = await createApiToken(memberId, "laptop", "upload:documents");
-    expect(listApiTokensForLogin(memberId)).toHaveLength(1);
-    revokeApiToken(id, memberId, "member");
     expect(listApiTokensForLogin(memberId)).toHaveLength(0);
     expect(countApiTokensForLogin(memberId)).toBe(0);
     // The tombstone row survives, so the id can never be handed out again.
@@ -259,7 +232,11 @@ describe("revocation", () => {
 
 describe("listing", () => {
   it("a member sees only their own tokens; the admin view sees all", async () => {
-    await createApiToken(memberId, "member token", "upload:documents");
+    const member = await createApiToken(
+      memberId,
+      "member token",
+      "upload:documents"
+    );
     await createApiToken(adminId, "admin token", "upload:documents");
 
     const mine = listApiTokensForLogin(memberId);
@@ -271,16 +248,8 @@ describe("listing", () => {
       "admin token",
       "member token",
     ]);
-  });
-
-  it("never exposes secret material", async () => {
-    const { token } = await createApiToken(
-      memberId,
-      "laptop",
-      "upload:documents"
-    );
-    const secret = parseApiToken(token)!.secret;
-    const dump = JSON.stringify(listAllApiTokens());
+    const secret = parseApiToken(member.token)!.secret;
+    const dump = JSON.stringify(all);
     expect(dump).not.toContain(secret);
     expect(dump).not.toContain("scrypt$");
     expect(dump).not.toContain("secret");
@@ -334,11 +303,8 @@ describe("the login tie", () => {
 // a revoked token must stop counting the moment it is revoked — otherwise the page
 // would tell a household setup is done because of a credential nothing can present.
 describe("anyApiTokenWithScope", () => {
-  it("is false on an instance with no live token of that capability", () => {
-    expect(anyApiTokenWithScope("upload:documents")).toBe(false);
-  });
-
   it("is true once any login holds one, and false again once it is revoked", async () => {
+    expect(anyApiTokenWithScope("upload:documents")).toBe(false);
     const { id } = await createApiToken(
       memberId,
       "the laptop",
