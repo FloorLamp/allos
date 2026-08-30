@@ -803,7 +803,7 @@ in already happened on a live connection —
 
 What it cost: on #4083 the dashboard's inline weight widget was retired, which
 removed the last offline-reachable weigh-in, and **every guard stayed green**. The
-retirement census asserts the quick-log sheet *offers* the measurements row — a
+retirement census asserts the quick-log sheet _offers_ the measurements row — a
 statement about membership. Reachability is a **precondition membership never
 had**, and the retired mount had none because it was server-rendered inline while
 every replacement went through `loadQuickEntry`, a Server Action, which offline

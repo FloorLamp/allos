@@ -1,6 +1,10 @@
 import { today } from "@/lib/db";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
-import { getUnitPrefs, type TemperatureUnit, type WeightUnit } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  type TemperatureUnit,
+  type WeightUnit,
+} from "@/lib/settings";
 import {
   getProfileAge,
   getProfileBirthdate,
