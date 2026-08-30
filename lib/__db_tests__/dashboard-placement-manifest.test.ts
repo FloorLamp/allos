@@ -663,6 +663,12 @@ describe("actual atomic dashboard manifests", () => {
     // Exactly one candidate in the whole seeded population is a link the nav already
     // carries, which is what `care.ts` claims in prose. Widening the drop reddens
     // here rather than quietly shortening the tail.
+    //
+    // SO A NEW CANDIDATE THAT LEGITIMATELY DECLARES `navDuplicateOf` REDDENS THIS
+    // LINE, AND THAT IS THE PIN WORKING, NOT A STALE FIXTURE. Add it to the list
+    // deliberately, having satisfied yourself the tail is meant to stop drawing it;
+    // the whole point of pinning the set rather than counting it is that widening
+    // the drop has to be a decision somebody wrote down.
     expect(
       [...manifests].flatMap(([persona, placements]) =>
         placements.flatMap((placement) =>
