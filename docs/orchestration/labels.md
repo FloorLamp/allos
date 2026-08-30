@@ -1,0 +1,28 @@
+# Queue labels
+
+Two axes are load-bearing; `reconcile-tracker` flags violations of both
+(`checkLabelHygiene`, 2026-08-15):
+
+- **Exactly one priority-slot label**: `P0`–`P3` or `parked`. Never two — a
+  `P2` + `parked` issue is in no queue and every queue at once.
+- **At least one domain label.** Cross-cutting design/UX work takes `design` —
+  a real domain, not a missing one.
+- Every ready P0/P1 preempts feature and presentation work, with or without
+  `bug`. Other type labels (`feat`, `refactor`, `testing`, `a11y`) are
+  optional color; `ui` marks e2e-heavy work.
+- **The taxonomy is CLOSED; its canon is `KNOWN_LABELS`** in
+  `scripts/orchestration/reconcile-tracker-core.ts`. Verify labels against the
+  constant, never the live list — the add-labels endpoint silently mints
+  unknown labels, so the live list validates past mistakes.
+- A missing concept is an owner decision, never a new label. Ruled 2026-08-30:
+  `testing`/`a11y` promoted as type color, `dashboard` as a domain, a size
+  axis DECLINED (the dispatch ledger already measures real durations).
+- `checkLabelHygiene` flags `unknown-label` and retired labels;
+  `.github/workflows/label-taxonomy.yml` deletes strays repo-side. To add a
+  label, extend `KNOWN_LABELS` and merge first — the live list follows code.
+- `needs-human` means one owner answer is required. Label + assign, keep
+  working elsewhere; never prompt the owner uninvited and never a blocking
+  `AskUserQuestion` mid-session — the owner is usually absent. The
+  needs-human skill drains the queue when they show up.
+- Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
+  `parked`; an adopt is merged by the orchestrator.
