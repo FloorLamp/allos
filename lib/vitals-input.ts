@@ -12,6 +12,7 @@
 //   • Glucose                             → medical_records, category 'lab', mg/dL
 //   • Oxygen Saturation (SpO2)            → medical_records, category 'vitals',  %
 //   • Body Temperature                    → medical_records, category 'vitals',  degF
+//   • Respiratory Rate                    → medical_records, category 'vitals',  breaths/min
 //   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
 //   • Heart rate variability (HRV)        → metric_samples,  metric 'hrv_ms',    ms
 //   • Peak expiratory flow                → metric_samples,  metric 'peak_flow_lmin', L/min
@@ -88,6 +89,9 @@ export interface VitalsRawInput {
   temperatureTime?: string | null;
   sleepHours?: string | null;
   hrv?: string | null;
+  // Respiratory rate, breaths/min (#1851). The last clinical vital on this form
+  // that could not be counted by hand.
+  respiratoryRate?: string | null;
   gripStrength?: string | null; // kg
   chairStand?: string | null; // reps in 30 s
   balance?: string | null; // single-leg stance seconds
@@ -125,6 +129,14 @@ export const VITAL_CANONICAL = {
     canonical: "Body Temperature",
     category: "vitals" as const,
     unit: "degF",
+  },
+  // Respiratory rate (#1851) — the same canonical name, category and unit the
+  // Health Connect parser and the Fitbit takeout importer already write, so a
+  // counted rate and a pushed one are one series.
+  respiratoryRate: {
+    canonical: "Respiratory Rate",
+    category: "vitals" as const,
+    unit: "breaths/min",
   },
   // Functional fitness markers (#158) — manual-entry physical measurements stored
   // in their canonical unit directly (no conversion). Each is a canonical biomarker
@@ -329,6 +341,7 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     input.temperature,
     input.sleepHours,
     input.hrv,
+    input.respiratoryRate,
     input.gripStrength,
     input.chairStand,
     input.balance,
@@ -392,6 +405,18 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
     const v = numOrNull(input.hrv);
     if (v == null || v <= 0 || v > 500) {
       return "HRV must be between 1 and 500 ms.";
+    }
+  }
+
+  if (!blank(input.respiratoryRate)) {
+    const v = numOrNull(input.respiratoryRate);
+    // The INGEST envelope, not a second opinion: a counted rate is accepted on
+    // exactly the terms a pushed one is (lib/ingest-bounds.ts, 3–80 breaths/min).
+    if (
+      v == null ||
+      !inMetricBounds(VITAL_CANONICAL.respiratoryRate.canonical, v)
+    ) {
+      return "Respiratory rate must be between 3 and 80 breaths per minute.";
     }
   }
 
@@ -466,6 +491,14 @@ export function normalizeVitalsInput(
   const spo2 = numOrNull(input.spo2);
   if (spo2 != null) {
     medical.push({ ...VITAL_CANONICAL.spo2, value_num: spo2 });
+  }
+
+  const respiratoryRate = numOrNull(input.respiratoryRate);
+  if (respiratoryRate != null) {
+    medical.push({
+      ...VITAL_CANONICAL.respiratoryRate,
+      value_num: respiratoryRate,
+    });
   }
 
   const tempRaw = numOrNull(input.temperature);

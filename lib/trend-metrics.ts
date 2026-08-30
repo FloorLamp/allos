@@ -182,9 +182,11 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     decimals: 0,
     windowed: true,
     goalMetric: null,
-    // No manual entry field — respiratory rate arrives from a device push or a
-    // document import, so its detail page offers no form (like steps/HR/BMI).
-    quickAdd: null,
+    // Hand-enterable since #1851: every other clinical vital on the form is, and
+    // counting breaths for a minute is the measurement a caregiver is asked for
+    // during a fever. Same medical_records identity a device push or a document
+    // import lands on, so a counted rate and an imported one share one chart.
+    quickAdd: "measurements",
   },
   hrv: {
     slug: "hrv",
@@ -380,7 +382,11 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     decimals: 1,
     windowed: false,
     goalMetric: null,
-    quickAdd: null,
+    // Hand-enterable since #1851: a DEXA report hands you lean mass in kilograms
+    // directly, and lib/protein.ts PREFERS lean mass over total bodyweight for the
+    // protein band — so an import-only field left the annual-DEXA user on the
+    // g/kg-total fallback with the number they were holding.
+    quickAdd: "measurements",
   },
   "bone-mass": {
     slug: "bone-mass",
@@ -391,7 +397,8 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     decimals: 2,
     windowed: false,
     goalMetric: null,
-    quickAdd: null,
+    // Hand-enterable since #1851 — the other half of the same DEXA report.
+    quickAdd: "measurements",
   },
   bmr: {
     slug: "bmr",
@@ -413,7 +420,9 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     decimals: 2,
     windowed: false,
     goalMetric: null,
-    quickAdd: null,
+    // Hand-enterable since #1851: the most self-reported measure in the census had
+    // been the one that required a smart water bottle.
+    quickAdd: "measurements",
     countMetric: true,
   },
   calories: {

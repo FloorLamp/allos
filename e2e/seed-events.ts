@@ -119,6 +119,7 @@ import {
   seedRoutineUsual,
   seedLogSheetReserve,
   seedFoodPinSplit,
+  seedProteinSourceStates,
 } from "./seed/nutrition";
 import { seedProviderMergePair, seedProviderCloseout } from "./seed/providers";
 import { seedIllness, seedSymptomVideoEpisode } from "./seed/illness";
@@ -197,6 +198,7 @@ seedFoodUsual();
 seedRoutineUsual();
 seedLogSheetReserve();
 seedFoodPinSplit();
+seedProteinSourceStates();
 seedEndurancePlans();
 seedFlaggedFollowups();
 seedPanelGroups();

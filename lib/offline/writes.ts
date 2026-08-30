@@ -27,6 +27,10 @@ import {
 import { statedInstantOnDate } from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
+import {
+  normalizeCompositionInput,
+  type CompositionInputRaw,
+} from "@/lib/composition-input";
 import { WAIST_CIRC_METRIC } from "@/lib/waist-circ-extract";
 import { BRISTOL_STOOL_METRIC, parseBristolType } from "@/lib/bristol-stool";
 import { markDoseSkipped, markDoseTaken } from "@/lib/queries";
@@ -493,6 +497,35 @@ export function insertWaistCirc(
   if ("error" in normalized) return false;
   writeTx(() => {
     upsertManualSample(profileId, WAIST_CIRC_METRIC, date, normalized.valueCm);
+  });
+  return true;
+}
+
+// ── lean mass / bone mass / hydration (issue #1851) ───────────────────────────
+
+// Persist the manual body samples the census charted but the form could not take.
+// The SIBLING of insertGrowth and insertWaistCirc — same store, same discipline,
+// same fixed-midnight point key, so re-logging a date CORRECTS it rather than
+// stacking a second reading — and deliberately not a member of either: these three
+// are neither life-stage-gated nor a tape measurement.
+//
+// The metric keys are the ones Withings and Health Connect already write
+// ('lean_mass_kg' / 'bone_mass_kg' / 'hydration_l'), so a DEXA figure typed at home
+// is the same row a synced one is: `lib/protein.ts` reads the latest lean mass
+// whatever wrote it, and the hydration chart plots both together. Auth-blind +
+// profileId-first like its neighbours. Returns false on a rejected/empty input.
+export function insertComposition(
+  profileId: number,
+  date: string,
+  raw: CompositionInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeCompositionInput(raw);
+  if ("error" in normalized) return false;
+  writeTx(() => {
+    for (const s of normalized.samples) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+    }
   });
   return true;
 }
@@ -1148,6 +1181,7 @@ export function applyIntent(
           tempUnit: p.tempUnit,
           sleepHours: p.sleepHours,
           hrv: p.hrv,
+          respiratoryRate: p.respiratoryRate,
           gripStrength: p.gripStrength,
           chairStand: p.chairStand,
           balance: p.balance,

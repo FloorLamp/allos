@@ -52,7 +52,11 @@ describe("proteinTodayNudgeLine", () => {
     expect(line).not.toContain("at least");
   });
 
-  it("a tracked reading states the figure directly (no floor marker)", () => {
+  // #3903: this row is the one that moved. A tracked reading used to state the figure
+  // exactly, on the reasoning that it was "a measured full-day total" — true of a
+  // COMPLETE day, false of TODAY: getMetricDailyTotals SUMs the day's samples and an
+  // integration writes one per meal as it syncs, so at 09:00 the reading is breakfast.
+  it("a tracked reading carries the floor marker too — the '+' is unconditional (#3903)", () => {
     const todayIntake = proteinIntake({
       dailyTracked: 120,
       dailyEstimated: 0,
@@ -60,8 +64,10 @@ describe("proteinTodayNudgeLine", () => {
     const line = proteinTodayNudgeLine(
       makeToday({ todayIntake, todayGrams: todayIntake.grams })
     );
-    expect(line).toContain("Protein: 120 g so far");
-    expect(line).not.toContain("120 g+");
+    expect(line).toBe(
+      "🎯 Protein: 120 g+ so far — goal 95–130 g · goal reached"
+    );
+    // The marker is the "+" and nothing else: #1822 stopped the hedges stacking.
     expect(line).not.toContain("at least");
   });
 
@@ -210,15 +216,19 @@ describe("the dashboard protein line says the situation, not the estimator (#325
   // most at risk of drifting back into something the data does not support, so a reword
   // has to show up here rather than sliding through a regex. The retracted "Only some
   // meals are logged, so today's true total is higher" cannot reappear in any state
-  // without breaking one of the five equalities below.
+  // without breaking one of the six equalities below.
   const UNLOGGED =
     "Foods you haven't logged aren't counted, so your real total may be higher.";
-  // #3903: `tracked` was the ONE basis with no hedge, and it is a floor for two reasons
-  // that are not unlogged food — an integration writes today's total as it syncs, and a
-  // positive tracked reading overrides the profile's own food log entirely. So the
-  // sentence is its own, and this row is the one that moves.
-  const UNSYNCED =
-    "Only what your health app has sent so far is counted — what you log here isn't — so your real total may be higher.";
+  // #3903: `tracked` was the ONE basis with no hedge, and its floor is not unlogged
+  // food — an integration writes today's total one meal at a time as it syncs, so at
+  // 09:00 the reading is breakfast. That is a different ledger being incomplete, so it
+  // needs its own sentence rather than a reuse of the one above.
+  const UNSENT =
+    "Meals your health app hasn't sent yet aren't counted, so your real total may be higher.";
+  // `both-sources`: two incomplete ledgers at once, so the hedge carries both reasons.
+  // It is the longest of the three because it is the only state where both are true.
+  const UNLOGGED_AND_UNSENT =
+    "Foods you haven't logged and meals your health app hasn't sent aren't counted, so your real total may be higher.";
   const GOAL = "Goal ~95–130 g/day (1.2–1.6 g/kg, general fitness).";
 
   // Every state proteinTodayExplanation actually meets, and what is TRUE in each.
@@ -254,8 +264,19 @@ describe("the dashboard protein line says the situation, not the estimator (#325
     [
       "tracked",
       { dailyTracked: 120, dailyEstimated: 0 },
-      "120 g",
-      `${GOAL} Today's total is from the daily total your health app sends. ${UNSYNCED}`,
+      "120 g+",
+      `${GOAL} Today's total is from the daily total your health app sends. ${UNSENT}`,
+    ],
+    // #3903's sixth state. Both records exist and the LARGER floor is printed — here the
+    // integration's, so the AMOUNT alone cannot tell this state from `tracked` above; the
+    // basis phrase is what names both sources. The other direction (the in-app sum
+    // winning, which is where the retired override changed the number) is pinned by the
+    // probe test below.
+    [
+      "both-sources",
+      { dailyTracked: 120, dailyLogged: 30, dailyEstimated: 25 },
+      "120 g+",
+      `${GOAL} Today's total is from your food log and your health app. ${UNLOGGED_AND_UNSENT}`,
     ],
     ["none", null, "0 g+", `${GOAL} ${UNLOGGED}`],
   ] as const;
@@ -285,6 +306,45 @@ describe("the dashboard protein line says the situation, not the estimator (#325
       expect(proteinTodayExplanation(t)).toBe(hover);
     }
   );
+
+  // #3903'S OWN WORKED PROBE, pinned. The issue ran it against the shipped functions and
+  // got `20 g` with a confident hover: the tracked reading OVERRODE 70 g of the profile's
+  // own logging, so connecting a health app that had synced one meal took the same
+  // person, same day, same food from "70 g+" with a hedge down to "20 g" with none —
+  // the number DOWN and the stated confidence UP.
+  //
+  // This is the fixture that DISCRIMINATES for the whole change: both sources are
+  // populated and the larger floor is the in-app one, so a tree where the override
+  // survives prints 20 here, not 70. The table above cannot catch that on its own —
+  // every one of its `both-sources` rows has the integration winning, and the override
+  // returns the same number in that direction.
+  it("#3903's probe: the larger floor is the in-app sum, and the hover names both sources", () => {
+    const target70 = proteinTarget({ goal: "active", bodyweightKg: 70 })!;
+    const todayIntake = proteinIntake({
+      dailyTracked: 20,
+      dailyLogged: 40,
+      dailyEstimated: 30,
+    })!;
+    expect(todayIntake).toEqual({
+      grams: 70,
+      basis: "both-sources",
+      estimatedGrams: 30,
+      loggedGrams: 40,
+    });
+
+    const t = makeToday({
+      todayIntake,
+      todayGrams: todayIntake.grams,
+      target: target70,
+    });
+    const parts = proteinTodayLineParts(t);
+    expect(`${parts.amount} · Goal ${parts.band}`).toBe(
+      "70 g+ · Goal 85–110 g"
+    );
+    expect(proteinTodayExplanation(t)).toBe(
+      "Goal ~85–110 g/day (1.2–1.6 g/kg, general fitness). Today's total is from your food log and your health app. Foods you haven't logged and meals your health app hasn't sent aren't counted, so your real total may be higher."
+    );
+  });
 
   it("reaches no adequacy verdict — that is proteinAdequacyTitle's question (#221)", () => {
     // Far under the band and far over it, on a real floor basis, the explanation is
