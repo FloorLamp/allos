@@ -27,7 +27,9 @@ import {
   decideDomainAdd,
   decideLabelRemoval,
   decidePriorityLabel,
+  extractWatermark,
   KNOWN_LABELS,
+  WATERMARK_ISSUE_TITLE,
   parseStatedPriority,
   planLabelRemovals,
   scoreDomains,
@@ -1103,9 +1105,55 @@ describe("run configuration", () => {
     });
   });
 
-  it("defaults the watermark stamp OFF so a dry run never advances it", () => {
+  it("still parses --stamp, so the gatherer can refuse it LOUDLY", () => {
+    // Stamping moved to reconcile-watermark.ts when the watermark moved into
+    // the tracker. The flag stays recognized because a silently ignored
+    // --stamp would leave its caller believing the window advanced.
     expect(resolveRunConfig({}, []).stamp).toBe(false);
     expect(resolveRunConfig({}, []).token).toBeNull();
+  });
+});
+
+describe("the watermark carrier issue", () => {
+  const carrier = (body: string): TrackerIssue => ({
+    number: 4200,
+    title: WATERMARK_ISSUE_TITLE,
+    body,
+    state: "open",
+    labels: ["infra", "parked"],
+  });
+  const ordinary: TrackerIssue = {
+    number: 7,
+    title: "Reconcile watermark handling in docs",
+    body: 'mentions "lastRunAt": "1999-01-01T00:00:00Z" in prose',
+    state: "open",
+    labels: ["docs", "P3"],
+  };
+
+  it("splits the carrier out of the sweep and reads its stamp", () => {
+    const stamped = carrier(
+      '```json\n{"lastRunAt":"2026-08-30T09:00:00Z"}\n```'
+    );
+    const { carrier: found, issues } = extractWatermark([ordinary, stamped]);
+    expect(found).toEqual({
+      issueNumber: 4200,
+      lastRunAt: "2026-08-30T09:00:00Z",
+    });
+    // The carrier is machine state, never a sweep subject.
+    expect(issues).toEqual([ordinary]);
+  });
+
+  it("matches on the EXACT title, never on look-alike issues", () => {
+    // An ordinary issue that merely talks about the watermark keeps its place
+    // in the sweep and its prose never becomes the window bound.
+    const { carrier: found, issues } = extractWatermark([ordinary]);
+    expect(found).toEqual({ issueNumber: null, lastRunAt: null });
+    expect(issues).toEqual([ordinary]);
+  });
+
+  it("reports an unparseable carrier body as unstamped, not as a date", () => {
+    const { carrier: found } = extractWatermark([carrier("hand-edited junk")]);
+    expect(found).toEqual({ issueNumber: 4200, lastRunAt: null });
   });
 });
 
@@ -1488,6 +1536,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
+    "scripts/orchestration/reconcile-watermark.ts",
     "scripts/orchestration/usage.mjs",
     "scripts/orchestration/host.mjs",
   ];
@@ -1541,15 +1590,17 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     }
   });
 
-  // THREE writers now, each confined to a different endpoint, and the point of
+  // FOUR writers now, each confined to a different endpoint, and the point of
   // this block is that no confinement rests on intent. The body applier can
   // name only `body`; the label writer sends no body at all; the label deleter
   // holds one verb against the repo's own label collection and no issue URL
-  // whatsoever. Everything else in the toolchain still holds no write verb.
+  // whatsoever; the watermark writer can PATCH one body and CREATE one
+  // fixed-title carrier. Everything else in the toolchain holds no write verb.
   const WRITERS = [
     "scripts/orchestration/reconcile-apply.ts",
     "scripts/orchestration/reconcile-labels.ts",
     "scripts/orchestration/delete-unknown-labels.ts",
+    "scripts/orchestration/reconcile-watermark.ts",
   ];
 
   it("the body applier holds two confined writes: body PATCH and comment POST", () => {
@@ -1597,7 +1648,20 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     expect(del).not.toContain("/issues");
   });
 
-  it("nothing outside the three writers holds a write verb at all", () => {
+  it("the watermark writer PATCHes one body and can only CREATE the carrier", () => {
+    // One PATCH whose payload is exactly the applier's shape ({ body }), one
+    // POST whose payload names its title from the pinned constant — so the
+    // only issue it can ever bring into existence is the carrier, and the
+    // only thing it can ever edit is a body. No other verb, no state field.
+    const wm = source("scripts/orchestration/reconcile-watermark.ts");
+    expect(wm.match(/"PATCH"/g)).toHaveLength(1);
+    expect(wm.match(/"POST"/g)).toHaveLength(1);
+    expect(wm).not.toMatch(/"(?:PUT|DELETE)"/);
+    expect(wm).toContain("JSON.stringify({ body })");
+    expect(wm).toContain("title: WATERMARK_ISSUE_TITLE");
+  });
+
+  it("nothing outside the four writers holds a write verb at all", () => {
     for (const rel of MODULES.filter((m) => !WRITERS.includes(m))) {
       expect({
         rel,

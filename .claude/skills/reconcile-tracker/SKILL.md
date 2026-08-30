@@ -1,7 +1,7 @@
 ---
 name: reconcile-tracker
 description: Reconcile the issue tracker and roadmap against main — verify each issue's citations, dependencies and status claims, patch only the factual drift, and flag everything that needs judgment. Use for a scheduled or on-demand tracker maintenance pass, never as a CI gate.
-allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
+allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
 ---
 
 # Tracker reconciliation
@@ -74,9 +74,9 @@ npx tsx scripts/orchestration/reconcile-tracker.ts \
   --json /tmp/reconcile-evidence.json --out /tmp/reconcile-report.md
 ```
 
-The window starts at the previous run's watermark
-(`$SCRATCH/allos-reconcile-watermark.json`). `--since <iso>` overrides;
-`--stamp` advances it and is **off by default** so a dry run never moves it.
+The window starts at the previous run's watermark, stored IN the tracker (the
+issue titled "Reconcile watermark (machine state)") so a recycled container
+cannot lose it. `--since <iso>` overrides; the gatherer only ever reads it.
 
 Read the report's **"What was examined"** block before its findings — the
 numbers there are the only thing separating a healthy tracker from a script
@@ -217,6 +217,16 @@ npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + yo
 It builds removal and priority work from the live tracker, takes domain adds
 only from `--plan`, re-reads each issue immediately before writing, and
 prints one line per write. Dry run first; never while another sweep runs.
+
+## Stamp the watermark — only after the report is read
+
+```bash
+npx tsx scripts/orchestration/reconcile-watermark.ts stamp \
+  --evidence /tmp/reconcile-evidence.json --apply   # dry run without --apply
+```
+
+Stamps the GATHER's own timestamp — nothing between gather and stamp escapes
+the next window. Refuses rewinds; the first apply creates the carrier issue.
 
 ## Scheduling
 

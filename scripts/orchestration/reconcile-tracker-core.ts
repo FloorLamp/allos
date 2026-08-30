@@ -106,7 +106,12 @@ export interface RunConfig {
   only: readonly number[];
   /** Override the watermark's lower bound (ISO 8601). */
   since: string | null;
-  /** Advance the stored watermark on success. Off by default. */
+  /**
+   * Legacy flag, still parsed so it fails LOUDLY: stamping moved to the
+   * confined writer (`reconcile-watermark.ts`) when the watermark moved into
+   * the tracker itself, and the read-only gatherer refuses it rather than
+   * silently ignoring it.
+   */
   stamp: boolean;
   /** Where to write the markdown report; null ⇒ stdout. */
   out: string | null;
@@ -141,6 +146,43 @@ export function resolveRunConfig(
     else if (arg === "--repo") config.repo = value();
   }
   return { ...config, only: only.filter((n) => Number.isInteger(n) && n > 0) };
+}
+
+/**
+ * The watermark lives IN THE TRACKER, as the body of one dedicated issue with
+ * this exact title (owner, 2026-08-30) — container state dies with the
+ * container, and a lost watermark silently reshapes the sweep window. The
+ * read-only gatherer finds it in the open-issue list it already fetches; only
+ * the confined writer (`reconcile-watermark.ts`) advances it.
+ */
+export const WATERMARK_ISSUE_TITLE = "Reconcile watermark (machine state)";
+
+export interface WatermarkCarrier {
+  /** The carrier issue's number, or null when no carrier exists yet. */
+  issueNumber: number | null;
+  /** The stamped previous-run instant, or null (first run, or unstamped). */
+  lastRunAt: string | null;
+}
+
+/**
+ * Split the carrier out of a sweep's issue list: its body is machine state,
+ * not tracker claims, so it is never swept, and its stamp becomes the
+ * window's lower bound.
+ */
+export function extractWatermark(issues: readonly TrackerIssue[]): {
+  carrier: WatermarkCarrier;
+  issues: TrackerIssue[];
+} {
+  const carrierIssue =
+    issues.find((i) => i.title === WATERMARK_ISSUE_TITLE) ?? null;
+  const stamp = carrierIssue?.body.match(/"lastRunAt":\s*"([^"]+)"/);
+  return {
+    carrier: {
+      issueNumber: carrierIssue?.number ?? null,
+      lastRunAt: stamp?.[1] ?? null,
+    },
+    issues: issues.filter((i) => i !== carrierIssue),
+  };
 }
 
 /** One open issue, reduced to the fields this module reads. */
