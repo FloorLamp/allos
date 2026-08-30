@@ -466,7 +466,7 @@ async function dispatchTap(cq: TelegramCallbackQuery): Promise<TapWrote> {
   if (doseTimeAt) {
     return handleDoseTimeAt(cq, doseTimeAt);
   }
-  // The practice twin (#2875), over `practice_logs.time` — the one whose column feeds
+  // The practice twin (#2875), over `practice_logs.start_time` — the one whose column feeds
   // the scheduler that produced the tap: `modalHour()` reads it to pick each practice's
   // typical hour, and #2188's retimed pace nudge fires at that hour, so an uncorrectable
   // late acknowledgement compounds into a later and later nudge.

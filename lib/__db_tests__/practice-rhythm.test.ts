@@ -62,7 +62,7 @@ function seedWeeklyHabit(
   const anchorWeekday = new Date(anchor + "T00:00:00Z").getUTCDay();
   const sunday = shiftDateStr(anchor, -anchorWeekday);
   const insert = db.prepare(
-    `INSERT INTO practice_logs (profile_id, practice, date, time) VALUES (?, ?, ?, ?)`
+    `INSERT INTO practice_logs (profile_id, practice, date, start_time) VALUES (?, ?, ?, ?)`
   );
   for (let k = 1; k <= weeks; k++) {
     insert.run(
@@ -98,7 +98,7 @@ describe("per-practice rhythm inference + retimed nudge (#2188)", () => {
     // logPracticeSession refuses dates older than its 30-day window, so seed the
     // 8-week fixture directly (the store is what inference reads either way).
     const insert = db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time) VALUES (?, ?, ?, ?)`
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time) VALUES (?, ?, ?, ?)`
     );
     for (let d = 1; d <= 56; d++)
       insert.run(pid, "Meditation", shiftDateStr(t, -d), "07:15");

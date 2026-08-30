@@ -42,7 +42,7 @@ test("practice cards show the rhythm note on a predicted day and nothing for a y
     );
     targetIds.push(rhythmTargetId, youngTargetId);
     const log = db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time)
        VALUES (1, ?, ?, ?)`
     );
     // Four sessions on TODAY's weekday across the past four weeks — at the

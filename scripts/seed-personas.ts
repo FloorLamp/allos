@@ -2804,7 +2804,7 @@ const biohacker: SeedPersona = {
           targetId
         );
       const session = ctx.db.prepare(
-        `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, logged_via)
+        `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min, logged_via)
          VALUES (?, ?, ?, ?, ?, ${VIA_SEEDED})`
       );
       for (let d = 41; d >= 0; d--) {

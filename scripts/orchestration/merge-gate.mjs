@@ -9,7 +9,12 @@
 //   1. the PR is open and READY (never draft — environment.md §GitHub access);
 //   2. the RECEIPT: a review from a NON-AUTHOR whose body states this exact
 //      head SHA (8+ hex chars of its prefix). A receipt naming any other SHA
-//      is a review of a head that no longer exists — void, not evidence;
+//      is a review of a head that no longer exists — void, not evidence.
+//      Where the orchestrator and its lanes share ONE account (#4258), a
+//      same-account review passes instead by stating the SHA AND asserting
+//      the reviewer did not author the change — with one identity,
+//      independence can only ever be a stated claim, so that is what is
+//      checked;
 //   3. no standing CHANGES_REQUESTED review on this head;
 //   4. every check run on the head is completed and green. This is a single
 //      sample — settlement (registration still growing) is ci-watch.mjs's
@@ -177,29 +182,61 @@ else pass("PR is READY");
 // The receipt: a stated-SHA review, because stating the SHA is what the
 // review contract requires — review.commit_id records where GitHub filed it,
 // but the RECEIPT is the reviewer's own claim about what they reviewed.
+//
+// THE SHARED-IDENTITY CASE (#4258): the orchestrator and every lane it
+// dispatches post as one GitHub account, so on a lane's PR a genuine
+// independent review is an "author review" and an identity test rejects it
+// on the wrong property — a false negative on the ordinary case, which is
+// how a gate gets routinely overridden. With one identity, "somebody looked
+// who did not write it" can only ever be a STATED CLAIM, so that is what the
+// gate checks there: the review must state the head SHA and assert the
+// reviewer did not author the change. Where identities actually differ, the
+// identity check still stands — it is the stronger evidence when it exists.
 const reviews = paged(`repos/${repo}/pulls/${prNumber}/reviews`);
 const statesHead = (body) =>
   [...(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].some((m) =>
     head.startsWith(m[0])
   );
+const ASSERTS_INDEPENDENCE =
+  /\b(?:did not|didn'?t)\s+(?:author|write)\b|\bindependent(?:ly)?\s+review/i;
+const receiptShaped = (r) =>
+  ["COMMENTED", "APPROVED"].includes(r.state) && statesHead(r.body);
 const receipt = reviews.find(
-  (r) =>
-    r.user?.login !== pr.user?.login &&
-    ["COMMENTED", "APPROVED"].includes(r.state) &&
-    statesHead(r.body)
+  (r) => r.user?.login !== pr.user?.login && receiptShaped(r)
 );
+const sharedReceipt = receipt
+  ? null
+  : reviews.find(
+      (r) =>
+        r.user?.login === pr.user?.login &&
+        receiptShaped(r) &&
+        ASSERTS_INDEPENDENCE.test(r.body ?? "")
+    );
 if (receipt)
   pass(`exact-head receipt: ${receipt.user.login} states ${head.slice(0, 8)}`);
+else if (sharedReceipt)
+  pass(
+    `exact-head receipt (shared identity): ${sharedReceipt.user.login} states ` +
+      `${head.slice(0, 8)} and asserts they did not author the change`
+  );
 else {
+  const unasserted = reviews.find(
+    (r) => r.user?.login === pr.user?.login && receiptShaped(r)
+  );
   const staleReceipt = reviews.find(
     (r) =>
       r.user?.login !== pr.user?.login && /[0-9a-f]{8,40}/.test(r.body ?? "")
   );
   fail(
-    staleReceipt
-      ? `no receipt for ${head.slice(0, 8)} — the head changed since ` +
+    unasserted
+      ? `a review by the PR's own account states ${head.slice(0, 8)} but does ` +
+          "not assert independence — on a shared identity the receipt must SAY " +
+          "the reviewer did not author the change (#4258); re-post the review " +
+          "with that statement"
+      : staleReceipt
+        ? `no receipt for ${head.slice(0, 8)} — the head changed since ` +
           `${staleReceipt.user.login}'s review, which VOIDS it; re-review this head`
-      : "no exact-head receipt: no non-author review states this head SHA"
+        : "no exact-head receipt: no review states this head SHA"
   );
 }
 

@@ -112,10 +112,12 @@ function practiceTarget(profileId: number, name: string, floor = 3): number {
 
 function storedTime(logId: number): string | null {
   return (
-    db.prepare("SELECT time FROM practice_logs WHERE id = ?").get(logId) as {
-      time: string | null;
+    db
+      .prepare("SELECT start_time FROM practice_logs WHERE id = ?")
+      .get(logId) as {
+      start_time: string | null;
     }
-  ).time;
+  ).start_time;
 }
 
 function storedDate(logId: number): string {
@@ -216,7 +218,7 @@ describe("the corrected time is what the scheduler reads", () => {
       const d = new Date(`${t}T00:00:00Z`);
       d.setUTCDate(d.getUTCDate() - 7 * w);
       db.prepare(
-        `INSERT INTO practice_logs (profile_id, practice, date, time)
+        `INSERT INTO practice_logs (profile_id, practice, date, start_time)
          VALUES (?, 'Sauna', ?, '21:00')`
       ).run(pid, d.toISOString().slice(0, 10));
     }
@@ -225,12 +227,12 @@ describe("the corrected time is what the scheduler reads", () => {
 
     // Now correct every one of those rows to 19:00 — what the sessions actually were.
     db.prepare(
-      `UPDATE practice_logs SET time = '19:00' WHERE profile_id = ? AND practice = 'Sauna'`
+      `UPDATE practice_logs SET start_time = '19:00' WHERE profile_id = ? AND practice = 'Sauna'`
     ).run(pid);
     expect(
       inferPracticeSchedule(pid, "Sauna").hour,
-      "modalHour reads practice_logs.time, so a corrected burst must move the " +
-        "typical hour the retimed nudge fires at (#2188)"
+      "modalHour reads practice_logs.start_time, so a corrected burst must move " +
+        "the typical hour the retimed nudge fires at (#2188)"
     ).toBe(19);
     expect(tz).toBe("Europe/Berlin");
   });
@@ -260,7 +262,9 @@ describe("a null time is a decision, not a gap", () => {
   it("never appears in a burst and is never given a time by a chip", () => {
     const pid = makeProfile("nulltime");
     // The expanded form's explicit "no instant" statement.
-    logPracticeSession(pid, "Meditation", today(pid), "page", { time: null });
+    logPracticeSession(pid, "Meditation", today(pid), "page", {
+      startTime: null,
+    });
     const untimed = lastLogId(pid);
     expect(storedTime(untimed)).toBeNull();
 
@@ -277,7 +281,7 @@ describe("a null time is a decision, not a gap", () => {
   it("a timed sibling's chip does not sweep an untimed row up with it", () => {
     const pid = makeProfile("nulltime-sibling");
     const t = today(pid);
-    logPracticeSession(pid, "Meditation", t, "page", { time: null });
+    logPracticeSession(pid, "Meditation", t, "page", { startTime: null });
     const untimed = lastLogId(pid);
     logPracticeSession(pid, "Sauna", t, "page");
     const timed = lastLogId(pid);
@@ -290,6 +294,75 @@ describe("a null time is a decision, not a gap", () => {
     });
     expect(storedTime(untimed)).toBeNull();
     expect(storedTime(timed)).not.toBeNull();
+  });
+});
+
+// A SESSION CARRYING A STATED WINDOW IS THE FORM'S TO CORRECT (#3142, owner
+// decision): the chips exist for a TAP's fuzzy stamp, and a row whose `end_time` was
+// typed into the expanded form was never fuzzy. The predicate lives in two places on
+// purpose — `getRecentPracticeTaps` bounds what the keyboard renders, and
+// `restampPracticeLogsCore` re-reads it inside the write transaction — so both are
+// asserted here rather than trusting the renderer's copy.
+describe("a stated window never joins a chip burst", () => {
+  it("excludes the windowed row from the reader, the offers and the write", () => {
+    const pid = makeProfile("stated-window");
+    const t = today(pid);
+    logPracticeSession(pid, "Sauna", t, "page", {
+      startTime: "19:00",
+      endTime: "19:25",
+    });
+    const windowed = lastLogId(pid);
+    expect(storedTime(windowed)).toBe("19:00");
+
+    expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+    expect(getPracticeCorrectionBursts(pid, clockNow())).toEqual([]);
+    // Anchored directly on its id the write core still refuses — the re-read applies
+    // the same predicate, so a stale keyboard cannot move it either.
+    expect(restampPracticeLogsCore(pid, windowed, () => new Date())).toEqual({
+      kind: "no-burst",
+    });
+    expect(storedTime(windowed)).toBe("19:00");
+  });
+
+  it("does not sweep a windowed row up with a tap's burst", () => {
+    const pid = makeProfile("stated-window-sibling");
+    const t = today(pid);
+    logPracticeSession(pid, "Sauna", t, "page", {
+      startTime: "19:00",
+      endTime: "19:25",
+    });
+    const windowed = lastLogId(pid);
+    logPracticeSession(pid, "Cold plunge", t, "page");
+    const tapped = lastLogId(pid);
+
+    const [burst] = getPracticeCorrectionBursts(pid, clockNow());
+    expect(burst.ids).toEqual([tapped]);
+    restampPracticeLogsCore(pid, burst.fromId, (row) => {
+      const at = new Date(row.statedAt ?? row.tapAt);
+      return new Date(at.getTime() - 30 * 60_000);
+    });
+    // The tap moved; the stated window did not.
+    expect(storedTime(windowed)).toBe("19:00");
+    expect(storedTime(tapped)).not.toBeNull();
+  });
+
+  // TAP-ROW RESTAMPING IS OTHERWISE UNCHANGED, and this is the converse the removal
+  // guard above cannot give: an exclusion that swallowed ordinary taps too would
+  // leave every assertion above green.
+  it("still restamps an ordinary tap that states no end", () => {
+    const pid = makeProfile("window-converse");
+    logPracticeSession(pid, "Journaling", today(pid), "page");
+    const id = lastLogId(pid);
+    const before = storedTime(id)!;
+    const [burst] = getPracticeCorrectionBursts(pid, clockNow());
+    expect(burst.ids).toEqual([id]);
+    expect(
+      restampPracticeLogsCore(pid, burst.fromId, (row) => {
+        const at = new Date(row.statedAt ?? row.tapAt);
+        return new Date(at.getTime() - 30 * 60_000);
+      })
+    ).toEqual({ kind: "restamped", count: 1 });
+    expect(storedTime(id)).not.toBe(before);
   });
 });
 
@@ -326,7 +399,7 @@ describe("date + time compose through the profile's timezone", () => {
       const t = today(pid);
       for (const hhmm of ["00:15", "23:45", "12:00"]) {
         db.prepare(
-          `INSERT INTO practice_logs (profile_id, practice, date, time)
+          `INSERT INTO practice_logs (profile_id, practice, date, start_time)
            VALUES (?, 'Sauna', ?, ?)`
         ).run(pid, t, hhmm);
         const id = lastLogId(pid);
@@ -408,7 +481,7 @@ describe("an imported session is not a tap", () => {
     const pid = makeProfile("imported");
     db.prepare(
       `INSERT INTO practice_logs
-         (profile_id, practice, date, time, source, external_id)
+         (profile_id, practice, date, start_time, source, external_id)
        VALUES (?, 'Sauna', ?, '19:00', 'oura', 'sauna row 7')`
     ).run(pid, today(pid));
     // Its `created_at` is when the SYNC ran, which would otherwise make a freshly
@@ -458,7 +531,7 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     time: string
   ): void {
     db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, created_at)
        VALUES (?, ?, ?, ?, ?)`
     ).run(profileId, practice, date, time, `${date} 12:00:00`);
   }
@@ -859,7 +932,7 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
   // compose to, which is what a real one-tap write produces.
   function seedTap(pid: number, hhmm: string, date = DAY): number {
     db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, created_at)
          VALUES (?, 'Sauna', ?, ?, ?)`
     ).run(pid, date, hhmm, utcSqlString(atLocal(hhmm, date)));
     return lastLogId(pid);
@@ -934,7 +1007,7 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
         expect(storedDate(id), `${hhmm} local → "${offer.label}"`).toBe(DAY);
         // Put the row back so the next offer starts from the same keyboard.
         db.prepare(
-          "UPDATE practice_logs SET time = ?, edited = 0 WHERE id = ?"
+          "UPDATE practice_logs SET start_time = ?, edited = 0 WHERE id = ?"
         ).run(hhmm, id);
       }
       db.prepare("DELETE FROM practice_logs WHERE id = ?").run(id);
@@ -979,7 +1052,7 @@ describe("the keyboard never offers what the write core refuses (#2875)", () => 
     const pid = makeProfile("havana", HAV);
     const now = new Date("2026-03-08T05:30:00Z");
     db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, created_at)
          VALUES (?, 'Sauna', '2026-03-08', '00:20', ?)`
     ).run(pid, utcSqlString(new Date(now.getTime() - 5 * 60_000)));
     const id = lastLogId(pid);

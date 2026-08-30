@@ -63,7 +63,7 @@ const LOCKED: {
         external_id: "ext-practice-1",
         practice: "Meditation",
         date: DATE,
-        time: "07:00",
+        start_time: "07:00",
         duration_min: 10,
       };
       upsertPracticeLogs(p, [row], SOURCE);

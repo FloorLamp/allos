@@ -1117,7 +1117,8 @@ export function parseExerciseJson(text: string, tz: string): TakeoutParsed {
         external_id: externalId,
         practice: "Meditation",
         date: stamp.date,
-        time: stamp.hhmm,
+        // `log.startTime` — a true START, which is what the column now says (#3142).
+        start_time: stamp.hhmm,
         duration_min: durationMin,
       });
       continue;

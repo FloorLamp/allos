@@ -90,7 +90,7 @@ function seedDay(): void {
        VALUES (?, ?, ?, 'Morning', ?, ?)`
     ).run(PROFILE, FOOD_GROUP, DAY, at, at);
     db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min)
        VALUES (?, ?, ?, '07:15', 20)`
     ).run(PROFILE, PRACTICE, DAY);
     const old = zonedWallTimeToUtc(zoneOf(db), OLD_DAY, "09:12")!.toISOString();

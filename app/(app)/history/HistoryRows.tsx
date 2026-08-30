@@ -522,7 +522,7 @@ export default function HistoryRows({
           </form>
         );
       case "practice": {
-        const when = practiceWhen ?? practiceWhenFor(row, edit.statedTime);
+        const when = practiceWhen ?? practiceWhenFor(row, edit.statedStart);
         return (
           <form
             className="grid gap-2 sm:grid-cols-2"
@@ -530,7 +530,14 @@ export default function HistoryRows({
               void post(event, async (fd) => {
                 fd.set("id", String(edit.sessionId));
                 fd.set("date", when.date);
-                fd.set("time", statedHhmm(when.statedAt, row.tz));
+                fd.set("start_time", statedHhmm(when.statedAt, row.tz));
+                // THE STATED END RIDES ALONG UNCHANGED (#3142).
+                // `editPracticeSession` REWRITES every field it reads, so omitting
+                // this one would silently clear a window the person stated in the
+                // expanded form — and this control states a START, not a range.
+                // Correcting an end stays on the practice card, where the full
+                // editor is.
+                fd.set("end_time", edit.statedEnd ?? "");
                 const outcome = await editPracticeSession(fd);
                 return outcome.kind === "updated"
                   ? { ok: true }
@@ -934,7 +941,7 @@ export default function HistoryRows({
                         close();
                         if (row.edit?.kind === "practice") {
                           setPracticeWhen(
-                            practiceWhenFor(row, row.edit.statedTime)
+                            practiceWhenFor(row, row.edit.statedStart)
                           );
                         }
                         setEditingId(row.id);

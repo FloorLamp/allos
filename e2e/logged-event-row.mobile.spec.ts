@@ -171,7 +171,7 @@ function seedPracticeSession(): void {
   try {
     deleteFixtureRows(db);
     db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min, notes)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min, notes)
        VALUES (?, ?, ?, '07:15', 20, ?)`
     ).run(PROFILE, PRACTICE, DAY, PRACTICE_NOTE);
   } finally {

@@ -8,7 +8,7 @@
 // module owned was the question one level up — "when did THIS ROW happen?" — so every
 // surface answered it itself, and the answers diverged. Dose and food now share the
 // same `occurred_at ?? recorded_at` event-to-capture fallback;
-// practice reads a bare `time` that is not an instant at all. Two of those hand-rolls
+// practice reads a bare `start_time` that is not an instant at all. Two of those hand-rolls
 // are what produced the wrong analyses this issue exists to prevent.
 //
 // Issue #2876 finished the dose pairing: `recorded_at` is the immutable capture and
@@ -23,7 +23,7 @@
 // ── WHY "NO EVENT INSTANT" IS A STATE AND NOT A NULL ─────────────────────────
 //
 // A food serving logged from the web bar has NO `occurred_at`: nobody said when they ate,
-// and #2019 refuses to invent it. A quick-path practice tick has no `time`. Those rows
+// and #2019 refuses to invent it. A backdated practice correction states no start. Those rows
 // do not have an unknown event instant that happens to be missing — they have no event
 // instant, and the app knows it. Returning the RECORD instant there is precisely the
 // substitution that makes "when did this happen" answer "when was this typed", which
@@ -38,7 +38,7 @@
 //
 // ── WHY A TIMEZONE IS SOMETIMES REQUIRED ─────────────────────────────────────
 //
-// `practice_logs.time` is a profile-local HH:MM and `weather_uv_hours.hour_ts` is a
+// `practice_logs.start_time` is a profile-local HH:MM and `weather_uv_hours.hour_ts` is a
 // zoneless local datetime. Neither denotes an instant on its own — you cannot know
 // when a practice happened without knowing where. Rather than guessing UTC, the reader
 // refuses with `needs-zone` until a caller supplies one. Where the instant IS
@@ -80,7 +80,7 @@ export type InstantAbsence =
   // instant is a question the schema cannot answer, for every row, forever.
   | "not-declared"
   // The column exists and this row's value is NULL. Nobody stated an eating time; the
-  // quick practice path recorded no clock. A real answer, not a gap to be filled.
+  // untimed practice correction stated no clock. A real answer, not a gap to be filled.
   | "not-recorded"
   // The value is a profile-local wall clock and no timezone was supplied, so it does
   // not denote an instant yet.

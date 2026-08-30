@@ -60,7 +60,7 @@ function inClause(values: readonly string[]): string {
 }
 
 // The profile-local HH:MM a TAP happened at, or null when the row being written is
-// not about today (see logPracticeSession's `time` contract). Reads the clock seam
+// not about today (see logPracticeSession's `start_time` contract). Reads the clock seam
 // through `zonedMinuteStr`, so a frozen e2e instant stamps the frozen minute.
 function tapInstant(profileId: number, date: string): string | null {
   return date === today(profileId) ? nowTime(profileId) : null;
@@ -71,9 +71,9 @@ function tapInstant(profileId: number, date: string): string | null {
 // running count. `duration_min`/`notes` are optional. Returns a typed outcome — the
 // caller answers from it, never unconditionally confirms.
 //
-// ---- `time`, and why the one-tap paths now carry one (#2204 part 2) -------------
+// ---- `start_time`, and why the one-tap paths now carry one (#2204 part 2) -------
 //
-// `time` is deliberately THREE-valued, and the three values are three different
+// `start_time` is deliberately THREE-valued, and the three values are three different
 // statements a caller can make:
 //
 //   • a "HH:MM" string — this session happened THEN. The expanded form's time input.
@@ -84,7 +84,7 @@ function tapInstant(profileId: number, date: string): string | null {
 //                       the profile-local instant of the tap, which is the truth it
 //                       actually has.
 //
-// The omitted case is new. Until #2202 nothing read `practice_logs.time`, so
+// The omitted case is new. Until #2202 nothing read the column, so
 // `lib/quick-log.ts` correctly declared the practice entry `day-only`: an instant with
 // no consumer is precision that a later reader invents a meaning for. `lib/weekly-rhythm.ts`
 // is now that consumer — `modalHour()` picks each practice's typical session hour and
@@ -107,7 +107,8 @@ export function logPracticeSession(
   // quick-log sheet, so this is the only thing that tells the three apart afterwards.
   loggedVia: LoggedVia,
   opts: {
-    time?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
     durationMin?: number | null;
     notes?: string | null;
     // WHICH MESSAGE'S TAP wrote this row (#2264/#2875) — the `notify_messages` row id,
@@ -121,8 +122,15 @@ export function logPracticeSession(
     return { kind: "invalid-date" };
   }
   const stated =
-    opts.time === undefined ? tapInstant(profileId, date) : (opts.time ?? null);
-  const time = stated && /^\d{2}:\d{2}$/.test(stated) ? stated : null;
+    opts.startTime === undefined
+      ? tapInstant(profileId, date)
+      : (opts.startTime ?? null);
+  const startTime = stated && /^\d{2}:\d{2}$/.test(stated) ? stated : null;
+  // TAP PATHS NEVER WRITE `end_time` (#3142) — being one-tap is the point, and the
+  // expanded form is the only surface that can state a window. `opts.endTime` is
+  // therefore two-valued, not three: a string or nothing.
+  const endTime =
+    opts.endTime && /^\d{2}:\d{2}$/.test(opts.endTime) ? opts.endTime : null;
   const durationMin =
     opts.durationMin != null &&
     Number.isFinite(opts.durationMin) &&
@@ -134,14 +142,15 @@ export function logPracticeSession(
   return writeTx((): PracticeLogOutcome => {
     db.prepare(
       `INSERT INTO practice_logs
-         (profile_id, practice, date, time, duration_min, notes,
+         (profile_id, practice, date, start_time, end_time, duration_min, notes,
           created_at, notify_message_id, logged_via)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       name,
       date,
-      time,
+      startTime,
+      endTime,
       durationMin,
       notes,
       // BOUND FROM THE CLOCK SEAM, not left to the column's SQL DEFAULT (#1534, and
@@ -191,7 +200,7 @@ export function logPracticeSessionForDay(
   practice: string,
   date: string,
   loggedVia: LoggedVia,
-  opts: { time?: string | null; durationMin?: number | null } = {}
+  opts: { startTime?: string | null; durationMin?: number | null } = {}
 ): PracticeDayLogOutcome {
   const name = normalizePracticeName(practice);
   if (!name || !isPracticeDateAccepted(profileId, date)) {
@@ -214,7 +223,8 @@ export function updatePracticeSession(
   id: number,
   input: {
     date: string;
-    time?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
     durationMin?: number | null;
     notes?: string | null;
   }
@@ -223,8 +233,12 @@ export function updatePracticeSession(
   if (!current) return { kind: "not-found" };
   if (!isPracticeEditDateAccepted(profileId, current.date, input.date))
     return { kind: "invalid-date" };
-  const time =
-    input.time && /^\d{2}:\d{2}$/.test(input.time) ? input.time : null;
+  const startTime =
+    input.startTime && /^\d{2}:\d{2}$/.test(input.startTime)
+      ? input.startTime
+      : null;
+  const endTime =
+    input.endTime && /^\d{2}:\d{2}$/.test(input.endTime) ? input.endTime : null;
   const durationMin =
     input.durationMin != null &&
     Number.isFinite(input.durationMin) &&
@@ -234,9 +248,10 @@ export function updatePracticeSession(
   const notes = input.notes?.trim() || null;
   db.prepare(
     `UPDATE practice_logs
-        SET date = ?, time = ?, duration_min = ?, notes = ?, edited = 1
+        SET date = ?, start_time = ?, end_time = ?, duration_min = ?, notes = ?,
+            edited = 1
       WHERE id = ? AND profile_id = ?`
-  ).run(input.date, time, durationMin, notes, id, profileId);
+  ).run(input.date, startTime, endTime, durationMin, notes, id, profileId);
   const session = getPracticeSession(profileId, id);
   return session ? { kind: "updated", session } : { kind: "not-found" };
 }
@@ -247,9 +262,9 @@ export function updatePracticeSession(
 // snapshot contract — the message may be stale) — nothing is written. The `date` is the
 // profile-local today (the tap's day).
 //
-// It passes NO `time`, which now means "stamp the tap" (#2204). It used to say that
+// It passes NO `startTime`, which now means "stamp the tap" (#2204). It used to say that
 // "Telegram stamps its own time-of-day for free" — which was never true of the ROW:
-// the chat message carries a timestamp, `practice_logs.time` was written null, and
+// the chat message carries a timestamp, the session's start was written null, and
 // #2202 then retimed this very nudge onto a typical-hour inference that this path was
 // feeding nothing. A one-tap Done ✅ is a statement that the session is happening now,
 // and that is what the row records.
@@ -328,9 +343,10 @@ export function renamePracticeSessions(
 // ---- Practice-time correction (issue #2875) ---------------------------------
 
 // The typed result of a burst re-stamp:
-//   restamped    — `count` rows now carry a corrected profile-local `time`.
-//   no-burst     — the anchor row is gone, is no longer a tap (its `time` was cleared,
-//                  or an import claimed it), or belongs to another profile. Nothing is
+//   restamped    — `count` rows now carry a corrected profile-local `start_time`.
+//   no-burst     — the anchor row is gone, is no longer a tap (its `start_time` was
+//                  cleared, an import claimed it, or it now carries a stated window),
+//                  or belongs to another profile. Nothing is
 //                  written and the caller says so rather than confirming a correction
 //                  that did not happen.
 //   out-of-range — the resolver refused at least one row (a chip that would walk the
@@ -372,10 +388,17 @@ export type PracticeRestampOutcome =
 // transaction, and a second callback against the same burst therefore reads what the
 // first committed.
 //
-// A NULL `time` IS NEVER GIVEN ONE. Such rows are not in `getRecentPracticeTaps` at all,
-// so they cannot be in a burst; the `time IS NOT NULL` filter is repeated in the re-read
-// below so the property holds against the LEDGER at write time and not merely against
-// whatever the renderer saw.
+// A NULL `start_time` IS NEVER GIVEN ONE. Such rows are not in `getRecentPracticeTaps`
+// at all, so they cannot be in a burst; the `start_time IS NOT NULL` filter is repeated
+// in the re-read below so the property holds against the LEDGER at write time and not
+// merely against whatever the renderer saw.
+//
+// A SESSION CARRYING A STATED WINDOW NEVER JOINS A BURST (#3142, owner decision). The
+// chips exist to correct a tap's fuzzy stamp; a row with `end_time` set was stated in
+// the expanded form, and the form owns corrections to a stated window. `end_time IS
+// NULL` sits beside the two exclusions already here (imported rows, null-start rows)
+// and is repeated in `getRecentPracticeTaps` for the same reason they are: the renderer
+// and the write must bound the same burst.
 export function restampPracticeLogsCore(
   profileId: number,
   fromLogId: number,
@@ -396,10 +419,11 @@ export function restampPracticeLogsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, practice, date, time, created_at, notify_message_id
+        `SELECT id, practice, date, start_time, created_at, notify_message_id
            FROM practice_logs
           WHERE profile_id = ? AND id >= ?
-            AND time IS NOT NULL AND external_id IS NULL
+            AND start_time IS NOT NULL AND end_time IS NULL
+            AND external_id IS NULL
           ORDER BY created_at, id
           LIMIT 200`
       )
@@ -407,7 +431,7 @@ export function restampPracticeLogsCore(
       id: number;
       practice: string;
       date: string;
-      time: string;
+      start_time: string;
       created_at: string;
       notify_message_id: number | null;
     }[];
@@ -460,7 +484,7 @@ export function restampPracticeLogsCore(
       // the re-read both exclude `external_id`), so it protects nothing here — it is set
       // because the two correction paths must agree about what a correction IS.
       db.prepare(
-        `UPDATE practice_logs SET time = ?, edited = 1
+        `UPDATE practice_logs SET start_time = ?, edited = 1
           WHERE id = ? AND profile_id = ?`
       ).run(hhmm, id, profileId);
     }

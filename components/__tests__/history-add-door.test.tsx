@@ -117,7 +117,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
       "logFoodServing",
       { group_key: "leafy_greens", meal_slot: "Morning" },
     ],
-    ["practice", "logPractice", { practice: "Rowing", time: "" }],
+    ["practice", "logPractice", { practice: "Rowing", start_time: "" }],
     [
       "substance",
       "addSubstanceDailyTotalAction",
@@ -224,12 +224,13 @@ describe("the record's Add door posts to the domain's own create action", () => 
   //
   // Two kinds, because they are the two whose schema HAS an event instant and whose
   // create action already reads an absolute wall clock from the form: food's
-  // `occurred_at` and practice's `time`. Substance is a day total with no event column
+  // `occurred_at` and practice's `start_time`. Substance is a day total with no event
+  // column
   // and body's action deliberately states none, so neither gets a time field, and the
   // absence assertion below is what stops this drifting into "all four eventually".
   it.each([
     ["food", "logFoodServing", "occurred_at"],
-    ["practice", "logPractice", "time"],
+    ["practice", "logPractice", "start_time"],
   ] as [HistoryAddKind, string, string][])(
     "%s carries a stated time through to %s as %s",
     async (kind, action, field) => {
@@ -257,7 +258,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
   // a session time nobody gave it.
   it.each([
     ["food", "logFoodServing", "occurred_at"],
-    ["practice", "logPractice", "time"],
+    ["practice", "logPractice", "start_time"],
   ] as [HistoryAddKind, string, string][])(
     "%s posts an empty %s when the reader states no time",
     async (kind, action, field) => {

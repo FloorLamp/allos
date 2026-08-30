@@ -186,8 +186,8 @@ describe("getIntradayDay", () => {
       },
     ];
     const model = getIntradayDay(p, DAY, events);
-    expect(model!.workouts).toHaveLength(1);
-    expect(model!.workouts[0]).toMatchObject({
+    expect(model!.blocks).toHaveLength(1);
+    expect(model!.blocks[0]).toMatchObject({
       startMinute: 480,
       endMinute: 540,
     });

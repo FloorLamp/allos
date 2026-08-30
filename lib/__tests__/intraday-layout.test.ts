@@ -16,8 +16,8 @@ import {
   projectMinute,
   rowLabel,
   sleepEdgeLabels,
-  workoutBlockLayout,
-  workoutLabels,
+  blockLayout,
+  blockLabels,
   type IntradayVariant,
 } from "@/lib/intraday-layout";
 import { MINUTES_IN_DAY, type IntradayModel } from "@/lib/intraday";
@@ -41,7 +41,7 @@ function model(over: Partial<IntradayModel> = {}): IntradayModel {
       zone2: null,
     },
     sleep: [],
-    workouts: [],
+    blocks: [],
     ticks: [],
     nowMinute: null,
     ...over,
@@ -60,7 +60,7 @@ function sleepBlock(over: Partial<IntradayModel["sleep"][number]> = {}) {
   };
 }
 
-function workout(over: Partial<IntradayModel["workouts"][number]> = {}) {
+function workout(over: Partial<IntradayModel["blocks"][number]> = {}) {
   return {
     key: "a:1",
     eventId: "a:1",
@@ -126,7 +126,7 @@ describe("the row stack collapses to the day's layers", () => {
     const everything = intradayGeometry(
       model({
         sleep: [sleepBlock()],
-        workouts: [workout()],
+        blocks: [workout()],
         ticks: [
           {
             key: "t",
@@ -150,7 +150,7 @@ describe("the row stack collapses to the day's layers", () => {
 
   it("puts the sleep edge labels above the band, clear of the workout row", () => {
     const geo = intradayGeometry(
-      model({ sleep: [sleepBlock()], workouts: [workout()] }),
+      model({ sleep: [sleepBlock()], blocks: [workout()] }),
       "wide"
     );
     expect(geo.sleepLabelY).toBeLessThanOrEqual(geo.sleepTop);
@@ -350,11 +350,11 @@ describe("bed and wake labels (#1512 A)", () => {
 describe("workout block names (#1512 B)", () => {
   it("names a long block INSIDE it and never paints past its right edge", () => {
     const w = workout({ startMinute: 480, endMinute: 780 }); // 5 h
-    const geo = intradayGeometry(model({ workouts: [w] }), "wide");
-    const layout = workoutBlockLayout(geo, w)!;
+    const geo = intradayGeometry(model({ blocks: [w] }), "wide");
+    const layout = blockLayout(geo, w)!;
     expect(layout.showIcon).toBe(true);
     expect(layout.text).toBe("Morning ride");
-    const [label] = workoutLabels(geo, [w]);
+    const [label] = blockLabels(geo, [w]);
     expect(label.mode).toBe("inside");
     expect(label.end).toBeLessThanOrEqual(layout.left + layout.width + 1e-9);
   });
@@ -365,10 +365,10 @@ describe("workout block names (#1512 B)", () => {
   // 45-minute lift look identical".
   it("puts an ordinary session's name BESIDE its block", () => {
     const w = workout({ startMinute: 480, endMinute: 540 }); // 1 h
-    const geo = intradayGeometry(model({ workouts: [w] }), "wide");
-    const layout = workoutBlockLayout(geo, w)!;
+    const geo = intradayGeometry(model({ blocks: [w] }), "wide");
+    const layout = blockLayout(geo, w)!;
     expect(layout.text).toBeNull(); // does not fit inside
-    const [label] = workoutLabels(geo, [w]);
+    const [label] = blockLabels(geo, [w]);
     expect(label.mode).toBe("beside");
     expect(label.text).toBe("Morning ride");
     expect(label.start).toBeGreaterThanOrEqual(layout.left + layout.width);
@@ -383,8 +383,8 @@ describe("workout block names (#1512 B)", () => {
       endMinute: 1440,
       title: "Evening ride with the club",
     });
-    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
-    const [label] = workoutLabels(geo, [w]);
+    const geo = intradayGeometry(model({ blocks: [w] }), "compact");
+    const [label] = blockLabels(geo, [w]);
     expect(label.mode).toBe("beside");
     expect(label.start).toBeGreaterThanOrEqual(geo.plotLeft - 1e-9);
     expect(label.end).toBeLessThanOrEqual(geo.plotRight + 1e-9);
@@ -396,23 +396,23 @@ describe("workout block names (#1512 B)", () => {
       endMinute: 660,
       title: "Evening ride with the club along the river and back again twice",
     });
-    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
-    const [label] = workoutLabels(geo, [w]);
+    const geo = intradayGeometry(model({ blocks: [w] }), "compact");
+    const [label] = blockLabels(geo, [w]);
     expect(label.text.endsWith("…")).toBe(true);
     expect(label.end).toBeLessThanOrEqual(geo.plotRight + 1e-9);
   });
 
   it("keeps the icon but drops the name for a sliver block", () => {
     const w = workout({ startMinute: 480, endMinute: 500 });
-    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
-    const layout = workoutBlockLayout(geo, w)!;
+    const geo = intradayGeometry(model({ blocks: [w] }), "compact");
+    const layout = blockLayout(geo, w)!;
     expect(layout.text).toBeNull();
   });
 
   it("drops even the icon when the block is a sliver", () => {
     const w = workout({ startMinute: 480, endMinute: 482 });
-    const geo = intradayGeometry(model({ workouts: [w] }), "compact");
-    const layout = workoutBlockLayout(geo, w)!;
+    const geo = intradayGeometry(model({ blocks: [w] }), "compact");
+    const layout = blockLayout(geo, w)!;
     expect(layout.showIcon).toBe(false);
     expect(layout.width).toBeGreaterThan(0);
   });
@@ -433,22 +433,22 @@ describe("workout block names (#1512 B)", () => {
       endMinute: 680,
       title: "Short lift",
     });
-    const geo = intradayGeometry(model({ workouts: [long, short] }), "compact");
-    const labels = workoutLabels(geo, [long, short]);
+    const geo = intradayGeometry(model({ blocks: [long, short] }), "compact");
+    const labels = blockLabels(geo, [long, short]);
     expect(labels.map((l) => l.key)).toEqual(["long"]);
   });
 
   it("clips a block to a zoomed window and drops one outside it", () => {
     const w = workout({ startMinute: 480, endMinute: 525 });
-    const geo = intradayGeometry(model({ workouts: [w] }), "wide", {
+    const geo = intradayGeometry(model({ blocks: [w] }), "wide", {
       from: 500,
       to: 560,
     });
-    const layout = workoutBlockLayout(geo, w)!;
+    const layout = blockLayout(geo, w)!;
     expect(layout.left).toBeCloseTo(geo.plotLeft, 6);
     expect(
-      workoutBlockLayout(
-        intradayGeometry(model({ workouts: [w] }), "wide", {
+      blockLayout(
+        intradayGeometry(model({ blocks: [w] }), "wide", {
           from: 900,
           to: 1000,
         }),
@@ -456,8 +456,8 @@ describe("workout block names (#1512 B)", () => {
       )
     ).toBeNull();
     expect(
-      workoutLabels(
-        intradayGeometry(model({ workouts: [w] }), "wide", {
+      blockLabels(
+        intradayGeometry(model({ blocks: [w] }), "wide", {
           from: 900,
           to: 1000,
         }),

@@ -263,7 +263,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: null,
+          statedStart: null,
+          statedEnd: null,
           durationMin: null,
           notes: "evening wind-down",
         },
@@ -282,8 +283,10 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     // THE ASSERTION THE DEFECT FAILS: 19:43 is on screen, and it must not be in the
     // payload. `editPracticeSession` writes what it is handed, so this is the whole
     // difference between "logged 19:43" and a session claiming to have happened then.
-    expect(fd.time).toBe("");
-    expect(fd.time).not.toBe("19:43");
+    expect(fd.start_time).toBe("");
+    expect(fd.start_time).not.toBe("19:43");
+    // The END rides along on the same terms, and a tap never states one.
+    expect(fd.end_time).toBe("");
     // And the fields the action rewrites from what it reads are still carried, so a
     // duration correction cannot clear the note.
     expect(fd.notes).toBe("evening wind-down");
@@ -300,7 +303,10 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 6,
-          statedTime: "07:15",
+          statedStart: "07:15",
+          // A STATED END, on purpose: with a null one the "rides along unchanged"
+          // assertion below would read "" whether the field was carried or dropped.
+          statedEnd: "19:25",
           durationMin: 20,
           notes: null,
         },
@@ -317,7 +323,11 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     );
     expect(only("editPracticeSession")).toMatchObject({
       date: "2026-08-19",
-      time: "08:30",
+      // The control states the session's START (#3142) …
+      start_time: "08:30",
+      // … and the stated END rides along unchanged, because the action rewrites
+      // every field it reads and this control does not state a range.
+      end_time: "19:25",
     });
   });
 
@@ -617,7 +627,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: "07:15",
+          statedStart: "07:15",
+          statedEnd: null,
           durationMin: 25,
           notes: "evening wind-down",
         },
@@ -626,7 +637,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       {
         id: "5",
         date: "2026-08-18",
-        time: "07:15",
+        start_time: "07:15",
+        end_time: "",
         duration_min: "25",
         notes: "evening wind-down",
       },
@@ -816,7 +828,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 5,
-          statedTime: null,
+          statedStart: null,
+          statedEnd: null,
           durationMin: null,
           notes: null,
         },
