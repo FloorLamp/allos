@@ -5,7 +5,7 @@ import { E2E_LOGIN_TRENDS_BODY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 declare global {
   interface Window {
-    __rafGate: { hold(): void; release(): Promise<void> };
+    __rafGate: { hold(): void; pending(): number; release(): Promise<void> };
   }
 }
 
@@ -28,6 +28,7 @@ async function installFrameGate(page: Page): Promise<void> {
       hold: () => {
         held = true;
       },
+      pending: () => pending.size,
       release: () => {
         held = false;
         const callbacks = [...pending.values()];
@@ -42,10 +43,6 @@ async function installFrameGate(page: Page): Promise<void> {
     };
   });
 }
-
-const holdFrames = (page: Page) => page.evaluate(() => window.__rafGate.hold());
-const releaseFrames = (page: Page) =>
-  page.evaluate(() => window.__rafGate.release());
 
 test("chart-menu open focus cannot overwrite a landed keystroke (#4037)", async ({
   browser,
@@ -64,12 +61,12 @@ test("chart-menu open focus cannot overwrite a landed keystroke (#4037)", async 
   const hostLanding = page.getByTestId("chart-jump-weight");
   await trigger.focus();
   expect(await page.evaluate(() => scrollY)).toBe(0);
-  await holdFrames(page);
+  await page.evaluate(() => window.__rafGate.hold());
   await page.keyboard.press("ArrowDown");
   await expect(hostLanding).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(items.nth(1)).toBeFocused();
-  await releaseFrames(page);
+  await page.evaluate(() => window.__rafGate.release());
   await expect(items.nth(1)).toBeFocused();
   expect(await page.evaluate(() => scrollY)).toBe(0);
 
@@ -79,13 +76,16 @@ test("chart-menu open focus cannot overwrite a landed keystroke (#4037)", async 
   expect(deepLinkY).toBeGreaterThan(0);
   await trigger.evaluate((element) => element.focus({ preventScroll: true }));
   expect(await page.evaluate(() => scrollY)).toBe(deepLinkY);
-  await holdFrames(page);
+  await page.evaluate(() => window.__rafGate.hold());
   await page.keyboard.press("ArrowDown");
   const selectedIndex = await items.evaluateAll((nodes) =>
     nodes.findIndex((node) => node.getAttribute("aria-checked") === "true")
   );
   expect(selectedIndex).toBeGreaterThan(0);
-  await releaseFrames(page);
+  await expect
+    .poll(() => page.evaluate(() => window.__rafGate.pending()))
+    .toBeGreaterThan(0);
+  await page.evaluate(() => window.__rafGate.release());
   await expect(items.nth(selectedIndex)).toBeFocused();
   expect(await page.evaluate(() => scrollY)).toBe(deepLinkY);
   await page.context().close();
