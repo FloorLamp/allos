@@ -33,6 +33,7 @@ describe("confirmNiggle (#2948)", () => {
   it("writes the confirmed candidate, linked to the activity, and revalidates", async () => {
     const { profile } = seedActor();
     const activityId = seedActivity(profile.id, "right knee weird");
+    expect(getNiggles(profile.id)).toEqual([]);
 
     const out = await confirmNiggle(
       fd({ activity_id: activityId, region: "Legs", laterality: "right" })
@@ -53,33 +54,20 @@ describe("confirmNiggle (#2948)", () => {
     expect(revalidate.mock.calls.map((c) => c[0])).toContain("/training");
   });
 
-  it("nothing is written until the tap — the note alone stores no niggle", () => {
-    const { profile } = seedActor();
-    seedActivity(profile.id, "left hip no good");
-    expect(getNiggles(profile.id)).toEqual([]);
-  });
-
-  it("refuses a region the note never named", async () => {
+  it("refuses candidates the note never named", async () => {
     const { profile } = seedActor();
     const activityId = seedActivity(profile.id, "right knee weird");
-    // A forged/stale post naming a different region: the action re-runs the detector
-    // over the stored note and finds no such candidate.
-    expect(
-      await confirmNiggle(
-        fd({ activity_id: activityId, region: "Chest", laterality: "right" })
-      )
-    ).toEqual({ ok: false, reason: "no-candidate" });
-    expect(getNiggles(profile.id)).toEqual([]);
-  });
 
-  it("refuses a side the note never named", async () => {
-    const { profile } = seedActor();
-    const activityId = seedActivity(profile.id, "right knee weird");
-    expect(
-      await confirmNiggle(
-        fd({ activity_id: activityId, region: "Legs", laterality: "left" })
-      )
-    ).toEqual({ ok: false, reason: "no-candidate" });
+    // Forged/stale posts naming either a different region or side are checked
+    // against the stored note instead of being trusted from the form.
+    for (const candidate of [
+      { region: "Chest", laterality: "right" },
+      { region: "Legs", laterality: "left" },
+    ]) {
+      expect(
+        await confirmNiggle(fd({ activity_id: activityId, ...candidate }))
+      ).toEqual({ ok: false, reason: "no-candidate" });
+    }
     expect(getNiggles(profile.id)).toEqual([]);
   });
 
