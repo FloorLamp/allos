@@ -41,10 +41,10 @@ function columnNames(db: Database.Database, table: string): Set<string> {
   return new Set(rows.map((r) => r.name));
 }
 
-describe("migrate() — fresh boot", () => {
-  it("runs to completion on an empty database without throwing", () => {
+describe("migrate() — fresh boot and current-database replay", () => {
+  it("runs fresh boot tasks and then leaves the current schema unchanged", () => {
     const db = newDb();
-    expect(() => migrate(db)).not.toThrow();
+    migrate(db);
 
     // Spot-check a representative slice of the schema exists.
     const tables = tableNames(db);
@@ -103,14 +103,6 @@ describe("migrate() — fresh boot", () => {
       ).c
     ).toBeGreaterThan(0);
 
-    db.close();
-  });
-});
-
-describe("migrate() — idempotency (up-to-date DB replays as a no-op)", () => {
-  it("can be run twice on the same database without throwing or changing schema", () => {
-    const db = newDb();
-    migrate(db);
     const schema = () =>
       db
         .prepare(
@@ -122,8 +114,7 @@ describe("migrate() — idempotency (up-to-date DB replays as a no-op)", () => {
         .all();
     const before = schema();
 
-    expect(() => migrate(db)).not.toThrow();
-
+    migrate(db);
     expect(schema()).toEqual(before);
     db.close();
   });
