@@ -35,6 +35,7 @@ import {
   TEMPLATE_INPUT_FILES,
   templateKey,
 } from "@/lib/__db_tests__/shared-template";
+import { makeTmpDir } from "./tmp-dir";
 
 const BOOT_TASKS = "lib/migrations/boot-tasks.ts";
 
@@ -255,8 +256,29 @@ function coveredByKey(file: string): boolean {
   );
 }
 
+function copyTemplateInputs(): string {
+  const root = makeTmpDir("db-template-key");
+  for (const relative of TEMPLATE_INPUT_DIRS) {
+    fs.cpSync(path.join(process.cwd(), relative), path.join(root, relative), {
+      recursive: true,
+    });
+  }
+  for (const relative of TEMPLATE_INPUT_FILES) {
+    const dest = path.join(root, relative);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(process.cwd(), relative), dest);
+  }
+  return root;
+}
+
+const TEMPLATE_PROBE_ROOT = copyTemplateInputs();
+
+function probeKey(): string {
+  return templateKey(TEMPLATE_PROBE_ROOT);
+}
+
 /**
- * Run `fn` with `file` temporarily edited, always restoring the original.
+ * Run `fn` with a mirrored input temporarily edited, always restoring the mirror.
  *
  * The edit is asserted to have CHANGED the source. A `.replace()` whose target has
  * since been reworded is a silent no-op, and a no-op edit produces an unchanged
@@ -264,7 +286,7 @@ function coveredByKey(file: string): boolean {
  * while proving nothing.
  */
 function withEdited(file: string, edit: (src: string) => string): string {
-  const abs = path.join(process.cwd(), file);
+  const abs = path.join(TEMPLATE_PROBE_ROOT, file);
   const original = fs.readFileSync(abs, "utf8");
   const edited = edit(original);
   if (edited === original) {
@@ -275,7 +297,7 @@ function withEdited(file: string, edit: (src: string) => string): string {
   }
   try {
     fs.writeFileSync(abs, edited);
-    return templateKey();
+    return probeKey();
   } finally {
     fs.writeFileSync(abs, original);
   }
@@ -283,13 +305,13 @@ function withEdited(file: string, edit: (src: string) => string): string {
 
 describe("the DB template cache key", () => {
   it("is stable when nothing changes", () => {
-    expect(templateKey()).toBe(templateKey());
+    expect(probeKey()).toBe(probeKey());
   });
 
   it("changes when a migration changes", () => {
     // The half that was never in doubt, asserted so the walk itself cannot
     // silently stop reading the migrations directory.
-    const before = templateKey();
+    const before = probeKey();
     const after = withEdited(
       "lib/migrations/versions/index.ts",
       (s) => s + "\n// orchestrator probe\n"
@@ -300,7 +322,7 @@ describe("the DB template cache key", () => {
   it("changes when the seed dataset a boot task bakes changes", () => {
     // The half that was missed. A REMOVAL is the case that matters: an upsert
     // corrects a changed row on every boot, and nothing deletes a stale one.
-    const before = templateKey();
+    const before = probeKey();
     const after = withEdited("lib/canonical-result-definitions.json", (s) => {
       const parsed = JSON.parse(s) as { definitions: { name: string }[] };
       parsed.definitions.pop();
@@ -321,7 +343,7 @@ describe("the DB template cache key", () => {
     // template bytes at build time. Editing the seeded tile list must therefore
     // rebuild, or profile 1 keeps serving the old set for as long as the cache
     // survives (days, now that it is reused across invocations).
-    const before = templateKey();
+    const before = probeKey();
     const after = withEdited("lib/standard-metric-seeds.ts", (s) =>
       s.replace(`"volume",`, `"volume",\n  "sleep",`)
     );
@@ -335,7 +357,7 @@ describe("the DB template cache key", () => {
   it("changes when the initial onboarding state changes", () => {
     // The same gate, the other thing bootstrapAuth bakes: profile 1's
     // `onboarding_state` row is written once, from `initialOnboardingState()`.
-    const before = templateKey();
+    const before = probeKey();
     const after = withEdited("lib/onboarding.ts", (s) =>
       s.replace("basicsComplete: false,", "basicsComplete: true,")
     );
@@ -444,14 +466,13 @@ describe("the DB template cache key", () => {
     }
   });
 
-  it("restores every file it edits", () => {
-    // The cases above write to tracked files. If one ever failed to restore, the
-    // damage would be a corrupted dataset in someone's working tree, so the
-    // restoration is asserted rather than trusted to a finally block nobody reads.
-    expect(templateKey()).toBe(templateKey());
+  it("restores every mirrored input it edits", () => {
+    // A probe must leave the mirror stable for the next case. The live checkout is
+    // never opened for writing, so parallel workers cannot import an edited dataset.
+    expect(probeKey()).toBe(probeKey());
     const parsed = JSON.parse(
       fs.readFileSync(
-        path.join(process.cwd(), "lib/canonical-result-definitions.json"),
+        path.join(TEMPLATE_PROBE_ROOT, "lib/canonical-result-definitions.json"),
         "utf8"
       )
     ) as { definitions: unknown[] };
