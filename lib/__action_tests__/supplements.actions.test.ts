@@ -386,14 +386,6 @@ describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
     return { profile, suppId, doseId, date: today(profile.id) };
   }
 
-  it("skipping a dose logs status='skipped' and NEVER touches supply", async () => {
-    const { suppId, doseId, date } = await seedTracked();
-    await setDoseStatus(fd({ dose_id: doseId, status: "skipped" }));
-    expect(logStatus(doseId, date)).toBe("skipped");
-    // Supply is untouched — a skip consumes nothing.
-    expect(itemRow(suppId).quantity_on_hand).toBe(10);
-  });
-
   it("taken→skipped RESTORES supply; skipped→taken decrements it (symmetry)", async () => {
     const { suppId, doseId, date } = await seedTracked();
 
@@ -413,11 +405,13 @@ describe("setDoseStatus tri-state + skip supply invariant (#232)", () => {
     expect(itemRow(suppId).quantity_on_hand).toBe(8);
   });
 
-  it("clear removes the log; clearing a skip leaves supply where it was", async () => {
+  it("skip and clear preserve supply; clearing a take restores it", async () => {
     const { suppId, doseId, date } = await seedTracked();
 
     // skip → clear: no log, supply stays at 10 (skip never moved it).
     await setDoseStatus(fd({ dose_id: doseId, status: "skipped" }));
+    expect(logStatus(doseId, date)).toBe("skipped");
+    expect(itemRow(suppId).quantity_on_hand).toBe(10);
     await setDoseStatus(fd({ dose_id: doseId, status: "clear" }));
     expect(logCount(doseId, date)).toBe(0);
     expect(itemRow(suppId).quantity_on_hand).toBe(10);
@@ -590,23 +584,38 @@ describe("setItemActive", () => {
     expect(itemRow(id).active).toBe(0);
   });
 
-  it("REFUSES a stale tab's intent instead of inverting it (#2133)", async () => {
+  it("REFUSES stale intent without clearing a fresh refill marker (#2133 × #325)", async () => {
     const { profile } = seedActor();
-    await addIntakeItem(fd({ name: "Zinc" }));
+    await addIntakeItem(
+      fd({ name: "Zinc", quantity_on_hand: 30, qty_per_dose: 1 })
+    );
     const id = getIntakeItems(profile.id)[0].id;
     // Someone else already paused the item; a tab still rendering "Pause" posts to=0.
     await setItemActive(fd({ id, to: "0" }));
+    // A fresh marker planted after the real pause must survive the refused repeat.
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-02");
     const res = await setItemActive(fd({ id, to: "0" }));
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toMatch(/Already paused/);
     // The wrong write did NOT happen: the item stays paused.
     expect(itemRow(id).active).toBe(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
+      "2026-07-02"
+    );
   });
 
-  it("medication pause/resume keeps course history in sync and refuses repeats", async () => {
+  it("medication pause/resume syncs course history and clears refill markers (#325)", async () => {
     const { profile } = seedActor();
-    await addIntakeItem(fd({ name: "Lisinopril", kind: "medication" }));
+    await addIntakeItem(
+      fd({
+        name: "Lisinopril",
+        kind: "medication",
+        quantity_on_hand: 30,
+        qty_per_dose: 1,
+      })
+    );
     const id = getIntakeItems(profile.id)[0].id;
+    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
     const openCourses = () =>
       getMedicationCourses(profile.id).filter((c) => c.stopped_on == null);
     expect(openCourses()).toHaveLength(1);
@@ -615,6 +624,7 @@ describe("setItemActive", () => {
     expect(paused).toEqual({ ok: true, state: "paused" });
     expect(itemRow(id).active).toBe(0);
     expect(openCourses()).toHaveLength(0);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
 
     const again = await setItemActive(fd({ id, to: "0" }));
     expect(again.ok).toBe(false);
@@ -624,6 +634,7 @@ describe("setItemActive", () => {
     expect(resumed).toEqual({ ok: true, state: "resumed" });
     expect(itemRow(id).active).toBe(1);
     expect(openCourses()).toHaveLength(1);
+    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 });
 
@@ -691,18 +702,6 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 
-  it("a REFUSED pause never clears the marker (#2133 × #325)", async () => {
-    const { profile, id } = await seedTrackedWithMarker();
-    await setItemActive(fd({ id, to: "0" }));
-    // Marker gone after the real pause; plant a fresh one and refuse a repeat pause.
-    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-02");
-    const res = await setItemActive(fd({ id, to: "0" }));
-    expect(res.ok).toBe(false);
-    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
-      "2026-07-02"
-    );
-  });
-
   it("setItemActive on an UNtracked item leaves any unrelated marker untouched", async () => {
     const { profile } = seedActor();
     await addIntakeItem(fd({ name: "Magnesium" })); // no quantity tracking
@@ -714,23 +713,6 @@ describe("refill episode marker cleanup on state change (#325)", () => {
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBe(
       "2026-07-01"
     );
-  });
-
-  it("pausing a tracked MEDICATION also clears its marker", async () => {
-    const { profile } = seedActor();
-    await addIntakeItem(
-      fd({
-        name: "Lisinopril",
-        kind: "medication",
-        quantity_on_hand: 30,
-        qty_per_dose: 1,
-      })
-    );
-    const id = getIntakeItems(profile.id)[0].id;
-    setProfileSetting(profile.id, refillMarkerKey(id), "2026-07-01");
-    await setItemActive(fd({ id, to: "0" }));
-    expect(itemRow(id).active).toBe(0);
-    expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
   });
 });
 
@@ -757,16 +739,11 @@ describe("refill marker cleanup on Stop/Restart (#603)", () => {
     return { profile, id };
   }
 
-  it("stopMedication clears the low-supply marker (parity with Pause)", async () => {
+  it("stop → restart leaves no stale marker to silence the re-nudge", async () => {
     const { profile, id } = await seedTrackedMedWithMarker();
     await stopMedication(fd({ id }));
     expect(itemRow(id).active).toBe(0);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
-  });
-
-  it("stop → restart leaves no stale marker to silence the re-nudge", async () => {
-    const { profile, id } = await seedTrackedMedWithMarker();
-    await stopMedication(fd({ id }));
     await restartMedication(fd({ id }));
     expect(itemRow(id).active).toBe(1);
     expect(getProfileSetting(profile.id, refillMarkerKey(id))).toBeUndefined();
