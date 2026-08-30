@@ -5,6 +5,7 @@ import {
   LOGGED_VIA_MEANING,
   LOGGED_VIA_VALUES,
   OFFLINE_REPLAY,
+  USUAL_BACKFILL,
   isLoggedVia,
   parseWebOrigin,
   type LoggedVia,
@@ -33,11 +34,16 @@ describe("the logged_via vocabulary", () => {
     }
   });
 
-  it("carries the nine members #3087 specified, and says so by NAME", () => {
+  it("carries the ten members shipped so far, and says so by NAME", () => {
     // The one place a literal list is right: it pins what shipped, and the moment the
     // union grows this fails and a human decides whether the newcomer belongs in the
     // web subset, in a migration, or nowhere. `satisfies` — not an annotation — so a
     // TYPO here is an error rather than a silently-absent member.
+    //
+    // The tenth is #4118's, and it went through exactly that decision: `usual-backfill`
+    // is NOT in the web subset (a browser may never claim it — the write cores derive it
+    // from the day) and needs no migration (the column is TEXT and its vocabulary is
+    // enforced in code, not by a CHECK).
     const shipped = [
       "telegram-nudge",
       "telegram-command",
@@ -47,9 +53,20 @@ describe("the logged_via vocabulary", () => {
       "quick-log",
       "page",
       "offline-replay",
+      "usual-backfill",
       "import",
     ] as const satisfies readonly LoggedVia[];
     expect([...LOGGED_VIA_VALUES].sort()).toEqual([...shipped].sort());
+  });
+
+  it("names the backfill stamp, and keeps a browser from claiming it", () => {
+    // The value the #4118 evidence guard keys on. It is a real member of the closed
+    // vocabulary (so `isLoggedVia` accepts a row carrying it) and deliberately outside
+    // the web subset: a forged post naming it would let a client mark its own write as
+    // "not evidence", which is a claim only the write core's day comparison may make.
+    expect(isLoggedVia(USUAL_BACKFILL)).toBe(true);
+    expect(USUAL_BACKFILL).toBe("usual-backfill");
+    expect(parseWebOrigin(USUAL_BACKFILL, "page")).toBe("page");
   });
 
   it("accepts exactly its own members at the untyped boundary", () => {

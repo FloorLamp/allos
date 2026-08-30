@@ -43,6 +43,7 @@ export type LoggedVia =
   | "quick-log"
   | "page"
   | "offline-replay"
+  | "usual-backfill"
   | "import";
 
 /**
@@ -64,6 +65,8 @@ export const LOGGED_VIA_MEANING: Record<LoggedVia, string> = {
   "quick-log": "the command palette and the quick-log sheet",
   page: "the domain page's own form",
   "offline-replay": "a queued write replayed by /api/offline-replay",
+  "usual-backfill":
+    'the composed "your usual <window>" one-tap, aimed at a PAST day (#4118) — a person acted, but on a day they were reconstructing rather than living',
   import:
     "not a user interaction; the row came from an importer (`source` names which, where the write path has one)",
 };
@@ -168,6 +171,28 @@ export const IMPORTED: LoggedVia = "import";
  * two-axis "queued from X, replayed" is a wider change than #3087 asked for.
  */
 export const OFFLINE_REPLAY: LoggedVia = "offline-replay";
+
+/**
+ * The stamp the DATED "your usual <window>" one-tap writes (#4118).
+ *
+ * THE ONE VALUE THAT NAMES A DAY RATHER THAN A SURFACE, and it is the whole reason the
+ * dated write could be allowed at all. "Usual" is DERIVED from `getFoodRegularity`, so a
+ * bundle written onto a day nobody remembers would feed its own evidence back into
+ * itself — three backfilled mornings become the reason a fourth is offered. The write is
+ * therefore stamped distinguishably and `getFoodRegularity` excludes exactly this value
+ * from its evidence window. Everywhere a PERSON looks — adherence, the ledgers, the day
+ * views — the row counts like any other, because it records something that happened.
+ *
+ * IT REPLACES THE SURFACE, WHICH IS A REAL LOSS and is recorded as one: a backfill from
+ * Telegram and a backfill from the web are indistinguishable in this column. One row
+ * stores one fact, the guard needs this one, and a second axis is a wider change than
+ * #4118 asked for. A CONTEMPORANEOUS usual tap is unaffected — it stamps its own surface
+ * exactly as before, and counts as evidence exactly as before.
+ *
+ * NOT in `WebLoggedVia`: a browser may never CLAIM it. The write cores decide it, from
+ * the date they were handed against the profile's own today.
+ */
+export const USUAL_BACKFILL: LoggedVia = "usual-backfill";
 
 /**
  * The ledgers that carry `logged_via` — #3087's first tranche, shipped by

@@ -974,3 +974,63 @@ describe("scoping + rollup", () => {
     expect(rollupB).toEqual([]);
   });
 });
+
+// ── THE DAY BOUND IS IN THE CORE NOW (#4118) ─────────────────────────────────
+//
+// Until #4118 the only thing between a posted `date` and the ledger was the day
+// picker's own markup — the action's parse checked the SHAPE `\d{4}-\d{2}-\d{2}` and
+// nothing else, so a hand-built POST could put a serving on any day that spells like
+// one, the next century included. Those rows would then sit in every rollup, every
+// tally and every trend for ever, and nothing in the app would remove them.
+//
+// The refusal lives in `logFoodServingCore`, so the quick-log sheet, the Telegram
+// handler and the offline replay inherit it together. Arbitrary PAST stays allowed:
+// that is the `/history` door's whole job.
+describe("a forged day", () => {
+  function seed(name: string) {
+    const login = createLogin();
+    const profile = createProfile(name, login.id);
+    actAs(login, profile);
+    return profile;
+  }
+
+  it.each([
+    ["tomorrow", 1],
+    ["next week", 7],
+    ["next year", 400],
+  ] as const)("refuses %s and writes nothing", async (why, ahead) => {
+    const profile = seed(`forged-future-${ahead}`);
+    const future = shiftDateStr(today(profile.id), ahead);
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: future })
+    );
+    expect(res.ok, why).toBe(false);
+    expect(rows(profile.id)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?"
+        )
+        .get(profile.id) as { n: number }
+    ).toEqual({ n: 0 });
+  });
+
+  it("still accepts an arbitrary PAST day, which is the /history door's contract", async () => {
+    // The converse, in the same commit: a not-future bound written as a WINDOW would
+    // pass every assertion above and would silently break the one deep door this app
+    // has for reconstructing a year-old record.
+    const profile = seed("forged-past");
+    const old = shiftDateStr(today(profile.id), -400);
+    const res = await logFoodServing(fd({ group_key: "berries", date: old }));
+    expect(res.ok).toBe(true);
+    expect(rows(profile.id).map((r) => r.date)).toEqual([old]);
+  });
+
+  it("today itself is inside the bound, at the very edge of it", async () => {
+    const profile = seed("forged-edge");
+    const res = await logFoodServing(
+      fd({ group_key: "berries", date: today(profile.id) })
+    );
+    expect(res.ok).toBe(true);
+  });
+});

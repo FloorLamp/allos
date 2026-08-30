@@ -19,6 +19,8 @@ import {
   foodLessCallbackData,
   foodMoreCallbackData,
 } from "@/lib/notifications/food-format";
+import { isDoseDateAccepted } from "@/lib/dose-log-window";
+import { shiftDateStr } from "@/lib/date";
 
 describe("parseFoodLogCallback", () => {
   it("parses a well-formed token, reading an UNMARKED one as the nudge", () => {
@@ -195,36 +197,56 @@ describe("foodLogAnswerText", () => {
   });
 });
 
-describe("foodTapDateGuard (cross-date guard, #947)", () => {
-  it("current-day when the token date equals today", () => {
-    expect(foodTapDateGuard("2026-07-18", "2026-07-18")).toEqual({
-      kind: "current-day",
-    });
+describe("foodTapDateGuard (cross-date guard, #947, windowed by #4118)", () => {
+  // THE WHOLE WINDOW, INCLUDING BOTH SIDES OF EVERY EDGE. #4118 replaced #947's
+  // same-day rule with the message-date window the dose buttons on the same message
+  // already use, so the guard now answers three things and the two boundaries between
+  // them are the assertion: one day either side of `DOSE_LOG_DATE_WINDOW_DAYS`.
+  //
+  // `recent-day` is not a softer `stale-date`. It is the state that makes the owner's
+  // report ("I can only update the morning supplement times, not food") false: the
+  // serving LANDS, on the message's own day, and the handler withholds the eating
+  // instant because "I'm eating now" is untrue about a day that has ended.
+  it.each([
+    ["same day", "2026-07-18", "current-day"],
+    ["one day late — inside the window", "2026-07-17", "recent-day"],
+    ["two days late — the last day inside", "2026-07-16", "recent-day"],
+    ["three days late — the first day outside", "2026-07-15", "stale-date"],
+    ["a week late", "2026-07-11", "stale-date"],
+    ["tomorrow (clock skew / forged)", "2026-07-19", "recent-day"],
+    ["three days ahead — outside", "2026-07-21", "stale-date"],
+    ["not a date at all", "not-a-date", "stale-date"],
+  ] as const)("%s → %s", (_why, tokenDate, kind) => {
+    expect(foodTapDateGuard(tokenDate, "2026-07-18").kind).toBe(kind);
   });
 
-  it("stale-date when the token date is yesterday", () => {
-    expect(foodTapDateGuard("2026-07-17", "2026-07-18")).toEqual({
-      kind: "stale-date",
-    });
-  });
-
-  it("stale-date when the token date is a future day (clock skew / forged)", () => {
-    expect(foodTapDateGuard("2026-07-19", "2026-07-18").kind).toBe(
-      "stale-date"
-    );
-  });
-
-  it("pins the tz-midnight boundary: 23:59 vs 00:01 around the profile's midnight", () => {
-    // A 23:59 tap on the previous day's nudge resolves 'today' still = the old day,
-    // so a same-day tap keeps logging; one minute later 'today' has rolled over and
-    // the same stale nudge is refused. The pure guard sees only the two date strings
-    // the handler already resolved from the profile's tz — that's the whole seam.
+  it("keeps the tz-midnight seam, now as the current-day/recent-day edge", () => {
+    // A 23:59 tap on the previous day's nudge resolves 'today' still = the old day, so
+    // the tap is CURRENT and its instant is a real eating time; one minute later 'today'
+    // has rolled over and the same tap is a RECENT-day backfill onto the message's own
+    // day instead. The pure guard sees only the two date strings the handler already
+    // resolved from the profile's tz — that is the whole seam, and what changed at
+    // #4118 is what happens on the far side of it, never where it falls.
     expect(foodTapDateGuard("2026-07-17", "2026-07-17").kind).toBe(
       "current-day"
     );
     expect(foodTapDateGuard("2026-07-17", "2026-07-18").kind).toBe(
-      "stale-date"
+      "recent-day"
     );
+  });
+
+  it("reads the SAME window the dose buttons beside it gate on", () => {
+    // Derived, never re-spelled: the food half of a message must not be able to drift
+    // from its dose half again. Asserted over the window's own constant so widening
+    // `DOSE_LOG_DATE_WINDOW_DAYS` moves both together or fails here.
+    const todayStr = "2026-07-18";
+    for (let d = -4; d <= 4; d++) {
+      const day = shiftDateStr(todayStr, d);
+      expect(
+        foodTapDateGuard(day, todayStr).kind !== "stale-date",
+        `${day} vs ${todayStr}`
+      ).toBe(isDoseDateAccepted(todayStr, day));
+    }
   });
 
   it("stale answer names the date and never falsely confirms", () => {

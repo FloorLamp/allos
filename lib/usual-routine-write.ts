@@ -37,10 +37,21 @@
 // the answer says which doses did not land. Rolling the servings back because a
 // creatine bottle was paused would be the app deciding it knows better than the ledger.
 //
-// ── ALWAYS TODAY ─────────────────────────────────────────────────────────────
+// ── THE DATE IS THE CALLER'S, AND BOTH HALVES USE THE SAME ONE ───────────────
 //
-// No date crosses the wire. `logUsualFoodCore` resolves `today(profileId)` itself and
-// this core resolves the same day for the dose half, so neither path can backfill.
+// This core used to resolve `today(profileId)` and refuse to be told a day, so that a
+// bulk "usual" could never backfill. The intent survives #4118; the mechanism moved. A
+// bundle aimed at a day that is not the profile's today stamps `USUAL_BACKFILL` on BOTH
+// halves — one tap is one tap — and `getFoodRegularity` excludes that stamp from the
+// evidence window it derives the offer from. The write can therefore no longer become
+// its own reason, while the rows still count everywhere a person looks.
+//
+// The food half owns the reach (`isUsualBackfillDateAccepted`: today and the six days
+// before) and refuses beyond it. The DOSE half has its own, NARROWER window and always
+// did: `markDoseTaken` gates on `isDoseDateAccepted` (±2, coupled to Telegram pointer
+// retention). So on a day three-to-six back the food lands and every dose comes back
+// `stale-dose` — reported, never assumed away, exactly as a paused item is. The deep
+// door (`logHistoricalDose`) is where a dose that old is filed.
 //
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
@@ -50,8 +61,9 @@
 // existed, as if each row had been tapped by hand.
 
 import { today } from "./db";
-import type { LoggedVia } from "./logged-via";
+import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
+import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
 import { markDoseTaken } from "./queries/intake/adherence";
 import { getPendingRoutineDoses } from "./queries/usual-routine";
@@ -77,7 +89,10 @@ export type UsualRoutineOutcome =
       groups: UsualFoodLogged[];
       doses: UsualRoutineDoseResult[];
     }
-  | { kind: "nothing-to-log" };
+  | { kind: "nothing-to-log" }
+  // The target day is malformed, in the future, or out of the bundle's reach (#4118).
+  // Carried up from the food half, which owns that bound.
+  | { kind: "invalid-date" };
 
 // A dose confirm that actually moved the ledger. `logged-off-day` counts: the row was
 // written and supply moved; only the framing differs (#1602).
@@ -86,13 +101,15 @@ export function usualRoutineDoseLogged(outcome: DoseTakenOutcome): boolean {
 }
 
 // Log the still-offered half of `namedGroups` into `window`, then confirm the
-// still-pending half of `namedDoseIds`, on the profile's today.
+// still-pending half of `namedDoseIds`, on `date`.
 //
 // Both named lists are UPPER BOUNDS on the write and never an instruction to write
 // outside the offer that currently stands.
 export function logUsualRoutineCore(
   profileId: number,
   window: FoodSlot,
+  // WHICH DAY (#4118) — see the header. Required, no default; the food half bounds it.
+  date: string,
   namedGroups: readonly string[],
   namedDoseIds: readonly number[],
   // Which surface ran the composed one-tap (#3087). Both halves — the food servings
@@ -104,13 +121,24 @@ export function logUsualRoutineCore(
   // dashboard control passes nothing and both stores record NULL.
   notifyMessageId?: number | null
 ): UsualRoutineOutcome {
-  const date = today(profileId);
+  const t = today(profileId);
+  // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
+  // check entirely and reach `markDoseTaken`'s wider ±2 — including TOMORROW, which no
+  // usual offer has ever named. `logUsualFoodCore` re-asks it for its own callers.
+  if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
+  const via = date === t ? loggedVia : USUAL_BACKFILL;
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
-      ? logUsualFoodCore(profileId, window, namedGroups, loggedVia, undefined, {
-          notifyMessageId,
-        })
+      ? logUsualFoodCore(
+          profileId,
+          window,
+          date,
+          namedGroups,
+          loggedVia,
+          undefined,
+          { notifyMessageId }
+        )
       : ({ kind: "nothing-to-log" } as const);
   const groups = food.kind === "logged" ? food.groups : [];
 
@@ -137,7 +165,7 @@ export function logUsualRoutineCore(
         doseId,
         offered.itemId,
         date,
-        loggedVia,
+        via,
         undefined,
         notifyMessageId
       ),

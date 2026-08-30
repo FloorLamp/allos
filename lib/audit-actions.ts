@@ -104,6 +104,12 @@ export const AUDIT_ACTIONS = {
   // be correcting a dose somebody else gave. target = the intake item id, detail = the
   // affected date (identifiers and dates only — never the amount, product, or name).
   doseLogBackfill: "dose-log.backfill",
+  // The DATED composed one-tap (#4118). Writing a bundle of servings and dose confirms
+  // onto a day already lived through is the food-side sibling of `dose-log.backfill`:
+  // a retroactive claim about what happened, filed possibly by a caregiver about
+  // somebody else. A contemporaneous tap is ordinary use and is NOT audited. target =
+  // the meal window, detail = the affected date (identifiers and dates only).
+  usualBackfill: "usual-routine.backfill",
   doseLogAmend: "dose-log.amend",
   doseLogDelete: "dose-log.delete",
 } as const;
