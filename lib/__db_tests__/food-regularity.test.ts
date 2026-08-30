@@ -26,6 +26,7 @@ import {
   getHabitualFoodGroups,
   getUsualFoodOffer,
 } from "@/lib/queries";
+import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 
 // The mid-set refusal is UNREACHABLE through the product — `logUsualFoodCore` only ever
 // passes catalog slugs it just re-derived — which is exactly why the guard against it
@@ -549,4 +550,89 @@ describe("usual-backfilled rows are not evidence, and everything else still is",
         .all(profileId, anchor)
     ).toEqual([{ logged_via: "page" }]);
   });
+});
+
+// ── THE `/history` DOOR'S OFFER READ (#4118) ─────────────────────────────────
+//
+// `usualRoutineDayOffers` is the derivation the record's add door renders from, and the
+// door's own re-read consults the same function — so what it answers IS what the button
+// promises. Three properties, and the last is the one that keeps the affordance honest:
+// it must never name a day the write core would refuse.
+describe("usualRoutineDayOffers", () => {
+  // A habit in TWO windows, with a hole at day 3 back so both stand on that day and
+  // neither stands on the days already logged.
+  function seedTwoWindows(name: string, hole: number) {
+    const { profileId, anchor } = makeProfile(name);
+    for (let d = 1; d <= 14; d++) {
+      if (d === hole) continue;
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:05:00");
+      tap(profileId, "legumes", date, "19:00:00");
+      tap(profileId, "nuts_seeds", date, "19:05:00");
+    }
+    return { profileId, anchor };
+  }
+
+  it("names EVERY window that stands on the day, not the current one", () => {
+    // A reader reconstructing a day they have already lived is not standing in any of
+    // its windows — the morning they missed is exactly as offerable as the evening, so
+    // a `currentFoodSlot`-shaped read would answer with at most one of the two.
+    const { profileId, anchor } = seedTwoWindows("door-windows", 3);
+    const offers = usualRoutineDayOffers(profileId, shiftDateStr(anchor, -3));
+    expect(offers.map((o) => o.window)).toEqual(["Morning", "Evening"]);
+    expect(offers[0].food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
+    // NAMES, not slugs: a label is a promise and a slug is not a promise anybody can
+    // read, so the derivation resolves them rather than leaving it to each surface.
+    expect(offers[0].food.map((f) => f.name)).toEqual([
+      "Berries",
+      "Fermented foods",
+    ]);
+  });
+
+  it("says nothing about a day whose windows are already logged", () => {
+    // The converse of the test above on the same fixture: the seeded days hold the
+    // whole habit, so nothing stands on them and the door shows no button. Without
+    // this, "offers every window" would pass just as well on a read that offered every
+    // window unconditionally.
+    const { profileId, anchor } = seedTwoWindows("door-logged", 3);
+    expect(usualRoutineDayOffers(profileId, shiftDateStr(anchor, -2))).toEqual(
+      []
+    );
+  });
+
+  it.each([
+    ["the last day in reach", -USUAL_BACKFILL_WINDOW_DAYS, false],
+    ["one day past the reach", -(USUAL_BACKFILL_WINDOW_DAYS + 1), true],
+    ["tomorrow", 1, true],
+  ] as const)(
+    "%s: the read and the write core agree about whether the day is reachable",
+    (_why, delta, silent) => {
+      // ONE DECISION, ASKED IN ONE PLACE. The door must never show a button
+      // `logUsualRoutineCore` would answer `invalid-date` to, so the read is bounded by
+      // the same predicate the core gates on — asserted here against the CORE's own
+      // verdict rather than against a repeated constant, so the two cannot drift.
+      //
+      // THE HOLE IS AT THE TARGET DAY, so the ONLY thing that can silence the read is
+      // the reach. Seeded over it, the day's windows would already be full and the read
+      // would answer `[]` for a reason this test is not about — green on both sides of
+      // the bound, which is precisely the shape that must not ship here.
+      const { profileId, anchor } = seedTwoWindows(
+        `door-reach${delta}`,
+        Math.max(0, -delta)
+      );
+      const target = shiftDateStr(anchor, delta);
+      expect(usualRoutineDayOffers(profileId, target).length === 0).toBe(
+        silent
+      );
+      const write = logUsualFoodCore(
+        profileId,
+        "Morning",
+        target,
+        ["berries", "fermented"],
+        "page"
+      );
+      expect(write.kind === "invalid-date").toBe(silent);
+    }
+  );
 });

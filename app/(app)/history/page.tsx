@@ -33,6 +33,7 @@ import {
   getSymptomSeveritiesOnDate,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
+import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
 import { isOnDemand } from "@/lib/intake-schedule";
@@ -517,6 +518,14 @@ export default async function HistoryPage(props: {
                 }))
               : [],
           weightUnit: getUnitPrefs(loginId).weightUnit,
+          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
+          // door's first paint is the server's answer rather than a flash of nothing;
+          // the door re-reads through `usualRoutineOffersOn` when its date field moves.
+          // Empty for every other kind — a `Log a use` door has no breakfast to offer.
+          usual:
+            addKind === "food"
+              ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
+              : [],
         }
       : null;
   // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the

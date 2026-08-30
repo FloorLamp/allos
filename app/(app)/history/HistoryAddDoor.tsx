@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import WhenControl from "@/components/WhenControl";
@@ -10,6 +16,9 @@ import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { logFoodServing } from "@/app/(app)/nutrition/actions";
+import { logUsualRoutine, usualRoutineOffersOn } from "@/app/(app)/actions";
+import { usualRoutinePhrase } from "@/lib/usual-routine";
+import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { logPractice } from "@/app/(app)/wellness/actions";
 import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
@@ -81,6 +90,12 @@ export interface HistoryAddVocabulary {
   substances: { key: string; label: string }[];
   /** The login's weight unit — what the value the reader types is in. */
   weightUnit: WeightUnit;
+  /**
+   * The composed "your usual <window>" offers standing on the day being read (#4118),
+   * one per window, seeded server-side. Empty for every kind but `food`, for a day
+   * outside the bundle's reach, and for a profile with no habit to offer.
+   */
+  usual: UsualRoutineDayOffer[];
 }
 
 export default function HistoryAddDoor({
@@ -110,6 +125,48 @@ export default function HistoryAddDoor({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── THE ONE-TAP USUAL, ON A PAST DAY (#4118) ───────────────────────────────
+  //
+  // The web's answer to "reconstruct an empty day". Everything below the label is
+  // already built: the offer read is date-parameterized, the write core takes a day,
+  // and the bound is the core's. What the door adds is the affordance the ruling names
+  // — the composed bundle, seeded to the day being read.
+  //
+  // THE OFFER FOLLOWS THE DATE FIELD, and that is not a nicety. The label names every
+  // serving and every dose the tap will write, so an offer resolved once at render and
+  // left there would keep promising Tuesday's breakfast while the field said Thursday —
+  // and `logUsualRoutineCore`, which re-derives against the day it is HANDED, would
+  // write something else or refuse. One re-read per date change keeps the promise and
+  // the write describing the same day.
+  //
+  // THE RE-READ IS SEQUENCED, not merely awaited. Two quick date changes are two
+  // in-flight reads, and the network may answer them in either order; a late reply for
+  // an abandoned day would repaint the label with an offer for a day nobody is looking
+  // at any more — the label lying again, by a different route. `latestRead` is the
+  // ticket, and a stale answer is dropped rather than rendered.
+  const seededDate = date;
+  const [usual, setUsual] = useState<UsualRoutineDayOffer[]>(vocabulary.usual);
+  const latestRead = useRef(0);
+  useEffect(() => {
+    if (when.date === seededDate) {
+      // The server already answered for this day; re-asking would repaint the same
+      // list and race the seed on mount.
+      latestRead.current += 1;
+      setUsual(vocabulary.usual);
+      return;
+    }
+    const ticket = (latestRead.current += 1);
+    void usualRoutineOffersOn(when.date)
+      .then((offers) => {
+        if (latestRead.current === ticket) setUsual(offers);
+      })
+      .catch(() => {
+        // A failed read must not leave a promise standing about a day it could not ask
+        // about. No offer is the honest render, and the manual form below is untouched.
+        if (latestRead.current === ticket) setUsual([]);
+      });
+  }, [when.date, seededDate, vocabulary.usual]);
+
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
 
@@ -122,12 +179,10 @@ export default function HistoryAddDoor({
   // re-read the feed so the row the reader just wrote is IN the record they are
   // looking at. Without the refresh the door would write silently and read as dead —
   // the same complaint as the redirect it replaces.
-  async function post(
-    event: FormEvent<HTMLFormElement>,
+  async function submit(
+    fd: FormData,
     run: (fd: FormData) => Promise<string | null>
   ): Promise<void> {
-    event.preventDefault();
-    const fd = stampLoggedVia(new FormData(event.currentTarget));
     setError(null);
     setPending(true);
     let failure: string | null;
@@ -144,6 +199,62 @@ export default function HistoryAddDoor({
     toast("Added to the record.");
     close();
     router.refresh();
+  }
+
+  async function post(
+    event: FormEvent<HTMLFormElement>,
+    run: (fd: FormData) => Promise<string | null>
+  ): Promise<void> {
+    event.preventDefault();
+    return submit(stampLoggedVia(new FormData(event.currentTarget)), run);
+  }
+
+  // One composed tap for one window. Posts the SAME action the dashboard control and
+  // the Telegram button post, with the door's day — so the audit row, the provenance
+  // stamp and the reach bound are the write core's, not this control's.
+  function usualControls(): ReactNode {
+    if (usual.length === 0) return null;
+    return (
+      <div className="mb-3 grid gap-2" data-testid="history-add-usual">
+        {usual.map((offer) => {
+          const phrase = usualRoutinePhrase(
+            offer.food.map((f) => f.name),
+            offer.doses
+          );
+          return (
+            <button
+              key={offer.window}
+              type="button"
+              disabled={pending}
+              data-testid={`history-add-usual-${offer.window}`}
+              data-groups={offer.food.map((f) => f.slug).join(",")}
+              data-doses={offer.doses.map((d) => d.id).join(",")}
+              aria-label={`Your usual ${offer.window} on ${when.date}: ${phrase}`}
+              className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+              onClick={() =>
+                void submit(stampLoggedVia(new FormData()), async (fd) => {
+                  fd.set("meal_slot", offer.window);
+                  fd.set("date", when.date);
+                  // Both lists are UPPER BOUNDS the core intersects with what still
+                  // stands on that day — never an instruction to write outside it.
+                  fd.set("groups", offer.food.map((f) => f.slug).join(","));
+                  fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
+                  const outcome = await logUsualRoutine(fd);
+                  return outcome.ok ? null : outcome.error;
+                })
+              }
+            >
+              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {`Your usual ${offer.window} (${offer.food.length + offer.doses.length})`}
+              </span>
+              <span className="block text-xs text-slate-600 dark:text-slate-300">
+                {phrase}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
@@ -406,6 +517,11 @@ export default function HistoryAddDoor({
       </button>
       {open ? (
         <div className="mt-2" data-testid={`history-add-panel-${kind}`}>
+          {/* ABOVE the form, never inside it: the bundle is an alternative to filling
+              the form out, and nesting a button in a <form> makes it a submit control
+              of that form. The manual per-item path stays exactly where it was — the
+              one-tap is the fast path and never the only one. */}
+          {kind === "food" ? usualControls() : null}
           {form()}
           <InlineError data-testid={`history-add-error-${kind}`}>
             {error}

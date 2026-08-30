@@ -9,7 +9,7 @@ import {
 import { setIllnessNowUi } from "@/lib/settings";
 import { dismissRecentlyResolvedEpisode } from "@/lib/recently-resolved";
 import { today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { isRealIsoDate, shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
 import {
   snoozeFinding,
@@ -24,6 +24,10 @@ import type {
   DoseUndoResult,
 } from "@/lib/dose-outcome-text";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
+import {
+  usualRoutineDayOffers,
+  type UsualRoutineDayOffer,
+} from "@/lib/queries/usual-routine";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { recordAudit } from "@/lib/audit";
@@ -342,4 +346,27 @@ export async function logUsualRoutine(
     doses: outcome.doses,
     ...(endFastOffer ? { endFastOffer: true as const } : {}),
   };
+}
+
+// ── WHAT A DATED "usual" TAP WOULD WRITE ON ONE DAY (#4118) ──────────────────
+//
+// The read half of the dated write, for the `/history` add door, as a Server Action:
+// the door's date is a FIELD the reader changes, so the offer cannot be resolved once
+// at render and left there — a label is a promise, and a promise about Tuesday shown
+// while the field says Thursday is a lie the write core would then refuse.
+//
+// The derivation itself is `usualRoutineDayOffers` (lib/queries/usual-routine.ts), so
+// the page's server render and this re-read are ONE computation and cannot answer
+// differently for the same day.
+//
+// Gated on WRITE access rather than read: this answers "what would a tap write", and
+// offering a caregiver-view a control that can only refuse is worse than offering
+// nothing (#2458's own rule). A malformed date is an empty answer rather than an error
+// — the field is mid-edit half the time.
+export async function usualRoutineOffersOn(
+  date: string
+): Promise<UsualRoutineDayOffer[]> {
+  const { profile } = await requireWriteAccess();
+  if (!isRealIsoDate(date)) return [];
+  return usualRoutineDayOffers(profile.id, date);
 }
