@@ -56,6 +56,8 @@ import { getSituations } from "../../settings";
 import { getEffectiveActiveSituations } from "../derived-situations";
 import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import type { IntakeCondition, IntakeItemKind } from "../../types";
+import { intakeShortLabels } from "../../intake-short-name";
+import { getIntakeItems } from "./schedule";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
 // logs to the right calendar date — but the token is client-supplied, so an
@@ -1841,6 +1843,8 @@ export function getPrnOverMaxItems(
 export interface PrnMedForQuickLog {
   id: number;
   name: string;
+  kind: IntakeItemKind;
+  displayName?: string;
   product: string | null;
   amount: string | null;
   count: number;
@@ -1866,13 +1870,14 @@ export interface PrnMedForQuickLog {
 // alphabetical. One profile-scoped read so every surface agrees;
 // the #1027 family counters are overlaid from the ONE getMedicationFamilyStates
 // gather so every redose surface widens identically.
-export function getPrnMedicationsForQuickLog(
-  profileId: number
+function getPrnQuickLogItems(
+  profileId: number,
+  medicationsOnly: boolean
 ): PrnMedForQuickLog[] {
   const date = today(profileId);
   const rows = db
     .prepare(
-      `SELECT s.id AS id, s.name AS name, s.product AS product,
+      `SELECT s.id AS id, s.name AS name, s.kind AS kind, s.product AS product,
               (SELECT d.amount FROM intake_item_doses d
                 WHERE d.item_id = s.id AND d.retired = 0
                 ORDER BY d.sort, d.id LIMIT 1) AS amount,
@@ -1884,12 +1889,12 @@ export function getPrnMedicationsForQuickLog(
                 AS lastGivenAt,
               s.min_interval_hours AS minIntervalHours,
               s.max_daily_count AS maxDailyCount
-         FROM intake_items s
+        FROM intake_items s
         WHERE s.profile_id = ? AND s.active = 1
-          AND s.obligation = 'may' AND s.kind = 'medication'
+          AND s.obligation = 'may' AND (? = 0 OR s.kind = 'medication')
         ORDER BY (lastGivenAt IS NULL), lastGivenAt DESC, s.name`
     )
-    .all(date, profileId) as Omit<
+    .all(date, profileId, medicationsOnly ? 1 : 0) as Omit<
     PrnMedForQuickLog,
     | "familyCount"
     | "familyLastGivenAt"
@@ -1909,6 +1914,31 @@ export function getPrnMedicationsForQuickLog(
       familyMemberCount: fam?.memberIds.length ?? 1,
     };
   });
+}
+
+export function getPrnMedicationsForQuickLog(
+  profileId: number
+): PrnMedForQuickLog[] {
+  return getPrnQuickLogItems(profileId, true);
+}
+
+export type PrnIntakeItemForQuickLog = PrnMedForQuickLog & {
+  displayName: string;
+};
+
+// Dashboard-only sibling: illness, medication Today/detail, and Telegram stay
+// medication-scoped. Labels resolve against the whole profile item set so a shorter
+// supplement name cannot collide with a control outside today's quick-log subset.
+export function getPrnIntakeItemsForQuickLog(
+  profileId: number
+): PrnIntakeItemForQuickLog[] {
+  const allItems = getIntakeItems(profileId);
+  const labels = intakeShortLabels(allItems);
+  const labelById = new Map(allItems.map((item, i) => [item.id, labels[i]]));
+  return getPrnQuickLogItems(profileId, false).map((item) => ({
+    ...item,
+    displayName: labelById.get(item.id) ?? item.name,
+  }));
 }
 
 // The name of an intake item this profile owns, or null — for the Telegram /dose

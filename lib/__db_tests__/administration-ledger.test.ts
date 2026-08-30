@@ -27,6 +27,7 @@ import {
   logAdministration,
   getAdministrationsForItemOnDate,
   getAdministrationsForItemsOnDate,
+  getPrnIntakeItemsForQuickLog,
   getPrnMedicationsForQuickLog,
   getIntakeDoseHistory,
 } from "@/lib/queries";
@@ -354,10 +355,40 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     );
   });
 
-  it("surfaces the PRN med in the quick-log read and day list with today's count", () => {
+  it("surfaces may intake items with safe quick-log labels and excludes ineligible rows", () => {
     const { profileId, itemId } = seedPrnMed(10);
+    db.prepare(
+      "UPDATE intake_items SET name = 'Magnesium Citrate' WHERE id = ?"
+    ).run(itemId);
+    const insertSupplement = db.prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, obligation)
+       VALUES (?, ?, ?, 'supplement', 'daily', ?)`
+    );
+    const supplementId = Number(
+      insertSupplement.run(profileId, "Magnesium Citrate", 1, "may")
+        .lastInsertRowid
+    );
+    insertSupplement.run(profileId, "Creatine Monohydrate", 1, "should");
+    insertSupplement.run(profileId, "Coenzyme Q10", 0, "may");
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 capsule', 'any', 'any', 0)`
+    ).run(supplementId);
     const date = today(profileId);
     logAdministration(profileId, itemId, "page"); // now → always today's date
+    const items = getPrnIntakeItemsForQuickLog(profileId);
+    expect(items).toHaveLength(2);
+    expect(items.find((item) => item.kind === "supplement")).toMatchObject({
+      id: supplementId,
+      name: "Magnesium Citrate",
+      displayName: "Mag citrate",
+    });
+    expect(items.find((item) => item.kind === "medication")).toMatchObject({
+      id: itemId,
+      name: "Magnesium Citrate",
+      displayName: "Magnesium Citrate",
+    });
     const meds = getPrnMedicationsForQuickLog(profileId);
     const mine = meds.find((m) => m.id === itemId);
     expect(mine).toBeTruthy();
