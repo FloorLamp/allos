@@ -314,7 +314,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
     expect(e).toMatchObject({ over: false, atMax: true });
   });
 
-  it("null when NO ceiling is confirmed (the liability gate) — a 0 is not a ceiling", () => {
+  it("keeps the over-max gate null with no confirmed ceiling (#4254)", () => {
     expect(
       prnDayExposure({
         amounts: ["800 mg"],
