@@ -26,18 +26,12 @@ function marker(db: Database.Database): string | undefined {
 }
 
 describe("seedInstallMarker (#464)", () => {
-  it("stamps install_first_boot_at on first boot", () => {
+  it("stamps the first boot once and preserves it on later boots", () => {
     const db = newDb();
     migrate(db);
     const at = marker(db);
     expect(at).toBeTruthy();
     expect(Number.isNaN(Date.parse(at as string))).toBe(false);
-  });
-
-  it("never overwrites the marker on a later boot", () => {
-    const db = newDb();
-    migrate(db);
-    const first = marker(db);
 
     // Simulate a much older install, then re-run the boot task: it must not move.
     db.prepare(
@@ -45,6 +39,6 @@ describe("seedInstallMarker (#464)", () => {
     ).run("2020-01-01T00:00:00.000Z");
     seedInstallMarker(db);
     expect(marker(db)).toBe("2020-01-01T00:00:00.000Z");
-    expect(first).toBeTruthy();
+    db.close();
   });
 });
