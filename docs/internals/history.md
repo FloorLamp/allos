@@ -9,12 +9,20 @@ and the Everything rollups, then took `/timeline` itself: the route is deleted,
 its day view is `?day=`, and its nav and mobile-dock slots are the record's
 (#3343 Q5, `trainingRelevant ? TRAINING : HISTORY`).
 
-**What did NOT come across, and is phase 2d.** `lib/timeline.ts` still computes
-`linkedRefs` (#662 visit→document lineage), `detailItems` (lab panel breakdowns,
-sleep stages, activity set summaries) and per-event `tone`. Their only renderer
-was the deleted page's `EventCard`; the record's rows are one line and carry no
-disclosure yet, so the data is gathered and shown nowhere. Nothing else reads
-those fields.
+**What phase 2d brought across.** `lib/timeline.ts` computes `linkedRefs` (#662
+visit→document lineage) and `detailItems` (lab panel breakdowns, activity set
+summaries, a symptom-day's per-symptom severities); their only renderer was the
+deleted page's `EventCard`, so between phase 2c and 2d the record gathered them
+and showed them nowhere. The feed rows carry them now and the row's **disclosure**
+draws them — see The rows.
+
+**Per-event `tone` was never in that gap, and this document said it was.** Its
+renderer is `IntradayTick`: `lib/intraday.ts` reads `event.tone` off the same
+resolved event set the day list is built from, and `components/IntradayChart.tsx`
+colours each tick by it. That has been live on `?day=` since phase 2c. The claim
+here was inherited from the phase-2c commit body and was wrong when it was
+written — the kind of assertion that goes stale silently because its truth rested
+on a behaviour somewhere else.
 
 **There are no redirects.** The old routes are deleted, every inbound door was
 retargeted at its source, and a surviving reference to one is a bug to fix
@@ -119,9 +127,31 @@ not inherited: the future belongs to `/upcoming`.
 
 One line at **every** viewport (owner ruling), on #3891's `LoggedEventRow`
 primitive — a deliberate exception to the #3671 compact-card default, argued from
-what the surface is for: scanning many rows. There is no tap-to-disclose, so the
-rows are `<li>`s rather than a `ResponsiveTable`, whose card mode exists to stack
-a row onto several lines.
+what the surface is for: scanning many rows. The rows are `<li>`s rather than a
+`ResponsiveTable`, whose card mode exists to stack a row onto several lines.
+
+**The disclosure is the detail cell**, and the row's own grammar is what chose it.
+A row that carries `detailItems` or `linkedRefs` renders its detail segment as the
+toggle, with a chevron outside the truncating span; every other row renders the
+same segment as plain text. The trailing cell was not available — #3958 rules the
+trailing affordance exclusive (⋯ or ›, never both) — and the leading chevron is the
+rollup line's. What was left is the cell the issue itself points at: _"what
+truncates first; long detail lives behind the row's disclosure"_. So the control
+sits where the truncation is, costs no width, and is the same on a ⋯ row and a ›
+row.
+
+The open panel is the row's **sibling** `<li>`, not its child: a row `<li>` is
+`flex items-center` on the shared primitive and the page's geometry assertions
+measure it, so growing it into a column when a reader opens one would move the
+thing they measure. The rollup's revealed rows are siblings for the same reason.
+Open state is **client** state, unlike the folds and the rollups — the split is a
+rule: URL-carried when expanding changes what the server must render, client state
+when the content already arrived on the row.
+
+The lineage panel's heading claims exactly what the gather had (#2920): _"From this
+visit"_ for rows carrying a real encounter link, the document wording only where the
+import document stands for a single visit. A multi-visit portal export sets neither,
+because a reference chip that cannot honestly name its visit says nothing.
 
 The trailing affordance is **⋯ or ›, exclusively**. Every phase-1 kind is
 user-logged, so every row is a ⋯ row — and every branch posts to the Server

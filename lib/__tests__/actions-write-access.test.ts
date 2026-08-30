@@ -343,8 +343,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // `/history?view=everyone` merges every in-view member's rows, and #3958 rules that
   // "⋯ additionally requires write access on the row's profile, re-checked
   // server-side". Phase 1 satisfied only the safety half by rendering other members'
-  // rows read-only; these TEN are the capability half — five corrections and five
-  // deletes, across the record's five kinds. Each posts the ROW's `profile_id` and
+  // rows read-only; these THIRTEEN are the capability half — the ten phase-1 entries
+  // (five corrections and five deletes across the record's five Logs kinds) plus the
+  // three phase-2 kinds' cores, which #3958's own multiprofile clause requires and
+  // which shipped session-scoped: `editSymptom`, `saveCycleAction` and
+  // `deleteCycleAction`. Until they took the row's subject the record drew no ⋯ on
+  // another member's symptom or cycle row at all — containment, not the capability. Each posts the ROW's `profile_id` and
   // gates it through the SAME shared gateItemProfile() the Upcoming and Tier-1
   // per-item writes use — requireProfileWriteAccess(rowProfileId), which redirects a
   // read-only-granted or ungranted member before any core runs, and falls back to
@@ -413,6 +417,24 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/trends/reading-actions.ts",
     fn: "deleteMetricReading",
     why: "record correction (#4009): removes the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/symptom-actions.ts",
+    fn: "editSymptom",
+    why: "record correction (#3958 phase 2d): corrects the ROW's symptom-day via gateItemProfile() → requireProfileWriteAccess(rowProfileId). Its neighbours in this file are symptom-BAR actions and read the #858 `profileId` inline; this one is not a bar action — the record's ⋯ is its only caller — so it reads the row-subject spelling `profile_id`. It gated the session before, and setSymptomSeverityCore is keyed on (profile, symptom, date) rather than a row id, so a forged post was not refused: it wrote the ACTING profile's own day",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/cycles/actions.ts",
+    fn: "saveCycleAction",
+    why: "record correction (#3958 phase 2d): creates or corrects the ROW's period via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the plausibility gate's neighbour list and today() bound are asked of the SUBJECT. The cycles page's own form posts no subject, so it falls back to the acting-profile gate unchanged",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/medical/cycles/actions.ts",
+    fn: "deleteCycleAction",
+    why: "record correction (#3958 phase 2d): removes the ROW's period via gateItemProfile() → requireProfileWriteAccess(rowProfileId); deleteCycleRow keeps its profile_id filter as the anti-replay compare",
     gate: "gateItemProfile",
   },
   // --- Multi-view Upcoming per-item writes (issue #1096) — each row carries its

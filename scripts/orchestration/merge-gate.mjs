@@ -16,6 +16,9 @@
 //      job, so run that first; incomplete CI here exits 2, not 0;
 //   5. zero unresolved review threads (a GraphQL read; outdated-but-unresolved
 //      still counts, because the finding may still apply to the new head).
+//      Where this host's proxy refuses GraphQL outright (#4231), zero REST
+//      comment threads proves the same thing; any threads fail the gate as
+//      resolution-unknown rather than blocking every merge on exit 2.
 //
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
@@ -98,6 +101,16 @@ function gh(pathname) {
 // The one POST in this script, and it is a READ: a GraphQL query (never a
 // mutation — pinned by test) for review-thread resolution, which REST does
 // not expose.
+//
+// GraphQL is REFUSED OUTRIGHT (403, not scoped to any query) in the Claude
+// Code remote container the orchestrator actually runs in — measured on
+// #4223's own merge and filed as #4231, where exit 2's "re-invoke" never
+// terminated. A 403 therefore returns `forbidden` and the caller degrades
+// honestly over REST: zero review-comment threads is a REST-observable PROOF
+// that zero threads are unresolved, and any threads at all fail the gate as
+// "resolution unknown" — a human looks, or CI's wrapper (where GraphQL
+// works) supplies the full verdict as the merge-gate status. Every other
+// non-200 stays exit 2: transient, re-invoke.
 function unresolvedThreads(owner, name) {
   const query =
     "query($owner:String!,$name:String!,$number:Int!,$cursor:String){" +
@@ -119,6 +132,7 @@ function unresolvedThreads(owner, name) {
       }),
       "https://api.github.com/graphql",
     ]);
+    if (status === 403) return { kind: "forbidden" };
     if (status !== 200) {
       console.error(`graphql -> ${status} — cannot evaluate; re-invoke.`);
       process.exit(2);
@@ -132,7 +146,7 @@ function unresolvedThreads(owner, name) {
     if (!page.pageInfo.hasNextPage) break;
     cursor = page.pageInfo.endCursor;
   }
-  return nodes.filter((t) => !t.isResolved);
+  return { kind: "threads", unresolved: nodes.filter((t) => !t.isResolved) };
 }
 
 function paged(pathname) {
@@ -230,10 +244,32 @@ if (red.length) {
 } else pass(`all ${total_count} checks green on this head`);
 
 const [owner, name] = repo.split("/");
-const open = unresolvedThreads(owner, name);
-if (open.length) {
-  fail(`${open.length} unresolved review thread(s):`);
-  for (const t of open)
+const threads = unresolvedThreads(owner, name);
+if (threads.kind === "forbidden") {
+  // The #4231 degrade: REST review comments cannot say RESOLVED, but a
+  // top-level count of zero proves zero threads are unresolved.
+  const comments = paged(`repos/${repo}/pulls/${prNumber}/comments`);
+  const topLevel = comments.filter((c) => !c.in_reply_to_id);
+  if (topLevel.length === 0) {
+    pass(
+      "zero review-comment threads (GraphQL 403; proven over REST — no " +
+        "thread exists to be unresolved)"
+    );
+  } else {
+    fail(
+      `GraphQL refused (403) and ${topLevel.length} review-comment thread(s) ` +
+        "exist — resolution UNKNOWN from this host. Verify each by eye and " +
+        "record the override in the PR thread, or read the merge-gate commit " +
+        "status, which CI computes where GraphQL works."
+    );
+    for (const c of topLevel)
+      console.log(
+        `  ${c.path ?? "(no file)"}: ${(c.body ?? "").split("\n")[0].slice(0, 100)}`
+      );
+  }
+} else if (threads.unresolved.length) {
+  fail(`${threads.unresolved.length} unresolved review thread(s):`);
+  for (const t of threads.unresolved)
     console.log(
       `  ${t.path ?? "(no file)"}: ${(t.comments.nodes[0]?.body ?? "")
         .split("\n")[0]
