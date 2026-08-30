@@ -46,6 +46,10 @@ type DayDoseLogRow = {
  * the current row — so a dose moved evening-to-morning last week still files under the
  * slot it occupied when it was taken. That is the same resolver `pendingDayDoses` uses
  * for the still-due half, which is what lets the two halves share one group system.
+ *
+ * Read in TAP order (`recorded_at`, then id) — deterministic, and deliberately not the
+ * order it renders in: `buildDayLedger` owns that, and asking this query to guess it
+ * would be a second opinion about the same question.
  */
 export function getDayDoseLedger(
   profileId: number,
@@ -59,7 +63,7 @@ export function getDayDoseLedger(
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.date = ? AND s.kind != 'medication'
-        ORDER BY COALESCE(l.occurred_at, l.recorded_at), l.id`
+        ORDER BY l.recorded_at, l.id`
     )
     .all(profileId, date) as DayDoseLogRow[];
   if (rows.length === 0) return [];
@@ -79,7 +83,11 @@ export function getDayDoseLedger(
     // unstated row renders through #3958's "logged 8:06pm" grammar instead of a bare
     // clock claiming an administration time the row does not state.
     const when = bestKnownInstant("intake_item_logs", row);
-    const instant = new Date(when.known ? when.at : row.recorded_at);
+    // `recorded_at` is NOT NULL, so the chain always answers; a row that somehow has no
+    // instant at all has no honest place on a timed ledger and is left off rather than
+    // filed under a minute nothing states.
+    if (!when.known) continue;
+    const instant = new Date(when.at);
     out.push({
       kind: "dose",
       id: `dose:${row.id}`,
@@ -93,7 +101,7 @@ export function getDayDoseLedger(
       skipReason: row.skip_reason,
       bucket: schedule ? doseBucketOn(schedule, date) : "Anytime",
       hhmm: zonedDateParts(tz, instant).hhmm,
-      clockKind: when.known && when.semantic === "event" ? "stated" : "logged",
+      clockKind: when.semantic === "event" ? "stated" : "logged",
       // The composed tap's identity is the minute it wrote in — `recorded_at` is the
       // immutable tap, never the stated instant a later correction can move.
       writeMinute: row.recorded_at.slice(0, 16),

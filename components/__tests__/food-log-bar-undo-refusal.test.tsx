@@ -17,6 +17,8 @@ import {
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
+import { buildDayLedger } from "@/lib/day-ledger";
+import type { DisplayFormatPrefs } from "@/lib/settings";
 import { FoodSelectedDateProvider } from "@/app/(app)/nutrition/FoodSuggestionsLayout";
 import type { FoodGroup } from "@/lib/food-groups";
 import type { FoodSlot } from "@/lib/food-slot";
@@ -174,6 +176,7 @@ function barTree({
               excludedGroups={[]}
               slot={slot}
               slotBoundaries={{ midday: 660, evening: 900 }}
+              dayLedger={ledgerFor(day)}
             />
             {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
             {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
@@ -182,6 +185,34 @@ function barTree({
       </ActiveProfileProvider>
     </TimezoneProvider>
   );
+}
+
+// The Day ledger the page mount hands down (#3987), derived from the SAME day fixture
+// the bar gets — exactly as `FoodTab` derives it — so a test that seeds an event gets a
+// ledger row for it without maintaining a second fixture that could disagree.
+function ledgerFor(day: FoodLogDay) {
+  return {
+    groupsByDate: {
+      [day.date]: buildDayLedger({
+        servings: day.events.map((event) => ({
+          kind: "serving" as const,
+          id: `serving:${event.id}`,
+          eventId: event.id,
+          slug: event.groupKey,
+          name: event.name,
+          bucket: event.mealSlot,
+          hhmm: event.eatenAt ?? event.loggedTime,
+          clockKind: event.eatenAt ? ("stated" as const) : ("logged" as const),
+        })),
+        doses: [],
+        pending: [],
+      }),
+    },
+    doseWritableDates: [day.date],
+    prefs: { timeFormat: "24h", dateFormat: "iso" } as DisplayFormatPrefs,
+    keepApart: [],
+    dayContext: null,
+  };
 }
 
 function mountBar(options: Parameters<typeof barTree>[0] = {}) {
@@ -199,6 +230,7 @@ function twoBarTree({ showFirst = true, day = DAY } = {}) {
         excludedGroups={[]}
         slot="Midday"
         slotBoundaries={{ midday: 660, evening: 900 }}
+        dayLedger={ledgerFor(day)}
       />
     </FoodSelectedDateProvider>
   );
@@ -364,14 +396,14 @@ describe("FoodLogBar projection publication", () => {
       },
     };
     const view = mountBar({ profileId: 7, day: profileSeven });
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("1");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("1");
 
     view.rerender(barTree({ profileId: 8, day: profileEight }));
 
     // Plain totals derive directly from the provider projection, so this
     // proves subject reset independently of RollingNumber's visual lifecycle.
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
   });
 
@@ -435,7 +467,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-71"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-71"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -451,7 +483,7 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => {});
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("9");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("9 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("9");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
@@ -544,7 +576,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-74"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-74"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -561,8 +593,7 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => correction.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("1");
-    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("0");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.queryByText("Serving corrected.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
   });
@@ -622,7 +653,7 @@ describe("FoodLogBar projection publication", () => {
     view.rerender(barTree({ profileId: 7, day: returnedProfileSeven }));
     await act(async () => add.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("5");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("5 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("5");
     expect(screen.queryByText("Food interaction note.")).toBeNull();
     expect(screen.queryByTestId("toast")).toBeNull();
@@ -678,7 +709,7 @@ describe("FoodLogBar projection publication", () => {
     );
     await act(async () => add.resolve(outcome));
 
-    expect(screen.getByTestId("food-slot-total-midday").textContent).toBe("2");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("2 servings");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("2");
     expect(
       screen.getByText(/Same-profile interaction note\./).textContent
@@ -1062,7 +1093,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-remove-90"));
+    fireEvent.click(screen.getByTestId("ledger-serving-remove-90"));
     fireEvent.click(
       within(screen.getByTestId("second-food-bar")).getByTestId(
         "log-cruciferous"
@@ -1252,7 +1283,7 @@ describe("FoodLogBar projection publication", () => {
         name: /^Actions for the Cruciferous vegetables serving/,
       })
     );
-    fireEvent.click(screen.getByTestId("food-logged-correct-51"));
+    fireEvent.click(screen.getByTestId("ledger-serving-correct-51"));
     fireEvent.change(screen.getByTestId("food-correct-slot"), {
       target: { value: "Evening" },
     });
@@ -1280,8 +1311,7 @@ describe("FoodLogBar projection publication", () => {
     // Both consumers read the same provider projection. The raw meal totals and
     // row count prove it is already Morning=0/Evening=1 even though the
     // visual receipt's queued frame has deliberately not run.
-    expect(screen.getByTestId("food-slot-total-morning").textContent).toBe("0");
-    expect(screen.getByTestId("food-slot-total-evening").textContent).toBe("1");
+    expect(screen.getByTestId("food-day-total").textContent).toBe("1 serving");
     expect(screen.getByTestId("count-cruciferous").textContent).toBe("0");
     expect(frames).toHaveLength(1);
   });
