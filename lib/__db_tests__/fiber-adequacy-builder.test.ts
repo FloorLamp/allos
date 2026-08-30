@@ -146,47 +146,31 @@ describe("buildFiberAdequacyFindings (#976)", () => {
     expect(rolled).toContain(f.dedupeKey);
   });
 
-  // THE LARGER FLOOR, end to end (#4127). A tracked reading no longer overrides the
-  // profile's own logging: the two floors are compared and the larger is shown, with both
-  // named. The first profile is the discriminating one — its in-app ledger is the larger
-  // side, so the retired override would report 20 g where this app holds 28, and would
-  // turn a met target into a shortfall finding.
-  it("shows the larger of the tracked reading and the in-app ledger, and reports both", () => {
-    const bigger = newProfile("fiber-in-app-larger");
-    setSex(bigger, "female"); // target 25, soft ceiling 40
-    const anchor = today(bigger);
-    logFood(bigger, anchor, "legumes", 2); // 16 g estimated
-    seedDose(bigger, "Metamucil", "12 g", anchor, "taken"); // + 12 g = 28 in-app
-    seedTrackedFiber(bigger, anchor, 20); // the health app has sent less so far
+  it("compares weekly source averages and preserves the in-app components", () => {
+    const p = newProfile("fiber-tracked");
+    setSex(p, "female"); // target 25
+    db.prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'week_mode', 'rolling')"
+    ).run(p);
+    const anchor = today(p);
+    const yesterday = shiftDateStr(anchor, -1);
+    logFood(p, anchor, "legumes", 2); // 16
+    logFood(p, yesterday, "whole_grains", 2); // 6; estimated mean = 11
+    seedDose(p, "Metamucil", "5 g", anchor, "taken");
+    seedDose(p, "Psyllium", "7 g", yesterday, "taken"); // supplement mean = 6
+    seedDose(p, "Fiber capsules", "2 capsules", anchor, "taken");
+    seedTrackedFiber(p, anchor, 10);
+    seedTrackedFiber(p, yesterday, 12); // tracked mean = 11; in-app mean = 17
 
-    const a = getFiberAdequacy(bigger);
+    const a = getFiberAdequacy(p);
     expect(a?.intake.basis).toBe("both-sources");
-    expect(Math.round(a!.intake.grams)).toBe(28);
-    expect(a?.intake.estimatedGrams).toBe(16);
-    expect(a?.intake.supplementedGrams).toBe(12);
-    expect(a?.status).toBe("within"); // 28 ≥ 25 — the override read this day as below
-    expect(buildFiberAdequacyFindings(bigger)).toEqual([]);
-    // The single-date gather agrees with the week's — one question, one computation.
-    const day = getFiberOnDate(bigger, anchor);
-    expect(day?.intake.basis).toBe("both-sources");
-    expect(Math.round(day!.intake.grams)).toBe(28);
-
-    // The other direction: the health app's reading is the larger floor, and the in-app
-    // ledger is still reported beneath it rather than zeroed.
-    const tracked = newProfile("fiber-tracked-larger");
-    setSex(tracked, "female");
-    const trackedAnchor = today(tracked);
-    logFood(tracked, trackedAnchor, "legumes", 1); // 8 g
-    seedDose(tracked, "Metamucil", "5 g", trackedAnchor, "taken"); // 13 g in-app
-    seedTrackedFiber(tracked, trackedAnchor, 30);
-
-    const b = getFiberAdequacy(tracked);
-    expect(b?.intake.basis).toBe("both-sources");
-    expect(Math.round(b!.intake.grams)).toBe(30);
-    expect(b?.intake.estimatedGrams).toBe(8);
-    expect(b?.intake.supplementedGrams).toBe(5);
-    expect(b?.status).toBe("within");
-    expect(buildFiberAdequacyFindings(tracked)).toEqual([]);
+    expect(a?.intake).toMatchObject({
+      grams: 17,
+      estimatedGrams: 11,
+      supplementedGrams: 6,
+      unknownSupplement: true,
+    });
+    expect(a?.status).toBe("below");
   });
 
   it("stays silent with no food, no supplements, and no tracked reading", () => {

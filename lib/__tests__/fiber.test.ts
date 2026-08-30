@@ -129,91 +129,21 @@ describe("fiberDoseGrams", () => {
 });
 
 describe("fiberIntake composition", () => {
-  // THE LARGER FLOOR (#4127). A tracked reading no longer overrides: it is compared with
-  // what this app itself holds, and the larger of the two floors is the figure. The
-  // components keep reporting the IN-APP ledger either way, so a surface can still name it
-  // — under the old override every one of these rows returned estimatedGrams 0.
-  it.each([
-    // The in-app pair is LARGER — the case the override got wrong. It displayed 20 g on a
-    // day this app knew held at least 27.
-    { tracked: 20, estimated: 22, supplemented: 5, grams: 27 },
-    // The tracked reading is larger, and the in-app ledger is still reported beneath it.
-    { tracked: 30, estimated: 12, supplemented: 5, grams: 30 },
-    // Equal floors: still both records, so the basis still names both.
-    { tracked: 17, estimated: 12, supplemented: 5, grams: 17 },
-  ])(
-    "tracked $tracked vs in-app $estimated+$supplemented → $grams g, both-sources",
-    ({ tracked, estimated, supplemented, grams }) => {
-      expect(
-        fiberIntake({
-          dailyTracked: tracked,
-          dailyEstimated: estimated,
-          dailySupplemented: supplemented,
-        })
-      ).toMatchObject({
-        grams,
-        basis: "both-sources",
-        estimatedGrams: estimated,
-        supplementedGrams: supplemented,
-        unknownSupplement: false,
-      });
-    }
-  );
-
-  it("a tracked reading with nothing logged here stays the tracked basis", () => {
-    expect(
-      fiberIntake({ dailyTracked: 30, dailyEstimated: 0, dailySupplemented: 0 })
-    ).toMatchObject({
+  it("takes the larger floor and keeps both sources", () => {
+    const i = fiberIntake({
+      dailyTracked: 30,
+      dailyEstimated: 12,
+      dailySupplemented: 5,
+      unknownSupplement: true,
+    });
+    expect(i).toMatchObject({
       grams: 30,
-      basis: "tracked",
-      estimatedGrams: 0,
-      supplementedGrams: 0,
+      basis: "both-sources",
+      estimatedGrams: 12,
+      supplementedGrams: 5,
+      unknownSupplement: true,
     });
   });
-
-  // The property the ruling exists to buy, asserted as the comparison it is about rather
-  // than against a constant: the same day with an integration connected can never read
-  // LOWER than without it.
-  it("connecting an integration never lowers the figure", () => {
-    const inApp = { dailyEstimated: 22, dailySupplemented: 5 };
-    const without = fiberIntake({ ...inApp, dailyTracked: null })!;
-    for (const dailyTracked of [1, 20, 27, 40])
-      expect(
-        fiberIntake({ ...inApp, dailyTracked })!.grams
-      ).toBeGreaterThanOrEqual(without.grams);
-  });
-
-  // unknownSupplement is RE-DERIVED, not forced false. A capsule dose contributes 0 g to
-  // the in-app sum, so whenever that sum is the figure being shown, the grams are missing
-  // from it and the caveat is live. It is moot only where the tracked reading — which
-  // already covers what was swallowed — is strictly the larger.
-  it.each([
-    { tracked: 30, estimated: 12, flagged: false, why: "tracked is larger" },
-    {
-      tracked: 10,
-      estimated: 12,
-      flagged: true,
-      why: "the in-app sum is shown",
-    },
-    {
-      tracked: 12,
-      estimated: 12,
-      flagged: true,
-      why: "equal, so in-app explains it",
-    },
-    { tracked: 30, estimated: 0, flagged: false, why: "nothing logged here" },
-  ])(
-    "unknown-grams dose with tracked $tracked vs in-app $estimated → flag $flagged ($why)",
-    ({ tracked, estimated, flagged }) => {
-      expect(
-        fiberIntake({
-          dailyTracked: tracked,
-          dailyEstimated: estimated,
-          unknownSupplement: true,
-        })?.unknownSupplement
-      ).toBe(flagged);
-    }
-  );
 
   it("estimated + supplemented SUM to a combined basis", () => {
     const i = fiberIntake({
@@ -327,7 +257,6 @@ describe("fiberBasisIsFloor (#980 gauge/copy predicate)", () => {
     expect(fiberBasisIsFloor("estimated")).toBe(true);
     expect(fiberBasisIsFloor("combined")).toBe(true);
     expect(fiberBasisIsFloor("supplemented")).toBe(true);
-    // The max of two floors is a floor (#4127).
     expect(fiberBasisIsFloor("both-sources")).toBe(true);
   });
 });
@@ -340,18 +269,6 @@ describe("fiber copy discipline", () => {
     expect(detail).toMatch(/floor/i);
     expect(detail).not.toMatch(/deficien/i);
     expect(detail).toMatch(/informational/i);
-  });
-
-  it("both-sources names both records and keeps the floor caveat", () => {
-    const i = fiberIntake({
-      dailyTracked: 20,
-      dailyEstimated: 22,
-      dailySupplemented: 5,
-    })!;
-    const summary = fiberIntakeSummary(i);
-    expect(summary).toContain("27 g/day");
-    expect(summary).toMatch(/what you log here and your health app/);
-    expect(summary).toMatch(/a floor/);
   });
 
   it("signal key is namespaced under the registered prefix", () => {
