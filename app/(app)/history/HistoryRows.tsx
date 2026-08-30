@@ -995,7 +995,15 @@ export default function HistoryRows({
                 data-testid="history-linked-refs"
                 className={row.detailItems?.length ? "mt-3" : ""}
               >
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                <p
+                  // The heading is addressable on its own, because the two spellings
+                  // it chooses between are a PREFIX of one another (#2920): an
+                  // assertion that can only reach it through the section would have to
+                  // match on containment, and "From this visit" is satisfied by the
+                  // document wording too.
+                  data-testid="history-linked-scope"
+                  className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                >
                   {row.linkedScope === "visit"
                     ? "From this visit"
                     : "From this visit’s document"}

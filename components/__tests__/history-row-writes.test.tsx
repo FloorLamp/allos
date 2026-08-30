@@ -1053,7 +1053,9 @@ describe("the record's row disclosure", () => {
     ]);
     fireEvent.click(screen.getByTestId("history-row-disclosure"));
     const refs = screen.getByTestId("history-linked-refs");
-    expect(refs.querySelector("p")?.textContent).toBe(heading);
+    expect(
+      refs.querySelector('[data-testid="history-linked-scope"]')?.textContent
+    ).toBe(heading);
     // The ref is a real deep link to the record's own domain surface, not a chip.
     expect(
       refs.querySelector("a")?.getAttribute("href")

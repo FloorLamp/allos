@@ -130,7 +130,7 @@ test.describe("the record's linked context — visit → document lineage (#662)
     // EXACT, NOT CONTAINED: "From this visit" is a prefix of the document wording, so
     // a containment assertion here would pass on a panel that had lost the scope
     // (#2920) and started claiming an encounter link this document never had.
-    await expect(refs.locator("p").first()).toHaveText(
+    await expect(refs.getByTestId("history-linked-scope")).toHaveText(
       "From this visit’s document"
     );
 
