@@ -399,7 +399,7 @@ describe("Fitbit Takeout import", () => {
 
     const practices = db
       .prepare(
-        `SELECT practice, date, time, duration_min, source, external_id, edited
+        `SELECT practice, date, start_time, duration_min, source, external_id, edited
            FROM practice_logs WHERE profile_id = ?`
       )
       .all(profileId);
@@ -407,7 +407,7 @@ describe("Fitbit Takeout import", () => {
       {
         practice: "Meditation",
         date: "2026-06-24",
-        time: "11:00",
+        start_time: "11:00",
         duration_min: 30,
         source: "fitbit-takeout",
         external_id: "fitbit-takeout:90000000005",

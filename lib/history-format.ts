@@ -231,7 +231,10 @@ export type HistoryRowEdit =
        * the row stops saying "logged 19:43" and starts claiming 19:43 as the session.
        * This field exists so the form physically cannot reach the other one.
        */
-      statedTime: string | null;
+      statedStart: string | null;
+      /** The stated END of the window (#3142), NULL for every tap. Rides along for
+       *  the same reason the start does: the action rewrites what it reads. */
+      statedEnd: string | null;
       durationMin: number | null;
       notes: string | null;
     }

@@ -18,7 +18,7 @@ describe("imported wellness practices", () => {
       external_id: "fitbit-takeout:practice-test",
       practice: "Meditation",
       date: "2026-06-13",
-      time: "13:05",
+      start_time: "13:05",
       duration_min: 30,
     };
 
@@ -126,21 +126,21 @@ describe("imported wellness practices", () => {
           external_id: "fitbit-takeout:legacy-edited",
           practice: "Meditation",
           date: "2026-06-10",
-          time: "08:00",
+          start_time: "08:00",
           duration_min: 10,
         },
         {
           external_id: "fitbit-takeout:legacy-attached",
           practice: "Meditation",
           date: "2026-06-11",
-          time: "08:00",
+          start_time: "08:00",
           duration_min: 15,
         },
         {
           external_id: "fitbit-takeout:legacy-deleted",
           practice: "Meditation",
           date: "2026-06-12",
-          time: "08:00",
+          start_time: "08:00",
           duration_min: 20,
         },
       ],
@@ -179,7 +179,7 @@ describe("imported wellness practices", () => {
       external_id: "fitbit-takeout:rename",
       practice: "Meditation",
       date: "2026-06-13",
-      time: "13:05",
+      start_time: "13:05",
       duration_min: 30,
     };
     upsertPracticeLogs(profileId, [row], "fitbit-takeout");
@@ -242,7 +242,7 @@ describe("imported wellness practices", () => {
     expect(
       updatePracticeSession(profileId, id, {
         date: "2018-05-29",
-        time: "07:30",
+        startTime: "07:30",
         durationMin: 20,
         notes: "Corrected",
       })

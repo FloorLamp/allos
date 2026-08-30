@@ -116,7 +116,10 @@ export interface IntradaySleepBlock {
   stages: { stage: SleepStage; startMinute: number; endMinute: number }[];
 }
 
-export interface IntradayWorkoutBlock {
+// A drawn SPAN on the axis: an activity's window, or one practice session's (#3142).
+// Not "a workout" — the layer is keyed on having a bounded window, and the title is
+// whatever feed event the window travelled on.
+export interface IntradayBlock {
   key: string;
   eventId: string;
   anchorId: string;
@@ -160,7 +163,7 @@ export interface IntradayModel {
   minutesInDay: number;
   hr: IntradayHrLayer | null;
   sleep: IntradaySleepBlock[];
-  workouts: IntradayWorkoutBlock[];
+  blocks: IntradayBlock[];
   ticks: IntradayTick[];
   nowMinute: number | null;
 }
@@ -329,41 +332,72 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   sleep.sort((a, b) => a.startMinute - b.startMinute);
 
-  const workouts: IntradayWorkoutBlock[] = [];
-  const blockEventIds = new Set<string>();
+  // WHICH MARK AN EVENT'S WINDOW EARNS FALLS OUT OF THE DATA (#3142). A window
+  // `activityWindow` can bound — it has a start AND an end, stated or derived from a
+  // duration — is a BLOCK; a window carrying only a start is a TICK at that minute,
+  // which is the honest render for a session whose length nobody said. Inferring a
+  // length from typical durations would be fabrication, so a start-only session gets
+  // the same shape every other clock-timed event with no span gets.
+  //
+  // The start-only tick is why this loop places ticks at all rather than leaving them
+  // to the rail below: `sortTime` for a practice session is `bestKnownInstant`, which
+  // falls back to the FILING clock for a row that stated no start — so the rail would
+  // have drawn the session at the minute it was typed. The window's own `start_time`
+  // is the only value that says when the session happened.
+  const blocks: IntradayBlock[] = [];
+  const windowTicks: IntradayTick[] = [];
+  const windowedEventIds = new Set<string>();
   for (const event of input.events) {
-    const w = event.clockWindow ? activityWindow(event.clockWindow) : null;
-    if (!w) continue;
-    const startMinute = localStampMinute(input.date, w.start);
-    const endMinute = localStampMinute(input.date, w.end);
-    if (startMinute == null || endMinute == null) continue;
-    const clipped = clipToDay(startMinute, endMinute);
-    if (!clipped) continue;
-    blockEventIds.add(event.id);
-    workouts.push({
+    if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
+    const win = event.clockWindow;
+    if (!win) continue;
+    const w = activityWindow(win);
+    if (w) {
+      const startMinute = localStampMinute(input.date, w.start);
+      const endMinute = localStampMinute(input.date, w.end);
+      if (startMinute == null || endMinute == null) continue;
+      const clipped = clipToDay(startMinute, endMinute);
+      if (!clipped) continue;
+      windowedEventIds.add(event.id);
+      blocks.push({
+        key: event.id,
+        eventId: event.id,
+        anchorId: timelineEntryAnchorId(event.id),
+        ...clipped,
+        title: event.title,
+        iconType: event.iconType ?? null,
+        iconTitle: event.iconTitle ?? null,
+        iconSportNames: event.iconSportNames ?? null,
+        href: event.href ?? null,
+      });
+      continue;
+    }
+    const minute = clockMinute(win.start_time);
+    if (minute == null || minute < 0 || minute >= MINUTES_IN_DAY) continue;
+    windowedEventIds.add(event.id);
+    windowTicks.push({
       key: event.id,
       eventId: event.id,
       anchorId: timelineEntryAnchorId(event.id),
-      ...clipped,
-      title: event.title,
-      iconType: event.iconType ?? null,
-      iconTitle: event.iconTitle ?? null,
-      iconSportNames: event.iconSportNames ?? null,
-      href: event.href ?? null,
+      minute,
+      label: event.title,
+      category: event.category,
+      tone: event.tone ?? "default",
     });
   }
-  workouts.sort((a, b) => a.startMinute - b.startMinute);
+  blocks.sort((a, b) => a.startMinute - b.startMinute);
 
-  // The tick rail: EVERY feed event that carries a clock time, isn't already drawn
-  // as a block, and isn't in EXCLUDED_TICK_CATEGORIES (see that constant — the
-  // exclusion is a decision, not an oversight). Events the feed shows with a day
+  // The tick rail: the start-only windows above, plus EVERY feed event that carries a
+  // clock time, drew no window of its own, and isn't in EXCLUDED_TICK_CATEGORIES (see
+  // that constant — the exclusion is a decision, not an oversight). Events the feed
+  // shows with a day
   // granularity only (a weigh-in, a grouped lab panel, the day's dose roll-up)
   // carry no clock time and therefore contribute no tick — the layer is data-gated
   // like every other one, and the rail can never show something the list below
   // doesn't.
-  const ticks: IntradayTick[] = [];
+  const ticks: IntradayTick[] = [...windowTicks];
   for (const event of input.events) {
-    if (blockEventIds.has(event.id)) continue;
+    if (windowedEventIds.has(event.id)) continue;
     if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
     const minute = clockMinute(event.sortTime);
     if (minute == null) continue;
@@ -379,12 +413,7 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   ticks.sort((a, b) => a.minute - b.minute || a.key.localeCompare(b.key));
 
-  if (
-    !hr &&
-    sleep.length === 0 &&
-    workouts.length === 0 &&
-    ticks.length === 0
-  ) {
+  if (!hr && sleep.length === 0 && blocks.length === 0 && ticks.length === 0) {
     return null;
   }
 
@@ -400,7 +429,7 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     minutesInDay: MINUTES_IN_DAY,
     hr,
     sleep,
-    workouts,
+    blocks,
     ticks,
     nowMinute,
   };

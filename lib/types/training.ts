@@ -387,8 +387,12 @@ export interface PracticeLog {
   id: number;
   practice: string;
   date: string;
-  // Local HH:MM in the profile's timezone; null for a bare tick / a date-only one-tap.
-  time: string | null;
+  // The session's START, local HH:MM in the profile's timezone; null for a bare tick
+  // / a date-only one-tap. A tap-stamped start trails the true one (#3142).
+  start_time: string | null;
+  // The stated END (#3142). NULL on every tap and every import — the window is then
+  // derived from `duration_min` by `activityWindow`, never stored.
+  end_time: string | null;
   // Canonical minutes (the Units rule); null when not recorded.
   duration_min: number | null;
   notes: string | null;

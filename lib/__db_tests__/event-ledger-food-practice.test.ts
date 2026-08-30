@@ -117,7 +117,7 @@ describe("food and practice event-ledger completion (#3484)", () => {
     const owner = profile("practice ledger owner");
     const stranger = profile("practice ledger stranger");
     const insert = db.prepare(
-      `INSERT INTO practice_logs (profile_id, practice, date, time)
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time)
        VALUES (?, ?, '2026-08-20', ?)`
     );
     insert.run(owner, "Sauna", "08:00");

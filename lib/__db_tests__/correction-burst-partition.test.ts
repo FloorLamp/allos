@@ -470,9 +470,9 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
     logPracticeByTargetId(pid, targets[1], "page", messageRows[1]);
     const logs = db
       .prepare(
-        "SELECT id, time FROM practice_logs WHERE profile_id = ? ORDER BY id"
+        "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
       )
-      .all(pid) as { id: number; time: string }[];
+      .all(pid) as { id: number; start_time: string }[];
     setNow("2026-08-05T12:10:00Z");
 
     // Two taps five minutes apart, two messages, two bursts — each bound to its own.
@@ -500,11 +500,11 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
     expect(out).toEqual({ kind: "restamped", count: 1 });
     const after = db
       .prepare(
-        "SELECT id, time FROM practice_logs WHERE profile_id = ? ORDER BY id"
+        "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
       )
-      .all(pid) as { id: number; time: string }[];
-    expect(after[0].time).not.toBe(logs[0].time);
-    expect(after[1].time).toBe(logs[1].time);
+      .all(pid) as { id: number; start_time: string }[];
+    expect(after[0].start_time).not.toBe(logs[0].start_time);
+    expect(after[1].start_time).toBe(logs[1].start_time);
   });
 });
 
@@ -811,7 +811,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     const logId = (
       db
         .prepare(
-          "SELECT id, time FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
+          "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
         )
         .get(pid) as { id: number; time: string }
     ).id;
@@ -832,7 +832,9 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
       4410
     );
     const timeBefore = (
-      db.prepare("SELECT time FROM practice_logs WHERE id = ?").get(logId) as {
+      db
+        .prepare("SELECT start_time FROM practice_logs WHERE id = ?")
+        .get(logId) as {
         time: string;
       }
     ).time;
@@ -847,7 +849,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     expect(
       (
         db
-          .prepare("SELECT time FROM practice_logs WHERE id = ?")
+          .prepare("SELECT start_time FROM practice_logs WHERE id = ?")
           .get(logId) as {
           time: string;
         }

@@ -195,12 +195,12 @@ export default function PracticeCard({
       <LogPracticeButton
         practice={practice.name}
         todayCount={todaySessions.length}
-        // The latest time today's sessions carry, so the re-log question can name it
-        // ("You logged Sauna today at 08:12"). A bare one-tap session records no
-        // time, and then the question simply doesn't claim one.
+        // The latest start today's sessions carry, so the re-log question can name it
+        // ("You logged Sauna today at 08:12"). A backdated correction records no
+        // start, and then the question simply doesn't claim one.
         lastLoggedTime={
           todaySessions
-            .map((session) => session.time)
+            .map((session) => session.start_time)
             .filter((time): time is string => time != null)
             .sort()
             .at(-1) ?? null

@@ -49,7 +49,7 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       // Every layer still renders — the variant is geometry, not a content fork.
       await expect(compact.getByTestId("intraday-hr")).toBeVisible();
       await expect(compact.getByTestId("intraday-sleep-block")).toHaveCount(1);
-      await expect(compact.getByTestId("intraday-workout")).toHaveCount(1);
+      await expect(compact.getByTestId("intraday-block")).toHaveCount(1);
       await expect(compact.getByTestId("intraday-sleep-time")).toHaveCount(1);
 
       // The measurement that matters: painted type size, not the source number.

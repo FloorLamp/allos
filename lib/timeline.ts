@@ -394,9 +394,9 @@ function collectEvents(
           detail: a.notes,
           href: trainingActivityPageHref(a.id),
           sortTime: a.start_time,
-          // The raw local window inputs for the intraday panel's workout block
-          // (#1068) — resolved through the canonical activityWindow(), so an
-          // activity with no start (or no derivable end) simply has no block.
+          // The raw local window inputs for the intraday panel's block (#1068) —
+          // resolved through the canonical activityWindow(), so an activity with no
+          // start (or no derivable end) simply has no block.
           clockWindow: {
             date: a.date,
             start_time: a.start_time,
@@ -1404,7 +1404,7 @@ function collectEvents(
     .prepare(
       `SELECT date, practice, COUNT(*) AS count,
               GROUP_CONCAT(
-                COALESCE(time, '') || '::' || COALESCE(duration_min, ''),
+                COALESCE(start_time, '') || '::' || COALESCE(duration_min, ''),
                 '||'
               ) AS sessions
          FROM practice_logs
@@ -1425,13 +1425,13 @@ function collectEvents(
       .filter(Boolean)
       .map((pair) => {
         const idx = pair.lastIndexOf("::");
-        const time = idx >= 0 ? pair.slice(0, idx) : "";
+        const start = idx >= 0 ? pair.slice(0, idx) : "";
         const durRaw = idx >= 0 ? pair.slice(idx + 2) : "";
         const dur = durRaw ? Number(durRaw) : null;
-        return { time, dur };
+        return { start, dur };
       });
     const detailItems = sessions.map((s, i) => ({
-      label: s.time || `Session ${i + 1}`,
+      label: s.start || `Session ${i + 1}`,
       value:
         s.dur != null && Number.isFinite(s.dur) ? `${s.dur} min` : "Logged",
     }));
@@ -1445,6 +1445,12 @@ function collectEvents(
         subtitle: p.count === 1 ? "1 session" : `${p.count} sessions`,
         href: historyDayHref(p.date),
         detailItems,
+        // NO `clockWindow` HERE, and that is the #3958 retarget rather than an
+        // omission (#3142). This day-grouped event is dropped by the record's feed
+        // (`FEED_KIND.practice` is null) because practices reach `/history` as ONE
+        // ROW PER SESSION from the practice ledger, and it is those rows that carry
+        // the windows the intraday panel draws — see lib/history.ts. A window put
+        // here would reach no reader at all.
       },
       options
     );

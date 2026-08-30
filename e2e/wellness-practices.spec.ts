@@ -569,3 +569,86 @@ test("the cross-practice day-history renders a row per practice, on one day axis
     db.close();
   }
 });
+
+// A STATED WINDOW REACHES THE DAY'S CHART (#3142). The columns and their consumer
+// ship together (the #2204 "no column without a reader" gate), so the thing worth
+// driving end-to-end is the whole path: the expanded form's Start and End, through
+// the renamed `start_time` / new `end_time`, out onto the day view's intraday panel
+// as a BLOCK — the shape a session with no stated end cannot draw.
+//
+// Spec-owned zero-state profile (#3066), and the test removes both the practice it
+// declares and the session it logs, so --repeat-each stays clean.
+test("a practice logged with Start and End draws a block on the day chart (#3142)", async ({
+  browser,
+}) => {
+  test.slow(); // a sign-in, a create, a detailed log and two page loads
+  const practiceName = `E2E Interval Sauna ${frozenNow().getTime()}`;
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PRACTICE_ZERO,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/wellness");
+    const create = await openPracticeCreate(page);
+    await settledFill(page, create.getByLabel("Practice"), practiceName);
+    await settledClick(page, create.getByRole("button", { name: "Save" }));
+    await dismissToast(page, "Practice added");
+
+    const card = page
+      .getByTestId("wellness-practice-card")
+      .filter({ hasText: practiceName });
+    // hydratedClick, not settledClick: the trigger opens a MODAL and posts
+    // nothing, so a POST-correlated wait would time out on a control that behaved
+    // correctly. The modal it reveals is the assertion.
+    await hydratedClick(page, card.getByTestId("practice-log-details-trigger"));
+    const form = page.getByTestId("practice-log-details");
+    await expect(form).toBeVisible();
+
+    // THE PROFILE'S OWN TODAY, read off the form rather than recomputed here: the
+    // run pins a ROTATING instance timezone (e2e/pinned-timezone.ts), so a date
+    // derived from the host clock is the wrong day for most of the day.
+    const day = await form.locator('input[name="date"]').inputValue();
+    expect(day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // The pair the owner decision put here in place of one "Time". Both are
+    // PROFILE-LOCAL wall clocks, so they need no zone conversion — which is exactly
+    // why the block's minutes below can be asserted as literals.
+    await settledFill(page, form.locator('input[name="start_time"]'), "19:00");
+    await settledFill(page, form.locator('input[name="end_time"]'), "19:25");
+    await settledClick(page, page.getByTestId("practice-log-detailed-submit"));
+    await dismissToast(page, "Logged today's session");
+
+    await page.goto(`/history?day=${day}`);
+    const panel = page.getByTestId("intraday-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("data-intraday-date", day);
+    // One variant is displayed at a time; scope to the one this project's viewport
+    // shows rather than letting a locator reach into the hidden twin.
+    const chart = panel.locator('[data-variant="wide"]');
+    const block = chart.getByTestId("intraday-block");
+    await expect(block).toHaveCount(1);
+    await expect(block).toHaveAttribute("data-title", practiceName);
+    // A BLOCK AND NOT A TICK is the assertion: a session with a start alone still
+    // renders, as a tick, so "the session is on the chart" would pass without the
+    // end ever having been stored. The rail is empty here.
+    await expect(chart.getByTestId("intraday-tick")).toHaveCount(0);
+  } finally {
+    const handle = new Database(workerDbPath());
+    handle.pragma("busy_timeout = 5000");
+    try {
+      const ids = `SELECT id FROM profiles WHERE name = ?`;
+      handle
+        .prepare(`DELETE FROM practice_logs WHERE profile_id IN (${ids})`)
+        .run(PRACTICE_ZERO_PROFILE);
+      handle
+        .prepare(
+          `DELETE FROM frequency_targets
+            WHERE scope_kind = 'practice' AND profile_id IN (${ids})`
+        )
+        .run(PRACTICE_ZERO_PROFILE);
+    } finally {
+      handle.close();
+    }
+    await page.context().close();
+  }
+});

@@ -141,7 +141,8 @@ describe("the declared index is internally consistent", () => {
   it("keeps practice and activity rhythm inputs at profile-local clock grain", () => {
     const grain = (table: TemporalTable, column: string) =>
       TIME_COLUMNS[table].find((entry) => entry.column === column)?.grain;
-    expect(grain("practice_logs", "time")).toBe("time-of-day");
+    expect(grain("practice_logs", "start_time")).toBe("time-of-day");
+    expect(grain("practice_logs", "end_time")).toBe("time-of-day");
     expect(grain("activities", "start_time")).toBe("time-of-day");
     expect(grain("activities", "end_time")).toBe("time-of-day");
   });

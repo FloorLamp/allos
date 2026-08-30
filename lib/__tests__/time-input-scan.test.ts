@@ -53,17 +53,25 @@ const HANDROLLED_ALLOW = new Map<
   [
     "components/practices/LogPracticeButton.tsx",
     {
-      count: 1,
+      count: 2,
       kind: "event",
-      reason: "practice session log time; migrates on touch",
+      reason:
+        "the #3142 practice start/end pair — the SAME range shape as the " +
+        "activity start/end pair below, unmodelled by the control for the same " +
+        "reason. It was one input until #3142 renamed `time` to `start_time` " +
+        "and gave a session an END, on the owner's decision that the expanded " +
+        "form offers Start and End; migrates with DateTimeFields when the " +
+        "control grows a range form",
     },
   ],
   [
     "components/practices/PracticeSessionHistory.tsx",
     {
-      count: 1,
+      count: 2,
       kind: "event",
-      reason: "practice session edit time; migrates on touch",
+      reason:
+        "the #3142 practice start/end pair on the edit form — same range shape " +
+        "and same migration as the log form above",
     },
   ],
   [
