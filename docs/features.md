@@ -3017,7 +3017,7 @@ connection is gone for the whole session, closing the editor queues the
 complete workout — sets, loads, times — instead of stranding it on the device),
 the **food quick-adds** (a one-tap food-group serving or protein grams on
 Nutrition), and a **mobility move** tapped on (Training — the un-tap stays
-online-only, see below), and a **Bristol stool-form** tap — the app no longer fails when you're offline: it **queues the entry
+online-only, see below) — the app no longer fails when you're offline: it **queues the entry
 on your device** (in this browser's IndexedDB) and shows a "Saved offline —
 will sync when you reconnect" confirmation plus a **pending badge** counting
 the queued writes.
