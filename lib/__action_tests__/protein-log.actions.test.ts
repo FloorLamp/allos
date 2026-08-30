@@ -7,7 +7,8 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   addProteinGrams,
   undoProteinGrams,
@@ -120,5 +121,47 @@ describe("scoping", () => {
     expect(getProteinDailyGrams(a.id, DATE)).toBe(40);
     expect(getProteinDailyGrams(b.id, DATE)).toBe(0);
     expect(rows(b.id)).toEqual([]);
+  });
+});
+
+// ── THE DAY BOUND IS IN THE CORE NOW (#4118) ─────────────────────────────────
+//
+// The protein sibling of `logFoodServing`'s forged-day case, and it is the same
+// defect: the quick-add's day was picker-bounded in markup only, so a hand-built POST
+// put grams on a day that has not happened. Both directions asserted, because a bound
+// written as a WINDOW rather than as "not future" would pass the refusals and quietly
+// break backfilling a real past day.
+describe("a forged day", () => {
+  function seed(name: string) {
+    const login = createLogin();
+    const profile = createProfile(name, login.id);
+    actAs(login, profile);
+    return profile;
+  }
+
+  it.each([
+    ["tomorrow", 1],
+    ["next year", 400],
+  ] as const)("refuses %s and writes nothing", async (why, ahead) => {
+    const profile = seed(`protein-future-${ahead}`);
+    const future = shiftDateStr(today(profile.id), ahead);
+    const res = await addProteinGrams(fd({ grams: 30, date: future }));
+    expect(res.ok, why).toBe(false);
+    expect(rows(profile.id)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?"
+        )
+        .get(profile.id) as { n: number }
+    ).toEqual({ n: 0 });
+  });
+
+  it("still accepts an arbitrary PAST day", async () => {
+    const profile = seed("protein-past");
+    const old = shiftDateStr(today(profile.id), -400);
+    const res = await addProteinGrams(fd({ grams: 30, date: old }));
+    expect(res.ok).toBe(true);
+    expect(rows(profile.id)).toEqual([{ date: old, grams: 30 }]);
   });
 });
