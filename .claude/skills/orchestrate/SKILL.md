@@ -45,9 +45,9 @@ only says it would — a dry run once armed a real wake trigger.
 bash scripts/orchestrator-checkin.sh
 ```
 
-First action of every check-in and after ANY gap — the script is a flight
-recorder, not a formality: it detects restarts by persisted state (boot-id),
-never by process liveness, and prints the dispatch ROSTER.
+First action of every wake and after ANY gap — a flight recorder, not a
+formality: it detects restarts by persisted boot-id (never process liveness),
+prints the dispatch ROSTER, and runs the catch-up digest when due (4h).
 
 After a restart, PRESERVE BEFORE DIAGNOSING: rescue in-flight work from the
 roster (remote branches are the durable checkpoints; agents push after every

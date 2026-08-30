@@ -66,8 +66,12 @@ LOG="$STATE_DIR/catchup-$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee "$LOG") 2>&1
 
 # 1. Flight recorder first, always. Restart state governs what the rest of the
-#    digest means (an empty roster after a reclaim is news, not calm).
-bash "$REPO_DIR/scripts/orchestrator-checkin.sh"
+#    digest means (an empty roster after a reclaim is news, not calm). The one
+#    exception: the recorder's own catch-up gate invoking THIS script sets the
+#    flag below, because the recorder just ran — without it the two recurse.
+if [ "${CATCHUP_SKIP_RECORDER:-0}" != "1" ]; then
+  bash "$REPO_DIR/scripts/orchestrator-checkin.sh"
+fi
 
 echo
 echo "=== CATCH-UP DIGEST  window ${SINCE} .. ${NOW} ==="

@@ -84,10 +84,11 @@ closed taxonomy, and `needs-human` handling.
   Both vitest gates carry a 60 s per-test ceiling here; CI keeps 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
+- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it
+  once its anchor is 4h stale, so it needs no remembering. `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
-- `session-metrics.mjs`: the trend pulse — merge throughput, review-queue
-  depth, queue shape, needs-human aging over a fixed window, denominators
-  first. Argue caps and cadences from its numbers, not from memory.
+- `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
+  shape, needs-human aging; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
 - `adversarial-review-brief.mjs`: route and brief high-stakes second reviews.
 

@@ -767,6 +767,28 @@ echo "  node(.nvmrc): ${nodebin:-ABSENT - install the .nvmrc major with your ver
 echo "  main:   $(git -C "$REPO" ls-remote origin main 2>/dev/null | cut -c1-7)"
 echo
 
+# 6. Catch-up gate. The digest (catchup-digest.sh) was designed to wrap this
+# recorder, but the runbook routes every wake HERE, so the digest only ran
+# when a prompt happened to name it (owner, 2026-08-30) — the MCP-by-default
+# drift class: a tool that waits to be remembered is a tool that isn't run.
+# So the recorder ROUTES: anchor >= 4h stale (the queue-sweep cadence, or
+# unparseable — BSD date lands here and the digest's own 24h fallback takes
+# over) runs the digest right now, and a check-in cannot skip catching up.
+echo "--- catch-up ---"
+CATCHUP_DUE_SECS=$((4 * 3600))
+catchup_anchor=$(cat "$STATE_DIR/.last_catchup" 2>/dev/null || true)
+catchup_anchor_s=$(date -u -d "$catchup_anchor" +%s 2>/dev/null || echo "")
+now_s=$(date -u +%s)
+if [ -n "$catchup_anchor_s" ] && [ $((now_s - catchup_anchor_s)) -lt "$CATCHUP_DUE_SECS" ]; then
+  echo "  digest anchor $(((now_s - catchup_anchor_s) / 60))m old — due at 4h; \`catchup-digest.sh --peek\` any time"
+else
+  echo "  digest DUE (anchor: ${catchup_anchor:-none}) — running it now:"
+  echo
+  CATCHUP_SKIP_RECORDER=1 bash "$(dirname "$0")/orchestration/catchup-digest.sh" ||
+    echo "  *** digest FAILED — run scripts/orchestration/catchup-digest.sh by hand ***"
+fi
+echo
+
 # Stamp LAST, so a crash mid-check-in still reports the restart next time.
 #
 # A FAILED STAMP IS A FUTURE FALSE RESTART, so it is announced rather than
