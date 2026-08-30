@@ -20,6 +20,7 @@ import {
   isGarbageCanonical,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-result-definitions.json";
+import { bodyMetricKind } from "../body-metric-extract";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -935,6 +936,18 @@ describe("deliberately uncurated analytes (#2313)", () => {
     canonicalSeed as { definitions: { name: string }[] }
   ).definitions.map((b) => b.name);
   const curatedKeys = new Set(vocabulary.map((n) => normalizeCanonicalKey(n)));
+
+  it("keeps the body-metric workaround to one document-ingested analyte (#2766)", () => {
+    const routed = uncuratedAnalytes().flatMap(([name]) => {
+      const kind = bodyMetricKind(name, name);
+      return kind ? [[name, kind]] : [];
+    });
+    // Two declared print spellings, one quantity. A second hit reopens the ruling.
+    expect(routed).toEqual([
+      ["Total Mass", "weight"],
+      ["Total Mass (g)", "weight"],
+    ]);
+  });
 
   it("declares a non-empty reason for every entry", () => {
     // The MetricKnowledge `{ source: "none"; reason }` rule: the reason is what a
