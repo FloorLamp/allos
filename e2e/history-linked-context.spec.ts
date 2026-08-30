@@ -118,7 +118,12 @@ test.describe("the record's linked context — visit → document lineage (#662)
     // panel that shipped permanently open — which would break the one-line rule for
     // every reader — cannot pass this spec by being there already.
     await expect(page.getByTestId("history-linked-refs")).toHaveCount(0);
+    // Measured at 390px, where the one-line rule is load-bearing and where a panel
+    // nested inside the row would show up as the row growing.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const beforeOpen = Math.round((await row.boundingBox())?.height ?? -1);
     await row.getByTestId("history-row-disclosure").click();
+    const afterOpen = Math.round((await row.boundingBox())?.height ?? -2);
 
     const refs = page.getByTestId("history-linked-refs");
     await expect(refs).toBeVisible();
@@ -130,6 +135,13 @@ test.describe("the record's linked context — visit → document lineage (#662)
     );
 
     // Each sibling kind is linked to its domain surface.
+    // THE ROW IS STILL ONE LINE WITH ITS PANEL OPEN (#3958's owner ruling), asserted
+    // as a RELATIONSHIP between two readings of the same element rather than against a
+    // pixel constant: the row's own height before the click and after it. The panel is
+    // a SIBLING `<li>` for exactly this reason, and an absolute ceiling would pass on a
+    // tree where the row grew by a line and the constant happened to allow it.
+    expect(afterOpen).toEqual(beforeOpen);
+
     const colonoscopy = refs.getByRole("link", {
       name: "Procedure: E2E Colonoscopy",
     });
