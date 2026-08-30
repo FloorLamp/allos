@@ -321,6 +321,58 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     });
   });
 
+  it("seeds a newly opened practice editor from that row, not cancelled state", async () => {
+    openRow([
+      row({
+        id: "practice:6",
+        kind: "practice",
+        title: "Sauna",
+        edit: {
+          kind: "practice",
+          sessionId: 6,
+          statedTime: "07:15",
+          durationMin: 20,
+          notes: null,
+        },
+      }),
+      row({
+        id: "practice:7",
+        kind: "practice",
+        date: "2026-08-19",
+        title: "Breathwork",
+        edit: {
+          kind: "practice",
+          sessionId: 7,
+          statedTime: "18:40",
+          durationMin: 10,
+          notes: null,
+        },
+      }),
+    ]);
+
+    fireEvent.click(screen.getAllByTestId("overflow-menu-trigger")[0]);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("history-row-edit"))
+    );
+    fireEvent.change(screen.getByTestId("history-practice-when-time"), {
+      target: { value: "06:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(screen.getAllByTestId("overflow-menu-trigger")[1]);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("history-row-edit"))
+    );
+    expect(
+      (screen.getByTestId("history-practice-when-date") as HTMLInputElement)
+        .value
+    ).toBe("2026-08-19");
+    expect(
+      (screen.getByTestId("history-practice-when-time") as HTMLInputElement)
+        .value
+    ).toBe("18:40");
+  });
+
   it.each(["kg", "lb"] as const)(
     "body sends the %s value the row printed, with the unit it printed it in",
     async (unit) => {
