@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { IconVideo, IconMicrophone, IconMapPin } from "@tabler/icons-react";
+import MediaInput from "@/components/media/MediaInput";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
@@ -18,11 +19,16 @@ import { extractPosterFrame } from "@/lib/video/client-poster";
 // on open), and the audio/location affordances can never diverge per domain (the
 // #221 one-surface / #1119 one-core philosophy).
 //
-// Upload-only MVP (#1224): a native file input (accept video+audio, `capture` so a
-// phone opens the camera). On pick, a poster frame is extracted CLIENT-side
-// (canvas) and submitted alongside; the SERVER re-strips the poster's metadata and
-// stores the clip AS-IS. A clip whose bytes carry embedded LOCATION metadata shows
-// the visible privacy note (clips recorded in-app in phase 2 won't).
+// Upload-only MVP (#1224): the door is <MediaInput>, the one add-media surface
+// (#3286) — choose, drop or paste, on every device. It offers NO camera here, and
+// that is derived rather than configured: MediaInput's viewfinder captures a canvas
+// frame, which is a still, so it is a way in only where images are wanted. In-app
+// recording is #1224 phase 2. MediaInput hands `video/*` and `audio/*` bytes
+// through untouched — its client re-encode is image-only — so the clip reaches this
+// pipeline byte-for-byte. On pick, a poster frame is extracted CLIENT-side (canvas)
+// and submitted alongside; the SERVER re-strips the poster's metadata and stores the
+// clip AS-IS. A clip whose bytes carry embedded LOCATION metadata shows the visible
+// privacy note (clips recorded in-app in phase 2 won't).
 
 export interface VideoClipView {
   id: number;
@@ -81,16 +87,18 @@ export default function VideoClipGrid({
   const [pending, start] = useTransition();
   const toast = useToast();
   const confirm = useConfirm();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [caption, setCaption] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
-  function onPick(file: File | undefined) {
-    if (!file) return;
-    start(async () => {
+  // One upload per clip so a refusal names the clip it refused, and ONE toast for
+  // the set. Returning a string keeps the dialog open with the reason, which is
+  // how a whole-batch refusal stays on screen next to the files it is about.
+  async function onPick(files: File[]): Promise<string | null> {
+    const failed: string[] = [];
+    for (const file of files) {
       // Best-effort client poster; the upload proceeds posterless on failure.
       let poster: Blob | null = null;
       try {
@@ -99,14 +107,19 @@ export default function VideoClipGrid({
         poster = null;
       }
       const res = await onUpload(file, poster, caption.trim());
-      if (fileRef.current) fileRef.current.value = "";
-      if (!res.ok) {
-        toast(res.error, { tone: "error" });
-        return;
-      }
-      setCaption("");
-      toast("Clip attached.");
-    });
+      if (!res.ok) failed.push(`${file.name}: ${res.error}`);
+    }
+    if (failed.length === files.length) return failed.join("; ");
+    const added = files.length - failed.length;
+    setCaption("");
+    toast(
+      failed.length > 0
+        ? `Attached ${added} of ${files.length}. ${failed.join("; ")}`
+        : added > 1
+          ? `${added} clips attached.`
+          : "Clip attached."
+    );
+    return null;
   }
 
   function saveCaption(id: number) {
@@ -340,15 +353,6 @@ export default function VideoClipGrid({
 
       {canWrite && showAdd && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="video/*,audio/*"
-            capture="environment"
-            data-testid="video-clip-input"
-            className="hidden"
-            onChange={(e) => onPick(e.target.files?.[0])}
-          />
           <div>
             <label className="label mb-0" htmlFor={`${testid}-caption`}>
               Caption (optional)
@@ -362,16 +366,16 @@ export default function VideoClipGrid({
               className="input mt-1 w-48 text-sm"
             />
           </div>
-          <button
-            type="button"
-            data-testid="video-clip-add"
-            disabled={pending}
-            onClick={() => fileRef.current?.click()}
+          <MediaInput
+            triggerLabel={pending ? "Adding…" : addLabel}
+            triggerTestId="video-clip-add"
+            inputTestId="video-clip-input"
             className="btn-ghost btn-sm"
-          >
-            <IconVideo className="mr-1 inline h-3.5 w-3.5" stroke={1.75} />
-            {pending ? "Adding…" : addLabel}
-          </button>
+            accept="video/*,audio/*"
+            multiple
+            disabled={pending}
+            onConfirm={onPick}
+          />
         </div>
       )}
     </div>

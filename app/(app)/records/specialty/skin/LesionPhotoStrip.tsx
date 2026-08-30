@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import DateField from "@/components/DateField";
-import SubmitButton from "@/components/SubmitButton";
+import MediaInput from "@/components/media/MediaInput";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
@@ -30,9 +30,8 @@ export default function LesionPhotoStrip({
   photos: LesionPhotoRow[];
 }) {
   const toast = useToast();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [caption, setCaption] = useState("");
   const [view, setView] = useState<"grid" | "compare">("grid");
 
   const gallery: GalleryPhoto[] = useMemo(
@@ -50,16 +49,31 @@ export default function LesionPhotoStrip({
     [photos]
   );
 
-  async function handleUpload(formData: FormData) {
-    setError(null);
-    const res = await uploadLesionPhoto(formData);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+  // One upload per file so a refusal names the file it refused, and ONE toast for
+  // the set — a stack of shots of one mole is a single act, not five.
+  async function handleUpload(files: File[]): Promise<string | null> {
+    const failed: string[] = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.set("lesion_id", String(lesionId));
+      fd.set("photo", file);
+      fd.set("date", date);
+      fd.set("caption", caption);
+      const res = await uploadLesionPhoto(fd);
+      if (!res.ok) failed.push(`${file.name}: ${res.error}`);
     }
-    toast("Photo added");
-    formRef.current?.reset();
-    setOpen(false);
+    if (failed.length === files.length) return failed.join("; ");
+    const added = files.length - failed.length;
+    toast(
+      failed.length > 0
+        ? `Added ${added} of ${files.length}. ${failed.join("; ")}`
+        : added > 1
+          ? `${added} photos added`
+          : "Photo added"
+    );
+    setDate("");
+    setCaption("");
+    return null;
   }
 
   return (
@@ -114,69 +128,44 @@ export default function LesionPhotoStrip({
         />
       )}
 
-      {open ? (
-        <form
-          ref={formRef}
-          action={handleUpload}
-          className="flex flex-wrap items-end gap-2 border-t border-black/5 pt-3 dark:border-white/5"
-          data-testid={`lesion-photo-upload-${lesionId}`}
-        >
-          <input type="hidden" name="lesion_id" value={lesionId} />
-          <div>
-            <label className="label text-xs" htmlFor={`lp-date-${lesionId}`}>
-              Date{" "}
-              <span className="normal-case">(blank = photo’s own date)</span>
-            </label>
-            <DateField id={`lp-date-${lesionId}`} name="date" />
+      <MediaInput
+        triggerLabel="Add photo"
+        triggerTestId={`add-lesion-photo-${lesionId}`}
+        inputTestId={`lesion-photo-file-${lesionId}`}
+        className="text-xs text-link"
+        multiple
+        onConfirm={handleUpload}
+        confirmFields={
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <label className="label text-xs" htmlFor={`lp-date-${lesionId}`}>
+                Date{" "}
+                <span className="normal-case">(blank = photo’s own date)</span>
+              </label>
+              <DateField
+                id={`lp-date-${lesionId}`}
+                value={date}
+                onChange={setDate}
+              />
+            </div>
+            <div className="min-w-40 flex-1">
+              <label
+                className="label text-xs"
+                htmlFor={`lp-caption-${lesionId}`}
+              >
+                Caption
+              </label>
+              <input
+                id={`lp-caption-${lesionId}`}
+                className="input py-1 text-sm"
+                placeholder="optional"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="min-w-40 flex-1">
-            <label className="label text-xs" htmlFor={`lp-caption-${lesionId}`}>
-              Caption
-            </label>
-            <input
-              id={`lp-caption-${lesionId}`}
-              name="caption"
-              className="input py-1 text-sm"
-              placeholder="optional"
-            />
-          </div>
-          <div>
-            <label className="label text-xs" htmlFor={`lp-file-${lesionId}`}>
-              Photo
-            </label>
-            <input
-              id={`lp-file-${lesionId}`}
-              name="photo"
-              type="file"
-              accept="image/*"
-              required
-              className="text-sm"
-            />
-          </div>
-          <SubmitButton pendingLabel="Adding…">Add photo</SubmitButton>
-          {error && (
-            <p
-              role="alert"
-              className="w-full text-sm text-rose-600 dark:text-rose-400"
-            >
-              {error}
-            </p>
-          )}
-          <p className="w-full text-xs text-slate-400">
-            Photos are resized and cleaned of camera metadata (location, device)
-            when stored.
-          </p>
-        </form>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="text-xs text-link"
-          data-testid={`add-lesion-photo-${lesionId}`}
-        >
-          + Add photo
-        </button>
-      )}
+        }
+      />
     </div>
   );
 }

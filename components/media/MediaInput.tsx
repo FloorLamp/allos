@@ -150,6 +150,13 @@ export default function MediaInput({
   quality = PHOTO_CLIENT_QUALITY,
   fileName = "photo.jpg",
 }: MediaInputProps) {
+  // THE CAMERA OPTION IS DERIVED FROM WHAT THE CONSUMER ACCEPTS, not from a
+  // flag. The viewfinder captures a canvas frame, which is a JPEG — so it is a
+  // way in only where images are wanted. A clip consumer gets choose/drop/paste
+  // and no camera, which is the honest state: in-app recording is #1224 phase 2
+  // and does not exist yet, and offering a stills camera for a video would be a
+  // second dead end of exactly the kind #3286 was filed about.
+  const cameraApplies = accept.includes("image/") || accept.includes("image/*");
   const [stage, setStage] = useState<Stage>({ kind: "closed" });
   const [error, setError] = useState<string | null>(null);
   // The camera option's OWN error. It renders beside that option and nowhere
@@ -248,7 +255,8 @@ export default function MediaInput({
   const open = useCallback(async () => {
     setError(null);
     const start = mediaStartStage({
-      hasGetUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+      hasGetUserMedia:
+        cameraApplies && Boolean(navigator.mediaDevices?.getUserMedia),
       knowledge: cameraKnowledgeRef.current,
       compactViewport: compact,
     });
@@ -257,7 +265,7 @@ export default function MediaInput({
       return;
     }
     setStage({ kind: "chooser" });
-  }, [attemptCamera, compact]);
+  }, [attemptCamera, compact, cameraApplies]);
 
   // Prime the ordering decision before it is needed. Permissions is best effort
   // (Safari may not expose camera); the remembered last outcome is the portable
@@ -469,8 +477,8 @@ export default function MediaInput({
       } catch {
         setError(
           files.length > 1
-            ? "Couldn't save the photos. Try again."
-            : "Couldn't save the photo. Try again."
+            ? "Couldn't save the files. Try again."
+            : "Couldn't save the file. Try again."
         );
       }
     });
@@ -499,7 +507,11 @@ export default function MediaInput({
       >
         {triggerContent ?? (
           <>
-            <IconCamera size={18} aria-hidden />
+            {cameraApplies ? (
+              <IconCamera size={18} aria-hidden />
+            ) : (
+              <IconUpload size={18} aria-hidden />
+            )}
             {triggerLabel}
           </>
         )}
@@ -569,14 +581,16 @@ export default function MediaInput({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => void attemptCamera(cameraError !== null)}
-                    data-testid="media-input-camera"
-                  >
-                    <IconCamera size={16} aria-hidden /> Use camera
-                  </button>
+                  {cameraApplies ? (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => void attemptCamera(cameraError !== null)}
+                      data-testid="media-input-camera"
+                    >
+                      <IconCamera size={16} aria-hidden /> Use camera
+                    </button>
+                  ) : null}
                   {reloadOffered ? (
                     <button
                       type="button"
@@ -615,10 +629,12 @@ export default function MediaInput({
                   </div>
                 ) : null}
 
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Photos are resized and cleaned of camera metadata (location,
-                  device info) before they are stored.
-                </p>
+                {cameraApplies ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Photos are resized and cleaned of camera metadata (location,
+                    device info) before they are stored.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
