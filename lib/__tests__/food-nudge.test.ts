@@ -424,7 +424,9 @@ describe("renderFoodNudge corrected-burst body statement (#2264)", () => {
       NOW
     );
     const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map(), {
-      corrections: { bursts, now: NOW },
+      // FALSE: a profile that has never corrected a time, which is the only state in
+      // which the hint renders at all (#2874).
+      corrections: { bursts, now: NOW, hasCorrectedAnyTime: false },
       tz: TZ,
     });
     expect(plainBody(msg.body)).toContain("Ate earlier?");

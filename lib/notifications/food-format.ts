@@ -334,10 +334,16 @@ export interface FoodNudgeRenderOpts {
   // (lib/queries/correction-history.ts) because this renderer is DB-free. It rides here
   // beside the bursts for the same reason `now` does: the two are only ever read
   // together, and the sentence they decide is about these chips.
+  //
+  // REQUIRED, NOT OPTIONAL, and that is this issue's own lesson applied one layer up.
+  // An optional flag defaults to the PERMISSIVE answer — keep teaching — so a second
+  // gather that simply never mentioned it would reintroduce exactly the forever-hint
+  // #2874 exists to remove, silently and while typechecking. A guard must not fail into
+  // the state it guards against, so the gather has to answer.
   corrections?: {
     bursts: readonly CorrectionBurst[];
     now: Date;
-    hasCorrectedAnyTime?: boolean;
+    hasCorrectedAnyTime: boolean;
   };
   // The profile's timezone, for the correction rows' wall-clock labels. Only read when
   // there are corrections to render.
@@ -520,7 +526,7 @@ export function renderFoodNudge(
             // sentence this renderer spells for itself.
             correctionHintLine(
               FOOD_TIME_PREFIXES,
-              corrections.hasCorrectedAnyTime ?? false
+              corrections.hasCorrectedAnyTime
             )
           : null,
       // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
