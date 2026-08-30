@@ -488,10 +488,6 @@ describe("the four spans the old stripper deleted", () => {
 // literals it did not model); all 21 overlay rules stayed green after conversion. Its
 // six repeated corpus projections are now one memoized pass as well.
 //
-// INSTANT-WRITER CAME OFF NEXT. Its URL-aware two-regex projection differed on 14 of
-// 1,854 lib/app/scripts files; all three stored-instant verdicts stayed green. Its
-// three full source walks are now one memoized, keyword-gated source/SQL index.
-//
 // THE INSTRUMENT IS COMMITTED, because the rule is only worth having if the next
 // conversion can re-run it: `npx tsx lib/__tests__/strip-comments-equivalence.ts <pathspec>`, with
 // `--narrow` for the other spelling. Reading a number out of a lane's transcript is
@@ -631,6 +627,7 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/icon-button-tooltip-scan.test.ts",
     "lib/__tests__/immediate-tx.test.ts",
     "lib/__tests__/ingest-narrowing-scan.test.ts",
+    "lib/__tests__/instant-writer-scan.test.ts",
     "lib/__tests__/migration-historical-fixture-scan.test.ts",
     "lib/__tests__/mobile-density-convention.test.ts",
     "lib/__tests__/notes-text.test.ts",
