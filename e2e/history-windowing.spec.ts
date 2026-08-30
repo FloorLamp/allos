@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
-import type { TestInfo } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
-import { followLink } from "./helpers";
+import { hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
@@ -151,6 +151,24 @@ const WINDOW_GOALS = [
   [OLD_GOAL, OLD_DATE],
 ] as const;
 
+// A FOLD TOGGLE IS NOT IDEMPOTENT, so `followLink` is the wrong helper for it — and
+// this is measured rather than reasoned. Under `--repeat-each=3` the year-shut case
+// failed one run in three: `followLink` RE-CLICKS while it waits for the URL to
+// commit, the first click had already shut the year, and the second re-opened it, so
+// the URL settled on `?open=2025` and the assertion read it as the very defect the
+// test exists to catch ("a toggle that read set membership would answer closed and ADD
+// one"). The helper's own error message names this case. `hydratedClick` waits for the
+// handler and then clicks ONCE — its comment says "the toggle can never be
+// double-fired" — and the URL is asserted separately.
+async function toggleFold(
+  page: Page,
+  testId: string,
+  destination: RegExp
+): Promise<void> {
+  await hydratedClick(page, page.getByTestId(testId));
+  await expect(page).toHaveURL(destination);
+}
+
 test.describe("the record's windowing (#2657)", () => {
   test("the feed opens on recent history — the future and older months are folded away", async ({
     browser,
@@ -205,9 +223,9 @@ test.describe("the record's windowing (#2657)", () => {
     try {
       await page.goto("/history");
 
-      await followLink(
+      await toggleFold(
         page,
-        page.getByTestId(`history-fold-${OLD_MONTH}-toggle`),
+        `history-fold-${OLD_MONTH}-toggle`,
         new RegExp(`open=${OLD_MONTH}`)
       );
 
@@ -224,11 +242,7 @@ test.describe("the record's windowing (#2657)", () => {
       // is not opening the page" on a fixture that actually has two.
 
       // And it closes again, back to the fold-free URL.
-      await followLink(
-        page,
-        page.getByTestId(`history-fold-${OLD_MONTH}-toggle`),
-        /\/history$/
-      );
+      await toggleFold(page, `history-fold-${OLD_MONTH}-toggle`, /\/history$/);
       await expect(page.getByText(OLD_GOAL)).toHaveCount(0);
     } finally {
       await page.context().close();
@@ -307,9 +321,9 @@ test.describe("the record's year roll-up (#2657)", () => {
     try {
       await page.goto(YEAR_FEED);
 
-      await followLink(
+      await toggleFold(
         page,
-        page.getByTestId(`history-fold-${LAST_YEAR}-toggle`),
+        `history-fold-${LAST_YEAR}-toggle`,
         new RegExp(`open=${LAST_YEAR}(&|$)`)
       );
 
@@ -367,9 +381,9 @@ test.describe("the record's year roll-up (#2657)", () => {
       await page.goto(`${YEAR_FEED}&open=${LAST_YEAR_MONTH}`);
       await expect(page.getByText(LAST_YEAR_GOAL)).toBeVisible();
 
-      await followLink(
+      await toggleFold(
         page,
-        page.getByTestId(`history-fold-${LAST_YEAR}-toggle`),
+        `history-fold-${LAST_YEAR}-toggle`,
         /\/history\?kind=goal$/
       );
 
