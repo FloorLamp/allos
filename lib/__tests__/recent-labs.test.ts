@@ -153,3 +153,66 @@ describe("recentLabHighlights", () => {
     expect(rows[0].freshness).toBe("due");
   });
 });
+
+// ---- Acknowledged notables lose their ordering precedence (#3225) -----------
+//
+// Owner ruling 2026-08-19: "acknowledge, not summary-row or rotation — a per-marker
+// 'seen' that stops a chronic notable from outranking, with newest-first among the
+// unacknowledged." The owner's data is 37 notable markers essentially all from ONE
+// panel, so notable-first alone seats the same six rows for months and the Standing
+// family never changes. Acknowledgment spends the claim; the flag itself does not
+// move, which is what keeps this an ORDER change and not a suppression.
+describe("recentLabHighlights acknowledgment order (#3225)", () => {
+  // Seven notables from one draw, then two ordinary results from a later one — the
+  // shape the issue names ("fixture with >cap notables from one draw"). Unfixed, the
+  // six seats are N1–N6 no matter what anyone acknowledges.
+  const DRAW = "2026-06-03";
+  const LATER = "2026-08-20";
+  const rows = [
+    ...["N1", "N2", "N3", "N4", "N5", "N6", "N7"].map((name) =>
+      rec({ name, flag: "high", date: DRAW })
+    ),
+    ...["R1", "R2"].map((name) => rec({ name, flag: "normal", date: LATER })),
+  ];
+  const seat = (acked: readonly string[]) =>
+    recentLabHighlights(rows, 6, undefined, (name) => acked.includes(name)).map(
+      (r) => r.name
+    );
+
+  it.each([
+    {
+      case: "none acknowledged — the pinned six, unchanged",
+      acked: [],
+      seated: ["N1", "N2", "N3", "N4", "N5", "N6"],
+    },
+    {
+      case: "three acknowledged — the seats move to what has not been seen",
+      acked: ["N1", "N2", "N3"],
+      seated: ["N4", "N5", "N6", "N7", "R1", "R2"],
+    },
+    {
+      case: "all acknowledged — newest results, never an empty box",
+      acked: ["N1", "N2", "N3", "N4", "N5", "N6", "N7"],
+      seated: ["R1", "R2", "N1", "N2", "N3", "N4"],
+    },
+  ])("$case", ({ acked, seated }) => {
+    expect(seat(acked)).toEqual(seated);
+  });
+
+  it("moves precedence only — the acknowledged row keeps its flag and its place in the list", () => {
+    const out = recentLabHighlights(rows, 9, undefined, (n) => n === "N1");
+    const n1 = out.find((r) => r.name === "N1");
+    // Still present, still high: /results and every notability read are untouched.
+    expect(n1?.flag).toBe("high");
+    // …and it now sorts by date among the ordinary results rather than ahead of them.
+    expect(out.map((r) => r.name).indexOf("N1")).toBeGreaterThan(
+      out.map((r) => r.name).indexOf("R1")
+    );
+  });
+
+  it("no predicate is the pre-#3225 order, byte for byte — the digest and recap are out of scope", () => {
+    expect(recentLabHighlights(rows, 6).map((r) => r.name)).toEqual(
+      seat([])
+    );
+  });
+});

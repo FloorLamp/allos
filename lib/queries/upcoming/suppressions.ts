@@ -193,8 +193,9 @@ export function snoozeFinding(
   ).run(profileId, dedupeKey, until);
 }
 
-// Dismiss a finding indefinitely (until restored), clearing any snooze so a
-// dismiss always wins.
+// Dismiss a finding (until restored), clearing any snooze so a dismiss always wins.
+// For a `biomarker-flag:` acknowledgment "until restored" is no longer the only end:
+// the next draw of that marker family re-arms it at the read above (#3225).
 export function dismissFinding(profileId: number, dedupeKey: string): void {
   db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until, dismissed_at)
