@@ -7,181 +7,218 @@
           "pr": 4132,
           "title": "Water, lean mass, bone mass and respiratory rate can be typed in by hand",
           "kind": "feature",
+          "category": "Medical",
           "issues": [1851]
         },
         {
           "pr": 4136,
-          "title": "The measurements form opens with no connection, so a weigh-in still saves and syncs later",
+          "title": "The measurements form opens offline, so a weigh-in still saves and syncs later",
           "kind": "fix",
+          "category": "Medical",
           "issues": [4091]
         },
         {
           "pr": 4135,
-          "title": "The record covers training, clinical and life entries, and groups a day's logs instead of listing every one",
+          "title": "The record covers training, clinical and life entries, grouped by day",
           "kind": "feature",
+          "category": "History",
           "issues": [3958]
         },
         {
           "pr": 4144,
-          "title": "Today's protein takes the larger of your own log and your health app's, so it never falls below what you logged",
+          "title": "Today's protein takes the larger of your own log and your health app's",
           "kind": "fix",
+          "category": "Nutrition",
           "issues": [3903]
         },
         {
           "pr": 4156,
-          "title": "Today's fiber takes the larger of your health app's reading and your own food and supplement logs",
+          "title": "Today's fiber takes the larger of your health app's reading and your own logs",
           "kind": "fix",
+          "category": "Nutrition",
           "issues": [4127]
         },
         {
           "pr": 4140,
-          "title": "Your usual evening routine stays one tap away until midnight instead of disappearing at nine",
+          "title": "Your usual evening routine stays one tap away until midnight, not nine",
           "kind": "fix",
+          "category": "Nutrition",
           "issues": [3265]
         },
         {
           "pr": 4083,
           "title": "The dashboard's everything list stops repeating pages the menu already carries",
           "kind": "fix",
+          "category": "Interface",
           "issues": [3366]
         },
         {
           "pr": 4210,
-          "title": "Type the times you went to bed and got up, and a night your wearable missed fills its own gap",
+          "title": "Type when you went to bed and got up, and fill a night your wearable missed",
           "kind": "feature",
+          "category": "Sleep",
           "issues": [1851]
         },
         {
           "pr": 4168,
           "title": "One page holds the whole record: the timeline retires and its day view moves in",
           "kind": "feature",
+          "category": "History",
           "issues": [3958, 3343]
         },
         {
           "pr": 4230,
           "title": "Say you have seen a flagged lab result, and it stops leading until the next draw",
           "kind": "feature",
+          "category": "Medical",
           "issues": [3225]
         },
         {
           "pr": 4234,
           "title": "Record rows open to show where an entry came from and what it links to",
           "kind": "feature",
+          "category": "History",
           "issues": [3958, 662, 2920]
         },
         {
           "pr": 4252,
-          "title": "A practice session records when it started and when it ended, and draws on the day's chart",
+          "title": "A practice session records when it started and ended, and draws on the chart",
           "kind": "feature",
+          "category": "Training",
           "issues": [3142]
         },
         {
           "pr": 4120,
-          "title": "An inhaler and a nebulizer of the same medicine are no longer called a duplicate record",
+          "title": "An inhaler and a nebulizer of one medicine aren't called a duplicate record",
           "kind": "fix",
+          "category": "Medications",
           "issues": [3125]
         },
         {
           "pr": 4150,
-          "title": "A date your clock skipped shows zero minutes instead of stretching the day before",
+          "title": "A date your clock skipped shows zero minutes, not a longer day before",
           "kind": "fix",
+          "category": "General",
           "issues": [3845]
         },
         {
           "pr": 4166,
-          "title": "A single equipment reading shows its value, unit and date instead of an empty chart",
+          "title": "A single equipment reading shows its value, unit and date, not an empty chart",
           "kind": "fix",
+          "category": "Training",
           "issues": [3235]
         },
         {
           "pr": 4175,
           "title": "The photo gallery and the fitness-test timer stop the page scrolling behind them",
           "kind": "fix",
+          "category": "Interface",
           "issues": [3256]
         },
         {
           "pr": 4182,
           "title": "Total mass from a DEXA scan points to your weight trend",
           "kind": "feature",
+          "category": "Trends",
           "issues": [2766]
         },
         {
           "pr": 4188,
-          "title": "A prediction for a past workout day uses what was known that day, not later training",
+          "title": "A prediction for a past workout day uses what was known that day",
           "kind": "fix",
+          "category": "Training",
           "issues": [3991]
         },
         {
           "pr": 4191,
           "title": "Preventive review offers appear beside the setup rows they belong to",
           "kind": "feature",
+          "category": "Medical",
           "issues": [3113]
         },
         {
           "pr": 4197,
           "title": "The Android/Gynoid ratio explains that it comes from two regions of one scan",
           "kind": "fix",
+          "category": "Medical",
           "issues": [2768]
         },
         {
           "pr": 4199,
           "title": "The AREDS zinc warning matches your age instead of assuming the adult limit",
           "kind": "fix",
+          "category": "Medications",
           "issues": [3638]
         },
         {
           "pr": 4200,
           "title": "As-needed supplements join medications in the dashboard quick log",
           "kind": "feature",
+          "category": "Medications",
           "issues": [3174]
         },
         {
           "pr": 4202,
           "title": "Bristol stool logs save with no connection and sync when you are back",
           "kind": "feature",
+          "category": "Medical",
           "issues": [3166]
         },
         {
           "pr": 4207,
           "title": "A clock change at midnight counts as a real day again",
           "kind": "fix",
+          "category": "General",
           "issues": [4186]
         },
         {
           "pr": 4224,
-          "title": "An offline weigh-in keeps your weight when the waist measurement needs a connection",
+          "title": "An offline weigh-in keeps your weight when waist needs a connection",
           "kind": "fix",
+          "category": "Medical",
           "issues": [4142]
         },
         {
           "pr": 4235,
-          "title": "Correcting a practice session's date and time in the record works together",
+          "title": "Correct a practice session's date and time together in the record",
           "kind": "fix",
+          "category": "History",
           "issues": [4009]
         },
         {
           "pr": 4260,
           "title": "Protocol comparisons wait until there is enough data to compare",
           "kind": "fix",
+          "category": "Trends",
           "issues": [4244]
         },
         {
           "pr": 4265,
           "title": "The dashboard shows how many days you have kept a protocol",
           "kind": "feature",
+          "category": "Trends",
           "issues": [4227]
         },
         {
           "pr": 4275,
           "title": "One add-media form everywhere: choose a file, drag, paste or use the camera",
           "kind": "feature",
+          "category": "Interface",
           "issues": [3286]
         },
         {
           "pr": 4272,
-          "title": "On a phone the bottom bar is the only chrome: Search moves into it and pages start at the top of the screen",
+          "title": "On a phone the bottom bar is the only chrome, and Search moves into it",
           "kind": "feature",
+          "category": "Interface",
           "issues": [3343, 4102]
+        },
+        {
+          "pr": 4285,
+          "title": "An as-needed dose says when no daily limit is on record, instead of implying one",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [4254]
         }
       ]
     },
