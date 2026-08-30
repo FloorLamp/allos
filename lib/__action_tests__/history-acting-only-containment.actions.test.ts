@@ -76,9 +76,15 @@ describe("the record's acting-profile-only kinds contain a forged submit (#3958)
       // THE STORE, not the return value: an action can report a refusal and still
       // have written. The member's row is unchanged and still theirs.
       const row = db
-        .prepare("SELECT profile_id, period_start, period_end FROM cycles WHERE id = ?")
+        .prepare(
+          "SELECT profile_id, period_start, period_end FROM cycles WHERE id = ?"
+        )
         .get(rowId) as
-        | { profile_id: number; period_start: string; period_end: string | null }
+        | {
+            profile_id: number;
+            period_start: string;
+            period_end: string | null;
+          }
         | undefined;
       expect(row).toMatchObject({
         profile_id: member.id,
@@ -102,7 +108,14 @@ describe("the record's acting-profile-only kinds contain a forged submit (#3958)
     const member = createProfile("member symptom", login.id);
     actAs(login, acting);
 
-    setSymptomSeverityCore(member.id, "headache", 2, DAY, "page", "member note");
+    setSymptomSeverityCore(
+      member.id,
+      "headache",
+      2,
+      DAY,
+      "page",
+      "member note"
+    );
 
     // THE POST CARRIES A `profile_id`, deliberately — the field the five phase-1
     // corrections gate on. A forgery would spell the subject the way the rest of the
@@ -119,15 +132,12 @@ describe("the record's acting-profile-only kinds contain a forged submit (#3958)
     expect(result).toMatchObject({ ok: true });
 
     const severityFor = (profileId: number) =>
-      (
-        db
-          .prepare(
-            "SELECT severity, note FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = 'headache'"
-          )
-          .get(profileId, DAY) as
-          | { severity: number; note: string | null }
-          | undefined
-      ) ?? null;
+      (db
+        .prepare(
+          "SELECT severity, note FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = 'headache'"
+        )
+        .get(profileId, DAY) as
+        { severity: number; note: string | null } | undefined) ?? null;
 
     // The member's row is untouched — severity and note both as seeded.
     expect(severityFor(member.id)).toMatchObject({

@@ -182,9 +182,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // TWO lines each naming its own subject, never one line counting both.
     await page.goto("/history?view=everyone");
     const rollups = page.getByTestId("history-rollup");
-    await expect(
-      rollups.filter({ hasText: HXEVERY_SELF_PROFILE })
-    ).toHaveCount(1);
+    await expect(rollups.filter({ hasText: HXEVERY_SELF_PROFILE })).toHaveCount(
+      1
+    );
     await expect(rollups.filter({ hasText: HXEVERY_RO_PROFILE })).toHaveCount(
       1
     );
@@ -203,9 +203,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       .filter({ hasText: HXEVERY_RO_DOSE });
     await expect(selfDoseRow).toHaveCount(1);
     await expect(roDoseRow).toHaveCount(1);
-    await expect(
-      selfDoseRow.getByTestId("history-row-subject")
-    ).toHaveText(HXEVERY_SELF_PROFILE);
+    await expect(selfDoseRow.getByTestId("history-row-subject")).toHaveText(
+      HXEVERY_SELF_PROFILE
+    );
     await expect(roDoseRow.getByTestId("history-row-subject")).toHaveText(
       HXEVERY_RO_PROFILE
     );
