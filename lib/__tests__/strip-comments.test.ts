@@ -642,7 +642,6 @@ describe("the hand-rolled comment strippers still in the tree (#3595)", () => {
     "lib/__tests__/test-clock-freeze-scan.test.ts",
     "lib/__tests__/time-columns.test.ts",
     "lib/__tests__/trailing-average-boundary.test.ts",
-    "lib/__tests__/typed-route-props.test.ts",
     "lib/__tests__/ux-geometry-census.test.ts",
     "lib/user-error-copy-census.ts",
   ] as const;
