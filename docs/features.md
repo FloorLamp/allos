@@ -953,6 +953,21 @@ rate charts beside a pushed one. Masses are entered in your own weight unit and
 stored in kilograms; water is the day's total, in litres — typing it again
 corrects the day rather than adding a second entry.
 
+**A night can be typed as bed and wake times** (#1851), not just as hours. The
+Sleep Regularity Index and the consistency strip need to know _when_ you slept,
+which a duration cannot say, so the same **Log measurements** form takes the two
+clocks you already know. A bed time at or after midday is read as the evening
+before the date on the form — this field states a night, not a nap. If you also
+type the hours, those are the hours asleep; the clocks are the time in bed.
+
+**A typed night fills a gap your wearable missed.** Sleep now resolves one night
+at a time: your device keeps every night it recorded, a night you typed yourself
+stands where it recorded nothing, and when both describe the same night your own
+entry is the one that counts. Two devices reporting one night still collapse to
+one, so a night is never counted twice. Correcting the hours later keeps the
+clocks — unless the new hours no longer fit inside them, in which case the clocks
+come off and the app says so.
+
 **Waist circumference** (#2322) is a body metric here, not a biomarker. It is
 self-measured with a tape, arrives at the metric cadence, and sits beside weight
 and body fat — the same argument peak expiratory flow used — so it is a
