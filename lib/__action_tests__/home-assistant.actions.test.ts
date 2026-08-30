@@ -32,33 +32,28 @@ beforeEach(() => {
 });
 
 describe("saveHomeAssistantPrefs", () => {
-  it("persists enable/url/secret for the acting profile only", async () => {
+  it("persists to the acting profile and preserves matrix-owned routing", async () => {
     const login = createLogin();
     const profile = createProfile("ha-owner", login.id);
     const bystander = createProfile("bystander", login.id);
     actAs(login, profile);
 
-    const res = await saveHomeAssistantPrefs(
+    const initialResult = await saveHomeAssistantPrefs(
       fd({ ha_enabled: "1", ha_webhook_url: URL, ha_secret: "s3cr3t" })
     );
 
-    expect(res).toEqual({ ok: true });
-    const cfg = getProfileHomeAssistant(profile.id);
-    expect(cfg.enabled).toBe(true);
-    expect(cfg.webhookUrl).toBe(URL);
-    expect(cfg.secret).toBe("s3cr3t");
+    expect(initialResult).toEqual({ ok: true });
+    const initial = getProfileHomeAssistant(profile.id);
+    expect(initial.enabled).toBe(true);
+    expect(initial.webhookUrl).toBe(URL);
+    expect(initial.secret).toBe("s3cr3t");
     // Nothing was routed off: a channel card that carries no per-kind fields must not
     // invent a disabled set (#1868 §1).
-    expect(cfg.disabledKinds).toEqual([]);
+    expect(initial.disabledKinds).toEqual([]);
     // Profile-scoped: a bystander profile is untouched.
     expect(getProfileHomeAssistant(bystander.id).enabled).toBe(false);
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
-  });
 
-  it("PRESERVES the matrix-owned disabled kinds across a channel edit (#1868 §1)", async () => {
-    const login = createLogin();
-    const profile = createProfile("ha-preserve", login.id);
-    actAs(login, profile);
     // What the matrix's HA column stored.
     setProfileHomeAssistant(profile.id, {
       enabled: true,
@@ -69,7 +64,7 @@ describe("saveHomeAssistantPrefs", () => {
 
     // Editing the webhook target says nothing about routing, and must change nothing
     // about it — the failure mode being pinned is a silent whole-channel mute.
-    const res = await saveHomeAssistantPrefs(
+    const editedResult = await saveHomeAssistantPrefs(
       fd({
         ha_enabled: "1",
         ha_webhook_url: "http://homeassistant.local:8123/api/webhook/allos-new",
@@ -77,37 +72,27 @@ describe("saveHomeAssistantPrefs", () => {
       })
     );
 
-    expect(res).toEqual({ ok: true });
-    const cfg = getProfileHomeAssistant(profile.id);
-    expect(cfg.webhookUrl).toBe(
+    expect(editedResult).toEqual({ ok: true });
+    const edited = getProfileHomeAssistant(profile.id);
+    expect(edited.webhookUrl).toBe(
       "http://homeassistant.local:8123/api/webhook/allos-new"
     );
-    expect(cfg.secret).toBe("added");
-    expect(cfg.disabledKinds).toEqual(["digest", "milestone"]);
+    expect(edited.secret).toBe("added");
+    expect(edited.disabledKinds).toEqual(["digest", "milestone"]);
   });
 
-  it("rejects a malformed URL when enabling and persists nothing", async () => {
+  it("rejects malformed and non-Home Assistant targets without persisting", async () => {
     const login = createLogin();
-    const profile = createProfile("bad-url", login.id);
+    const profile = createProfile("invalid-url", login.id);
     actAs(login, profile);
 
-    const res = await saveHomeAssistantPrefs(
-      fd({ ha_enabled: "1", ha_webhook_url: "not-a-url" })
-    );
-    expect(res.ok).toBe(false);
-    expect(getProfileHomeAssistant(profile.id).enabled).toBe(false);
-  });
-
-  it("rejects non-Home Assistant webhook targets when enabling", async () => {
-    const login = createLogin();
-    const profile = createProfile("ssrf-url", login.id);
-    actAs(login, profile);
-
-    const res = await saveHomeAssistantPrefs(
-      fd({ ha_enabled: "1", ha_webhook_url: "http://127.0.0.1:8080/admin" })
-    );
-    expect(res.ok).toBe(false);
-    expect(getProfileHomeAssistant(profile.id).enabled).toBe(false);
+    for (const ha_webhook_url of ["not-a-url", "http://127.0.0.1:8080/admin"]) {
+      const res = await saveHomeAssistantPrefs(
+        fd({ ha_enabled: "1", ha_webhook_url })
+      );
+      expect(res.ok).toBe(false);
+      expect(getProfileHomeAssistant(profile.id).enabled).toBe(false);
+    }
   });
 
   it("refuses a read-only member (requireWriteAccess gate)", async () => {
