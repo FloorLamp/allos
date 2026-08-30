@@ -43,7 +43,8 @@ export default function QuickPracticeList({
   // ZERO STATE: the first practice is offered here (#3066). The /wellness nav row is
   // hidden until practice state exists (#1620, correct), and every other door onto
   // practices — the palette sheet, the Telegram nudges, the habits widget, the trends
-  // lens, the frequent-pages row — also requires an existing practice. This sheet row
+  // lens (and the frequent-pages row, until #4102 retired it) — also requires an
+  // existing practice. This sheet row
   // is always visible, so it is where the bootstrap belongs.
   //
   // It mounts the SAME PracticeEditor the Wellness page's Add button mounts, over the

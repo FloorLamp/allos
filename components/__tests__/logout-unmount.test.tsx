@@ -79,7 +79,6 @@ vi.mock("../Nav", () => ({ default: () => <nav data-testid="nav" /> }));
 vi.mock("../SidebarLogButton", () => ({
   default: () => <button type="button">+ Log</button>,
 }));
-vi.mock("../FrequentPages", () => ({ default: () => null }));
 vi.mock("../EventCalendar", () => ({ default: () => null }));
 vi.mock("../ThemeToggle", () => ({ default: () => null }));
 vi.mock("../WhatsNewLink", () => ({ default: () => null }));

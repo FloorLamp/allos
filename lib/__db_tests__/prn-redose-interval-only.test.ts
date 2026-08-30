@@ -88,9 +88,11 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     // The regression: both were null before the fix.
     expect(lines.card).not.toBeNull();
     expect(lines.todayPanel).not.toBeNull();
-    // 6h interval, dosed an hour ago → ~5h to go, and the count fragment degrades to
-    // a bare "1 today" rather than inventing a ceiling.
-    expect(lines.card).toBe("Next dose in ~5h · 1 today");
+    // 6h interval, dosed an hour ago → ~5h to go. The count stays bare rather than
+    // inventing a ceiling, and the line names that no daily limit is on record.
+    expect(lines.card).toBe(
+      "Next dose in ~5h · 1 today · no daily limit on record"
+    );
     expect(lines.todayPanel).toBe(lines.card);
   });
 
@@ -108,7 +110,9 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     logAdministration(itemId, doseId, date, 7);
 
     const lines = redoseLines(p, itemId);
-    expect(lines.card).toBe("Redose OK — min interval passed · 3 today");
+    expect(lines.card).toBe(
+      "Redose OK — min interval passed · 3 today · no daily limit on record"
+    );
     expect(lines.card).not.toContain("Max reached");
     expect(lines.todayPanel).toBe(lines.card);
   });

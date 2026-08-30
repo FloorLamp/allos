@@ -363,36 +363,24 @@ export default async function AppLayout({
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                          <main className="min-w-0 flex-1 overflow-x-clip">
-                            {/* The ONE sticky top chrome (issue #1416): the phone top
-                    bar hides on scroll-down and returns on scroll-up, so "whose
-                    data am I looking at?" stays answerable mid-scroll instead of
-                    scrolling away with the content. Since #1801 the identity bar
-                    IS that answer and rides inside the bar itself, so the
-                    separate view-banner slot the chrome used to carry is gone —
-                    one surface, not two. */}
-                            <ShellChrome>
-                              <MobileNav
-                                eventDates={timelineDates}
-                                active={session.profile}
-                                username={login.username}
-                                profiles={scope.profiles}
-                                viewIds={scope.viewIds}
-                                readOnlyIds={readOnlyIds}
-                                adultContentAvailable={adultContentAvailable}
-                                trainingRelevant={trainingRelevant}
-                                isAdmin={isAdmin}
-                                multiProfile={multiProfile}
-                                foodLoggingRelevant={foodLoggingRelevant}
-                                hasIntakeItems={hasIntakeItems}
-                                relevance={relevance}
-                                reviewCount={reviewCount}
-                                readOnly={readOnly}
-                                whatsNewUnseen={whatsNewUnseen}
-                                substanceRelevant={substanceRelevant}
-                                logHabitDays={logHabitDays}
-                              />
-                            </ShellChrome>
+                          {/* THE NOTCH INSET LIVES HERE NOW (#4102). It used to ride the phone
+            top bar's own `pt-[env(safe-area-inset-top)]`, and that bar has
+            retired — so without this the first line of every page would print
+            under the status bar on a device with a notch, which is what
+            `viewportFit: cover` means. On a device without one the inset is 0px
+            and content starts at the true viewport top, which is the ruling.
+            Below `md` only: the desktop shell never paid this. */}
+                          <main className="min-w-0 flex-1 overflow-x-clip pt-[env(safe-area-inset-top)] md:pt-0">
+                            {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
+                    IT (#4102). It was built for the phone top bar's hide-on-scroll
+                    (issue #1416), and that bar has retired: the dock is the phone's
+                    one chrome, so below `md` this element is EMPTY on every page
+                    that registers no tab-first strip, which is what puts the first
+                    page pixel at the viewport top. It still earns its place on the
+                    pages that do register one — a page-owned strip that hides and
+                    reveals as one unit, mounted standalone. */}
+                            <ShellChrome />
+
                             {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
@@ -428,12 +416,37 @@ export default async function AppLayout({
                             </div>
                           </main>
                         </div>
+                        {/* The phone's nav drawer and quick-log sheet (#2746/#4102).
+                      It renders NO chrome — both are overlays, opened from the
+                      dock — so it sits here as a sibling of <main> rather than
+                      inside <ShellChrome>, which exists to hide a sticky bar that
+                      no longer exists. */}
+                        <MobileNav
+                          eventDates={timelineDates}
+                          active={session.profile}
+                          username={login.username}
+                          profiles={scope.profiles}
+                          viewIds={scope.viewIds}
+                          readOnlyIds={readOnlyIds}
+                          adultContentAvailable={adultContentAvailable}
+                          trainingRelevant={trainingRelevant}
+                          isAdmin={isAdmin}
+                          multiProfile={multiProfile}
+                          foodLoggingRelevant={foodLoggingRelevant}
+                          hasIntakeItems={hasIntakeItems}
+                          relevance={relevance}
+                          reviewCount={reviewCount}
+                          readOnly={readOnly}
+                          whatsNewUnseen={whatsNewUnseen}
+                          substanceRelevant={substanceRelevant}
+                          logHabitDays={logHabitDays}
+                        />
                         {/* The bottom dock (#2651) — mobile widths only, and a
                       SIBLING of <main> rather than a child of <ShellChrome>: that
                       wrapper transforms itself to hide on scroll, and a
                       transformed ancestor re-parents `position: fixed` to itself,
                       which would slide the dock off the bottom of the screen with
-                      the top bar. */}
+                      whatever the chrome is hiding. */}
                         <MobileDock trainingRelevant={trainingRelevant} />
                       </MobileChromeProvider>
                       <CommandPalette

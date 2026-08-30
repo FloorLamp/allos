@@ -27,56 +27,28 @@ beforeEach(() => {
 });
 
 describe("saveFreeDays", () => {
-  it("defaults to Sat/Sun when never set", () => {
+  it("defaults, normalizes, persists, revalidates, and explicitly clears", async () => {
     const login = createLogin();
-    const profile = createProfile("free-default", login.id);
+    const profile = createProfile("free-lifecycle", login.id);
     actAs(login, profile);
+
     expect(getFreeDays(profile.id)).toEqual([0, 6]);
-  });
 
-  it("round-trips the off-day set (sorted, de-duped) and revalidates", async () => {
-    const login = createLogin();
-    const profile = createProfile("free-set", login.id);
-    actAs(login, profile);
-
-    await saveFreeDays(freeDaysForm([4, 3, 3])); // Wed/Thu, dup dropped, sorted
-    expect(getFreeDays(profile.id)).toEqual([3, 4]);
+    // Sort, de-duplicate, and discard forged out-of-range values.
+    await saveFreeDays(freeDaysForm([5, 1, 7, -1, 3, 2, 4, 1]));
+    expect(getFreeDays(profile.id)).toEqual([1, 2, 3, 4, 5]);
     expect(revalidate).toHaveBeenCalledWith("/settings/health");
     expect(revalidate).toHaveBeenCalledWith("/trends");
-  });
 
-  it("drops out-of-range values (a forged post can't store junk)", async () => {
-    const login = createLogin();
-    const profile = createProfile("free-junk", login.id);
-    actAs(login, profile);
-
-    await saveFreeDays(freeDaysForm([1, 7, -1, 5]));
-    expect(getFreeDays(profile.id)).toEqual([1, 5]);
-  });
-
-  it("an explicit empty submission is honored as 'no free days' (not the default)", async () => {
-    const login = createLogin();
-    const profile = createProfile("free-empty", login.id);
-    actAs(login, profile);
-
-    await saveFreeDays(freeDaysForm([2]));
-    expect(getFreeDays(profile.id)).toEqual([2]);
-    // Clearing all boxes stores an explicit empty set — NOT a fallback to Sat/Sun.
-    await saveFreeDays(freeDaysForm([]));
-    expect(getFreeDays(profile.id)).toEqual([]);
-  });
-
-  it("persists to profile_settings under the profile's own row", async () => {
-    const login = createLogin();
-    const profile = createProfile("free-scope", login.id);
-    actAs(login, profile);
-
-    await saveFreeDays(freeDaysForm([1, 2, 3, 4, 5]));
     const row = db
       .prepare(
         "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'free_days'"
       )
       .get(profile.id) as { value: string } | undefined;
     expect(row?.value).toBe("1,2,3,4,5");
+
+    // Clearing all boxes stores an explicit empty set — NOT a fallback to Sat/Sun.
+    await saveFreeDays(freeDaysForm([]));
+    expect(getFreeDays(profile.id)).toEqual([]);
   });
 });

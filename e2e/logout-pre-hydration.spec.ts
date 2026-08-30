@@ -149,4 +149,40 @@ test.describe("Log out tapped before hydration (#3515)", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/login/);
   });
+
+  test("settings offers the same path below md (#3604)", async ({ page }) => {
+    test.slow();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/login");
+    await page.fill('input[name="username"]', "admin");
+    await page.fill('input[name="password"]', "e2e-admin-pass");
+    await page.click('button[type="submit"]');
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+    let releaseChunks = (): void => {};
+    const chunksReleased = new Promise<void>((resolve) => {
+      releaseChunks = resolve;
+    });
+    await page.route(
+      /\/_next\/static\/chunks\/[^?]*\.js(\?|$)/,
+      async (route) => {
+        await chunksReleased;
+        await route.continue();
+      }
+    );
+    await page.goto("/settings", { waitUntil: "commit" });
+    const logout = page.getByTestId("settings-logout");
+    await expect(logout).toBeVisible();
+    expect(
+      await logout.evaluate((node) =>
+        Object.keys(node).some((key) => key.startsWith("__react"))
+      )
+    ).toBe(false);
+    await logout.click();
+    await expect(logout).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByTestId("settings-logout-pending")).toBeVisible();
+    releaseChunks();
+    await page.waitForURL(/\/login/, { timeout: 30_000 });
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/login/);
+  });
 });

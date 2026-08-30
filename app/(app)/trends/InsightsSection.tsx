@@ -19,6 +19,8 @@ import { EmptyState } from "@/components/ui";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { generateForDate, generateRecap } from "./actions";
+import { getScaleRecap } from "@/lib/notifications/recap-data";
+import { recapLineAnnotation } from "@/lib/recap";
 
 // A recap-narrative title from its stored kind + window ("Weekly recap · Jul 3 –
 // Jul 9"). Falls back gracefully when a start date is absent.
@@ -65,6 +67,7 @@ export default async function InsightsSection({
 }) {
   const { login, profile } = await requireSession();
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const weightUnit = getUnitPrefs(login.id).weightUnit;
   // Read every insight (ALL_ROWS overrides the default 30-row cap) so an older
   // window isn't silently truncated before filterSeriesByRange windows it.
   const insights = filterSeriesByRange(
@@ -74,6 +77,21 @@ export default async function InsightsSection({
   // Recap narratives are not date-windowed by the shared range — a weekly/monthly
   // recap is a standing summary, so show the most recent few regardless of window.
   const recaps = getRecentPeriodRecaps(profile.id, RECAP_KINDS, 6);
+  const recapCapFacts = new Map(
+    recaps.flatMap((n) => {
+      const line = getScaleRecap(profile.id, n.kind, weightUnit, {
+        asOf: n.period_end,
+      }).lines.find((candidate) => candidate.key === "caps");
+      if (!line) return [];
+      const annotation = recapLineAnnotation(line);
+      return [
+        [
+          n.id,
+          `${line.label}: ${line.value}${annotation ? ` — ${annotation}` : ""}`,
+        ],
+      ];
+    })
+  );
 
   // Situation-window impact cards (#1297): pooled protocol-compare over the declared
   // transition log. Standing summaries like the recaps (not range-windowed) — the pooling
@@ -81,7 +99,7 @@ export default async function InsightsSection({
   const situationImpacts = getSituationImpacts(
     profile.id,
     today(profile.id),
-    getUnitPrefs(login.id).weightUnit
+    weightUnit
   );
 
   return (
@@ -140,6 +158,11 @@ export default async function InsightsSection({
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
                     {n.summary}
                   </p>
+                  {recapCapFacts.get(n.id) && (
+                    <p data-testid="recap-narrative-facts">
+                      • {recapCapFacts.get(n.id)}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
