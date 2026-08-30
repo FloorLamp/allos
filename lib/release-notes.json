@@ -236,10 +236,17 @@
         },
         {
           "pr": 4295,
-          "title": "A stored recap hides substance mentions unless you turned that on",
+          "title": "A sent recap leaves out substance mentions unless you turn that on",
           "kind": "security",
           "category": "Security",
-          "issues": []
+          "issues": [3909]
+        },
+        {
+          "pr": 4298,
+          "title": "Log out works on a phone before the page has finished loading",
+          "kind": "fix",
+          "category": "Security",
+          "issues": [3604]
         }
       ]
     },

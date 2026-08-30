@@ -431,19 +431,40 @@ describe("groupDayEntries — most visible first", () => {
     expect(groups[0].entries.map((x) => x.position)).toEqual([1, 0, 2]);
   });
 
+  // THE TIE-BREAK IS ASSERTED WHERE IT DISAGREES WITH DECLARATION ORDER, which
+  // is the only place it can be observed. This used to give Training the extra
+  // feature — and Training is declared FIRST, so `["Training", "Sleep"]` is
+  // equally what declaration order alone produces and the case could not fail.
+  // Sleep is declared fifth, so giving SLEEP the extra feature makes the two
+  // keys disagree and only the count can produce this answer.
   it("equally visible groups tie-break by feature count, then declaration order", () => {
     const groups = groupDayEntries(
       parsedDay([
-        e(1, "Sleep", "feature"),
-        e(2, "Training", "feature"),
-        e(3, "Training", "feature"),
+        e(1, "Training", "feature"),
+        e(2, "Sleep", "feature"),
+        e(3, "Sleep", "feature"),
       ])
     );
-    expect(groups.map((g) => g.category)).toEqual(["Training", "Sleep"]);
+    expect(groups.map((g) => g.category)).toEqual(["Sleep", "Training"]);
+    // And with the counts level, declaration order decides — Training first.
     const declared = groupDayEntries(
       parsedDay([e(1, "Sleep", "feature"), e(2, "Training", "feature")])
     );
     expect(declared.map((g) => g.category)).toEqual(["Training", "Sleep"]);
+    // The count is FEATURES, not "whatever ranks first". A security entry is
+    // the most visible thing a group can hold, so it wins `best` — but it must
+    // not also be counted as a capability: Sleep's two features outrank
+    // Training's one inside the tier they share.
+    const notSecurity = groupDayEntries(
+      parsedDay([
+        e(1, "Training", "security"),
+        e(2, "Training", "feature"),
+        e(3, "Sleep", "security"),
+        e(4, "Sleep", "feature"),
+        e(5, "Sleep", "feature"),
+      ])
+    );
+    expect(notSecurity.map((g) => g.category)).toEqual(["Sleep", "Training"]);
   });
 
   // A LEGACY DAY IS NOT RE-ORDERED. This case used to assert [2, 1] — the

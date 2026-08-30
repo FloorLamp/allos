@@ -421,8 +421,14 @@ export function groupDayEntries(day: ReleaseNoteDay): ReleaseNoteGroup[] {
   );
   const best = (g: ReleaseNoteGroup) =>
     Math.min(...g.entries.map((e) => kindRank(e.entry)));
+  // BOUND TO THE KIND, NOT TO ITS RANK. This read `kindRank(...) === 0`, which
+  // was "is a feature" only for as long as `feature` happened to be rank 0.
+  // Promoting `security` to 0 silently turned this tie-break into a count of
+  // SECURITY entries while every name around it — this function, the doc above,
+  // the test — went on saying features. A rank is an ordering; it is not an
+  // identity, and it must not be read as one.
   const features = (g: ReleaseNoteGroup) =>
-    g.entries.filter((e) => kindRank(e.entry) === 0).length;
+    g.entries.filter((e) => e.entry.kind === "feature").length;
   const declared = (g: ReleaseNoteGroup) =>
     g.category === null
       ? RELEASE_NOTE_CATEGORIES.length
