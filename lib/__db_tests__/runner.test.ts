@@ -116,7 +116,7 @@ describe("migrationsBefore — historical fixtures slice by NAME (#3565)", () =>
 });
 
 describe("migration runner — fresh replay", () => {
-  it("runs every migration, records every name, and stamps user_version to the count", () => {
+  it("runs every migration once, records every name, and then no-ops", () => {
     const db = newDb();
     expect(readVersion(db)).toBe(0);
     runMigrations(db);
@@ -128,12 +128,6 @@ describe("migration runner — fresh replay", () => {
     for (const t of ["profiles", "logins", "activities", "medical_records"]) {
       expect(tables.has(t)).toBe(true);
     }
-    db.close();
-  });
-
-  it("is a total no-op when re-run on a current database", () => {
-    const db = newDb();
-    runMigrations(db);
     const before = readVersion(db);
     const ledgerBefore = ledgerNames(db);
     const schemaBefore = db
@@ -142,7 +136,7 @@ describe("migration runner — fresh replay", () => {
       )
       .get() as { s: string };
 
-    expect(() => runMigrations(db)).not.toThrow();
+    runMigrations(db);
     expect(readVersion(db)).toBe(before);
     expect(ledgerNames(db)).toEqual(ledgerBefore);
     const schemaAfter = db
@@ -282,8 +276,9 @@ describe("migration runner — downgrade guards", () => {
     const legacy = [marker("001-first", 1)];
     runMigrations(db, [...legacy, marker("20260812-from-the-future")]);
     // Roll back to a build that never knew the second migration.
-    expect(() => runMigrations(db, legacy)).toThrow(/20260812-from-the-future/);
-    expect(() => runMigrations(db, legacy)).toThrow(/restore\.ts/);
+    expect(() => runMigrations(db, legacy)).toThrow(
+      /20260812-from-the-future[\s\S]*restore\.ts/
+    );
     db.close();
   });
 
@@ -291,10 +286,10 @@ describe("migration runner — downgrade guards", () => {
     const db = newDb();
     const ahead = MIGRATIONS.length + 1;
     db.pragma(`user_version = ${ahead}`);
-    expect(() => runMigrations(db)).toThrow(/restore\.ts/);
-    expect(() => runMigrations(db)).toThrow(new RegExp(String(ahead)));
     expect(() => runMigrations(db)).toThrow(
-      new RegExp(String(MIGRATIONS.length))
+      new RegExp(
+        `user_version = ${ahead}[\\s\\S]*${MIGRATIONS.length} migrations[\\s\\S]*restore\\.ts`
+      )
     );
     // Nothing was applied.
     expect(readVersion(db)).toBe(ahead);
