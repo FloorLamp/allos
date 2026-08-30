@@ -3,23 +3,13 @@
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
-import {
-  ageInMonthsFromBirthdate,
-  shiftDateStr,
-  zonedDateParts,
-} from "@/lib/date";
+import { shiftDateStr, zonedDateParts } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import {
   getExcludedFoodGroups,
   getProfileAge,
-  getProfileBirthdate,
 } from "@/lib/settings/profile-attrs";
-import {
-  showBodyFat,
-  showGrowthQuickAdd,
-  showHeadCircEntry,
-} from "@/lib/growth-metrics";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
@@ -33,7 +23,6 @@ import {
   getFoodMealDays,
   type FoodMealEvent,
   getFoodBarOrder,
-  getManualBodyMetricStatedAt,
   getMoodOnDate,
   getProteinDailyGrams,
   getProteinQuickAddPreset,
@@ -57,7 +46,7 @@ import {
   type FoodSlotBoundaries,
 } from "@/lib/food-slot";
 import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
-import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
+import type { TemperatureUnit } from "@/lib/settings";
 import type { QuickEntryForm } from "@/lib/quick-log";
 import { getBristolReadings } from "@/lib/queries/bristol-stool";
 import {
@@ -135,25 +124,12 @@ export interface QuickEntryPastDose {
   stack: string | null;
 }
 
+// NOT the measurements form. It is the one quick-write surface a person is
+// expected to reach with NO CONNECTION (#4091), and a Server Action rejects
+// offline — so its props are resolved in the app shell and handed to the overlay
+// host as a prop instead (lib/quick-entry-measurements.ts states why, and what
+// freshness that costs).
 export type QuickEntryData =
-  | {
-      // ONE combined form since #1486 (weight + vitals + a minor's growth fields),
-      // so the overlay gathers ONE prop set instead of two.
-      form: "measurements";
-      defaultDate: string;
-      // The stated instant already on today's manual body-metrics row, or null —
-      // seeds the form's Time control (#2235 decision 5). Fetched ON OPEN like
-      // everything else here, so a time stated on another device since page load
-      // still seeds back.
-      statedAt: string | null;
-      // Scopes the form's last-written-group memory (#2014) to the data subject.
-      profileId: number;
-      weightUnit: WeightUnit;
-      temperatureUnit: TemperatureUnit;
-      showBodyFat: boolean;
-      showGrowth: boolean;
-      showHeadCirc: boolean;
-    }
   | {
       form: "food";
       today: string;
@@ -310,29 +286,6 @@ export async function loadQuickEntry(
 ): Promise<QuickEntryData> {
   const { login, profile } = await requireSession();
   const date = today(profile.id);
-
-  if (form === "measurements") {
-    const age = getProfileAge(profile.id);
-    const birthdate = getProfileBirthdate(profile.id);
-    const prefs = getUnitPrefs(login.id);
-    return {
-      form: "measurements",
-      defaultDate: date,
-      statedAt: getManualBodyMetricStatedAt(profile.id, date),
-      profileId: profile.id,
-      weightUnit: prefs.weightUnit,
-      temperatureUnit: prefs.temperatureUnit,
-      // #493: body fat isn't tracked for a growth-tracked profile, and the page
-      // mount hides the field — the overlay asks the SAME questions (the same
-      // lib/growth-metrics gates) so the two mounts of one component can't
-      // disagree about what's enterable.
-      showBodyFat: showBodyFat(age),
-      showGrowth: showGrowthQuickAdd(age),
-      showHeadCirc: showHeadCircEntry(
-        birthdate ? ageInMonthsFromBirthdate(birthdate, date) : null
-      ),
-    };
-  }
 
   if (form === "food") {
     // The same gate the Food tab applies server-side (#591): below one year the
