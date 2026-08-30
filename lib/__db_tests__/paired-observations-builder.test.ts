@@ -141,6 +141,10 @@ describe("buildPairedObservationFindings — the alcohol → overnight HRV pair 
     expect(f.detail).toContain("56 ms");
     // Co-occurrence phrasing only.
     expect(f.detail).toMatch(/not a cause/i);
+    const copy = `${f.detail} ${f.evidence ?? ""}`;
+    expect(copy.match(/20 nights/g)).toHaveLength(1);
+    expect(copy.match(/10 nights/g)).toHaveLength(1);
+    expect(copy.match(/not a diagnosis/gi)).toHaveLength(1);
 
     // It joins the ONE coaching rollup under the SAME key, so a dismiss anywhere
     // silences it everywhere.
