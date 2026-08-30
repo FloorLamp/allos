@@ -597,7 +597,10 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
     const card = page
       .getByTestId("wellness-practice-card")
       .filter({ hasText: practiceName });
-    await settledClick(page, card.getByTestId("practice-log-details-trigger"));
+    // hydratedClick, not settledClick: the trigger opens a MODAL and posts
+    // nothing, so a POST-correlated wait would time out on a control that behaved
+    // correctly. The modal it reveals is the assertion.
+    await hydratedClick(page, card.getByTestId("practice-log-details-trigger"));
     const form = page.getByTestId("practice-log-details");
     await expect(form).toBeVisible();
 
@@ -613,7 +616,7 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
     await settledFill(page, form.locator('input[name="start_time"]'), "19:00");
     await settledFill(page, form.locator('input[name="end_time"]'), "19:25");
     await settledClick(page, page.getByTestId("practice-log-detailed-submit"));
-    await dismissToast(page, "Logged");
+    await dismissToast(page, "Logged today's session");
 
     await page.goto(`/history?day=${day}`);
     const panel = page.getByTestId("intraday-panel");
