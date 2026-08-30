@@ -74,9 +74,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   (never draft — environment.md §GitHub access), exact-head review, and full
   CI, in order. Local pre-review never replaces it; bank later branches.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
-  2026-08-26, #3710): a non-author reviews the exact candidate commit; the
-  COMMENT review states the reviewed SHA and reviewer — the receipt. A head
-  change voids it.
+  2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
+  review states SHA and reviewer — on a shared bot account, also that the
+  reviewer did not author the change (#4258). A head change voids it.
 - **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
   call** — receipt on the current head, checks green, zero unresolved
   threads, read-only; exit 0 is the precondition. CI recomputes the same
