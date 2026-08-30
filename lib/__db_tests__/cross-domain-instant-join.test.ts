@@ -84,12 +84,12 @@ beforeAll(() => {
 
   // Pattern 3 — one practice with a local clock, one from the quick path with none.
   db.prepare(
-    "INSERT INTO practice_logs (profile_id, practice, date, time) VALUES (?, 'meditation', ?, '07:30')"
+    "INSERT INTO practice_logs (profile_id, practice, date, start_time) VALUES (?, 'meditation', ?, '07:30')"
   ).run(profileId, DAY);
   // An explicit created_at, so the record-instant fallback below is a fixed value
   // rather than whatever the wall clock said when the suite ran.
   db.prepare(
-    `INSERT INTO practice_logs (profile_id, practice, date, time, created_at)
+    `INSERT INTO practice_logs (profile_id, practice, date, start_time, created_at)
      VALUES (?, 'stretching', ?, NULL, '2026-03-10 21:15:00')`
   ).run(profileId, DAY);
 
@@ -235,7 +235,7 @@ describe("one ordering across all five patterns", () => {
 
     const practice = db
       .prepare(
-        "SELECT practice, date, time, created_at FROM practice_logs WHERE profile_id = ? AND date = ? ORDER BY id"
+        "SELECT practice, date, start_time, created_at FROM practice_logs WHERE profile_id = ? AND date = ? ORDER BY id"
       )
       .all(profileId, DAY) as Record<string, unknown>[];
     for (const r of practice) {
@@ -316,7 +316,7 @@ describe("the null-event rows do not contaminate an event-time analysis", () => 
   it("a practice rhythm sees a clock only where one was recorded", () => {
     const rows = db
       .prepare(
-        "SELECT practice, date, time, created_at FROM practice_logs WHERE profile_id = ? AND date = ? ORDER BY id"
+        "SELECT practice, date, start_time, created_at FROM practice_logs WHERE profile_id = ? AND date = ? ORDER BY id"
       )
       .all(profileId, DAY) as Record<string, unknown>[];
     expect(rows.map((r) => eventInstant("practice_logs", r, TZ).known)).toEqual(

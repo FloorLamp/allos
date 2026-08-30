@@ -484,7 +484,7 @@ describe("logPractice — the stated session time (#3273)", () => {
   function logged(profileId: number) {
     return db
       .prepare(
-        `SELECT date, time, duration_min, notes, logged_via FROM practice_logs
+        `SELECT date, start_time, duration_min, notes, logged_via FROM practice_logs
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {

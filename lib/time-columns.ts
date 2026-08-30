@@ -1349,7 +1349,7 @@ export const TIME_COLUMNS = {
       semantic: "event",
       grain: "time-of-day",
       convention: "n/a",
-      note: "The START of the session, a profile-local HH:MM, optional (a backdated correction states none). It is NOT an instant: resolving it needs the row's `date` AND the profile timezone, which is why eventInstant refuses without one. It stays the table's `event` column through #3142's rename because it is still the one answer to \"when did this happen\" — but a TAP-stamped start trails the true start by up to a session length (a \"Done\" tap fires at or after the end), which is noise at the hour granularity the rhythm inference reads and is what the #2875 chips correct.",
+      note: 'The START of the session, a profile-local HH:MM, optional (a backdated correction states none). It is NOT an instant: resolving it needs the row\'s `date` AND the profile timezone, which is why eventInstant refuses without one. It stays the table\'s `event` column through #3142\'s rename because it is still the one answer to "when did this happen" — but a TAP-stamped start trails the true start by up to a session length (a "Done" tap fires at or after the end), which is noise at the hour granularity the rhythm inference reads and is what the #2875 chips correct.',
     },
     {
       column: "end_time",

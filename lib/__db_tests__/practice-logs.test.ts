@@ -456,13 +456,13 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
   function rows(profileId: number) {
     return db
       .prepare(
-        `SELECT practice, date, time, duration_min FROM practice_logs
+        `SELECT practice, date, start_time, duration_min FROM practice_logs
           WHERE profile_id = ? ORDER BY id`
       )
       .all(profileId) as {
       practice: string;
       date: string;
-      time: string | null;
+      start_time: string | null;
       duration_min: number | null;
     }[];
   }
@@ -470,12 +470,12 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
   it("stamps the profile-local tap instant when the caller states no time", () => {
     const pid = makeProfile("quick-time-stamp");
     const t = today(pid);
-    // The one-tap shape: no `time` key at all.
+    // The one-tap shape: no `startTime` key at all.
     expect(logPracticeSession(pid, "Sauna", t, "page")).toMatchObject({
       kind: "logged",
     });
     expect(rows(pid)).toEqual([
-      { practice: "Sauna", date: t, time: "07:05", duration_min: null },
+      { practice: "Sauna", date: t, start_time: "07:05", duration_min: null },
     ]);
   });
 
@@ -487,14 +487,14 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     logPracticeSession(pid, "Sauna", t, "page", { startTime: null });
     // ...and a stated time still wins outright.
     logPracticeSession(pid, "Sauna", t, "page", { startTime: "06:30" });
-    expect(rows(pid).map((r) => r.time)).toEqual([null, "06:30"]);
+    expect(rows(pid).map((r) => r.start_time)).toEqual([null, "06:30"]);
   });
 
   it("does not stamp a backdated correction — 'now' is not that day's instant", () => {
     const pid = makeProfile("quick-time-backdated");
     const t = today(pid);
     logPracticeSession(pid, "Sauna", shiftDateStr(t, -3), "page");
-    expect(rows(pid).map((r) => r.time)).toEqual([null]);
+    expect(rows(pid).map((r) => r.start_time)).toEqual([null]);
   });
 
   it("feeds modalHour identically from a quick tap and a Wellness-modal log", () => {
@@ -508,7 +508,8 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
         startTime: "07:05",
       });
     }
-    const hourOf = (pid: number) => modalHour(rows(pid).map((r) => r.time));
+    const hourOf = (pid: number) =>
+      modalHour(rows(pid).map((r) => r.start_time));
     expect(hourOf(tapped)).toBe(7);
     expect(hourOf(tapped)).toBe(hourOf(typed));
     // And the rhythm reader agrees, rather than falling to the 18:00 evening default.
@@ -521,7 +522,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(logPracticeByTargetId(pid, tid, "page")).toMatchObject({
       kind: "logged",
     });
-    expect(rows(pid).map((r) => r.time)).toEqual(["07:05"]);
+    expect(rows(pid).map((r) => r.start_time)).toEqual(["07:05"]);
   });
 
   it("writes the duration the quick path supplies, and prefills the NEXT tap from it", () => {

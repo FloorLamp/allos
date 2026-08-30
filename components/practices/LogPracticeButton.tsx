@@ -544,7 +544,11 @@ export default function LogPracticeButton({
             </label>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               End
-              <input type="time" name="end_time" className="input mt-1 w-full" />
+              <input
+                type="time"
+                name="end_time"
+                className="input mt-1 w-full"
+              />
             </label>
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Duration (minutes)

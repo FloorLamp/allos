@@ -251,15 +251,7 @@ export function updatePracticeSession(
         SET date = ?, start_time = ?, end_time = ?, duration_min = ?, notes = ?,
             edited = 1
       WHERE id = ? AND profile_id = ?`
-  ).run(
-    input.date,
-    startTime,
-    endTime,
-    durationMin,
-    notes,
-    id,
-    profileId
-  );
+  ).run(input.date, startTime, endTime, durationMin, notes, id, profileId);
   const session = getPracticeSession(profileId, id);
   return session ? { kind: "updated", session } : { kind: "not-found" };
 }

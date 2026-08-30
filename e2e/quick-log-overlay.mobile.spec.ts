@@ -112,7 +112,7 @@ function readShellPracticeLog(): {
   try {
     return db
       .prepare(
-        `SELECT time, duration_min FROM practice_logs
+        `SELECT start_time, duration_min FROM practice_logs
           WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
       )
       .get(shellProfileId()) as {

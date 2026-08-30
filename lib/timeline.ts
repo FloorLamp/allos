@@ -1457,8 +1457,7 @@ function collectEvents(
           date: p.date,
           start_time: s.start || null,
           end_time: s.end || null,
-          duration_min:
-            s.dur != null && Number.isFinite(s.dur) ? s.dur : null,
+          duration_min: s.dur != null && Number.isFinite(s.dur) ? s.dur : null,
         })),
       },
       options

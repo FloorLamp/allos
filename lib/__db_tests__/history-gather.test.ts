@@ -45,7 +45,7 @@ function serving(profileId: number, date: string, minute: number): void {
 
 function practice(profileId: number, date: string, name: string): void {
   db.prepare(
-    `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
+    `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min)
      VALUES (?, ?, ?, '07:15', 20)`
   ).run(profileId, name, date);
 }
@@ -253,7 +253,7 @@ describe("the row hands its editor the value the reader is looking at", () => {
     // nothing in it: posting `sortTime` here is what stamped 19:43 into the event
     // column while somebody corrected a duration.
     expect(row.sortTime).not.toBeNull();
-    expect(row.edit).toMatchObject({ kind: "practice", statedTime: null });
+    expect(row.edit).toMatchObject({ kind: "practice", statedStart: null });
 
     // A stated session time reaches the editor unchanged.
     practice(p, YESTERDAY, "history stated tick");
@@ -264,7 +264,7 @@ describe("the row hands its editor the value the reader is looking at", () => {
       item: "history stated tick",
     }).rows[0];
     expect(stated.clockKind).toBe("stated");
-    expect(stated.edit).toMatchObject({ statedTime: "07:15" });
+    expect(stated.edit).toMatchObject({ statedStart: "07:15" });
   });
 });
 
@@ -614,7 +614,7 @@ describe("every kind's edit payload carries the stored row", () => {
     const loginId = login();
     db.prepare(
       `INSERT INTO practice_logs
-         (profile_id, practice, date, time, duration_min, notes)
+         (profile_id, practice, date, start_time, duration_min, notes)
        VALUES (?, 'history edit sauna', ?, '07:15', 20, 'felt steadier')`
     ).run(p, YESTERDAY);
     const [row] = gatherHistoryLog(p, {
@@ -624,7 +624,7 @@ describe("every kind's edit payload carries the stored row", () => {
     }).rows;
     expect(row.edit).toMatchObject({
       kind: "practice",
-      statedTime: "07:15",
+      statedStart: "07:15",
       durationMin: 20,
       notes: "felt steadier",
     });
