@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import PhotoCapture from "@/components/photo/PhotoCapture";
+import MediaInput from "@/components/media/MediaInput";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
 import PhotoDeleteAction from "@/components/photo/PhotoLightboxActions";
@@ -138,20 +138,36 @@ export default function ProgressPhotosView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         {!readOnly ? (
-          <PhotoCapture
+          <MediaInput
             triggerLabel="Add photo"
+            triggerTestId="photo-capture-open"
+            inputTestId="photo-capture-file"
+            multiple
             autoOpen={autoCapture}
             ghostUrl={ghostUrl}
             confirmFields={confirmFields}
-            onConfirm={async (file) => {
-              const fd = new FormData();
-              fd.set("photo", file);
-              fd.set("pose", pose);
-              fd.set("date", date);
-              fd.set("caption", caption);
-              const res = await uploadProgressPhoto(fd);
-              if (!res.ok) return res.error;
-              setNotice(null);
+            onConfirm={async (files) => {
+              // A batch shares one pose, date and caption — a set of shots from
+              // one session is the reason to hand over several at once. Each
+              // file still gets its OWN upload and its own outcome, so a batch
+              // where one file is refused says which one rather than failing
+              // whole; the notice below is the set's one message.
+              const failed: string[] = [];
+              for (const file of files) {
+                const fd = new FormData();
+                fd.set("photo", file);
+                fd.set("pose", pose);
+                fd.set("date", date);
+                fd.set("caption", caption);
+                const res = await uploadProgressPhoto(fd);
+                if (!res.ok) failed.push(`${file.name}: ${res.error}`);
+              }
+              if (failed.length === files.length) return failed.join("; ");
+              setNotice(
+                failed.length > 0
+                  ? `Added ${files.length - failed.length} of ${files.length}. ${failed.join("; ")}`
+                  : null
+              );
               setDate("");
               setCaption("");
               return null;

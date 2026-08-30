@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { dismissToast, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  hydratedClick,
+  settledClick,
+  settledUpload,
+} from "./helpers";
 import {
   expectDesktopSpecialtySubmit,
   expectPhoneSpecialtySubmit,
@@ -121,18 +126,13 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     );
 
     // Attach a dated photo — the serial-comparison strip renders it through the
-    // shared photo gallery (#1844). The upload form is explicit-submit (no
-    // auto-submit on file change), so set the file then settledClick the button that
-    // fires the POST.
-    await card.getByTestId(/^add-lesion-photo-/).click();
-    const upload = card.getByTestId(/^lesion-photo-upload-/);
-    await expect(upload).toBeVisible();
-    await upload.locator('input[type="file"]').setInputFiles({
+    // shared photo gallery (#1844), and the door is the shared add-media surface
+    // (#3286). Still explicit-submit: the pick STAGES, the confirm fires the POST.
+    await settledUpload(page, card.locator('input[type="file"]'), {
       name: "mole.png",
       mimeType: "image/png",
       buffer: PNG,
     });
-    await settledClick(page, upload.getByRole("button", { name: "Add photo" }));
     const tile = card.locator('[data-testid^="photo-gallery-item-"]');
     await expect(tile).toBeVisible({ timeout: 15000 });
     await dismissToast(page, "Photo added");

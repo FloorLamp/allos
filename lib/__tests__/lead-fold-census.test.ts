@@ -206,14 +206,16 @@ describe("the Import intro is the same primitive, adopted", () => {
   });
 
   it("keeps ONE control named Upload, and it is the submit", () => {
-    // #3488 fix 2. "Choose files" is now BOTH doors into the picker — the desktop
-    // dropzone's label, which never changed, and the mobile button that took it —
-    // so two occurrences is the fix landing, not a duplicate. "Upload" survives
-    // exactly once, on the submit.
+    // #3488 fix 2, tightened by #3286. "Choose files" used to appear TWICE — the
+    // desktop dropzone's label and the mobile button that took it — because there
+    // were two viewport-shaped doors. There is now ONE door on every width
+    // (<MediaInput>'s trigger), so one occurrence is the convergence landing, not
+    // a door going missing. "Upload" still survives exactly once, on the submit,
+    // which is the property this case has always been about.
     const labels = [...source.matchAll(/^\s+(Upload|Choose files)$/gm)].map(
       (m) => m[1]
     );
-    expect(labels.filter((l) => l === "Choose files")).toHaveLength(2);
+    expect(labels.filter((l) => l === "Choose files")).toHaveLength(1);
     expect(labels.filter((l) => l === "Upload")).toHaveLength(1);
     // Order matters for the defect being closed: the picker's label comes first
     // in the form, the submit's last.

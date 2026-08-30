@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick, stageMediaFiles } from "./helpers";
 import {
   expectDesktopOrdinarySubmit,
   expectPhoneOrdinarySubmit,
@@ -52,9 +52,13 @@ test.describe("Multi-file medical upload (issue #1008)", () => {
   }) => {
     await page.goto("/data?section=import");
 
-    // The multi-select picker: hand the input three files at once.
-    const input = page.getByTestId("medical-upload-input");
-    await input.setInputFiles([csv(1), csv(2), csv(3)]);
+    // The multi-select picker: hand the input three files at once, and commit
+    // the staged set (#3286 stages a batch per file before it is committed).
+    await stageMediaFiles(page, "medical-upload-input", [
+      csv(1),
+      csv(2),
+      csv(3),
+    ]);
 
     // The chosen files are listed before submit.
     const selected = page.getByTestId("medical-upload-selected");
@@ -99,9 +103,10 @@ test.describe("Multi-file medical upload (issue #1008)", () => {
 
     const files = [4, 5].map(csv);
     // Build a DataTransfer with real File objects in-page and dispatch the drop on
-    // the zone — the form forwards the dropped files into the real input so the
-    // submit carries them (native OS file-drag can't be simulated from Playwright).
-    await page.getByTestId("medical-upload-dropzone").evaluate(
+    // the door — MediaInput's trigger is itself a drop target, so a drop aimed at
+    // the affordance a person can see stages the files without opening anything
+    // first (native OS file-drag can't be simulated from Playwright).
+    await page.getByTestId("medical-upload-choose").evaluate(
       (zone, payload) => {
         const dt = new DataTransfer();
         for (const f of payload) {
@@ -122,6 +127,13 @@ test.describe("Multi-file medical upload (issue #1008)", () => {
         bytes: Array.from(f.buffer),
       }))
     );
+
+    // The drop lands in the same staging step a pick does — one confirm, one
+    // implementation, whichever way the files arrived.
+    const staged = page.getByTestId("media-input-selected");
+    await expect(staged.getByText(`${PREFIX}4.csv`)).toBeVisible();
+    await expect(staged.getByText(`${PREFIX}5.csv`)).toBeVisible();
+    await hydratedClick(page, page.getByTestId("media-input-submit"));
 
     const selected = page.getByTestId("medical-upload-selected");
     await expect(selected.getByText(`${PREFIX}4.csv`)).toBeVisible();

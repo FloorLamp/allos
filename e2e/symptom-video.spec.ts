@@ -189,6 +189,7 @@ test("the episode strip renders empty, takes a dated clip, serves it by Range, a
       mimeType: "video/mp4",
       buffer: buildMp4Fixture({ durationSec: 12, location: true }),
     });
+    await page.getByTestId("media-input-submit").click();
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
     }); // named ceiling: the upload rides a Server Action + its revalidated re-render
@@ -311,6 +312,7 @@ test("an audio clip lands on the same strip as a mic tile and plays through <aud
       mimeType: "audio/mp4",
       buffer: buildM4aFixture({ durationSec: 9 }),
     });
+    await page.getByTestId("media-input-submit").click();
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
     }); // named ceiling: the upload rides a Server Action + its revalidated re-render
@@ -391,6 +393,7 @@ test("a caregiver reading a household member's episode can play its clips (#1696
       mimeType: "video/mp4",
       buffer: buildMp4Fixture({ durationSec: 7 }),
     });
+    await page.getByTestId("media-input-submit").click();
     await expect(page.getByText("Clip attached.")).toBeVisible({
       timeout: 20_000,
     }); // named ceiling: the cross-profile upload rides a Server Action + its revalidated re-render

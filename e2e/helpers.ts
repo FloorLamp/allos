@@ -47,7 +47,7 @@ import { roundControlBoxExtraLines } from "./control-box-lines";
 //
 // 1c. The interaction is a FILE PICK whose `onChange` fires a Server Action (there
 //    is no click to drive — the input is hidden behind a label):
-//        → settledUpload(page, input, files)
+//        → settledUpload(page, input, files)  — the pick STAGES, the confirm posts
 //    Same guarantee, same correlated predicate as settledClick — they share
 //    armActionPost, because "did this interaction's action complete?" is one
 //    question and a helper family must not answer it two ways (#1952).
@@ -82,17 +82,14 @@ import { roundControlBoxExtraLines } from "./control-box-lines";
 //    trigger whose handler ends in a synchronous `input.click()`):
 //        → primeCameraFallback(page) before the goto, then
 //          capturePhotoFile(page, trigger, file)
-//    Two rules meet here, and the second is the one #2662 was filed for. First,
-//    a chooser is an EVENT, so the listener is armed and the tap taken under one
+//    A chooser is an EVENT, so the listener is armed and the tap taken under one
 //    `Promise.all` — never armed with its own short timeout inside a retry loop,
 //    which does not lengthen the window, it just re-runs the same too-short one.
-//    Second, the branch that reaches the chooser at all must be a STATED
-//    precondition. PhotoCapture only opens the picker synchronously for a session
-//    that already knows the camera is unusable; otherwise the tap tries
-//    getUserMedia and opens a fallback MODAL — whose `fixed inset-0` backdrop
-//    then intercepts every later click on the trigger, so the loop's own first
-//    attempt is what makes the rest unreachable. Retrying a control that covers
-//    itself is worse than not retrying it.
+//    The helper walks MediaInput's dialog to the button that opens the chooser,
+//    so a caller no longer has to stage a camera precondition to reach it (#3286
+//    made the file path reachable from every state; before it, the tap only
+//    opened the picker synchronously for a session that already knew the camera
+//    was unusable, and #2662 was filed about the modal that appeared otherwise).
 //
 // 3. Everything else — a pure client toggle, a value that settles in place, a
 //    toast that appears — needs NO settle on the network. Assert it with a plain
@@ -248,14 +245,36 @@ export async function awaitHydrated(
 // chooser at all, at any budget. Decision-tree case 2b — a non-idempotent
 // control, so hydratedClick, which closes the pre-hydration window WITHOUT a
 // retry loop.
+// Hand files to a <MediaInput> through its real input and COMMIT them (#3286).
+//
+// `setInputFiles` alone is no longer the whole interaction: the shared surface
+// stages what it was given, shows it per file, and waits for a confirm — which is
+// what makes a batch a list of named things and a bad file nameable. A spec that
+// only sets the files is asserting against a dialog that is still open.
+export async function stageMediaFiles(
+  page: Page,
+  inputTestId: string,
+  files: Parameters<Locator["setInputFiles"]>[0]
+): Promise<void> {
+  await page.getByTestId(inputTestId).setInputFiles(files);
+  await hydratedClick(page, page.getByTestId("media-input-submit"));
+}
+
 export async function capturePhotoFile(
   page: Page,
   trigger: Locator,
   file: { name: string; mimeType: string; buffer: Buffer }
 ): Promise<void> {
+  await hydratedClick(page, trigger);
+  // The trigger opens the DIALOG, not the chooser (#3286). Which stage it lands
+  // on is the ordering decision — a phone-width viewport or a granted camera
+  // gets the viewfinder — so step off it when that is where we are. Both stages
+  // reach the file path; that is the property this walk depends on.
+  const useFile = page.getByTestId("media-input-use-file");
+  if (await useFile.isVisible()) await useFile.click();
   const [chooser] = await Promise.all([
     page.waitForEvent("filechooser"),
-    hydratedClick(page, trigger),
+    page.getByTestId("media-input-choose").click(),
   ]);
   await chooser.setFiles(file);
 }
@@ -1096,31 +1115,30 @@ export async function openMeasurementGroup(
 }
 
 // Stage this browsing context as one with NO camera API at all, BEFORE the page
-// loads — the precondition of #2182's one-tap native picker, and the device class
-// PhotoCapture's own header names first ("PWA-safe, CI, older devices").
+// loads — the device class MediaInput's own header names first ("PWA-safe, CI,
+// older devices").
 //
 // Two specs used to ASSUME this ("No getUserMedia in CI") and it was false:
 // `navigator.mediaDevices.getUserMedia` exists on a headless runner because
-// localhost is a secure context — what is missing is the camera. So an unprimed
-// tap took `try-camera`, getUserMedia rejected `NotFoundError`, and the fallback
-// DIALOG opened. That is correct product behaviour (you cannot skip trying a
-// camera you know nothing about); it is just not the state those specs assert.
-//
-// Why this fact and not the session-cache one: `cameraStartDecision` reads
+// localhost is a secure context — what is missing is the camera. Staging the
+// device removes the question rather than narrowing it: `mediaStartStage` reads
 // `hasGetUserMedia` SYNCHRONOUSLY at tap time, from a value this init script has
-// already fixed before any document script ran, so the branch is decided with no
-// async input anywhere. The `knowledge: "failed"` route to the same branch is a
-// true statement about the runner too, but its precondition arrives from a mount
-// effect (a sessionStorage read, then a `navigator.permissions.query` promise),
-// and "that effect has flushed" is not something a tap can prove — which is the
-// class of assumption this whole issue is about. Staging the device removes the
-// question rather than narrowing it.
+// already fixed before any document script ran, so the opening stage is decided
+// with no async input anywhere. The `knowledge: "failed"` route to the same
+// stage is a true statement about the runner too, but its precondition arrives
+// from a mount effect (a sessionStorage read, then a
+// `navigator.permissions.query` promise), and "that effect has flushed" is not
+// something a tap can prove.
 //
-// Nothing is lost by staging it: `cameraStartDecision`'s full branch matrix,
-// knowledge cache included, is unit-covered in lib/__tests__/camera-fallback.ts,
-// and the camera-API-present shapes (denied → recovery guidance, present-but-no-
-// hardware → picker-only dialog) have their own browser test in
-// progress-photos.spec.ts, which stages `navigator.mediaDevices` the same way.
+// SINCE #3286 THIS IS A CONVENIENCE, NOT A PRECONDITION, and the difference
+// matters when reading a spec that calls it. The file path is reachable from
+// every stage now — an unprimed desktop tap lands on the chooser, and even the
+// viewfinder offers "Choose a file instead" — so priming buys determinism about
+// WHICH stage opens, not access. `mediaStartStage`'s full matrix is unit-covered
+// in lib/__tests__/camera-fallback.test.ts, and the camera-attempt shapes
+// (denied → recovery guidance under the camera option, no hardware → its own
+// line) have their own browser test in progress-photos.spec.ts, which stages
+// `navigator.mediaDevices` the same way.
 //
 // Call it before the navigation that renders the capture surface — an init script
 // applies to every subsequent navigation on the page, not to the current
@@ -2758,13 +2776,22 @@ export async function settledFillSave(
   await awaitAutosaveSettled(scope);
 }
 
-// Set files on a file `<input>` and await the Server-Action POST the resulting
-// change fires — the settledClick idiom for an upload input (which has no click to
-// drive). A hidden camera/file input's `onChange` submits a Server Action (upload
-// + `revalidatePath`); we arm the POST wait BEFORE `setInputFiles` (so a fast
-// upload can't resolve in the gap), then await it, so the follow-up `expect(...)`
-// runs against the durably-applied strip rather than a bare timed count poll.
-// WORKS when the change definitely fires exactly one Server Action (the upload).
+// Hand files to a <MediaInput> and await the Server-Action POST its CONFIRM
+// fires — the settledClick idiom for an upload surface.
+//
+// THE POST MOVED (#3286) and this comment used to describe where it was: the
+// pick itself used to submit, because a hidden input's `onChange` went straight
+// to the action. It no longer does. Files are STAGED by the pick and committed
+// by the confirm, which is what lets a batch be listed per file and a drop or a
+// paste arrive by the same route — so the wait is armed around the confirm
+// CLICK, and arming it around `setInputFiles` would wait for a POST that the
+// pick no longer makes.
+//
+// We arm the POST wait BEFORE the click (so a fast upload can't resolve in the
+// gap), then await it, so the follow-up `expect(...)` runs against the durably-
+// applied strip rather than a bare timed count poll. WORKS when the confirm
+// fires exactly one Server Action per file; a multi-file batch posts once per
+// file, so pass a single file here.
 //
 // The wait goes through the SAME armActionPost predicate settledClick uses
 // (#1952). It used to be the pre-#1958 "any same-origin POST", which was the same
@@ -2781,20 +2808,22 @@ export async function settledUpload(
   opts: { timeout?: number; url?: RegExp } = {}
 ): Promise<void> {
   const timeout = opts.timeout ?? 20_000;
+  await input.setInputFiles(files);
+  const submit = page.getByTestId("media-input-submit");
+  await expect(submit).toBeVisible();
   const here = new URL(page.url());
   const wait = armActionPost(page, here, { timeout, url: opts.url });
   try {
     // Same synchronous turn as the interaction, exactly as in settledClick.
     wait.begin();
-    await Promise.all([wait.settled, input.setInputFiles(files)]);
+    await Promise.all([wait.settled, submit.click()]);
   } catch (err) {
     throw wait.diagnose(
       err,
       "settledUpload",
-      `The input's onChange must submit a Server Action. If this upload posts to ` +
-        `a route handler instead, it is not a settledUpload site — await the ` +
-        `route's own response. If it posts somewhere other than this route, pass ` +
-        `{ url }.`
+      `The confirm must submit a Server Action. If this upload posts to a route ` +
+        `handler instead, it is not a settledUpload site — await the route's own ` +
+        `response. If it posts somewhere other than this route, pass { url }.`
     );
   } finally {
     wait.release();

@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import { stageMediaFiles } from "./helpers";
 
 // Issue #1780: one person reachable through TWO portal logins imported their records
 // twice. The portal regenerates its export container on every request, so the two
@@ -159,8 +160,7 @@ async function uploadArchive(
   buffer: Buffer
 ): Promise<void> {
   await page.goto("/data?section=import");
-  const input = page.getByTestId("medical-upload-input");
-  await input.setInputFiles({
+  await stageMediaFiles(page, "medical-upload-input", {
     name,
     mimeType: "application/xml",
     buffer,

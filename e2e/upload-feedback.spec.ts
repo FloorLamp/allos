@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
+import { stageMediaFiles } from "./helpers";
 
 // Issue #102: the inline imports table (which showed a processing spinner right
 // next to the upload form) moved into Data → Review, so after choosing a file the
@@ -50,7 +51,7 @@ test.describe("Medical document upload feedback", () => {
 
     // The "File upload (incl. CSV)" tab is the default, so the input is present.
     const input = page.getByTestId("medical-upload-input");
-    await input.setInputFiles({
+    await stageMediaFiles(page, "medical-upload-input", {
       name: UPLOAD_NAME,
       mimeType: "text/csv",
       buffer: FIXTURE,
@@ -77,8 +78,8 @@ test.describe("Medical document upload feedback", () => {
     // rendered at all when nothing is selected.
     await expect(submit).toHaveCount(0);
     await expect(page.getByTestId("medical-upload-submit-row")).toHaveCount(0);
-    // The two doors are still there, so "gone" is the row and not the card.
-    await expect(page.getByTestId("medical-upload-actions")).toBeAttached();
+    // The door is still there, so "gone" is the row and not the card.
+    await expect(page.getByTestId("medical-upload-choose")).toBeAttached();
   });
 
   // Issue #1315: the upload confirmation and the extraction-complete toast used to
@@ -93,8 +94,7 @@ test.describe("Medical document upload feedback", () => {
   }) => {
     await page.goto("/data?section=import");
 
-    const input = page.getByTestId("medical-upload-input");
-    await input.setInputFiles({
+    await stageMediaFiles(page, "medical-upload-input", {
       name: UPLOAD_NAME_2,
       mimeType: "text/csv",
       buffer: FIXTURE_2,

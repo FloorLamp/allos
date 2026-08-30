@@ -207,6 +207,7 @@ test("upload → poster grid → open player → Range serve → location warnin
       mimeType: "video/mp4",
       buffer: clip,
     });
+    await page.getByTestId("media-input-submit").click();
 
     // The clip lands in the editor's grid (server-sniffed, stored) and its
     // location-metadata privacy note renders.
@@ -338,6 +339,7 @@ test("Media appears mid-CREATE, as soon as autosave has made the row (#1524)", a
       mimeType: "video/mp4",
       buffer: buildMp4Fixture({ durationSec: 5 }),
     });
+    await page.getByTestId("media-input-submit").click();
     await expect(
       strip.locator('[data-testid^="video-clip-item-"]')
     ).toHaveCount(1);

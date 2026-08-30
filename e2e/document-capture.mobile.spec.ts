@@ -8,33 +8,39 @@ import {
 } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
-// The phone shape of the medical-document upload (issue #1993).
+// The phone shape of the medical-document upload (#1993, redrawn by #3286).
 //
 // The camera path used to render as "Or photograph a paper document:" plus a bare
 // `<input type="file">` under a dashed drop zone — form-field grammar for what is a
-// second way IN, sitting beneath a desktop metaphor that does nothing on touch
-// (there is no drag-and-drop on a phone). Below `sm` the form now offers TWO EQUAL
-// buttons, Upload and Camera, and no drop zone at all.
+// second way IN, sitting beneath a desktop metaphor that does nothing on touch. It
+// then became two equal buttons below `sm`, and is now ONE DOOR on every width: the
+// form mounts <MediaInput>, the shared add-media surface, which offers the picker
+// and the camera side by side inside its dialog and orders them by device.
 //
-// What must not change is the mechanism: the camera is image-only and separate from
-// the picker (a `capture` attribute on an input that also accepts PDFs/zips makes
-// mobile Chrome open the camera INSTEAD of the file picker, taking health-record
-// exports off the phone), and everything rides ONE submit under the one `file`
-// field. Both halves are asserted here.
+// THE INVARIANT THIS FILE EXISTS FOR IS UNCHANGED and is now stronger: everything
+// rides ONE submit under exactly ONE `file` field, which is asserted directly here
+// rather than inferred. The old form kept two inputs — a picker plus an image-only
+// camera input — precisely because a `capture` attribute on an input that also
+// accepts PDFs and zips makes mobile Chrome open the camera INSTEAD of the file
+// picker, taking health-record exports off the phone. The shared surface removes
+// that hazard at the root: its camera is a live viewfinder, not a `capture`
+// attribute, so one input can accept everything and no `capture` is needed at all.
 //
-// The camera opens <PhotoCapture> (#1119), whose getUserMedia preview falls back to
-// a native input when the camera is unavailable or denied — which is exactly what
-// happens in a headless browser with no camera permission, so this drives the
-// fallback path the same way e2e/progress-photos.spec.ts does.
+// The viewfinder is unavailable in a headless browser with no camera, so these
+// drive the file path; the ordering itself (camera-first on a phone, chooser-first
+// on a desktop) is e2e/media-input.spec.ts's subject.
 
 const PREFIX = "e2e-doccam-";
-// The name PhotoCapture hands back for a document capture.
-const CAPTURED_NAME = "document.jpg";
+// A picked or photographed page keeps its own name, with the extension corrected
+// to match the bytes: the client re-encode hands back JPEG, so the `.png` handed
+// in is stored as `.jpg`. (A CAMERA capture, which this runner cannot drive, is
+// the one case with no name of its own; it is called document.jpg.)
+const CAPTURED_NAME = `${PREFIX}snap.jpg`;
 const DB_PATH = workerDbPath();
 
-// A 1x1 PNG — stand-in for what a camera hands the form. It is re-encoded through
-// PhotoCapture's canvas before it reaches the input, which is the point: the bytes
-// that get uploaded carry no EXIF.
+// A 1x1 PNG — stand-in for a photographed page. It is re-encoded client-side
+// before it reaches the input, which is the point: the bytes that get uploaded
+// carry no EXIF.
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
   "base64"
@@ -68,65 +74,62 @@ test.describe("Document capture on a phone (issue #1993)", () => {
     }
   });
 
-  test("offers Upload and Camera as two equal actions, with no drop zone", async ({
+  test("one door on a phone, and the file and camera ways in sit together", async ({
     page,
   }) => {
+    await primeCameraFallback(page);
     await page.goto("/data?section=import");
 
-    // No drag-and-drop on touch, so the dashed box is desktop-only.
-    await expect(page.getByTestId("medical-upload-dropzone")).toBeHidden();
+    // ONE FIELD, asserted rather than inferred. This form used to carry two file
+    // inputs and the whole spec was arranged around keeping them apart.
+    await expect(page.locator('form input[type="file"]')).toHaveCount(1);
 
-    const upload = page.getByTestId("medical-upload-choose-mobile");
-    const camera = page.getByTestId("medical-upload-camera");
-    await expect(upload).toBeVisible();
-    await expect(camera).toBeVisible();
+    // Naming the drop gesture on a phone would be instructions for a device the
+    // reader is not holding — the door is still one tap either way. Asserted as
+    // VISIBILITY, not as text: the span is hidden by a class, and textContent
+    // reads hidden text perfectly happily.
+    const door = page.getByTestId("medical-upload-choose");
+    await expect(door).toBeVisible();
+    await expect(door.getByText("or drop them here")).toBeHidden();
 
-    // EQUAL weight: photographing the page in front of you and picking a file out
-    // of Drive are equally likely on a phone, so neither is the small one.
-    const uploadBox = await upload.boundingBox();
-    const cameraBox = await camera.boundingBox();
-    expect(uploadBox).not.toBeNull();
-    expect(cameraBox).not.toBeNull();
-    expect(Math.abs(uploadBox!.width - cameraBox!.width)).toBeLessThanOrEqual(
-      1
-    );
-    expect(Math.abs(uploadBox!.height - cameraBox!.height)).toBeLessThanOrEqual(
-      1
-    );
+    await hydratedClick(page, door);
+    // Both ways in, in one place. The camera is a peer of the picker here, not a
+    // sibling button in a row the desktop never sees.
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
+    await expect(page.getByTestId("media-input-camera")).toBeVisible();
+    // And nothing has said a word about permissions, because nothing has tried
+    // the camera yet (#3286).
+    await expect(page.getByTestId("media-input-camera-error")).toHaveCount(0);
   });
 
   test("a photographed page rides the one submit under the one file field", async ({
     page,
   }) => {
-    // The absent camera is a STATED precondition, not an assumed one (#2662).
-    // On a context with no camera API, #2182's promise is that ONE tap reaches
-    // the chooser directly with no dialog in between — which is what the
-    // photo-capture-fallback assertion below is then entitled to check.
+    // The absent camera is a STATED precondition, not an assumed one (#2662):
+    // it fixes WHICH stage the dialog opens on, so the walk below is decided
+    // with no async input anywhere.
     await primeCameraFallback(page);
     await page.goto("/data?section=import");
 
-    const fallback = page.getByTestId("photo-capture-file");
-    await capturePhotoFile(page, page.getByTestId("medical-upload-camera"), {
+    const input = page.getByTestId("medical-upload-input");
+    await capturePhotoFile(page, page.getByTestId("medical-upload-choose"), {
       name: `${PREFIX}snap.png`,
       mimeType: "image/png",
       buffer: PNG_1X1,
     });
 
-    // The camera path stays IMAGE-ONLY and keeps `capture`, on an input that is not
-    // the picker — the whole reason there are two inputs at all.
-    await expect(fallback).toHaveAttribute("accept", "image/*");
-    await expect(fallback).toHaveAttribute("capture", "environment");
-    await expect(page.getByTestId("medical-upload-input")).not.toHaveAttribute(
-      "capture",
-      /.*/
-    );
+    // NO `capture` ATTRIBUTE ANYWHERE, which is what lets this single input
+    // accept PDFs, zips and spreadsheets on a phone: `capture` would make mobile
+    // Chrome open the camera instead of the file picker.
+    await expect(input).not.toHaveAttribute("capture", /.*/);
+    await expect(input).toHaveAttribute("accept", /image\/\*/);
+    await expect(input).toHaveAttribute("accept", /\.pdf/);
 
-    await expect(fallback).toHaveClass(/sr-only/);
-    await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
-    await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
-    // "Use photo" posts NOTHING — it hands the File to the form, which stores it in
+    await expect(input).toHaveClass(/sr-only/);
+    await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
+    // Confirming posts NOTHING — it hands the File to the form, which stores it in
     // the real input. The single submit comes later, which is the invariant.
-    await hydratedClick(page, page.getByTestId("photo-capture-submit"));
+    await hydratedClick(page, page.getByTestId("media-input-submit"));
 
     // The captured file landed in the SELECTED list, i.e. in the real `file` input —
     // there is no second form and no second submit.
@@ -142,22 +145,32 @@ test.describe("Document capture on a phone (issue #1993)", () => {
     ).toBeVisible();
   });
 
-  test("the Upload button opens the picker and still takes several files", async ({
+  test("the door opens the picker and still takes several files at once", async ({
     page,
   }) => {
+    // Proving the picker OPENS is what makes the offscreen input an
+    // implementation detail rather than a regression, and multi-file (#1008)
+    // survives the redesign: the chooser is still `multiple`, and the batch is
+    // now listed per file inside the dialog before it is committed.
+    await primeCameraFallback(page);
     await page.goto("/data?section=import");
-
-    // The button drives the one real (offscreen) input: proving the picker OPENS is
-    // what makes the offscreen input an implementation detail rather than a
-    // regression. Multi-file (#1008) survives the redesign.
-    const trigger = page.getByTestId("medical-upload-choose-mobile");
+    const trigger = page.getByTestId("medical-upload-choose");
     await expect(trigger).toBeVisible();
+    await hydratedClick(page, trigger);
     const [chooser] = await Promise.all([
       page.waitForEvent("filechooser"),
-      hydratedClick(page, trigger),
+      page.getByTestId("media-input-choose").click(),
     ]);
     expect(chooser.isMultiple()).toBe(true);
     await chooser.setFiles([csv(1), csv(2)]);
+
+    const staged = page.getByTestId("media-input-selected");
+    await expect(staged).toContainText(`${PREFIX}1.csv`);
+    await expect(staged).toContainText(`${PREFIX}2.csv`);
+    await expect(page.getByTestId("media-input-submit")).toHaveText(
+      "Add 2 files"
+    );
+    await hydratedClick(page, page.getByTestId("media-input-submit"));
 
     const selected = page.getByTestId("medical-upload-selected");
     await expect(selected).toContainText(`${PREFIX}1.csv`);

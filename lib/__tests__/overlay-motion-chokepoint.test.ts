@@ -153,8 +153,8 @@ const CENTERED_PRESENTATION = new Map<string, string>([
     "the command palette — a keyboard surface whose body is a search field over a result list: no bottom edge to flick toward at any width, and already scoped out of #1469. But that argument never defended a centred CARD either, and a floating card is what shipped to phones — so below `md` the same host renders it full-screen (#3423, `fullScreenBelowMd`). Still not a sheet; no longer a desktop dialog on a phone",
   ],
   [
-    "components/photo/PhotoCapture.tsx",
-    "the camera fallback — a live viewfinder the user is aiming, where flick-to-dismiss is a gesture collision rather than an affordance",
+    "components/media/MediaInput.tsx",
+    "the shared add-media surface (#3286) — it hosts a live viewfinder the user is AIMING, where flick-to-dismiss is a gesture collision rather than an affordance. The dialog now opens on a chooser more often than on the camera, but the exception is anatomy, not statistics: one dismissal gesture for a surface whose camera stage is one tap away is what keeps the two stages from disagreeing about how you leave them",
   ],
 ]);
 

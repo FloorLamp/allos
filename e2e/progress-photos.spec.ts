@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Locator, type Page } from "@playwright/test";
+import { type Browser, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import sharp from "sharp";
 import { loginAs } from "./nav";
@@ -21,9 +21,10 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// Progress photos over the shared photo core (#1119): the native-capture
-// FALLBACK path end to end (CI has no camera, so getUserMedia is denied and
-// PhotoCapture drops to its file input — exactly the fallback contract), the
+// Progress photos over the shared photo core (#1119), through the shared
+// add-media surface (#3286): the FILE path end to end (CI has no camera, so the
+// dialog's chooser leads and the picker is the way in — exactly the ordering
+// contract), the drop and paste ways in, the phone-width camera ordering, the
 // pose-tagged upload → gallery grid → lightbox → delete round trip, the
 // two-date compare timeline with the onion-skin overlay toggle, the serve
 // route's session/id scoping, and the data-gated nav entry flipping on for a
@@ -114,9 +115,9 @@ async function addPhoto(
   bytes: Buffer,
   opts: { date: string; caption?: string }
 ): Promise<void> {
-  // One real tap must synchronously open the native chooser, with no
-  // intermediate fallback dialog (#2182) — which holds because the caller
-  // staged the no-camera-API precondition before its goto (#2662).
+  // The tap opens the dialog; the helper walks it to the chooser (#3286). The
+  // caller stages the no-camera-API device so the dialog opens on the chooser
+  // rather than the viewfinder (#2662).
   const fileInput = page.getByTestId("photo-capture-file");
   await capturePhotoFile(page, page.getByTestId("photo-capture-open"), {
     name: "capture.jpg",
@@ -124,13 +125,12 @@ async function addPhoto(
     buffer: bytes,
   });
   await expect(fileInput).toHaveClass(/sr-only/);
-  await expect(page.getByTestId("photo-capture-fallback")).toHaveCount(0);
-  await expect(page.getByTestId("photo-capture-preview")).toBeVisible();
+  await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
   await page.locator("#progress-date").fill(opts.date);
   if (opts.caption)
     await page.getByTestId("progress-caption-input").fill(opts.caption);
-  await settledClick(page, page.getByTestId("photo-capture-submit"));
-  await expect(page.getByTestId("photo-capture-preview")).toBeHidden();
+  await settledClick(page, page.getByTestId("media-input-submit"));
+  await expect(page.getByTestId("media-input-preview-0")).toBeHidden();
 }
 
 // THE IN-DOMAIN DOOR (#3284). The #1119 nav gate is data-presence and correct, which
@@ -167,6 +167,7 @@ test("Trends → Body carries the always-visible first-capture door, at phone an
     // Two taps from the census to the capture flow, with no palette involved.
     await page.getByTestId("photo-capture-open").click();
     await expect(page.getByTestId("photo-capture-file")).toHaveCount(1);
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await page.context().close();
   }
@@ -409,7 +410,7 @@ test("crop zoom keeps native range behavior and fixed phone geometry", async ({
   await page.getByRole("button", { name: "Cancel" }).click();
 });
 
-test("a denied auto-open explains recovery, while missing hardware stays picker-only", async ({
+test("the chooser leads on a desktop, and camera copy waits for the camera option (#3286)", async ({
   browser,
 }) => {
   const denied = await loginAs(browser, {
@@ -435,13 +436,22 @@ test("a denied auto-open explains recovery, while missing hardware stays picker-
       });
     });
     await denied.goto("/progress?new=1");
+    // THE #3286 ORDERING, at desktop width with a camera that is denied: the
+    // dialog opens on the CHOOSER, and its primary is Choose file. Nothing says
+    // "camera" until the camera option is invoked — so the recovery list is
+    // absent HERE and present two lines later, from the same page.
+    await expect(denied.getByTestId("media-input-choose")).toBeVisible();
+    await expect(denied.getByTestId("media-input-camera-recovery")).toHaveCount(
+      0
+    );
+    await expect(denied.getByTestId("media-input-camera-error")).toHaveCount(0);
+    await denied.getByTestId("media-input-camera").click();
     await expect(
-      denied.getByTestId("photo-capture-blocked-guidance")
+      denied.getByTestId("media-input-camera-recovery")
     ).toBeVisible();
-    await expect(
-      denied.getByTestId("photo-capture-camera-retry")
-    ).toBeVisible();
-    await expect(denied.getByTestId("photo-capture-picker-open")).toBeVisible();
+    // …and the file path is still right there, unmoved, which is the difference
+    // between an option that failed and the dead end this issue was filed for.
+    await expect(denied.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await denied.context().close();
   }
@@ -466,16 +476,16 @@ test("a denied auto-open explains recovery, while missing hardware stays picker-
     });
     await missing.goto("/progress");
     await missing.getByTestId("photo-capture-open").click();
-    await expect(missing.getByTestId("photo-capture-fallback")).toBeVisible();
+    await expect(missing.getByTestId("media-input-choose")).toBeVisible();
+    await missing.getByTestId("media-input-camera").click();
+    // Missing hardware is not blocked permission: its own sentence, and NO
+    // padlock instructions, which would be advice for a setting that is not the
+    // problem.
+    await expect(missing.getByTestId("media-input-camera-error")).toBeVisible();
     await expect(
-      missing.getByTestId("photo-capture-blocked-guidance")
+      missing.getByTestId("media-input-camera-recovery")
     ).toHaveCount(0);
-    await expect(missing.getByTestId("photo-capture-camera-retry")).toHaveCount(
-      0
-    );
-    await expect(
-      missing.getByTestId("photo-capture-picker-open")
-    ).toBeVisible();
+    await expect(missing.getByTestId("media-input-choose")).toBeVisible();
   } finally {
     await missing.context().close();
   }
@@ -593,6 +603,201 @@ test("retagging a photo's pose moves it between comparison series, leaving the f
     );
     expect(served.status()).toBe(200);
     expect(served.headers()["content-type"]).toBe("image/jpeg");
+  } finally {
+    await page.context().close();
+  }
+});
+
+// THE FOUR WAYS IN, AND THE ORDER THEY ARRIVE IN (#3286).
+//
+// The owner's report was a desktop where camera had never been granted: the
+// dialog opened onto "Camera access is blocked for this app", padlock
+// instructions as its first line, and a green "Open camera" as the primary —
+// the only path that could not work, pushed hardest. The tests above cover the
+// blocked-camera ordering; these cover the ways in that did not exist at all,
+// and the phone ordering they must not have cost.
+test.describe("the ways into the add-media dialog (#3286)", () => {
+  // Drop and paste both hand the dialog a real File built IN THE PAGE, because
+  // neither gesture can be delivered from Playwright: an OS file-drag has no
+  // Playwright API, and a synthetic clipboard write cannot carry file data. The
+  // event is the real one either way — the component sees the same DataTransfer
+  // shape a browser would give it.
+  async function handOver(
+    page: Page,
+    how: "drop" | "paste",
+    bytes: Buffer
+  ): Promise<void> {
+    await page.getByTestId("media-input-dropzone").evaluate(
+      (zone, payload) => {
+        const dt = new DataTransfer();
+        dt.items.add(
+          new File([new Uint8Array(payload.bytes)], payload.name, {
+            type: "image/jpeg",
+          })
+        );
+        if (payload.how === "drop") {
+          zone.dispatchEvent(
+            new DragEvent("drop", { dataTransfer: dt, bubbles: true })
+          );
+        } else {
+          document.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })
+          );
+        }
+      },
+      { how, name: `${how}.jpg`, bytes: Array.from(bytes) }
+    );
+  }
+
+  // The fixture profile, in its own context, exactly as the round trip above —
+  // the file's beforeAll/afterAll clear THAT profile's rows, so a test writing
+  // as anyone else would leave rows nothing cleans up and count rows nothing
+  // wrote.
+  async function openProgress(browser: Browser): Promise<Page> {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_PHOTOS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    // No camera API, so the ordering decision is made with no async input and
+    // the dialog lands on the chooser deterministically.
+    await primeCameraFallback(page);
+    await page.goto("/progress");
+    return page;
+  }
+
+  for (const how of ["drop", "paste"] as const) {
+    test(`${how} stages a photo, from the chooser the desktop opens on`, async ({
+      browser,
+    }) => {
+      const page = await openProgress(browser);
+      try {
+        await page.getByTestId("photo-capture-open").click();
+
+        // THE PRIMARY IS Choose file, and NOTHING has said "camera" — the whole
+        // defect, asserted as the state of the dialog on arrival.
+        await expect(page.getByTestId("media-input-choose")).toBeVisible();
+        await expect(page.getByTestId("media-input-camera-error")).toHaveCount(
+          0
+        );
+        await expect(
+          page.getByTestId("media-input-camera-recovery")
+        ).toHaveCount(0);
+
+        await handOver(page, how, await jpeg({ r: 30, g: 90, b: 160 }));
+
+        // It reached the SAME confirm step a pick reaches — one landing, four ways
+        // in — with the file named, which is what makes a batch readable.
+        await expect(page.getByTestId("media-input-preview-0")).toBeVisible();
+        await expect(page.getByTestId("media-input-selected")).toContainText(
+          `${how}.jpg`
+        );
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
+
+  test("a batch stages every file by name and commits them one by one", async ({
+    browser,
+  }) => {
+    test.slow(); // two uploads through the shared pipeline
+    const page = await openProgress(browser);
+    try {
+      const tiles = page.locator('[data-testid^="photo-gallery-item-"]');
+      const before = await tiles.count();
+      await page.getByTestId("photo-capture-file").setInputFiles([
+        {
+          name: "batch-a.jpg",
+          mimeType: "image/jpeg",
+          buffer: await jpeg({ r: 10, g: 20, b: 30 }),
+        },
+        {
+          name: "batch-b.jpg",
+          mimeType: "image/jpeg",
+          buffer: await jpeg({ r: 40, g: 50, b: 60 }),
+        },
+      ]);
+
+      // PER FILE, not a count: a batch where one file is refused has to be able to
+      // say which one, and it can only do that if the files are named here.
+      const staged = page.getByTestId("media-input-selected");
+      await expect(staged).toContainText("batch-a.jpg");
+      await expect(staged).toContainText("batch-b.jpg");
+      await expect(page.getByTestId("media-input-submit")).toHaveText(
+        "Add 2 files"
+      );
+
+      await page.locator("#progress-date").fill("2026-03-04");
+      await settledClick(page, page.getByTestId("media-input-submit"));
+      await expect(page.getByTestId("media-input-selected")).toHaveCount(0);
+      // TWO FILES IN, TWO PHOTOS OUT — one interaction, per-file writes. Counted
+      // on the grid rather than the store: settledClick settles on ONE Server
+      // Action and a batch posts once per file, so the grid's retrying count is
+      // the signal that every one of them landed, and it is the same thing a
+      // person would look at.
+      await expect(tiles).toHaveCount(before + 2, { timeout: 20_000 });
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
+// THE PHONE ORDERING (#3286 AC2). The camera still leads where a camera is the
+// plausible primary — that is the half the desktop fix must not have cost, and
+// it is asserted with a REAL granted camera rather than by reading a class.
+test("a phone-width viewport with a working camera opens the viewfinder", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      // BOTH APIS, because the component consults both and the runner answers the
+      // second one for itself: headless Chromium reports camera permission as
+      // denied, which is a KNOWN-bad camera and correctly never leads. Stubbing
+      // only getUserMedia staged a phone that had been refused the camera, which
+      // is the opposite of the state this test names.
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: { query: async () => ({ state: "granted", onchange: null }) },
+      });
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: async () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = 64;
+            canvas.height = 64;
+            canvas.getContext("2d")!.fillRect(0, 0, 64, 64);
+            return (
+              canvas as HTMLCanvasElement & {
+                captureStream: (fps?: number) => MediaStream;
+              }
+            ).captureStream(1);
+          },
+        },
+      });
+    });
+    await page.goto("/progress");
+    await page.getByTestId("photo-capture-open").click();
+
+    // The viewfinder, not the chooser — today's behaviour, unchanged.
+    await expect(page.getByTestId("media-input-video")).toBeVisible();
+    await expect(page.getByTestId("media-input-choose")).toHaveCount(0);
+
+    // …and the file path is not BURIED: it is one labelled control away, on the
+    // same screen. Before #3286 the equivalent escape said "Upload a file
+    // instead" from a fallback the phone rarely saw.
+    const toFile = page.getByTestId("media-input-use-file");
+    await expect(toFile).toBeVisible();
+    await toFile.click();
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
+    // The dialog reached the chooser without a camera failure, so it says nothing
+    // about permissions here either.
+    await expect(page.getByTestId("media-input-camera-error")).toHaveCount(0);
   } finally {
     await page.context().close();
   }

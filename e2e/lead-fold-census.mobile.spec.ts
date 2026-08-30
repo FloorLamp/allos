@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { LEAD_MAX_CHARS } from "@/lib/lead-fold-census";
+import { stageMediaFiles } from "./helpers";
 
 // THE LEAD + FOLD CENSUS, OVER RENDERED BOXES AT 390px (#3488, #3490).
 //
@@ -389,14 +390,16 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
   test.slow();
   await page.goto("/data?section=import");
 
-  // The ruled two-door mobile pair (#1993), with the picker wearing the label the
-  // desktop dropzone already used. "Upload" now names ONE control on this card.
-  const actions = page.getByTestId("medical-upload-actions");
-  await expect(actions).toBeVisible();
-  await expect(page.getByTestId("medical-upload-choose-mobile")).toHaveText(
-    "Choose files"
-  );
-  await expect(page.getByTestId("medical-upload-camera")).toBeVisible();
+  // ONE door (#3286), wearing the label the desktop dropzone already used —
+  // "Upload" still names exactly one control on this card, the submit. The two
+  // ways in (#1993) now sit together inside the dialog it opens.
+  const door = page.getByTestId("medical-upload-choose");
+  // useInnerText, because the door also carries a " or drop them here" span that
+  // is hidden by a class below `sm` — naming a drag gesture on a phone would be
+  // instructions for a device the reader is not holding. textContent reads hidden
+  // text happily, so the default matcher would be asserting on something nobody
+  // at this viewport can see.
+  await expect(door).toHaveText("Choose files", { useInnerText: true });
 
   // Assert on the row: inactive panels stay mounted, so a page-wide text query
   // would also read the hidden Paste CSV panel.
@@ -405,7 +408,7 @@ test("the empty upload card shows two doors and nothing below them (#3488 fix 2)
 
   // Choosing a file reveals the file list, the submit, and the sentence — the
   // explainer arrives when it has a subject.
-  await page.getByTestId("medical-upload-input").setInputFiles({
+  await stageMediaFiles(page, "medical-upload-input", {
     name: "lead-fold-census-1.csv",
     mimeType: "text/csv",
     buffer: Buffer.from(

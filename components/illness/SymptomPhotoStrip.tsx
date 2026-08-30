@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
-import { IconCamera } from "@tabler/icons-react";
+import { useMemo, useState, useTransition } from "react";
+import MediaInput from "@/components/media/MediaInput";
 import { useToast } from "@/components/Toast";
 import PhotoGallery from "@/components/photo/PhotoGallery";
 import PhotoTimeline from "@/components/photo/PhotoTimeline";
@@ -32,8 +32,10 @@ export interface PhotoSymptomOption {
 }
 
 // The dated symptom-photo strip on the episode page (issue #859 item 4), rebuilt on the
-// shared photo core in #1844 (phase 3). Camera-first on mobile (the file input carries
-// `accept="image/*" capture="environment"`, so a phone opens the rear camera). Browse
+// shared photo core in #1844 (phase 3). The door is <MediaInput>, the one add-media
+// surface (#3286): camera-first on a phone, file-first on a desktop, and a drop or a
+// paste either way — this strip used to own a bare `capture="environment"` file input,
+// which is exactly the mobile-shaped-only door that issue was filed about. Browse
 // (PhotoGallery) and Compare (PhotoTimeline) are the two sibling views over one series
 // (#221) — and here the series is the SYMPTOM, so "is the rash spreading?" is two dates
 // side by side instead of two thumbnails the eye has to hold. Each photo streams from
@@ -60,7 +62,6 @@ export default function SymptomPhotoStrip({
 }) {
   const [pending, start] = useTransition();
   const toast = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [caption, setCaption] = useState("");
   const [photoSymptom, setPhotoSymptom] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -99,9 +100,12 @@ export default function SymptomPhotoStrip({
     [gallery, seriesFilter]
   );
 
-  function onPick(file: File | undefined) {
-    if (!file) return;
-    start(async () => {
+  // One upload per file so a refusal names the file it refused, and ONE toast for
+  // the set. The whole batch shares the caption and symptom tag on screen: they
+  // describe the moment, and several shots of one rash are one moment.
+  async function onPick(files: File[]): Promise<string | null> {
+    const failed: string[] = [];
+    for (const file of files) {
       const fd = new FormData();
       fd.set("photo", file);
       fd.set("date", uploadDate);
@@ -109,15 +113,20 @@ export default function SymptomPhotoStrip({
       if (photoSymptom) fd.set("symptom", photoSymptom);
       if (profileId != null) fd.set("profileId", String(profileId));
       const res = await uploadSymptomPhotoAction(fd);
-      if (fileRef.current) fileRef.current.value = "";
-      if (!res.ok) {
-        toast(res.error, { tone: "error" });
-        return;
-      }
-      setCaption("");
-      setPhotoSymptom("");
-      toast("Photo attached.");
-    });
+      if (!res.ok) failed.push(`${file.name}: ${res.error}`);
+    }
+    if (failed.length === files.length) return failed.join("; ");
+    const added = files.length - failed.length;
+    setCaption("");
+    setPhotoSymptom("");
+    toast(
+      failed.length > 0
+        ? `Attached ${added} of ${files.length}. ${failed.join("; ")}`
+        : added > 1
+          ? `${added} photos attached.`
+          : "Photo attached."
+    );
+    return null;
   }
 
   function saveCaption(photoId: number, close: () => void) {
@@ -254,16 +263,6 @@ export default function SymptomPhotoStrip({
 
       {canWrite && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          <input
-            ref={fileRef}
-            id="episode-symptom-photo-input"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            data-testid="symptom-photo-input"
-            className="hidden"
-            onChange={(e) => onPick(e.target.files?.[0])}
-          />
           {symptomOptions.length > 0 && (
             <div>
               <label className="label mb-0" htmlFor="episode-photo-symptom">
@@ -298,16 +297,16 @@ export default function SymptomPhotoStrip({
               className="input mt-1 w-48 text-sm"
             />
           </div>
-          <button
-            type="button"
-            data-testid="symptom-photo-add"
-            disabled={pending}
-            onClick={() => fileRef.current?.click()}
+          <MediaInput
+            triggerLabel={pending ? "Adding…" : "Add photo"}
+            triggerTestId="symptom-photo-add"
+            inputTestId="symptom-photo-input"
+            inputId="episode-symptom-photo-input"
             className="btn-ghost btn-sm"
-          >
-            <IconCamera className="mr-1 inline h-3.5 w-3.5" stroke={1.75} />
-            {pending ? "Adding…" : "Add photo"}
-          </button>
+            multiple
+            disabled={pending}
+            onConfirm={onPick}
+          />
           <p className="w-full text-xs text-slate-400">
             Photos are resized and cleaned of camera metadata (location, device)
             when stored, and never appear in a share link or printout.
