@@ -185,6 +185,36 @@ test("the picker offers exactly the seven types and logs the tapped one", async 
   );
 });
 
+test("a Bristol tap queues offline and syncs exactly once (#3166)", async ({
+  page,
+  context,
+}) => {
+  const date = dateStrInTz(TZ, frozenNow());
+  await page.goto("/?quick=log-stool");
+  const picker = page.getByTestId("quick-entry-stool");
+  const awaitHydrated = (await import("./helpers")).awaitHydrated;
+  await awaitHydrated(picker.getByTestId("stool-type-6"));
+
+  await context.setOffline(true);
+  await picker.getByTestId("stool-type-6").click();
+  await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+    /1 queued offline/
+  );
+  expect(bristolRows()).toEqual([]);
+
+  await context.setOffline(false);
+  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+
+  const rows = bristolRows();
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ date, value: 6 });
+  expect(zonedWallIsoToUtc(TZ, rows[0].started_at)?.getTime()).toBe(
+    Math.floor(frozenNow().getTime() / 1000) * 1000
+  );
+  await page.reload();
+  expect(bristolRows()).toHaveLength(1);
+});
+
 // #3273 — the picker states WHEN, and an unstated tap is unchanged.
 //
 // A bowel movement is exactly the event people log later, and until this the picker

@@ -22,7 +22,7 @@ import {
   getNapHistory,
   typicalWakeTime,
   typicalBedTime,
-  getPrnMedicationsForQuickLog,
+  getPrnIntakeItemsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
   getSessionRecap,
@@ -1027,12 +1027,12 @@ async function renderDashboard(
       ? { day: cycleControl.day, phase: cycleControl.phase }
       : null;
 
-  // symptom-log meds branch (#1221): the folded PRN quick-log. Shown ONLY on a WELL day
-  // with active PRN meds — when illness is active its Now cockpit already embeds
+  // symptom-log intake branch (#1221/#3174): the folded PRN quick-log. Shown ONLY on a WELL day
+  // with active `may` items — when illness is active its Now cockpit already embeds
   // the SAME logger (so we omit the branch to avoid the duplicate the old availability
-  // gate hand-managed), and a profile with no active PRN meds gets no branch at all.
-  const checkinPrnMeds = !activeSick
-    ? getPrnMedicationsForQuickLog(profile.id)
+  // gate hand-managed), and a profile with no active PRN items gets no branch at all.
+  const checkinPrnItems = !activeSick
+    ? getPrnIntakeItemsForQuickLog(profile.id)
     : [];
 
   // symptom-log well-day entry (#1300): a compact SymptomLogBar behind the check-in card's
@@ -1545,7 +1545,7 @@ async function renderDashboard(
     sourceOrder += moodReadings.length;
   }
 
-  checkinPrnMeds.forEach((med, index) =>
+  checkinPrnItems.forEach((med, index) =>
     add(
       dailyCandidates.prn(
         {
@@ -1555,7 +1555,7 @@ async function renderDashboard(
         },
         med.id
       ),
-      <DashboardAtomCard title={`Log ${med.name}`} testId="prn-atom">
+      <DashboardAtomCard title={`Log ${med.displayName}`} testId="prn-atom">
         <QuickLogPrnContent
           meds={[med]}
           tz={timezone}
@@ -1567,7 +1567,7 @@ async function renderDashboard(
       </DashboardAtomCard>
     )
   );
-  sourceOrder += checkinPrnMeds.length;
+  sourceOrder += checkinPrnItems.length;
 
   if (showWellSymptoms) {
     add(

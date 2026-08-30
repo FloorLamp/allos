@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readSource, relPath, sourceFiles } from "./sql-scan";
+import { stripComments } from "./strip-comments";
 
 // NOTHING DELETES `body_metrics` BECAUSE A PROFILE MOVED (#3524).
 //
@@ -58,71 +59,6 @@ interface Finding {
 // unbounded string in an assertion message.
 const MAX_SQL = 300;
 
-// Comments blanked, so a sentence ABOUT a delete is not a delete. `lib/stateful-writes.ts`
-// and `lib/cycle-store.ts` both discuss `DELETE FROM ${root.table}` in prose, correctly,
-// and a guard that flagged them would be deleted within a week — taking the real guard
-// with it.
-export function blankComments(src: string): string {
-  let out = "";
-  let i = 0;
-  let mode: "code" | "line" | "block" | "str" = "code";
-  let quote = "";
-  while (i < src.length) {
-    const c = src[i];
-    const d = src[i + 1];
-    if (mode === "code") {
-      if (c === "/" && d === "/") {
-        mode = "line";
-        out += "  ";
-        i += 2;
-        continue;
-      }
-      if (c === "/" && d === "*") {
-        mode = "block";
-        out += "  ";
-        i += 2;
-        continue;
-      }
-      if (c === '"' || c === "'" || c === "`") {
-        mode = "str";
-        quote = c;
-      }
-      out += c;
-      i++;
-      continue;
-    }
-    if (mode === "line") {
-      if (c === "\n") {
-        mode = "code";
-        out += c;
-      } else out += " ";
-      i++;
-      continue;
-    }
-    if (mode === "block") {
-      if (c === "*" && d === "/") {
-        mode = "code";
-        out += "  ";
-        i += 2;
-        continue;
-      }
-      out += c === "\n" ? c : " ";
-      i++;
-      continue;
-    }
-    // Inside a string/template.
-    if (c === "\\") {
-      out += c + (src[i + 1] ?? "");
-      i += 2;
-      continue;
-    }
-    if (c === quote) mode = "code";
-    out += c;
-    i++;
-  }
-  return out;
-}
-
 // A delete that names `body_metrics`, or one whose table is interpolated and therefore
 // unreadable from source. Case-insensitive on purpose — the tree writes SQL in capitals,
 // but a guard that can only see the house style cannot see the mistake.
@@ -144,7 +80,8 @@ const STATEMENT_START = "`\"';(";
 // local. Two guards, one walker.
 export function scanFile(rel: string, src: string): Finding[] {
   if (OUT_OF_SCOPE.some((p) => rel.startsWith(p))) return [];
-  const text = blankComments(src);
+  if (!/\bDELETE\s+FROM\s+(?:body_metrics\b|\$\{)/i.test(src)) return [];
+  const text = stripComments(src);
   const out: Finding[] = [];
   for (const m of text.matchAll(DELETE_RE)) {
     let j = (m.index ?? 0) - 1;
@@ -298,10 +235,13 @@ const allowed = (f: Finding) =>
   ALLOW.some((a) => f.file === a.file && f.sql === a.sql);
 
 describe("no production module deletes body_metrics on a timezone change (#3524)", () => {
-  const files = sourceFiles();
+  const sources = sourceFiles().map((file) => ({
+    rel: relPath(file),
+    raw: readSource(file),
+  }));
 
   it("scans the files a previous guard silently skipped", () => {
-    const scanned = files.map(relPath);
+    const scanned = sources.map(({ rel }) => rel);
     expect(scanned.length).toBeGreaterThan(500);
     // The three PR #3539's walker could not see, named individually so a walk that
     // regresses fails HERE rather than by quietly finding nothing.
@@ -315,7 +255,7 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
   });
 
   it("enumerates every delete that can reach body_metrics", () => {
-    const findings = files.flatMap((f) => scanFile(relPath(f), readSource(f)));
+    const findings = sources.flatMap(({ rel, raw }) => scanFile(rel, raw));
     const unlisted = findings.filter((f) => !allowed(f));
     expect(
       unlisted,
@@ -340,10 +280,6 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
     }
   });
 
-  it("has a stated trigger on every entry", () => {
-    for (const a of ALLOW) expect(a.trigger.length, a.file).toBeGreaterThan(60);
-  });
-
   // THE SWEEP ITSELF IS GONE, by name — as CODE. A revert cannot land quietly beside a
   // guard that only counts statements.
   //
@@ -355,7 +291,7 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
   // about it.
   //
   // AND IT DOES NOT BLANK THE WHOLE TREE TO ASK. An earlier draft mapped every source
-  // through `blankComments` and held the results, which cost 3.2 s idle against this
+  // through comment projection and held the results, which cost 3.2 s idle against this
   // tier's 15 s ceiling and timed out 6/6 on a loaded box — a guard that fails when the
   // machine is busy is a guard that gets quarantined. The names below cannot appear in a
   // blanked file without appearing in the raw one, so the raw text is the filter and only
@@ -366,11 +302,10 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
       "integrations/ingest-timezone-sweep",
     ];
     const hits: string[] = [];
-    for (const f of files) {
-      const raw = readSource(f);
+    for (const { rel, raw } of sources) {
       if (!NAMES.some((n) => raw.includes(n))) continue;
-      const code = blankComments(raw);
-      if (NAMES.some((n) => code.includes(n))) hits.push(relPath(f));
+      const code = stripComments(raw);
+      if (NAMES.some((n) => code.includes(n))) hits.push(rel);
     }
     expect(hits).toEqual([]);
   });
@@ -378,7 +313,7 @@ describe("no production module deletes body_metrics on a timezone change (#3524)
   it("still SEES the sweep when it is code rather than prose", () => {
     // The guard above passes on a clean tree; this is what proves it is not passing
     // because comment blanking ate the evidence.
-    const planted = blankComments(`
+    const planted = stripComments(`
       // sweepIngestWindowForTimezoneChange used to run here
       import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
     `);

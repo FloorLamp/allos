@@ -36,6 +36,11 @@ const fastActions = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/(app)/nutrition/actions", () => actions);
+// This suite owns receipt lifecycle, not the unopened preferences modal. Loading
+// the real form also loads its settings Server Action and the full DB graph.
+vi.mock("@/app/(app)/settings/profile/DietaryPreferencesForm", () => ({
+  default: () => null,
+}));
 vi.mock("@/components/emergency-offline", () => ({
   clearEmergencyPayload: vi.fn(),
 }));

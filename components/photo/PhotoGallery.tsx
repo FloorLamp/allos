@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFocusTrap } from "@/components/useFocusTrap";
+import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useResettableState } from "@/components/useResettableState";
 import { IconChevronLeft, IconChevronRight, IconX } from "@tabler/icons-react";
 import { EmptyState } from "@/components/ui";
@@ -96,6 +97,7 @@ export default function PhotoGallery({
     onClose: closeLightbox,
     active: lightbox != null,
   });
+  useLockBodyScroll(lightbox != null);
 
   if (!domain) {
     // The shared "nothing here yet" panel rather than a bare line of grey text

@@ -52,6 +52,7 @@ import ConfidenceBadge from "@/components/ConfidenceBadge";
 import TriageFocusScroll from "@/components/TriageFocus";
 import ProducedListing from "@/components/ProducedListing";
 import ImportedNamesCard from "@/components/import/ImportedNamesCard";
+import DexaTotalMassLink from "@/components/DexaTotalMassLink";
 import ProducedProviders from "@/components/ProducedProviders";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
@@ -888,6 +889,10 @@ export default async function ImportDetailPage(props: {
                       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                         {d.declaration.reason}
                       </p>
+                      <DexaTotalMassLink
+                        name={d.name}
+                        testId="declined-name-instead"
+                      />
                       {d.declaration.kind === "covered-elsewhere" && (
                         <Link
                           href={clinicalResultDetailHref(d.declaration.instead)}

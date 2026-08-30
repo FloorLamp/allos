@@ -11,6 +11,7 @@ import {
   IconCircleCheck,
 } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
+import DexaTotalMassLink from "@/components/DexaTotalMassLink";
 import { clinicalResultDetailHref } from "@/lib/hrefs";
 import type {
   CoverageGap,
@@ -161,6 +162,7 @@ function DeclinedRow({ item }: { item: DeclinedCoverageItem }) {
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         {item.declaration.reason}
       </p>
+      <DexaTotalMassLink name={item.label} testId="coverage-declined-instead" />
       {item.declaration.kind === "covered-elsewhere" && (
         <Link
           href={clinicalResultDetailHref(item.declaration.instead)}

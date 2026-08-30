@@ -20,6 +20,7 @@ import {
   isGarbageCanonical,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-result-definitions.json";
+import { bodyMetricKind } from "../body-metric-extract";
 
 describe("normalizeCanonicalKey", () => {
   it("is case-, punctuation- and order-insensitive", () => {
@@ -936,6 +937,18 @@ describe("deliberately uncurated analytes (#2313)", () => {
   ).definitions.map((b) => b.name);
   const curatedKeys = new Set(vocabulary.map((n) => normalizeCanonicalKey(n)));
 
+  it("keeps the body-metric workaround to one document-ingested analyte (#2766)", () => {
+    const routed = uncuratedAnalytes().flatMap(([name]) => {
+      const kind = bodyMetricKind(name, name);
+      return kind ? [[name, kind]] : [];
+    });
+    // Two declared print spellings, one quantity. A second hit reopens the ruling.
+    expect(routed).toEqual([
+      ["Total Mass", "weight"],
+      ["Total Mass (g)", "weight"],
+    ]);
+  });
+
   it("declares a non-empty reason for every entry", () => {
     // The MetricKnowledge `{ source: "none"; reason }` rule: the reason is what a
     // user reads instead of "unresolved", so a blank one is a silent regression to
@@ -1024,7 +1037,6 @@ describe("deliberately uncurated analytes (#2313)", () => {
       // The derived depot ratios. The two mass INDICES left this list in #2322 —
       // they divide by height rather than by a segment and have published
       // population references, so they are curated entries now (asserted below).
-      "Android/Gynoid Ratio",
       "Trunk to Legs Fat Ratio",
     ];
     for (const name of declared) {
@@ -1034,6 +1046,18 @@ describe("deliberately uncurated analytes (#2313)", () => {
     }
     // ONE decision, shared by the whole family — not fifty separate opinions.
     expect(new Set(declared.map((n) => uncuratedAnalyte(n))).size).toBe(1);
+  });
+
+  it("gives the Android/Gynoid ratio its own decline reason (#2768)", () => {
+    expect(uncuratedAnalyte("Android/Gynoid Ratio")).toEqual({
+      kind: "out-of-scope",
+      reason:
+        "Android/Gynoid Ratio is arithmetic over two regions of one DEXA scan, not an independently measured analyte. It stays visible on the scan rather than becoming its own trend.",
+    });
+
+    expect(uncuratedAnalyte("Trunk to Legs Fat Ratio")?.reason).toContain(
+      "no population reference range"
+    );
   });
 
   it("leaves the whole-body totals a DEXA also prints CURATED (#2319)", () => {

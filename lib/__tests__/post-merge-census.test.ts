@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 import {
   parseNameStatus,
@@ -27,16 +27,15 @@ function write(repo: string, file: string, content = "export default null;\n") {
   fs.writeFileSync(target, content);
 }
 
+// Seed Git and the child-process stub once, then copy that immutable baseline into
+// each case. Every case still makes its own real commit and crosses the real CLI
+// boundary without paying for identical repository setup again.
+let repoTemplate: string;
+
 function makeRepo(): string {
-  const repo = makeTmpDir("post-merge-census-cli");
-  git(repo, ["init", "-q"]);
-  git(repo, ["config", "user.email", "census@example.test"]);
-  git(repo, ["config", "user.name", "Census Test"]);
-  write(repo, "app/(app)/page.tsx");
-  write(repo, "app/(app)/trends/page.tsx");
-  write(repo, "app/(app)/nutrition/page.tsx");
-  git(repo, ["add", "."]);
-  git(repo, ["commit", "-qm", "baseline"]);
+  const root = makeTmpDir("post-merge-census-cli");
+  const repo = path.join(root, "repo");
+  fs.cpSync(repoTemplate, repo, { recursive: true });
   return repo;
 }
 
@@ -45,12 +44,6 @@ function commit(repo: string, files: Record<string, string>): void {
     write(repo, file, content);
   git(repo, ["add", "."]);
   git(repo, ["commit", "-qm", "change"]);
-}
-
-function installWalkthroughStub(repo: string, source: string): void {
-  write(repo, "scripts/ux-walkthrough.mjs", source);
-  git(repo, ["add", "scripts/ux-walkthrough.mjs"]);
-  git(repo, ["commit", "-qm", "install walkthrough stub"]);
 }
 
 function runCli(
@@ -91,6 +84,30 @@ const routes = [
 const changed = (file: string, status = "M") => ({
   status,
   paths: [file],
+});
+
+beforeAll(() => {
+  repoTemplate = makeTmpDir("post-merge-census-template");
+  git(repoTemplate, ["init", "-q"]);
+  git(repoTemplate, ["config", "user.email", "census@example.test"]);
+  git(repoTemplate, ["config", "user.name", "Census Test"]);
+  write(repoTemplate, "app/(app)/page.tsx");
+  write(repoTemplate, "app/(app)/trends/page.tsx");
+  write(repoTemplate, "app/(app)/nutrition/page.tsx");
+  write(
+    repoTemplate,
+    "scripts/ux-walkthrough.mjs",
+    `import fs from "node:fs";
+fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
+  argv: process.argv.slice(2), cwd: process.cwd(),
+  routes: process.env.UX_ROUTES, seed: process.env.UX_SEED,
+  rng: process.env.SEED_RNG, persona: process.env.SEED_PERSONA,
+}));
+if (process.env.CENSUS_EXIT) process.exit(Number(process.env.CENSUS_EXIT));
+`
+  );
+  git(repoTemplate, ["add", "."]);
+  git(repoTemplate, ["commit", "-qm", "baseline"]);
 });
 
 describe("post-merge census route planning", () => {
@@ -235,15 +252,6 @@ describe("post-merge census CLI boundary", () => {
     ({ changedFile, routes }) => {
       const repo = makeRepo();
       const receiptFile = path.join(repo, "child-receipt.json");
-      installWalkthroughStub(
-        repo,
-        `import fs from "node:fs";
-fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(),
-  routes: process.env.UX_ROUTES,
-}));
-`
-      );
       commit(repo, {
         [changedFile]: "export const changed = 1;\n",
       });
@@ -265,16 +273,6 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
   it("prints an executable plan that safely preserves the requested shape", () => {
     const repo = makeRepo();
     const receiptFile = path.join(repo, "shape-receipt.json");
-    installWalkthroughStub(
-      repo,
-      `import fs from "node:fs";
-fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(),
-  routes: process.env.UX_ROUTES, seed: process.env.UX_SEED,
-  rng: process.env.SEED_RNG, persona: process.env.SEED_PERSONA,
-}));
-`
-    );
     commit(repo, {
       "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
     });
@@ -308,22 +306,13 @@ fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
   it("propagates child failure", () => {
     const repo = makeRepo();
     const receiptFile = path.join(repo, "failure-receipt.json");
-    installWalkthroughStub(
-      repo,
-      `import fs from "node:fs";
-fs.writeFileSync(process.env.CENSUS_RECEIPT, JSON.stringify({
-  argv: process.argv.slice(2), cwd: process.cwd(),
-  routes: process.env.UX_ROUTES,
-}));
-process.exit(27);
-`
-    );
     commit(repo, {
       "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
     });
 
     const run = runCli(repo, ["HEAD^", "HEAD", "--run"], {
       CENSUS_RECEIPT: receiptFile,
+      CENSUS_EXIT: "27",
     });
     expect(run.status, run.stderr).toBe(27);
     const receipt = readReceipt(receiptFile);

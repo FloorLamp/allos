@@ -147,6 +147,7 @@ export default async function EquipmentDetailPage(props: {
               showsDistance ? "Distance per session" : "Volume per session"
             }
             ariaLabel={`Usage trend for ${equipment.name}`}
+            loneCaption={`Single reading · ${round(trendPoints[0], showsDistance ? 2 : 0)} ${showsDistance ? units.distanceUnit : units.weightUnit} · ${formatRecordDate(sessions[0].date, "", fmt)}`}
           />
         </div>
       ) : (
