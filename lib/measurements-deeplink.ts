@@ -111,6 +111,10 @@ const FIELD_GROUP: Record<string, MeasurementGroup> = {
   // logged in the same sitting, and a fourth disclosure holding a single field
   // would cost more than it explains.
   "m-hydration": "body",
+  // The night's bed and wake clocks (#1851) — the pair the Sleep Regularity Index
+  // reads, beside the duration they are an account of.
+  "m-bed-time": "sleep",
+  "m-wake-time": "sleep",
   "m-sleep": "sleep",
   "m-hrv": "sleep",
 };
@@ -195,6 +199,11 @@ export function measurementGroupSummary(
     );
     add(value("hydration"), (v) => `${v} L water`);
   } else {
+    // The window summarizes as ONE entry, like a blood pressure — and an en dash
+    // with a missing half still says which half is missing.
+    const bed = (value("bed_time") ?? "").trim();
+    const wake = (value("wake_time") ?? "").trim();
+    if (bed !== "" || wake !== "") parts.push(`${bed || "—"}–${wake || "—"}`);
     add(value("sleep_hours"), (v) => `${v} hrs sleep`);
     add(value("hrv"), (v) => `${v} ms HRV`);
   }

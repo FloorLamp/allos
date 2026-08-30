@@ -16,7 +16,6 @@ import {
   DOCUMENTS_SOURCE_CLASS,
   resolveMetricSources,
   sourceKey,
-  sourceMatchesSelector,
   type MetricSourceChoice,
   type SourceResolution,
 } from "../metric-source-priority";
@@ -688,42 +687,52 @@ export function getSleepStageDailyTotals(
 // (#160), which needs each session's start/end INSTANTS (not the derived per-day
 // totals) to reconstruct the sleep/wake timeline in the profile timezone.
 //
-// Source handling (issue #14): the SRI math assumes ONE session stream — two
-// sources reporting the same nights would interleave duplicate windows and wreck
-// the timing statistics. When several sources have sessions, the profile's
-// 'sleep_min' primary source wins; unset (or a chosen source with no sessions)
-// falls back to the most-recently-synced stream. A single-source profile is
-// passthrough, as before.
+// SOURCE HANDLING IS PER NIGHT (#1851), and this memo used to say the opposite.
 //
-// THE BUCKET IS STILL THE STREAM, and #2552 did not change that. Its per-window
-// election (pickRowsOneSourcePerWindow) is the right shape for date-keyed DISPLAY
-// history, which is why getDailySleepSessionsSince exists separately — but this read
-// feeds a statistic over a whole window, and a timeline stitched from two devices'
-// sleep detection is a different quantity from either device's. The stream stays.
+// It read: the SRI math assumes ONE session stream, so when several sources have
+// sessions the profile's primary source wins and everything else is filtered out,
+// falling back to the most-recently-synced stream (#14, reprobed by #2603). That
+// rule answered the wrong question the moment a person could type a night the
+// wearable missed. A stream-wide election has only two moves — keep the device and
+// throw the typed nights away, or keep the typed nights and throw a wearable's whole
+// history away — and it made the second one: ONE hand-typed window elected `manual`
+// for the profile and returned 1 session where 30 Oura overnights had been, taking
+// the SRI to null. The ring's own sync for that same night did not win it back,
+// because a person types when they got up while a ring records sleep offset.
 //
-// WHAT WAS WRONG WAS THE PROBE (#2603). "Most-recently-synced" used to be read off
-// the single newest session of any kind, so an afternoon nap synced by a phone was
-// the newest session most afternoons and elected the phone — taking a ring's entire
-// session history out of the read, and leaving the hero, the SRI, the consistency
-// strip, the typical wake time and the digest's sleep line all describing 45 minutes.
-// A stream is a stream because it reports NIGHTS, so the probe asks for the newest
-// OVERNIGHT and only falls back to the newest session at all for a profile that
-// records no overnight anywhere. Recency is still the rule — a new wearable takes the
-// stream over on its first night, which "whoever has the most sessions" would not
-// have allowed.
+// So the bucket is the NIGHT. Rows are resolved by `pickRowsOneSourcePerWindow` —
+// the same election, over the same profile resolution, that `getDailySleepSessionsSince`
+// has used for date-keyed display history since #2552 — and the two reads now
+// differ only in their bounding, which is the difference that was ever real.
 //
-// WHAT WOULD SHOW IT WORKING (#2385): on a two-source profile whose second source
-// contributes only naps, the session history keeps its night count and the hero's
-// duration stays in overnight range. WHAT WOULD SHOW IT WRONG: a profile that has
-// genuinely switched wearables sitting on the OLD device's nights while the new one
-// syncs — recency lost, which is the failure the previous probe existed to prevent.
-// THE DECEPTIVE SUCCESS: "sessions returned per read went up", which also goes up
-// when the election starts interleaving two devices — the very thing #14 forbids. The
-// honest measure is the elected source's OWN night count, not the row count.
+// WHAT THAT COSTS AND WHY IT IS AFFORDABLE. The stream rule existed to stop two
+// sources reporting the SAME nights from interleaving duplicate windows into one
+// timeline; that hazard is real and it is exactly what an overlap cluster catches,
+// because a duplicate account of one night covers the same clock time. What the day
+// grain could not tell apart, and the window grain can, is a duplicate from a second
+// EVENT: a wearable's overnight plus a hand-logged nap are two things that happened.
+// A typed night the device never recorded overlaps nothing, so it fills its own gap
+// and displaces nobody — which is the whole of what this change buys.
 //
-// A STRICT choice (#1642) applies its filter unconditionally — even to a
-// single-source profile, whose lone stream is simply not the elected one — so an
-// uncovered night is absent rather than answered by whoever did record it.
+// IT ALSO RETIRES THE #2603 PROBE rather than working around it. That probe existed
+// because a nap synced by a phone was the newest session most afternoons and elected
+// the phone for the entire profile, blanking a ring's history. Under a per-night
+// election the nap is its own cluster: it never reaches the ring's nights, so there
+// is nothing for a recency heuristic to get wrong. Recency as a profile-wide rule is
+// gone with it — a new wearable takes over the nights it actually records, on the
+// nights it records them, which is what "taking over" meant.
+//
+// WHAT WOULD SHOW IT WORKING: a profile with 30 device overnights and one typed
+// night the device missed returns 31 sessions, the device's 30 unchanged. WHAT WOULD
+// SHOW IT WRONG: two sources reporting the SAME night both surviving into the list,
+// which is the interleave #14 forbids and the reason the resolution is per window
+// rather than per row. THE DECEPTIVE SUCCESS is unchanged from #2603 — "sessions
+// returned per read went up" also goes up when duplicates interleave — so the honest
+// measure is still each source's own night count.
+//
+// A STRICT choice (#1642) still applies unconditionally, now per night: a night the
+// chosen selector did not cover keeps no rows at all, rather than being answered by
+// whoever did record it. `pickRowsOneSourcePerWindow` is where that holds.
 export interface SleepSessionRow {
   date: string;
   start: string;
@@ -753,79 +762,32 @@ function readSleepSessions(
   opts: { limit?: number; since?: string; through?: string }
 ): SleepSessionRow[] {
   const validWindow = " AND julianday(ended_at) > julianday(started_at)";
-  const sources = (
-    db
-      .prepare(
-        `SELECT DISTINCT source FROM metric_samples
-          WHERE profile_id = ? AND metric = 'sleep_min'${validWindow}`
-      )
-      .all(profileId) as { source: string | null }[]
-  ).map((r) => r.source);
-  const chosen = choiceFor(profileId, "sleep_min");
-  let sourceFilter = "";
-  let sourceParams: string[] = [];
-  const applyFilter = (selector: string) => {
-    const cond = sourceMatchSql(selector);
-    sourceFilter = ` AND ${cond.sql}`;
-    sourceParams = cond.params;
-  };
-  if (chosen?.strict) {
-    applyFilter(chosen.source);
-  } else if (sources.length > 1) {
-    const picked =
-      chosen != null &&
-      sources.some((s) => sourceMatchesSelector(chosen.source, s))
-        ? chosen.source
-        : null;
-    if (picked != null) applyFilter(picked);
-    else {
-      // The newest OVERNIGHT, falling back to the newest session of any length —
-      // both in ONE statement, so this stays the three-statement read the memo above
-      // getSleepSessions describes. `value >= ?` sorts overnights ahead of naps and
-      // `ended_at DESC` picks the newest inside whichever group survives, so a
-      // nap-only profile still elects somebody instead of nobody.
-      const newest = db
-        .prepare(
-          `SELECT source FROM metric_samples
-            WHERE profile_id = ? AND metric = 'sleep_min'
-              ${validWindow}
-            ORDER BY (value >= ?) DESC, ended_at DESC LIMIT 1`
-        )
-        .get(profileId, SLEEP_OVERNIGHT_MIN_MINUTES) as
-        { source: string | null } | undefined;
-      applyFilter(sourceKey(newest?.source));
-    }
-  }
   let cutoff = opts.since;
   if (cutoff == null) {
-    // Bound the read by recent wake dates before origin selection. Applying LIMIT
-    // to raw rows would let duplicate origins consume the cap and drop valid older
-    // nights; the final slice happens only after one origin remains per source/day.
-    const dateParams: (number | string)[] = [
-      profileId,
-      ...sourceParams,
-      opts.limit ?? 800,
-    ];
+    // Bound the read by recent wake dates before origin and source selection.
+    // Applying LIMIT to raw rows would let duplicate origins consume the cap and
+    // drop valid older nights; the final slice happens only after one origin and
+    // one source remain per night.
     const recentDates = db
       .prepare(
         `SELECT date FROM metric_samples
-          WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
+          WHERE profile_id = ? AND metric = 'sleep_min'
             ${validWindow}
           GROUP BY date ORDER BY date DESC LIMIT ?`
       )
-      .all(...dateParams) as { date: string }[];
+      .all(profileId, opts.limit ?? 800) as { date: string }[];
     if (recentDates.length === 0) return [];
     cutoff = recentDates[recentDates.length - 1].date;
   }
 
-  const rowParams: (number | string)[] = [profileId, ...sourceParams, cutoff];
+  const rowParams: (number | string)[] = [profileId, cutoff];
   const throughFilter = opts.through ? " AND date <= ?" : "";
   if (opts.through) rowParams.push(opts.through);
   const rows = db
     .prepare(
       `SELECT date, started_at AS start, ended_at AS end, source, origin, value
        FROM metric_samples
-        WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
+        WHERE profile_id = ? AND metric = 'sleep_min'
           ${validWindow}
           AND date >= ?
           ${throughFilter}
@@ -839,11 +801,18 @@ function readSleepSessions(
     origin: string | null;
     value: number;
   }[];
-  const picked = pickRowsOneOriginPerSourceDay(
-    rows,
-    (r) => r.date,
+  const picked = pickRowsOneSourcePerWindow(
+    pickRowsOneOriginPerSourceDay(
+      rows,
+      (r) => r.date,
+      (r) => r.source,
+      (r) => r.origin,
+      (r) => r.value
+    ),
+    resolutionFor(profileId, "sleep_min"),
+    (r) => r.start,
+    (r) => r.end,
     (r) => r.source,
-    (r) => r.origin,
     (r) => r.value
   );
   const limited =
@@ -861,13 +830,16 @@ function readSleepSessions(
 // the consistency strip, the typical wake time, the digest's Sleep section and the
 // digest's own send decision all start here.
 //
-// MEMOIZED ON BOTH LIFETIMES (#2283). This is a three-statement read — the DISTINCT
-// source scan, the recent-wake-day window, then every session row in it — followed by
-// per-source/day origin selection in JS, and ONE digest tick asks it TWICE for the
-// same profile: `digestSleepPendingTrace` asks "has last night landed?" to reach the
-// decision, and `gatherDigestSleep` asks again to build the section that decision
-// sends. `cache()` is identity in a tick (lib/request-cache.ts says so deliberately),
-// so the collapse that matters here is `tickCached`; the `cache()` beside it collapses
+// MEMOIZED ON BOTH LIFETIMES (#2283). This is a two-statement read — the
+// recent-wake-day window, then every session row in it — followed by per-source/day
+// origin selection and per-night source resolution, both in JS. The DISTINCT source
+// scan that used to open it went with the profile-wide election (#1851), and the memo
+// is worth no less without it: the two statements left are the expensive pair, and ONE
+// digest tick still asks for them TWICE for the same profile:
+// `digestSleepPendingTrace` asks "has last night landed?" to reach the decision, and
+// `gatherDigestSleep` asks again to build the section that decision sends.
+// `cache()` is identity in a tick (lib/request-cache.ts says so deliberately), so the
+// collapse that matters here is `tickCached`; the `cache()` beside it collapses
 // the Sleep page's own repeated reads (the SRI, the consistency strip and the wake-time
 // derivation each start from this list) into one per request.
 //
@@ -905,52 +877,22 @@ export function getSleepSessionsSince(
   return readSleepSessions(profileId, { since });
 }
 
-// Valid sleep windows on or after a calendar cutoff, de-duplicated across sources
-// with the SAME resolution used by the additive sleep_min chart. This is
-// deliberately separate from getSleepSessionsSince: SRI needs one continuous source
-// stream across its whole window, while date-keyed display history must not lose
-// older days when a profile changes wearables.
+// Valid sleep windows on or after a calendar cutoff, for the Sleep log's date-keyed
+// display history.
 //
-// The election is PER OVERLAPPING WINDOW, not per day (#2552). One wake-day can
-// legitimately carry sessions from two sources that are NOT the same session — a
-// wearable's overnight plus a hand-logged afternoon nap — and the day-grained
-// election dropped every row from the losing source, which for a manual nap (first
-// in SOURCE_PREFERENCE) meant the whole overnight vanished and the nap was then
-// classified as that night's main sleep. A duplicate account of one night still
-// collapses to a single source, because a duplicate overlaps.
+// IT IS NOW THE SAME READ as getSleepSessionsSince, and the duplicate SQL and
+// election this carried have gone (#1851). It existed because the two answered
+// different questions: display history resolved PER OVERLAPPING WINDOW (#2552) so a
+// hand-logged nap could not take a wearable's overnight down with it, while the SRI
+// reader elected one stream for the whole profile. The owner's per-night ruling made
+// that second rule the first one, so keeping two spellings of one election is how
+// they drift apart again. The name stays because the Sleep log's call site means
+// "the days", not "the stream".
 export function getDailySleepSessionsSince(
   profileId: number,
   since: string
 ): SleepSessionRow[] {
-  const rows = db
-    .prepare(
-      `SELECT date, started_at AS start, ended_at AS end, source, origin, value
-         FROM metric_samples
-        WHERE profile_id = ? AND metric = 'sleep_min' AND date >= ?
-          AND julianday(ended_at) > julianday(started_at)
-        ORDER BY ended_at DESC`
-    )
-    .all(profileId, since) as SelectedSleepSessionRow[];
-  return pickRowsOneSourcePerWindow(
-    pickRowsOneOriginPerSourceDay(
-      rows,
-      (row) => row.date,
-      (row) => row.source,
-      (row) => row.origin,
-      (row) => row.value
-    ),
-    resolutionFor(profileId, "sleep_min"),
-    (row) => row.start,
-    (row) => row.end,
-    (row) => row.source,
-    (row) => row.value
-  ).map(({ date, start, end, value, source }) => ({
-    date,
-    start,
-    end,
-    value,
-    source,
-  }));
+  return readSleepSessions(profileId, { since });
 }
 
 // Every valid sleep session whose stored wake-day is inside the selected calendar
@@ -1054,10 +996,14 @@ function getSleepArrivalsUncached(
   });
 }
 
-// Duration-only manual sleep entries written by the measurements quick-add. Their equal
-// start/end midnight timestamps are the stable natural key upsertManualSample
-// uses, so these (and only these) are safe for the Sleep log's inline editor to
-// update. Windowed/imported sessions remain read-only.
+// The profile's OWN manual sleep entries — the rows the Sleep log's inline editor
+// may update. Imported and synced sessions remain read-only.
+//
+// PROVENANCE IS THE TEST, not the natural key (#1851). This used to additionally
+// require the row's exact midnight start/end, which was the same question only while
+// every windowed row was somebody else's: the moment the measurements form could
+// state a bed/wake pair, a night the person typed themselves answered "Synced sleep
+// entries cannot be edited here." A window is not what makes a row untouchable.
 interface ManualSleepEditabilityRow {
   date: string;
   /** The manual sample's own row id — what a per-reading delete has to name (#2556). */
@@ -1075,20 +1021,14 @@ function getManualSleepEditability(
     .prepare(
       `SELECT date,
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND started_at = date || 'T00:00:00'
-                            AND ended_at = date || 'T00:00:00'
                        THEN value END) AS value,
               -- Safe as a MAX: the editable flag below only holds when the day
-              -- has EXACTLY ONE sample and that one is the manual duration-only
+              -- has EXACTLY ONE sample and that one is the profile's own manual
               -- row, so there is never a second id for this to pick between.
               MAX(CASE WHEN source = 'manual' AND origin IS NULL
-                            AND started_at = date || 'T00:00:00'
-                            AND ended_at = date || 'T00:00:00'
                        THEN id END) AS id,
               CASE WHEN COUNT(*) = 1
                          AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
-                                           AND started_at = date || 'T00:00:00'
-                                           AND ended_at = date || 'T00:00:00'
                                       THEN 1 ELSE 0 END) = 1
                    THEN 1 ELSE 0 END AS editable
          FROM metric_samples
@@ -1113,7 +1053,10 @@ export function getEditableManualSleepDurations(
 
 // Re-check the Sleep log's edit invariant at the write boundary. A missing day
 // may receive a duration-only manual row; an existing day is editable only when
-// its sole sleep sample is the exact natural key written by upsertManualSample.
+// its sole sleep sample is the profile's OWN manual row (#1851 widened that from
+// the exact midnight key — see above). `upsertManualSleep` keeps an existing window
+// when a duration-only correction lands on it, so editing the hours here does not
+// discard the clocks either, unless the new hours no longer fit inside them.
 // Reading this inside the caller's IMMEDIATE transaction closes the render→save
 // race with an integration sync and prevents a crafted action request from
 // layering manual sleep over imported or windowed data.

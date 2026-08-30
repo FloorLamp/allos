@@ -731,13 +731,16 @@ describe("actual atomic dashboard manifests", () => {
   // anything of its own — severities, notes, custom names and log order, 13 statements
   // — so every persona that renders it recovers exactly those. `household` is flat
   // because its acting profile is sick, and the well-day bar never rendered there.
+  // #1851 makes the sleep read per-night, which DELETES the profile-wide source
+  // election and the DISTINCT source scan that fed it — one statement back for every
+  // persona, household included, since every dashboard reaches a sleep session.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 228,
-    "marathon-runner": 227,
-    household: 270,
-    pregnant: 224,
-    "diabetic-cgm": 235,
-    biohacker: 241,
+    bodybuilder: 227,
+    "marathon-runner": 226,
+    household: 269,
+    pregnant: 223,
+    "diabetic-cgm": 234,
+    biohacker: 240,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
