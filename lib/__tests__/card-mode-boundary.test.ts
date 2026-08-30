@@ -214,6 +214,7 @@ export function scanCardModeScopes(
 
 /** Files under these roots are candidates; nothing else renders a card. */
 const CONSUMER_ROOTS = ["app", "components"];
+const CONSUMER_SOURCE_NEEDLES = [...FAMILY, "/ResponsiveTable", "/card-row"];
 
 /**
  * THE FLOOR THE DERIVED CONSUMER SET MUST CLEAR, asserted before any verdict is
@@ -367,10 +368,13 @@ function consumerSources(base: string = REPO): Map<string, string> {
     .split("\0")
     .filter((f) => /\.tsx?$/.test(f) && !f.includes("__tests__"));
   return new Map(
-    files.map((f) => [
-      f,
-      stripComments(fs.readFileSync(path.join(base, f), "utf8")),
-    ])
+    files.flatMap((f): [string, string][] => {
+      const source = fs.readFileSync(path.join(base, f), "utf8");
+      if (!CONSUMER_SOURCE_NEEDLES.some((needle) => source.includes(needle))) {
+        return [];
+      }
+      return [[f, stripComments(source)]];
+    })
   );
 }
 
@@ -736,12 +740,13 @@ describe("the consumer census over a corpus authored to break it (#3601, #3552)"
     // The prose file is the load-bearing one: it carries `sm:hidden` AND names two
     // family classes, so a census that counted its comment would report a
     // restatement in a file that renders no card.
-    expect(censusOf().rels).toEqual([
+    const census = censusOf();
+    expect(census.rels).toEqual([
       "app/(app)/by-card-dom/page.tsx",
       "components/ByCardRow.tsx",
       "components/ByFamilyClass.tsx",
     ]);
-    expect(censusOf().restatements).toEqual([]);
+    expect(census.restatements).toEqual([]);
   });
 
   it("sees a restatement planted in a consumer, at its line", () => {
