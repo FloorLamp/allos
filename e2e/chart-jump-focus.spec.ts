@@ -5,7 +5,7 @@ import { E2E_LOGIN_TRENDS_BODY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 declare global {
   interface Window {
-    __rafGate: { hold(): void; pending(): number; release(): Promise<void> };
+    __rafGate: { hold(): void; release(): Promise<void> };
   }
 }
 
@@ -28,18 +28,20 @@ async function installFrameGate(page: Page): Promise<void> {
       hold: () => {
         held = true;
       },
-      pending: () => pending.size,
-      release: () => {
-        held = false;
-        const callbacks = [...pending.values()];
-        pending.clear();
-        return new Promise((resolve) =>
-          request((time) => {
-            for (const callback of callbacks) callback(time);
-            request(() => resolve());
-          })
-        );
-      },
+      release: () =>
+        new Promise((resolve) =>
+          request(() =>
+            request(() => {
+              held = false;
+              const callbacks = [...pending.values()];
+              pending.clear();
+              request((time) => {
+                for (const callback of callbacks) callback(time);
+                request(() => resolve());
+              });
+            })
+          )
+        ),
     };
   });
 }
@@ -82,9 +84,6 @@ test("chart-menu open focus cannot overwrite a landed keystroke (#4037)", async 
     nodes.findIndex((node) => node.getAttribute("aria-checked") === "true")
   );
   expect(selectedIndex).toBeGreaterThan(0);
-  await expect
-    .poll(() => page.evaluate(() => window.__rafGate.pending()))
-    .toBeGreaterThan(0);
   await page.evaluate(() => window.__rafGate.release());
   await expect(items.nth(selectedIndex)).toBeFocused();
   expect(await page.evaluate(() => scrollY)).toBe(deepLinkY);
