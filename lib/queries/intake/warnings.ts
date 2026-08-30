@@ -129,7 +129,7 @@ export function getDietaryLimitWarnings(
   return stackUlWarnings(items, ageYears, sex).map((w) => ({
     ...w,
     conditionCaveat: ulConditionCaveat(w.key, conditions),
-    formulationNote: formulationUlNote(w),
+    formulationNote: formulationUlNote(w, undefined, ageYears),
   }));
 }
 
