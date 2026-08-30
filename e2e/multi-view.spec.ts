@@ -25,6 +25,11 @@ import {
   MULTI_OWNER_ACTIVITY_A,
   MULTI_OWNER_ACTIVITY_B,
   MULTI_SHARED_ACTIVITY,
+  E2E_LOGIN_TL_MULTI,
+  TL_EAST_PROFILE,
+  TL_WEST_PROFILE,
+  TL_EAST_ACTIVITY,
+  TL_WEST_ACTIVITY,
   MULTI_OWNER_VISIT,
   MULTI_SHARED_VISIT,
   E2E_LOGIN_MVMEDS,
@@ -742,43 +747,104 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
   });
 });
 
-// ── Multi-view Timeline with a divergent-timezone day boundary (issue #1329) ───
+// ── THE RECORD'S MERGED VIEW ACROSS THE DATE LINE (issue #1329, re-housed #3958) ──
+//
 // A dedicated member (E2E_LOGIN_TL_MULTI) granted two profiles ~25h apart (UTC+13 EAST
-// vs UTC−12 WEST), each with ONE activity dated on ITS OWN today. Single view is
-// unchanged (owner-only, no chips, no divergence chrome); multi view merges both,
-// bucketing each member's activity into THEIR local day — so the SAME instant lands in
-// two separate "Today" day-groups, each carrying an honest per-member today badge, and
-// the non-acting member's row wears a subject chip. Spec-OWNED fixtures (read-only
-// viewing + the per-session view-set, so nothing persistent to reset).
+// vs UTC−12 WEST), each with ONE activity dated on ITS OWN today — so their local
+// calendar days ALWAYS differ whatever instant the run starts at. That is the whole
+// point: a merge bucketing in one shared clock would put both on one day and look
+// right most of the time.
+//
+// TWO HALVES OF THE TIMELINE VERSION DID NOT COME ACROSS, each for its own reason:
+//
+//   • the BY-PERSON toggle. #3958 rules "No view switcher" outright — the page follows
+//     the acting profile, the sidebar is the one profile switcher, and the merged view
+//     survives only as the chip-less deep-linked `?view=everyone` (#1463). Deliberate.
+//     `byPersonTimelines` is still exported and now has no consumer.
+//
+//   • the DIVERGENT-DAY marks. `mergeMemberTimelines` still computes them and the
+//     record does not render them. That one is a GAP rather than a decision, recorded
+//     on #3958 rather than built here — so this asserts the merge it CAN see instead
+//     of pretending the marks went by design.
+//
+// Per-row write gating is e2e/history-everyone.spec.ts's. What is here is the thing
+// only THIS fixture can ask, because only it straddles the date line.
 
-// ── THE TIMELINE'S MULTI-VIEW TESTS RETIRED WITH THE ROUTE (#3958 phase 2) ──
-//
-// Two cases stood here, and neither has a subject on the record:
-//
-//   • the BY-PERSON toggle, which grouped a merged feed under per-member sections.
-//     #3958 rules "No view switcher" outright — the page follows the acting profile,
-//     the sidebar is the one profile switcher, and the merged household view survives
-//     only as the chip-less deep-linked `?view=everyone` (#1463). `byPersonTimelines`
-//     is still exported and now has no consumer. Deliberate, not dropped.
-//
-//   • the DIVERGENT-DAY marks across the date line. `mergeMemberTimelines` still
-//     computes them and the record does not render them — that one is a GAP rather
-//     than a decision, recorded as such on #3958 rather than built here.
-//
-// The record's merged view is covered by e2e/history-everyone.spec.ts: per-row
-// subject attribution, the ⋯ gated on the row's own profile, and a correction driven
-// on another member's row landing on that member.
+// Resolve the two timeline fixture profile ids (spec-owned, so a name lookup is stable).
+function timelineProfileIds(): { eastId: number; westId: number } {
+  const dbPath = workerDbPath();
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const idOf = (name: string): number =>
+      (
+        db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+          id: number;
+        }
+      ).id;
+    return { eastId: idOf(TL_EAST_PROFILE), westId: idOf(TL_WEST_PROFILE) };
+  } finally {
+    db.close();
+  }
+}
 
-// ── Tier-1b bespoke lists adopt multi-view (issue #1359) ──────────────────────
-// Two flat SUB-lists of otherwise-bespoke surfaces convert: the Visits "Past"
-// encounters list (/records/history/visits) and the Immunizations "All recorded
-// doses" list (/records/history/immunizations). The surrounding acting-only apparatus
-// (appointment booking; the age-derived schedule assessment) is untouched. Each list
-// chips non-acting rows + gates per-item writes on the row's profile. Representative
-// browser coverage over BOTH conversions; the DB/action tiers cover the readers/gates.
-// Spec-OWNED multi fixtures (E2E_LOGIN_MULTI's two profiles, each seeded one past visit
-// + one recorded dose — see e2e/seed-events.ts). Read-only viewing + the per-session
-// view-set, so no persistent write to reset.
+test.describe("the record's merged view across the date line (#1329)", () => {
+  test("single view shows one member and no chips; the merged view carries both, each naming its own subject", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { westId } = timelineProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TL_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      // Acting profile is EAST (lowest id / first accessible).
+      await expect(page.getByTestId("profile-identity-bar")).toContainText(
+        TL_EAST_PROFILE
+      );
+
+      // SINGLE VIEW: only EAST's activity, and no attribution at all — a subject chip
+      // on a page showing one subject would be noise.
+      await page.goto("/history");
+      const rows = page.getByTestId("history-row");
+      await expect(rows.filter({ hasText: TL_EAST_ACTIVITY })).toHaveCount(1);
+      await expect(rows.filter({ hasText: TL_WEST_ACTIVITY })).toHaveCount(0);
+      await expect(page.getByTestId("history-row-subject")).toHaveCount(0);
+
+      // MERGED: both members' activities, each still bucketed in its OWN local day —
+      // which is what the ~25h spread makes checkable. `?view=everyone` is a
+      // deep-linked mode, so entering the view-set is not enough on its own.
+      await page.goto("/history");
+      await openProfileSwitcher(page);
+      await settledClick(page, page.getByTestId(`view-toggle-${westId}`));
+      await expectInView(page, 2);
+      await page.goto("/history?view=everyone");
+
+      const eastRow = rows.filter({ hasText: TL_EAST_ACTIVITY }).first(); // first-ok: one seeded activity carries this fixture-owned title
+      const westRow = rows.filter({ hasText: TL_WEST_ACTIVITY }).first(); // first-ok: one seeded activity carries this fixture-owned title
+      await expect(eastRow).toBeVisible();
+      await expect(westRow).toBeVisible();
+
+      // EVERY row is attributed here, and each names its OWN subject — the record's
+      // rule, not the timeline's. `/timeline` left the acting member's row bare on the
+      // grounds that its subject was implied by the view strip; the record has no view
+      // strip and #534 gives every row its subject chip, so an unattributed row in a
+      // merged view would be the ambiguous one. Asserted on BOTH members with
+      // DIFFERENT expected names, which is what makes this "each names its own"
+      // rather than "some chip is present".
+      await expect(westRow.getByTestId("history-row-subject")).toHaveText(
+        TL_WEST_PROFILE
+      );
+      await expect(eastRow.getByTestId("history-row-subject")).toHaveText(
+        TL_EAST_PROFILE
+      );
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
 test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
   // Toggle the shared profile into the view via the profile menu's eye toggle.
   async function toggleSharedIntoView(
