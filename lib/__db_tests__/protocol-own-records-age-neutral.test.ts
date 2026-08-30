@@ -111,7 +111,7 @@ describe("nutrition WeeklyHabits protocol links (#3133)", () => {
 
     // The server component renders the habit row with the adopting protocol's
     // name (the untrack confirmation), age or no age.
-    const tree = treeText(WeeklyHabits({ profileId }));
+    const tree = treeText(WeeklyHabits({ profileId, rollup: [] }));
     expect(tree).toContain("Own habit protocol fixture");
   });
 });

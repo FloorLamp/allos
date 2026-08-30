@@ -196,7 +196,7 @@ export default function MobileNav({
   // length of its exit animation, and trapping focus inside a panel that is on its
   // way out would hold the keyboard hostage for 240ms. Deactivating on `open` is
   // also what RUNS the restore, so focus lands back on More as the drawer starts
-  // to leave rather than after it has gone. Same call ProfileIdentityBar makes.
+  // to leave rather than after it has gone.
   //
   // Escape still reaches a layer opened INSIDE or OVER the drawer first: the hook
   // yields to `[data-escape-layer="true"]` and to any nearer `[role="dialog"]`

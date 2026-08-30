@@ -259,6 +259,16 @@ export default function ActivityPartsList({
     setAddingEquipment(false);
     closeEquipmentEditor();
   };
+  // Index-keyed panels must close before the parent changes list order or length;
+  // otherwise the same key silently targets its new neighbour (#4185).
+  const movePart = (pi: number, dir: -1 | 1) => {
+    closePartFact();
+    onMovePart(pi, dir);
+  };
+  const removePart = (pi: number) => {
+    closePartFact();
+    onRemovePart(pi);
+  };
   // One RPE opt-in round-trip at a time (#3335). ONE flag for the list rather than one
   // per part, which is what the fact actually is: the effort column is PROFILE-wide,
   // and two parts cannot be mid-toggle on different answers.
@@ -761,7 +771,7 @@ export default function ActivityPartsList({
                             unchanged compact size from `sm` up. */}
                         <button
                           type="button"
-                          onClick={() => onMovePart(pi, -1)}
+                          onClick={() => movePart(pi, -1)}
                           disabled={pi === 0}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity up"
@@ -770,7 +780,7 @@ export default function ActivityPartsList({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onMovePart(pi, 1)}
+                          onClick={() => movePart(pi, 1)}
                           disabled={pi === parts.length - 1}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
                           aria-label="Move activity down"
@@ -779,7 +789,7 @@ export default function ActivityPartsList({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onRemovePart(pi)}
+                          onClick={() => removePart(pi)}
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
                           aria-label="Remove activity"
                         >

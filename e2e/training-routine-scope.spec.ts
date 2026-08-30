@@ -108,9 +108,12 @@ test("both targets are still fully present on their own pages (#2888)", async ({
   await page.goto("/nutrition");
   const habits = page.getByTestId("weekly-habits");
   await expect(habits).toBeVisible();
-  await expect(habits.getByTestId("habit-fatty_fish")).toContainText(
+  // ONE This-week list since #3987: the group's name is the ROW's, and the target and
+  // pace ride on it — which is the consolidation, asserted as one sentence.
+  await expect(habits.getByTestId("rollup-fatty_fish")).toContainText(
     FOOD_HABIT
   );
+  await expect(habits.getByTestId("habit-fatty_fish")).toBeVisible();
 
   await page.goto("/wellness");
   await expect(

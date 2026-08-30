@@ -9,12 +9,21 @@ test("an active situation gates its supplement without rendering situation contr
 
   await expect(page.getByTestId("situations-bar")).toHaveCount(0);
 
-  // The seed keeps Illness active, so its situational Zinc dose remains due even
-  // though this page no longer owns the situation vocabulary controls.
-  const zincDue = page
-    .locator("section")
-    .filter({ hasText: "Evening" })
-    .locator("div.card")
-    .filter({ hasText: "Zinc" });
-  await expect(zincDue).toHaveCount(1);
+  // The item is in the stack, because a situational item is one you keep.
+  await expect(
+    page
+      .getByTestId("supplement-stack")
+      .getByTestId("supplement-row")
+      .filter({ hasText: "Zinc" })
+  ).toHaveCount(1);
+
+  // AND ITS DUENESS IS STATED WHERE THE DAY IS (#3987). The seed keeps Illness
+  // active, so the situational Zinc dose is still OWED — which this page used to say
+  // by placing the row under an "Evening" heading and no longer says at all. The Day
+  // ledger's Evening due row is where that claim lives now; the gating is the point
+  // of this test, so it is asserted there rather than dropped with the heading.
+  await page.goto("/nutrition?tab=food");
+  const evening = page.getByTestId("ledger-group-evening");
+  await evening.locator('[data-testid^="ledger-due-group-"]').click();
+  await expect(evening).toContainText("Zinc");
 });

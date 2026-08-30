@@ -7,6 +7,7 @@ import {
   TAP_TARGET_MIN_RENDERED_PX,
 } from "@/lib/tap-floor-tokens";
 import { roundControlBoxExtraLines } from "./control-box-lines";
+import { settledClick } from "./helpers";
 
 // THE CONTROL BOX (`--control-box` in app/globals.css, SECTION: Touch tap
 // targets), MEASURED — owner ruling #3938; the family floor it replaces was
@@ -918,6 +919,13 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
       await expect(row).toBeVisible();
     }
 
+    // THE MINUS IS NOT DRAWN AT ZERO (#3987) — a permanently disabled control on the
+    // row people tap most is chrome that says nothing. It is still a stepper and still
+    // owes the floor, so the row is put at a non-zero count to bring it on screen, and
+    // restored below. Measuring only the "+" would quietly halve what this test covers.
+    await settledClick(page, page.getByTestId("log-nuts_seeds"));
+    await expect(page.getByTestId("undo-nuts_seeds")).toBeVisible();
+
     for (const testId of ["undo-nuts_seeds", "log-nuts_seeds"]) {
       const stepper = page.getByTestId(testId);
       await expect(stepper).toBeVisible();
@@ -973,6 +981,9 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
           "the overlay is not receiving the tap it exists to receive."
       ).toBe(true);
     }
+
+    // Leave the shared profile's day as it was found.
+    await settledClick(page, page.getByTestId("undo-nuts_seeds"));
   });
 
   test("no `.tap-target` on this page is too small for its own mechanism", async ({

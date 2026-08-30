@@ -66,8 +66,8 @@ export function getFailedExtractionDocumentCount(profileId: number): number {
 
 // The LIVE dose rows of ACTIVE items whose amount states a number the separator rule
 // refuses (`"2,5 g"` — 2.5 g or 25 g, and nothing in the row says which; `"10.000 IU"`
-// — ten, or ten thousand). #3153 stopped the write path storing new ones; rows written
-// before that fix are still there, and since a dose keeps no reading beside its text,
+// — ten, or ten thousand). #3153 stopped interactive writes; bulk imports preserve
+// ambiguous source text for review (#3321). Since a dose keeps no reading beside its text,
 // nothing was ever stored wrong — the amount simply reads as ABSENT now, and the
 // upper-limit and RDA totals skip it without saying so. This read is what makes the
 // skip visible.
@@ -99,19 +99,30 @@ export function getFailedExtractionDocumentCount(profileId: number): number {
 // That is deliberate — an unreadable amount is unusable for every consumer, not just
 // the UL, and retyping it is worth the same either way — but do not read the number as
 // "doses missing from a safety total". It is at most that many.
-export function getUnreadableDoseAmounts(
-  profileId: number
-): { itemId: number; kind: IntakeItemKind }[] {
-  const kindById = new Map<number, IntakeItemKind>();
+export function getUnreadableDoseAmounts(profileId: number): {
+  doseId: number;
+  itemId: number;
+  itemName: string;
+  kind: IntakeItemKind;
+  amount: string;
+}[] {
+  const itemById = new Map<number, { name: string; kind: IntakeItemKind }>();
   for (const item of getIntakeItems(profileId)) {
-    if (item.active) kindById.set(item.id, item.kind);
+    if (item.active)
+      itemById.set(item.id, { name: item.name, kind: item.kind });
   }
-  const out: { itemId: number; kind: IntakeItemKind }[] = [];
+  const out = [];
   for (const dose of getIntakeDoses(profileId)) {
-    const kind = kindById.get(dose.item_id);
-    if (!kind) continue;
+    const item = itemById.get(dose.item_id);
+    if (!item || dose.amount == null) continue;
     if (readDoseQuantity(dose.amount).kind !== "unreadable") continue;
-    out.push({ itemId: dose.item_id, kind });
+    out.push({
+      doseId: dose.id,
+      itemId: dose.item_id,
+      itemName: item.name,
+      kind: item.kind,
+      amount: dose.amount,
+    });
   }
   return out;
 }

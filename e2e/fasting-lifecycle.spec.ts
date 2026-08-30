@@ -115,12 +115,27 @@ function backdateValue(hoursAgo: number): string {
   return `${day}T${hhmm}`;
 }
 
+// THE IDLE CARD IS A FOLD (#3672, shipped by #3987): one "Start fast" affordance, with
+// the start control, "Started earlier?" and the history behind it. A RUNNING fast is
+// never folded, so this is a no-op there — which is what lets every interaction below
+// call it without first asking which state it is in. Idempotent: it opens a closed
+// fold and does nothing to an open one, so a second call cannot close it.
+async function openFastingFold(page: Page): Promise<void> {
+  const card = page.getByTestId("fasting-card");
+  if ((await card.count()) === 0) return;
+  const folded = await card.evaluate(
+    (el) => el.tagName === "DETAILS" && !(el as HTMLDetailsElement).open
+  );
+  if (folded) await hydratedClick(page, page.getByTestId("fasting-fold"));
+}
+
 // Open the backdating disclosure and put a wall time in it. Both steps are PURE CLIENT
 // state — the disclosure posts nothing and the field is a controlled input whose value
 // only travels when the start/end control is tapped — so this uses hydratedClick and a
 // plain fill rather than the settled* helpers, which wait for a Server Action POST that
 // correctly never comes.
 async function setBackdate(page: Page, hoursAgo: number): Promise<void> {
+  await openFastingFold(page);
   await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
   const field = page.getByTestId("fasting-backdate-input");
   await expect(field).toBeVisible();
@@ -193,15 +208,18 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await page.goto("/nutrition");
     const control = page.getByTestId("fasting-control");
     await expect(control).toHaveText("Start fast");
-    await expect(page.getByTestId("fasting-state")).toHaveText(
-      "No fast running."
-    );
+    // THE COLLAPSED FOLD IS THE IDLE STATEMENT (#3672): the sentence "No fast
+    // running." was a whole line spent saying nothing happened, and the affordance
+    // now says it.
+    await expect(page.getByTestId("fasting-state")).toHaveCount(0);
+    await expect(page.getByTestId("fasting-fold")).toHaveText("Start fast");
 
     // BACKDATED by 16 h, through the control the stale suggest's copy points at. The
     // e2e clock is FROZEN, so starting and ending at "now" would be a zero-length fast
     // — which the core refuses at the stored second, and which is the honest answer
     // rather than a test-only concession.
     await setBackdate(page, 16);
+    await openFastingFold(page);
     await settledClick(page, control);
     // The label now names the END, and carries the elapsed time it will record.
     await expect(control).toContainText("End fast · 16 h");
@@ -212,10 +230,13 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // consequence; these two are the property itself.
     await expect(page.getByTestId("fasting-backdate-input")).toHaveCount(0);
     await dismissToast(page, "Fast started.");
+    await openFastingFold(page);
     await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
     await expect(page.getByTestId("fasting-backdate-input")).toHaveValue("");
+    await openFastingFold(page);
     await hydratedClick(page, page.getByTestId("fasting-backdate-toggle"));
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
     // And the completed fast is in the history, with the day-attribution rule stated.
@@ -258,6 +279,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // The fast is still RUNNING — detection suggests, the tap writes.
     await expect(page.getByTestId("fasting-control")).toContainText("End fast");
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-discard"));
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
     // Discarded means never-happened: no history row was left behind.
@@ -280,6 +302,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
 
     // Do the thing the sentence says: set the time you actually stopped, then end.
     await setBackdate(page, 3);
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();
@@ -332,6 +355,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     seedFast(agoInstant(FAST_MAX_HOURS + 96), null);
     await page.goto("/nutrition");
     await expect(page.getByTestId("fasting-stale-suggest")).toBeVisible();
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();
@@ -369,6 +393,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await page.reload();
     await expect(page.getByTestId("fasting-stale-suggest")).toBeVisible();
     await expect(page.getByTestId("fasting-discard")).toBeVisible();
+    await openFastingFold(page);
     await expect(page.getByTestId("fasting-backdate-toggle")).toBeVisible();
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
   });
@@ -385,6 +410,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // survive: the button is real, it is enabled, and its promise is now false.
     seedFast(agoInstant(2), null);
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     // The CORE refuses, and the surface says which thing it could not do rather than
     // confirming a write that never landed.
@@ -431,6 +457,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     }
     seedFast(agoInstant(0.5), null);
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-discard"));
     await expect(
       page
@@ -469,6 +496,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // would swallow the recorded fast entirely. Backdating can never manufacture an
     // overlap, and this is the assertion that says so.
     await setBackdate(page, 8);
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(
       page
@@ -502,6 +530,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     seedFast(agoInstant(6), agoInstant(3));
     await page.goto("/nutrition");
     await setBackdate(page, 2);
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toContainText(
       "End fast · 2 h"
@@ -544,6 +573,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     // refused, which is what "the user cannot record any real fast starting inside the
     // fortnight" means from the outside.
     await setBackdate(page, 120);
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(
       page
@@ -615,6 +645,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
 
     // AND THE DAMAGE IS UNDONE. The identical backdated start, refused above, now lands.
     await setBackdate(page, 120);
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toContainText("End fast");
   });
@@ -684,6 +715,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(page.getByTestId("fasting-edit-toggle")).toHaveCount(0);
 
     // And it WORKS — the exempt end path, reached from the rendered control.
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();
@@ -732,6 +764,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(page.getByTestId("fasting-backdate-toggle")).toHaveCount(0);
     await expect(page.getByTestId("fasting-discard")).toHaveCount(0);
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(
       page.getByTestId("toast").filter({ hasText: "Fast ended." })
@@ -773,6 +806,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     await expect(page.getByTestId("fasting-control")).toHaveText("End fast");
     await expect(page.getByTestId("fasting-history-row")).toHaveCount(0);
 
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();
@@ -804,6 +838,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
     // End it as an adult, so the Undo affordance is the one the app itself offered.
+    await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     const ended = page.getByTestId("toast").filter({ hasText: "Fast ended." });
     await expect(ended).toBeVisible();

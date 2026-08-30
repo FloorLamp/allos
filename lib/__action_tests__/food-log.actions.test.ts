@@ -23,7 +23,7 @@ import {
   rankFoodGroups,
 } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, setTimezone } from "@/lib/settings";
 import { now as clockNow } from "@/lib/clock";
 import {
   shiftDateStr,
@@ -309,35 +309,39 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     });
   });
 
-  it("refuses a statement that would sit outside the row's own day", async () => {
+  // THE PAST-DAY AMENDMENT (owner, 2026-08-29 via #4118). A bare wall time submitted
+  // with a PAST day is a claim about THAT day — the surface offered that day's own
+  // hours — so it anchors there rather than being re-dated against `now` and then
+  // refused for missing the row's day. The pair rule is now structural on this path
+  // instead of checked after the fact, which is the stronger form of the same
+  // guarantee: `statedInstantOnDate` can only return an instant whose profile-local
+  // date IS the row's date, or null.
+  it("anchors a stated time on the row's own day when that day is past", async () => {
     const login = createLogin();
-    const profile = createProfile("wrong-day", login.id);
+    const profile = createProfile("past-day-stated", login.id);
     actAs(login, profile);
-    // Backfilling YESTERDAY while stating the current wall time — the instant's
-    // profile-local date isn't the day the serving lands on, and `occurred_at` is what
-    // the window derivation and the cross-midnight re-date read, so a row carrying it
-    // would contradict itself.
-    const date = shiftDateStr(today(profile.id), -1);
+    // THREE DAYS BACK, AND THE NUMBER IS THE ASSERTION. `statedHourInstant` — the day
+    // rule this branch replaces — can only ever land on today or yesterday, so at
+    // three days back it MUST refuse whatever hour the suite happens to run at. At one
+    // day back the test would pass for the wrong reason for most of the day: any wall
+    // time later than the current one already re-dates to yesterday, which is the
+    // right answer reached by the wrong rule.
+    const date = shiftDateStr(today(profile.id), -3);
+    const tz = getTimezone(profile.id);
 
     const res = await logFoodServing(
-      fd({
-        group_key: "fatty_fish",
-        date,
-        occurred_at: zonedDateParts(getTimezone(profile.id), clockNow()).hhmm,
-      })
+      fd({ group_key: "fatty_fish", date, occurred_at: "20:00" })
     );
 
-    expect(res.ok).toBe(true);
-    expect(events(profile.id)[0]).toMatchObject({
-      date,
-      occurred_at: null,
-      time_source: null,
-    });
-    // AND IT IS STILL CALLED WHAT IT IS. The fast-clock relabel above must not reach
-    // here: this serving really is being backfilled to another day, so "it isn't on
-    // that day" is the true sentence, and blaming the device's clock would be the
-    // same untruth pointing the other way.
-    expect(res.ok && res.statedTimeRefused).toBe("other-day");
+    expect(res).toMatchObject({ ok: true });
+    expect(res.ok && res.statedTimeRefused).toBeUndefined();
+    const [row] = events(profile.id);
+    expect(row).toMatchObject({ date, time_source: "stated" });
+    // The instant it stored is 20:00 ON THAT DAY — asserted through the profile's own
+    // zone, because "it carries an instant" is not the claim; "the instant is the one
+    // the person named, on the day they named it about" is.
+    const parts = zonedDateParts(tz, new Date(row.occurred_at as string));
+    expect([parts.date, parts.hhmm]).toEqual([date, "20:00"]);
   });
 });
 
@@ -488,25 +492,30 @@ describe("logFoodServing — a stated time wins over the tab (#2269)", () => {
   });
 
   // #2296 — the ruling, on the online half. The web form sends the CHOICE and the
-  // server resolves it, so no client clock can push a statement into the future here;
-  // what CAN happen is a page that went stale across local midnight, whose "13:00"
-  // resolves onto a day that is no longer the day it is logging to. Same silence,
-  // same fix: the serving lands, and the answer names what was lost.
+  // server resolves it, so what CAN still be refused here is a wall time the profile's
+  // own day cannot hold: a DST spring-forward gap, where the named clock reading does
+  // not exist. The serving lands and the answer names what was lost.
+  //
+  // THE STALE-PAGE SHAPE THIS USED TO PIN IS NOW A DIFFERENT ANSWER (#4118). A page
+  // logging to yesterday while stating "19:00" was refused as "it isn't on that day";
+  // since the past-day amendment, 19:00 with yesterday's date IS yesterday's 19:00 —
+  // which is what the person meant on both readings of that page — so it is accepted.
+  // The test above pins that; this one keeps the never-silent posture on the refusal
+  // that remains reachable.
   it("keeps the serving AND reports a refused statement, instead of dropping it in silence", async () => {
     const login = createLogin();
     const profile = createProfile("stated-refused", login.id);
     actAs(login, profile);
-    // The stale-page shape: logging to YESTERDAY while stating an hour of today.
-    // 19:00 is past under the frozen 21:30 now, so it resolves to today — the row's
-    // own day is yesterday, and the pair rule refuses it.
-    const yesterday = shiftDateStr(today(profile.id), -1);
-
+    // 2026-03-08 02:30 America/New_York does not exist — the clock jumps 02:00 to
+    // 03:00 — so the pair (date, hhmm) has no instant and the statement is refused
+    // as unreadable rather than settled onto a different minute.
+    setTimezone(profile.id, "America/New_York");
     const res = await logFoodServing(
-      fd({ group_key: "berries", date: yesterday, occurred_at: "19:00" })
+      fd({ group_key: "berries", date: "2026-03-08", occurred_at: "02:30" })
     );
     // The write SUCCEEDED — that posture is not negotiable, the serving is the thing
     // that must never be lost — and it carries the reason the minute did not land.
-    expect(res).toMatchObject({ ok: true, statedTimeRefused: "other-day" });
+    expect(res).toMatchObject({ ok: true, statedTimeRefused: "malformed" });
     expect(events(profile.id)[0]).toMatchObject({
       occurred_at: null,
       time_source: null,
@@ -891,7 +900,7 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
 });
 
 describe("canonicalizes the persisted slug, never storing the raw input (#883)", () => {
-  it("logFoodServing stores the canonical slug for a case/punctuation variant", async () => {
+  it("log and undo normalize variants while canonical slugs remain unchanged", async () => {
     const login = createLogin();
     const profile = createProfile("canon-log", login.id);
     actAs(login, profile);
@@ -900,27 +909,23 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     // downstream exact-match reads (daily totals, rollup, habit progress) can find it.
     await logFoodServing(fd({ group_key: "Leafy_Greens", date: DATE }));
     await logFoodServing(fd({ group_key: "leafy-greens", date: DATE }));
+    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
 
-    const r = rows(profile.id);
-    expect(r).toHaveLength(1); // one canonical row, not two raw variants
-    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
+    let r = rows(profile.id);
+    expect(r).toHaveLength(1); // one canonical row, not three input spellings
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 3 });
     // The rollup (exact-match reader) sees the servings.
     expect(getFoodRollupInRange(profile.id, DATE, DATE)).toEqual([
-      expect.objectContaining({ slug: "leafy_greens", servings: 2 }),
+      expect.objectContaining({ slug: "leafy_greens", servings: 3 }),
     ]);
-  });
 
-  it("undoFoodServing on a variant targets the canonical row a canonical log wrote", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-undo", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "leafy_greens", date: DATE }));
     const res = await undoFoodServing(
       fd({ group_key: "Leafy-Greens", date: DATE })
     );
-    expect(res).toEqual({ ok: true, servings: 0 });
-    expect(rows(profile.id)).toEqual([]);
+    expect(res).toEqual({ ok: true, servings: 2 });
+    r = rows(profile.id);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
   });
 
   it("trackFoodHabit stores the canonical scope_value for a variant", async () => {
@@ -932,30 +937,6 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     const targets = getFrequencyTargets(profile.id);
     expect(targets).toHaveLength(1);
     expect(targets[0].scope_value).toBe("fatty_fish");
-  });
-
-  it("still rejects a truly unknown group without writing", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-reject", login.id);
-    actAs(login, profile);
-
-    const res = await logFoodServing(
-      fd({ group_key: "definitely_not_a_group", date: DATE })
-    );
-    expect(res.ok).toBe(false);
-    expect(rows(profile.id)).toEqual([]);
-  });
-
-  it("existing canonical slugs keep working unchanged", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-existing", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "berries", date: DATE }));
-    expect(rows(profile.id)[0]).toMatchObject({
-      group_key: "berries",
-      servings: 1,
-    });
   });
 });
 

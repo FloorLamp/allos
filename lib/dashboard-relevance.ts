@@ -15,6 +15,7 @@ import {
 import { groupUpcoming, type UpcomingItem } from "./upcoming";
 import { dashboardAttentionCandidateId } from "./dashboard-attention-identity";
 import type { AppRoute } from "./hrefs";
+import { nowReasonScore } from "./dashboard-rank-precedence";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -280,16 +281,7 @@ function compareOrdinal(a: string, b: string): number {
 }
 
 function nowScore(candidate: DashboardCandidate): number | null {
-  const reasons = candidate.rankReasons;
-  if (reasons.safety) return 5_000;
-  if (candidate.kind === "action") {
-    if (candidate.obligation === "may") return reasons.changed ? 2_000 : null;
-    const obligation = candidate.obligation === "must" ? 200 : 100;
-    if (reasons.owed) return 4_000 + obligation;
-    if (reasons.windowOpen) return 2_000 + obligation;
-  }
-  if (reasons.changed) return 3_000;
-  return null;
+  return nowReasonScore(candidate);
 }
 
 function compareSource(a: DashboardCandidate, b: DashboardCandidate): number {

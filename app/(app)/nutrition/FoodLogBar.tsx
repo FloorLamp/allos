@@ -3,12 +3,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  IconAdjustmentsHorizontal,
-  IconPlus,
-  IconMinus,
-  IconChevronDown,
-} from "@tabler/icons-react";
+import { IconPlus, IconMinus, IconChevronDown } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
 import { FOOD_QUICK_COUNT, proteinSplitIndex } from "@/lib/food-rank";
 import {
@@ -42,11 +37,6 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // the Food tab and the dashboard can never name a write differently.
 import { namesPhrase } from "@/lib/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import LoggedEventRow, {
-  LOGGED_EVENT_LIST,
-  LOGGED_EVENT_ROW,
-  LOGGED_EVENT_TRAILING,
-} from "@/components/LoggedEventRow";
 import {
   foodServingCoordinate,
   foodServingFeedback,
@@ -74,10 +64,6 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
-import OverflowMenu, {
-  MENU_ITEM,
-  MENU_ITEM_DANGER,
-} from "@/components/OverflowMenu";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
@@ -101,6 +87,10 @@ import {
   type FoodProjectionState,
 } from "./FoodSuggestionsLayout";
 import Disclosure from "@/components/Disclosure";
+import SegmentedControl from "@/components/SegmentedControl";
+import DayLedger from "./DayLedger";
+import type { LedgerGroup } from "@/lib/day-ledger";
+import type { DisplayFormatPrefs } from "@/lib/settings";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
 // coordinate. Named off the action's result so the bar and the write core can never
@@ -113,15 +103,20 @@ type FoodNoticeScope = ProfileToastScope;
 // bar (components/DoseStatusControl): optimistic local counts, a Server Action per tap,
 // undo = decrement. The `groups` prop arrives pre-ordered by ONE ranking — the profile's
 // staples first (frequency + recency + slot proximity, #591/#950/#2019) — and the quick
-// rows are simply its head (#2225). Tier (encourage → neutral → limit) labels each row
-// and sections the "More food groups" overflow; it never moves a group into or out of
-// the fast path.
+// rows are simply its head (#2225). Tier (encourage → neutral → limit) sections the
+// "More food groups" overflow; it never moves a group into or out of the fast path.
+//
+// DENSE ROWS, FOR EVERYONE (#3987, owner rejected per-profile sizing). A row is an icon,
+// a name and a stepper on ONE line. The per-row serving sentence and the eat-more/eat-less
+// tags are gone — Telegram dropped the guidance tags first and the web follows, and the
+// phone disclosure that existed only to unfold the serving sentence went with it. The
+// tier vocabulary survives exactly where it still does work: as the overflow's section
+// headings.
 //
 // The row order is FROZEN for the life of this mount: the server re-ranks by
 // recency-decayed frequency on every read, so the server re-render each tap's action
 // triggers would otherwise reorder the list under the user's finger — jarring right
-// where they just tapped. Tapping a row's label expands the (normally truncated) serving detail so it's
-// readable on a narrow phone without leaving the page.
+// where they just tapped.
 
 const TIER_ORDER: FoodGroupTier[] = ["encourage", "neutral", "limit"];
 const TIER_LABEL: Record<FoodGroupTier, string> = {
@@ -129,68 +124,25 @@ const TIER_LABEL: Record<FoodGroupTier, string> = {
   neutral: "Balance",
   limit: "Eat less",
 };
-const TIER_BADGE_CLASS: Record<FoodGroupTier, string> = {
-  encourage:
-    "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-  neutral: "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-300",
-  limit: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-};
 
-// What a food row SAYS about its group — the name, its tier badge, and the serving
-// line — in ONE component (#2305). It used to be written twice, once inside the phone
-// disclosure button and once inside the `md:block` static twin, and only the phone copy
-// carried testids: at a desktop viewport `getByTestId("food-tier-…").toHaveText(…)` was
-// therefore passing against a `md:hidden` element (`toHaveText` does not require
-// visibility) while the badge people actually see was covered by nothing. The two copies
-// had already drifted — the desktop name span had lost `truncate`, so a long name wrapped
-// there and pushed the row taller instead of clipping — which is exactly the failure mode
-// a second, untested copy produces.
+// WHAT A FOOD ROW SAYS ABOUT ITS GROUP: its name, on one line (#3987).
 //
-// The wrappers still differ, because they genuinely do: on a phone the label is a
-// disclosure BUTTON that expands the truncated serving line, above `md` it is static text.
-// Only the wrapper is per-breakpoint; the content is this.
-//
-// Both mounts are in the DOM at every width, so the testids follow the ProfileIdentityBar
-// convention: the same ids declared once here, with the phone mount suffixed `-mobile`.
-// The UNSUFFIXED ids belong to the mount that is visible at desktop widths, which is where
-// the default Playwright project runs — so an assertion on `food-tier-<slug>` now names
-// something a person can see.
-function FoodRowLabel({
-  group,
-  expanded,
-  mobile,
-}: {
-  group: FoodGroup;
-  // Whether the serving line shows in full. Always true above `md`: the static twin has
-  // no disclosure to collapse.
-  expanded: boolean;
-  mobile?: boolean;
-}) {
-  const tid = (base: string) => (mobile ? `${base}-mobile` : base);
+// It used to say three things through two breakpoint mounts — the name, a tier badge
+// and the serving sentence, written once for the phone's disclosure button and once
+// for a `md:block` static twin. The owner dropped the guidance tags (Telegram dropped
+// them first) and the serving sentence with them, which leaves nothing for a
+// disclosure to unfold, which leaves nothing for the second mount to be. One name, one
+// mount, one testid, at every width — and #2305's defect (an assertion passing against
+// the `md:hidden` copy while the visible one was covered by nothing) is unreachable
+// because there is no longer a copy to pass against.
+function FoodRowLabel({ group }: { group: FoodGroup }) {
   return (
-    <>
-      <span className="flex min-w-0 items-center gap-2">
-        <span
-          data-testid={tid(`food-name-${group.slug}`)}
-          className="truncate font-medium text-slate-800 dark:text-slate-100"
-        >
-          {group.name}
-        </span>
-        <span
-          data-testid={tid(`food-tier-${group.slug}`)}
-          className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none ${TIER_BADGE_CLASS[group.tier]}`}
-        >
-          {TIER_LABEL[group.tier]}
-        </span>
-      </span>
-      <span
-        className={`block text-xs text-slate-500 dark:text-slate-400 ${
-          expanded ? "" : "truncate"
-        }`}
-      >
-        {group.serving}
-      </span>
-    </>
+    <span
+      data-testid={`food-name-${group.slug}`}
+      className="block truncate font-medium text-slate-800 dark:text-slate-100"
+    >
+      {group.name}
+    </span>
   );
 }
 
@@ -232,6 +184,7 @@ export default function FoodLogBar({
   nutrientSummaryByDate = [],
   proteinQuickAdd,
   ledgerDoor,
+  dayLedger,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -277,6 +230,20 @@ export default function FoodLogBar({
   // The door to the food ledger (#3671), mounted in the day header beside the log
   // it opens rather than in a row of its own above the fasting card.
   ledgerDoor?: ReactNode;
+  // THE DAY, ALREADY BUILT (#3987). Server-gathered per bounded date and handed down
+  // whole rather than re-derived here: the grouping, the composed collapse and the
+  // ordering are `lib/day-ledger.ts`'s, asserted at the unit tier. Optional, because
+  // the quick-log sheet mounts this bar to WRITE and has no day to review.
+  dayLedger?: {
+    groupsByDate: Record<string, LedgerGroup[]>;
+    // The days a dose write would be accepted on — `doseLogDays`, resolved server-side
+    // off DOSE_LOG_DATE_WINDOW_DAYS, so this surface can never offer a tap the core
+    // would refuse and never withhold one it would accept.
+    doseWritableDates: string[];
+    prefs: DisplayFormatPrefs;
+    keepApart: { bucket: string; content: ReactNode }[];
+    dayContext: string | null;
+  };
 }) {
   const {
     activeDate,
@@ -307,14 +274,24 @@ export default function FoodLogBar({
   // "when did this happen?" control (#2236/#3273) — the hand-rolled Now/Earlier… chip
   // group that used to sit here was this file's SECOND time vocabulary, three hundred
   // lines from the correction modal's WhenControl. `statedAt: null` is the default and
-  // honest silence: nobody said, so nothing is written. STICKY across taps on purpose —
+  // honest silence: nobody said, so nothing is written. STICKY ACROSS TAPS on purpose —
   // a meal is several servings and re-answering "when" for each one would be the kind of
-  // friction a one-tap bar exists to avoid — and out of force whenever the selected DAY
-  // is not today, because a statement made about today cannot survive onto a backfill.
+  // friction a one-tap bar exists to avoid.
+  //
+  // STICKY FOR THE BATCH, AND THE BATCH IS A DAY (#4118's amendment). The statement used
+  // to be discarded outright whenever the selected day was not today; a past day now
+  // takes one, because "8pm on Tuesday" is a perfectly honest thing to say about a meal
+  // you are reconstructing — what is dishonest is fabricating an instant nobody named,
+  // which the NULL default already refuses. Switching days CLEARS it rather than
+  // re-anchoring: a time chosen for Tuesday is a claim about Tuesday, and carrying it to
+  // Wednesday would restate it about a day the person never looked at.
   const [eatingWhen, setEatingWhen] = useState<WhenValue>({
     date: today,
     statedAt: null,
   });
+  // The fold's own state, so switching days can close it along with the statement it
+  // was showing.
+  const [whenOpen, setWhenOpen] = useState(false);
   // WHICH SURFACE THIS BAR IS ON (#3087). The same component renders on the Food
   // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
   // them apart, so the mounting declares itself and this stamps every post with it.
@@ -323,8 +300,6 @@ export default function FoodLogBar({
   // Optimistic daily totals and meal-slot counts live in the parent date context:
   // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
-  // Slugs whose serving detail is expanded (tap-to-read on mobile). Purely local.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   // The serving being corrected, plus its in-flight draft. Null = the modal is closed.
   // `when` is the day + eating-time PAIR the shared control owns (#2227/#2236);
   // `mealTouched` is decision 4's flag — Meal follows the chosen hour until the user
@@ -342,8 +317,6 @@ export default function FoodLogBar({
   // one row the user named is the only one that dims.
   const [removingId, setRemovingId] = useState<number | null>(null);
   const removalUiGeneration = useRef(0);
-  // Which serving's ⋯ menu is open (#1488 row-action convention). Ids, not indexes.
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const toast = useToast();
   const dismissToast = useDismissToast();
   const claimToastKey = useClaimToastKey();
@@ -1204,19 +1177,28 @@ export default function FoodLogBar({
     });
   }
 
-  // An eating-time statement is a TODAY-only affordance. "Now" is meaningless on a
-  // backfill, and the whole point of the NULL default is that a log with nothing to state
-  // records no eating time rather than a confident wrong one — which is exactly what a
-  // seven-day-old serving has. So the chips are hidden and the statement is not written
-  // while an older day is selected; it is still visible (and still pressed) on returning
-  // to today, so nothing is silently in force.
+  // Whether the selected day is TODAY — which decides the fold's LABEL and its copy,
+  // not whether a statement may be made at all. "Now" is meaningless on a backfill, so
+  // a past day is asked "Set time?" and its bare taps stay untimed; today is asked
+  // "Happened earlier?" and its bare taps mean now.
   const statingTime = activeDate === today;
+  // A statement BELONGS TO THE DAY IT WAS MADE ABOUT, and that is enforced by the value
+  // itself rather than by resetting state when the day moves: the pair the control owns
+  // carries its own `date`, so a statement made about Tuesday is simply not in force on
+  // Wednesday. Nothing is silently in force either — the fold's summary prints the time
+  // whenever one is, so switching back to Tuesday shows what Tuesday still says.
+  const whenForDay: WhenValue =
+    eatingWhen.date === activeDate
+      ? eatingWhen
+      : { date: activeDate, statedAt: null };
   // The statement in force, as the two things every consumer of it needs: the INSTANT an
   // offline capture carries (resolved here because a replay has no server to ask, and
   // validated server-side before it lands), and the profile-local wall time the online
   // post states. One value behind both, so the queued instant and the posted wall time
   // cannot describe different minutes.
-  const statedAt = statingTime ? eatingWhen.statedAt : null;
+  // The statement is anchored on the SELECTED day by the control's own pair rule, so a
+  // stale value from a day that has since been switched away from cannot be in force.
+  const statedAt = whenForDay.statedAt;
   const statedTime = statedAt ? statedHhmm(statedAt, tz) : "";
 
   // The meal window the statement in force FILES under (#2269) — the section a "+" will
@@ -1883,15 +1865,6 @@ export default function FoodLogBar({
     });
   }
 
-  function toggleDetail(slug: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(slug)) next.delete(slug);
-      else next.add(slug);
-      return next;
-    });
-  }
-
   // Live total of servings logged on the selected day, summed from the same optimistic count
   // state the rows use so the header ticks up on the same tap (no refresh lag).
   const dayTotal = useMemo(
@@ -1932,7 +1905,6 @@ export default function FoodLogBar({
     <ul className="space-y-1.5">
       {list.map((g) => {
         const mealCount = slotCounts[g.slug] ?? 0;
-        const isExpanded = expanded.has(g.slug);
         const renderedCoordinate = foodServingCoordinate(
           receiptProfileId,
           activeDate,
@@ -1955,51 +1927,27 @@ export default function FoodLogBar({
           >
             <FoodGroupIcon
               slug={g.slug}
-              className={`mt-1 h-5 w-5 shrink-0 self-start ${FOOD_GROUP_TIER_TINT[g.tier]}`}
+              className={`h-5 w-5 shrink-0 ${FOOD_GROUP_TIER_TINT[g.tier]}`}
             />
-            <button
-              type="button"
-              data-testid={`detail-${g.slug}`}
-              onClick={() => toggleDetail(g.slug)}
-              aria-expanded={isExpanded}
-              aria-label={`${isExpanded ? "Hide" : "Show"} serving detail for ${g.name}`}
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left md:hidden"
-            >
-              <span className="min-w-0 flex-1">
-                <FoodRowLabel group={g} expanded={isExpanded} mobile />
-              </span>
-              <IconChevronDown
-                className={`h-3.5 w-3.5 shrink-0 text-slate-300 transition-transform dark:text-slate-600 ${
-                  isExpanded ? "rotate-180" : ""
-                }`}
-                stroke={2}
-              />
-            </button>
-            <div
-              data-testid={`detail-static-${g.slug}`}
-              className="hidden min-w-0 flex-1 md:block"
-            >
-              {/* Above `md` there is no disclosure, so the serving line is always
-                  shown in full — the same content, told to stay expanded. */}
-              <FoodRowLabel group={g} expanded />
+            <div className="min-w-0 flex-1">
+              <FoodRowLabel group={g} />
             </div>
-            {/* 32px RENDERED, NOT 28 (#3486's reach). `.tap-target` is #3514's
-                second registered mechanism and it adds a FIXED 12px — `inset:
-                -6px` on every side — so it reaches the 44px floor only from 32px
-                up. At `h-7` this stepper was 28 + 12 = 40 effective while wearing
-                the class that says the floor is met, which is worse than a plainly
-                undersized control: nothing was ever going to look at it again.
-                lib/tap-floor-tokens.ts holds the arithmetic for the whole class. */}
-            <button
-              type="button"
-              data-testid={`undo-${g.slug}`}
-              aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
-              disabled={mealCount <= 0}
-              onClick={() => void bump(g, -1)}
-              className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-ink-800"
-            >
-              <IconMinus className="h-4 w-4" stroke={2} />
-            </button>
+            {/* NO MINUS AT ZERO (#3987). A permanently disabled control is chrome
+                that says nothing, on the row people tap most; there is nothing to
+                remove until something is logged. The 32px box is kept for the ones
+                that do render — `.tap-target` adds a fixed 12px, so the 44px floor
+                (#3486/#3514) is reached only from 32px up. */}
+            {mealCount > 0 && (
+              <button
+                type="button"
+                data-testid={`undo-${g.slug}`}
+                aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
+                onClick={() => void bump(g, -1)}
+                className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 dark:hover:bg-ink-800"
+              >
+                <IconMinus className="h-4 w-4" stroke={2} />
+              </button>
+            )}
             <span
               data-testid={`count-${g.slug}`}
               className={`w-5 text-center text-sm font-semibold tabular-nums ${
@@ -2044,17 +1992,6 @@ export default function FoodLogBar({
       })}
     </ul>
   );
-  const totalForSlot = (meal: FoodSlot) =>
-    Object.values(slotCountsByDate[activeDate]?.[meal] ?? {}).reduce(
-      (sum, n) => sum + n,
-      0
-    );
-  const groupsForSlot = (meal: FoodSlot) => {
-    const mealCounts = slotCountsByDate[activeDate]?.[meal] ?? {};
-    return orderedGroupsBySlot[meal].filter(
-      (group) => (mealCounts[group.slug] ?? 0) > 0
-    );
-  };
 
   return (
     <div>
@@ -2073,166 +2010,62 @@ export default function FoodLogBar({
         }}
       />
       <div data-testid="food-log-bar" className="space-y-5">
-        <section data-testid="food-meal-summary" className="sm:space-y-2">
-          <div className="hidden items-center justify-between gap-3 sm:flex">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              Meals
-            </h3>
-            <button
-              type="button"
-              data-testid="food-preferences-open-desktop"
-              onClick={() => setPreferencesOpen(true)}
-              className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              <IconAdjustmentsHorizontal className="h-3.5 w-3.5" />
-              Preferences
-            </button>
-          </div>
-          <div
-            data-testid="food-meal-slots"
-            role="group"
-            aria-label="Meals for the selected day; choose where to log"
-            className="grid min-w-0 grid-cols-3 gap-2"
+        {/* THE DAY, STATED ONCE (#3987). The Meals cards and the LOGGED-TODAY list
+            below them were two full renderings of the same servings, adjacent; both
+            retire into the ledger, which also absorbs the Supplements tab's daily
+            schedule so one physical morning is one list. The per-meal totals the
+            cards carried are the ledger group headings; the slot SELECTION they
+            doubled as is the control on the add list below, where the choice is
+            actually made. */}
+        {unassignedTotal > 0 && (
+          <p
+            data-testid="food-unassigned-total"
+            className="text-xs text-slate-500 dark:text-slate-400"
           >
-            {FOOD_SLOTS.map((meal) => {
-              const total = totalForSlot(meal);
-              const mealCounts = slotCountsByDate[activeDate]?.[meal] ?? {};
-              const groupsInMeal = groupsForSlot(meal);
-              return (
-                <button
-                  key={meal}
-                  type="button"
-                  data-testid={`food-slot-${meal.toLowerCase()}`}
-                  aria-pressed={activeSlot === meal}
-                  onClick={() => setActiveSlot(meal)}
-                  className={`flex min-h-12 min-w-0 flex-col items-stretch justify-center rounded-lg border p-2 text-left transition sm:h-full sm:justify-start sm:p-2.5 ${
-                    activeSlot === meal
-                      ? "border-brand-400 bg-surface ring-1 ring-brand-200 dark:border-brand-600 dark:ring-brand-900"
-                      : "border-(--border) bg-(--ghost) hover:bg-(--ghost-hover)"
-                  }`}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                      {meal}
-                    </span>
-                    <span
-                      data-testid={`food-slot-total-${meal.toLowerCase()}`}
-                      className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                    >
-                      {total}
-                    </span>
-                  </span>
-                  {groupsInMeal.length > 0 ? (
-                    <span className="mt-2 hidden flex-wrap gap-1 sm:flex">
-                      {groupsInMeal.map((group) => (
-                        <span
-                          key={group.slug}
-                          data-testid={`food-meal-item-${meal.toLowerCase()}-${group.slug}`}
-                          className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-200"
-                        >
-                          {group.name}
-                          {(mealCounts[group.slug] ?? 0) > 1 &&
-                            ` ×${mealCounts[group.slug]}`}
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    <span className="mt-2 hidden text-xs text-slate-500 sm:block dark:text-slate-400">
-                      Nothing logged
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {unassignedTotal > 0 && (
-            <p
-              data-testid="food-unassigned-total"
-              className="mt-2 text-xs text-slate-500 dark:text-slate-400"
-            >
-              {unassignedTotal} older{" "}
-              {unassignedTotal === 1 ? "serving has" : "servings have"} no meal
-              assignment.
-            </p>
-          )}
-        </section>
-        {loggedEvents.length > 0 && (
-          <section data-testid="food-logged-list">
-            <h3 className="mb-2 section-label">
-              Logged {activeDay.label.toLowerCase()}
-            </h3>
-            <ul className={LOGGED_EVENT_LIST}>
-              {loggedEvents.map((event) => (
-                <li
-                  key={event.id}
-                  data-testid={`food-logged-${event.id}`}
-                  data-slot={event.mealSlot}
-                  data-group={event.groupKey}
-                  aria-busy={removingId === event.id || undefined}
-                  className={`${LOGGED_EVENT_ROW}${
-                    removingId === event.id ? " opacity-50" : ""
-                  }`}
-                >
-                  <LoggedEventRow
-                    icon={
-                      <FoodGroupIcon
-                        slug={event.groupKey}
-                        className="h-4 w-4 shrink-0 text-slate-400"
-                      />
-                    }
-                  >
-                    {event.name}
-                  </LoggedEventRow>
-                  <span className={LOGGED_EVENT_TRAILING}>
-                    {event.mealSlot} · {event.eatenAt ?? event.loggedTime}
-                  </span>
-                  <OverflowMenu
-                    itemName={
-                      // The name says which time it names: "logged at" over an
-                      // EATING time was a wrong claim (#2227).
-                      event.eatenAt
-                        ? `the ${event.name} serving eaten at ${event.eatenAt}`
-                        : `the ${event.name} serving logged at ${event.loggedTime}`
-                    }
-                    open={openMenuId === event.id}
-                    onOpenChange={(next) =>
-                      setOpenMenuId(next ? event.id : null)
-                    }
-                  >
-                    {({ close }) => (
-                      <>
-                        <button
-                          type="button"
-                          className={MENU_ITEM}
-                          data-testid={`food-logged-correct-${event.id}`}
-                          onClick={() => {
-                            close();
-                            openCorrection(event);
-                          }}
-                        >
-                          Correct this serving
-                        </button>
-                        <button
-                          type="button"
-                          className={MENU_ITEM_DANGER}
-                          data-testid={`food-logged-remove-${event.id}`}
-                          onClick={() => {
-                            close();
-                            void removeServing(event);
-                          }}
-                        >
-                          Remove this serving
-                        </button>
-                      </>
-                    )}
-                  </OverflowMenu>
-                </li>
-              ))}
-            </ul>
-          </section>
+            {unassignedTotal} older{" "}
+            {unassignedTotal === 1 ? "serving has" : "servings have"} no meal
+            assignment.
+          </p>
+        )}
+        {dayLedger && (
+          <DayLedger
+            date={activeDate}
+            groups={dayLedger.groupsByDate[activeDate] ?? []}
+            doseWritable={dayLedger.doseWritableDates.includes(activeDate)}
+            isToday={activeDate === today}
+            prefs={dayLedger.prefs}
+            keepApart={activeDate === today ? dayLedger.keepApart : []}
+            dayContext={activeDate === today ? dayLedger.dayContext : null}
+            onCorrectServing={(eventId) => {
+              const event = loggedEvents.find((e) => e.id === eventId);
+              if (event) openCorrection(event);
+            }}
+            onRemoveServing={(eventId) => {
+              const event = loggedEvents.find((e) => e.id === eventId);
+              if (event) void removeServing(event);
+            }}
+            removingServingId={removingId}
+          />
         )}
         <section data-testid="food-quick-log">
-          <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
+          {/* WHERE THE NEXT TAP LANDS. This was the Meals cards' second job — they
+              were a totals display AND the slot picker — and only the picker half
+              belongs with the add list. The totals are the ledger's group headings
+              above; this is the choice, next to the rows that act on it. */}
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="section-label">Add to {activeSlot}</h3>
+            <SegmentedControl
+              options={FOOD_SLOTS.map((meal) => ({
+                value: meal,
+                label: meal,
+                testId: `food-slot-${meal.toLowerCase()}`,
+              }))}
+              value={activeSlot}
+              onChange={setActiveSlot}
+              ariaLabel="Meal to add to"
+              testId="food-meal-slots"
+            />
+          </div>
           {/* The regularity shortcut (#2380). Present only when the ledger says this
               window has a habit AND at least two of it are still unlogged today — one
               group is already one tap on the row below, so the offer would cost more to
@@ -2269,29 +2102,51 @@ export default function FoodLogBar({
               </span>
             </button>
           )}
-          {statingTime && (
-            <div
-              data-testid="food-eating-time"
-              className="mb-2.5 flex flex-wrap items-center gap-1.5"
+          {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
+              The control used to stand open above the rows on every visit; it is a
+              question most taps never answer, so it collapses behind one affordance
+              and the bare tap keeps its meaning.
+
+              THE PAST-DAY AMENDMENT (owner, 2026-08-29 via #4118). The vocabulary is
+              the SAME control on every offered day; only the label moves, because the
+              question genuinely differs. On TODAY it is "Happened earlier?" — the tap
+              means now, the fold is for a meal you are logging late. On a SELECTED PAST
+              DAY a bare tap writes day + meal slot with NO instant (`occurred_at` NULL,
+              which the ledger's untimed grammar already renders) because there is no
+              honest "now" to fabricate, so the fold reads "Set time?". A time set there
+              is STICKY for the batch — set 8pm once, tap several groups, all land at
+              8pm — and clearing it returns to untimed slot taps. The day is FIXED to the
+              selected one either way, so the pair rule holds by construction and the
+              hour offer is that day's own. */}
+          <Disclosure
+            data-testid="food-eating-time"
+            open={whenOpen}
+            onToggle={(e) => setWhenOpen(e.currentTarget.open)}
+            className="mb-2.5"
+          >
+            <summary
+              data-testid="food-when-summary"
+              className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
             >
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Eaten
-              </span>
-              {/* ONE VOCABULARY PER SURFACE (#3273). This was a hand-rolled
-                  Now / Earlier… chip group; the correction modal three hundred lines
-                  below already asked the same question through WhenControl. The day is
-                  FIXED to today — the statement is a today-only affordance, since "now"
-                  is meaningless on a backfill and a seven-day-old serving has nothing
-                  honest to state — so the control renders the day as text and offers
-                  the day's hours, plus its own one-tap "Now" that fills an ABSOLUTE
-                  local time you can see and adjust. */}
+              <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+              <span>{statingTime ? "Happened earlier?" : "Set time?"}</span>
+              {statedTime && (
+                <span
+                  data-testid="food-when-set"
+                  className="font-semibold text-slate-700 tabular-nums dark:text-slate-200"
+                >
+                  {statedTime}
+                </span>
+              )}
+            </summary>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <WhenControl
                 mode="state"
                 grain="hour"
-                value={eatingWhen}
+                value={whenForDay}
                 onChange={setEatingWhen}
-                minDate={today}
-                maxDate={today}
+                minDate={activeDate}
+                maxDate={activeDate}
                 timeLabel="When the servings you add were eaten"
                 testId="food-when"
               />
@@ -2311,10 +2166,12 @@ export default function FoodLogBar({
                           : "";
                       })()
                     }.`
-                  : "Servings you add are recorded with no eating time until you say one."}
+                  : statingTime
+                    ? "Servings you add are recorded with no eating time until you say one."
+                    : `Servings you add land in ${activeSlot} with no time until you set one.`}
               </span>
             </div>
-          )}
+          </Disclosure>
           {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
               section after it. It does the same job as the rows above it —
               reach a food-group row — so it wears the same card idiom and sits
@@ -2354,7 +2211,11 @@ export default function FoodLogBar({
               <Disclosure data-testid="food-more-groups">
                 <summary
                   data-testid="food-more-groups-summary"
-                  className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
+                  // `min-h-12` (48px), NOT `min-h-14`: the rows this control extends
+                  // are one dense line now (#3987) and it has to be the same height as
+                  // them, which mobile-ui-polish measures as a RELATIONSHIP. It still
+                  // clears the 44px tap floor on its own.
+                  className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
                 >
                   <span>More food groups ({moreGroups.length})</span>
                   <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />

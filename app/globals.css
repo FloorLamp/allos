@@ -428,6 +428,8 @@
 @media (width < 40rem) {
   .card,
   .card-quiet {
+    --card-gutter-left: var(--page-gutter-left);
+    --card-gutter-right: var(--page-gutter-right);
     margin-inline: calc(-1 * var(--page-bleed-left))
       calc(-1 * var(--page-bleed-right));
     /* `max-w-full` resolves against the CONTAINER, so on its own it clips the
@@ -464,10 +466,11 @@
   }
   /* THE SAME LAYER, ONE LEVEL IN: #3466 stepped these DOWN as a second gutter
      inside the card's first. The first is back since #3920 — the card re-spends the
-     page gutter inside its full-bleed fill — so a sub-panel that stepped its own
-     `px` would be that second layer again, and it stays zeroed.
-     The tiers step VERTICALLY only (`max-sm:py-*!`) and the horizontal half is
-     zeroed here — that split is forced, not chosen. An `!important` declaration in
+     page gutter inside its full-bleed fill — so an UNFILLED sub-panel that stepped
+     its own `px` would be that second layer again, and it stays zeroed. A painted
+     one cancels and re-spends that gutter in the rule below (#3932).
+     The tiers step VERTICALLY (`max-sm:py-*!`) and the default horizontal half is
+     zeroed here. An `!important` declaration in
      the `utilities` layer is never beaten by an unlayered one (for important
      declarations the layer order REVERSES and unlayered ranks last), so a
      `padding-inline: 0 !important` here would lose to `@apply max-sm:p-2.5!` and
@@ -479,6 +482,17 @@
     padding-inline: 0;
     border-inline-width: 0;
     border-radius: 0;
+  }
+  /* A PAINTED sub-panel keeps its grouping tint (#3932), so it repeats its
+     card's cancel-and-re-spend one level in. An unprefixed `bg-*` is the base
+     fill; variants such as `hover:bg-*` do not claim a standing painted edge. */
+  :is(.subpanel-inset, .subpanel-inset-sm, .subpanel-inset-xs):is(
+    [class^="bg-"],
+    [class*=" bg-"]
+  ) {
+    margin-inline: calc(-1 * var(--card-gutter-left))
+      calc(-1 * var(--card-gutter-right));
+    padding-inline: var(--card-gutter-left) var(--card-gutter-right);
   }
   /* A stacked row's own `p-3` (#1616) is that layer again. `logged-event-rows`
      had zeroed it by hand for its five consumers because their host card drew the

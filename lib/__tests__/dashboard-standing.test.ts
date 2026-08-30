@@ -428,14 +428,14 @@ describe("a capped Standing family's tail", () => {
 describe("Standing's ranked bands", () => {
   const claimed = (
     candidateId: string,
-    reason: "owed" | "changed",
+    reason: "owed" | "windowOpen" | "changed",
     sourceOrder: number
   ) =>
     reading(candidateId, sourceOrder, {
       rankReasons: {
         safety: false,
         owed: reason === "owed",
-        windowOpen: false,
+        windowOpen: reason === "windowOpen",
         changed: reason === "changed",
       },
       ...(reason === "changed"
@@ -543,6 +543,11 @@ describe("Standing's ranked bands", () => {
     [
       "an on-pace weekly target",
       reading("target.weekly-progress:8", 901),
+      "rest",
+    ],
+    [
+      "an open window without a Standing claim (#3245)",
+      claimed("activity.steps:window-open", "windowOpen", 12),
       "rest",
     ],
     [

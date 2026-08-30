@@ -29,6 +29,7 @@ import {
   getActivityDuplicateClusters,
   getBodyMetricConflicts,
   getUnitMislabelReviews,
+  getUnreadableDoseAmounts,
   getQuietStreamRows,
 } from "@/lib/queries";
 
@@ -134,6 +135,7 @@ export default async function DataPage(
         activityClusters={activityClusters}
         bodyMetricPairs={bodyMetricPairs}
         unitMislabels={unitMislabels}
+        unreadableDoseAmounts={getUnreadableDoseAmounts(profile.id)}
         // Bulk corrections (#1603): the "Fix a run of data" panel's source runs.
         correctionSources={listCorrectionSources(profile.id)}
         initialCorrectionField={isCorrectionFieldId(rawFix) ? rawFix : null}
