@@ -232,6 +232,11 @@ describe("GET /api/documents/held — the gate", () => {
   });
 
   it("404s an unmapped identity with the upload's typed refusal", async () => {
+    const before = (
+      db.prepare("SELECT COUNT(*) AS n FROM portal_identities").get() as {
+        n: number;
+      }
+    ).n;
     const res = await GET(
       req(writerToken, `portal=${portalSlug}&patient=NOBODY%2C%20HERE`)
     );
@@ -239,15 +244,6 @@ describe("GET /api/documents/held — the gate", () => {
     const body = await res.json();
     // One case for a client to handle, worded identically on both endpoints.
     expect(body.error).toBe("unmapped-identity");
-  });
-
-  it("records NO pending identity for a refused read", async () => {
-    const before = (
-      db.prepare("SELECT COUNT(*) AS n FROM portal_identities").get() as {
-        n: number;
-      }
-    ).n;
-    await GET(req(writerToken, `portal=${portalSlug}&patient=GHOST%2C%20TWO`));
     const after = (
       db.prepare("SELECT COUNT(*) AS n FROM portal_identities").get() as {
         n: number;
@@ -281,16 +277,23 @@ describe("GET /api/documents/held — the three states", () => {
     // DELETED: the tombstone, which is what stops diff-and-send from resurrecting it.
     expect(body.deleted).toContain(DELETED_HASH);
     expect(body.held).not.toContain(DELETED_HASH);
-  });
-
-  it("keeps held and deleted disjoint", async () => {
-    const body = await (
-      await GET(req(writerToken, `profile=${heldProfile}`))
-    ).json();
     const overlap = (body.held as string[]).filter((h) =>
       (body.deleted as string[]).includes(h)
     );
     expect(overlap).toEqual([]);
+
+    // The inventory is profile-scoped and carries hashes only.
+    expect(body.held).not.toContain(OTHER_PROFILE_HASH);
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("deleted-labs.pdf");
+    expect(serialized).not.toContain("stored.pdf");
+    expect(Object.keys(body).sort()).toEqual([
+      "covered",
+      "deleted",
+      "held",
+      "ok",
+      "profile",
+    ]);
   });
 
   it("answers the same inventory through the acquirer's identity form", async () => {
@@ -304,30 +307,6 @@ describe("GET /api/documents/held — the three states", () => {
     expect(body.profile).toBe(heldProfile);
     expect(body.held).toContain(STORED_HASH);
     expect(body.deleted).toContain(DELETED_HASH);
-  });
-
-  it("never answers beyond the identity's own profile", async () => {
-    const body = await (
-      await GET(req(writerToken, `profile=${heldProfile}`))
-    ).json();
-    expect(body.held).not.toContain(OTHER_PROFILE_HASH);
-  });
-
-  it("discloses hashes ONLY — no filenames reach an automated client", async () => {
-    const body = await (
-      await GET(req(writerToken, `profile=${heldProfile}`))
-    ).json();
-    const serialized = JSON.stringify(body);
-    // The names of documents a person deleted are shown to PEOPLE, in Data → Review.
-    expect(serialized).not.toContain("deleted-labs.pdf");
-    expect(serialized).not.toContain("stored.pdf");
-    expect(Object.keys(body).sort()).toEqual([
-      "covered",
-      "deleted",
-      "held",
-      "ok",
-      "profile",
-    ]);
   });
 
   // ── The third list (#1828) ────────────────────────────────────────────────
@@ -345,6 +324,11 @@ describe("GET /api/documents/held — the three states", () => {
     expect(body.covered).toContain(hash);
     expect(body.held).not.toContain(hash);
     expect(body.deleted).not.toContain(hash);
+    const held = body.held as string[];
+    const deleted = body.deleted as string[];
+    const covered = body.covered as string[];
+    expect(covered.filter((h) => held.includes(h))).toEqual([]);
+    expect(covered.filter((h) => deleted.includes(h))).toEqual([]);
   });
 
   it("omits a hash whose records nothing holds any more", async () => {
@@ -358,17 +342,6 @@ describe("GET /api/documents/held — the three states", () => {
       await GET(req(writerToken, `profile=${heldProfile}`))
     ).json();
     expect(body.covered).not.toContain(hash);
-  });
-
-  it("keeps all three lists disjoint", async () => {
-    const body = await (
-      await GET(req(writerToken, `profile=${heldProfile}`))
-    ).json();
-    const held = body.held as string[];
-    const deleted = body.deleted as string[];
-    const covered = body.covered as string[];
-    expect(covered.filter((h) => held.includes(h))).toEqual([]);
-    expect(covered.filter((h) => deleted.includes(h))).toEqual([]);
   });
 
   it("never answers another profile's coverage", async () => {

@@ -760,18 +760,15 @@ export function gatherHistoryLog(
   // DAY row holding that day's worst severity. So the row is date-only and sinks below
   // the day's timed ones, which is the standing rule and not a symptom special case.
   //
-  // THE DAY BOUND IS PASSED EXPLICITLY (#4082). `getSymptomDaysInRange` bounds with a
-  // post-read `.slice()` on DAYS at a default of 250, so a window longer than eight
-  // months silently returns only the newest 250 days with nothing saying so. This
-  // page's window is the reader's, so the bound is derived from it: at most `limit`
-  // rows can be emitted and every day carries at least one, so `limit` days is a bound
-  // that cannot cut anything this render would have shown.
+  // Ask for one more DAY than the row bound: every day carries at least one row, so
+  // reaching that lookahead proves `hasMore` without reading the rest of the window.
+  // The day bound itself stays in the shared reader's SQL (#4082).
   if (wants(opts, "symptom")) {
     const days = getSymptomDaysInRange(
       profileId,
       since === ISO_FLOOR ? undefined : since,
       until,
-      limit
+      limit + 1
     );
     // THE PHOTOS FILTER'S FIRST LIVE PREDICATE (#3283/#3958). Every phase-1 composer
     // writes `media: 0`, so the chip could never earn its place; a symptom-day carries
