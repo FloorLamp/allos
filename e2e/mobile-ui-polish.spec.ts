@@ -112,11 +112,18 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     const dueRow = page.locator('[data-testid^="ledger-due-group-"]').first(); // first-ok: the pair is read from ONE row (see comment) — order-agnostic
     if ((await dueRow.count()) > 0) {
       await dueRow.click();
-      const take = page.locator('[data-testid^="ledger-take-"]').first(); // first-ok: same expanded row
-      const skip = page.locator('[data-testid^="ledger-skip-"]').first(); // first-ok: same expanded row
-      await expectPhoneTapTargets(page, "ledger dose verbs", [take, skip], {
-        disjoint: true,
-      });
+      // Scope BOTH circles to the SAME control: a page-wide first-match on each
+      // testid can pair circles from two different rows, whose boxes bear no spatial
+      // relation (the CI failure mode this scoping replaces).
+      const control = page
+        .locator('[data-testid="dose-status"][data-variant="circle"]')
+        .first(); // first-ok: one control; both its circles are read from it
+      await expectPhoneTapTargets(
+        page,
+        "ledger dose verbs",
+        [control.getByTestId("dose-take"), control.getByTestId("dose-skip")],
+        { disjoint: true }
+      );
     }
     await page.goto("/nutrition?tab=supplements");
 

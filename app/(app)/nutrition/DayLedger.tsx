@@ -14,6 +14,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import Button from "@/components/Button";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -82,6 +83,19 @@ export interface DayLedgerProps {
    * the same bound `doseLogDays` draws, never a second opinion about it.
    */
   doseWritable: boolean;
+  /**
+   * Whether the rendered day IS today, which decides WHICH write a single dose row
+   * offers — not whether it offers one.
+   *
+   * TODAY gets the shared tri-state (`DoseStatusControl`): taken, deliberately
+   * skipped, or CLEAR, each flipping back on a second press. That third state is the
+   * one a dated action cannot reach — `resolveDayDoses` resolves, it does not
+   * un-resolve — and losing it would mean a mis-tapped dose could not be taken back
+   * from the surface that took it. A PAST day inside the window keeps the dated path,
+   * which is exactly the seam the quick-log sheet already draws between `markTaken`
+   * for today and `resolveDayDoses` for a day behind it.
+   */
+  isToday: boolean;
   prefs: DisplayFormatPrefs;
   /**
    * Keep-apart guidance for the buckets that still owe doses, ALREADY RENDERED.
@@ -103,6 +117,7 @@ export default function DayLedger({
   date,
   groups,
   doseWritable,
+  isToday,
   prefs,
   keepApart,
   dayContext,
@@ -305,22 +320,31 @@ export default function DayLedger({
             `--control-reach` extends the hit region 6px per side, so anything under
             12px lets the two own the same point — and a mis-tap between taken and
             skipped is a real correctness cost (#3938). */}
-        <span className="flex shrink-0 items-center gap-3">
-          <Button
-            data-testid={`ledger-take-${dose.doseId}`}
-            disabled={single.blocked(`${dose.doseId}->taken`)}
-            onClick={() => resolveOne(dose.doseId, "taken")}
-          >
-            Take
-          </Button>
-          <Button
-            data-testid={`ledger-skip-${dose.doseId}`}
-            disabled={single.blocked(`${dose.doseId}->skipped`)}
-            onClick={() => resolveOne(dose.doseId, "skipped")}
-          >
-            Skip
-          </Button>
-        </span>
+        {isToday ? (
+          <DoseStatusControl
+            doseId={dose.doseId}
+            taken={false}
+            skipped={false}
+            variant="circle"
+          />
+        ) : (
+          <span className="flex shrink-0 items-center gap-3">
+            <Button
+              data-testid={`ledger-take-${dose.doseId}`}
+              disabled={single.blocked(`${dose.doseId}->taken`)}
+              onClick={() => resolveOne(dose.doseId, "taken")}
+            >
+              Take
+            </Button>
+            <Button
+              data-testid={`ledger-skip-${dose.doseId}`}
+              disabled={single.blocked(`${dose.doseId}->skipped`)}
+              onClick={() => resolveOne(dose.doseId, "skipped")}
+            >
+              Skip
+            </Button>
+          </span>
+        )}
       </li>
     );
   }
@@ -420,6 +444,19 @@ export default function DayLedger({
           <span className={LOGGED_EVENT_TRAILING}>
             {historyClock(row.hhmm, row.clockKind, prefs)}
           </span>
+          {/* THE WAY BACK (#232's tri-state, kept). A resolved dose is a statement
+              somebody made with one tap, and taking it back has to be one tap too —
+              the schedule this ledger replaces gave every one of today's rows this
+              control, and losing it would make a mis-tap permanent on the surface
+              that made it. Today only: the tri-state's CLEAR has no dated core. */}
+          {isToday && (
+            <DoseStatusControl
+              doseId={row.doseId}
+              taken={row.status === "taken"}
+              skipped={row.status === "skipped"}
+              variant="circle"
+            />
+          )}
         </li>
       );
     }
