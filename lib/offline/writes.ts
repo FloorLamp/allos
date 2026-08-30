@@ -67,6 +67,7 @@ import {
   type FoodPayload,
   type MobilityPayload,
   type PracticePayload,
+  type StoolPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm / skip ───────────────────────────────────────────────────────
@@ -557,7 +558,8 @@ export function logBristolStool(
   type: unknown,
   // The observation's profile-local wall clock, "HH:MM". Omitted → read from the
   // clock seam, which is what a one-tap log does: the moment IS now.
-  at?: string | null
+  at?: string | null,
+  instant: Date = clockNow()
 ): boolean {
   if (!isRealIsoDate(date)) return false;
   const bristolType = parseBristolType(type);
@@ -581,7 +583,6 @@ export function logBristolStool(
   // zone in the modern era is a whole-minute offset, so the seconds are the same
   // number on any wall clock.
   const stated = normalizeClockTime(at ?? null);
-  const instant = clockNow();
   const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
   const seconds = stated
     ? "00"
@@ -1072,6 +1073,15 @@ export function applyIntent(
         factors: p.factors,
         note: p.note,
       });
+    } else if (intent.flow === "stool") {
+      const p = intent.payload as StoolPayload;
+      ok = logBristolStool(
+        profileId,
+        intent.date,
+        p?.type,
+        typeof p?.at === "string" ? p.at : null,
+        new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
+      );
     } else if (intent.flow === "set") {
       // The offline-logged workout replays through the shared activity core; its
       // typed outcome keeps the refusal's reason (#1596, the dose-flow pattern).
