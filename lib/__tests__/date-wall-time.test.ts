@@ -178,6 +178,16 @@ describe("localDayMinutes / isDstTransitionDay", () => {
     expect(isDstTransitionDay("America/New_York", "2026-03-09")).toBe(false);
   });
 
+  it.each([
+    ["Pacific/Apia", "2011-12-29", "2011-12-30"],
+    ["Pacific/Kiritimati", "1994-12-30", "1994-12-31"],
+  ])("measures the real day before %s deleted a date", (tz, real, deleted) => {
+    expect(localDayMinutes(tz, real)).toBe(1440);
+    expect(isDstTransitionDay(tz, real)).toBe(false);
+    expect(localDayMinutes(tz, deleted)).toBe(0);
+    expect(isDstTransitionDay(tz, deleted)).toBe(true);
+  });
+
   it("reports the ordinary day for unparseable input rather than a transition", () => {
     // A caller keying an EXCLUSION on this must drop nothing on a garbage date.
     expect(localDayMinutes("UTC", "not-a-date")).toBe(1440);
