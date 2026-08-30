@@ -11,11 +11,15 @@ import {
 // and tested here; the component only wires them to usePathname().
 
 describe("dockSlots", () => {
-  it("is Home · Training · Trends · More for an ordinary profile", () => {
+  // #4102, owner 2026-08-29: SEARCH took Trends' slot. A narrow supersession of
+  // #2651's set — the count, the puck, the no-badge rule and More-as-disclosure
+  // all stand, and only this occupant changed. Pinned as the whole list, so a
+  // second slot changing hands alongside it cannot ride along unnoticed.
+  it("is Home · Training · Search · More for an ordinary profile", () => {
     expect(dockSlots().map((s) => s.id)).toEqual([
       "home",
       "training",
-      "trends",
+      "search",
       "more",
     ]);
   });
@@ -34,7 +38,7 @@ describe("dockSlots", () => {
     expect(dockSlots(false).map((s) => s.id)).toEqual([
       "home",
       "history",
-      "trends",
+      "search",
       "more",
     ]);
     expect(dockSlots(false)).toHaveLength(DOCK_SLOT_COUNT);
@@ -51,10 +55,17 @@ describe("dockSlots", () => {
     });
   });
 
-  it("gives every slot but More a destination, and More none", () => {
+  // TWO slots act instead of going somewhere since #4102 — Search opens the
+  // full-screen search surface, More opens the drawer — and `href: null` is how
+  // the registry says so. Enumerated as a SET rather than as "not more", because
+  // the interesting failure is a third slot quietly losing its destination.
+  it("gives a destination to every slot except the two that open something", () => {
+    const withoutHref = dockSlots()
+      .filter((s) => s.href === null)
+      .map((s) => s.id);
+    expect(withoutHref).toEqual(["search", "more"]);
     for (const slot of dockSlots()) {
-      if (slot.id === "more") expect(slot.href).toBeNull();
-      else expect(slot.href).not.toBeNull();
+      if (slot.href !== null) expect(slot.href.startsWith("/")).toBe(true);
     }
   });
 
@@ -77,7 +88,14 @@ describe("activeDockSlotId", () => {
     expect(activeDockSlotId(slots, "/training/log/2026-08-13")).toBe(
       "training"
     );
-    expect(activeDockSlotId(slots, "/trends")).toBe("trends");
+    expect(activeDockSlotId(slots, "/training")).toBe("training");
+  });
+
+  // Trends kept its ROUTE when it lost its slot — it lives in the drawer now — so
+  // /trends must light nothing rather than light something else. This is the case
+  // the supersession could most easily get wrong.
+  it("lights NOTHING on the route whose slot Search took", () => {
+    expect(activeDockSlotId(slots, "/trends")).toBeNull();
   });
 
   it("follows the sidebar's registry-parent map", () => {

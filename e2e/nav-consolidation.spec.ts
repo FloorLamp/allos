@@ -433,9 +433,14 @@ test("the drawer is viewport-bounded and its footer is reachable by scroll at 39
   // height worth measuring. Both groups, because a claim about "all groups
   // expanded" that checked one of them would be measuring a shorter drawer.
   for (const group of GROUP_LABELS) {
-    await expect(
-      drawer.locator(`[data-nav-group="${group}"]`).getByRole("link").first()
-    ).toBeVisible();
+    // Every one of the group's rows, not just its first: "all groups expanded" is
+    // a claim about the whole membership, and a partially-rendered group would
+    // give a shorter drawer than the one this test exists to measure.
+    const rows = drawer
+      .locator(`[data-nav-group="${group}"]`)
+      .getByRole("link");
+    await expect(rows).not.toHaveCount(0);
+    for (const row of await rows.all()) await expect(row).toBeVisible();
   }
   await expect(
     drawer.getByRole("link", { name: "Illness episodes" })

@@ -393,8 +393,20 @@ const HOW = "Every icon-only <button> carries an aria-label naming its action.";
 describe("icon-only button naming convention (issue #1535/#3729)", () => {
   const buttons = scanRepo();
 
+  // THE POSITIVE CONTROL: a scan whose candidate set is empty passes the real
+  // assertion below wherever it sits, so this proves the scanner can still SEE.
+  //
+  // The floor is deliberately well under the live count and not one below it.
+  // It was 50 against a live 51, which made it a ratchet rather than a floor:
+  // #4102 deleted exactly one icon-only button — the phone top bar's magnifier,
+  // retired with the bar when Search became a dock slot — and a correct deletion
+  // turned this control red. A floor that fails on every removal gets loosened
+  // under time pressure, which is how a control this cheap gets lost. 40 keeps
+  // the thing it is actually watching for (a scanner matching nothing, or a
+  // pattern that stopped parsing the repo's JSX) and stops reporting ordinary
+  // subtraction as a defect.
   it("finds the icon-only buttons at all (the scan is not silently empty)", () => {
-    expect(buttons.length).toBeGreaterThan(50);
+    expect(buttons.length).toBeGreaterThan(40);
   });
 
   it("every icon-only button carries an aria-label", () => {
