@@ -483,18 +483,6 @@ describe("declined — one login, three patients, three answers", () => {
     expect(
       listPortalRunReports().find((r) => r.accountId === f.account.id)?.status
     ).toBe("downloaded");
-  });
-
-  it("is never re-reported as a failure event", async () => {
-    const f = threePatients("quiet");
-    await SYNC_REPORT(
-      report(memberToken, {
-        status: "downloaded",
-        portal: f.slug,
-        patient: `HOLDER ${f.tag}`,
-        identities: [{ patient: `PROXY ${f.tag}`, outcome: "declined" }],
-      })
-    );
     // No failed sync event anywhere — the proxy's refusal is state, not an incident,
     // so Data → Review's badge never lights for it.
     const failures = db

@@ -5,9 +5,8 @@
 // and while nobody was reading, the more expensive question went unasked: is it
 // still running at all? Nothing could answer that, because "has it run lately"
 // was only ever answerable by a person remembering to open the Actions tab. That
-// is the canary failure docs/orchestration-incidents.md has now billed this repo
-// for three times (the canary that couldn't, the wake that wasn't, the wake alarm
-// that lied).
+// is the canary failure this repo has now been billed for three times (the
+// canary that couldn't, the wake that wasn't, the wake alarm that lied).
 //
 // So: detect by STATE, the shape scripts/orchestrator-checkin.sh uses for its
 // durable wake. Ask the only question that matters — is this schedule still

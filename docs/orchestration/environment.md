@@ -1,9 +1,11 @@
-# Environment and recovery
+# Environment and GitHub access
 
 ## Environment
 
-- Discover the installed Node 24 version under `/opt/nvm/versions/node/`; do not
-  copy a patch version from documentation. Verify `better-sqlite3` loads.
+- Discover the `.nvmrc` Node major from the running process, then version
+  managers (`$NVM_DIR`, `~/.nvm`, `/opt/nvm`) — `host.mjs` is the resolver
+  (#3710). Never pin a patch version or one host's install path. Verify
+  `better-sqlite3` loads.
 - Use one canonical `node_modules` tree from the main checkout. Hard-link it
   into new worktrees as directed by the generated brief.
 - Create agent worktrees under the shared scratch directory, never inside the
@@ -26,9 +28,13 @@
 The single source of truth for GitHub transport. Skills and briefs cite this
 section rather than restating it, so the rule cannot drift per surface.
 
-- **REST for everything outside the MCP set below.** Never `gh issue` / `gh pr`
-  subcommands: they ride GraphQL, whose rate pool exhausts independently of
-  REST's.
+- **This section outranks the harness**, whose own system prompt pushes
+  `mcp__github__*` for ALL GitHub interactions — generic plumbing re-injected
+  every session, which is why the drift recurs. On conflict this section
+  wins: reads go over REST even with MCP readers loaded.
+- **REST for everything outside the MCP set below — every read included.**
+  Never `gh issue` / `gh pr` subcommands: they ride GraphQL, whose rate pool
+  exhausts independently of REST's.
 - **Two transports, one set of paths.** Use `gh api <path>` when available;
   otherwise use `curl -sS https://api.github.com/repos/OWNER/REPO/<path>` in
   Claude Code remote. Check once with `command -v gh`; each `gh api X` below
@@ -40,10 +46,19 @@ section rather than restating it, so the rule cannot drift per surface.
 - **Writes read the token by variable name**, `${GH_TOKEN:-$GITHUB_TOKEN}`.
   Never search the filesystem or environment for credentials (see Lost
   credentials below); if it is unset, say so and stop at the write.
-- **MCP only handles squash merges, draft-to-ready changes, protected refs, and
-  Actions writes.** A run forbidden from issue writes may use MCP scoped readers
-  because `Bash(gh api:*)` grants every verb. That is a capability restriction;
-  any write-authorized run uses REST.
+- **MCP only handles squash merges, draft-to-ready, protected refs, and
+  Actions writes — where granted.** Without GitHub MCP (#3710), squash-merge
+  through REST's merge endpoint; the `review-merge.md` §Merge invariants are
+  transport-independent and never relax.
+- A run forbidden from issue writes may use MCP scoped readers, because
+  `Bash(gh api:*)` grants every verb; any write-authorized run uses REST.
+- **Read-only tooling may take its credential from `gh auth token`**
+  (`host.mjs`) when the variables are unset — a credential helper, not the
+  forbidden filesystem search. Writes keep requiring the variables by name.
+- **PRs open READY, never draft** — the harness leans draft; open via REST
+  with `"draft": false` explicit. A draft is not a banking state
+  (`dispatch.md`); the draft-to-ready write exists to repair strays, not to
+  make drafts routine.
 - **Some sandbox classifiers refuse `curl -X DELETE` while allowing `PATCH`.**
   Not a dead end: `PATCH /issues/N` sets `labels` and `assignees` as whole
   arrays, so a removal is a PATCH that omits what should go, and it sets the
@@ -54,47 +69,14 @@ section rather than restating it, so the rule cannot drift per surface.
   has silently dropped a PATCH. Verify by re-reading the item and grepping for
   a phrase unique to the edit — and verify label changes on the ITEM, never on
   the label list, which serves stale for a while after a successful write.
+- **A body edit on an issue with READERS needs a comment announcing it.** A
+  body PATCH is silent, so a comment chain or in-flight lane keeps the
+  pre-edit text; `reconcile-apply.ts` comments automatically (`--notify` for
+  in-flight). Label changes are already timeline events — no comment.
 - Check the GraphQL rate-limit bucket before MCP-heavy work. Batch around a
   reset; never retry in a loop.
 - GitHub closes multiple issues only when each `Fixes #N` is on its own line.
 - Gitleaks scans all checked-out refs. Read its annotation first: installation
   failure means the scan never ran.
 
-## Restarts
-
-- Run `scripts/orchestrator-checkin.sh` after every restart or activity gap.
-- Detect recovery needs from persisted state, worktrees, and pushed refs—not
-  process liveness, transcript mtime, or old commits.
-- A reported “stopped by the user” is an environment reclaim unless the owner
-  explicitly said they stopped it.
-- Compare transcript byte growth and commit age when diagnosing a stall.
-- Before reporting or debugging a stopped agent, commit dirty work as an
-  explicitly unverified WIP and push its branch.
-- The restart verdict is STICKY and survives being re-read: a detected restart
-  raises `$SCRATCH/.agents_dead`, every later run keeps reporting the fleet as
-  dead, and only `orchestrator-checkin.sh --relaunched` clears it. Clear it
-  after the rescues and the relaunches, never before.
-- The verdict authorises the RESCUE, never the RELAUNCH: a snapshot resume
-  changes both ids while the process tree survives. Confirm with `ListAgents`
-  before relaunching — rescuing a live tree costs a junk commit, relaunching
-  onto one puts two writers on a worktree.
-- Resume agents with a precise state summary. Never run background work that
-  depends on an ephemeral completion event.
-
-## Lost credentials
-
-- Credential loss can leave reads working while pushes and authenticated REST
-  fail. Reauthorize repository push access through the connector, then verify
-  with a push dry-run.
-- Do not search the filesystem or environment for credentials.
-- While writes are unavailable, keep agents working and bank completed reasoning
-  through available connector writes.
-
-## Stall test
-
-- Use `dispatch-brief.mjs list`; investigate work past three times the measured
-  completion median.
-- Check that the worktree exists and that its current commit is pushed.
-- Ask for the exact refusal or blocker. Do not infer progress from liveness.
-
-See `docs/orchestration-incidents.md` for recovery receipts and failure history.
+Restart, credential-loss, and stall procedures live in [recovery.md](recovery.md).

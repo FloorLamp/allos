@@ -1,5 +1,5 @@
-// Tracker reconciliation — the LABEL half (#865), and the second of exactly two
-// writers in the toolchain.
+// Tracker reconciliation — the LABEL half (#865), one of the toolchain's
+// confined writers (the full roster is pinned in reconcile-tracker.test.ts).
 //
 //   npx tsx scripts/orchestration/reconcile-labels.ts             # dry run + the domain worksheet
 //   npx tsx scripts/orchestration/reconcile-labels.ts --apply      # writes
@@ -54,6 +54,8 @@ import {
   type RepoIndex,
   type TrackerIssue,
 } from "./reconcile-tracker-core";
+import { helpGuard } from "./usage.mjs";
+helpGuard(process.argv, import.meta.url);
 
 interface GhLabel {
   name: string;

@@ -5,8 +5,12 @@
 //   npx tsx scripts/orchestration/reconcile-tracker.ts --issue 2603,2589
 //
 // Everything impure lives here and nowhere else: the GitHub reads, the git
-// file list, the clock, the watermark file. The decisions are in
-// `reconcile-tracker-core.ts`, which takes both worlds as plain data.
+// file list, the clock. The decisions are in `reconcile-tracker-core.ts`,
+// which takes both worlds as plain data. The watermark lives in the tracker
+// itself — the body of the issue titled `WATERMARK_ISSUE_TITLE` — because
+// container state dies with the container and a lost watermark silently
+// reshapes the window. This run only READS it; `reconcile-watermark.ts`
+// (a confined writer) advances it after the report has been read.
 //
 // THIS PROCESS CANNOT WRITE TO GITHUB. Not "does not" — cannot: the only HTTP
 // helper it has issues GET, and there is no code path that sets an issue's
@@ -20,10 +24,9 @@
 import "../load-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { buildRepoIndex } from "./reconcile-repo-index";
 import {
+  extractWatermark,
   gatherEvidence,
   renderReport,
   resolveRunConfig,
@@ -32,6 +35,9 @@ import {
   type TrackerIssue,
   type TrackerPr,
 } from "./reconcile-tracker-core";
+import { helpGuard } from "./usage.mjs";
+import { resolveReadToken } from "./host.mjs";
+helpGuard(process.argv, import.meta.url);
 
 interface GhLabel {
   name: string;
@@ -76,55 +82,60 @@ function ghGetAll(config: RunConfig, pathAndQuery: string): unknown[] {
   return out;
 }
 
-/**
- * The watermark lives OUTSIDE the checkout — it is a property of the operator's
- * machine, not of main, and committing it would make every run dirty the tree.
- */
-function watermarkPath(): string {
-  const dir = process.env.SCRATCH || os.tmpdir();
-  return path.join(dir, "allos-reconcile-watermark.json");
-}
-
-function readWatermark(): string | null {
-  try {
-    const raw = JSON.parse(fs.readFileSync(watermarkPath(), "utf8")) as {
-      lastRunAt?: string;
-    };
-    return raw.lastRunAt ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function main(): void {
   const config = resolveRunConfig(process.env, process.argv.slice(2));
+  if (config.stamp) {
+    // Refused loudly rather than ignored: a silently dropped --stamp would
+    // leave its caller believing the window advanced.
+    console.error(
+      "reconcile-tracker: --stamp has moved. The watermark lives in the\n" +
+        "tracker (the issue titled per WATERMARK_ISSUE_TITLE) and only the\n" +
+        "confined writer advances it, after the report has been read:\n" +
+        "  npx tsx scripts/orchestration/reconcile-watermark.ts stamp \\\n" +
+        "    --evidence <evidence.json> --apply"
+    );
+    process.exit(2);
+  }
+  if (!config.token) {
+    // Read-only fallback for hosts that authenticate through gh instead of
+    // exporting a variable (#3710): `gh auth token` via host.mjs. This adds
+    // no write capability — the token feeds the same GET-only curl helper,
+    // and the write tools still require the variables by name.
+    config.token = resolveReadToken(process.env);
+  }
   if (!config.token) {
     // An unauthenticated read is rate-limited into partial pages, and a partial
     // page is a report that finds nothing for the wrong reason — exactly the
     // deceptive success the core's header names. Refuse instead.
     console.error(
-      "reconcile-tracker: no GH_TOKEN/GITHUB_TOKEN. An unauthenticated sweep " +
-        "would silently truncate and report a clean tracker. Refusing."
+      "reconcile-tracker: no GH_TOKEN/GITHUB_TOKEN and no authenticated gh " +
+        "(`gh auth token`). An unauthenticated sweep would silently truncate " +
+        "and report a clean tracker. Refusing."
     );
     process.exit(2);
   }
 
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const previous = config.since ?? readWatermark();
-  const watermark: ReconcileWatermark = { previous, current: now };
 
   const rawIssues = ghGetAll(config, "/issues?state=open") as GhIssue[];
   const openIssues = rawIssues.filter((i) => !i.pull_request);
   const wanted = new Set(config.only);
-  const issues: TrackerIssue[] = openIssues
-    .filter((i) => wanted.size === 0 || wanted.has(i.number))
-    .map((i) => ({
-      number: i.number,
-      title: i.title,
-      body: i.body ?? "",
-      state: "open" as const,
-      labels: i.labels.map((l) => l.name),
-    }));
+  const allIssues: TrackerIssue[] = openIssues.map((i) => ({
+    number: i.number,
+    title: i.title,
+    body: i.body ?? "",
+    state: "open" as const,
+    labels: i.labels.map((l) => l.name),
+  }));
+
+  // The carrier issue is machine state, never a sweep subject; its stamp is
+  // the window's lower bound unless --since overrides it.
+  const { carrier, issues: sweepable } = extractWatermark(allIssues);
+  const previous = config.since ?? carrier.lastRunAt;
+  const watermark: ReconcileWatermark = { previous, current: now };
+  const issues = sweepable.filter(
+    (i) => wanted.size === 0 || wanted.has(i.number)
+  );
 
   const rawPrs = ghGetAll(
     config,
@@ -176,12 +187,6 @@ function main(): void {
   else process.stdout.write(report);
   if (config.json) {
     fs.writeFileSync(config.json, JSON.stringify(evidence, null, 2) + "\n");
-  }
-  if (config.stamp) {
-    fs.writeFileSync(
-      watermarkPath(),
-      JSON.stringify({ lastRunAt: now }, null, 2) + "\n"
-    );
   }
 }
 
