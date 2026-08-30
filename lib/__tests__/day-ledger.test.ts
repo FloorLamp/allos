@@ -434,6 +434,119 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
       expect(new Set(st.written.map((d) => d.hhmm)).size).toBe(1);
   });
 
+  // THE COUNT IS TAKEN AFTER THE DISSOLUTION LOOP, and these two cases are why that
+  // ordering is a decision rather than an accident. Lifting the `rowsPerRoutine` count
+  // above the loop leaves every conservation property intact — each dose still on exactly
+  // one row — and leaves the whole of the rest of this file green. What it breaks is
+  // subtler: a stack that is ABOUT TO DISSOLVE into a loose row still counts toward its
+  // routine's total, so the surviving row sees a count of 2, refuses to claim, and a
+  // legitimately claimable open dose is quietly demoted to the due row. "4 of 6" becomes
+  // "4 doses" plus a due row, which is a different and worse statement of the same day.
+  it("lets the survivor claim when a singleton member dissolves", () => {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: [
+        dose(
+          1,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          2,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        // A lone member of the SAME routine, written later: it dissolves to a loose row.
+        dose(
+          3,
+          "Morning",
+          "11:11",
+          morningStack({ writeMinute: "2026-08-30T11:11", hhmm: "11:11" })
+        ),
+      ],
+      pending: [pending(90, "Morning", "Morning stack")],
+    });
+    const rows = groups[0].rows;
+
+    // THE FIXTURE'S REACH, asserted before the claim (the brief's rule): this case is only
+    // about the ordering if the routine's row count actually CHANGES across dissolution.
+    // One surviving stack row plus a loose row of the same routine and bucket is that
+    // change made observable — the loose row is the entry that existed in `stacks` before
+    // the loop and would still have been counted had the count been taken earlier. If an
+    // edit stops producing a dissolving singleton, this fails here rather than going
+    // quietly green.
+    const stacks = rows.filter((r): r is LedgerStack => r.kind === "stack");
+    const dissolved = rows.filter(
+      (r) =>
+        r.kind === "dose" &&
+        r.stack === "Morning stack" &&
+        r.bucket === "Morning"
+    );
+    expect(stacks).toHaveLength(1);
+    expect(dissolved).toHaveLength(1);
+
+    // And the claim itself: the survivor owns the open dose.
+    expect(stackLabel(stacks[0])).toBe("2 of 3");
+    expect(stacks[0].open.map((d) => d.doseId)).toEqual([90]);
+    expect(rows.find((r) => r.kind === "due")).toBeUndefined();
+  });
+
+  it("lets the survivor claim when two singleton members dissolve", () => {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: [
+        dose(
+          1,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          2,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          3,
+          "Morning",
+          "07:07",
+          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+        ),
+        dose(
+          4,
+          "Morning",
+          "11:11",
+          morningStack({ writeMinute: "2026-08-30T11:11", hhmm: "11:11" })
+        ),
+        dose(
+          5,
+          "Morning",
+          "12:12",
+          morningStack({ writeMinute: "2026-08-30T12:12", hhmm: "12:12" })
+        ),
+      ],
+      pending: [pending(90, "Morning", "Morning stack")],
+    });
+    const rows = groups[0].rows;
+    const stacks = rows.filter((r): r is LedgerStack => r.kind === "stack");
+    // Reach: TWO entries leave `stacks` in the loop, so a count taken early would read 3.
+    const dissolved = rows.filter(
+      (r) =>
+        r.kind === "dose" &&
+        r.stack === "Morning stack" &&
+        r.bucket === "Morning"
+    );
+    expect(stacks).toHaveLength(1);
+    expect(dissolved).toHaveLength(2);
+
+    expect(stackLabel(stacks[0])).toBe("3 of 4");
+    expect(stacks[0].open.map((d) => d.doseId)).toEqual([90]);
+    expect(rows.find((r) => r.kind === "due")).toBeUndefined();
+  });
+
   it("leaves a due dose of another routine in the bucket's due row", () => {
     const groups = buildDayLedger({
       servings: [],

@@ -261,11 +261,14 @@ export function buildDayLedger(input: {
   // ("is every dose on exactly one row?" and "is it on the RIGHT one?") are answered by
   // different instruments, and only the first is cheap to fuzz.
   //
-  // NOTHING IN THE TEST SUITE CATCHES THIS. Lifting the count above the dissolution loop
-  // leaves `lib/__tests__/day-ledger.test.ts` 18/18 green and the concentrated
-  // conservation fuzz green too; it took cases constructed against this exact ordering to
-  // fire. So this comment is the guard, not a test — treat the position as a decision,
-  // and if you move it, write the case first.
+  // TWO CASES HOLD THIS POSITION, both in `lib/__tests__/day-ledger.test.ts`: "lets the
+  // survivor claim when a singleton member dissolves" and its two-singleton sibling. Lift
+  // the count above the loop and they red with `expected '2 doses' to be '2 of 3'` and
+  // `expected '3 doses' to be '3 of 4'` — the demotion, stated exactly. They were written
+  // because nothing else caught it: before them the whole file stayed green under that
+  // move, and so did the conservation fuzz, since every dose was still on exactly one row.
+  // Each asserts first that the fixture really does dissolve a member, so it cannot drift
+  // into passing on a shape that no longer exercises the ordering at all.
   const rowsPerRoutine = new Map<string, number>();
   for (const stack of stacks.values()) {
     const routine = [stack.bucket, stack.stack].join(KEY_SEP);
