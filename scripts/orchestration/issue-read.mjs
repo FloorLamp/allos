@@ -11,6 +11,14 @@
 
 import { execFileSync } from "node:child_process";
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  ".."
+);
 const REPO = process.env.ALLOS_REPO ?? "FloorLamp/allos";
 const API = `https://api.github.com/repos/${REPO}`;
 
@@ -31,6 +39,24 @@ function get(path) {
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
   return JSON.parse(out);
+}
+
+// What already SHIPPED for this item, asked of main rather than of the API:
+// the search endpoint 403s through this container's proxy credential, and a
+// merge to main is the stronger claim anyway — a PR can name an item without
+// landing. Empty on a shallow clone, which is why the caller says so.
+function mergedOnMain(n) {
+  try {
+    return execFileSync(
+      "git",
+      ["log", "origin/main", "--oneline", `--grep=${n}`, "--max-count=20"],
+      { encoding: "utf8", cwd: repoRoot, maxBuffer: 16 * 1024 * 1024 }
+    )
+      .split("\n")
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 // Deliberately broad: a missed ruling costs far more than a false positive.
@@ -78,6 +104,25 @@ function readOne(n) {
   console.log(
     `updated=${issue.updated_at}  body=${body.length} chars  comments=${comments.length}`
   );
+
+  // AN OPEN ITEM CAN STILL BE MOSTLY SHIPPED, and the closed-item banner above
+  // cannot see that. #3366 stayed open on one unmet acceptance line while BOTH
+  // of its dispatchable halves had merged in #4083 sixteen hours earlier —
+  // dispatched anyway, because the issue body still described the work as
+  // pending. The merged PRs that name an item are the cheapest available answer
+  // to "how much of this is already done", and the orchestrator's own release
+  // notes had carried one of them that morning.
+  if (!isPr) {
+    const merged = mergedOnMain(n);
+    if (merged.length) {
+      banner(
+        "!",
+        `${merged.length} COMMIT(S) ON main MENTION ${n} — premise-audit before dispatching.\n` +
+          `An OPEN item can still be mostly shipped; read these before briefing a lane.\n` +
+          merged.map((line) => `  ${line}`).join("\n")
+      );
+    }
+  }
 
   // The whole point: rulings live in the TAIL, so report where they sit.
   const bodyRulings = findRulings(body);
