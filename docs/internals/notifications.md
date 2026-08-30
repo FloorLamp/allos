@@ -3693,6 +3693,14 @@ timed one hour before the inferred training hour) — coalesces into ONE message
 slot's `notify_last_supp_<slot>` marker is stamped on delivery. Telegram
 rebuilds re-render the whole merged keyboard footprint.
 
+**Historical workout rhythm is anchored on the day asked about (#3991).** For a
+past date, both `isPredictedWorkoutDay(date)` and the PreWorkout slot-membership
+resolver infer over a trailing window ending on that date, so later sessions
+cannot rewrite a closed day. Today remains the ceiling for current and future
+queries (#4030), so planned rows stay out of the inference. Each call remains
+one indexed range query through the existing hoisted statement; no result cache
+is added, preserving read-after-write behavior.
+
 **Obligation floor (#1156).** `doseReminderNotifies`
 (`lib/intake-schedule.ts`): `may` SUPPLEMENTS are excluded from every
 dose-reminder send (window/merged/post-workout/digest count/buttons) at the
