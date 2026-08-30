@@ -340,7 +340,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 6,
-          statedTime: "07:15",
+          statedStart: "07:15",
+          statedEnd: null,
           durationMin: 20,
           notes: null,
         },
@@ -353,7 +354,8 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         edit: {
           kind: "practice",
           sessionId: 7,
-          statedTime: "18:40",
+          statedStart: "18:40",
+          statedEnd: null,
           durationMin: 10,
           notes: null,
         },
