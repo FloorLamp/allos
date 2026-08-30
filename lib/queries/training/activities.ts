@@ -814,13 +814,17 @@ export function inferWorkoutSchedule(
 // This is the "today SHOULD be a workout day" signal a pre-workout supplement
 // reminder needs (so it can fire in the morning, before the session), reusing the
 // same inferWorkoutSchedule the notify tick's workout reminder consumes ("one
-// question, one computation").
+// question, one computation"). A past query ends the inference window on `date`:
+// a later training pattern cannot rewrite that day's prediction (#3991). Today
+// remains the ceiling so a future query cannot count planned sessions (#4030).
 export function isPredictedWorkoutDay(
   profileId: number,
   date: string,
   weeks = RHYTHM_WINDOW_WEEKS
 ): boolean | null {
-  return predictedOnDay(inferWorkoutSchedule(profileId, weeks), date);
+  const currentDay = today(profileId);
+  const asOf = date < currentDay ? date : currentDay;
+  return predictedOnDay(inferWorkoutSchedule(profileId, weeks, asOf), date);
 }
 
 // (date, exercise) rows over the recent window — one scan that powers the workout
