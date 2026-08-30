@@ -44,7 +44,7 @@ function addSupp(
     condition?: IntakeCondition;
     obligation?: "must" | "should" | "may";
   } = {}
-): void {
+): number {
   const item = Number(
     db
       .prepare(
@@ -62,6 +62,7 @@ function addSupp(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
      VALUES (?, ?, 'morning', 'any', 0)`
   ).run(item, amount);
+  return item;
 }
 
 describe("getDietaryLimitWarnings — schedule-aware UL sum (#635)", () => {
@@ -98,6 +99,23 @@ describe("getDietaryLimitWarnings — schedule-aware UL sum (#635)", () => {
     // The situational 65 mg is NOT added (else it would read 115): the item simply
     // isn't taken every day, which is a fact about the schedule.
     expect(iron!.total).toBe(50);
+  });
+});
+
+describe("getDietaryLimitWarnings — split compound ingredients (#3159)", () => {
+  it("combines one compound before applying its elemental re-read", () => {
+    const profileId = makeAdultProfile("ul-split-compound");
+    const itemId = addSupp(profileId, "Magtein Blend", "1 capsule");
+    const insert = db.prepare(
+      `INSERT INTO intake_item_ingredients (item_id, name, amount_text, amount, unit, sort)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    insert.run(itemId, "Magnesium L-Threonate", "1000 mg", 1000, "mg", 0);
+    insert.run(itemId, "Mag L-Threonate", "1 g", 1000, "mg", 1);
+
+    expect(
+      getDietaryLimitWarnings(profileId).some((w) => w.key === "magnesium")
+    ).toBe(false);
   });
 });
 

@@ -2297,6 +2297,33 @@ describe("composition stacking (#2856)", () => {
     expect(warning.total).toBeCloseTo(50, 5);
   });
 
+  it("re-reads one compound after its ingredient rows are combined", () => {
+    const splitCompound = blend(
+      "Magtein Blend",
+      ["1 capsule"],
+      [
+        { name: "Magnesium L-Threonate", amount: 1000, unit: "mg" },
+        { name: "Mag L-Threonate", amount: 1, unit: "g" },
+      ]
+    );
+    const [total] = summarizeStack([splitCompound], 40, "male");
+    expect(total.total).toBeCloseTo(166, 0);
+    expect(compositionUl([splitCompound])).toEqual([]);
+  });
+
+  it("keeps distinct ingredient compounds as separately stated amounts", () => {
+    const distinctForms = blend(
+      "Magnesium Blend",
+      ["1 capsule"],
+      [
+        { name: "Magnesium Glycinate", amount: 1000, unit: "mg" },
+        { name: "Magnesium Citrate", amount: 1000, unit: "mg" },
+      ]
+    );
+    const [warning] = compositionUl([distinctForms]);
+    expect(warning.total).toBe(2000);
+  });
+
   it("ignores an ingredient row with no parseable amount", () => {
     // "Proprietary blend" names a substance for the safety belts but states no
     // number; it must never become a fabricated zero or a fabricated anything else.
