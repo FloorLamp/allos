@@ -25,7 +25,18 @@ helpGuard(process.argv, import.meta.url);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Pure: everything below the fetch is computed from plain arrays. */
+/**
+ * @typedef {{ number: number, title: string, createdAt: string, mergedAt: string }} MergedPr
+ * @typedef {{ number: number, draft: boolean }} OpenPr
+ * @typedef {{ number: number, body: string, createdAt: string, labels: readonly string[] }} OpenIssue
+ * @typedef {{ mergedPrs: readonly MergedPr[], openPrs: readonly OpenPr[],
+ *   openIssues: readonly OpenIssue[], now: Date, days: number }} MetricsInput
+ */
+
+/**
+ * Pure: everything below the fetch is computed from plain arrays.
+ * @param {MetricsInput} input
+ */
 export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
   const since = new Date(now.getTime() - days * DAY_MS).toISOString();
   const merged = mergedPrs.filter((p) => p.mergedAt >= since);
@@ -85,8 +96,10 @@ export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
   };
 }
 
+/** @param {ReturnType<typeof computeMetrics>} m */
 export function renderMetrics(m) {
   const lines = [];
+  /** @param {number | null} n */
   const f1 = (n) => (n === null ? "n/a" : n.toFixed(1));
   lines.push(
     `# Session metrics — last ${m.window.days}d (${m.window.since} → ${m.window.now})`
