@@ -606,14 +606,24 @@ describe("actual atomic dashboard manifests", () => {
   // absence assertion alone would pass on a tree where the writes vanished
   // altogether, so each retired candidate is checked against the quick-log row that
   // now carries it — the sheet gained first, the tail dropped second.
+  //
+  // EACH ROW IS ASKED FOR AT THE LEAST PERMISSIVE FLAGS ITS CAPABILITY CLAIMS, not
+  // at `(true, true)`. `logSheetSegments` filters on the #1042 cycle bit and the
+  // #3279 substance bit, so the most permissive input cannot distinguish a row every
+  // profile reaches from one only a cycle-tracking profile reaches — and the profile
+  // that matters here is the FRESH one, which is what `vitals.manual-log` also served
+  // as a Setup bootstrap row before it retired. `cycle.control` keeps `cycleRelevant`
+  // because cycle relevance is the precondition of that capability itself, not an
+  // accident of the fixture. Measured: gating `log-measurements` behind the cycle bit
+  // leaves the `(true, true)` form 20/20 green and turns this one red.
   it.each([
-    { candidateId: "weight.quick-add", row: "log-measurements" },
-    { candidateId: "vitals.manual-log", row: "log-measurements" },
-    { candidateId: "symptom.well-day-log", row: "log-symptom" },
-    { candidateId: "cycle.control", row: "log-period" },
+    { candidateId: "weight.quick-add", row: "log-measurements", cycle: false },
+    { candidateId: "vitals.manual-log", row: "log-measurements", cycle: false },
+    { candidateId: "symptom.well-day-log", row: "log-symptom", cycle: false },
+    { candidateId: "cycle.control", row: "log-period", cycle: true },
   ] as const)(
     "$candidateId left the dashboard for the quick logger's $row",
-    ({ candidateId, row }) => {
+    ({ candidateId, row, cycle }) => {
       for (const [persona, placements] of manifests) {
         expect(
           placements.map((placement) => placement.candidate.candidateId),
@@ -621,7 +631,7 @@ describe("actual atomic dashboard manifests", () => {
         ).not.toContain(candidateId);
       }
       expect(
-        logSheetSegments(true, true).flatMap((segment) =>
+        logSheetSegments(cycle, false).flatMap((segment) =>
           segment.items.map((item) => item.id)
         )
       ).toContain(row);
