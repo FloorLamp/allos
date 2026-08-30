@@ -42,6 +42,11 @@ test.describe("dashboard daily loop (#1221)", () => {
     await page.goto("/");
     const card = dashboardCandidatePrefix(page, "nutrition.protein:");
     await expect(card).toBeVisible();
+    await expect(
+      page
+        .locator('[data-standing-family="protein-today"]')
+        .getByText("Protein today", { exact: true })
+    ).toHaveCount(1);
     // Today's protein figure. A floor basis marks itself with a trailing "+" (#3257,
     // the #1822 marker) — never "≥ N g", and never a hedge about the estimator.
     await expect(card).toContainText(/\d+ g\+/);

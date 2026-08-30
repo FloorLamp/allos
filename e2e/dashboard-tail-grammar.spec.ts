@@ -179,15 +179,16 @@ test.describe("the Show-everything tail's grammar (#3365)", () => {
       // card that rendered.
       await expect(card).toBeVisible();
       await expect(card.locator("h3")).toHaveText(/^Your usual /);
-      // "Nutrition today" headed BOTH this offer and the Read protein readout, so the
-      // same words scrolled past twice meaning two different things (#3365). One
-      // surface owns the name now, and it is never this one.
+      // The offer is titled by its action. The protein readout still needs a name in
+      // the tail, where it has no Standing family label of its own (#4226).
       await expect(card).not.toContainText("Nutrition today");
+      const tail = page.getByTestId("dashboard-all-contents");
       await expect(
-        page
-          .getByTestId("dashboard-all-contents")
-          .getByText("Nutrition today", { exact: true })
-      ).toHaveCount(0);
+        tail.locator('[data-candidate-id^="nutrition.protein:"]')
+      ).toBeVisible();
+      await expect(
+        tail.getByText("Nutrition today", { exact: true })
+      ).toHaveCount(1);
     } finally {
       await page.context().close();
     }
