@@ -31,7 +31,8 @@ import {
   canEditManualSleepOnDate,
   getMetricSeriesBySourceInRange,
 } from "@/lib/queries";
-import { insertVitals } from "@/lib/offline/writes";
+import { applyIntent, insertVitals } from "@/lib/offline/writes";
+import { buildIntent, type VitalsPayload } from "@/lib/offline/queue";
 import { setTimezone } from "@/lib/settings";
 
 // UTC-pinned so a stored instant IS the wall clock and every wake-day is
@@ -408,5 +409,84 @@ describe("a typed night stays the person's to edit (#1851)", () => {
     const since = shiftDateStr(wakeDay, -7);
     expect(getDailySleepSessionsSince(id, since)).toHaveLength(2);
     expect(getSleepSessions(id)).toHaveLength(2);
+  });
+});
+
+describe("a night typed offline replays as the night it was (#1851)", () => {
+  // The intent carries CLOCKS, not instants — an offline device has no server to ask
+  // — so the zone that interprets them is whatever the profile holds when the write
+  // lands. This is the rule written down in `resolveSleepWindow`'s memo, and the two
+  // rows below are the two halves of it: same stated night, two zones, two instants.
+  //
+  // MUTATION: drop `bedTime`/`wakeTime` from `applyIntent`'s vitals payload
+  // passthrough (the queue fields are optional, so this compiles). Measured on both
+  // rows: expected 'rejected' to be 'done' — the intent states nothing else, so a
+  // sitting that was only a night replays as an empty payload and writes no row at
+  // all. The first pass shipped this half with no db-tier coverage whatsoever.
+  it.each([
+    ["UTC", "2026-05-13T23:00:00Z", "2026-05-14T07:00:00Z"],
+    ["Asia/Tokyo", "2026-05-13T14:00:00Z", "2026-05-13T22:00:00Z"],
+  ])("resolves the stated clocks in the zone at reconnect (%s)", (tz, start, end) => {
+    const id = makeProfile(`SleepReplay-${tz}`, tz);
+    const intent = buildIntent(
+      "vitals",
+      "2026-05-14",
+      {
+        bedTime: "23:00",
+        wakeTime: "07:00",
+        sleepHours: null,
+        hrv: null,
+        systolic: null,
+        diastolic: null,
+        glucose: null,
+        glucoseUnit: null,
+        spo2: null,
+        temperature: null,
+        tempUnit: null,
+      } as VitalsPayload,
+      id
+    );
+    expect(applyIntent(id, intent).status).toBe("done");
+    expect(rowsOn(id, "2026-05-14")[0]).toMatchObject({
+      startedAt: start,
+      endedAt: end,
+      value: 480,
+      source: "manual",
+    });
+  });
+
+  // Two DIFFERENT idempotency keys, so `alreadyReplayed` never fires: this is a
+  // second sitting, not a retried flush, and it has to converge on its own.
+  //
+  // MUTATION: delete `upsertManualSleep`'s DELETE statement. Measured:
+  //   expected [ { …(4) }, { …(4) } ] to have a length of 1 but got 2
+  it("converges to one row when a second sitting replays over the first", () => {
+    const id = makeProfile("SleepReplayConverge");
+    const base = {
+      sleepHours: null,
+      hrv: null,
+      systolic: null,
+      diastolic: null,
+      glucose: null,
+      glucoseUnit: null,
+      spo2: null,
+      temperature: null,
+      tempUnit: null,
+    };
+    for (const wakeTime of ["07:00", "06:30"]) {
+      const intent = buildIntent(
+        "vitals",
+        "2026-05-14",
+        { ...base, bedTime: "23:00", wakeTime } as VitalsPayload,
+        id
+      );
+      expect(applyIntent(id, intent).status).toBe("done");
+    }
+    const rows = rowsOn(id, "2026-05-14");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      endedAt: "2026-05-14T06:30:00Z",
+      value: 450,
+    });
   });
 });

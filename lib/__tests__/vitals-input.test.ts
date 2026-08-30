@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   validateVitalsInput,
   normalizeVitalsInput,
+  sleepWindowFromClocks,
   celsiusToF,
   mmolToMgdl,
   type VitalsRawInput,
@@ -284,5 +285,123 @@ describe("respiratory rate (#1851)", () => {
   it("accepts the ingest envelope's own edges", () => {
     expect(validateVitalsInput({ respiratoryRate: "3" })).toBeNull();
     expect(validateVitalsInput({ respiratoryRate: "80" })).toBeNull();
+  });
+});
+
+// The bed/wake pair (#1851). Both halves are pure and both are here: the noon fold
+// that decides which calendar day the bed clock belongs to, and the validator that
+// refuses a pair no night could be. The zone-dependent half — what INSTANTS these
+// clocks denote, and whether the elapsed minutes fit `sleep_min`'s envelope — is in
+// lib/__db_tests__/manual-sleep-window.test.ts, because it needs a profile zone.
+describe("sleepWindowFromClocks: the noon-anchored fold", () => {
+  // lib/sleep-regularity.ts indexes a sleep day from noon to noon, so a bed clock at
+  // or after 12:00 is the evening BEFORE the wake day and one before noon is a
+  // small-hours bedtime on the wake day itself. The 12:00 row is the boundary and it
+  // reads as an evening — which is what makes a 2 pm nap a 25½-hour window rather
+  // than a 1½-hour one, and therefore refusable.
+  //
+  // MUTATION: move the fold's threshold off noon (`bedMin >= 1080`). Measured, four
+  // red across both tables — the two boundary folds, plus the nap that stops being
+  // refused and the 23-hour night that starts being:
+  //   expected null to be 'Bed and wake times record one night —…'
+  //   expected 'Wake time must be after bed time.' to be null
+  it.each([
+    ["23:00", "07:00", true, 480],
+    ["12:00", "07:00", true, 1140],
+    ["11:59", "07:00", false, -299],
+    ["01:30", "09:00", false, 450],
+    ["13:30", "15:00", true, 1530],
+    ["00:00", "00:00", false, 0],
+  ])("%s → %s folds to previous-day=%s, %s minutes", (bed, wake, prev, minutes) => {
+    expect(sleepWindowFromClocks(bed, wake)).toMatchObject({
+      bed,
+      wake,
+      bedOnPreviousDay: prev,
+      minutes,
+    });
+  });
+
+  it.each([
+    ["", "07:00"],
+    ["23:00", ""],
+    ["nonsense", "07:00"],
+    [null, null],
+  ])("returns null for (%s, %s)", (bed, wake) => {
+    expect(sleepWindowFromClocks(bed, wake)).toBeNull();
+  });
+});
+
+describe("validateVitalsInput: the bed/wake pair", () => {
+  it.each([
+    // A pair is a pair, like a blood pressure.
+    [{ bedTime: "23:00" }, "Enter both bed and wake times."],
+    [{ wakeTime: "07:00" }, "Enter both bed and wake times."],
+    // A 2 pm nap. The noon anchor makes this 25½ hours, and the sentence has to say
+    // WHY rather than quote the ceiling — "more than 23 hours apart" is true and
+    // tells someone who typed 90 minutes nothing.
+    [
+      { bedTime: "13:30", wakeTime: "15:00" },
+      "Bed and wake times record one night — bed time is read as the evening before the date above.",
+    ],
+    // A mistyped clock. Nothing else refuses a one-minute night, and SRI would
+    // reconstruct epochs from it.
+    [
+      { bedTime: "07:00", wakeTime: "07:01" },
+      "Bed and wake times must be at least 30 minutes apart.",
+    ],
+    [
+      { bedTime: "11:00", wakeTime: "10:00" },
+      "Wake time must be after bed time.",
+    ],
+    // Time asleep can be less than time in bed and never more. The db tier carries
+    // the ACROSS-sittings half of this rule, which is where it used to be missing.
+    // MUTATION: short-circuit this check. Measured:
+    //   expected null to be 'Sleep can\'t be longer than the time …'
+    [
+      { bedTime: "23:00", wakeTime: "07:00", sleepHours: "12" },
+      "Sleep can't be longer than the time between bed and wake.",
+    ],
+  ])("refuses %o", (input, message) => {
+    expect(validateVitalsInput(input)).toBe(message);
+  });
+
+  it.each([
+    [{ bedTime: "23:00", wakeTime: "07:00" }],
+    [{ bedTime: "23:00", wakeTime: "07:00", sleepHours: "7.5" }],
+    // Exactly the window: awake-in-bed is allowed to be zero.
+    [{ bedTime: "23:00", wakeTime: "07:00", sleepHours: "8" }],
+    // Exactly the floor and exactly the ceiling.
+    [{ bedTime: "07:00", wakeTime: "07:30" }],
+    [{ bedTime: "12:00", wakeTime: "11:00" }],
+  ])("accepts %o", (input) => {
+    expect(validateVitalsInput(input)).toBeNull();
+  });
+
+  // ONE row, however the sitting spelled the night: `sleep_min` is additive, so a
+  // stated duration beside its own window as two rows would read as sixteen hours.
+  // The window travels on the sample for the write boundary to resolve.
+  it("normalizes duration and window into a single sleep sample", () => {
+    const both = normalizeVitalsInput({
+      bedTime: "23:00",
+      wakeTime: "07:00",
+      sleepHours: "7",
+    });
+    expect("error" in both).toBe(false);
+    if ("error" in both) return;
+    expect(both.samples).toEqual([
+      {
+        metric: "sleep_min",
+        value: 420,
+        window: expect.objectContaining({ minutes: 480, durationStated: true }),
+      },
+    ]);
+    // Window alone: the value is the window's own nominal length.
+    const windowOnly = normalizeVitalsInput({
+      bedTime: "23:00",
+      wakeTime: "07:00",
+    });
+    expect("error" in windowOnly).toBe(false);
+    if ("error" in windowOnly) return;
+    expect(windowOnly.samples[0]).toMatchObject({ value: 480 });
   });
 });
