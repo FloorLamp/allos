@@ -104,18 +104,22 @@ test("a `may` item is tracked on its page, off the due list, and inside the avai
     lowId = low.itemId;
     highId = high.itemId;
 
-    // TRACKED: both items are on their own page. The `should` one is in the due-today
-    // list; the `may` one is under "Not scheduled today", because it has no dueness —
-    // present and reachable, just not claimed to be owed.
+    // TRACKED: both items are in the stack, because a `may` item is still an item you
+    // keep (#3987 made the stack list a MANAGEMENT list, so it no longer sorts by what
+    // this morning owes). What separates them is DUENESS, and dueness is stated once —
+    // on the Day ledger, where the `should` one is owed and the `may` one is not.
     await page.goto("/nutrition?tab=supplements");
+    const stack = page.getByTestId("supplement-stack");
     await expect(
-      page.getByTestId("intake-item-name").filter({ hasText: HIGH_NAME })
+      stack.getByTestId("intake-item-name").filter({ hasText: HIGH_NAME })
     ).toBeVisible();
-    const notScheduled = page.getByTestId("not-scheduled-section");
-    await notScheduled.locator("summary").click();
     await expect(
-      notScheduled.getByTestId("intake-item-name").filter({ hasText: LOW_NAME })
+      stack.getByTestId("intake-item-name").filter({ hasText: LOW_NAME })
     ).toBeVisible();
+    await page.goto("/nutrition?tab=food");
+    const ledger = page.getByTestId("day-ledger");
+    await expect(ledger).toContainText(HIGH_NAME);
+    await expect(ledger).not.toContainText(LOW_NAME);
 
     // NEVER PUSHED: only the `should` twin has an Upcoming DUE row…
     await page.goto("/upcoming");
@@ -186,15 +190,19 @@ test("accepting a demotion suggestion moves the item into the available disclosu
         .getByTestId("demotion-suggestion-item")
         .filter({ hasText: ABANDONED_NAME })
     ).toHaveCount(0);
-    // …and the item is still fully tracked on its own page — now under "Not
-    // scheduled today", which is what a `may` item is.
-    const notScheduled = page.getByTestId("not-scheduled-section");
-    await notScheduled.locator("summary").click();
+    // …and the item is still fully tracked on its own page, in the stack, with the Day
+    // ledger no longer claiming it is owed — which is what a `may` item is.
     await expect(
-      notScheduled
+      page
+        .getByTestId("supplement-stack")
         .getByTestId("intake-item-name")
         .filter({ hasText: ABANDONED_NAME })
     ).toBeVisible();
+    await page.goto("/nutrition?tab=food");
+    await expect(page.getByTestId("day-ledger")).not.toContainText(
+      ABANDONED_NAME
+    );
+    await page.goto("/nutrition?tab=supplements");
 
     // The push tier no longer carries it.
     await page.goto("/upcoming");
@@ -329,14 +337,17 @@ test("a situation-inactive item logs in one tap from More supplements, and the s
     ).run(situationId, item.itemId);
 
     await page.goto("/nutrition?tab=supplements");
-    const notScheduled = page.getByTestId("not-scheduled-section");
-    await notScheduled.locator("summary").click();
-    const row = notScheduled
+    // ONE TAP AWAY, ON THE ROW THE LEDGER CANNOT REACH (#2419, preserved through
+    // #3987). The item is off every due path, so the Day ledger has nothing to say
+    // about it and no row for it — which is exactly why the tap stays HERE, and why
+    // rendering it here is not a second statement of anything.
+    const row = page
+      .getByTestId("supplement-stack")
       .getByTestId("supplement-row")
       .filter({ hasText: SITUATION_ITEM });
     await expect(row).toBeVisible();
 
-    // One tap, from the collapsed section, with no edit and no situation change.
+    // One tap, with no edit and no situation change.
     await settledClick(page, row.getByTestId("dose-take"));
     await expect.poll(() => takenCount(db, item.doseId)).toBe(1);
 
@@ -349,14 +360,26 @@ test("a situation-inactive item logs in one tap from More supplements, and the s
           .get(situationId) as { active: number }
       ).active
     ).toBe(0);
-    // Invariant 3: dueness did not move either. The row is still collapsed — it was
-    // logged, not promoted into today's schedule — and now reads as taken.
+    // Invariant 3: dueness did not move either — and the DAY moved to where the day
+    // lives (#3987). The tap produced a log, so the Day ledger now states it; the
+    // control here goes with it, because a dose the ledger states must not be stated
+    // twice. The item itself is still in the stack, unchanged.
+    await page.reload();
     await expect(
-      notScheduled
+      page
+        .getByTestId("supplement-stack")
         .getByTestId("supplement-row")
         .filter({ hasText: SITUATION_ITEM })
         .getByTestId("dose-take")
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId("supplement-stack")
+        .getByTestId("intake-item-name")
+        .filter({ hasText: SITUATION_ITEM })
+    ).toBeVisible();
+    await page.goto("/nutrition?tab=food");
+    await expect(page.getByTestId("day-ledger")).toContainText(SITUATION_ITEM);
   } finally {
     dropItem(db, itemId);
     if (situationId != null) {

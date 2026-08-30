@@ -76,6 +76,8 @@ import { doseLogDays } from "@/lib/dose-log-window";
 import { getFindingSuppressions, getIntakePairs } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { separatePairWarnings } from "@/lib/intake-pairs";
+import { Notice } from "@/components/Notice";
+import { DismissFindingButton } from "@/components/FindingCard";
 import { TIME_BUCKETS } from "@/lib/intake-schedule";
 import { workoutDaySubtitleLabel } from "@/lib/intake-schedule";
 import {
@@ -360,6 +362,8 @@ export default async function FoodTab({
   const todaysPending = pendingByDate.get(date) ?? [];
   const keepApart = TIME_BUCKETS.map((bucket) => ({
     bucket: bucket as string,
+    // RENDERED HERE, on the server, because the dismissal is a server action: the
+    // ledger is a client island and may render these nodes but cannot import them.
     warnings: activeByKey(
       separatePairWarnings(
         todaysPending.filter((d) => d.bucket === bucket).map((d) => d.itemId),
@@ -369,7 +373,31 @@ export default async function FoodTab({
       ledgerSuppressions,
       date
     ),
-  })).filter((entry) => entry.warnings.length > 0);
+  }))
+    .filter((entry) => entry.warnings.length > 0)
+    .map((entry) => ({
+      bucket: entry.bucket,
+      content: (
+        <>
+          {entry.warnings.map((warning) => (
+            <Notice
+              key={warning.key}
+              tone="amber"
+              icon
+              className="mb-2"
+              action={
+                <DismissFindingButton
+                  dedupeKey={warning.key}
+                  label={`Dismiss: ${warning.text}`}
+                />
+              }
+            >
+              {warning.text}
+            </Notice>
+          ))}
+        </>
+      ),
+    }));
   // The workout/rest context line the retired schedule carried (#3987's anti-drop
   // gate). Day-shaped, so it moves to the day surface; absent where training is not
   // tracked, which is the same gate the schedule applied.

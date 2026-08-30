@@ -90,7 +90,6 @@ import Disclosure from "@/components/Disclosure";
 import SegmentedControl from "@/components/SegmentedControl";
 import DayLedger from "./DayLedger";
 import type { LedgerGroup } from "@/lib/day-ledger";
-import type { KeepApartWarning } from "@/lib/intake-pairs";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 
 // Where one corrected serving landed, with the server's authoritative counts for that
@@ -251,7 +250,7 @@ export default function FoodLogBar({
     // would refuse and never withhold one it would accept.
     doseWritableDates: string[];
     prefs: DisplayFormatPrefs;
-    keepApart: { bucket: string; warnings: KeepApartWarning[] }[];
+    keepApart: { bucket: string; content: ReactNode }[];
     dayContext: string | null;
   };
 }) {

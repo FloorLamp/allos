@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { IconChevronDown, IconPill } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
@@ -14,8 +14,6 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import Button from "@/components/Button";
-import { Notice } from "@/components/Notice";
-import { DismissFindingButton } from "@/components/FindingCard";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -37,7 +35,6 @@ import {
   type LedgerStack,
 } from "@/lib/day-ledger";
 import type { PendingDayDose } from "@/lib/queries/usual-routine";
-import type { KeepApartWarning } from "@/lib/intake-pairs";
 import { resolveDayDoses } from "./intake-actions";
 
 // THE DAY LEDGER (#3987 phase 1).
@@ -86,8 +83,15 @@ export interface DayLedgerProps {
    */
   doseWritable: boolean;
   prefs: DisplayFormatPrefs;
-  /** Keep-apart guidance for the buckets that still owe doses. Current safety, so today only. */
-  keepApart: { bucket: string; warnings: KeepApartWarning[] }[];
+  /**
+   * Keep-apart guidance for the buckets that still owe doses, ALREADY RENDERED.
+   *
+   * Server-rendered nodes rather than data: the dismissal rides `DismissFindingButton`,
+   * whose form action is an inline `"use server"` — a server component, which a client
+   * island may render as a child but cannot import. Current safety guidance, so the
+   * caller passes it for TODAY only.
+   */
+  keepApart: { bucket: string; content: ReactNode }[];
   /** The workout/rest context this day carries, where training is tracked. */
   dayContext: string | null;
   onCorrectServing: (eventId: number) => void;
@@ -559,9 +563,9 @@ export default function DayLedger({
         />
       ) : (
         groups.map((group) => {
-          const warnings =
-            keepApart.find((entry) => entry.bucket === group.bucket)
-              ?.warnings ?? [];
+          const warnings = keepApart.find(
+            (entry) => entry.bucket === group.bucket
+          )?.content;
           return (
             <section
               key={group.bucket}
@@ -585,22 +589,7 @@ export default function DayLedger({
               {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
                   anti-drop gate): it is current safety advice about what to take
                   together, so it belongs beside the taps, not on a management list. */}
-              {warnings.map((warning) => (
-                <Notice
-                  key={warning.key}
-                  tone="amber"
-                  icon
-                  className="mb-2"
-                  action={
-                    <DismissFindingButton
-                      dedupeKey={warning.key}
-                      label={`Dismiss: ${warning.text}`}
-                    />
-                  }
-                >
-                  {warning.text}
-                </Notice>
-              ))}
+              {warnings}
               <ul className={LOGGED_EVENT_LIST}>{group.rows.map(renderRow)}</ul>
             </section>
           );

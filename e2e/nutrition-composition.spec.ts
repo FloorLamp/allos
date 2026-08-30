@@ -67,7 +67,7 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     // CompactDateMenu is the one adopter that genuinely renders on a phone.
     // Measure it beside the row's other action so the 44px repair cannot escape
     // the viewport or buy its size by covering Dietary preferences.
-    const preferences = page.getByTestId("food-preferences-open-mobile");
+    const preferences = page.getByTestId("food-preferences-open");
     const [dateBox, preferencesBox] = await settledBoxes([
       dateMenuTrigger,
       preferences,
@@ -219,30 +219,32 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
       0
     );
 
-    // This week holds the weekly rollup + habits as divided sections, not stacked cards.
+    // ONE THIS-WEEK LIST (#3987). The rollup and the habits section were two lists of
+    // the same groups for the same week; there is one now, and the tracked groups carry
+    // their target and pace INLINE on their own row rather than in a second list below.
     const week = page.getByTestId("nutrition-week-section");
+    const habits = week.getByTestId("weekly-habits");
+    await expect(habits).toBeVisible();
+    await expect(habits).not.toHaveClass(/\bcard\b/);
     await expect(
-      week.getByRole("heading", { name: "This week", exact: true })
+      habits.getByRole("heading", { name: "This week", exact: true })
     ).toHaveClass(/\bsection-label\b/);
-    const rollup = week.getByTestId("food-weekly-rollup");
-    await expect(rollup).toBeVisible();
-    const weeklyFiber = week.getByTestId("nutrition-weekly-fiber");
-    await expect(weeklyFiber).toBeVisible();
+    // THE REMOVAL: no second weekly section, no second heading.
     await expect(
-      weeklyFiber.getByRole("heading", {
-        name: "Weekly fiber target",
-        level: 3,
-      })
-    ).toHaveClass(/\bsection-label\b/);
-    await expect(weeklyFiber.getByTestId("fiber-gauge")).toHaveCount(0);
-    await expect(weeklyFiber).toContainText("Avg logged day");
-    await expect(
-      weeklyFiber.getByTestId("nutrition-weekly-fiber-value")
-    ).toHaveText(/^\d+g\+?$/);
-    await expect(weeklyFiber).toContainText(/\/ \d+g\+ goal/);
-    // Weekly servings use a visible hierarchy: most logged first, then name for ties.
+      week.getByRole("heading", { name: "Weekly habits" })
+    ).toHaveCount(0);
+    await expect(week.getByTestId("food-weekly-rollup")).toHaveCount(1);
+    // THE CONVERSE, and it is the half an absence assertion cannot make: the ONE list
+    // still carries BOTH facts. A tracked group's row names the group, its servings,
+    // its target and its pace — and a group with no target still has its row.
+    const rollup = habits.getByTestId("food-weekly-rollup");
     const rollupRows = rollup.locator(":scope > li");
     expect(await rollupRows.count()).toBeGreaterThan(0);
+    const trackedRow = rollup.locator("li").filter({
+      has: page.locator('[data-testid^="habit-pace-"]'),
+    });
+    expect(await trackedRow.count()).toBeGreaterThan(0);
+    // Weekly servings keep their visible hierarchy: most logged first, name for ties.
     const rollupValues = await rollupRows.evaluateAll((rows) =>
       rows.map((row) => {
         const values = row.querySelectorAll("span");
@@ -257,20 +259,26 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
         (a, b) => b.count - a.count || a.name.localeCompare(b.name)
       )
     );
-    expect(
-      await rollupRows.evaluateAll((rows) =>
-        rows.every((row) => !/\bservings?\b/i.test(row.textContent ?? ""))
-      )
-    ).toBe(true);
-    const habits = week.getByTestId("weekly-habits");
-    await expect(habits).toBeVisible();
+
+    // FIBER IS STATED ONCE ON THE RAIL (#3987's acceptance criterion). The weekly
+    // block that used to sit down here folded INTO the fiber block, so its average is
+    // one line under the gauge — and the weekly section carries no fiber gauge of its
+    // own any more.
+    await expect(week.getByTestId("nutrition-weekly-fiber")).toHaveCount(0);
     await expect(
-      habits.getByRole("heading", { name: "Weekly habits", level: 3 })
-    ).toHaveClass(/\bsection-label\b/);
-    await expect(habits).not.toHaveClass(/\bcard\b/);
-    await expect(habits).not.toContainText(
-      "Track a food group as a weekly habit"
-    );
+      week.getByRole("heading", { name: "Weekly fiber target" })
+    ).toHaveCount(0);
+    const weeklyFiber = nutrients.getByTestId("nutrition-weekly-fiber");
+    await expect(weeklyFiber).toBeVisible();
+    await expect(weeklyFiber).toContainText("Avg logged day this week");
+    await expect(
+      weeklyFiber.getByTestId("nutrition-weekly-fiber-value")
+    ).toHaveText(/^\d+g\+?$/);
+    await expect(weeklyFiber).toContainText(/\/ \d+g\+ goal/);
+    // ONE gauge per nutrient, page-wide — the count IS the "stated once" claim, and it
+    // fails as loudly on a page that lost a gauge as on one that grew a second.
+    await expect(page.getByTestId("fiber-gauge")).toHaveCount(1);
+    await expect(page.getByTestId("protein-gauge")).toHaveCount(1);
 
     // The daily and weekly context lead; the optional modal launcher follows them.
     const today = page.getByTestId("nutrition-today-section");
@@ -298,12 +306,15 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     // logger header stays focused on day/meal input.
     const context = page.getByTestId("food-log-context");
     await expect(context.getByTestId("food-preferences-link")).toHaveCount(0);
+    await expect(page.getByTestId("food-preferences-open")).toBeVisible();
+    // ONE preferences affordance at every width, and no Meals-cards header to carry a
+    // second one (#3987).
     await expect(
-      page.getByTestId("food-preferences-open-mobile")
-    ).toBeVisible();
+      page.getByTestId("food-preferences-open-desktop")
+    ).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Meals", level: 3 })
-    ).toBeHidden();
+    ).toHaveCount(0);
 
     // The tabs are not a second sticky layer: they travel with ShellChrome's
     // existing hide/reveal transform as the bottom of that ONE unit.
