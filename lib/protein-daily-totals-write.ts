@@ -5,8 +5,8 @@
 // computation. Protein powder / shakes have no food-group catalog home (a
 // `protein_shake` group would double-count the milk/eggs someone also logs), so this
 // is the shake path: a single running gram total per (profile, date) that SUMS with the
-// food-group estimated floor and is overridden by an integration's tracked protein_g
-// (see lib/protein.ts proteinIntake()).
+// food-group estimated floor, then an integration's tracked protein_g is compared with
+// that sum as the larger floor (see lib/protein.ts proteinIntake()).
 //
 // One row per (profile, date) whose `grams` an add increments and an undo decrements;
 // the keyed upsert is idempotent-friendly and the row is dropped once it returns to

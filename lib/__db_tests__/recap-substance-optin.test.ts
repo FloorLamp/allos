@@ -31,6 +31,7 @@ import {
   getRecapCard,
   getScaleRecap,
 } from "@/lib/notifications/recap-data";
+import { generatePeriodRecap } from "@/lib/ai-period-recap";
 import { buildRecap, renderRecapMessage } from "@/lib/recap";
 import { plainBody } from "@/lib/notifications/rich-text";
 
@@ -107,6 +108,22 @@ const sendBody = (pid: number, scale: "week" | "month"): string => {
   return msg ? plainBody(msg.body) : "";
 };
 
+const narratedSendBody = async (
+  pid: number,
+  scale: "week" | "month"
+): Promise<string> => {
+  vi.setSystemTime(new Date("2026-05-31T12:00:00Z"));
+  const generated = await generatePeriodRecap(pid, scale);
+  vi.setSystemTime(NOW);
+  const msg = renderRecapMessage(
+    buildRecap(gatherRecapInput(pid, "kg", scale, true, today(pid), true)),
+    "Robin",
+    generated.summary,
+    "https://example.test"
+  );
+  return msg ? plainBody(msg.body) : "";
+};
+
 // The two rendered sentences, per scale: the week's verdict line and the month's
 // cap-weeks line. The month's week count comes from the period, so it is matched
 // loosely on its "N of M weeks" tail.
@@ -160,7 +177,27 @@ describe("the outbound recap asks the substance consent (#3900)", () => {
   );
 
   it.each(SUBSTANCES)(
-    "leaves $label on the in-app card and the AI narrative's facts with the consent unset",
+    "keeps $label out of the generated and rendered monthly narrative when consent is unset",
+    async ({ scope, label }) => {
+      const pid = cappedProfile(`recap-narrative-optout-${scope}`, scope);
+      const body = await narratedSendBody(pid, "month");
+      expect(body).not.toContain(label);
+    }
+  );
+
+  it.each(SUBSTANCES)(
+    "keeps $label in the generated and rendered monthly narrative once consented",
+    async ({ scope, label }) => {
+      const pid = cappedProfile(`recap-narrative-optin-${scope}`, scope);
+      setProfileSubstanceTelegram(pid, true);
+      expect(await narratedSendBody(pid, "month")).toMatch(
+        capSentence(label, "month")
+      );
+    }
+  );
+
+  it.each(SUBSTANCES)(
+    "leaves $label on the dashboard and deterministic in-app facts with consent unset",
     ({ scope, label }) => {
       const pid = cappedProfile(`recap-inapp-${scope}`, scope);
       // The cap line speaks at month scale, and the card shows the profile's chosen

@@ -598,9 +598,19 @@ export function getRecapCard(
 export function getScaleRecap(
   profileId: number,
   scale: RecapScale,
-  weightUnit: WeightUnit = "kg"
+  weightUnit: WeightUnit = "kg",
+  opts?: { asOf?: string; forSend?: boolean }
 ): Recap {
-  return buildRecap(gatherRecapInput(profileId, weightUnit, scale));
+  return buildRecap(
+    gatherRecapInput(
+      profileId,
+      weightUnit,
+      scale,
+      false,
+      opts?.asOf,
+      opts?.forSend
+    )
+  );
 }
 
 // Build + send this profile's recap for `date`. Called from the tick only at the

@@ -15,7 +15,9 @@ import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import AppVersion from "@/components/AppVersion";
 import WhatsNewLink from "@/components/WhatsNewLink";
+import { logoutAction } from "@/app/(app)/session-actions";
 import { settingsGroupContext } from "./SettingsGroupLayout";
+import SettingsLogoutButton from "./SettingsLogoutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +105,10 @@ export default async function SettingsIndexPage() {
           </ul>
         </section>
       )}
+
+      <form action={logoutAction} className="mt-8">
+        <SettingsLogoutButton />
+      </form>
 
       <footer className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         <span>

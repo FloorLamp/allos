@@ -44,21 +44,6 @@ describe("recordInstrumentAction", () => {
     expect(respCount.n).toBe(9);
   });
 
-  it("rejects an incomplete in-app administration", async () => {
-    const login = createLogin();
-    const profile = createProfile("mh-incomplete", login.id);
-    actAs(login, profile);
-    const r = await recordInstrumentAction(
-      fd({
-        instrument: "PHQ-9",
-        mode: "administer",
-        date: "2026-07-01",
-        answers: JSON.stringify([1, 2, 3]), // only 3 of 9
-      })
-    );
-    expect(r.ok).toBe(false);
-  });
-
   it("accepts an outside total-only GAD-7 score (no item answers)", async () => {
     const login = createLogin();
     const profile = createProfile("mh-outside", login.id);
@@ -86,33 +71,44 @@ describe("recordInstrumentAction", () => {
     expect(respCount.n).toBe(0);
   });
 
-  it("rejects an out-of-range outside total", async () => {
+  it("rejects incomplete, out-of-range, and unknown inputs without writing", async () => {
     const login = createLogin();
-    const profile = createProfile("mh-oob", login.id);
+    const profile = createProfile("mh-invalid", login.id);
     actAs(login, profile);
-    const r = await recordInstrumentAction(
-      fd({
+
+    const invalidInputs = [
+      {
+        instrument: "PHQ-9",
+        mode: "administer",
+        date: "2026-07-01",
+        answers: JSON.stringify([1, 2, 3]), // only 3 of 9
+      },
+      {
         instrument: "GAD-7",
         mode: "outside",
         date: "2026-07-01",
         total: "99",
-      })
-    );
-    expect(r.ok).toBe(false);
-  });
-
-  it("rejects an unknown instrument", async () => {
-    const login = createLogin();
-    const profile = createProfile("mh-bad", login.id);
-    actAs(login, profile);
-    const r = await recordInstrumentAction(
-      fd({
+      },
+      {
         instrument: "BOGUS",
         mode: "outside",
         date: "2026-07-01",
         total: "1",
-      })
-    );
-    expect(r.ok).toBe(false);
+      },
+    ];
+
+    for (const input of invalidInputs) {
+      const result = await recordInstrumentAction(fd(input));
+      expect(result.ok).toBe(false);
+    }
+
+    const writes = db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM medical_records WHERE profile_id = ?) AS records,
+           (SELECT COUNT(*) FROM instrument_responses WHERE profile_id = ?) AS responses`
+      )
+      .get(profile.id, profile.id);
+    expect(writes).toEqual({ records: 0, responses: 0 });
   });
 });
