@@ -1,7 +1,13 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import Database from "better-sqlite3";
-import { followLink, hydratedClick, settledClick } from "./helpers";
+import {
+  expandLedgerDueGroups,
+  followLink,
+  hydratedClick,
+  ledgerDoseRow,
+  settledClick,
+} from "./helpers";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -44,16 +50,22 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const rows = page.locator("div.card").filter({ hasText: name });
   await expect(rows).toHaveCount(2);
 
-  // ── Confirm the Morning dose ────────────────────────────────────────────────
-  const morningRow = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
-    .filter({ hasText: name });
-  await morningRow.getByRole("button", { name: "Mark taken" }).click();
+  // ── Confirm the Morning dose, where the day is stated (#3987) ───────────────
+  await page.goto("/nutrition?tab=food");
+  await expandLedgerDueGroups(page);
+  const ledgerRow = ledgerDoseRow(page, name).first(); // first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
+  await ledgerRow.getByRole("button", { name: "Mark taken" }).click();
   await expect(
-    morningRow.getByRole("button", { name: "Mark not taken" })
+    ledgerRow.getByRole("button", { name: "Mark not taken" })
   ).toBeVisible();
+
+  // The row that OWNS the item — edit, history — is the stack's, on the other tab.
+  await page.goto("/nutrition?tab=supplements");
+  const morningRow = page
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
+    .filter({ hasText: name })
+    .first(); // first-ok: both dose rows carry the same item actions; either opens the edit form
 
   // ── Restructure: replace both doses with a single 1000 mg dose ─────────────
   await morningRow.getByRole("button", { name: "Supplement actions" }).click();
@@ -122,15 +134,21 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
-  const row = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
-    .filter({ hasText: name });
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  // Confirming is a statement about TODAY, so it happens on the Day ledger (#3987);
+  // the item's own row — history, edit — stays on the tab that manages the stack.
+  await page.goto("/nutrition?tab=food");
+  await expandLedgerDueGroups(page);
+  const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
+  await taken.getByRole("button", { name: "Mark taken" }).click();
   await expect(
-    row.getByRole("button", { name: "Mark not taken" })
+    taken.getByRole("button", { name: "Mark not taken" })
   ).toBeVisible();
+  await page.goto("/nutrition?tab=supplements");
+  const row = page
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
+    .filter({ hasText: name })
+    .first(); // first-ok: every dose row of this item carries the same item actions
 
   // ── The row's ⋯ menu now reaches dose history ──────────────────────────────
   await row.getByRole("button", { name: "Supplement actions" }).click();
@@ -234,15 +252,21 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   await addDialog.getByRole("button", { name: "Add", exact: true }).click();
   await expect(addDialog).toHaveCount(0);
 
-  const row = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
-    .filter({ hasText: name });
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  // Confirming is a statement about TODAY, so it happens on the Day ledger (#3987);
+  // the item's own row — history, edit — stays on the tab that manages the stack.
+  await page.goto("/nutrition?tab=food");
+  await expandLedgerDueGroups(page);
+  const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
+  await taken.getByRole("button", { name: "Mark taken" }).click();
   await expect(
-    row.getByRole("button", { name: "Mark not taken" })
+    taken.getByRole("button", { name: "Mark not taken" })
   ).toBeVisible();
+  await page.goto("/nutrition?tab=supplements");
+  const row = page
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
+    .filter({ hasText: name })
+    .first(); // first-ok: every dose row of this item carries the same item actions
 
   // ── ONE click from the supplements tab to the whole record ────────────────
   // The door used to open a route of its own; #3958 folded the four ledgers into
@@ -358,10 +382,10 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
 
   await page.goto("/nutrition?tab=supplements");
   const row = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
-    .filter({ hasText: name });
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
+    .filter({ hasText: name })
+    .first(); // first-ok: every dose row of this item carries the same item actions
   await hydratedClick(
     page,
     row.getByRole("button", { name: "Supplement actions" })

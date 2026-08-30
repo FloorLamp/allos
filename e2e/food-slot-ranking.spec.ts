@@ -87,18 +87,14 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(fishTrend).toBeVisible();
     const fishCells = fishTrend.locator("span[data-verdict]");
     await expect(fishCells).toHaveCount(8);
-    // The shared disclosure carries each week's exact count.
-    const fishDetails = card.getByTestId("habit-fatty_fish");
-    const fishSummary = fishDetails.locator("summary");
-    await expect(fishSummary).toHaveText("Fatty fish weekly details");
-    await fishSummary.click();
-    const fishItems = fishDetails.locator("details li");
-    await expect(fishItems).toHaveCount(8);
-    expect(
-      (await fishItems.allTextContents()).every((item) =>
-        /·\s\d+ of 2$/.test(item)
-      )
-    ).toBe(true);
+    // EACH WEEK'S EXACT COUNT, in the strip's OWN accessible name (#3987). The
+    // per-habit details disclosure retired with the second This-week list; the reading
+    // it carried did not, because a strip of coloured squares that says only
+    // "consistency" is unreadable without eyes. Same eight weeks, same "N of 2".
+    const fishLabel = (await fishTrend.getAttribute("aria-label")) ?? "";
+    const fishWeeks = fishLabel.split(": ").slice(1).join(": ").split("; ");
+    expect(fishWeeks).toHaveLength(8);
+    expect(fishWeeks.every((week) => /·\s\d+ of 2$/.test(week))).toBe(true);
     // A backdated habit has NO not-applicable cells (it existed for the whole window).
     await expect(fishTrend.locator('span[data-verdict="na"]')).toHaveCount(0);
 
@@ -109,16 +105,11 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     await expect(
       greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toBeVisible();
-    // Its shared detail disclosure says so.
-    const greensDetails = card.getByTestId("habit-leafy_greens");
-    const greensSummary = greensDetails.locator("summary");
-    await expect(greensSummary).toHaveText("Leafy greens weekly details");
-    await greensSummary.click();
-    await expect(
-      greensDetails
-        .locator("details li")
-        .filter({ hasText: /not tracked yet$/ })
-    ).not.toHaveCount(0);
+    // And the strip's accessible name says so, in the same words.
+    const greensLabel = (await greensTrend.getAttribute("aria-label")) ?? "";
+    expect(greensLabel).toMatch(/not tracked yet/);
+    // The habit's own span is still in the list, carrying its target and pace.
+    await expect(card.getByTestId("habit-leafy_greens")).toBeVisible();
   } finally {
     await page.context().close();
   }

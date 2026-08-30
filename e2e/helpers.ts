@@ -3691,3 +3691,52 @@ export async function expectAtomicCardPairs(
   expect((await scanCardMetaPairs(scope)).breaks).toEqual([]);
   return scan;
 }
+
+// ── THE DAY LEDGER'S DOSE ROWS (#3987) ───────────────────────────────────────
+//
+// The Nutrition page states a day ONCE now, on the Food tab: what a day owes and what
+// it recorded are the ledger's, and the Supplements tab is the stack you manage. So a
+// spec that used to confirm a dose by reaching into a time-bucket `<section>` on the
+// Supplements tab has two subjects where it had one — the ROW (edit, delete, history)
+// and the DAY (take, skip, clear) — and they live on different tabs.
+//
+// These two helpers are that split, named once, because six specs make the same reach
+// and a seventh would otherwise re-derive it. Neither navigates: a spec says which tab
+// it is on, since that is part of what it is asserting.
+
+/**
+ * Expand every collapsed due-dose group in the ledger, so the individual doses behind
+ * the bulk Take-all are in the DOM.
+ *
+ * Idempotent by construction — it opens only the groups reading `aria-expanded="false"`
+ * — so a spec may call it after any navigation without tracking what it already did.
+ */
+export async function expandLedgerDueGroups(page: Page): Promise<void> {
+  const groups = page.locator('[data-testid^="ledger-due-group-"]');
+  const count = await groups.count();
+  for (let i = 0; i < count; i++) {
+    const group = groups.nth(i);
+    if ((await group.getAttribute("aria-expanded")) === "false") {
+      await group.click();
+    }
+  }
+}
+
+/**
+ * One item's dose row in the ledger, whichever half of the day it is in — still owed
+ * (`ledger-due-dose-…`) or already recorded (`ledger-dose-…`).
+ *
+ * BOTH SHAPES, DELIBERATELY. Resolving a dose moves it from the bucket's due row to a
+ * recorded row of its own, so a locator pinned to one of them describes the dose only
+ * until somebody answers it — which is precisely the moment most of these specs are
+ * asserting. Filtering the union by name keeps the subject the DOSE rather than a
+ * position the ledger is allowed to change.
+ */
+export function ledgerDoseRow(page: Page, name: string): Locator {
+  return page
+    .getByTestId("day-ledger")
+    .locator(
+      'li[data-testid^="ledger-due-dose-"], li[data-testid^="ledger-dose-"]'
+    )
+    .filter({ hasText: name });
+}

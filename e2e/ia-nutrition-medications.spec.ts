@@ -45,8 +45,10 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     /tab=supplements/
   );
   await expect(page.getByTestId("situations-bar")).toHaveCount(0);
-  await expect(page.getByTestId("supplements-status")).toBeVisible();
-  await expect(page.getByTestId("supplements-status-desktop")).toBeVisible();
+  // THE DAY LEFT THIS TAB (#3987). The taken counter, the day switcher and the slot
+  // filter went with the daily schedule; what stays is the stack you manage.
+  await expect(page.getByTestId("supplements-status")).toHaveCount(0);
+  await expect(page.getByTestId("supplement-stack")).toBeVisible();
   await expect(page.getByTestId("food-log-bar")).toHaveCount(0);
   await expect(page.getByTestId("supplement-workspace")).toBeVisible();
   await expect(page.getByTestId("supplement-sidebar-surface")).toBeVisible();
@@ -95,10 +97,6 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   expect(weeklyBox).not.toBeNull();
   expect(insightsBox).not.toBeNull();
   expect(weeklyBox!.y).toBeLessThan(insightsBox!.y);
-  const bucketHeadings = page.locator(
-    '[data-testid^="supplement-bucket-"] > h3'
-  );
-  expect(await bucketHeadings.count()).toBeGreaterThan(0);
   const mustRow = page
     .getByTestId("supplement-row")
     .filter({ hasText: "Evening Vitamin C (e2e)" });
@@ -108,18 +106,19 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     "Must"
   );
   await expect(mustRow.getByTestId("adherence-summary")).toBeVisible();
+  // NO DAY CONTROL ON A MANAGEMENT ROW (#3987): resolving today's dose is the Day
+  // ledger's, and this row is what the item IS. The row action that remains is the
+  // ⋯ menu, and it still sits to the right of the name.
+  await expect(mustRow.getByTestId("dose-status")).toHaveCount(0);
   const supplementNameBox = await mustRow
     .getByTestId("intake-item-name")
     .boundingBox();
   const supplementActionBox = await mustRow
-    .getByTestId("dose-status")
+    .getByRole("button", { name: /^Supplement actions for/ })
     .boundingBox();
   expect(supplementNameBox).not.toBeNull();
   expect(supplementActionBox).not.toBeNull();
   expect(supplementActionBox!.x).toBeGreaterThan(supplementNameBox!.x);
-  const markTaken = mustRow.getByTestId("dose-take");
-  await expect(markTaken.locator("svg")).toBeVisible();
-  await expect(markTaken).not.toHaveCSS("color", "rgba(0, 0, 0, 0)");
 
   // Creation is secondary to today's doses: a compact action opens the short
   // name/dose/time path in a modal, with advanced metadata behind a disclosure.
@@ -149,41 +148,15 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await closeEditor(page, addDialog);
   await addDialog.getByRole("button", { name: "Close" }).click();
 
-  // Supplements use the same recent-day lens as Food, then large slot cards.
-  const dayToggle = page.getByTestId("supplement-day-toggle");
-  await expect(dayToggle.getByRole("button")).toHaveCount(7);
-  await expect(page.getByTestId("supplement-day-today")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
-
-  // The large schedule cards rest on All and narrow to one supplement time slot.
-  await expect(page.getByTestId("supplement-slot-selector")).toHaveAttribute(
-    "data-variant",
-    "large"
-  );
+  // THE DAY-SHAPED CHROME IS GONE FROM THIS TAB, and this is the REMOVAL half of the
+  // claim (#3987): the recent-day lens, the slot filter and the day heading all went
+  // with the schedule.
+  await expect(page.getByTestId("supplement-day-toggle")).toHaveCount(0);
+  await expect(page.getByTestId("supplement-slot-selector")).toHaveCount(0);
+  await expect(page.getByTestId("supplement-context-heading")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Time slots", level: 3 })
-  ).toHaveClass(/\bsr-only\b/);
-  await expect(page.getByTestId("supplement-slot-all")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
-  await expect(page.getByTestId("supplement-slot-chip")).toHaveCount(0);
-  await page.getByTestId("supplement-slot-morning").click();
-  await expect(page.getByTestId("supplement-slot-morning")).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
-  await expect(page.getByTestId("supplement-slot-chip")).toHaveText("Morning");
-  await expect(
-    page.getByTestId("supplement-context-heading")
-  ).toHaveAccessibleName(/Today Morning Supplements(?: (?:Workout|Rest) day)?/);
-  await expect(page.getByTestId("supplement-context-label")).toHaveText(
-    "Morning"
-  );
-  await expect(page.getByTestId("supplement-bucket-morning")).toBeVisible();
-  await expect(page.getByTestId("supplement-bucket-evening")).toHaveCount(0);
+  ).toHaveCount(0);
 
   // Secondary coaching uses the same stable modal pattern as Food's lab suggestions.
   const suggestionBadge = page.getByTestId("supplement-suggestions-badge");
@@ -216,6 +189,19 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 });
 
+// The Day ledger collapses a bucket's still-due doses into ONE row with a bulk
+// Take-all (#3987/#3936), so the individual names are behind that fold. Every dose
+// assertion below opens them first.
+async function expandDueGroups(page: Page): Promise<void> {
+  const groups = page.locator('[data-testid^="ledger-due-group-"]');
+  const n = await groups.count();
+  for (let i = 0; i < n; i++) {
+    const row = groups.nth(i);
+    if ((await row.getAttribute("aria-expanded")) === "false")
+      await row.click();
+  }
+}
+
 test("a newly scheduled supplement does not appear on earlier days", async ({
   page,
 }) => {
@@ -230,7 +216,7 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
         .prepare(
           `INSERT INTO intake_items
              (profile_id, name, active, kind, obligation, condition, source, created_at)
-           VALUES (1, ?, 1, 'supplement', 'may', 'daily', 'manual', ?)`
+           VALUES (1, ?, 1, 'supplement', 'should', 'daily', 'manual', ?)`
         )
         .run(name, createdAt).lastInsertRowid
     );
@@ -240,13 +226,22 @@ test("a newly scheduled supplement does not appear on earlier days", async ({
        VALUES (?, '1 cap', 'Morning', 'any', 0, ?)`
     ).run(itemId, createdAt);
 
+    // AND THE CONVERSE OF THAT REMOVAL: the day lens did not vanish, it MOVED. The
+    // lifetime bound it existed to demonstrate — an item created today is not owed on
+    // an earlier day — is now the Day ledger's, on the Food tab, where the day lives.
     await page.goto("/nutrition?tab=supplements");
-    await expect(page.getByTestId("intake-item-name").filter({ hasText: name }))
-      .toBeVisible;
-    await page.getByTestId("supplement-day-yesterday").click();
+    // `.toBeVisible` WITHOUT ITS PARENTHESES was a no-op here before #3987 touched
+    // this test, so the today half of "appears today, not earlier" had never run.
     await expect(
       page.getByTestId("intake-item-name").filter({ hasText: name })
-    ).toHaveCount(0);
+    ).toBeVisible();
+    await page.goto("/nutrition?tab=food");
+    const ledger = page.getByTestId("day-ledger");
+    await expandDueGroups(page);
+    await expect(ledger).toContainText(name);
+    await page.getByTestId("food-day-yesterday").click();
+    await expandDueGroups(page);
+    await expect(ledger).not.toContainText(name);
   } finally {
     if (itemId != null) {
       db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(itemId);

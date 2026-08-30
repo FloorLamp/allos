@@ -19,7 +19,9 @@ test("Weekly habits shows the seeded fatty-fish target with progress (#580)", as
   await expect(card).toBeVisible();
   await expect(page.getByTestId("habit-fatty_fish")).toBeVisible();
   // "N / 2" plus a paced badge (#748 item 3) — On track / On pace / Behind.
-  await expect(page.getByTestId("habit-fatty_fish")).toContainText("/ 2");
+  // "N" on the row, "of 2" plus the pace badge on the habit's own span — the rollup
+  // count and the target now read as one sentence in ONE list (#3987).
+  await expect(page.getByTestId("habit-fatty_fish")).toContainText("of 2");
   const pace = page.getByTestId("habit-pace-fatty_fish");
   await expect(pace).toBeVisible();
   await expect(pace).toHaveText(/On track|On pace|Behind/);
@@ -30,7 +32,9 @@ test("tracking a new food habit adds it, and removing it leaves the fixture as f
 }) => {
   await page.goto("/nutrition");
 
-  // Track "Legumes & beans" as a weekly habit.
+  // Track "Legumes & beans" as a weekly habit. The form is ONE folded affordance now
+  // (#3987): tracking a habit is a rare act and a standing form taxes every visit.
+  await hydratedClick(page, page.getByTestId("track-habit-summary"));
   await page
     .getByTestId("add-habit-form")
     .getByLabel("Food group")
@@ -145,6 +149,7 @@ test("a food-group habit that conflicts with an active medication carries the in
 
   // Track leafy greens — the seed has an active Warfarin medication, so the habit
   // should carry the vitamin-K food–drug note (same fact the medication row shows).
+  await hydratedClick(page, page.getByTestId("track-habit-summary"));
   await page
     .getByTestId("add-habit-form")
     .getByLabel("Food group")

@@ -53,8 +53,17 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     await expect(page.getByTestId("count-berries")).toHaveText("1");
     await expect(page.getByTestId("count-fermented")).toHaveText("1");
 
-    // …and the doses, each now confirmed on its own row.
-    await page.goto("/nutrition?tab=supplements");
+    // …and the doses, each now confirmed on its own row of the Day ledger (#3987),
+    // which is where the day is stated. NOT collapsed into one: these items carry no
+    // shared stack label, and the ledger's composed collapse is keyed on the routine
+    // as well as the write minute — a row reading "Morning stack (3)" over three items
+    // that never shared a name would be the label-is-a-promise rule broken by the
+    // surface that quotes it (#3098).
+    await page.goto("/nutrition");
+    const ledger = page.getByTestId("day-ledger");
+    await expect(ledger.locator('[data-testid^="ledger-stack-"]')).toHaveCount(
+      0
+    );
     const taken = page.getByRole("button", { name: "Mark not taken" });
     await expect(taken).toHaveCount(3);
 

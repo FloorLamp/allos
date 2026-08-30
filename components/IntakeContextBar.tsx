@@ -144,15 +144,17 @@ export default function IntakeContextBar(input: Props) {
             )}
           </p>
           {purpose === "food-log" ? (
-            <span className="sm:hidden">
-              <IconButton
-                label="Dietary preferences"
-                data-testid="food-preferences-open-mobile"
-                onClick={input.action.onActivate}
-              >
-                <IconAdjustmentsHorizontal className="h-4 w-4" />
-              </IconButton>
-            </span>
+            // ONE preferences affordance, at every width (#3987). The Food tab used
+            // to draw two — this icon below `sm` and a text button in the Meals-cards
+            // header above it — so the desktop copy went with the cards, and this one
+            // stops being the phone's alone.
+            <IconButton
+              label="Dietary preferences"
+              data-testid="food-preferences-open"
+              onClick={input.action.onActivate}
+            >
+              <IconAdjustmentsHorizontal className="h-4 w-4" />
+            </IconButton>
           ) : (
             input.createAction.available !== false && (
               <CreateAction

@@ -188,7 +188,8 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // State the time BEFORE going offline — the control is local state, so the statement
-  // is made against a page that already rendered.
+  // is made against a page that already rendered. Since #3987 it sits behind one fold.
+  await hydratedClick(page, page.getByTestId("food-when-summary"));
   await hydratedClick(page, page.getByTestId("food-when-now"));
   await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
 
@@ -287,6 +288,7 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
   // Through the settled path: a bare selectOption on a controlled select can land
   // before hydration and be reverted, and here that would silently withdraw the
   // statement this test is entirely about.
+  await hydratedClick(page, page.getByTestId("food-when-summary"));
   const field = page.getByTestId("food-when-time");
   const value = await field
     .getByRole("option", { name: FAST_CLOCK_HOUR, exact: true })
