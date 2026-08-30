@@ -50,6 +50,12 @@
           "title": "Type the times you went to bed and got up, and a night your wearable missed fills its own gap",
           "kind": "feature",
           "issues": [1851]
+        },
+        {
+          "pr": 4168,
+          "title": "One page holds the whole record: the timeline retires and its day view moves in",
+          "kind": "feature",
+          "issues": [3958, 3343]
         }
       ]
     },
