@@ -27,17 +27,33 @@
 // the offer rather than in the counter, and a stale tap lands on an honest typed
 // refusal instead of a silent second breakfast.
 //
-// ── ALWAYS TODAY ─────────────────────────────────────────────────────────────
+// ── THE DATE IS THE CALLER'S, AND THE EVIDENCE GUARD IS WHY THAT IS SAFE ─────
 //
-// The date is the profile's own today, resolved HERE, and no date crosses the wire.
-// Regularity is derived from the ledger, so an offer that could bulk-backfill days
-// nobody remembers would feed its own evidence back into itself. "One tap for the
-// thing you log every day" is a claim about the day you are living.
+// This core used to resolve `today(profileId)` itself and refuse to be told a day at
+// all. The reason was never that a past day is unknowable — a person who ate their
+// usual breakfast on Tuesday and logged nothing is the commonest thing in this ledger
+// — it was SELF-EVIDENCE: "usual" is derived from `getFoodRegularity`, so a bundle
+// written onto days nobody remembers would become the reason it is offered again.
+// Three backfilled mornings would manufacture the fourth.
+//
+// #4118 keeps that intent and moves it to where it actually bites. A bundle aimed at a
+// day that is not the profile's today is stamped `USUAL_BACKFILL` instead of its
+// surface, and `getFoodRegularity` excludes exactly that stamp from its evidence
+// window. So the loop is cut at the READ, not at the write: the rows count everywhere
+// a person looks — the day view, the tallies, the ledgers, adherence — and count for
+// nothing in the measure that decides what "usual" means. A contemporaneous tap is
+// untouched: same stamp it always had, same evidence it always was.
+//
+// The reach is bounded by `isUsualBackfillDateAccepted` (today and the six days
+// before, the nutrition day picker's own span). Further back is the `/history` door's
+// per-item business, because reconstructing a fortnight is not one tap's worth of
+// remembering.
 
 import { instantNow } from "./clock";
-import type { LoggedVia } from "./logged-via";
+import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
 import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
+import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
 import { getUsualFoodOffer } from "./queries/nutrition";
 
@@ -53,6 +69,11 @@ export interface UsualFoodLogged {
 // nothing-to-log — the offer the tap came from no longer stands: every named group is
 // already logged in that window today, or none of them is habitual any more. Nothing
 // was written and the surface must say so rather than confirm.
+//
+// invalid-date — the target day is malformed, in the future, or further back than the
+// bundle may reach (#4118). A DIFFERENT answer from `nothing-to-log`, because "there is
+// nothing left to write" and "you may not write there" are different facts and the
+// surface says different things about them.
 export type UsualFoodOutcome =
   | {
       kind: "logged";
@@ -60,7 +81,8 @@ export type UsualFoodOutcome =
       window: FoodSlot;
       groups: UsualFoodLogged[];
     }
-  | { kind: "nothing-to-log" };
+  | { kind: "nothing-to-log" }
+  | { kind: "invalid-date" };
 
 // A serving write refused PART-WAY THROUGH the set — thrown, never returned, and
 // caught immediately outside `writeTx` below.
@@ -82,8 +104,8 @@ export type UsualFoodOutcome =
 // DO NOT turn this back into a `return`.
 class UsualFoodRefused extends Error {}
 
-// Log one serving of each still-offered usual group into `window` on the profile's
-// today. ONE transaction for the whole set: the offer is a single user intent, so it
+// Log one serving of each still-offered usual group into `window` on `date`. ONE
+// transaction for the whole set: the offer is a single user intent, so it
 // lands whole or not at all — a partial write would leave the bar showing a set the
 // user never chose. `logFoodServingCore`'s own writeTx becomes a SAVEPOINT inside this
 // one (lib/db.ts), so every serving still goes through the one counter+ledger path
@@ -92,6 +114,11 @@ class UsualFoodRefused extends Error {}
 export function logUsualFoodCore(
   profileId: number,
   window: FoodSlot,
+  // WHICH DAY (#4118). Required, no default: a core that resolved its own today would
+  // be a core a dated call site could land on the wrong day without noticing, which is
+  // the same reason `loggedVia` below takes no default. Bounded here, never by the
+  // caller's markup.
+  date: string,
   // The group keys the button NAMED. Authoritative only as an upper bound: the offer
   // re-derived below decides what is actually written.
   named: readonly string[],
@@ -103,7 +130,12 @@ export function logUsualFoodCore(
   // the web control passes nothing and stores NULL, exactly as the bar does.
   origin?: FoodWriteOrigin
 ): UsualFoodOutcome {
-  const date = today(profileId);
+  const t = today(profileId);
+  if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
+  // The provenance the evidence guard keys on. Decided HERE from the day, never posted:
+  // a surface cannot claim a backfill it is not doing, and cannot dress a backfill up as
+  // contemporaneous evidence either.
+  const via = date === t ? loggedVia : USUAL_BACKFILL;
   try {
     return writeTx(() => {
       const offered = new Set(getUsualFoodOffer(profileId, window, date));
@@ -124,7 +156,7 @@ export function logUsualFoodCore(
           profileId,
           groupKey,
           date,
-          loggedVia,
+          via,
           loggedAt,
           window,
           undefined,

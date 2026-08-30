@@ -1087,6 +1087,18 @@ function applyFoodIntent(
           "This food group is no longer available, so the serving wasn't logged.",
       };
     }
+    // The core's day bound (#4118), which this path had none of: a queued write carries
+    // a CLIENT-captured date and, until that bound, `isRealIsoDate` was the whole check
+    // — so a phone whose clock was a day fast queued a serving into the future and the
+    // replay stored it. Permanently rejected rather than re-dated: the queue never
+    // invents a day (that is D20's rule for doses, and this is its food sibling).
+    if (outcome.kind === "invalid-date") {
+      return {
+        status: "rejected",
+        reason:
+          "That day isn't one this can be logged on, so the serving wasn't logged.",
+      };
+    }
     return {
       status: "done",
       ...(verdict.kind === "refused" ? { timeNotice: verdict.reason } : {}),
@@ -1107,6 +1119,13 @@ function applyFoodIntent(
         status: "rejected",
         reason:
           "The protein amount wasn't valid (1–300 grams), so it wasn't logged.",
+      };
+    }
+    if (outcome.kind === "invalid-date") {
+      return {
+        status: "rejected",
+        reason:
+          "That day isn't one this can be logged on, so it wasn't logged.",
       };
     }
     return { status: "done" };

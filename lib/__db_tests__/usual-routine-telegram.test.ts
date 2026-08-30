@@ -33,6 +33,7 @@ import { tickProfile } from "@/lib/notifications/tick";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { USUAL_BACKFILL } from "@/lib/logged-via";
 import {
   answerCallbackQuery,
   editMessageReplyMarkupRaw,
@@ -375,34 +376,106 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
     expect(servingsToday(sp2.profileId, "fermented")).toBe(0);
   });
 
-  it("an offer minted YESTERDAY refuses and writes nothing — no date crosses the wire", async () => {
-    const sp3 = makeProfile("TG2460F");
-    setTimezone(sp3.profileId, "UTC");
-    seedLoginTelegram(sp3.profileId, "5552463");
-    setProfileSetting(sp3.profileId, "food_telegram_enabled", "1");
-    seedHabitualMornings(sp3.profileId, ["fermented", "berries"]);
-    const yesterday = shiftDateStr(today(sp3.profileId), -1);
-    const offerId = mintOffer(sp3.profileId, USUAL_OFFER_FAMILY, yesterday, {
+  // ── THE STALE MESSAGE, WHICH IS WHAT #4118 WAS FILED ABOUT ─────────────────
+  //
+  // The owner's report: on a morning message left overnight, the ✅ dose buttons still
+  // work and the "Your usual Morning" button does not — "I can only update the morning
+  // supplement times, not food." The offer used to be read scoped to `today`, so it
+  // died at the rollover while its neighbours kept their message-date ±2 window.
+  //
+  // ALL THREE STATES, because only asserting the middle one would leave the bound
+  // untested and only asserting the outer ones is what shipped before.
+  //
+  // The habit is seeded with a HOLE at the target day (days 2..22 back rather than
+  // 1..21), because a day whose window is already full has no offer standing on it —
+  // and a green built on THAT is green for the wrong reason. That is exactly what the
+  // pre-#4118 version of this test had become the moment the window widened: it asserted
+  // "nothing was written to yesterday" against a yesterday whose morning was already
+  // logged, so it would have passed whether the day gate worked or not.
+  function seedStaleMessageProfile(tag: string, chat: string, hole: number) {
+    const sp = makeProfile(tag);
+    setTimezone(sp.profileId, "UTC");
+    seedLoginTelegram(sp.profileId, chat);
+    setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
+    const anchor = today(sp.profileId);
+    for (let d = 1; d <= 22; d++) {
+      if (d === hole) continue;
+      const date = shiftDateStr(anchor, -d);
+      for (const g of ["fermented", "berries"])
+        tap(sp.profileId, g, date, "08:00:00");
+    }
+    return { profileId: sp.profileId, anchor };
+  }
+
+  function servingsOn(profileId: number, date: string, group: string): number {
+    const row = db
+      .prepare(
+        `SELECT servings FROM food_daily_totals
+          WHERE profile_id = ? AND date = ? AND group_key = ?`
+      )
+      .get(profileId, date, group) as { servings: number } | undefined;
+    return row?.servings ?? 0;
+  }
+
+  it.each([
+    ["yesterday's message", 1, true],
+    ["a two-day-old message — the last day inside the window", 2, true],
+    ["a three-day-old message — the first day outside", 3, false],
+  ] as const)(
+    "%s: the composed one-tap writes to the message's own day = %s",
+    async (_why, back, expected) => {
+      const chat = `555246${4 + back}`;
+      const { profileId, anchor } = seedStaleMessageProfile(
+        `TG4118-${back}`,
+        chat,
+        back
+      );
+      const target = shiftDateStr(anchor, -back);
+      const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, target, {
+        window: "Morning",
+        groups: ["fermented", "berries"],
+        doseIds: [],
+      });
+      await handleCallbackQuery(
+        cq(offerCallback("usual", profileId, offerId), chat)
+      );
+      // The write lands on the MESSAGE's day and never on today, either way.
+      expect(servingsOn(profileId, target, "fermented")).toBe(expected ? 1 : 0);
+      expect(servingsOn(profileId, target, "berries")).toBe(expected ? 1 : 0);
+      expect(servingsToday(profileId, "fermented")).toBe(0);
+      // Outside the window the refusal is the honest outdated-message text, unchanged.
+      if (!expected) expect(lastAnswerText()).toContain("out of date");
+    }
+  );
+
+  it("stamps the backfilled bundle so the evidence guard can see it", async () => {
+    // The provenance the whole self-evidence argument rests on: a bundle written onto a
+    // day that is not today records `usual-backfill` instead of its surface, which is
+    // what `getFoodRegularity` excludes. Asserted on the ROW, because the guard reads
+    // the column and not the outcome object.
+    const chat = "5552470";
+    const { profileId, anchor } = seedStaleMessageProfile(
+      "TG4118-via",
+      chat,
+      1
+    );
+    const target = shiftDateStr(anchor, -1);
+    const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, target, {
       window: "Morning",
       groups: ["fermented", "berries"],
       doseIds: [],
     });
     await handleCallbackQuery(
-      cq(offerCallback("usual", sp3.profileId, offerId), "5552463")
+      cq(offerCallback("usual", profileId, offerId), chat)
     );
-    // The whole point of the day-scoped row: the bundle cannot be backfilled into
-    // today, and it cannot be written to yesterday either.
-    expect(servingsToday(sp3.profileId, "fermented")).toBe(0);
-    // The seeded history for that day is untouched: one row per group, one serving
-    // each — nothing was appended to yesterday either.
     expect(
       db
         .prepare(
-          `SELECT SUM(servings) AS n FROM food_daily_totals
+          `SELECT DISTINCT logged_via FROM food_log_events
             WHERE profile_id = ? AND date = ?`
         )
-        .get(sp3.profileId, yesterday) as { n: number }
-    ).toEqual({ n: 2 });
+        .all(profileId, target)
+    ).toEqual([{ logged_via: USUAL_BACKFILL }]);
   });
 });
 

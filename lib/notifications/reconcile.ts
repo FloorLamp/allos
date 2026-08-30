@@ -790,13 +790,15 @@ const food: FamilyReconciler = {
   },
   // The ONE family with no `resolved` close to govern (#2275). Its keyboard never lies
   // and never resolves — another serving is always loggable — so `dead` kills only the
-  // hour-long correction chips riding beside it, and the message closes on ROLLOVER
-  // alone (`exact-day`), whose tail is a date fact rather than an outcome. The day's
-  // final tally deliberately does NOT go on that line: a rolled-over additive nudge is
-  // not a receipt for anything, its counts were live in the message until midnight, and
+  // hour-long correction chips riding beside it, and the message closes on a DATE fact
+  // rather than an outcome. Since #4118 that fact is the dose window running out
+  // (`expired` at D+3), not the rollover: the handler honours a tap for two days after
+  // the message, so closing at midnight would delete buttons that still work. The day's
+  // final tally deliberately does NOT go on that line either way: an additive nudge is
+  // not a receipt for anything, its counts were live in the message while it stood, and
   // the day's totals are what the app and the digest are for.
   closeStates: "not-applicable",
-  why: "additive: the quick-log buttons never resolve, so this family never produces a `resolved` close — only the rollover tail, which states a date and not an outcome",
+  why: "additive: the quick-log buttons never resolve, so this family never produces a `resolved` close — only the date tail (`expired` once the message-date window runs out, #4118), which states a date and not an outcome",
 };
 
 // ── food-optin (class 3: decision) ───────────────────────────────────────────

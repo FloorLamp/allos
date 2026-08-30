@@ -53,23 +53,82 @@ vi.mock("@/app/(app)/trends/body-actions", () => ({
     record("addBodyMetric")(fd);
   },
 }));
+// #4118's pair: the composed write the one-tap posts, and the dated offer read the
+// door consults when its date field moves. `offerReads` records every day asked about
+// and `offerReply` decides what comes back, so a test can hold one answer open and
+// prove the sequencing rather than assume it.
+const offerReads: string[] = [];
+let offerReply: (date: string) => Promise<UsualOffer[]> = async () => [];
+// WHAT THE COMPOSED WRITE ANSWERED. Steerable, because `ok: true` does NOT mean every
+// half landed: the core reports each dose separately and a day outside the dose half's
+// own +/-2 window comes back `stale-dose` with the servings still committed. A mock
+// fixed at `doses: []` can never reach that branch, which is exactly how the door
+// shipped reporting a flat success for a write it had only partly performed.
+type UsualReply = {
+  ok: boolean;
+  window?: string;
+  groups?: { groupKey: string; servings: number; mealServings: number }[];
+  doses?: { doseId: number; name: string; outcome: string }[];
+  error?: string;
+};
+let usualReply: () => UsualReply = () => ({
+  ok: true,
+  window: "Morning",
+  groups: [],
+  doses: [],
+});
+vi.mock("@/app/(app)/actions", () => ({
+  logUsualRoutine: async (fd: FormData) => {
+    record("logUsualRoutine")(fd);
+    return usualReply();
+  },
+  usualRoutineOffersOn: async (date: string) => {
+    offerReads.push(date);
+    return offerReply(date);
+  },
+}));
 
 const refreshed: number[] = [];
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => refreshed.push(1) }),
 }));
-vi.mock("@/components/Toast", () => ({ useToast: () => () => {} }));
+// THE TOAST IS AN ASSERTION SUBJECT, not scenery (#4118). It was a no-op mock, so the
+// door could report a success it had not achieved and nothing here could see it.
+const toasts: string[] = [];
+vi.mock("@/components/Toast", () => ({
+  useToast: () => (text: string) => toasts.push(text),
+}));
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 
 beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   refreshed.length = 0;
+  offerReads.length = 0;
+  offerReply = async () => [];
+  toasts.length = 0;
+  usualReply = () => ({ ok: true, window: "Morning", groups: [], doses: [] });
   cleanup();
 });
 
 /** The day the reader is looking at, and the bound every door here is under. */
 const FOUND_DAY = "2026-08-18";
 const TODAY = "2026-08-29";
+
+type UsualOffer = {
+  window: "Morning" | "Midday" | "Evening";
+  food: { slug: string; name: string }[];
+  doses: { id: number; name: string; stack: string | null }[];
+};
+
+/** The composed bundle standing on the found day: two servings and one dose. */
+const MORNING_OFFER: UsualOffer = {
+  window: "Morning",
+  food: [
+    { slug: "berries", name: "Berries" },
+    { slug: "fermented", name: "Fermented foods" },
+  ],
+  doses: [{ id: 41, name: "Creatine", stack: null }],
+};
 
 const VOCABULARY = {
   practices: ["Rowing", "Sauna"],
@@ -78,15 +137,16 @@ const VOCABULARY = {
     { key: "cannabis", label: "Cannabis" },
   ],
   weightUnit: "lb" as const,
+  usual: [] as UsualOffer[],
 };
 
-function open(kind: HistoryAddKind): void {
+function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
   render(
     <HistoryAddDoor
       kind={kind}
       date={FOUND_DAY}
       maxDate={TODAY}
-      vocabulary={VOCABULARY}
+      vocabulary={{ ...VOCABULARY, usual }}
     />
   );
   fireEvent.click(screen.getByTestId(`history-add-open-${kind}`));
@@ -282,4 +342,225 @@ describe("the record's Add door posts to the domain's own create action", () => 
       expect(screen.getByTestId(`history-add-panel-${kind}`)).toBeTruthy();
     }
   );
+});
+
+// ── THE ONE-TAP USUAL ON A PAST DAY (#4118) ──────────────────────────────────
+//
+// The acceptance criterion a person actually performs: an empty past day fills from
+// the record's own add door. The write, its bound, its provenance and its audit are
+// the core's and are proved at the db and action tiers; what only this tier can prove
+// is that the CONTROL posts the day the reader is looking at, and that its label stops
+// promising a day the field has moved off.
+describe("the composed usual on the add door", () => {
+  function usualButton() {
+    return screen.getByTestId("history-add-usual-Morning");
+  }
+
+  it("posts the composed bundle on the day the reader was looking at", async () => {
+    open("food", [MORNING_OFFER]);
+    // THE LABEL IS THE PROMISE: it names every serving and every dose the tap writes,
+    // and the count is both halves — a button promising less than it writes is the
+    // defect `usualRoutineAttachmentFor` refuses in Telegram, and it is refused here.
+    expect(usualButton().textContent).toContain("Your usual Morning (3)");
+    expect(usualButton().textContent).toContain(
+      "Berries and Fermented foods + Creatine"
+    );
+
+    await act(async () => fireEvent.click(usualButton()));
+    const sent = only("logUsualRoutine");
+    expect(sent.date).toBe(FOUND_DAY);
+    expect(sent.meal_slot).toBe("Morning");
+    expect(sent.groups).toBe("berries,fermented");
+    expect(sent.dose_ids).toBe("41");
+    // Resolved in place, exactly as the four forms are.
+    expect(screen.queryByTestId("history-add-panel-food")).toBeNull();
+    expect(refreshed).toHaveLength(1);
+    // AND IT DID NOT GO THROUGH THE PER-ITEM DOOR. A one-tap that quietly posted
+    // `logFoodServing` would satisfy every assertion above about the label and none
+    // about the bundle: no dose, no audit, no backfill provenance.
+    expect(posted.logFoodServing ?? []).toHaveLength(0);
+  });
+
+  it("re-reads the offer when the date field moves, and posts the NEW day", async () => {
+    // The promise has to follow the field. An offer resolved once at render would keep
+    // naming the found day's breakfast while the field said something else, and the
+    // core — which re-derives against the day it is HANDED — would write a different
+    // bundle or refuse.
+    const OTHER_DAY = "2026-08-20";
+    const EVENING_OFFER: UsualOffer = {
+      window: "Evening",
+      food: [
+        { slug: "legumes", name: "Legumes" },
+        { slug: "nuts_seeds", name: "Nuts and seeds" },
+      ],
+      doses: [],
+    };
+    offerReply = async () => [EVENING_OFFER];
+    open("food", [MORNING_OFFER]);
+    expect(screen.queryByTestId("history-add-usual-Morning")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.change(
+        screen
+          .getByTestId("history-add-when-food")
+          .querySelector<HTMLInputElement>('input[type="text"]')!,
+        { target: { value: OTHER_DAY } }
+      );
+    });
+
+    expect(offerReads).toEqual([OTHER_DAY]);
+    // The found day's bundle is GONE, not merely joined by the new one.
+    expect(screen.queryByTestId("history-add-usual-Morning")).toBeNull();
+    const evening = screen.getByTestId("history-add-usual-Evening");
+    expect(evening.textContent).toContain("Your usual Evening (2)");
+
+    await act(async () => fireEvent.click(evening));
+    const sent = only("logUsualRoutine");
+    expect(sent.date).toBe(OTHER_DAY);
+    expect(sent.groups).toBe("legumes,nuts_seeds");
+  });
+
+  it("drops a LATE answer for a day the reader has already left", async () => {
+    // Two date changes are two in-flight reads and the network may answer them in
+    // either order. Without sequencing the first day's late reply repaints the label
+    // with an offer for a day nobody is looking at — the label lying again, by a
+    // different route. Resolved deliberately out of order here.
+    const FIRST = "2026-08-20";
+    const SECOND = "2026-08-21";
+    let releaseFirst: (offers: UsualOffer[]) => void = () => {};
+    offerReply = (date) =>
+      date === FIRST
+        ? new Promise<UsualOffer[]>((resolve) => {
+            releaseFirst = resolve;
+          })
+        : Promise.resolve([]);
+    open("food", []);
+    const field = screen
+      .getByTestId("history-add-when-food")
+      .querySelector<HTMLInputElement>('input[type="text"]')!;
+
+    await act(async () => {
+      fireEvent.change(field, { target: { value: FIRST } });
+    });
+    await act(async () => {
+      fireEvent.change(field, { target: { value: SECOND } });
+    });
+    expect(offerReads).toEqual([FIRST, SECOND]);
+    // The abandoned day answers LAST, with a bundle.
+    await act(async () => {
+      releaseFirst([MORNING_OFFER]);
+    });
+    expect(screen.queryByTestId("history-add-usual-Morning")).toBeNull();
+  });
+
+  it("offers nothing where there is nothing to offer, and nowhere but the food door", async () => {
+    // Three absences on one claim, because each is a different way the control could
+    // appear where it must not: no habit on that day, a day past the bundle's reach
+    // (the server answers `[]` through the same predicate the core gates on), and a
+    // kind that has no breakfast to log at all.
+    open("food", []);
+    expect(screen.queryByTestId("history-add-usual")).toBeNull();
+    cleanup();
+    open("substance", [MORNING_OFFER]);
+    expect(screen.queryByTestId("history-add-usual")).toBeNull();
+    cleanup();
+    // A read that fails leaves no standing promise about a day it could not ask about.
+    offerReply = async () => {
+      throw new Error("offline");
+    };
+    open("food", [MORNING_OFFER]);
+    await act(async () => {
+      fireEvent.change(
+        screen
+          .getByTestId("history-add-when-food")
+          .querySelector<HTMLInputElement>('input[type="text"]')!,
+        { target: { value: "2026-08-20" } }
+      );
+    });
+    expect(screen.queryByTestId("history-add-usual")).toBeNull();
+  });
+
+  // ── THE ANSWER NAMES WHAT WAS WRITTEN (#232, #4118) ────────────────────────
+  //
+  // `ok: true` means the bundle wrote SOMETHING, not that every half landed. The food
+  // half reaches six days back and the dose half two (its own `isDoseDateAccepted`
+  // window, coupled to Telegram pointer retention), so on four of the seven days this
+  // door offers, the servings commit and every dose comes back `stale-dose`. The core
+  // reports each dose separately and refuses to assume any away; the door must not
+  // flatten that into a confirm it did not earn — and this door is the ONLY surface
+  // that can reach those days, since the dashboard has no date field and the Telegram
+  // tap is gated to the dose window.
+  //
+  // BOTH DIRECTIONS ON ONE SHAPE. A test that only asserted the refusal would pass on a
+  // door that reported every tap as a failure.
+  it.each([
+    [
+      "a dose the day is out of reach for",
+      [{ doseId: 41, name: "Creatine", outcome: "stale-dose" }],
+      ["Logged Berries and Fermented foods", "Creatine not logged"],
+      ["1 dose taken"],
+    ],
+    [
+      "every dose landing",
+      [{ doseId: 41, name: "Creatine", outcome: "logged" }],
+      ["Logged Berries and Fermented foods", "1 dose taken"],
+      ["not logged"],
+    ],
+    [
+      "a dose logged off its own day",
+      [{ doseId: 41, name: "Creatine", outcome: "logged-off-day" }],
+      ["1 dose taken"],
+      ["not logged"],
+    ],
+  ] as const)(
+    "%s: the toast says so",
+    async (_why, doses, mustSay, mustNotSay) => {
+      usualReply = () => ({
+        ok: true,
+        window: "Morning",
+        groups: [
+          { groupKey: "berries", servings: 1, mealServings: 1 },
+          { groupKey: "fermented", servings: 1, mealServings: 1 },
+        ],
+        doses: [...doses],
+      });
+      open("food", [MORNING_OFFER]);
+      await act(async () => fireEvent.click(usualButton()));
+
+      expect(toasts).toHaveLength(1);
+      for (const phrase of mustSay) expect(toasts[0]).toContain(phrase);
+      for (const phrase of mustNotSay)
+        expect(toasts[0], `toast claimed "${phrase}"`).not.toContain(phrase);
+      // NEVER the flat confirm, which is what shipped and is what made a refused dose
+      // read as a success.
+      expect(toasts[0]).not.toBe("Added to the record.");
+    }
+  );
+
+  it("still says the plain sentence for the four per-item forms", async () => {
+    // The converse at the OTHER end: `announce` is optional, so a form that writes one
+    // row must keep the sentence it always had. Without this, moving the composed
+    // bundle's answer into `submit` could have silently re-worded every door.
+    open("practice");
+    await submit("practice");
+    expect(toasts).toEqual(["Added to the record."]);
+  });
+
+  it("leaves the per-item form exactly where it was", async () => {
+    // The one-tap is the FAST path and never the only one. A reader whose usual is not
+    // what they ate must still be able to name a group, and the bundle button sits
+    // ABOVE the form rather than inside it — nested, it would become a submit control
+    // of that form and log the wrong thing.
+    open("food", [MORNING_OFFER]);
+    const panel = screen.getByTestId("history-add-panel-food");
+    expect(panel.querySelector("form")!.contains(usualButton())).toBe(false);
+    fireEvent.change(screen.getByRole("combobox", { name: /food group/i }), {
+      target: { value: "leafy_greens" },
+    });
+    await submit("food");
+    const sent = only("logFoodServing");
+    expect(sent.date).toBe(FOUND_DAY);
+    expect(sent.group_key).toBe("leafy_greens");
+    expect(posted.logUsualRoutine ?? []).toHaveLength(0);
+  });
 });

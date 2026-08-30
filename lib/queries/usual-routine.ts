@@ -33,7 +33,10 @@ import { situationsActiveOn } from "../trend-annotations";
 import { db, today } from "../db";
 import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
-import type { FoodSlot } from "../food-slot";
+import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
+import { foodGroupBySlug } from "../food-groups";
+import { isUsualBackfillDateAccepted } from "../food-regularity";
+import { isDoseDateAccepted } from "../dose-log-window";
 import {
   usualRoutineOffer,
   type UsualRoutineDose,
@@ -327,4 +330,64 @@ export function getUsualRoutineOffer(
     groups,
     getPendingRoutineDoses(profileId, window, date)
   );
+}
+
+// ── WHAT A DATED "usual" TAP WOULD WRITE ON ONE DAY (#4118) ──────────────────
+//
+// EVERY WINDOW THAT STANDS on `date`, not the current one. `loadLogSheetContext` asks
+// `currentFoodSlot` because it is offering to log the meal you are in; a reader
+// reconstructing a day they have already lived is not in any of its windows, and the
+// morning they missed is exactly as offerable as the evening.
+//
+// BOUNDED BY THE WRITE'S OWN REACH, through the same predicate the cores gate on — so
+// no surface can show a button `logUsualRoutineCore` would answer `invalid-date` to.
+// The affordance and the rule are one decision asked in one place, which is what stops
+// the door from growing a second opinion about how far back a bundle may go.
+//
+// Group NAMES are resolved here because a label is a promise and a slug is not a
+// promise anybody can read — the same pair `loadLogSheetContext` hands the dashboard
+// control. Profile-scoped through every read below.
+export interface UsualRoutineDayOffer {
+  window: FoodSlot;
+  food: { slug: string; name: string }[];
+  doses: { id: number; name: string; stack: string | null }[];
+}
+
+export function usualRoutineDayOffers(
+  profileId: number,
+  date: string
+): UsualRoutineDayOffer[] {
+  const t = today(profileId);
+  if (!isUsualBackfillDateAccepted(t, date)) return [];
+  // THE TWO HALVES DO NOT REACH EQUALLY FAR, so the offer must not promise as if they
+  // did (#4118). The food half reaches `USUAL_BACKFILL_WINDOW_DAYS` back; the dose half
+  // is `markDoseTaken`'s own `isDoseDateAccepted` window (±2, coupled to Telegram
+  // pointer retention), and beyond it every named dose comes back `stale-dose` having
+  // written nothing. Rendering those doses would put a count and a name on a button for
+  // writes the core will refuse — the label-is-a-promise rule broken by the surface that
+  // quotes it — so past the dose window the offer is honestly FOOD-ONLY.
+  //
+  // Asked through the dose predicate rather than through a second constant, so if #4305
+  // widens the dose reach this corrects itself instead of going quietly stale.
+  const dosesReachable = isDoseDateAccepted(t, date);
+  const offers: UsualRoutineDayOffer[] = [];
+  for (const window of FOOD_SLOTS) {
+    const offer = getUsualRoutineOffer(profileId, window, date);
+    if (!offer) continue;
+    offers.push({
+      window: offer.window,
+      food: offer.groups.map((slug) => ({
+        slug,
+        name: foodGroupBySlug(slug)?.name ?? slug,
+      })),
+      doses: dosesReachable
+        ? offer.doses.map((d) => ({
+            id: d.doseId,
+            name: d.name,
+            stack: d.stack ?? null,
+          }))
+        : [],
+    });
+  }
+  return offers;
 }
