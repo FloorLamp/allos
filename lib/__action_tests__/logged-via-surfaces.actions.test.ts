@@ -192,7 +192,7 @@ describe("each web surface stores its OWN value, through its own real action", (
     fd.set("date", date);
     fd.set("weight", "80");
     fd.set("weight_unit", "kg");
-    // What components/dashboard/WeightQuickAdd.tsx sets.
+    // What a control inside the dashboard's LoggedViaSurface region sets.
     fd.set(LOGGED_VIA_FIELD, "dashboard-widget");
     await addBodyMetric(fd);
     const row = weightOrigin(profile.id, date);

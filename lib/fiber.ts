@@ -341,6 +341,10 @@ export function fiberIntakeSummary(intake: FiberIntake): string {
       return `~${g(intake.grams)} g/day from your tracked intake`;
     case "both-sources":
       return `≈${g(intake.grams)} g/day — the larger of your food and supplement logs and your health app (${FLOOR_CAVEAT})${unknown}`;
+    // `combined` is the ONLY basis that decomposes into the two components, and it must
+    // stay that way: `both-sources` can carry estimatedGrams 0 and supplementedGrams 0
+    // (a tracked reading beside nothing but an unquantifiable dose), so decomposing it
+    // would print "0 g estimated + 0 g from supplements" under a positive figure.
     case "combined":
       return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.supplementedGrams)} g from supplements (${FLOOR_CAVEAT})${unknown}`;
     case "supplemented":

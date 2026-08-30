@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +77,31 @@ describe("the committed chrome baseline file", () => {
       `${BASELINE_FILE} is not in the canonical form \`serializeBaseline\` writes. ` +
         "Do not hand-edit it: run `npm run gen:census-baseline` and commit the diff."
     ).toBe(serializeBaseline(baseline));
+  });
+
+  it("has no tracked guidance still claiming the committed baseline is impossible", () => {
+    const stale = execFileSync("git", ["ls-files", "-z"], { cwd: REPO })
+      .toString("utf8")
+      .split("\0")
+      .filter(
+        (rel) =>
+          /\.(?:md|mjs|ts|tsx)$/.test(rel) &&
+          !/(?:__tests__|\.test\.|\.spec\.)/.test(rel)
+      )
+      .flatMap((rel) =>
+        fs
+          .readFileSync(path.join(REPO, rel), "utf8")
+          .split("\n")
+          .map((line, index) => ({ rel, line, number: index + 1 }))
+          .filter(({ line }) =>
+            /(?:census baseline["`]? names a file that does not exist in this tree|the census baseline cannot carry an annotation in-repo)/i.test(
+              line
+            )
+          )
+      )
+      .map(({ rel, line, number }) => `${rel}:${number}: ${line.trim()}`);
+
+    expect(stale).toEqual([]);
   });
 
   it("records enough surfaces to be worth comparing, in both viewports", () => {

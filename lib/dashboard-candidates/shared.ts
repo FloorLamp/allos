@@ -33,6 +33,7 @@ interface Policy {
   standingEligible?: boolean;
   episodeGroup?: DashboardEpisodeGroup;
   dashboardScope?: DashboardCandidate["dashboardScope"];
+  navDuplicateOf?: DashboardCandidate["navDuplicateOf"];
 }
 
 const applicable = (ctx: DomainCandidateContext) => ctx.applicable ?? true;

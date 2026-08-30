@@ -2,12 +2,8 @@ import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import {
-  comboboxRows,
-  hydratedClick,
-  openDashboardAll,
-  settledClick,
-} from "./helpers";
+import { comboboxRows, hydratedClick, settledClick } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
   E2E_LOGIN_MOBILITY,
@@ -500,29 +496,43 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   await page.keyboard.press("Escape");
 });
 
-test("a refused dashboard weigh-in says so and claims nothing", async ({
+test("a refused quick weigh-in says so and claims nothing", async ({
   browser,
 }) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_WEIGHT_QA,
-    password: E2E_MEMBER_PASSWORD,
-  });
+  // #3366 retired the dashboard tail's own weigh-in card; the quick logger is the
+  // app's one quick-write surface, and its measurements form is the same
+  // `enqueue`-then-post path the card used. The sheet is reached from the dock puck,
+  // which is phone-only chrome.
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_WEIGHT_QA, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
   const context = page.context();
   try {
     await breakIndexedDB(page);
     await page.goto("/");
-    await openDashboardAll(page);
-    const input = page.getByTestId("weight-quick-add-input");
+    const sheet = await openLogSheet(page);
+    const row = await showLogRow(sheet, "log-measurements");
+    await row.click();
+    const overlay = page.getByTestId("quick-entry-sheet");
+    const form = overlay.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    await openMeasurementGroup(page, "body");
+    const input = overlay.locator("#m-weight");
     await expect(input).toBeVisible();
 
     await context.setOffline(true);
     await input.fill("81.4");
-    await hydratedClick(page, page.getByTestId("weight-quick-add-save"));
+    await hydratedClick(
+      page,
+      overlay.getByRole("button", { name: "Save measurements" })
+    );
 
     await expectRefusedOnly(page);
-    // No success claim of either kind — online's "Entry saved" or the offline
-    // queue's promise.
-    await expect(page.getByText("Entry saved")).toHaveCount(0);
+    // No success claim of either kind — the online toast or the offline queue's
+    // promise.
+    await expect(page.getByText("Measurements saved")).toHaveCount(0);
     await context.setOffline(false);
   } finally {
     await context.close();

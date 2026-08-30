@@ -179,6 +179,16 @@ describe("localDayMinutes / isDstTransitionDay", () => {
   });
 
   it.each([
+    ["2018-11-03", 24 * 60],
+    ["2018-11-04", 23 * 60],
+    ["2018-11-05", 24 * 60],
+  ])("measures Brazil's midnight DST boundary on %s", (day, minutes) => {
+    // Brazil advanced from 23:59 on Nov 3 straight to 01:00 on Nov 4. The date
+    // existed even though its 00:00 did not; the ordinary day before stays 24h.
+    expect(localDayMinutes("America/Sao_Paulo", day)).toBe(minutes);
+  });
+
+  it.each([
     ["Pacific/Apia", "2011-12-29", "2011-12-30"],
     ["Pacific/Kiritimati", "1994-12-30", "1994-12-31"],
   ])("measures the real day before %s deleted a date", (tz, real, deleted) => {

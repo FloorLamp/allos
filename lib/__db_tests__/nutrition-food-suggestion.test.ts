@@ -125,6 +125,16 @@ describe("getShortfallFoodSuggestion — the curated offer over real profile sta
   it("surfaces the curated ALTERNATIVE when recorded allergies strike the primaries", () => {
     const { profileId, date } = shortDay("shortfall-food-allergy");
     // Leave fibre satisfied so the protein entry (the one with an alternative) answers.
+    //
+    // THIS FIXTURE CROSSED A BOUNDARY SILENTLY (#4156, noted from #4127). `shortDay` logs
+    // one legume serving, so this profile holds 8 g of in-app fibre BESIDE the 40 g tracked
+    // reading. Before #4156 a tracked reading overrode, and the fibre basis here was
+    // `tracked`; it is now `both-sources`, and `isFloor` at lib/nutrition-day.ts:157 went
+    // false → true with it. Nothing reads that today only because 40 clears the 38 g DRI
+    // target, so fibre is never a shortfall on this profile and the flag is never consulted.
+    // Make fibre SHORT here and the digest line becomes a hedged "N g+ of 38 g" where this
+    // fixture's author would have expected a measured one. The assertions and the seed are
+    // still correct as they stand — this is a note for whoever changes the numbers.
     seedTracked(profileId, "fiber_g", date, 40);
     for (const s of ["Fish", "Egg", "Poultry", "Tofu"])
       seedAllergy(profileId, s);
@@ -139,6 +149,8 @@ describe("getShortfallFoodSuggestion — the curated offer over real profile sta
 
   it("withholds it entirely for a recorded drop-severity condition", () => {
     const { profileId, date } = shortDay("shortfall-food-ckd");
+    // Same shape as the allergy fixture above, including its silent basis change — see
+    // that note before altering these figures.
     seedTracked(profileId, "fiber_g", date, 40); // fibre fine; protein is the question
     seedCondition(profileId, "Chronic kidney disease, stage 3");
     // Raising protein with reduced kidney function is clinician territory — the app says

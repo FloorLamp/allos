@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
 import { useToast } from "@/components/Toast";
+import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
@@ -12,6 +13,10 @@ import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
+import {
+  OFFLINE_CAPTURE_REFUSED_MESSAGE,
+  shouldQueueOffline,
+} from "@/lib/offline/queue";
 
 // The quick-entry overlay's STOOL form (issue #2785): the Bristol Stool Form Scale as
 // seven one-tap buttons.
@@ -50,6 +55,7 @@ export default function QuickStoolForm({
   today: string;
 }) {
   const toast = useToast();
+  const { enqueue } = useOfflineQueue();
   const tz = useTimezone();
   const ledger = useOptimisticLedger<number>("stool-form");
   const [count, setCount] = useState(todayCount);
@@ -105,6 +111,10 @@ export default function QuickStoolForm({
     // as the instant the settle below compares against.
     const consumed = when.statedAt;
     const stated = statedHhmm(consumed, tz) || null;
+    const spendStatement = () =>
+      setWhen((prev) =>
+        prev.statedAt === consumed ? { date: today, statedAt: null } : prev
+      );
     await ledger.tap({
       key: String(type),
       from: count,
@@ -144,10 +154,21 @@ export default function QuickStoolForm({
         // previous tap — and the next tap would then collide with the row that one
         // wrote instead of adding a reading. A functional update comparing against what
         // was consumed leaves anything newer alone.
-        setWhen((prev) =>
-          prev.statedAt === consumed ? { date: today, statedAt: null } : prev
-        );
+        spendStatement();
         return { kind: "adopt", value: res.todayCount };
+      },
+      onError: async (err) => {
+        if (!shouldQueueOffline(navigator.onLine, err)) return undefined;
+        const kept =
+          (await enqueue("stool", today, { type, at: stated })) === "kept";
+        if (!kept) {
+          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
+          return undefined;
+        }
+        settle(type);
+        spendStatement();
+        toast("Saved offline — will sync when you reconnect.");
+        return { kind: "keep" };
       },
     });
   }

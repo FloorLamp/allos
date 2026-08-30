@@ -179,7 +179,7 @@ function migratedFile(
 const SEED_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("named dirty seed data", SEED_CEILING, () => {
-  it("checks the dirty witnesses at the harness child boundary", () => {
+  it("distinguishes dirty from baseline and keeps the baseline outside served allocations", () => {
     const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
     const dirty = runSeed(dirtyPath, "dirty");
     expect(dirty.status, dirty.stderr || dirty.stdout).toBe(0);
@@ -196,21 +196,15 @@ describe("named dirty seed data", SEED_CEILING, () => {
     const mislabeled = runWitness(baselinePath);
     expect(mislabeled.status).not.toBe(0);
     expect(mislabeled.stderr).toContain("Dirty seed witnesses do not match");
-  });
 
-  it("keeps a stale caller DB outside every served census shape", () => {
-    const dir = makeTmpDir("seed-shape-stale");
-    const dbPath = path.join(dir, "allos.db");
-    const baseline = runSeed(dbPath, "baseline");
-    expect(baseline.status, baseline.stderr || baseline.stdout).toBe(0);
-
-    const directDirty = runSeed(dbPath, "dirty");
+    const before = fs.readFileSync(baselinePath);
+    const directDirty = runSeed(baselinePath, "dirty");
     expect(directDirty.status).not.toBe(0);
     expect(directDirty.stderr).toContain(
       "Database already has data — refusing named seed shape dirty"
     );
 
-    const before = fs.readFileSync(dbPath);
+    const dir = path.dirname(baselinePath);
     const allocations = [
       allocateUxServedDb(dir),
       allocateUxServedDb(dir),
@@ -220,11 +214,11 @@ describe("named dirty seed data", SEED_CEILING, () => {
     try {
       expect(new Set(allocations.map(({ dbPath }) => dbPath)).size).toBe(4);
       for (const allocation of allocations) {
-        expect(allocation.dbPath).not.toBe(dbPath);
+        expect(allocation.dbPath).not.toBe(baselinePath);
         assertUxServedDbOwned(allocation);
         assertUxServedDbUnused(allocation);
       }
-      expect(fs.readFileSync(dbPath)).toEqual(before);
+      expect(fs.readFileSync(baselinePath)).toEqual(before);
     } finally {
       for (const allocation of allocations) cleanupUxServedDb(allocation);
     }

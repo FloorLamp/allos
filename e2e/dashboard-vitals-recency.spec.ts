@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
-import { loginAs } from "./nav";
+import { loginAs, openCommandPalette } from "./nav";
 import { E2E_LOGIN_DAILY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
@@ -275,13 +275,18 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     await expect(hr).toContainText("up versus previous resting heart rate");
 
     // Nothing is hidden and nothing is emptied: the header still says "Latest vitals"
-    // (latest is a fact; current was the claim removed) and #1892's action is still the
-    // obvious next move.
+    // (latest is a fact; current was the claim removed) and the write that ends the
+    // dormancy is still one gesture away. #3366 moved that gesture off the card and
+    // into the app's one quick-write surface, so both halves are asserted: no write
+    // control on the card, and the palette's own "Log vitals" door still there.
     await expect(
-      dashboardCandidatePrefix(page, "vitals.manual-log").getByTestId(
-        "vitals-log-reading"
-      )
-    ).toBeVisible();
+      dashboardCandidatePrefix(page, "vitals.manual-log")
+    ).toHaveCount(0);
+    await expect(page.getByTestId("vitals-log-reading")).toHaveCount(0);
+    const paletteInput = await openCommandPalette(page);
+    await paletteInput.fill("log vitals");
+    await expect(page.getByTestId("palette-action-log-vitals")).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // #2332: the other glance card on the same dashboard, saying the same thing the
     // same way. Its column is narrow, so the age is compact rather than spelled out —
@@ -385,17 +390,22 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     await expect(hrAgeToken).not.toHaveText(MACHINE_DATE);
     await expect(hr).toContainText("up versus previous resting heart rate");
 
-    // The write that ends the dormancy is still sitting beside the row (#1892).
-    const logCandidate = dashboardCandidatePrefix(page, "vitals.manual-log");
-    const logReading = logCandidate.getByTestId("vitals-log-reading");
-    await expect(logReading).toBeVisible();
+    // The write that ends the dormancy is still one gesture from the row (#1892),
+    // through the quick-write surface it moved to in #3366 rather than a card of its
+    // own. The card itself no longer carries one — asserted here so this cannot pass
+    // on a tree where the write disappeared instead of moving.
+    await expect(
+      dashboardCandidatePrefix(page, "vitals.manual-log")
+    ).toHaveCount(0);
 
     // ── One logged reading, through the real form ──────────────────────────────────
-    await logReading.click();
+    const input = await openCommandPalette(page);
+    await input.fill("log vitals");
+    await page.getByTestId("palette-action-log-vitals").click();
     const body = page.getByTestId("quick-entry-body");
     await expect(body).toHaveAttribute("data-form", "measurements");
     const form = body.getByTestId("measurements-quick-add");
-    // The button opens the form ON the vitals group (#2014), resolved at the form's
+    // The action opens the form ON the vitals group (#2014), resolved at the form's
     // FIRST render rather than in an effect — so the fields are already disclosed and
     // there is nothing to toggle. Reaching for `openMeasurementGroup` here is what a
     // reader expects to see, and it is wrong: its visibility probe can lose the race

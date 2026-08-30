@@ -805,8 +805,8 @@ const DEXA_MASS_REGIONS = [
 const DEXA_MASS_COMPARTMENTS = ["Fat", "Lean", "Total"];
 
 // The scan-level rows that aren't per-region: whole-scan mass compartments and the
-// derived depot ratios. Same decision, same reason — each is arithmetic over one
-// scan's segments, and none has a population band of its own.
+// remaining derived depot ratios. Same decision, same reason — each is arithmetic
+// over one scan's segments, and none has a population band of its own.
 //
 // "Fat Mass Index" and "Lean Mass Index" USED to be listed here and are not any more
 // (#2322). They failed this declaration's own test: they are not arithmetic over a
@@ -835,10 +835,15 @@ const DEXA_SCAN_LEVEL = [
   "Total Fat Mass",
   "Total Lean Mass",
   "Bone Mineral Content, Total",
-  "Android/Gynoid Ratio",
   "Trunk to Legs Fat Ratio",
   "Trunk to Limb Fat Mass Ratio",
 ];
+
+const DEXA_ANDROID_GYNOID_RATIO: UncuratedAnalyte = {
+  kind: "out-of-scope",
+  reason:
+    "Android/Gynoid Ratio is arithmetic over two regions of one DEXA scan, not an independently measured analyte. It stays visible on the scan rather than becoming its own trend.",
+};
 
 // The whole-body BONE DENSITY a DEXA prints in g/cm², which #2643 found stranded
 // beside the mass limbs — but which is NOT the same decision, and putting it in the
@@ -1047,6 +1052,7 @@ const UNCURATED_ANALYTES: [string, UncuratedAnalyte][] = [
   ["Bone Mineral Density Z-Score", DEXA_BMD_Z_SCORE],
   ["Visceral Adipose Tissue Area", DEXA_VAT_ALTERNATE_UNIT],
   ["Visceral Adipose Tissue Volume", DEXA_VAT_ALTERNATE_UNIT],
+  ["Android/Gynoid Ratio", DEXA_ANDROID_GYNOID_RATIO],
   ...dexaDecompositionRows(),
 ];
 

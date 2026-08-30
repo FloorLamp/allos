@@ -14,6 +14,7 @@ import {
 } from "./dashboard-standing";
 import { groupUpcoming, type UpcomingItem } from "./upcoming";
 import { dashboardAttentionCandidateId } from "./dashboard-attention-identity";
+import type { AppRoute } from "./hrefs";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -117,6 +118,16 @@ export interface DashboardCandidateBase {
   // closes. Apart from open `episodeGroup` context, this is the only cross-profile
   // exception to active-profile/login-setup scope; a candidate id grants nothing.
   dashboardScope?: "illness-context";
+  // THE PAGE THIS CANDIDATE IS ONLY A LINK TO, when the nav already carries that
+  // page (owner ruling #3366). Declaring it is a claim about the candidate's whole
+  // content — it reports no value and hosts no control, so on the dashboard it is a
+  // second spelling of a nav row. Show everything renders one deduplicated door to
+  // the page instead of the candidate, which keeps the destination one tap from the
+  // tail while the tail stops restating the sidebar.
+  //
+  // It never changes CANDIDACY: the ranker still places the candidate in the
+  // exact-once partition, and safety still overrides (`everythingAdmitted`).
+  navDuplicateOf?: AppRoute;
 }
 
 export type DashboardCandidate =
@@ -168,6 +179,13 @@ export type DashboardPlacement =
       lane: "everything";
       everythingGroup: DashboardEverythingGroup;
       memberOrder: number;
+      /**
+       * Whether the tail RENDERS this placement (#3366). The lane itself stays the
+       * complete exact-once remainder — this mark is what the canvas consumes, so
+       * "the ranker can never silently hide a candidate" is a property the test
+       * tier can state instead of one the reader has to scroll past.
+       */
+      admitted: boolean;
     });
 
 export const NOW_CANDIDATE_CAP = 2;
@@ -416,6 +434,20 @@ const EVERYTHING_GROUP_ORDER: readonly DashboardEverythingGroup[] = [
   "setup",
   "active-states",
 ];
+
+// WHAT THE TAIL RENDERS (owner ruling #3366, 2026-08-29). The tail stays
+// EXHAUSTIVE: the scroll it was filed about is fixed by #3365's grammar, not by
+// admission, so this is not a relevance model and there is no live-signal filter
+// here. Exactly one thing drops — a candidate whose only role is a link to a page
+// the nav already carries — and it drops to a door on that page rather than out of
+// the app.
+//
+// Safety is unrankable-away here as everywhere, and it is the Now lane above that
+// enforces it: every flagged candidate is taken into the uncapped safety layer before
+// this lane exists, so a flag can never arrive at this question. No clause repeats it.
+function everythingAdmitted(candidate: DashboardCandidate): boolean {
+  return candidate.navDuplicateOf == null;
+}
 
 function compareEverything(
   a: DashboardCandidate,
@@ -798,6 +830,7 @@ export function rankDashboardCandidates(
         timingDisposition,
         everythingGroup: group,
         memberOrder,
+        admitted: everythingAdmitted(candidate),
       })
     ),
   ];
@@ -829,4 +862,38 @@ export function placementsInLane<Lane extends DashboardLane>(
         placement.lane === lane
     )
     .sort((a, b) => a.laneOrder - b.laneOrder);
+}
+
+// WHAT SHOW EVERYTHING DRAWS, AND WHERE THE REST LIVES (#3366).
+//
+// The lane itself stays the complete exact-once remainder; this splits it into the
+// members the tail draws and ONE door per owning page for the members it does not.
+// Deduplicated by page, in placement order, because someone looking for a dropped
+// fact is looking for a page, not for the fact's rank.
+//
+// A non-admitted placement that names no page is RENDERED rather than dropped.
+// Completeness is the contract, so the only safe direction to fail is toward
+// showing — but the fallback is NOT the guard: the manifest tier asserts it carries
+// nothing, and that is the assertion that goes red the day a candidate loses its
+// door.
+export function everythingTail(placements: readonly DashboardPlacement[]): {
+  members: Extract<DashboardPlacement, { lane: "everything" }>[];
+  doors: AppRoute[];
+} {
+  const members: Extract<DashboardPlacement, { lane: "everything" }>[] = [];
+  const doors: AppRoute[] = [];
+  const seen = new Set<AppRoute>();
+  for (const placement of placementsInLane(placements, "everything")) {
+    const door = placement.admitted
+      ? null
+      : (placement.candidate.navDuplicateOf ?? null);
+    if (door == null) {
+      members.push(placement);
+      continue;
+    }
+    if (seen.has(door)) continue;
+    seen.add(door);
+    doors.push(door);
+  }
+  return { members, doors };
 }

@@ -556,6 +556,12 @@ export type DoseQuantityReading =
   | { kind: "none" }
   | { kind: "unreadable" };
 
+export type StructuredDoseQuantityReading =
+  | (Extract<DoseQuantityReading, { kind: "quantity" }> & {
+      structurallySound: boolean;
+    })
+  | Exclude<DoseQuantityReading, { kind: "quantity" }>;
+
 // The FIRST number+unit in the string, with the number taken WHOLE.
 //
 // Taking it whole is the fix. The previous pattern read `\d+(?:\.\d+)?`, which cannot
@@ -856,7 +862,15 @@ const DOSE_QUANTITY_RE = new RegExp(
   "i"
 );
 
-export function readDoseQuantity(amount: string | null): DoseQuantityReading {
+export function readDoseQuantity(amount: string | null): DoseQuantityReading;
+export function readDoseQuantity(
+  amount: string | null,
+  options: { structuralSoundness: true }
+): StructuredDoseQuantityReading;
+export function readDoseQuantity(
+  amount: string | null,
+  options?: { structuralSoundness: true }
+): DoseQuantityReading | StructuredDoseQuantityReading {
   if (!amount) return { kind: "none" };
   const m = amount.match(DOSE_QUANTITY_RE);
   if (!m) return { kind: "none" };
@@ -864,7 +878,12 @@ export function readDoseQuantity(amount: string | null): DoseQuantityReading {
   if (value == null) return { kind: "unreadable" };
   let u = m[2].toLowerCase();
   if (u === "µg" || u === "ug") u = "mcg";
-  return { kind: "quantity", value, unit: u as DoseUnit };
+  const quantity = { kind: "quantity" as const, value, unit: u as DoseUnit };
+  if (!options) return quantity;
+  // A digit + non-space separator immediately before the match means the scan
+  // restarted inside one written token ("1-000 mg" -> "000 mg").
+  const prefix = amount.slice(0, m.index ?? 0);
+  return { ...quantity, structurallySound: !/\d[^\s\d]$/.test(prefix) };
 }
 
 // The quantity a dose amount states, for the engines that total it. `null` is "no

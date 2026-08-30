@@ -897,9 +897,10 @@ removes a cliff: under the earlier predicate (rest-of-stack ≤ UL) a second 40 
 got "expected" and a 50 mg one got the bare warning, so ten milligrams elsewhere decided
 whether the app reassured. A note that explained someone else's total would teach a
 person to dismiss a real warning — the same "looks like a bug, so it gets ignored"
-failure the ruling exists to prevent, read the other way. OPEN: on a pediatric band the
-adult sentence still renders against a child's lower limit (#3638); that is an unruled
-wording call.
+failure the ruling exists to prevent, read the other way. On a pediatric band the adult
+limit is named precisely, while the adult-only "total is expected" reassurance is
+omitted (#3638); the product explanation itself remains because hiding it restores the
+bare-warning failure this ruling exists to prevent.
 
 **One stored obligation.** Migration `20260814-remove-legacy-schema-shells` removed
 the retired `priority` / `as_needed` columns and their replay-only trigger after the
@@ -1515,7 +1516,8 @@ deliberate — the amount is unusable for every consumer, not just the UL — bu
 number is not "doses missing from a safety total"; it is at most that many.
 
 **Measuring the population.** `npm run census:dose-amounts [path]` partitions
-every stored dose amount into six buckets (untouched, no quantity, repaired-from-
+every stored dose amount into seven buckets (certified unchanged,
+agreement-without-certificate, no quantity, repaired-from-
 zero, repaired-from-wrong, unreadable-with-a-restated-amount,
 unreadable-with-nothing-to-recover), split live/retired. It is read-only, opens
 the file directly so counting can never migrate what it measures, and prints
@@ -1525,6 +1527,10 @@ version of the rule #3153 unified, and a census that disagrees with the engine i
 describes is worse than none. The one re-implementation there is the _pre-fix_
 pattern, kept to answer "what did this row read as yesterday": the artifact being
 measured, not a rule.
+
+Agreement is certified only when `readDoseQuantity` consumed a whole number
+token. If its scan restarted inside a token (`1-000 mg` → `000 mg`), agreement is
+reported separately: it is neither a parser error nor an all-clear (#3467).
 
 **The census measures the stored string, and there was a third reader upstream of
 it (#3444).** `lib/prescription-parse.ts` — the medication import — spelled its

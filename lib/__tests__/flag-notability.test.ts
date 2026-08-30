@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripComments } from "./strip-comments";
 
 // Static boundary guard for flag NOTABILITY decisions (issue #544/#551). A stored
 // medical-record `flag` partitions into display tiers via the canonical helpers in
@@ -105,15 +106,6 @@ function sourceFiles(): { rel: string; text: string }[] {
   return files;
 }
 
-// Strip line and block comments so a mention of `flag !== "normal"` in prose (a doc
-// comment, or the SQL-in-a-comment in migration 020) can't trip the scanner — only
-// real code counts.
-function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
 // An equality/inequality comparison between a value and a "normal"/'normal' string
 // literal, in EITHER order. The captured identifier is checked for a `flag` suffix
 // separately so we only flag genuine flag comparisons (`flag`, `r.flag`, `a.flag`,
@@ -131,6 +123,9 @@ function isFlagIdentifier(id: string): boolean {
 }
 
 function flagNormalComparisons(text: string): string[] {
+  if (!/flag/i.test(text) || !/["']normal["']/.test(text)) return [];
+  // Prose about the banned comparison is not an offender. Only pay the shared,
+  // comment-aware projection cost for source that can contain a match.
   const src = stripComments(text);
   const hits: string[] = [];
   for (const re of [ID_LEFT, ID_RIGHT]) {

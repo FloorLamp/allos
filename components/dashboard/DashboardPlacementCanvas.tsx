@@ -2,11 +2,14 @@ import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { PageHeader } from "@/components/ui";
 import {
+  everythingTail,
   placementsInLane,
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
 import type { AppRoute } from "@/lib/hrefs";
+import { trackedPageFor } from "@/lib/recent-pages";
+import DestinationLink from "@/components/DestinationLink";
 import NowStrip, { type NowStripCard } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
@@ -191,10 +194,21 @@ export default function DashboardPlacementCanvas({
     placement.lane === "everything" &&
     ROW_GROUPS.has(placement.everythingGroup) &&
     standingPresentations.get(placement.candidate.candidateId) != null;
+  // THE TAIL'S SPLIT (#3366), taken before the node check below, because a placement
+  // the tail does not draw owes no node — its page is drawn instead.
+  const { members: everything, doors: everythingDoors } =
+    everythingTail(placements);
+  const drawn = new Set(
+    everything.map((placement) => placement.candidate.candidateId)
+  );
   const missingNode = placements.find(
     (placement) =>
       placement.lane !== "standing" &&
       placement.lane !== "ahead" &&
+      !(
+        placement.lane === "everything" &&
+        !drawn.has(placement.candidate.candidateId)
+      ) &&
       !rendersAsRow(placement) &&
       !(
         placement.lane === "now" &&
@@ -217,6 +231,14 @@ export default function DashboardPlacementCanvas({
     throw new Error(
       `Missing dashboard Ahead presentation for ${missingAhead.candidate.candidateId}`
     );
+  // A door's label is the DESTINATION'S OWN NAME, from the one list that already maps
+  // a route to what it is called (`TRACKED_PAGES`, the same list Standing's doors
+  // read). Nothing is invented here, so a page the app has no name for is a hard
+  // failure rather than a row labelled with its URL — the candidate that named it
+  // would otherwise be reachable only by a reader who already knew the path.
+  const unnamedDoor = everythingDoors.find((href) => !trackedPageFor(href));
+  if (unnamedDoor)
+    throw new Error(`Unnamed Show everything door: ${unnamedDoor}`);
 
   const nodeFor = (placement: DashboardPlacement) => {
     const node = candidateNodes.get(placement.candidate.candidateId);
@@ -289,7 +311,6 @@ export default function DashboardPlacementCanvas({
       placement.candidate.relevance.presence === "never"
   );
   const ahead = placementsInLane(placements, "ahead");
-  const everything = placementsInLane(placements, "everything");
   const aheadBuckets = groupsInPlacementOrder(
     ahead,
     (placement) => placement.aheadBucket
@@ -351,7 +372,7 @@ export default function DashboardPlacementCanvas({
 
       <DashboardAhead buckets={aheadBuckets} />
 
-      {everything.length > 0 && (
+      {(everything.length > 0 || everythingDoors.length > 0) && (
         <RememberedDetails
           id="dashboard-all"
           className="group"
@@ -418,6 +439,33 @@ export default function DashboardPlacementCanvas({
                 </section>
               );
             })}
+            {everythingDoors.length > 0 && (
+              <section aria-label="Elsewhere">
+                <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                  Elsewhere
+                </h3>
+                <ul
+                  className="band overflow-hidden rounded-xl border border-(--border) bg-surface"
+                  data-testid="dashboard-all-doors"
+                >
+                  {everythingDoors.map((href) => (
+                    <li
+                      key={href}
+                      className="border-t border-(--divider) first:border-t-0"
+                    >
+                      <DestinationLink
+                        href={href}
+                        data-testid="dashboard-all-door"
+                        data-door-href={href}
+                        className="flex items-center px-4 py-3 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+                      >
+                        {trackedPageFor(href)!.label}
+                      </DestinationLink>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </RememberedDetails>
       )}

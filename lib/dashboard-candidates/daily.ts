@@ -50,15 +50,6 @@ export const dailyCandidates = {
       "may"
     );
   },
-  symptomLog(ctx: DomainCandidateContext, day: string) {
-    return action(
-      ctx,
-      "symptom.well-day-log",
-      `symptom.log-offer:${day}`,
-      "checkin.daily",
-      "may"
-    );
-  },
   protein(
     ctx: DomainCandidateContext,
     day: string,
@@ -147,20 +138,6 @@ export const dailyCandidates = {
       { relevance: profileDataRelevance("dormant") }
     );
   },
-  vitalLog(ctx: DomainCandidateContext, day: string, hasReadings: boolean) {
-    return action(
-      ctx,
-      "vitals.manual-log",
-      `vitals.manual-log-offer:${day}`,
-      "vitals.latest",
-      "may",
-      {
-        relevance: hasReadings
-          ? { kind: "event" }
-          : profileDataRelevance("never"),
-      }
-    );
-  },
   cyclePhase(ctx: DomainCandidateContext, day: string) {
     return reading(
       ctx,
@@ -168,15 +145,6 @@ export const dailyCandidates = {
       `cycle.phase-day:${day}`,
       "cycle.current",
       "manual"
-    );
-  },
-  cycleControl(ctx: DomainCandidateContext, day: string) {
-    return action(
-      ctx,
-      "cycle.control",
-      `cycle.control-offer:${day}`,
-      "cycle.current",
-      "may"
     );
   },
 };
