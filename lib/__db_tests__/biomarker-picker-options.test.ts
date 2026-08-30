@@ -16,6 +16,7 @@ import {
 import { listCompareOptions } from "@/lib/trends-series";
 import { biomarkerRankKey } from "@/lib/biomarker-rank";
 import { setProfileBirthdate } from "@/lib/settings";
+import { getGoalBiomarkerOptions } from "@/app/(app)/training/goal-target-options";
 
 // The Combobox shows 8 rows and an empty query keeps source order, so the head is
 // what "leads the picker" actually means for a user.
@@ -86,6 +87,18 @@ beforeAll(() => {
 });
 
 describe("getRankedBiomarkerOptions over a profile's own facts", () => {
+  it("carries the measured value and unit into the goal starting point", () => {
+    const rows = getGoalBiomarkerOptions(profileId, todayStr);
+    expect(rows.find((row) => row.name === MEASURED)).toMatchObject({
+      latest: 4.5,
+      latestUnit: "g/dL",
+    });
+    expect(rows.find((row) => row.name === STARRED)).toMatchObject({
+      latest: null,
+      latestUnit: null,
+    });
+  });
+
   it("leads with the overdue analyte and the flagged one, ahead of ~200 alphabetical peers", () => {
     const rows = getRankedBiomarkerOptions(profileId, todayStr);
     expect(rows.length).toBeGreaterThan(50); // the full canonical vocabulary

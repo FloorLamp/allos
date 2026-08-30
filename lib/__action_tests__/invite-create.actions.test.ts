@@ -136,7 +136,7 @@ describe("createLogin — the invite carries the credential (#1434)", () => {
 });
 
 describe("createLogin — initial profile access (#1434)", () => {
-  it("grants the selected profiles atomically with the login", async () => {
+  it("grants real selected profiles atomically and drops forged ids", async () => {
     const p1 = createProfile("Access One");
     const p2 = createProfile("Access Two");
     const username = `granted_${++seq}`;
@@ -144,6 +144,7 @@ describe("createLogin — initial profile access (#1434)", () => {
       form({ username, password: ACTION_TEST_PASSWORD, role: "member" }, [
         p1.id,
         p2.id,
+        999_999,
       ])
     );
     expect(res.ok).toBe(true);
@@ -151,21 +152,6 @@ describe("createLogin — initial profile access (#1434)", () => {
     expect(grantsFor(row.id)).toEqual([
       { profileId: p1.id, access: "write" },
       { profileId: p2.id, access: "write" },
-    ]);
-  });
-
-  it("drops a forged profile id instead of granting it", async () => {
-    const p1 = createProfile("Access Real");
-    const username = `forged_${++seq}`;
-    const res = await createLoginAction(
-      form({ username, password: ACTION_TEST_PASSWORD, role: "member" }, [
-        p1.id,
-        999_999,
-      ])
-    );
-    expect(res.ok).toBe(true);
-    expect(grantsFor(loginRow(username)!.id)).toEqual([
-      { profileId: p1.id, access: "write" },
     ]);
   });
 

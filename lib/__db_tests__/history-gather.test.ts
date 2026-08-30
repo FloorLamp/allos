@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { gatherHistoryLog } from "@/lib/history";
+import { gatherHistoryLog, historyMemberFeed } from "@/lib/history";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import { HISTORY_LOG_KINDS } from "@/lib/history-format";
 import { setLoginSetting } from "@/lib/settings";
@@ -144,6 +144,36 @@ describe("gatherHistoryLog", () => {
         item: "leafy_greens",
       }).rows
     ).toHaveLength(0);
+  });
+
+  it("keeps a symptom-only filter when member feeds are merged", () => {
+    const loginId = login();
+    const self = profile("history symptom self");
+    const member = profile("history symptom member");
+    for (const [profileId, symptom, minute] of [
+      [self, "headache", 1],
+      [member, "nausea", 2],
+    ] as const) {
+      serving(profileId, YESTERDAY, minute);
+      db.prepare(
+        `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
+         VALUES (?, ?, ?, 2)`
+      ).run(profileId, YESTERDAY, symptom);
+    }
+
+    const merged = mergeMemberTimelines(
+      [self, member].map((profileId) =>
+        historyMemberFeed(profileId, {
+          loginId,
+          limit: 200,
+          kind: "symptom",
+        })
+      )
+    ).flatMap((day) => day.events);
+    expect(merged.map((row) => row.kind)).toEqual(["symptom", "symptom"]);
+    expect(new Set(merged.map((row) => row.profileId))).toEqual(
+      new Set([self, member])
+    );
   });
 
   // THE SUBSTANCE RECORD IS ADULT-ONLY CONTENT (#1174/#1279), and the gate is asked of
