@@ -113,18 +113,12 @@ test("Dashboard ordinary actions render through Button at the phone floor", asyn
   await page.goto("/");
   await expect(page.getByTestId("dashboard-canvas")).toBeVisible();
 
-  const moreActions = page
-    .getByTestId("dashboard-ahead")
-    .getByRole("button", { name: /^\+\d+ more in / });
-  const moreCount = await moreActions.count();
-  expect(moreCount, "Dashboard +more adopter corpus").toBeGreaterThan(0);
-  for (let index = 0; index < moreCount; index += 1) {
-    const more = moreActions.nth(index);
-    await expect(more).toHaveAttribute("data-button-control", "");
-    await expect(more).toHaveAccessibleName(/^\+\d+ more in /);
-    await expect(more).toContainText(/^\+\d+ more$/);
-    await expectEffectiveFloor(`Dashboard +more ${index}`, more);
-  }
+  // AHEAD'S "+N more" WAS AN ADOPTER AND IS NOT ONE ANY MORE (#4232): the zone opens,
+  // so the control is retired rather than restyled. Nothing replaces it here — the
+  // dashboard's Button corpus on a phone is the row controls below.
+  await expect(
+    page.getByTestId("dashboard-ahead").getByRole("button")
+  ).toHaveCount(0);
 
   await openDashboardAll(page);
   const markTakenActions = page.getByTestId("attention-mark-taken");
@@ -334,9 +328,6 @@ test("a fresh profile reaches each route without inventing conditional action fa
     await page.goto("/");
     await expect(page.getByTestId("dashboard-canvas")).toBeVisible();
     await expect(page.getByTestId("attention-mark-taken")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: /^\+\d+ more in / })
-    ).toHaveCount(0);
 
     await page.goto("/records/history/visits");
     await expect(page.getByTestId("records-visits")).toBeVisible();

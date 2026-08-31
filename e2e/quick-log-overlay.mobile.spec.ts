@@ -319,6 +319,24 @@ function clearDoseLogs(doseId: number): void {
   }
 }
 
+function setShellDoseAsNeeded(asNeeded: boolean): void {
+  const db = openDb();
+  try {
+    db.prepare(
+      "UPDATE intake_items SET kind = ?, obligation = ? WHERE id = (SELECT item_id FROM intake_item_doses WHERE id = ?)"
+    ).run(
+      asNeeded ? "medication" : "supplement",
+      asNeeded ? "may" : "should",
+      shellDoseId()
+    );
+    db.prepare(
+      "DELETE FROM intake_item_logs WHERE item_id = (SELECT item_id FROM intake_item_doses WHERE id = ?)"
+    ).run(shellDoseId());
+  } finally {
+    db.close();
+  }
+}
+
 // Flip the seeded dose's `retired` flag behind the app's back — "the schedule was
 // edited on another device while your sheet was open". Deliberately chosen over
 // writing an intake_item_logs row for a computed date: the suite runs on a FROZEN
@@ -610,6 +628,38 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     clearDoseLogs(doseId);
     setDoseRetired(doseId, false);
     await page.context().close();
+  }
+});
+
+test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  try {
+    setShellDoseAsNeeded(true);
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    const prn = overlay.getByTestId("quick-log-prn-item");
+    await expect(prn).toContainText(SHELL_DOSE_ITEM);
+    await expect(overlay.getByTestId("quick-entry-dose-list")).toHaveCount(0);
+    await expect(overlay.getByTestId("quick-entry-dose-empty")).toHaveCount(0);
+
+    await settledClick(page, prn.getByTestId("prn-log-now"));
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM intake_item_logs WHERE item_id = (SELECT item_id FROM intake_item_doses WHERE id = ?) AND status = 'taken'"
+          )
+          .get(shellDoseId())
+      ).toEqual({ count: 1 });
+    } finally {
+      db.close();
+    }
+  } finally {
+    await page.context().close();
+    setShellDoseAsNeeded(false);
   }
 });
 
@@ -1047,6 +1097,25 @@ async function logAnother(page: Page, row: Locator): Promise<void> {
   await settledClick(page, dialog.getByRole("button", { name: "Log session" }));
 }
 
+// CLEAR THE ONE-TAP COOLDOWN BETWEEN TWO TAPS OF THE SAME WRITE KEY (#2007), the
+// idiom every neighbour that does this already uses (food-limit-note.spec.ts,
+// substance-use.spec.ts, wellness-practices.spec.ts): a reload drops the client-side
+// ledger, without which the next tap is absorbed as an accidental double and reaches
+// neither the confirm nor the server.
+//
+// IT USED TO BE PROVIDED BY A BUG, which is why this arrives with #4334. Measured on
+// this test at 390x844: the second tap fires ~210ms after the first, well inside the
+// 2s window — and passed anyway, because the "Logged today's session" notice came to
+// rest ON the log button (notice band 709-771, button centre y=712, and
+// `document.elementFromPoint` at that centre returning the toast), so Playwright spent
+// the cooldown waiting for the interception to clear. Now that the sheet claims the
+// bottom edge the notice is out of the way, the tap lands at once, and the wait this
+// test always depended on has to be asked for out loud.
+async function reopenPastCooldown(page: Page): Promise<Locator> {
+  await page.reload();
+  return openQuickEntry(page, "log-practice");
+}
+
 // #3273 — the sheet can now STATE when a session happened.
 //
 // The gap this closes: the sheet mounts LogPracticeButton without `showDetails` (a
@@ -1062,17 +1131,21 @@ test("the sheet states an earlier session time, and an untouched tap still write
   const page = await signIn(browser);
   try {
     await page.goto("/");
-    const overlay = await openQuickEntry(page, "log-practice");
-    const row = overlay
-      .getByTestId("quick-entry-practice-list")
-      .getByRole("listitem")
-      .filter({ hasText: SHELL_PRACTICE });
+    const opened = await openQuickEntry(page, "log-practice");
+    const rowIn = (sheet: Locator) =>
+      sheet
+        .getByTestId("quick-entry-practice-list")
+        .getByRole("listitem")
+        .filter({ hasText: SHELL_PRACTICE });
+    let row = rowIn(opened);
     await expect(row).toBeVisible();
 
     // COLLAPSED and empty: the fast path is one tap and nothing is stated until the
     // affordance is opened, so the control is not even in the DOM.
-    const toggle = row.getByTestId("practice-when-toggle");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByTestId("practice-when-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
     await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
 
     // Leg 1 — the untouched tap. It must write what it wrote before this control
@@ -1084,6 +1157,10 @@ test("the sheet states an earlier session time, and an untouched tap still write
     expect(readShellPracticeLog().start_time).toBe(
       zonedDateParts(PINNED_TZ, frozenNow()).hhmm
     );
+
+    row = rowIn(await reopenPastCooldown(page));
+    await expect(row).toBeVisible();
+    let toggle = row.getByTestId("practice-when-toggle");
 
     // Leg 2 — the statement. Absolute local time, on the day the sheet is filing to;
     // the day half is fixed, so a statement can only move the minute.
@@ -1101,7 +1178,18 @@ test("the sheet states an earlier session time, and an untouched tap still write
 
     // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. Multi-session days are the point
     // of this surface, so a surviving 07:05 would stamp the evening's session with the
-    // morning's time — the field empties in front of the user.
+    // morning's time — the field empties IN FRONT OF THE USER, which is what this
+    // reads on the live surface before anything is remounted.
+    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
+
+    // Leg 3 — and the OTHER half of that claim: an open-but-empty when panel posts no
+    // time at all, so the next session carries the tap instant. The panel is opened
+    // again after the cooldown clear so this still runs the `whenShown` branch rather
+    // than the collapsed one leg 1 already covers.
+    row = rowIn(await reopenPastCooldown(page));
+    toggle = row.getByTestId("practice-when-toggle");
+    await hydratedClick(page, toggle);
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(row.getByTestId("practice-when-time")).toHaveValue("");
     await logAnother(page, row);
     await expect(row.getByTestId("practice-today-count")).toContainText(

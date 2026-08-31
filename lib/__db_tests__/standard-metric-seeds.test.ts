@@ -442,102 +442,11 @@ describe("#1487 migration 114 — seeding the installed base", () => {
     }[];
   }
 
-  it("seeds every existing profile, per-profile, with the standard set", () => {
+  it("seeds the installed base without disturbing curation and replays as a no-op", () => {
     const handle = preSeedDb();
-    const a = profile(handle, "Test Patient A");
-    const b = profile(handle, "Test Patient B");
-    up114(handle);
 
-    for (const p of [a, b]) {
-      expect(rows(handle, p).map((r) => r.key)).toEqual([
-        ...STANDARD_TREND_METRIC_IDS,
-      ]);
-      // Unpositioned by design — the epoch stamp, not a position, orders them.
-      expect(rows(handle, p).map((r) => r.position)).toEqual([
-        null,
-        null,
-        null,
-        null,
-      ]);
-      expect(rows(handle, p).every((r) => r.kind === "trend-metric")).toBe(
-        true
-      );
-    }
-  });
-
-  it("puts existing curation AHEAD of the seeds, positioned or not", () => {
-    const handle = preSeedDb();
-    const p = profile(handle, "Test Patient Curated");
-    // One explicitly positioned save (a pin folded by 113) and one plain ★ with no
-    // position — the two shapes that coexist in the installed base.
-    handle
-      .prepare(
-        `INSERT INTO saved_items (profile_id, kind, key, position) VALUES (?, 'biomarker', 'ApoB', 0)`
-      )
-      .run(p);
-    handle
-      .prepare(
-        `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'hs-CRP')`
-      )
-      .run(p);
-    up114(handle);
-
-    const ordered = rows(handle, p);
-    expect(ordered.map((r) => r.key)).toEqual([
-      "ApoB",
-      "hs-CRP",
-      ...STANDARD_TREND_METRIC_IDS,
-    ]);
-    // No existing row was rewritten: the pinned save keeps its position, the plain
-    // ★ keeps its NULL, and the seeds sort last on their epoch stamp alone.
-    expect(ordered.map((r) => r.position)).toEqual([
-      0,
-      null,
-      null,
-      null,
-      null,
-      null,
-    ]);
-  });
-
-  it("dedupes against a metric the profile had already saved", () => {
-    const handle = preSeedDb();
-    const p = profile(handle, "Test Patient Pinned Weight");
-    handle
-      .prepare(
-        `INSERT INTO saved_items (profile_id, kind, key, position) VALUES (?, 'trend-metric', 'weight', 0)`
-      )
-      .run(p);
-    up114(handle);
-
-    const ordered = rows(handle, p);
-    expect(ordered.filter((r) => r.key === "weight")).toHaveLength(1);
-    expect(ordered.map((r) => r.key)).toEqual([
-      "weight",
-      "bodyfat",
-      "resting_hr",
-      "volume",
-    ]);
-  });
-
-  it("replays as a pure no-op", () => {
-    const handle = preSeedDb();
-    const p = profile(handle, "Test Patient Replay");
-    handle
-      .prepare(
-        `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'ApoB')`
-      )
-      .run(p);
-    up114(handle);
-    const once = rows(handle, p);
-    up114(handle);
-    expect(rows(handle, p)).toEqual(once);
-  });
-
-  it("seeds nothing when there are no profiles yet (a fresh database)", () => {
-    // On a fresh DB the runner completes BEFORE bootstrapAuth creates profile 1, so
-    // this migration legitimately has nothing to do — the creation path seeds instead.
-    const handle = preSeedDb();
+    // A fresh install reaches migration 114 before bootstrapAuth creates profile 1.
+    // The migration must therefore tolerate an empty installed base.
     expect(() => up114(handle)).not.toThrow();
     expect(
       (
@@ -546,5 +455,75 @@ describe("#1487 migration 114 — seeding the installed base", () => {
         }
       ).c
     ).toBe(0);
+
+    const a = profile(handle, "Test Patient A");
+    const b = profile(handle, "Test Patient B");
+    const curated = profile(handle, "Test Patient Curated");
+    // One explicitly positioned save (a pin folded by 113) and one plain ★ with no
+    // position — the two shapes that coexist in the installed base.
+    handle
+      .prepare(
+        `INSERT INTO saved_items (profile_id, kind, key, position) VALUES (?, 'biomarker', 'ApoB', 0)`
+      )
+      .run(curated);
+    handle
+      .prepare(
+        `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'hs-CRP')`
+      )
+      .run(curated);
+
+    const deduped = profile(handle, "Test Patient Pinned Weight");
+    handle
+      .prepare(
+        `INSERT INTO saved_items (profile_id, kind, key, position) VALUES (?, 'trend-metric', 'weight', 0)`
+      )
+      .run(deduped);
+
+    const replayed = profile(handle, "Test Patient Replay");
+    handle
+      .prepare(
+        `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'ApoB')`
+      )
+      .run(replayed);
+
+    up114(handle);
+
+    for (const p of [a, b]) {
+      const seeded = rows(handle, p);
+      expect(seeded.map((r) => r.key)).toEqual([...STANDARD_TREND_METRIC_IDS]);
+      // Unpositioned by design — the epoch stamp, not a position, orders them.
+      expect(seeded.map((r) => r.position)).toEqual([null, null, null, null]);
+      expect(seeded.every((r) => r.kind === "trend-metric")).toBe(true);
+    }
+
+    const curatedRows = rows(handle, curated);
+    expect(curatedRows.map((r) => r.key)).toEqual([
+      "ApoB",
+      "hs-CRP",
+      ...STANDARD_TREND_METRIC_IDS,
+    ]);
+    // No existing row was rewritten: the pinned save keeps its position, the plain
+    // ★ keeps its NULL, and the seeds sort last on their epoch stamp alone.
+    expect(curatedRows.map((r) => r.position)).toEqual([
+      0,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+
+    const ordered = rows(handle, deduped);
+    expect(ordered.filter((r) => r.key === "weight")).toHaveLength(1);
+    expect(ordered.map((r) => r.key)).toEqual([
+      "weight",
+      "bodyfat",
+      "resting_hr",
+      "volume",
+    ]);
+
+    const once = rows(handle, replayed);
+    up114(handle);
+    expect(rows(handle, replayed)).toEqual(once);
   });
 });

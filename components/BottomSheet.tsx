@@ -19,6 +19,7 @@ import {
   OVERLAY_PANEL_RADIUS_BOTTOM,
   OVERLAY_SAFE_BOTTOM,
   OVERLAY_SCRIM,
+  useBottomEdgeClaim,
   type OverlaySize,
 } from "./overlay";
 import { IconX } from "@tabler/icons-react";
@@ -236,6 +237,23 @@ export default function BottomSheet({
   // #2774 made that a load-bearing invariant rather than a nicety, because every
   // former ModalShell consumer now holds a lock too.
   useLockBodyScroll(mounted);
+  // THE SHEET CLAIMS THE BOTTOM EDGE (#4334, owner ruling 2026-08-31). A
+  // bottom-anchored panel is a base-layer surface exactly as the two docks are,
+  // so it publishes its TOP EDGE and the notice layers — the toast stack, the
+  // offline pill, the update offer — come to rest ABOVE it instead of on it.
+  // Without this a toast raised BY a row inside the sheet landed over that row,
+  // and the next tap went to the notice: a log the person watched be confirmed
+  // and never made. That is #2651's nav dock one surface up.
+  //
+  // The consequence is deliberate and was ruled on: over a TALL sheet the notice
+  // lands near the top of the viewport, because "never over the surface it was
+  // tapped from" is what the claim means. The rejected alternatives were a second
+  // toast system rendered inside the sheet, and a claim bounded by a number
+  // nobody owns — which is the shape that caused this.
+  //
+  // The HANDLE gates it, so the claim is live exactly while the panel is
+  // bottom-anchored: see useBottomEdgeClaim's `gate` argument.
+  useBottomEdgeClaim(panelRef, { gate: handleRef, mounted });
   // Stop trapping focus / answering Escape the moment the exit starts, so a
   // closing sheet can't swallow the next Escape or steal focus back.
   // Scrim tap, flick and ESCAPE share ONE exit (#3420), so a consumer that guards

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
+import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useWritePipeline } from "@/components/useWritePipeline";
 import { settleDayDoses } from "@/components/medications/dose-day-settlement";
@@ -21,6 +22,7 @@ import type {
   QuickEntryDose,
   QuickEntryPastDay,
   QuickEntryPastDose,
+  QuickEntryPrn,
 } from "@/app/(app)/quick-entry-actions";
 
 // The quick-entry overlay's DOSE form (issue #1468), with the recent-past day
@@ -64,11 +66,13 @@ function occurrenceKey(date: string, doseId: number): string {
 export default function QuickDoseList({
   today,
   doses,
+  prn,
   pastDays,
   onDone,
 }: {
   today: string;
   doses: QuickEntryDose[];
+  prn?: QuickEntryPrn;
   pastDays: QuickEntryPastDay[];
   // Called once the sheet has nothing left to confirm on ANY offered day — the
   // overlay closes itself rather than leaving an empty sheet on screen. Today
@@ -229,14 +233,14 @@ export default function QuickDoseList({
           }
           onResolved={(doseIds) => markResolved(day, doseIds)}
         />
-      ) : remaining.length === 0 ? (
+      ) : remaining.length === 0 && !prn?.meds.length ? (
         <p
           data-testid="quick-entry-dose-empty"
           className="py-2 text-sm text-slate-500 dark:text-slate-400"
         >
           Nothing left to confirm.
         </p>
-      ) : (
+      ) : remaining.length > 0 ? (
         <ul
           data-testid="quick-entry-dose-list"
           className="flex flex-col gap-1.5"
@@ -280,6 +284,9 @@ export default function QuickDoseList({
             </li>
           ))}
         </ul>
+      ) : null}
+      {day === today && prn && prn.meds.length > 0 && (
+        <QuickLogPrnContent {...prn} title={null} showPageLink={false} />
       )}
     </div>
   );

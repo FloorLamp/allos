@@ -654,8 +654,10 @@ renderer:
   and the offline replay already perform, so there is no second validation and no
   audit row. `resolveDayDoses` re-derives `pendingDayDoses` server-side and writes
   only the named-and-still-unresolved intersection (the #2458 contract), so a stale
-  tap refuses instead of double-logging. BEYOND the window nothing changes: the
-  audited historical cores above stay the only way to reach a closed day.
+  tap refuses instead of double-logging. BEYOND the window this sheet stops: the
+  audited cores above are how a closed day is reached — directly through the
+  `/history` backfill, or through the composed usual write, which files days 3-6
+  back through `logHistoricalDose` and audits them (#4305).
 - Cross-linked with the Trends → Nutrition **Dose history** chart (#2415) both
   ways: the ledger links to the chart, and a tapped day in that chart's day panel
   links back to the ledger filtered to that day (`dayLink` on the `dose` entry of

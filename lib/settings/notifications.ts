@@ -598,6 +598,29 @@ export function getProfilesByTelegramChatId(chatId: string): number[] {
   return [...profileIds].sort((a, b) => a - b);
 }
 
+// WHICH LOGIN A CHAT TAP IS, for one profile (#4306). The view above answers "may this
+// chat act as this profile" and then flattens the login away; an audit row has to name
+// it. The lowest-id login whose channel IS this chat and that still manages the profile
+// unmuted — the same "first login owns the chat" tie-break `handleTuneTap` and the
+// outbound dedup (`dedupeRecipientsByChat`) use, so inbound and outbound cannot disagree
+// about whose chat this is. Null when the binding names none, which is a real answer.
+//
+// ATTRIBUTION ONLY. This never widens what a tap may write: the profile is still the one
+// the token resolved through `getProfilesByTelegramChatId`, and a login is an
+// authentication identity while a profile is a data subject — resolving one from the
+// binding names the actor, it does not merge the two.
+export function loginIdForTelegramChatProfile(
+  chatId: string,
+  profileId: number
+): number | null {
+  const loginIds = loginIdsForTelegramChat(chatId).sort((a, b) => a - b);
+  for (const loginId of loginIds) {
+    if (isProfileMutedForLogin(loginId, profileId)) continue;
+    if (profilesManagedByLogin(loginId).includes(profileId)) return loginId;
+  }
+  return null;
+}
+
 // Merged view (global bot config + this login's delivery channel), for the
 // settings page and the "send test" path.
 export interface NotificationConfig extends TelegramBotConfig, LoginTelegram {}

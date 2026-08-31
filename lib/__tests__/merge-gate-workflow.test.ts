@@ -16,6 +16,18 @@ function triggerNames(source: string): string[] {
 }
 
 describe("the merge-gate workflow trigger contract", () => {
+  it("gives the wrapper check a different name from the merge-gate status", () => {
+    const source = fs.readFileSync(WORKFLOW, "utf8");
+    const jobs = /^jobs:\n([\s\S]*)$/m.exec(source)?.[1] ?? "";
+    const jobNames = [...jobs.matchAll(/^  ([\w-]+):$/gm)].map(
+      (match) => match[1]
+    );
+
+    expect(jobNames).toEqual(["merge-gate-job"]);
+    expect(source).toContain("--ignore-check merge-gate-job");
+    expect(source.match(/context: "merge-gate"/g)).toHaveLength(1);
+  });
+
   it("uses only the supported events that can recompute its verdict", () => {
     const source = fs.readFileSync(WORKFLOW, "utf8");
     expect(triggerNames(source)).toEqual([

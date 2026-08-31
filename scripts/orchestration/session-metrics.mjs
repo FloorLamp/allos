@@ -28,7 +28,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * @typedef {{ number: number, title: string, createdAt: string, mergedAt: string }} MergedPr
  * @typedef {{ number: number, draft: boolean }} OpenPr
- * @typedef {{ number: number, body: string, createdAt: string, labels: readonly string[] }} OpenIssue
+ * @typedef {{ number: number, createdAt: string, labels: readonly string[] }} OpenIssue
  * @typedef {{ mergedPrs: readonly MergedPr[], openPrs: readonly OpenPr[],
  *   openIssues: readonly OpenIssue[], now: Date, days: number }} MetricsInput
  */
@@ -89,15 +89,6 @@ export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
       unslotted,
       needsHuman: needsHuman.length,
       oldestNeedsHumanDays,
-      // A PHRASE count, not provenance (#4451). Measured against the only
-      // ground truth there is — the 8 still-open issues the orchestrator
-      // filed in one session — this pattern fires on 3 and misses 5, and all
-      // 8 carry the same GitHub author as owner-filed work, so the author
-      // field cannot stand in either. Named and rendered for what it is;
-      // real provenance needs a marker written at FILING time.
-      selfFiledMarked: openIssues.filter((i) =>
-        /found (while|by)/i.test(i.body ?? "")
-      ).length,
     },
   };
 }
@@ -146,10 +137,6 @@ export function renderMetrics(m) {
       (m.queue.oldestNeedsHumanDays !== null
         ? `, oldest ${f1(m.queue.oldestNeedsHumanDays)}d — aging here is an owner bottleneck, not agent work`
         : "")
-  );
-  lines.push(
-    `- bodies phrased "found while/by": ${m.queue.selfFiledMarked} — a PHRASE ` +
-      "count, not provenance (#4451: 3 of 8); self-filed is back of queue by rule"
   );
   return lines.join("\n");
 }
@@ -215,7 +202,6 @@ function main() {
       .filter((i) => !i.pull_request)
       .map((i) => ({
         number: i.number,
-        body: i.body ?? "",
         createdAt: i.created_at,
         labels: i.labels.map((l) => l.name),
       })),
