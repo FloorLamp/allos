@@ -68,6 +68,7 @@ export interface WellnessPractice {
   sessionCount: number;
   lastUsed: string | null;
   previousDurationMin: number | null;
+  liveSession: { id: number; date: string; startTime: string } | null;
   // Whether `asOf` is one of this practice's inferred rhythm days (#2188). False
   // whenever the inference has no pattern (#558: unknown renders NOTHING — the
   // card's rhythm note simply doesn't exist). Predicted ≠ due (#1505): this
@@ -150,7 +151,7 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(values)})
@@ -206,7 +207,7 @@ export function getPracticeLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND ${where.join(" AND ")}
@@ -322,7 +323,7 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+        `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
                 source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
@@ -368,7 +369,7 @@ export function getWellnessPractices(
   );
   const logs = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ?
@@ -420,6 +421,19 @@ export function getWellnessPractices(
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
         previousDurationMin: practiceDurationPrefill(item.sessions),
+        liveSession:
+          item.sessions
+            .filter(
+              (session) =>
+                session.live === 1 &&
+                session.date === asOf &&
+                session.start_time != null
+            )
+            .map((session) => ({
+              id: session.id,
+              date: session.date,
+              startTime: session.start_time!,
+            }))[0] ?? null,
         // The rhythm over the identity's own sessions — already gathered above, so
         // the aggregate infers in memory over the SAME rows the per-practice query
         // wrapper (inferPracticeSchedule) scans; the pure core is the one
@@ -468,6 +482,7 @@ export interface TrackedPractice {
   // invent a duration for a practice with no history, or for one whose last session
   // deliberately carried none.
   previousDurationMin: number | null;
+  liveSession: { id: number; date: string; startTime: string } | null;
 }
 
 // The quick surfaces' practice list: one row per practice-scope frequency target.
@@ -510,14 +525,9 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
-  // The inline duration prefill's ingredient (#2204): ONE row per stored spelling —
-  // that spelling's newest session — folded to one row per identity in JS, exactly as
-  // the today-count fold above does (SQL cannot call practiceIdentity). Bounded by the
-  // number of distinct spellings, not by history, so the sheet still opens on two
-  // small reads. The ordering is byte-for-byte getPracticeSessions' own, COALESCE
-  // sentinel included, so "the last logged session" means the same row on every
-  // surface that asks.
-  const latestRows = db
+  // The usual-duration vote is bounded per stored spelling, then folded by identity
+  // in JS because SQL cannot call practiceIdentity.
+  const durationRows = db
     .prepare(
       `SELECT practice, date, start_time, id, duration_min FROM (
          SELECT practice, date, start_time, id, duration_min,
@@ -527,7 +537,7 @@ export function getTrackedPractices(
                 ) AS rn
            FROM practice_logs
           WHERE profile_id = ?
-       ) WHERE rn = 1`
+       ) WHERE rn <= 50`
     )
     .all(profileId) as {
     practice: string;
@@ -536,18 +546,50 @@ export function getTrackedPractices(
     id: number;
     duration_min: number | null;
   }[];
-  const latestByIdentity = new Map<string, (typeof latestRows)[number]>();
+  const durationsByIdentity = new Map<
+    string,
+    (typeof durationRows)[number][]
+  >();
   // The recency key, in getPracticeSessions' own order: date, then the session start
   // with its null-sorts-last sentinel, then the row id as the tiebreak.
-  const recency = (r: (typeof latestRows)[number]) =>
+  const recency = (r: (typeof durationRows)[number]) =>
     `${r.date} ${r.start_time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
-  for (const row of latestRows) {
+  for (const row of durationRows) {
     const identity = practiceIdentity(row.practice);
     if (!identity) continue;
-    const held = latestByIdentity.get(identity);
-    if (!held || recency(row) > recency(held))
-      latestByIdentity.set(identity, row);
+    const held = durationsByIdentity.get(identity) ?? [];
+    held.push(row);
+    durationsByIdentity.set(identity, held);
   }
+  for (const rows of durationsByIdentity.values())
+    rows.sort((left, right) => recency(right).localeCompare(recency(left)));
+
+  const liveRows = db
+    .prepare(
+      `SELECT id, practice, date, start_time
+         FROM practice_logs
+        WHERE profile_id = ? AND live = 1 AND date = ?
+        ORDER BY id DESC`
+    )
+    .all(profileId, asOf) as {
+    id: number;
+    practice: string;
+    date: string;
+    start_time: string;
+  }[];
+  const liveByIdentity = new Map(
+    liveRows.flatMap((row) => {
+      const identity = practiceIdentity(row.practice);
+      return identity
+        ? [
+            [
+              identity,
+              { id: row.id, date: row.date, startTime: row.start_time },
+            ] as const,
+          ]
+        : [];
+    })
+  );
 
   const seen = new Set<string>();
   const out: TrackedPractice[] = [];
@@ -578,8 +620,9 @@ export function getTrackedPractices(
       // question, one computation. A practice with no logs at all resolves through
       // the empty list rather than being special-cased here.
       previousDurationMin: practiceDurationPrefill(
-        latestByIdentity.has(identity) ? [latestByIdentity.get(identity)!] : []
+        durationsByIdentity.get(identity) ?? []
       ),
+      liveSession: liveByIdentity.get(identity) ?? null,
     });
   }
   return out.sort((left, right) =>

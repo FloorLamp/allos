@@ -10,6 +10,7 @@ import { WEEKDAYS_SHORT } from "./date";
 import { frequencyPace, type FrequencyPace } from "./frequency-targets";
 import { inWakingWindow } from "./notifications/schedule";
 import type { PracticeLogOutcome } from "./types";
+import { modalValue } from "./weekly-rhythm";
 import type { WeeklyRhythm } from "./weekly-rhythm";
 
 // The stable suppression/identity key namespace for a wellness-practice weekly target:
@@ -135,11 +136,8 @@ export function practiceDisplayName(input: {
 //
 // The order is stated in full, including the leg nothing supplies yet:
 //
-//   1. the practice's own LAST LOGGED session — its `duration_min`, whatever it is.
-//      Note "whatever it is": a last session that carried NO duration prefills BLANK.
-//      That is deliberate and it is what makes constraint 4 of #2204 hold — the
-//      prefill teaches from what was WRITTEN, never from what was merely shown, so
-//      clearing the stepper once sticks instead of being re-suggested forever.
+//   1. the practice's USUAL recorded duration — the most common positive duration,
+//      with a tie resolved by the newest session. Duration-less rows do not vote.
 //   2. a DECLARED default for the practice — a protocol/target-level "a sauna session
 //      is 20 minutes". No store declares one today; the parameter exists so the order
 //      is written down rather than guessed at by the first caller that needs it (the
@@ -152,8 +150,15 @@ export function practiceDurationPrefill(
   sessions: readonly { duration_min: number | null }[],
   declaredDefaultMin: number | null = null
 ): number | null {
-  // Leg 1 — a session exists, so ITS duration is the answer even when that is null.
-  if (sessions.length > 0) return sessions[0].duration_min ?? null;
+  const usual = modalValue(
+    sessions.flatMap((session) => {
+      const value = session.duration_min;
+      return value != null && Number.isFinite(value) && value > 0
+        ? [Math.round(value)]
+        : [];
+    })
+  );
+  if (usual != null) return usual;
   // Leg 2 — no history at all; a declared default may speak. Guarded so a zero or a
   // negative declaration degrades to blank rather than seeding an impossible session.
   if (declaredDefaultMin != null && declaredDefaultMin > 0)

@@ -27,6 +27,7 @@ const SESSION: PracticeLog = {
   date: "2026-08-20",
   start_time: "08:30",
   end_time: null,
+  live: 0,
   duration_min: 20,
   notes: null,
   source: null,

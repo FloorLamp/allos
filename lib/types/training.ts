@@ -393,6 +393,8 @@ export interface PracticeLog {
   // The stated END (#3142). NULL on every tap and every import — the window is then
   // derived from `duration_min` by `activityWindow`, never stored.
   end_time: string | null;
+  // One-tap session currently in progress. A stated start-only row keeps this false.
+  live: number;
   // Canonical minutes (the Units rule); null when not recorded.
   duration_min: number | null;
   notes: string | null;
@@ -415,6 +417,31 @@ export type PracticeLogOutcome =
   | { kind: "logged"; count: number; date: string }
   | { kind: "invalid-date" }
   | { kind: "stale-target" };
+
+export interface LivePracticeSession {
+  id: number;
+  date: string;
+  startTime: string;
+}
+
+export type PracticeLiveStartOutcome =
+  | {
+      kind: "started";
+      session: LivePracticeSession;
+      count: number;
+      date: string;
+    }
+  | { kind: "already-live"; session: LivePracticeSession }
+  | { kind: "invalid-date" };
+
+export type PracticeLiveEndOutcome =
+  | {
+      kind: "ended";
+      session: PracticeLog;
+      count: number;
+      date: string;
+    }
+  | { kind: "not-live" };
 
 // Typed correction outcomes (#1585). Edits and deletes are profile-scoped: a stale,
 // deleted, or cross-profile id returns not-found and never receives a success toast.

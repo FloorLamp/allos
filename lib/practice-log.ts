@@ -8,7 +8,7 @@
 import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
-import { zonedDateParts } from "./date";
+import { shiftDateStr, zonedDateParts } from "./date";
 import { TAP_REACH, isPastWriteAccepted } from "./log-manifest";
 import { sqlNow } from "./clock";
 import {
@@ -21,9 +21,12 @@ import { getTimezone } from "./settings";
 import { normalizePracticeName } from "./practice";
 import type {
   PracticeLogOutcome,
+  PracticeLiveEndOutcome,
+  PracticeLiveStartOutcome,
   PracticeSessionDeleteOutcome,
   PracticeSessionMutationOutcome,
 } from "./types";
+import type { LivePracticeSession } from "./types";
 import { captureDelete } from "./undo-delete-db";
 import {
   getPracticeDayCount,
@@ -57,6 +60,31 @@ function inClause(values: readonly string[]): string {
 // through `zonedMinuteStr`, so a frozen e2e instant stamps the frozen minute.
 function tapInstant(profileId: number, date: string): string | null {
   return date === today(profileId) ? nowTime(profileId) : null;
+}
+
+function clockMinute(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour <= 23 && minute <= 59 ? hour * 60 + minute : null;
+}
+
+function subtractLocalMinutes(
+  date: string,
+  time: string,
+  durationMin: number
+): { date: string; time: string } {
+  const minute = clockMinute(time) ?? 0;
+  const total = minute - durationMin;
+  const dayOffset = Math.floor(total / 1440);
+  const wrapped = ((total % 1440) + 1440) % 1440;
+  return {
+    date: shiftDateStr(date, dayOffset),
+    time: `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(
+      wrapped % 60
+    ).padStart(2, "0")}`,
+  };
 }
 
 // One-tap log a practice session. NOT idempotent — multi-session days are the point
@@ -104,6 +132,7 @@ export function logPracticeSession(
     endTime?: string | null;
     durationMin?: number | null;
     notes?: string | null;
+    live?: boolean;
     // WHICH MESSAGE'S TAP wrote this row (#2264/#2875) — the `notify_messages` row id,
     // or null for a tap no chat message produced (the web quick-sheet). Attribution,
     // not time: it decides WHERE a correction row may render, never what it says.
@@ -136,8 +165,8 @@ export function logPracticeSession(
     db.prepare(
       `INSERT INTO practice_logs
          (profile_id, practice, date, start_time, end_time, duration_min, notes,
-          created_at, notify_message_id, logged_via)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          created_at, notify_message_id, logged_via, live)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       name,
@@ -155,7 +184,8 @@ export function logPracticeSession(
       // would read as long expired. In production the two are identical.
       sqlNow(),
       opts.notifyMessageId ?? null,
-      loggedVia
+      loggedVia,
+      opts.live ? 1 : 0
     );
     const count = getPracticeDayCount(profileId, name, date);
     return { kind: "logged", count, date };
@@ -220,6 +250,7 @@ export function updatePracticeSession(
     endTime?: string | null;
     durationMin?: number | null;
     notes?: string | null;
+    live?: boolean;
   }
 ): PracticeSessionMutationOutcome {
   const current = getPracticeSession(profileId, id);
@@ -242,11 +273,148 @@ export function updatePracticeSession(
   db.prepare(
     `UPDATE practice_logs
         SET date = ?, start_time = ?, end_time = ?, duration_min = ?, notes = ?,
-            edited = 1
+            live = ?, edited = 1
       WHERE id = ? AND profile_id = ?`
-  ).run(input.date, startTime, endTime, durationMin, notes, id, profileId);
+  ).run(
+    input.date,
+    startTime,
+    endTime,
+    durationMin,
+    notes,
+    input.live == null ? current.live : input.live ? 1 : 0,
+    id,
+    profileId
+  );
   const session = getPracticeSession(profileId, id);
   return session ? { kind: "updated", session } : { kind: "not-found" };
+}
+
+// Close yesterday's unfinished lifecycle without inventing an end. Request gathers
+// that render the offer state call this first; the transition is idempotent.
+export function closeAbandonedPracticeSessions(
+  profileId: number,
+  localDay = today(profileId)
+): number {
+  return db
+    .prepare(
+      `UPDATE practice_logs SET live = 0
+        WHERE profile_id = ? AND live = 1 AND date < ?`
+    )
+    .run(profileId, localDay).changes;
+}
+
+function openPracticeSession(
+  profileId: number,
+  practice: string
+): LivePracticeSession | null {
+  const spellings = getPracticeSpellings(profileId, practice);
+  if (spellings.length === 0) return null;
+  const row = db
+    .prepare(
+      `SELECT id, date, start_time
+         FROM practice_logs
+        WHERE profile_id = ? AND live = 1
+          AND practice IN (${inClause(spellings)})
+        ORDER BY id DESC LIMIT 1`
+    )
+    .get(profileId, ...spellings) as
+    { id: number; date: string; start_time: string } | undefined;
+  return row ? { id: row.id, date: row.date, startTime: row.start_time } : null;
+}
+
+export function startLivePracticeSession(
+  profileId: number,
+  practice: string,
+  loggedVia: LoggedVia
+): PracticeLiveStartOutcome {
+  const name = normalizePracticeName(practice);
+  if (!name) return { kind: "invalid-date" };
+  return writeTx(() => {
+    const date = today(profileId);
+    closeAbandonedPracticeSessions(profileId, date);
+    const existing = openPracticeSession(profileId, name);
+    if (existing) return { kind: "already-live" as const, session: existing };
+    const outcome = logPracticeSession(profileId, name, date, loggedVia, {
+      startTime: nowTime(profileId),
+      live: true,
+    });
+    if (outcome.kind !== "logged") return { kind: "invalid-date" as const };
+    const session = openPracticeSession(profileId, name);
+    return session
+      ? {
+          ...outcome,
+          kind: "started" as const,
+          session,
+        }
+      : { kind: "invalid-date" as const };
+  });
+}
+
+export function endLivePracticeSession(
+  profileId: number,
+  id: number
+): PracticeLiveEndOutcome {
+  return writeTx(() => {
+    const date = today(profileId);
+    closeAbandonedPracticeSessions(profileId, date);
+    const current = getPracticeSession(profileId, id);
+    if (!current || current.live !== 1 || current.date !== date)
+      return { kind: "not-live" as const };
+    const endTime = nowTime(profileId);
+    const startMinute = current.start_time
+      ? clockMinute(current.start_time)
+      : null;
+    const endMinute = clockMinute(endTime);
+    const durationMin =
+      startMinute != null && endMinute != null && endMinute > startMinute
+        ? endMinute - startMinute
+        : null;
+    const updated = updatePracticeSession(profileId, id, {
+      date,
+      startTime: current.start_time,
+      endTime,
+      durationMin,
+      notes: current.notes,
+      live: false,
+    });
+    return updated.kind === "updated"
+      ? {
+          kind: "ended" as const,
+          session: updated.session,
+          count: getPracticeDayCount(profileId, current.practice, date),
+          date,
+        }
+      : { kind: "not-live" as const };
+  });
+}
+
+export function logFinishedPracticeSession(
+  profileId: number,
+  practice: string,
+  loggedVia: LoggedVia,
+  durationMin: number | null,
+  notifyMessageId?: number | null
+): PracticeLogOutcome {
+  const endDate = today(profileId);
+  const endTime = nowTime(profileId);
+  const duration =
+    durationMin != null && Number.isFinite(durationMin) && durationMin > 0
+      ? Math.round(durationMin)
+      : null;
+  const start =
+    duration == null ? null : subtractLocalMinutes(endDate, endTime, duration);
+  return logPracticeSession(
+    profileId,
+    practice,
+    start?.date ?? endDate,
+    loggedVia,
+    {
+      startTime: start?.time ?? null,
+      endTime,
+      durationMin: duration,
+      notifyMessageId: notifyMessageId ?? null,
+    }
+  );
 }
 
 // Log a session against a practice frequency TARGET id (the Telegram Done button path,
@@ -267,7 +435,8 @@ export function logPracticeByTargetId(
   loggedVia: LoggedVia,
   // The message this tap came from (#2264/#2875), stamped onto the row so the burst it
   // creates renders on THIS message and never on a sibling.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  durationMin?: number | null
 ): PracticeLogOutcome {
   const row = db
     .prepare(
@@ -276,12 +445,12 @@ export function logPracticeByTargetId(
     )
     .get(targetId, profileId) as { scope_value: string } | undefined;
   if (!row) return { kind: "stale-target" };
-  return logPracticeSession(
+  return logFinishedPracticeSession(
     profileId,
     row.scope_value,
-    today(profileId),
     loggedVia,
-    { notifyMessageId: notifyMessageId ?? null }
+    durationMin ?? null,
+    notifyMessageId ?? null
   );
 }
 
@@ -415,7 +584,7 @@ export function restampPracticeLogsCore(
         `SELECT id, practice, date, start_time, created_at, notify_message_id
            FROM practice_logs
           WHERE profile_id = ? AND id >= ?
-            AND start_time IS NOT NULL AND end_time IS NULL
+            AND start_time IS NOT NULL AND end_time IS NULL AND live = 0
             AND external_id IS NULL
           ORDER BY created_at, id
           LIMIT 200`
