@@ -772,6 +772,9 @@ export function hygieneScanText(
  * lines: the `ci-ok:` escape LIVES in a comment.
  */
 export function unmarkedCiBranchLines(text: string): number[] {
+  // Comment stripping cannot create the marker. Most e2e files do not mention it,
+  // so avoid lexing the whole corpus for the handful that can answer this check.
+  if (!CI_ENV_RE.test(text)) return [];
   const lines = text.split("\n");
   const code = cachedStripComments(text).split("\n");
   const out: number[] = [];
@@ -1460,6 +1463,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       // over an existing database, which is their job and not a spec's cleanup —
       // e2e/seed/merge.ts alone does it four times, correctly.
       if (!name.endsWith(".spec.ts")) continue;
+      if (!/DELETE\s+FROM\s+activities/i.test(text)) continue;
       const count = countMatches(
         hygieneScanText(text),
         SHARED_ACTIVITY_DELETE_RE
