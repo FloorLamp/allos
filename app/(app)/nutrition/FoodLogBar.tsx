@@ -2036,6 +2036,9 @@ export default function FoodLogBar({
             prefs={dayLedger.prefs}
             keepApart={activeDate === today ? dayLedger.keepApart : []}
             dayContext={activeDate === today ? dayLedger.dayContext : null}
+            moveDays={days
+              .filter((day) => day.date !== activeDate)
+              .map((day) => ({ date: day.date, label: day.label }))}
             onCorrectServing={(eventId) => {
               const event = loggedEvents.find((e) => e.id === eventId);
               if (event) openCorrection(event);

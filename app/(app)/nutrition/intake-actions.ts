@@ -1638,7 +1638,9 @@ function applyLedgerSelection(
   if (outcome.kind === "invalid-edit")
     return formError("Couldn't apply that change.");
   if (outcome.kind === "nothing-selected")
-    return formError("Those rows are no longer on this day. Refresh and try again.");
+    return formError(
+      "Those rows are no longer on this day. Refresh and try again."
+    );
   // AUDITED LIKE ANY OTHER RETROACTIVE DOSE WRITE (#1933). Amending or removing what the
   // record says was given is clinically significant whether it happens one row at a time
   // or twelve; the batch earns one row per affected item, exactly what the single-row

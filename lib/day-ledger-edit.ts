@@ -119,10 +119,13 @@ interface SelectableDose {
 /**
  * What `date` actually holds for `profileId`, restricted to the rows a batch may act on.
  *
- * This is the re-derivation the batch is bounded by, and it is the whole of the
- * server-side write check: every row here was read through the profile's own ownership
- * join, so an id belonging to somebody else simply is not in the answer. `intake_item_logs`
- * carries ownership through its parent item, which is why the dose half joins.
+ * This is the re-derivation the batch is bounded by. Ownership is asserted here AND
+ * again inside every core it calls (their statements are all id + profile_id scoped), so
+ * a foreign id is refused twice over — but the DAY is asserted only here, and that half
+ * is load-bearing on its own: without it a named id from another day would be re-timed or
+ * re-dated by a batch whose whole premise is "these rows are the ones I am looking at".
+ * `intake_item_logs` carries ownership through its parent item, which is why the dose
+ * half joins.
  */
 function selectableOn(
   profileId: number,
@@ -166,7 +169,8 @@ export function editDayLedgerSelectionCore(
   selection: LedgerSelection,
   edit: LedgerSelectionEdit
 ): LedgerSelectionOutcome {
-  if (!isRealIsoDate(date) || date > today(profileId)) return { kind: "invalid-edit" };
+  if (!isRealIsoDate(date) || date > today(profileId))
+    return { kind: "invalid-edit" };
   const tz = getTimezone(profileId);
 
   // Every bound the batch itself owns, settled BEFORE a row is read — an edit that
@@ -197,6 +201,19 @@ export function editDayLedgerSelectionCore(
   const auditedItemIds: number[] = [];
   let applied = 0;
   const now = clockNow();
+
+  // A NAMED ID THAT IS NOT ON THE DAY IS REPORTED, not dropped. The intersection above is
+  // the write check, and it answers the same way to a row deleted in another tab, a
+  // skipped dose, a `__protein__` event and a forged id belonging to another profile —
+  // so the batch has to SAY that some of what was asked for went nowhere. A silent
+  // narrowing would let "12 selected" answer "updated 9" with nothing to explain the
+  // three, which is the shape a cross-profile forgery would hide behind.
+  for (const id of selection.servings)
+    if (!servings.some((row) => row.id === id))
+      refused.push({ row: `serving:${id}`, reason: ROW_GONE });
+  for (const id of selection.doses)
+    if (!doses.some((row) => row.id === id))
+      refused.push({ row: `dose:${id}`, reason: ROW_GONE });
 
   for (const row of servings) {
     const outcome = editServing(profileId, row, edit, stamped, tz, now);
