@@ -1,6 +1,53 @@
 {
   "days": [
     {
+      "date": "2026-08-31",
+      "entries": [
+        {
+          "pr": 4354,
+          "title": "A dose reminder explains its time chips, as the food one already did",
+          "kind": "feature",
+          "category": "Reminders",
+          "issues": [2874]
+        },
+        {
+          "pr": 4354,
+          "title": "The chip explanation retires once you have corrected a time yourself",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [2874]
+        },
+        {
+          "pr": 4372,
+          "title": "A medicine shows its ingredients and why you take it, as a supplement does",
+          "kind": "feature",
+          "category": "Medications",
+          "issues": [3649]
+        },
+        {
+          "pr": 4372,
+          "title": "An item keeps its ingredients and purposes when you change its kind",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3649]
+        },
+        {
+          "pr": 4373,
+          "title": "A supplement splitting one compound over two label lines totals it as one",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3159]
+        },
+        {
+          "pr": 4377,
+          "title": "A niggle you logged eases the next set the logger suggests, and says why",
+          "kind": "fix",
+          "category": "Training",
+          "issues": [3244]
+        }
+      ]
+    },
+    {
       "date": "2026-08-30",
       "entries": [
         {
