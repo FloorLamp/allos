@@ -13,7 +13,8 @@
 //   • Calm and optional — skipping is frictionless and never escalates; the only
 //     downstream signals are coaching-tier observations (lib/mood-observation.ts).
 
-import { daysBetweenDateStr } from "./date";
+
+import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
 
 export const MOOD_MIN = 1;
 export const MOOD_MAX = 5;
@@ -168,13 +169,13 @@ export function moodSeriesPoints(
 // replay deliberately keeps landing a queued check-in on its CAPTURED date
 // however long the queue sat, exactly as it always has — the capture was
 // in-window when it happened.
-export const MOOD_LOG_DATE_WINDOW_DAYS = 2;
+export const MOOD_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.mood.window.back;
 
 // Is `date` an acceptable check-in day, given the profile's `todayStr`? Pure —
-// both are YYYY-MM-DD, the caller resolves today.
+// both are YYYY-MM-DD, the caller resolves today. Past-only and two days back are
+// the manifest's declaration (#4425); this name is the mood-shaped door onto it.
 export function isMoodDateAccepted(todayStr: string, date: string): boolean {
-  const diff = daysBetweenDateStr(todayStr, date);
-  return diff != null && diff <= 0 && diff >= -MOOD_LOG_DATE_WINDOW_DAYS;
+  return isLogDateAccepted("mood", todayStr, date);
 }
 
 // The refusal `logMood` answers a well-formed but out-of-window date with.

@@ -9,6 +9,7 @@ import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { daysBetweenDateStr, isRealIsoDate, zonedDateParts } from "./date";
+import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
 import { sqlNow } from "./clock";
 import {
   burstFrom,
@@ -31,13 +32,13 @@ import {
 } from "./queries/wellness";
 
 // A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
-// a legitimate late correction within the window still logs to its own day.
-export const PRACTICE_LOG_DATE_WINDOW_DAYS = 30;
+// a legitimate late correction within the window still logs to its own day. The size
+// and the argument for a window fifteen times the dose one are DECLARED in the logging
+// manifest (#4425) and read from it here.
+export const PRACTICE_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.practice.window.back;
 
 function isPracticeDateAccepted(profileId: number, date: string): boolean {
-  if (!isRealIsoDate(date)) return false;
-  const diff = daysBetweenDateStr(today(profileId), date);
-  return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
+  return isLogDateAccepted("practice", today(profileId), date);
 }
 
 // An imported historical session may be far outside the new-log window but still

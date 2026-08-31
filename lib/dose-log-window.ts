@@ -4,17 +4,14 @@
 // user-suppliable intake time).
 
 import { daysBetweenDateStr, dateStrInTz, shiftDateStr } from "./date";
+import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
 
 // A late/retro dose-log DATE is accepted only within a small window of the profile's
-// today (#614): a forged/far-off date can't land a misdated row, but a legitimate
-// late/after-midnight tap within the window still logs to the reminder's own day.
-//
-// COUPLED TO `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts,
-// currently 3). Since #2018 a Telegram dose keyboard stays live for exactly this window,
-// and the reconcile sweep can only close it while its pointer still exists. Raising this
-// past retention would strand live keyboards permanently — nothing left to close them
-// with — so the two move together, window < retention.
-export const DOSE_LOG_DATE_WINDOW_DAYS = 2;
+// today (#614). The size and the reason it is that size — the coupling to
+// `MESSAGE_POINTER_RETENTION_DAYS`, which is why raising it would strand live Telegram
+// keyboards — are DECLARED in the one logging manifest (#4425) and read from it here,
+// so the window can no longer be enforced at one number and offered at another.
+export const DOSE_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.dose.window.back;
 
 // Is `date` (YYYY-MM-DD) inside the accepted window around the profile's today? The
 // ONE realization of that rule (#1427): the scheduled write cores (markDoseTaken /
@@ -23,8 +20,7 @@ export const DOSE_LOG_DATE_WINDOW_DAYS = 2;
 // — one computation, never a second copy that could drift. Pure: `todayStr` is the
 // caller's already-resolved profile today.
 export function isDoseDateAccepted(todayStr: string, date: string): boolean {
-  const diff = daysBetweenDateStr(todayStr, date);
-  return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+  return isLogDateAccepted("dose", todayStr, date);
 }
 
 // The profile-local days a recent-past logging surface may OFFER, today first
