@@ -35,10 +35,11 @@ import { useWeekStart } from "@/components/WeekStartProvider";
 // months run — belongs to this file, so the two surfaces cannot drift again without a
 // change here that both of them get.
 //
-// IT RENDERS NO ROOT ELEMENT, deliberately. Its two hosts differ ONLY in the band or
-// panel around the grid (the phone drawer's full-bleed break-out claims
-// `--week-grid-min`; the popover already has the panel's own padding), so the host
-// stays the caller's and there is no `className` seam here to widen later.
+// IT RENDERS NO ROOT ELEMENT, deliberately. Its hosts differ ONLY in the panel
+// around the grid — DateField's picker and the record's calendar each take the
+// anchored popover's own padding, and the grid fills whatever width it is given —
+// so the host stays the caller's and there is no `className` seam here to widen
+// later.
 export type MonthCalendarBinding =
   | {
       kind: "selectable";

@@ -53,17 +53,27 @@ const PANEL_WIDTH_PX = 288;
 // over `timelineDayHref` could see it when the route was retired.
 const href = (day: string): Route => historyDayHref(day);
 
-// SEVEN COLUMNS THAT CLEAR THE TAP FLOOR, CLAIMED RATHER THAN ASSUMED
-// (#3377/#3452). `--week-grid-min` is what seven 44px columns cost, stated once
-// in app/globals.css; below `md` the sheet is the host and its own `px-4` is
-// cancelled here so the grid runs the full width of the screen. Without both
-// terms a 320px viewport lays the week out at 41px a column — under the floor,
-// redistributed quietly, and invisible to any DOM assertion, which is the #3377
-// failure. From `md` up the popover is 288px wide and sets its own padding, so
-// neither applies: a fine pointer gets the control box, not the tap floor
-// (e2e/mobile-ui-polish.spec.ts measures both).
-const GRID_HOST =
-  "-mx-4 max-md:min-w-(--week-grid-min) py-3 md:mx-0 md:p-3";
+// THE GRID TAKES ITS HOST'S WIDTH AND DOES NOT REACH PAST IT (#4280). The sheet
+// pads its own content by 16px a side and CLIPS what overflows — it declares
+// `overflow-x: hidden` so a coarse pointer's trailing hit-slop cannot be nudged
+// into a scroll (components/BottomSheet.tsx says so on the element itself). A
+// full-bleed band like the one the phone drawer used to draw is therefore not a
+// band here, and this was MEASURED rather than reasoned about: pulled out to the
+// screen edges, the grid's first and last columns were clipped 16px each at both
+// 320 and 390, and focusing the Next-month arrow scrolled the clipped panel 16px
+// left — leaving the Previous-month arrow half off the panel with no
+// user-reachable way back, because a hidden overflow is not scrollable by hand.
+//
+// WHAT THAT COSTS, STATED: the week is the sheet's content width divided by
+// seven, so a 390px viewport gives 51px columns and clears the 44px inline floor
+// (#3514), and a 320px one gives 41px and does not. `--week-grid-min` was the
+// token that used to buy the difference, by widening the phone nav drawer around
+// the band; a padded sheet cannot spend it — seven 44px columns are 308px and a
+// 320px viewport leaves 288 — so the token retired with the drawer's claim on it
+// rather than becoming a min-width that could only clip.
+// e2e/mobile-ui-polish.spec.ts measures the columns at both widths and the floor
+// at the width that can pay it.
+const GRID_HOST = "md:p-3";
 
 export default function EventCalendar({
   eventDates,

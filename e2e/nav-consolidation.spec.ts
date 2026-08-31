@@ -412,13 +412,22 @@ test("Cycle entry hides for a male profile with no cycle rows, but the page neve
 // the scroll would be a no-op. So the overflow itself is asserted first, and the
 // footer is asserted OFF SCREEN before the scroll.
 //
-// THE MARGIN, MEASURED, because a control nobody has costed is a guess: on the
-// seeded admin at 390x844 the drawer's content is 1336px inside an 844px panel —
-// 1.58 screens, 492px of overflow. The one change in flight that could shorten it
-// is the calendar band leaving for /history's rail (~230px), which would still
-// leave ~260px over. So this control has real room, and if it ever does go red
-// because the drawer genuinely fits, the fix is to re-derive the guard against the
-// shorter drawer rather than to drop the check that proves the scroll did work.
+// THE MARGIN, MEASURED, because a control nobody has costed is a guess — and
+// RE-DERIVED against the shorter drawer in #4280, which is what this note said to
+// do rather than dropping the check. The calendar band left for /history and took
+// 318px with it (302px of band plus the column's own `gap-4`), not the ~230px the
+// move was estimated at: on the seeded admin at 390x844 the drawer's content was
+// 1336px inside an 844px panel — 1.58 screens, 492px of overflow — and is 1018px
+// now, 1.21 screens, 174px over. The footer assertion below is the tighter of the
+// two and it also survived: the Disclaimer link's top was 1304px and is 986px,
+// still 142px past an 844px fold.
+//
+// AND THE GUARD CAN STILL FAIL, which is the only thing that makes 174px a margin
+// rather than a number. Measured by hiding one nav group in the rendered drawer
+// (the Medical group alone): `scrollHeight` drops to exactly `clientHeight` and
+// the assertion below reds. So the drawer is one nav group away from fitting one
+// screen, and this control is watching a live quantity — not passing because
+// nothing could ever make it fail.
 test("the drawer is viewport-bounded and its footer is reachable by scroll at 390x844 with every group expanded (#4102)", async ({
   page,
 }) => {

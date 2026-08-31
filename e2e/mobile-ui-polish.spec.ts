@@ -160,83 +160,90 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 //
 // AND IT MOVED AGAIN (#3938/#3954): the day cell and the month arrow render the
 // 34px control box now, at every width, and a COARSE pointer gets the rest of the
-// 44 back as reach around it. The two claims here are therefore different on the
-// two axes and the difference is the design. HEIGHT is the box plus whatever reach
-// this pointer actually got — read back from the render, so this file (desktop
-// project, fine pointer, no reach) demands the box and a touch run demands 44.
-// WIDTH stays a hard 44: a day cell is as wide as its grid column, the column is
-// what `--week-grid-min` buys, and nothing about the box changed that.
+// 44 back as reach around it. HEIGHT is therefore the box plus whatever reach this
+// pointer actually got — read back from the render, so this file (desktop project,
+// fine pointer, no reach) demands the box and a touch run demands 44.
 //
-// What seven day columns cost is `--week-grid-min` (app/globals.css, #3452) — the
-// drawer's width class and the calendar band both read it, and neither derives it
-// any more. #3536 widened the drawer enough to pay that bill even at a 320px
-// viewport; no exception or overlapping hit slop remains.
+// AND THEN THE HOST MOVED (#4280, completing #4102). The grid opened in the phone
+// nav drawer's full-bleed band; it opens from /history's filter row now, as the
+// bottom sheet `components/overlay/AnchoredPanel.tsx` gives every anchored panel
+// below `md`. THAT CHANGES WHAT PAYS FOR THE COLUMNS, and the honest version of
+// this test is the one that says so rather than the one that keeps the old number:
 //
-// THIS IS THE RENDERED PROOF for the token swap. The browser says whether the
-// columns still land where they did, which is why #3452's ownership fix was
-// measured here rather than asserted to be geometry-neutral.
-test.describe("the phone drawer's month calendar clears the floor too (#3377/#3514)", () => {
+//   * WIDTH USED TO BE A HARD 44 AT EVERY PHONE WIDTH. The drawer was widened to
+//     `--week-grid-min` (7 x 44 = 308px) so its band could draw a week even at a
+//     320px viewport (#3452/#3536). A bottom sheet pads its content 16px a side
+//     and CLIPS what overflows, so the week is now the sheet's content width over
+//     seven: 51px at 390 (clears the floor) and 41px at 320 (does not). The token
+//     retired with the drawer's claim on it — a min-width inside a clipping sheet
+//     buys nothing but a cut-off column.
+//   * SO THE INVARIANT ASSERTED HERE IS THE ONE THAT HOLDS AT BOTH WIDTHS — the
+//     grid is exactly its host's width and the host is exactly the sheet's content
+//     box — AND THE FLOOR IS ASSERTED WHERE IT IS PAYABLE. Both halves are real
+//     assertions: neither width is along for the ride.
+//
+// THE CONTAINMENT HALF IS NOT BOOKKEEPING; it is the defect this move actually
+// produced. Built with the drawer band's `-mx-4` breakout, the grid overhung the
+// sheet's `overflow-x: hidden` scroller by 16px a side: the first and last columns
+// were clipped at rest, and focusing the Next-month arrow scrolled the panel 16px
+// left, stranding the Previous-month arrow half off it with no way back — a hidden
+// overflow cannot be scrolled by hand. Measured at 320 and 390 both.
+const SHEET_GUTTER_PX = 32; // 16px a side, components/BottomSheet.tsx's `px-4`
+
+test.describe("the record's month calendar clears the floor on a phone (#3377/#3514/#4280)", () => {
   test.use({ viewport: PHONE });
 
-  test("every day cell is a 44px-wide column, one control box tall, and disjoint at 320px and 390px", async ({
+  test("the drawer is 20rem wide once the calendar has left it (#4102)", async ({
     page,
   }) => {
-    test.slow(); // opening the drawer costs a hydration wait on a cold route
+    // THE TERM THAT LEFT. The drawer was
+    // `max(20rem, --week-grid-min + 1px + safe-area-inset-left)` because the
+    // calendar band inside it drew seven 44px columns; #4102's anti-drop census
+    // ruled that "20rem preferred stands alone" once the band moved. Asserted at
+    // BOTH widths because they answer different questions: at 390 the preferred
+    // width is what renders, and at 320 `max-w-full` is what clamps it.
     for (const width of [320, PHONE.width]) {
       await page.setViewportSize({ width, height: PHONE.height });
       await page.goto("/");
-      // The drawer, not the desktop sidebar: `components/MobileNav.tsx` renders the
-      // SAME <SidebarContent> — and therefore the same <EventCalendar> — inside
-      // the phone nav drawer, which is what makes this grid a phone surface at all.
       const drawer = await openMobileDrawer(page);
-      const prevMonth = drawer.getByLabel("Previous month");
-      const nextMonth = drawer.getByLabel("Next month");
-      await expect(prevMonth).toBeVisible();
-      const [drawerBox] = await settledBoxes([drawer, prevMonth, nextMonth]);
-
-      // THE TOKEN RESOLVES TO THE WIDTH IT REPLACED (#3452), measured rather than
-      // asserted to be so. `--week-grid-min` costs a week; the drawer adds its own
-      // 1px right border and the left safe-area inset (0 in a headless browser),
-      // and 20rem stays the preferred width — so a phone this narrow gets exactly
-      // 320px, which is what the retired `19.3125rem` literal resolved to too.
-      //
-      // DERIVED FROM THE FLOOR, not frozen at 320: if #3514's number ever moves,
-      // this expectation moves with it and the drawer had better follow. That is
-      // the whole reason the literal went.
-      const DRAWER_BORDER_PX = 1;
-      const drawerPreferredPx = 320;
-      expect(drawerBox.width).toBeCloseTo(
-        Math.min(
-          width,
-          Math.max(drawerPreferredPx, 7 * TAP_FLOOR_PX + DRAWER_BORDER_PX)
-        ),
+      const [box] = await settledBoxes([drawer]);
+      expect(box!.width, `the drawer at a ${width}px viewport`).toBeCloseTo(
+        Math.min(width, 320),
         0
       );
-      // …and the calendar band CLAIMS that week rather than trusting the drawer to
-      // have reserved it. This is the computed value of the shared token, read off
-      // the element that consumes it — the second half of "one owner".
-      await expect
-        .poll(() =>
-          drawer
-            .locator('[aria-label="Previous month"]')
-            .evaluate(
-              (el) =>
-                getComputedStyle(el.closest("div")!.parentElement!).minWidth
-            )
-        )
-        .toBe(`${7 * TAP_FLOOR_PX}px`);
+      // …and the band really is gone from it, which is what makes the width claim
+      // above a claim about the drawer rather than about a calendar that shrank.
+      await expect(drawer.getByLabel("Previous month")).toHaveCount(0);
+    }
+  });
 
-      // Both arrows AND every day of the rendered month — a floor that only the
-      // first cell clears is not a floor. The 28px circle and the 16px chevron are
-      // unchanged; what is measured here is the box a finger lands in.
-      const cells = await drawer.evaluate((aside) => {
-        const prev = aside.querySelector('[aria-label="Previous month"]')!;
-        const calendar = prev.closest("div")!.parentElement!;
-        const grids = calendar.querySelectorAll(".grid");
-        const days = Array.from(grids[grids.length - 1].children);
+  test("the grid fills the sheet's content box exactly, tiles seven columns, and clears the floor at 390px", async ({
+    page,
+  }) => {
+    test.slow(); // opening the sheet costs a hydration wait on a cold route
+    for (const width of [320, PHONE.width]) {
+      await page.setViewportSize({ width, height: PHONE.height });
+      await page.goto("/history");
+      // The SHEET, which is what an anchored panel opens as below `md` — the same
+      // fork every ⋯ menu and the date picker take (#3374/#3376). The trigger is
+      // in the record's own filter row.
+      await hydratedClick(page, page.getByTestId("history-calendar"));
+      const sheet = page.getByTestId("history-calendar-sheet");
+      await expect(sheet).toBeVisible();
+      const prevMonth = sheet.getByLabel("Previous month");
+      const nextMonth = sheet.getByLabel("Next month");
+      await expect(prevMonth).toBeVisible();
+      await settledBoxes([sheet, prevMonth, nextMonth]);
+
+      const geometry = await sheet.evaluate((panel) => {
+        const prev = panel.querySelector('[aria-label="Previous month"]')!;
+        const host = prev.closest("div")!.parentElement!;
+        const scroller = panel.querySelector("[data-sheet-content]")!;
+        const grids = host.querySelectorAll(".grid");
+        const days = Array.from(grids[grids.length - 1]!.children);
         // The reach as the browser resolved it, per axis: a tiled day cell reaches
         // on the BLOCK axis only, so crediting `top`'s inset to the width would
-        // report 12px of inline target that does not exist (#3954).
+        // report inline target that does not exist (#3954).
         const box = (el: Element) => {
           const r = el.getBoundingClientRect();
           const after = getComputedStyle(el, "::after");
@@ -255,19 +262,71 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
             reachInline: side(after.left),
           };
         };
+        const hostRect = host.getBoundingClientRect();
+        const scrollerRect = scroller.getBoundingClientRect();
         return {
+          host: { left: hostRect.left, right: hostRect.right },
+          scroller: {
+            left: scrollerRect.left,
+            right: scrollerRect.right,
+            scrollWidth: scroller.scrollWidth,
+            clientWidth: scroller.clientWidth,
+          },
           days: days.map(box),
           dayCount: days.length,
-          glyph: box(days[0].firstElementChild!),
+          glyph: box(days[0]!.firstElementChild!),
           coarse: window.matchMedia("(pointer: coarse)").matches,
         };
       });
-      expect(cells.dayCount).toBeGreaterThanOrEqual(28);
-      const heightFloor = cells.coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
-      for (const [index, day] of cells.days.entries()) {
-        expect(day.w + 2 * day.reachInline).toBeGreaterThanOrEqual(
-          TAP_FLOOR_PX
-        );
+
+      // (1) CONTAINMENT, as a relationship between two real elements rather than
+      // against a constant: the grid's host starts and ends exactly where the
+      // sheet's scrolling content box does. A host wider than its scroller is
+      // content the sheet clips and no one can scroll to.
+      expect(
+        geometry.host.left,
+        `the grid's left edge against the sheet's content box at ${width}px`
+      ).toBeCloseTo(geometry.scroller.left, 0);
+      expect(
+        geometry.host.right,
+        `the grid's right edge against the sheet's content box at ${width}px`
+      ).toBeCloseTo(geometry.scroller.right, 0);
+      // …and the scroller has nothing to scroll sideways, which is the same claim
+      // read off the property that made the defect reachable.
+      expect(
+        geometry.scroller.scrollWidth,
+        `the sheet's content scrolls horizontally at ${width}px`
+      ).toBe(geometry.scroller.clientWidth);
+
+      // (2) THE COLUMN IS THE SHEET'S CONTENT WIDTH OVER SEVEN, stated as the
+      // arithmetic rather than as two frozen numbers, so a change to either the
+      // sheet's gutter or the grid's own box fails here and names itself.
+      const column = (width - SHEET_GUTTER_PX) / 7;
+      expect(geometry.dayCount).toBeGreaterThanOrEqual(28);
+      expect(geometry.dayCount % 7).toBe(0);
+
+      // (3) AND THE FLOOR, AT THE WIDTH THAT CAN PAY IT. 390 - 32 = 358, over
+      // seven is 51.1px, clear of the 44px inline floor; 320 - 32 = 288 is 41.1px
+      // and is not. That second number is the price of the move (#4280) and it is
+      // written down here rather than asserted away: a 320px CSS viewport gets a
+      // week narrower than the tap floor inside a padded sheet, and the drawer's
+      // `--week-grid-min` widening is the thing that used to prevent it.
+      if (width === PHONE.width) {
+        expect(
+          column,
+          `a ${width}px viewport buys ${column.toFixed(1)}px columns`
+        ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
+      } else {
+        expect(
+          column,
+          `a ${width}px viewport is the case that cannot pay the inline floor — ` +
+            "if this stops being true the comment above it is stale"
+        ).toBeLessThan(TAP_FLOOR_PX);
+      }
+
+      const heightFloor = geometry.coarse ? TAP_FLOOR_PX : CONTROL_BOX_PX;
+      for (const [index, day] of geometry.days.entries()) {
+        expect(day.w, `day ${index} rendered width`).toBeCloseTo(column, 0);
         // The BOX as an equality, THEN the floor. `>= 44` alone was green on the
         // `h-11 md:h-7` step this issue retired, which is how this very file's
         // 40px bound survived #3514 (see the header).
@@ -277,36 +336,36 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
           `day ${index}: ${day.h}px rendered + 2x${day.reachBlock}px block reach`
         ).toBeGreaterThanOrEqual(heightFloor);
         // Disjointness on the EXTENDED boxes, which is where two hit regions can
-        // now fight over a pixel that the rendered boxes never touched.
+        // fight over a pixel that the rendered boxes never touched.
         if (index % 7 !== 0) {
-          const previous = cells.days[index - 1];
+          const previous = geometry.days[index - 1]!;
           expect(previous.y).toBeCloseTo(day.y, 0);
           expect(
             previous.x + previous.w + previous.reachInline
           ).toBeLessThanOrEqual(day.x - day.reachInline + 0.5);
         }
         if (index >= 7) {
-          const above = cells.days[index - 7];
+          const above = geometry.days[index - 7]!;
           expect(above.x).toBeCloseTo(day.x, 0);
           expect(above.y + above.h + above.reachBlock).toBeLessThanOrEqual(
             day.y - day.reachBlock + 0.5
           );
         }
       }
-      // …and the glyph inside did NOT grow with it. This is the padding/hit-slop
-      // idiom, not a bigger calendar: 28px circles inside the control box.
-      expect(cells.glyph.w).toBeLessThanOrEqual(30);
+      // …and the glyph inside did NOT grow with the cell. This is the
+      // padding/hit-slop idiom, not a bigger calendar: 28px circles in the box.
+      expect(geometry.glyph.w).toBeLessThanOrEqual(30);
 
       // The arrows are `.tap-target`, so they reach on BOTH axes and are asserted
       // through the shared helper, which reads the same pointer this page reports.
+      // It also contains them in the viewport, which is the half that caught the
+      // clipped breakout: the Previous-month arrow read -16px.
       await expectControlBoxHeight(
         prevMonth,
-        "the drawer calendar's back arrow",
-        {
-          lines: 0,
-        }
+        "the record calendar's back arrow",
+        { lines: 0 }
       );
-      await expectPhoneTapTargets(page, "the drawer calendar's month arrows", [
+      await expectPhoneTapTargets(page, "the record calendar's month arrows", [
         prevMonth,
         nextMonth,
       ]);
@@ -314,16 +373,21 @@ test.describe("the phone drawer's month calendar clears the floor too (#3377/#35
       // The destinations are untouched — growing a hit area must not re-point a day.
       // EVERY day link, not a sampled one: a hit box that grew over its neighbour
       // would still leave the first link's href correct.
-      const hrefs = await drawer
+      const hrefs = await sheet
         .locator('a[href^="/history?day="]')
         .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""));
       expect(hrefs.length).toBeGreaterThan(0);
       const shape = /^\/history\?day=\d{4}-\d{2}-\d{2}$/;
       expect(hrefs.filter((href) => !shape.test(href))).toEqual([]);
-      // Nothing in the drawer sits past the viewport: the calendar gives up the
-      // drawer's own side padding to buy those 44px columns, so this is the check
-      // that the breakout lands flush rather than overhanging.
-      await expectNoClippedContent(page);
+      // NO PAGE-WIDE CLIPPING SWEEP HERE, deliberately, and this is not coverage
+      // dropped. The sweep was how the drawer's version proved its full-bleed
+      // breakout landed flush; assertion (1) above proves the same thing far more
+      // precisely — the grid's own box against the box that clips it — and reads
+      // the scroll extent that made the defect reachable. What the page sweep
+      // would add is everything ELSE on /history, and at 320px it reports a
+      // `history-row-title` reaching 565px, WITH THIS SHEET CLOSED and on rows
+      // this file does not touch. That belongs to whoever owns the record's phone
+      // density, not to a calendar test that would fail for it.
     }
   });
 });
