@@ -385,7 +385,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     const todayBefore = takenCount(doseId, todayLocal());
 
     await page.goto("/nutrition");
-    await hydratedClick(page, page.locator(`[data-testid="food-day-${day}"]`));
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
     const group = morning(page).locator('[data-testid^="ledger-due-group-"]');
     await expect(group).toHaveAttribute(
       "data-doses",
