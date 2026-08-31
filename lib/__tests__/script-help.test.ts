@@ -36,6 +36,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/merge-gate.mjs",
   "scripts/orchestration/post-merge-census.mjs",
   "scripts/orchestration/pr-board.mjs",
+  "scripts/orchestration/queue-snapshot.mjs",
   "scripts/orchestration/reconcile-apply.ts",
   "scripts/orchestration/reconcile-labels.ts",
   "scripts/orchestration/reconcile-tracker.ts",

@@ -48,7 +48,6 @@ import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
 import { historyHref } from "@/lib/hrefs";
-import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
 import FoodSuggestions from "@/components/FoodSuggestions";
@@ -466,9 +465,14 @@ export default async function FoodTab({
   // Fiber × GI symptoms on one axis (#2788) — a read-together VIEW, never a
   // correlation claim. The vocabulary and boundaries live in lib/fiber-symptom-panel.
   const fiberSymptomPanel = getFiberSymptomPanel(profile.id);
-  // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
+  // Direct protein-grams quick-add (#824): each offered day's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
-  const proteinLoggedGrams = getProteinDailyGrams(profile.id, date);
+  const proteinLoggedGramsByDate = Object.fromEntries(
+    mealDays.map((day) => [
+      day.date,
+      getProteinDailyGrams(profile.id, day.date),
+    ])
+  );
   const proteinPreset = getProteinQuickAddPreset(profile.id);
   // Current food slot (#950): the profile's wall-clock window (Morning/Midday/Evening)
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
@@ -645,14 +649,10 @@ export default async function FoodTab({
                 keepApart,
                 dayContext: ledgerDayContext,
               }}
-              proteinQuickAdd={
-                <ProteinQuickAdd
-                  key="protein-quickadd"
-                  today={date}
-                  initialGrams={proteinLoggedGrams}
-                  lastPreset={proteinPreset}
-                />
-              }
+              proteinQuickAdd={{
+                initialGramsByDate: proteinLoggedGramsByDate,
+                lastPreset: proteinPreset,
+              }}
             />
           </div>
         }

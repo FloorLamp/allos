@@ -89,6 +89,7 @@ import {
 import Disclosure from "@/components/Disclosure";
 import SegmentedControl from "@/components/SegmentedControl";
 import DayLedger from "./DayLedger";
+import ProteinQuickAdd from "./ProteinQuickAdd";
 import type { LedgerGroup } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 
@@ -224,9 +225,13 @@ export default function FoodLogBar({
   // context and its add controls. Kept as server-rendered slots so this client island
   // continues to own only logging state while an older date gets its own nutrients.
   nutrientSummaryByDate?: { date: string; content: ReactNode }[];
-  // Gram-based protein logging styled as a peer to the serving rows. It remains
-  // day-scoped, so it is only rendered while Today is selected.
-  proteinQuickAdd?: ReactNode;
+  // Gram-based protein logging styled as a peer to the serving rows. The bar owns
+  // the selected day, so it also owns the date and starting total handed to the
+  // existing control; otherwise a past-day row could still post today's date.
+  proteinQuickAdd?: {
+    initialGramsByDate: Record<string, number>;
+    lastPreset: number | null;
+  };
   // The door to the food ledger (#3671), mounted in the day header beside the log
   // it opens rather than in a row of its own above the fasting card.
   ledgerDoor?: ReactNode;
@@ -2206,7 +2211,16 @@ export default function FoodLogBar({
                 siblings. */}
             <div data-testid="food-quick-rows" className="space-y-1.5">
               {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
-              {activeDate === today && proteinQuickAdd}
+              {proteinQuickAdd && (
+                <ProteinQuickAdd
+                  key={activeDate}
+                  today={activeDate}
+                  initialGrams={
+                    proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
+                  }
+                  lastPreset={proteinQuickAdd.lastPreset}
+                />
+              )}
               {proteinSplit < quickGroups.length &&
                 rows(quickGroups.slice(proteinSplit))}
             </div>

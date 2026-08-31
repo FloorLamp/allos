@@ -1451,6 +1451,7 @@ export async function logHistoricalDose(
 
   const recordedAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
   if (!recordedAt) return formError("Enter a valid dose date and time.");
+  const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
 
   const outcome = logHistoricalDoseCore(
     profile.id,
@@ -1459,8 +1460,7 @@ export async function logHistoricalDose(
     recordedAt,
     strOrNull(formData.get("amount")),
     formData.get("adjust_supply") === "1",
-    // A deliberate history backfill, filed from the medication page's own form.
-    "page"
+    loggedVia
   );
   if (outcome.kind === "logged") {
     recordAudit({

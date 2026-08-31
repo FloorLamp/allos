@@ -3,6 +3,7 @@
 import { useState } from "react";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm, statedInstantOnDate } from "@/lib/stated-time";
@@ -121,6 +122,7 @@ export default function HistoricalDoseForm({
   );
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
+  const stampLoggedVia = useLoggedViaStamp();
 
   if (!initialDose) return null;
 
@@ -130,7 +132,7 @@ export default function HistoricalDoseForm({
         setError(null);
         const result = editing
           ? await updateHistoricalDose(formData)
-          : await logHistoricalDose(formData);
+          : await logHistoricalDose(stampLoggedVia(formData));
         if (!result.ok) {
           setError(result.error);
           return;

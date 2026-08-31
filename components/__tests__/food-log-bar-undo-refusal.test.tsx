@@ -32,6 +32,7 @@ import type { FoodSlot } from "@/lib/food-slot";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
 
 const actions = vi.hoisted(() => ({
+  addProteinGrams: vi.fn(),
   logFoodServing: vi.fn(),
   undoFoodServing: vi.fn(),
   readFoodServingTruth: vi.fn(),
@@ -178,6 +179,10 @@ function SlotProjectionProbe() {
 function barTree({
   profileId = 7,
   day = DAY,
+  days = undefined as FoodLogDay[] | undefined,
+  proteinQuickAdd = undefined as React.ComponentProps<
+    typeof FoodLogBar
+  >["proteinQuickAdd"],
   slot = "Midday" as FoodSlot,
   barKey = "food-bar",
   providerKey = "food-provider",
@@ -192,6 +197,7 @@ function barTree({
       }
     | undefined,
 } = {}) {
+  const offered = days ?? [day];
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={profileId}>
@@ -207,17 +213,18 @@ function barTree({
             <FoodSelectedDateProvider
               key={providerKey}
               today={DATE}
-              days={[day]}
+              days={offered}
             >
               <FoodLogBar
                 key={barKey}
                 today={DATE}
-                days={[day]}
+                days={offered}
                 groupsBySlot={GROUPS}
                 excludedGroups={[]}
                 slot={slot}
                 slotBoundaries={{ midday: 660, evening: 900 }}
                 dayLedger={ledgerFor(day)}
+                proteinQuickAdd={proteinQuickAdd}
               />
               {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
               {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
@@ -312,6 +319,7 @@ describe("FoodLogBar projection publication", () => {
       }
     );
     actions.logFoodServing.mockReset();
+    actions.addProteinGrams.mockReset();
     actions.undoFoodServing.mockReset();
     actions.readFoodServingTruth.mockReset();
     actions.deleteFoodLogEvent.mockReset();
@@ -330,6 +338,7 @@ describe("FoodLogBar projection publication", () => {
       mealSlot: "Midday",
       mealServings: 3,
     });
+    actions.addProteinGrams.mockResolvedValue({ ok: true, grams: 30 });
     actions.undoFoodServing.mockResolvedValue({
       ok: false,
       error: "That serving count has changed.",
@@ -352,6 +361,28 @@ describe("FoodLogBar projection publication", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps protein quick-add on a past selected day and submits that day", async () => {
+    const yesterday = "2026-08-23";
+    mountBar({
+      days: [DAY, { ...DAY, date: yesterday, label: "Yesterday" }],
+      proteinQuickAdd: {
+        initialGramsByDate: { [DATE]: 5, [yesterday]: 0 },
+        lastPreset: 30,
+      },
+    });
+
+    expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
+    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("5");
+    fireEvent.click(screen.getByTestId("food-day-yesterday"));
+    expect(screen.getByTestId("protein-quickadd")).toBeTruthy();
+    expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe("0");
+    fireEvent.click(screen.getByTestId("protein-quickadd-add"));
+
+    await waitFor(() => expect(actions.addProteinGrams).toHaveBeenCalledOnce());
+    const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
+    expect(submitted.get("date")).toBe(yesterday);
   });
 
   it("publishes the authoritative receipt for a tap committed before passive effects", async () => {
