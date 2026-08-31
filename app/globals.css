@@ -338,11 +338,19 @@
   }
 }
 
-/* THE STATUS-BAR BAND, WRITTEN ONCE (#4282) — the top-edge twin of the gutter
-   above. The shell paints no band under the notch any more: #4272 left the inset
-   as PADDING on `<main>`, which positions content and paints nothing, so content
-   scrolls under the status bar and a strip that says `top: 0` PINS under it. Every
-   sticky strip parking against the phone's top edge carries the inset itself.
+/* THE STATUS-BAR BAND AS A STICKY OFFSET, WRITTEN ONCE (#4282) — the top-edge
+   twin of the gutter above. The shell paints no band under the notch any more:
+   #4272 left the inset as PADDING on `<main>`, which positions content and paints
+   nothing, so content scrolls under the status bar and a strip that says `top: 0`
+   PINS under it. Every sticky strip parking against the phone's top edge carries
+   the inset itself, through the one utility below.
+
+   ONCE AS AN OFFSET, not once in the tree, and the difference is the point:
+   `env(safe-area-inset-top)` still appears nine more times, every one of them a
+   DIFFERENT composition — five `scroll-mt-[calc(Nrem+…)]` scroll-margins under
+   app/(app)/training/, and four `max(…, env(…))` floors on overlay and notice
+   gutters. A floor and a scroll-margin are not a park offset; folding them in here
+   would be a convergence of things that are not the same thing.
 
    `--top-edge-offset` is how much of that edge a strip ABOVE has already claimed —
    the mirror of `--bottom-edge-offset` in components/overlay/tokens.ts, and the
