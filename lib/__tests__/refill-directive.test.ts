@@ -20,6 +20,19 @@ describe("the refill directives", () => {
     const checkin = read("scripts/orchestrator-checkin.sh");
     expect(checkin).toContain("AN EMPTY ROSTER IS A DISPATCH ORDER");
     expect(checkin).toContain("UNDER-SATURATED");
+    // Per-axis (owner, 2026-08-31): a session read "both e2e slots full" as
+    // "the queue is thin". The count names each axis so a binding e2e cap
+    // cannot impersonate saturation, and "thin" is told what it must survive.
+    expect(checkin).toContain("(e2e $e2e_lanes/2, other $other_lanes)");
+    expect(checkin).toContain("NOT a thin queue");
+    expect(checkin).toContain("back of the queue is still IN the queue");
+    // The queue is WRITTEN DOWN: the recorder refreshes $STATE_DIR/.queue on
+    // the 4h cadence and prints its count, so a candidate cannot be
+    // forgotten and a "thin" claim has a file to answer.
+    expect(checkin).toContain('QUEUE_FILE="$STATE_DIR/.queue"');
+    expect(checkin).toContain("queue-snapshot.mjs");
+    expect(checkin).toContain("QUEUE_DUE_SECS=$((4 * 3600))");
+    expect(checkin).toContain("answer $QUEUE_FILE line by line");
     // The honesty clause: emptiness must come with the why-not list.
     expect(checkin).toContain("blocked, owner-gated, or dependency-bound");
   });
@@ -27,7 +40,10 @@ describe("the refill directives", () => {
   it("`list` says the same on its empty and thin boards", () => {
     const brief = read("scripts/orchestration/dispatch-brief.mjs");
     expect(brief).toContain("DISPATCH ORDER, not calm");
-    expect(brief).toContain("UNDER-SATURATED unless the queue is truly thin");
+    expect(brief).toContain("UNDER-SATURATED");
+    expect(brief).toContain("NOT a thin queue");
+    expect(brief).toContain("e2e ${e2eActive}/${E2E_LANE_CAP}");
+    expect(brief).toContain("back of the queue is still IN the");
   });
 
   it("the skill and recovery runbook carry the posture the tooling prints", () => {
