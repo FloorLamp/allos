@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const GLOBALS = path.join(REPO, "app/globals.css");
+const TAILWIND_IMPORT = '@import "tailwindcss";';
 
 const PROBES = [
   ["sm", "1901px", "40rem"],
@@ -21,6 +22,12 @@ const PROBES = [
   ["2xl", "1905px", "96rem"],
   ["3xl", "1906px", "120rem"],
 ] as const;
+const CARD_UTILITIES = [
+  "card-delegated",
+  "card-gutter-standard",
+  "card-gutter-compact",
+  "card-gutter-action",
+] as const;
 
 let compiled: Promise<Result> | undefined;
 
@@ -29,12 +36,19 @@ function compiledCss(): Promise<Result> {
   const globals = fs.readFileSync(GLOBALS, "utf8");
   const candidates = PROBES.map(
     ([variant, value]) => `${variant}:max-w-[${value}]`
-  ).join(" ");
+  )
+    .concat(CARD_UTILITIES)
+    .join(" ");
+  // These are the complete subjects of this compile. Letting Tailwind discover the
+  // repository first added no coverage and made this tiny contract contend on every
+  // source file with the rest of the suite.
+  const fixture = globals.replace(
+    TAILWIND_IMPORT,
+    `@import "tailwindcss" source(none);\n@source inline(${JSON.stringify(candidates)});`
+  );
+  if (fixture === globals) throw new Error("Tailwind import not found");
   compiled = Promise.resolve(
-    postcss([tailwindcss()]).process(
-      `${globals}\n@source inline("${candidates}");`,
-      { from: GLOBALS }
-    )
+    postcss([tailwindcss({ base: REPO })]).process(fixture, { from: GLOBALS })
   );
   return compiled;
 }
