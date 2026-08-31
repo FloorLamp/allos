@@ -58,10 +58,10 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Applied migrations are keyed by name; numbered migrations 001–185 are closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
-- Merge order defines migration order. An APPEND-ONLY file — `versions/index.ts`,
-  or a barrel like `lib/queries.ts` — conflicts whenever two lanes append: keep
-  BOTH entries, later merge last, never pick a side. Re-run the generator for
-  `manifest.json` hash conflicts rather than hand-resolving them.
+- Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
+  a barrel like `lib/queries.ts`) conflicts whenever two lanes append: keep BOTH
+  entries, later merge last, never pick a side. Re-run the generator for
+  `manifest.json` hashes rather than hand-resolving them.
 - Recreate development databases containing abandoned, unknown migration names.
 
 ## Merge
@@ -85,10 +85,8 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
-- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`; exit 3
-  means something closes. Ten keywords, body AND every commit — but NOT the
-  squash message you compose at merge, which nothing reads. Scan it yourself;
-  never `Fixes #N` a PHASED issue (2026-08-30: phase 1 closed its parent).
+- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`, exit 3
+  (failure modes). Blind to your squash text: scan it; `Refs` a PHASED issue.
 - **Require the PR body rewritten in the same push as a rewrite.**
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).
