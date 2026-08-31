@@ -684,6 +684,16 @@ ${landingLines}
   not. This is the twin of the fixture rule above -- that one asks whether your test can
   REACH the state it forbids, this one asks whether your explanation EXISTS. Both are one
   cheap command.
+  AND THIS APPLIES TO WHAT YOU ARE TOLD, not only to what you infer. A claim's
+  SOURCE does not change whether it is checkable. Measured 2026-08-31: a lane
+  re-derived every number in its own PR body against the pushed head -- catching a
+  mutation anchor that prettier had rewrapped, and an issue comment that had
+  appeared since its first read -- and then wrote "confirmed" over a one-line
+  aside from the ORCHESTRATOR that was wrong, without running the one command
+  that would have checked it. Authority is not evidence. When the coordinator,
+  an issue body, a PR description or a reviewer hands you a checkable fact that
+  your work will rest on, check it: they are working from summaries too, and a
+  wrong fact travels further when it arrives from above.
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
   container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
   \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
