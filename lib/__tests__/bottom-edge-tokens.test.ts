@@ -100,11 +100,24 @@ export function isBottomEdgeSurface(source: string): boolean {
   return FIXED.test(code) && SPANS.test(code) && ANCHORS_BOTTOM.test(code);
 }
 
-/** Registered by DOING it: claiming the edge, or composing a bottom-edge token. */
+/**
+ * Registered by DOING it: calling the claim hook, or composing a bottom-edge
+ * token — with the IMPORTS taken out first, and that is not a detail.
+ *
+ * Measured while proving this rule can fail (#4334): with the import line left in,
+ * deleting the sheet's `useBottomEdgeClaim(...)` call outright left the whole file
+ * GREEN, because `import { useBottomEdgeClaim }` still carried the name. A guard
+ * keyed on a mention answers "does this file know the symbol exists", which is not
+ * the question, and it fails toward silence. So the import block goes, and the
+ * hook is matched at its CALL — `useBottomEdgeClaim(` or `useBottomEdgeClaim<`.
+ */
 function registersWithTheEdge(source: string): boolean {
-  const code = stripComments(source);
+  const code = stripComments(source).replace(
+    /^\s*import\s[\s\S]*?from\s*["'][^"']*["'];?/gm,
+    ""
+  );
   return (
-    code.includes("useBottomEdgeClaim") || /BOTTOM_EDGE_[A-Z_]+/.test(code)
+    /useBottomEdgeClaim\s*[<(]/.test(code) || /BOTTOM_EDGE_[A-Z_]+/.test(code)
   );
 }
 
@@ -155,9 +168,11 @@ describe("bottom-edge tokens (#1520)", () => {
       "components/BottomSheet.tsx",
     ]) {
       const src = fs.readFileSync(path.join(REPO, file), "utf8");
-      expect(src, `${file} must claim the bottom edge`).toContain(
-        "useBottomEdgeClaim"
-      );
+      // The CALL, not the import — see registersWithTheEdge for the measurement.
+      expect(
+        /useBottomEdgeClaim\s*[<(]/.test(stripComments(src)),
+        `${file} must claim the bottom edge`
+      ).toBe(true);
     }
   });
 
@@ -276,17 +291,23 @@ describe("bottom-edge tokens (#1520)", () => {
     expect(isBottomEdgeSurface(source)).toBe(false);
   });
 
-  it("the registration half reads DOING it, not saying it", () => {
-    expect(
-      registersWithTheEdge("const r = useBottomEdgeClaim<HTMLDivElement>();")
-    ).toBe(true);
-    expect(registersWithTheEdge("className={BOTTOM_EDGE_NOTICE_BOTTOM}")).toBe(
-      true
-    );
-    expect(
-      registersWithTheEdge(
-        "// this surface should really useBottomEdgeClaim one day"
-      )
-    ).toBe(false);
-  });
+  it.each([
+    ["a claim call", "const r = useBottomEdgeClaim<HTMLDivElement>();", true],
+    ["a composed token", "className={BOTTOM_EDGE_NOTICE_BOTTOM}", true],
+    [
+      "a comment wishing for one",
+      "// should really useBottomEdgeClaim one day",
+      false,
+    ],
+    [
+      "an import with the call deleted — the shape that shipped this rule green",
+      'import { useBottomEdgeClaim } from "@/components/overlay";\nexport default function S() { return null; }',
+      false,
+    ],
+  ])(
+    "the registration half reads DOING it, not saying it: %s",
+    (_why, source, expected) => {
+      expect(registersWithTheEdge(source)).toBe(expected);
+    }
+  );
 });
