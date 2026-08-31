@@ -73,7 +73,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
-import { discoverNodeBin, resolveStateDir } from "./host.mjs";
+import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
@@ -1290,6 +1290,59 @@ function roleHandoff(entry) {
     : `ROLE UPDATE for ${entry.branch}: BANKED. Push durable checkpoints only; do not open or refresh a PR, and defer non-authored blast-radius specs until promoted.`;
 }
 
+// A DISPATCH IS WRITTEN AGAINST A TRACKER READ THAT CAN BE HOURS OLD (#4451).
+// The brief is generated from whatever the orchestrator last knew, and that
+// read has no expiry: #4347 was closed at 03:09:32Z and dispatched at 09:43Z,
+// and the lane spent half its dispatch discovering the diff was empty. The
+// snapshot downstream can only ANNOTATE a stale row; this is the point that
+// can refuse, so it asks GitHub once, here, before anything is written.
+//
+// Degrades: with no read token there is nothing to ask, so it warns and
+// dispatches — a check that cannot run must not become a check that blocks.
+
+/** Refusal text when any of these issue states is closed, else null. */
+export function closedIssueRefusal(states) {
+  const closed = states.filter((s) => s.state === "closed");
+  if (!closed.length) return null;
+  const named = closed
+    .map((s) => "#" + s.number + " closed " + (s.closedAt ?? "at an unknown time"))
+    .join(", ");
+  return (
+    "REFUSED: " +
+    named +
+    ". A brief written against a stale tracker read sends a lane to an empty " +
+    "diff (#4451). Re-read with issue-read.mjs, drop the closed number from " +
+    "--issues, and dispatch the rest."
+  );
+}
+
+/** Live {number, state, closedAt} per issue; null when no token can be found. */
+function issueStates(numbers, repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
+  const token = resolveReadToken();
+  if (!token) return null;
+  return numbers.map((number) => {
+    const out = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "--fail-with-body",
+        "-H",
+        "Authorization: Bearer " + token,
+        "-H",
+        "Accept: application/vnd.github+json",
+        "https://api.github.com/repos/" + repo + "/issues/" + number,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    const issue = JSON.parse(out);
+    return {
+      number,
+      state: issue.state,
+      closedAt: issue.closed_at ?? null,
+    };
+  });
+}
+
 function cmdNew(argv) {
   const opts = parseArgs(argv);
   if (!opts.branch) {
@@ -1385,6 +1438,21 @@ function cmdNew(argv) {
       "      Not a refusal — a P0 preempts. Otherwise consider waiting: the cap that\n" +
         "      binds first is REVIEW depth, not agent count (docs/orchestration/dispatch.md).\n"
     );
+  }
+
+  // Last check before anything is written: is this work still open?
+  const states = opts.issues.length ? issueStates(opts.issues) : [];
+  if (states === null) {
+    console.error(
+      "*** NO READ TOKEN: dispatching WITHOUT re-reading issue state (#4451). ***\n" +
+        "    A brief is only as fresh as the tracker read behind it."
+    );
+  } else {
+    const stale = closedIssueRefusal(states);
+    if (stale) {
+      console.error(stale);
+      process.exit(1);
+    }
   }
 
   const { brief, portBase } = buildBrief(opts);
