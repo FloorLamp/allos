@@ -62,10 +62,12 @@ import { reminderOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import { hasCorrectedAnyTime } from "../queries/correction-history";
 import type { CorrectionDay } from "../correction-time";
 import {
   correctionActions,
   correctionBodyStatement,
+  correctionHintLine,
   correctionPickerActions,
   correctionPickerTitle,
   DOSE_TIME_PREFIXES,
@@ -137,11 +139,22 @@ export function withDoseCorrections(
   // the BODY — the label button states it too, but Telegram truncates buttons. One
   // computation with the food side (correctionBodyStatement over burstLabel).
   const statement = correctionBodyStatement(bursts, tz, now);
+  // The twin of the food nudge's hint (#2874), from the same substrate helper: this
+  // domain has carried the identical chips since #2020 and explained them nowhere, on
+  // the side where the corrected instant arms the PRN redose window. It pairs with the
+  // picker title exactly as the food side pairs them — an open drill-down asks its
+  // question, and the hint takes its place otherwise — and it APPENDS, below the dose
+  // content, so it can never displace the reminder itself. `bursts` is non-empty by the
+  // early return above, so this never rides a message with nothing to correct.
+  const hint = open
+    ? null
+    : correctionHintLine(DOSE_TIME_PREFIXES, hasCorrectedAnyTime(profileId));
   const lines = [
     plainBody(message.body),
     ...(open
       ? [correctionPickerTitle("when did you take these", open, tz)]
       : []),
+    ...(hint ? [hint] : []),
     ...(statement ? [statement] : []),
   ];
   const body = lines.length > 1 ? lines.join("\n") : message.body;
