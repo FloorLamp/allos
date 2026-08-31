@@ -16,6 +16,11 @@ import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
+  editDayLedgerSelectionCore,
+  type LedgerSelectionEdit,
+  type LedgerSelectionRefusal,
+} from "@/lib/day-ledger-edit";
+import {
   getActiveSituations,
   setActiveSituations,
   resolveSituationId,
@@ -1373,9 +1378,10 @@ export async function resolveDayDoses(
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "");
   const status = String(formData.get("status") ?? "");
+  const localToday = today(profile.id);
   if (
     !isRealIsoDate(date) ||
-    !doseLogDays(today(profile.id)).includes(date) ||
+    !doseLogDays(localToday).includes(date) ||
     (status !== "taken" && status !== "skipped")
   ) {
     return { ok: false, error: "Couldn't log those doses." };
@@ -1396,7 +1402,14 @@ export async function resolveDayDoses(
       name: dose.name,
       outcome:
         status === "taken"
-          ? markDoseTaken(profile.id, dose.doseId, dose.itemId, date, loggedVia)
+          ? markDoseTaken(
+              profile.id,
+              dose.doseId,
+              dose.itemId,
+              date,
+              loggedVia,
+              date === localToday ? undefined : null
+            )
           : markDoseSkipped(
               profile.id,
               dose.doseId,
@@ -1574,6 +1587,132 @@ export async function deleteAdministration(
   }
   revalidateIntake();
   return { undoId: removed?.undoId ?? null };
+}
+
+// ── SELECTION EDIT ON THE DAY LEDGER (#4118) ───────────────────────────────────
+//
+// Three actions, one verb each (the owner's ruling: "one server action per operation
+// over selected ids"), all over the SAME batch core — which walks every named row
+// through its own domain's correction core, re-deriving the day's rows server-side
+// first so the ids a surface names can only ever narrow what is written. The parse and
+// the gate are here; every rule is in lib/day-ledger-edit.ts.
+//
+// THEY LIVE IN THE INTAKE ACTION MODULE, and a selection is deliberately mixed: one
+// physical morning is a smoothie stack and its fermented foods, so a batch that could
+// only reach one of the two tables would leave the user finishing the job by hand. This
+// module already holds the audited historical-dose boundary the dose half needs; the
+// food half's two cores are the whole of what it borrows.
+export type LedgerSelectionEditResult =
+  | {
+      ok: true;
+      /** Rows the correction cores wrote. */
+      applied: number;
+      /** Rows named but not written, each with the reason its core gave. */
+      refused: LedgerSelectionRefusal[];
+    }
+  | { ok: false; error: string };
+
+// The rows a batch names, off the wire: `serving_ids` / `dose_log_ids`, each a
+// comma-separated list of positive integers. Anything else in either list is dropped
+// here — an unreadable id is not a row and the core's day re-derivation would refuse it
+// anyway.
+function ledgerIds(formData: FormData, field: string): number[] {
+  return String(formData.get(field) ?? "")
+    .split(",")
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+// The dispatch the three verbs share, AFTER each has run its own gate. The gate stays in
+// the exported action — visibly, one call per action — because that is the surface
+// lib/__tests__/actions-write-access.test.ts scans, and a gate hidden one frame down is a
+// gate nothing watches.
+function applyLedgerSelection(
+  profileId: number,
+  loginId: number,
+  formData: FormData,
+  edit: LedgerSelectionEdit
+): LedgerSelectionEditResult {
+  const date = String(formData.get("date") ?? "");
+  const outcome = editDayLedgerSelectionCore(
+    profileId,
+    date,
+    {
+      servings: ledgerIds(formData, "serving_ids"),
+      doses: ledgerIds(formData, "dose_log_ids"),
+    },
+    edit
+  );
+  if (outcome.kind === "invalid-edit")
+    return formError("Couldn't apply that change.");
+  if (outcome.kind === "nothing-selected")
+    return formError(
+      "Those rows are no longer on this day. Refresh and try again."
+    );
+  // AUDITED LIKE ANY OTHER RETROACTIVE DOSE WRITE (#1933). Amending or removing what the
+  // record says was given is clinically significant whether it happens one row at a time
+  // or twelve; the batch earns one row per affected item, exactly what the single-row
+  // amend and delete write.
+  for (const itemId of outcome.auditedItemIds) {
+    recordAudit({
+      loginId,
+      profileId,
+      action:
+        edit.kind === "delete"
+          ? AUDIT_ACTIONS.doseLogDelete
+          : AUDIT_ACTIONS.doseLogAmend,
+      target: String(itemId),
+      detail: edit.kind === "move-day" ? edit.date : date,
+    });
+    revalidateRoute(`/medications/${itemId}`);
+  }
+  if (outcome.applied > 0) {
+    revalidateIntake();
+    // The food half moves day counters, which the trends rollups read.
+    revalidateRoute("/trends");
+  }
+  return { ok: true, applied: outcome.applied, refused: outcome.refused };
+}
+
+// THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106), on all three:
+// `gateItemProfile` gates a posted `profile_id` through requireProfileWriteAccess
+// (reachable AND write, redirect otherwise) and falls back to the acting-profile gate.
+// Every core call downstream is scoped to the profile it returns, so a row belonging to
+// somebody else is not among the day's rows and nothing is written for it.
+
+/** Stamp one profile-local wall time on every selected row (#3273's vocabulary). */
+export async function setLedgerSelectionTime(
+  formData: FormData
+): Promise<LedgerSelectionEditResult> {
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
+  return applyLedgerSelection(profileId, login.id, formData, {
+    kind: "set-time",
+    hhmm: String(formData.get("time") ?? ""),
+  });
+}
+
+/** Re-date every selected row onto another day, each keeping its own wall clock. */
+export async function moveLedgerSelectionToDay(
+  formData: FormData
+): Promise<LedgerSelectionEditResult> {
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
+  return applyLedgerSelection(profileId, login.id, formData, {
+    kind: "move-day",
+    date: String(formData.get("to_date") ?? ""),
+  });
+}
+
+/** Remove every selected row through its domain's undoable delete. */
+export async function deleteLedgerSelection(
+  formData: FormData
+): Promise<LedgerSelectionEditResult> {
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
+  return applyLedgerSelection(profileId, login.id, formData, {
+    kind: "delete",
+  });
 }
 
 // Toggle a single dose's TAKEN log for today (taken ↔ clear). A skipped dose
