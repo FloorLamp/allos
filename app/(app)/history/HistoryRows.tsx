@@ -158,15 +158,16 @@ const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
 //
 // WHAT IT GUARANTEES: the title always keeps the rest of the cluster — 34% of it less
 // the row's gap — so a row can never lose its name to a long subject. Measured at 320px
-// over member names from 15 to 71 characters: uncapped, a 38-character name drove the
+// over member names from 15 to 71 characters: uncapped, a 39-character name drove the
 // title to 0px PAINTED and the row rendered with no name at all; capped, the title
 // holds at 65.6px however long the name gets. It is also why the bound is not tighter —
 // household names that already fit (94px of a 163px cluster) must stay whole, and a 55%
 // cap starts ellipsizing them, which is the same defect pointing the other way.
 //
 // BOTH SUBJECT SITES TAKE IT — the row's and the rollup line's. The rollup's label is
-// `flex-1 truncate`, so an unbounded subject eats it exactly as it ate the row's title:
-// at 320px the same 71-character name paints the rollup's label at 0px without this.
+// `flex-1 truncate`, so an unbounded subject eats it exactly as it ate the row's title.
+// Measured at 320px with the 71-character name: the rollup's own label paints at 0px
+// without this bound and at 65.9px with it.
 const SUBJECT_CAP = "max-w-[66%] truncate";
 
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
