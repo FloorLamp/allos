@@ -18,7 +18,7 @@ import { UNDO_TOAST_MS } from "@/lib/undo-offer";
 // forgettable. Here the type system or the hook's own shape is what remembers, so these
 // guards are about STRUCTURE — what a caller is able to express — not about copy.
 //
-// The runtime half is below; the compile-time half is `typeCheckedGuards`, which is
+// The runtime half is below; the compile-time half is `useTypeCheckedGuards`, which is
 // checked by `npm run typecheck` and asserts nothing at runtime by design.
 
 const mocks = vi.hoisted(() => ({ toast: vi.fn(), enqueue: vi.fn() }));
@@ -258,7 +258,7 @@ describe("the client write pipeline (#3276)", () => {
 // Never called. Each `@ts-expect-error` fails `npm run typecheck` the moment the shape
 // it describes becomes expressible — which is the whole claim this issue makes, and the
 // only tier that can make it. Removing a suppression prints the refusal it stands for.
-export function typeCheckedGuards() {
+export function useTypeCheckedGuards() {
   const covered = useWritePipeline("dose-status");
   const excluded = useWritePipeline("dose-day-stack");
   const post = async () => ({ ok: true }) as const;
