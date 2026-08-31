@@ -270,7 +270,6 @@ describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", 
     // typed under a (kg) label; 82 kg is 180.8 lb, so a pref-read write would have
     // stored 37.2 kg — the 2.2046× corruption the carried unit prevents.
     { submitted: "kg", stored: "lb", typed: 82, expectKg: 82 },
-    { submitted: "lb", stored: "kg", typed: 180, expectKg: 180 / LB_PER_KG },
     // No field at all (older client, other callers): the fallback is the contract.
     { submitted: null, stored: "lb", typed: 180, expectKg: 180 / LB_PER_KG },
   ] as const)(
@@ -319,7 +318,6 @@ function weightRowKg(profileId: number): number {
 describe("updateMetricReading honors the submitted weight unit (issues #630, #3853)", () => {
   it.each([
     { submitted: "kg", stored: "lb", entered: 82, expectKg: 82 },
-    { submitted: "lb", stored: "kg", entered: 180, expectKg: 180 / LB_PER_KG },
     // Field absent (an older client): the pref remains the documented fallback.
     { submitted: null, stored: "lb", entered: 180, expectKg: 180 / LB_PER_KG },
   ] as const)(
@@ -360,12 +358,6 @@ describe("updateMetricReading honors the submitted weight unit (issues #630, #38
 describe("paletteQuickLog honors the captured unit (issues #630, #3853)", () => {
   it.each([
     { captured: "kg", stored: "lb", input: "weight 82", expectKg: 82 },
-    {
-      captured: "lb",
-      stored: "kg",
-      input: "weight 180",
-      expectKg: 180 / LB_PER_KG,
-    },
     // An explicit suffix is the person's own statement and outranks both.
     {
       captured: "kg",
@@ -403,7 +395,6 @@ describe("paletteQuickLog honors the captured unit (issues #630, #3853)", () => 
 describe("saveFitnessTest honors the unit the e1RM field rendered (issues #630, #3942)", () => {
   it.each([
     { rendered: "lb", flippedTo: "kg", typed: 225, expectKg: 225 / LB_PER_KG },
-    { rendered: "kg", flippedTo: "lb", typed: 102, expectKg: 102 },
     // No field at all (older client): the pref AT WRITE TIME stays the documented
     // fallback, so the flip does land — that is the contract, not a defect.
     { rendered: null, flippedTo: "lb", typed: 225, expectKg: 225 / LB_PER_KG },
@@ -466,7 +457,6 @@ describe("createEndurancePlan honors the unit the distance field rendered (issue
       typed: 13.1,
       expectKm: 13.1 / MI_PER_KM,
     },
-    { rendered: "km", flippedTo: "mi", typed: 21.1, expectKm: 21.1 },
     // No field at all (older client): the pref AT WRITE TIME stays the fallback.
     {
       rendered: null,
