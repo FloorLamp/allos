@@ -107,6 +107,16 @@ function docCount(profileId: number): number {
   ).n;
 }
 
+function acquiredOf(profileId: number): (number | null)[] {
+  return (
+    db
+      .prepare(
+        "SELECT acquired_portal_id AS p FROM medical_documents WHERE profile_id = ? ORDER BY id"
+      )
+      .all(profileId) as { p: number | null }[]
+  ).map((r) => r.p);
+}
+
 function makeLogin(username: string, role: "admin" | "member"): number {
   return Number(
     db
@@ -603,6 +613,7 @@ describe("POST /api/documents — identity form", () => {
     expect(body.profile).toBe(mineProfile);
     expect(body.documents[0].outcome).toBe("stored");
     expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([portalId]);
   });
 
   it("routes by LOGIN when two logins share a label", async () => {
@@ -763,56 +774,18 @@ describe("POST /api/documents — identity form", () => {
     );
     expect(res.status).toBe(200);
     expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([null]);
   });
 });
 
 describe("acquired-by provenance (#1748)", () => {
-  function acquiredOf(profileId: number): (number | null)[] {
-    return (
-      db
-        .prepare(
-          "SELECT acquired_portal_id AS p FROM medical_documents WHERE profile_id = ? ORDER BY id"
-        )
-        .all(profileId) as { p: number | null }[]
-    ).map((r) => r.p);
-  }
-
-  it("stamps the resolved portal on a document pushed through the identity form", async () => {
-    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
-    const res = await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Jane Doe",
-        "prov-stored"
-      )
-    );
-    expect(res.status).toBe(200);
-    expect(acquiredOf(mineProfile)).toEqual([portalId]);
-  });
-
-  it("leaves it NULL on the plain profile form — the human CLI path", async () => {
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([pdfBytes("prov-cli")], { type: "application/pdf" }),
-      "labs.pdf"
-    );
-    const res = await UPLOAD(
-      new Request(`http://x/api/documents?profile=${mineProfile}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${memberToken}` },
-        body: form,
-      })
-    );
-    expect(res.status).toBe(200);
-    expect(acquiredOf(mineProfile)).toEqual([null]);
-  });
-
-  it("surfaces the portal's display NAME in the Review feed, and nothing for a hand upload", async () => {
-    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
+  it("surfaces the portal name, then loses only that label when the portal is deleted", async () => {
+    const temp = createPortal("Temp Provenance");
+    expect(temp.ok).toBe(true);
+    if (!temp.ok) return;
+    bindPortalIdentity(implicitAccountOf(temp.id), "Jane Doe", mineProfile);
     await UPLOAD(
-      uploadByIdentity(memberToken, "ochsner-mychart", "Jane Doe", "prov-feed")
+      uploadByIdentity(memberToken, "temp-provenance", "Jane Doe", "prov-feed")
     );
     const form = new FormData();
     form.append(
@@ -831,27 +804,16 @@ describe("acquired-by provenance (#1748)", () => {
     const rows = getImportLogDocuments(mineProfile);
     expect(
       rows.find((r) => r.filename === "labs.pdf")?.acquired_portal_name
-    ).toBe("Ochsner MyChart");
+    ).toBe("Temp Provenance");
     expect(
       rows.find((r) => r.filename === "byhand.pdf")?.acquired_portal_name ??
         null
     ).toBeNull();
-  });
-
-  it("loses the label — and only the label — when the portal leaves the registry", async () => {
-    const temp = createPortal("Temp Provenance");
-    expect(temp.ok).toBe(true);
-    if (!temp.ok) return;
-    bindPortalIdentity(implicitAccountOf(temp.id), "Jane Doe", mineProfile);
-    await UPLOAD(
-      uploadByIdentity(memberToken, "temp-provenance", "Jane Doe", "prov-drop")
-    );
-    expect(acquiredOf(mineProfile)).toEqual([temp.id]);
 
     expect(deletePortal(temp.id)).toBe(true);
-    // The DOCUMENT survives; only the name of how it arrived goes.
-    expect(docCount(mineProfile)).toBe(1);
-    expect(acquiredOf(mineProfile)).toEqual([null]);
+    // Both documents survive; only the portal-backed label disappears.
+    expect(docCount(mineProfile)).toBe(2);
+    expect(acquiredOf(mineProfile)).toEqual([null, null]);
   });
 });
 
