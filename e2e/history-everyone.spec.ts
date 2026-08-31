@@ -50,7 +50,7 @@ import {
 // a retry must find the same tree the first run did.
 
 // #4394's case. Long enough that it cannot fit the subject's ceiling at any phone
-// width — measured at 320px it is 421px of text in a 139px box — so the row genuinely
+// width — measured at 320px it is 421px of text in a 147px box — so the row genuinely
 // reaches the state the assertions forbid instead of passing because everything fitted.
 const LONG_MEMBER_NAME =
   "Record Read Only Household Member With A Very Long Display Name 2 (e2e)";
@@ -63,15 +63,26 @@ function resetFixture(): { selfId: number; roId: number; memberId: number } {
   const db = new Database(workerDbPath());
   db.pragma("busy_timeout = 5000");
   try {
-    const idOf = (name: string) =>
+    // THE NAMES ARE FIXTURE STATE, SO THE RESET OWNS THEM (#4394). The subject-ceiling
+    // test renames a member to a pathological length, and its `finally` is not a
+    // guarantee: a worker killed between the write and the restore would leave the next
+    // test reading a name nothing puts back. Which is why the ids are resolved through
+    // each member's dose ITEM and not through the profile NAME — a name-keyed lookup
+    // cannot recover from the one hazard it exists to undo, because after a rename
+    // there is nothing left to look up. No test renames an item.
+    const idOf = (item: string) =>
       (
-        db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
-          id: number;
-        }
+        db
+          .prepare("SELECT profile_id AS id FROM intake_items WHERE name = ?")
+          .get(item) as { id: number }
       ).id;
-    const selfId = idOf(HXEVERY_SELF_PROFILE);
-    const roId = idOf(HXEVERY_RO_PROFILE);
-    const memberId = idOf(HXEVERY_MEMBER_PROFILE);
+    const selfId = idOf(HXEVERY_SELF_DOSE);
+    const roId = idOf(HXEVERY_RO_DOSE);
+    const memberId = idOf(HXEVERY_MEMBER_DOSE);
+    const rename = db.prepare("UPDATE profiles SET name = ? WHERE id = ?");
+    rename.run(HXEVERY_SELF_PROFILE, selfId);
+    rename.run(HXEVERY_RO_PROFILE, roId);
+    rename.run(HXEVERY_MEMBER_PROFILE, memberId);
     // Put every member's log back to exactly one `taken` row on the fixture day: the
     // correction test deletes one, and a re-run has to start where the first did.
     for (const [pid, item] of [
@@ -551,6 +562,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
         ).toBe(false);
       }
     } finally {
+      // resetFixture owns this too, and would put it back for the next test in this
+      // file. The prompt restore is for the OTHER spec files that share this worker's
+      // database, which never call resetFixture at all.
       const restore = new Database(workerDbPath());
       restore.pragma("busy_timeout = 5000");
       restore
