@@ -33,6 +33,27 @@ const BARE = "Creatinine, Urine";
 const UNQUALIFIED_GLUCOSE = "Glucose";
 const FASTING_GLUCOSE = "Glucose, Fasting";
 const TOUCH_STALE = "Touch tooltip stale result (e2e #3375)";
+// The document heading the coined analyte was reported under — a lab VENDOR name, the
+// shape the taxonomy cannot map (#1502). Low-entropy and this spec's own.
+const REPORTED_HEADING = "Bench Lab Panel 7";
+
+// THE SENTENCES, BECAUSE AC 1 IS ABOUT THE LABEL AND NOTHING AT E2E COUNTS LABELS
+// UNLESS YOU ASK BY ACCESSIBLE NAME. A testid-scoped absence assertion binds to an
+// artifact of the FIX — the id this change introduced — so it catches a regression
+// written the way this change would write one, and misses the regression that exists
+// in history: at the merge base `PanelCell`'s mount carries NO testid at all, and the
+// stale mount carries `clinical-age-help`. Measured 2026-08-31 — with both base mounts
+// restored verbatim, the testid-bound version of this file returned 8 passed, green
+// against the literal thing it exists to forbid. So every absence assertion below is
+// stated twice: once by name (the property) and once by testid (the shape).
+const STALE_SENTENCE = "Over a year old — consider retesting";
+// The base spelled the same fact a second way, on the Stale badge.
+const BASE_STALE_BADGE_SENTENCE =
+  "Latest result over a year old — consider retesting";
+const PANEL_COLUMN_SENTENCE =
+  "A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under";
+const BASE_PANEL_SENTENCE =
+  "Not mapped to a clinical panel — showing the heading it was reported under";
 
 // #2347: the band-less reading is dated off the RUN'S FROZEN CLOCK, far enough back
 // that the yearly retest clock has run out, so ONE reading carries all three halves of
@@ -166,6 +187,15 @@ test.beforeEach(() => {
         "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
       )
       .run(pid, TOUCH_STALE);
+    // A stored `panel` heading on the coined analyte. The taxonomy cannot place a
+    // name it has never seen, so this row lands in the OTHER group and its Panel cell
+    // renders the document's own heading — the ONE state that used to mount a
+    // per-row explainer, and the state the panel-column test below needs to reach.
+    handle
+      .prepare(
+        "UPDATE medical_records SET panel = ? WHERE source = ? AND name = ?"
+      )
+      .run(REPORTED_HEADING, SOURCE, TOUCH_STALE);
   });
 });
 
@@ -173,23 +203,96 @@ test.afterEach(() => {
   cleanup();
 });
 
-test("a stale clinical-result explanation is reachable by tap (#3375)", async ({
+// #3970 rule 1 rehomed the stale vocabulary. It used to be the SAME sentence on two
+// buttons of every stale row — the amber age token's and the Stale badge's — and it is
+// now stated once, on the Date column header the amber age sits under. `thead` is
+// hidden below `sm` (app/globals.css `table-cards`), so this half of the claim is a
+// desktop one; the phone card still shows the word "Stale" and the amber "⚠️ 1y".
+test("the stale vocabulary is explained once, on the column that carries it (#3970)", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/results/clinical-results?q=${encodeURIComponent(BARE)}`);
-  const row = page
-    .getByTestId("clinical-results-table")
-    .getByRole("row")
-    .filter({ hasText: BARE });
+  const table = page.getByTestId("clinical-results-table");
+  const row = table.getByRole("row").filter({ hasText: BARE });
   await expect(row).toBeVisible();
-  await row.getByTestId("clinical-stale-help").click();
+  // Not "no row has one AND the header has one" as two independent reads: the SAME
+  // locator, scoped two ways, so a stale sweep cannot pass by finding nothing.
+  // BY NAME first — the property the criterion is about, and the only form that sees
+  // a regression restored under the base's own ids.
+  await expect(
+    table.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(1);
+  await expect(
+    row.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  // The base's second spelling of the same fact, gone from the whole table.
+  await expect(
+    table.getByRole("button", { name: BASE_STALE_BADGE_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  const help = page.getByTestId("clinical-stale-help");
+  await expect(help).toHaveCount(1);
+  await expect(row.getByTestId("clinical-stale-help")).toHaveCount(0);
+  await expect(
+    table.locator("thead").getByTestId("clinical-stale-help")
+  ).toHaveCount(1);
+  // Still reachable without a mouse at its new home — #3375's constraint binds the
+  // single mount exactly as it bound the per-row ones.
+  await help.click();
   await expect(page.getByRole("tooltip")).toHaveText(
-    "Latest result over a year old — consider retesting"
+    "Over a year old — consider retesting"
+  );
+  // The row keeps the VERDICT in words and in colour; only the button left.
+  await expect(row.getByTestId("clinical-result-age")).toContainText("⚠️");
+});
+
+// #3970 rule 1 for the other constant on this table: "not mapped to a clinical panel"
+// used to mount a button on EVERY row of an unmapped group. It is a property of the
+// COLUMN, so the column head states it, and the head carries the same
+// `hidden md:table-cell` visibility the cells did — nothing that could reach the old
+// mount loses the sentence, which is why this relocation has no phone half.
+test("the unmapped-panel sentence is stated once, on the Panel column head (#3970)", async ({
+  page,
+}) => {
+  await page.goto(
+    `/results/clinical-results?q=${encodeURIComponent(TOUCH_STALE)}`
+  );
+  const table = page.getByTestId("clinical-results-table");
+  const row = table.getByRole("row").filter({ hasText: TOUCH_STALE });
+  await expect(row).toBeVisible();
+  // The fixture REACHES the forbidden state: this row is unmapped and prints its
+  // document's heading, so it is exactly the row that used to carry the button.
+  await expect(row).toContainText(REPORTED_HEADING);
+
+  // BY NAME first. The base's mount here carries no testid whatsoever, so a
+  // testid-only absence assertion is green against it.
+  await expect(
+    table.getByRole("button", { name: PANEL_COLUMN_SENTENCE, exact: true })
+  ).toHaveCount(1);
+  await expect(
+    row.getByRole("button", { name: PANEL_COLUMN_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  await expect(
+    table.getByRole("button", { name: BASE_PANEL_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  const help = page.getByTestId("clinical-panel-column-help");
+  await expect(help).toHaveCount(1);
+  await expect(row.getByTestId("clinical-panel-column-help")).toHaveCount(0);
+  await expect(
+    table.locator("thead").getByTestId("clinical-panel-column-help")
+  ).toHaveCount(1);
+  // The head's mount keeps its OWN id. `clinical-reported-panel-help` belongs to the
+  // date cell's per-row "Reported under …" disclosure, a different fact with a
+  // different label, and one id over two labels is a trap for the next selector.
+  await expect(
+    table.locator("thead").getByTestId("clinical-reported-panel-help")
+  ).toHaveCount(0);
+  await help.click();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under"
   );
 });
 
-test("a starred stale-result help tap does not activate its detail link (#3375)", async ({
+test("a starred stale-result explanation is stated once and reachable by tap (#3375/#3970)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -203,12 +306,25 @@ test("a starred stale-result help tap does not activate its detail link (#3375)"
   if (!(await tile.isVisible()))
     await card.getByTestId("starred-fold-toggle").click();
   await expect(tile).toBeVisible();
+  // The tile still says "stale" in words; the sentence behind the word is the card's,
+  // once, and no tile mounts a button for it (#3970 rule 1).
+  await expect(tile).toContainText("stale");
+  await expect(
+    tile.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  await expect(
+    card.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(1);
+  await expect(tile.getByTestId("starred-stale-help")).toHaveCount(0);
+  const help = card.getByTestId("starred-stale-help");
+  await expect(help).toHaveCount(1);
 
   const listUrl = page.url();
-  await tile.getByTestId("starred-stale-help").click();
+  await help.click();
   await expect(page.getByRole("tooltip")).toHaveText(
     "Over a year old — consider retesting"
   );
+  // The legend sits outside every tile's detail link, so the tap navigates nowhere.
   await expect(page).toHaveURL(listUrl);
 });
 

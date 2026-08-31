@@ -16,9 +16,10 @@
 // themselves are whatever the judgement says, and the digits are `formatBand`, the
 // one band formatter the metric card shares (#221).
 //
-// The lab's own string does not disappear: it becomes the cell's hover title (and
-// stays in full on the reading detail page, under its own "Lab reference" column).
-// It moves from assertion to provenance, which is what it always was.
+// The lab's own string does not disappear: it stays in full on the reading detail
+// page, under its own "Lab reference" column. It moves from assertion to provenance,
+// which is what it always was — and since #3970 rule 2 that detail page is its only
+// home, because a per-row hover of it cost this table a 34px button on every row.
 //
 // AND THE BAND LABEL IS THE SAFETY HALF. When the applied band is age-curated, the
 // cell names it (`ref 80–150 · age 1–3`). A pediatric profile's row printing the
@@ -42,8 +43,6 @@ export interface ReferenceCell {
   label: "Reference" | "Lab reference";
   /** The one-line cell text, or null when there is nothing at all to show. */
   text: string | null;
-  /** Hover provenance: what the source document actually printed. */
-  title: string | null;
   /** True when the bands shown are the ones the row's flag was derived from. */
   judged: boolean;
 }
@@ -89,7 +88,6 @@ export function referenceCell(input: ReferenceCellInput): ReferenceCell {
       return {
         label: "Reference",
         text: parts.join(" · "),
-        title: printed ? `Lab reference: ${printed}` : null,
         judged: true,
       };
     }
@@ -110,7 +108,6 @@ export function referenceCell(input: ReferenceCellInput): ReferenceCell {
   return {
     label: "Lab reference",
     text: printed ? `lab ${printed}` : null,
-    title: null,
     judged: false,
   };
 }
