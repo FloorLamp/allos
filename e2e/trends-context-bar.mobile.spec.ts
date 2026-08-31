@@ -378,9 +378,10 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
       await scrollTo(page, 0);
       await settledBoxes([bar]);
       const deep = await scrollTo(page, 600);
-      expect(deep, "Trends should be scrollable at phone width").toBeGreaterThan(
-        200
-      );
+      expect(
+        deep,
+        "Trends should be scrollable at phone width"
+      ).toBeGreaterThan(200);
       await expect(bar).toHaveAttribute("data-hidden", "true");
       await scrollTo(page, deep - 300);
       await expect(bar).toHaveAttribute("data-hidden", "false");
