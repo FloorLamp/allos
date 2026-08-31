@@ -227,6 +227,14 @@ const WALL_CLOCK_RE = /\bDate\.now\(\)|\bnew Date\(\)/g;
 const WALL_CLOCK_OK_MARKER = "clock-ok";
 const WALL_CLOCK_ALLOW: Record<string, number> = {};
 
+// A bare calendar year in a text assertion is a date fuse with no date attached:
+// against a relative fixture it eventually turns red, while the negated form can
+// turn vacuously green. Assert the fixture-derived display date, or use a year-shape
+// regex when the contract is that no date is rendered (#4369).
+const BARE_YEAR_ASSERTION_RE =
+  /(?:not\.)?toContainText\(\s*(?:["'`]20\d{2}["'`]|\/[^/\n]*\b20\d{2}\b[^/\n]*\/[a-z]*)/g;
+const BARE_YEAR_ASSERTION_ALLOW: Record<string, number> = {};
+
 // ── (x) The document-level overflow check freeze (issue #1543) ──────────────
 // The app shell clips horizontal overflow (`<main className="… overflow-x-clip">`,
 // app/(app)/layout.tsx), so the document NEVER reports itself wider than the
@@ -893,6 +901,24 @@ describe("the hygiene counts read code, not prose (#3621)", () => {
     expect(
       count("await rows.first().click(); // the fold is spec-owned\n")
     ).toBe(1);
+  });
+});
+
+describe("the bare-year assertion guard (#4369)", () => {
+  const count = (text: string): number =>
+    countMatches(hygieneScanText(text), BARE_YEAR_ASSERTION_RE);
+
+  it("catches positive and vacuous-negative fixed years, not derived dates", () => {
+    expect(
+      count("await expect(row).toContainText(/Monday, July 1, 2026/);")
+    ).toBe(1);
+    expect(count('await expect(row).not.toContainText("2026");')).toBe(1);
+    expect(count("await expect(row).toContainText(formatLongDate(day));")).toBe(
+      0
+    );
+    expect(
+      count("await expect(row).not.toContainText(/\\b(?:19|20)\\d{2}\\b/);")
+    ).toBe(0);
   });
 });
 
@@ -1583,6 +1609,21 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `comment for a use that is NOT a stored timestamp (a unique-name suffix, a ` +
         `TOTP probe); see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("no bare calendar year in an e2e text assertion", () => {
+    checkPattern(
+      "bare-year text assertion",
+      BARE_YEAR_ASSERTION_RE,
+      BARE_YEAR_ASSERTION_ALLOW,
+      {
+        hint:
+          `A bare fixed year is not a date contract: relative fixtures eventually ` +
+          `leave it, and a negated assertion can then pass vacuously (#4369). Assert ` +
+          `the fixture-derived display date, or use a year-shape regex when proving ` +
+          `that a row renders no date; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
   });
 
   it("no offline NAVIGATION in an e2e/*.ts without a cache-warm precondition (use readyForOffline)", () => {
