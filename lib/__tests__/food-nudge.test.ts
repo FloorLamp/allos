@@ -424,10 +424,12 @@ describe("renderFoodNudge corrected-burst body statement (#2264)", () => {
       NOW
     );
     const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map(), {
-      corrections: { bursts, now: NOW },
+      // FALSE: a profile that has never corrected a time, which is the only state in
+      // which the hint renders at all (#2874).
+      corrections: { bursts, now: NOW, hasCorrectedAnyTime: false },
       tz: TZ,
     });
-    expect(plainBody(msg.body)).toContain("Ate earlier than you tapped?");
+    expect(plainBody(msg.body)).toContain("Ate earlier?");
     expect(plainBody(msg.body)).not.toContain("Recorded:");
   });
 
@@ -444,14 +446,19 @@ describe("renderFoodNudge corrected-burst body statement (#2264)", () => {
       NOW
     );
     const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map(), {
-      corrections: { bursts, now: NOW },
+      // TRUE, because in production this burst's own row IS the gate's evidence: a
+      // stored instant an hour from its tap is exactly what `hasCorrectedAnyTime`
+      // probes for, so a corrected burst and a still-teaching hint is a combination the
+      // gather cannot produce (#2874).
+      corrections: { bursts, now: NOW, hasCorrectedAnyTime: true },
       tz: TZ,
     });
     const body = plainBody(msg.body);
     expect(body).toContain(correctionBodyStatement(bursts, TZ, NOW)!);
     expect(body).toContain("🕐 Recorded: Salmon 18:02 (corrected)");
-    // The instruction line stays — the statement is in addition, not a replacement,
-    // because the chips are still on the keyboard and still compose.
-    expect(body).toContain("Ate earlier than you tapped?");
+    // #2264's claim survives #2874's retirement in the half that matters: the statement
+    // is what the body says about a corrected burst, and it does not depend on the hint
+    // that has now fallen away. Nothing replaces the hint.
+    expect(body).not.toContain("Ate earlier?");
   });
 });
