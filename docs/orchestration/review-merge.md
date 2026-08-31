@@ -86,8 +86,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
 - **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`; exit 3
-  means something closes. It reads all ten keywords from the body AND every
-  commit — the natural three miss the rest (failure modes).
+  means something closes. Ten keywords, body AND every commit — but NOT the
+  squash message you compose at merge, which nothing reads. Scan it yourself;
+  never `Fixes #N` a PHASED issue (2026-08-30: phase 1 closed its parent).
 - **Require the PR body rewritten in the same push as a rewrite.**
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).
