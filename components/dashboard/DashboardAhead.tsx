@@ -1,7 +1,3 @@
-"use client";
-
-import { useId, useState } from "react";
-import Button from "@/components/Button";
 import type { AppRoute } from "@/lib/hrefs";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import {
@@ -21,75 +17,50 @@ export interface DashboardAheadBucket {
   members: readonly DashboardAheadMember[];
 }
 
-// ONE ROW RENDERER, AHEAD INCLUDED (#4076). Ahead used to draw its own member row
-// with its own kind glyph; both are gone. What is left that is Ahead's own is the
-// BUCKET: a lead fact, the rest behind a "+N more", and the bucket's door on the
-// lead. Read-only by construction — Ahead never mounts a write.
-function Member({
-  member,
-  href,
-}: {
-  member: DashboardAheadMember;
-  href?: AppRoute;
-}) {
-  return (
-    <DashboardFactRow
-      candidate={member.candidate}
-      presentation={
-        href ? { ...member.presentation, href } : member.presentation
-      }
-      lane="ahead"
-      className="relative min-w-0"
-    />
-  );
-}
-
+// ONE ROW RENDERER, AHEAD INCLUDED (#4076), AND NOW NO FOLD (#4232). Ahead used to
+// draw its own member row with its own kind glyph; both are gone. The "+N more"
+// button is gone too, with the `useState` behind it — the only ephemeral disclosure
+// state on the page, never URL-carried, forgetting itself on every visit. Everything
+// in Ahead is by definition relevant-soon, so the bucket renders every member: a lead
+// fact carrying the bucket's door, then the rest. Read-only by construction — Ahead
+// never mounts a write, which is also why nothing here needs to be a client component.
 function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
-  const [expanded, setExpanded] = useState(false);
-  const contentsId = useId();
   const [first, ...rest] = bucket.members;
   if (!first) return null;
+  const labelId = `dashboard-ahead-${bucket.key}-label`;
   return (
     <section
       className="band rounded-xl border border-(--border) bg-surface px-4 py-3"
       data-ahead-bucket={bucket.key}
-      aria-labelledby={`${contentsId}-label`}
+      aria-labelledby={labelId}
     >
       <h3
-        id={`${contentsId}-label`}
+        id={labelId}
         className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400"
       >
         {bucket.label}
       </h3>
-      <div className="flex items-start justify-between gap-3">
-        <ul className="min-w-0 flex-1">
-          <Member
-            member={first}
-            href={bucket.primaryHref ?? first.presentation.href}
+      <ul className="flex min-w-0 flex-col gap-1.5">
+        <DashboardFactRow
+          candidate={first.candidate}
+          presentation={
+            bucket.primaryHref
+              ? { ...first.presentation, href: bucket.primaryHref }
+              : first.presentation
+          }
+          lane="ahead"
+          className="relative min-w-0"
+        />
+        {rest.map((member) => (
+          <DashboardFactRow
+            key={member.candidate.candidateId}
+            candidate={member.candidate}
+            presentation={member.presentation}
+            lane="ahead"
+            className="relative min-w-0"
           />
-        </ul>
-        {rest.length > 0 && (
-          <Button
-            aria-label={`+${rest.length} more in ${bucket.label}`}
-            aria-expanded={expanded}
-            aria-controls={contentsId}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            +{rest.length} more
-          </Button>
-        )}
-      </div>
-      {rest.length > 0 && (
-        <ul
-          id={contentsId}
-          hidden={!expanded}
-          className="mt-3 space-y-3 border-t border-(--divider) pt-3"
-        >
-          {rest.map((member) => (
-            <Member key={member.candidate.candidateId} member={member} />
-          ))}
-        </ul>
-      )}
+        ))}
+      </ul>
     </section>
   );
 }
