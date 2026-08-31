@@ -100,9 +100,12 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   const nameLink = row.getByRole("link", { name: "Apolipoprotein B (ApoB)" });
   await nameLink.first().click(); // first-ok: the row's name cell is its one identity link
   await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
+  // `toContainText`, not `toHaveText`: the cell also carries its own card-mode label
+  // ("Lab reference"), which is the ResponsiveTable contract and not this claim. The
+  // scope is the ONE cell, so nothing else on the page can satisfy the substring.
   await expect(
     page.getByTestId("reading-lab-reference").first() // first-ok: the newest reading's row, which is the one the index showed
-  ).toHaveText("<90");
+  ).toContainText("<90");
 });
 
 test("a flagged row's severity word is in the visible text, not only the accessibility tree", async ({

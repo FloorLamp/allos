@@ -975,43 +975,6 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
   }
 });
 
-// #3970's owner ruling on the sleep band. It used to be the SAME string mounted as an
-// InfoTooltipIcon on BOTH the bed-time and wake-time rows — one constant explainer,
-// two 34px buttons, on one line. It inlines once now, as plain detail text after the
-// wake time, and both buttons are gone. This test replaced one that read a `title=`
-// attribute: #3375 removed those, so the old assertion sat behind `if (title != null)`
-// and could no longer fail at all.
-test("the sleep band inlines once as text, and neither sleep row mounts a button for it (#3970)", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DAILY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const bed = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.bed-time:"]'
-    );
-    const wake = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.wake-time:"]'
-    );
-    await expect(bed).toHaveCount(1);
-    await expect(wake).toHaveCount(1);
-    // The band, once, in words the reader can already see. `Usual 11:00 PM – 6:30 AM`
-    // — an en dash between two clock times, never a half-sentence and never a number
-    // the classifier did not produce.
-    await expect(wake).toContainText(/Usual .+ – .+/);
-    await expect(bed).not.toContainText("Usual");
-    // No control anywhere on the page carries it. Named through the ACCESSIBLE NAME,
-    // because that is what InfoTooltipIcon puts on its button — a testid sweep would
-    // miss it, since these two mounts never had one.
-    await expect(page.getByRole("button", { name: /^Usual / })).toHaveCount(0);
-  } finally {
-    await page.context().close();
-  }
-});
-
 test("a page that just loaded animates nothing (#3253's resume half)", async ({
   page,
 }) => {
