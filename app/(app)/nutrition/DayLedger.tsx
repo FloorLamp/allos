@@ -16,8 +16,7 @@ import Button from "@/components/Button";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { useWritePipeline } from "@/components/useWritePipeline";
-import { settleDayDoses } from "@/components/medications/dose-day-settlement";
+import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
@@ -38,7 +37,6 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import {
   deleteLedgerSelection,
   moveLedgerSelectionToDay,
-  resolveDayDoses,
   setLedgerSelectionTime,
   type LedgerSelectionEditResult,
 } from "./intake-actions";
@@ -139,14 +137,6 @@ export default function DayLedger({
   removingServingId,
 }: DayLedgerProps) {
   const toast = useToast();
-  // Two affordances, two pipelines (#2041): a bulk tap and the single taps beneath it
-  // are different writes and neither may be absorbed by the other's cooldown. What the
-  // ENROLLMENT GATE makes visible here is the offline half — `dose-day` is a covered
-  // flow, so its `offline` decision is required; `dose-day-stack` is an argued exclusion
-  // in OFFLINE_QUEUE_COVERAGE, so passing one is a compile error and the bulk row is
-  // online-only by declaration rather than by omission.
-  const single = useWritePipeline("dose-day");
-  const bulk = useWritePipeline("dose-day-stack");
   const [resolved, setResolved] = useState<Set<string>>(() => new Set());
   // The last outcome per occurrence that did NOT resolve it — shown inline, so the
   // reason a row is still there is legible without hunting for the toast.
@@ -177,52 +167,14 @@ export default function DayLedger({
     setNotes((prev) => ({ ...prev, [occurrenceKey(date, doseId)]: text }));
   }
 
-  // The two answers this surface gives a dated settlement: where an unresolved dose's
-  // reason is shown, and what leaves the list.
-  const row = { note, resolved: markResolved };
-
-  // A single dated tap MAY be captured offline: the queued intent carries its own day
-  // and the replay re-checks the window with the predicate the core uses. No
-  // `clientTakenAt` — the tap instant belongs to TODAY, and `resolveQueuedTakenAt`
-  // refuses a stamp whose local date is not the row's own day.
-  async function resolveOne(doseId: number, status: "taken" | "skipped") {
-    const outcome = await single.run({
-      key: `${doseId}->${status}`,
-      fields: { date, status, dose_ids: String(doseId) },
-      action: resolveDayDoses,
-      settle: (result) => settleDayDoses(result, status, row),
-      failureMessage: "Couldn't update this dose. Try again.",
-      offline: () => ({
-        kind: "capture",
-        flow: status === "taken" ? "dose" : "skip-dose",
-        date,
-        payload: { doseId },
-        keptMessage:
-          status === "taken"
-            ? "Dose saved offline — will sync when you reconnect."
-            : "Skip saved offline — will sync when you reconnect.",
-      }),
+  const { resolveOne, resolveAll, singleBlocked, bulkBlocked } =
+    useDoseDayResolution({
+      date,
+      bulkFailureMessage:
+        "Something went wrong — reload to see what was logged.",
+      note,
+      resolved: markResolved,
     });
-    // A kept capture IS a landing — the device holds the intent and the replay owns it —
-    // so the row leaves the list under the finger that resolved it, exactly as a server
-    // write does. Settling it here rather than inside `offline` is what keeps a REFUSED
-    // capture (logged out, no IndexedDB) from striking a row nothing saved.
-    if (outcome === "captured") markResolved([doseId]);
-  }
-
-  function resolveAll(doseIds: readonly number[]) {
-    void bulk.run({
-      key: doseIds.join(","),
-      fields: { date, status: "taken", dose_ids: doseIds.join(",") },
-      action: resolveDayDoses,
-      settle: (result) => settleDayDoses(result, "taken", row),
-      // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its OWN
-      // transaction, so a failure on the third of five leaves the first two committed
-      // WITH their supply decrements. We do not know what landed, so we say that and
-      // point at the record rather than claiming either outcome.
-      failureMessage: "Something went wrong — reload to see what was logged.",
-    });
-  }
 
   // ── SELECTION MODE (#4118) ──────────────────────────────────────────────────
   //
@@ -402,14 +354,14 @@ export default function DayLedger({
           <span className="flex shrink-0 items-center gap-3">
             <Button
               data-testid={`ledger-take-${dose.doseId}`}
-              disabled={single.blocked(`${dose.doseId}->taken`)}
+              disabled={singleBlocked(dose.doseId, "taken")}
               onClick={() => void resolveOne(dose.doseId, "taken")}
             >
               Take
             </Button>
             <Button
               data-testid={`ledger-skip-${dose.doseId}`}
-              disabled={single.blocked(`${dose.doseId}->skipped`)}
+              disabled={singleBlocked(dose.doseId, "skipped")}
               onClick={() => void resolveOne(dose.doseId, "skipped")}
             >
               Skip
@@ -575,7 +527,7 @@ export default function DayLedger({
             <Button
               data-testid={`ledger-takeall-${row.bucket}`}
               aria-label={`Take all ${doses.length}: ${dosesPhrase(doses)}`}
-              disabled={bulk.blocked(ids.join(","))}
+              disabled={bulkBlocked(ids)}
               onClick={() => resolveAll(ids)}
             >
               Take all {doses.length}

@@ -14,7 +14,8 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { POST } from "@/app/api/documents/route";
 import { GET } from "@/app/api/documents/profiles/route";
-import { createApiToken, revokeApiToken } from "@/lib/api-tokens";
+import { revokeApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import { MAX_AI_BYTES } from "@/lib/upload-gate";
 
 let adminLogin: number;
@@ -82,7 +83,7 @@ function makeLogin(username: string, role: "admin" | "member"): number {
   );
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   writeProfile = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('Upload Writable')").run()
       .lastInsertRowid
@@ -108,12 +109,9 @@ beforeAll(async () => {
     "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
   ).run(memberLogin, readProfile);
 
-  memberToken = (await createApiToken(memberLogin, "m", "upload:documents"))
-    .token;
-  adminToken = (await createApiToken(adminLogin, "a", "upload:documents"))
-    .token;
-  strangerToken = (await createApiToken(strangerLogin, "s", "upload:documents"))
-    .token;
+  memberToken = routeTestToken(memberLogin, "m", "upload:documents").token;
+  adminToken = routeTestToken(adminLogin, "a", "upload:documents").token;
+  strangerToken = routeTestToken(strangerLogin, "s", "upload:documents").token;
 });
 
 beforeEach(() => {
@@ -146,7 +144,7 @@ describe("POST /api/documents — authentication", () => {
   });
 
   it("401s a REVOKED token", async () => {
-    const minted = await createApiToken(
+    const minted = routeTestToken(
       memberLogin,
       "short-lived",
       "upload:documents"
@@ -212,7 +210,7 @@ describe("POST /api/documents — scope", () => {
     // Force a stored scope the endpoint does not demand. The column CHECK guards the
     // supported vocabulary, so this reaches past it deliberately to prove the ROUTE
     // checks the capability rather than trusting the row.
-    const minted = await createApiToken(
+    const minted = routeTestToken(
       memberLogin,
       "wrong-scope",
       "upload:documents"
