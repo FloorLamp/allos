@@ -11,6 +11,8 @@ import {
   insertWaistCirc,
   insertVitals,
 } from "@/lib/offline/writes";
+import { today } from "@/lib/db";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import type { SleepWindowRefusal } from "@/lib/vitals-input";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
@@ -54,6 +56,11 @@ export interface MeasurementsSaveResult {
   // Why the night's bed/wake clocks did not survive the write (#1851) — a NOTICE
   // on a successful save, exactly like the one above.
   sleepWindowRefused?: SleepWindowRefusal;
+  // THE ONE FIELD HERE THAT IS A REFUSAL RATHER THAN A NOTICE (#4425). Nothing was
+  // written and the form must say so: without it this action answers a refused day
+  // with `{}`, which is byte-identical to a clean save that stated no time, and the
+  // form toasts "Measurements saved" over an empty table.
+  dateRefused?: true;
 }
 
 export async function addMeasurements(
@@ -71,6 +78,15 @@ export async function addMeasurements(
     const v = formData.get(k);
     return v !== null && String(v).trim() !== "";
   };
+
+  // THE DAY IS JUDGED AT THIS DOOR, ONCE, for the reason `insertVitals` judges it at
+  // its own: the five cores below each hold the shared invariant, so asking after the
+  // fan-out could only tell us that SOMETHING refused — indistinguishable from a
+  // submission with no fields filled, which is also `wrote: false` and is not an error.
+  // Asked here, the refusal has a name and the form can say it. The predicate is the
+  // exported one the cores run, so this cannot drift into a second policy.
+  if (!isPastWriteAccepted(today(profile.id), date))
+    return { dateRefused: true };
 
   let wrote = false;
   let statedTimeRefused: StatedTimeRefusal | undefined;

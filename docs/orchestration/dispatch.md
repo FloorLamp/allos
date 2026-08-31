@@ -9,7 +9,8 @@ closed taxonomy, and `needs-human` handling.
   unrecorded live dispatch. Its setup prints `PINNED_BASE_SHA`; keep it and use
   that exact SHA—not moving `origin/main`—for any reset or history rewrite.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
-  sequence work when overlap cannot be fenced.
+  sequence work when overlap cannot be fenced. `claims <path>` names the active
+  lane holding a path; CANNOT TELL is NOT clear — answer before the lane edits.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
@@ -34,12 +35,11 @@ closed taxonomy, and `needs-human` handling.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
-- STAGGER starts: durations cluster tightly (85±5 min), so simultaneous
-  starts are simultaneous arrivals AND gates — five at once hit load 17.7.
+- STAGGER starts: durations cluster tightly (85±5 min), so simultaneous starts
+  are simultaneous arrivals AND gates — five at once hit load 17.7. `new` warns
+  within 25 minutes and projects both arrivals; it never refuses, a P0 preempts.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
-- `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
-  projects both arrivals; it never refuses, because a P0 preempts.
 - A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.

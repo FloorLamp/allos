@@ -17,7 +17,8 @@
 // a surface just rendered and resolves BARE; the reasoning for that split, and for
 // leaving rows that already differ only by case alone, is in lib/vocabulary-store.ts.
 
-import { db, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import {
   resolveSymptomKey,
@@ -100,7 +101,21 @@ export function logSymptomCore(
     profileId,
     symptomInput
   );
-  if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
+  // THE SHARED DATE INVARIANT (#4425): any real past day, never the future. This core
+  // and `setSymptomSeverityCore` below are the two here that can MINT a row, and until
+  // this line neither asked anything at all — the action's shape check let
+  // `2026-13-45` through as a literal string, and `2026-02-30` is worse, because
+  // `Date.parse` rolls it silently to March 2 and it never reads as garbage
+  // downstream. The PAST is deliberately open (owner ruling 2026-08-31): the symptom
+  // bar is mounted on `/history`'s day view against the day being read, so its taps
+  // are dated writes. Every other core in this file only updates or deletes a row the
+  // app just rendered, so an unreal day finds nothing and answers `invalid` on its own.
+  if (
+    !symptom ||
+    !isPastWriteAccepted(today(profileId), date) ||
+    !isValidSeverity(severity)
+  )
+    return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
     // #1093: a symptom logged while an illness episode is OPEN default-associates to it.
@@ -191,7 +206,13 @@ export function setSymptomSeverityCore(
   note?: string | null
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
-  if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
+  // Mints a row too — the same invariant, see the note in `logSymptomCore`.
+  if (
+    !symptom ||
+    !isPastWriteAccepted(today(profileId), date) ||
+    !isValidSeverity(severity)
+  )
+    return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
     db.prepare(

@@ -737,6 +737,37 @@ describe("every kind's edit payload carries the stored row", () => {
 // title is a page ad exactly when two different items of one kind resolve to the same
 // destination, which an assertion on one row's href could never see.
 describe("a row title links only to a home of its own (#3958/#4045)", () => {
+  it("keeps subject homes but makes nav-only feed destinations plain", () => {
+    const [p, loginId] = [profile("history feed title homes"), login()];
+    const seed = (sql: string) => db.prepare(sql).run(p, YESTERDAY);
+    [
+      "INSERT INTO activities (profile_id, date, type, title) VALUES (?, ?, 'cardio', 'History run')",
+      "INSERT INTO conditions (profile_id, name, status, onset_date) VALUES (?, 'History condition', 'active', ?)",
+      "INSERT INTO allergies (profile_id, substance, status, onset_date) VALUES (?, 'History allergen', 'active', ?)",
+      "INSERT INTO imaging_studies (profile_id, modality, body_region, study_date) VALUES (?, 'ct', 'Knee', ?)",
+      "INSERT INTO goals (profile_id, title, status, target_date) VALUES (?, 'History goal', 'active', ?)",
+      "INSERT INTO insights (profile_id, date, summary) VALUES (?, ?, 'History insight')",
+      "INSERT INTO injuries (profile_id, label, regions, status, since) VALUES (?, 'History injury', '[]', 'active', ?)",
+      "INSERT INTO endurance_plans (profile_id, event_name, discipline, event_date, target_distance_km, status) VALUES (?, 'History race', 'run', ?, 5, 'active')",
+      "INSERT INTO milestones (profile_id, key, kind, threshold, title, achieved_on) VALUES (?, 'history-link', 'workouts', 1, 'History milestone', ?)",
+    ].forEach(seed);
+
+    const byKind = new Map(
+      gatherHistoryLog(p, { loginId, limit: 200 }).rows.map((row) => [
+        row.kind,
+        row.href,
+      ])
+    );
+    expect(byKind.get("activity")).toMatch(/^\/training\/activity\/\d+$/);
+    expect(byKind.get("milestone")).toBe("/history?kind=milestone");
+    expect(
+      [...byKind]
+        .filter(([, href]) => href != null)
+        .map(([kind]) => kind)
+        .sort()
+    ).toEqual(["activity", "milestone"]);
+  });
+
   it("gives two substances of one profile no destination at all", () => {
     const p = profile("history substance titles", 1990);
     const loginId = login();

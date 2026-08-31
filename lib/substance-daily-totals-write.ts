@@ -13,6 +13,7 @@
 import { instantNow } from "./clock";
 import type { LoggedVia } from "./logged-via";
 import { db, today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
 import {
@@ -109,7 +110,7 @@ export function addSubstanceDailyTotalCore(
 ): SubstanceHistoryMutationOutcome {
   const substance = resolveSubstanceKey(substanceInput);
   if (substance === null) return { kind: "unknown-substance" };
-  if (!isRealIsoDate(input.date) || input.date > today(profileId))
+  if (!isPastWriteAccepted(today(profileId), input.date))
     return { kind: "invalid-date" };
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
   const notes = normalizedNotes(input.notes);

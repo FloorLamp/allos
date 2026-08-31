@@ -186,3 +186,48 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
     }
   );
 });
+
+// THE FOURTH READER, finished (#4473). #4460 converged dispatch-brief,
+// queue-snapshot and orchestrator-checkin, and catchup-digest.sh kept its own
+// inline `live.set(branch, row)` fold — last row per branch wins, the exact
+// read this file's header was written about. Its consequence is worse than the
+// others: the digest decides WHAT TO DISPATCH NEXT, so an `update` row on a
+// running lane would have put that lane's issues back on the pickable list.
+// Latent when found — no `update` row had ever been written (47 active,
+// 43 done, 21 promotion across 111 live rows) — and armed by `update` itself.
+// The fixture above HAS one, on `nut-4118`, which is why these two rows differ.
+describe("issues in flight, the answer catchup-digest.sh now asks for", () => {
+  const dir = makeTmpDir("dispatch-ledger-issues");
+  const file = path.join(dir, "ledger.jsonl");
+  fs.writeFileSync(file, LEDGER + "\n");
+  const run = spawnSync(process.execPath, [SCRIPT, "issues", file], {
+    cwd: REPO,
+    encoding: "utf8",
+  });
+
+  it("keeps a re-prioritised lane's issues in flight", () => {
+    // 4118 and 3987 belong to `nut-4118`, whose last row is the `update`. The
+    // fold the digest used to run drops them here, and the digest then offers
+    // them as pickable while an agent is mid-flight on them.
+    expect(run.status).toBe(0);
+    expect(run.stdout.trim().split("\n")).toEqual(["3276", "3987", "4118"]);
+  });
+
+  it("omits a lane that is done", () => {
+    // 4280 is `rail-4280`, closed by a `done` row — the converse, without which
+    // the row above passes for a command that returns every issue it ever saw.
+    expect(run.stdout).not.toContain("4280");
+  });
+
+  it("refuses a missing ledger rather than printing an empty set", () => {
+    // What makes the shell write `?`. An empty in-flight set reads as "nothing
+    // is running", and the digest turns that into a dispatch order.
+    const gone = spawnSync(
+      process.execPath,
+      [SCRIPT, "issues", path.join(dir, "gone.jsonl")],
+      { cwd: REPO, encoding: "utf8" }
+    );
+    expect(gone.status).toBe(2);
+    expect(gone.stdout).toBe("");
+  });
+});
