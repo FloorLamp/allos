@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { IconCalendar } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import MonthCalendar from "@/components/MonthCalendar";
-import { historyDayHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 
 // THE RECORD'S EVENT CALENDAR — a month grid whose marked days are a door into
 // the day view, opened from /history's own control row (#4280, completing
@@ -48,11 +48,6 @@ import { historyDayHref } from "@/lib/hrefs";
 // inside the viewport rather than measured into place afterwards.
 const PANEL_WIDTH_PX = 288;
 
-// Where a marked day goes: the record's day view. Through the SHARED helper — this
-// hand-built its own `/timeline?from=…&to=…#…` string, which is exactly why no sweep
-// over `timelineDayHref` could see it when the route was retired.
-const href = (day: string): Route => historyDayHref(day);
-
 // THE GRID TAKES ITS HOST'S WIDTH AND DOES NOT REACH PAST IT (#4280). The sheet
 // pads its own content by 16px a side and CLIPS what overflows — it declares
 // `overflow-x: hidden` so a coarse pointer's trailing hit-slop cannot be nudged
@@ -77,11 +72,24 @@ const GRID_HOST = "md:p-3";
 
 export default function EventCalendar({
   eventDates,
+  everyone = false,
 }: {
+  /** Every day the VIEWED members have an event on — the page's union (#4393). */
   eventDates: string[];
+  /** The feed's mode, so a marked day opens inside the view it was marked from. */
+  everyone?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
+
+  // Where a marked day goes: the record's day view, in the SAME view the grid was
+  // read in. Through the SHARED helper — this hand-built its own
+  // `/timeline?from=…&to=…#…` string, which is exactly why no sweep over
+  // `timelineDayHref` could see it when the route was retired. `everyone` rides
+  // across because every other href on /history carries it (chipHref, dayNavHref,
+  // foldHref): once the marks union, a door that dropped the mode would open a
+  // household day on the acting profile alone — a lit day leading to an empty one.
+  const href = (day: string): Route => historyHref({ day, everyone });
 
   return (
     <>

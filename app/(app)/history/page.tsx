@@ -821,13 +821,24 @@ export default async function HistoryPage(props: {
             </Chip>
           </span>
         ) : null}
-        {/* EVERY DAY THIS PROFILE HAS AN EVENT ON, and this is the ONE place the
-            union is read now (#4280). It rode in the app shell while the sidebar
-            and the drawer both mounted the grid, which spent ~20 queries on every
-            page in the app to mark days on two surfaces most visits never opened.
-            The acting profile's own days even in the household view: the grid
-            marks one body's record, exactly as it did in the nav. */}
-        <EventCalendar eventDates={getTimelineDates(actingProfileId)} />
+        {/* EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, and this is the ONE
+            place the union is read now (#4280). It rode in the app shell while
+            the sidebar and the drawer both mounted the grid, which spent ~20
+            queries on every page in the app to mark days on two surfaces most
+            visits never opened.
+
+            THE MARKS FOLLOW THE FEED'S VIEW-SET, not the acting profile (#4393
+            ruling 3). `memberIds` is the SAME resolution the gather above runs
+            on — one member, or the household under `?view=everyone` — so the
+            calendar cannot answer "whose days are these" differently from the
+            feed it navigates. It carried the nav mount's acting-profile answer
+            until now, which read as one body's marks beside a merged record.
+            Under `?view=everyone` that is ~20 queries per viewed member on this
+            page; single view is unchanged. */}
+        <EventCalendar
+          eventDates={memberIds.flatMap((id) => getTimelineDates(id))}
+          everyone={everyone}
+        />
       </div>
 
       {/* THE KIND-SCOPED REFINEMENT ROW, PER FAMILY — "never in All" (#3958). It is a
