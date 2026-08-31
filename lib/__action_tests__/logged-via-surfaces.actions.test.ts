@@ -148,41 +148,33 @@ function weightOrigin(profileId: number, date: string) {
 }
 
 describe("each web surface stores its OWN value, through its own real action", () => {
-  it("a DASHBOARD-HERO confirm on the attention card stores dashboard-hero", async () => {
-    const { profile } = seat("lv hero");
+  it("distinguishes the dashboard hero, quick-log sheet, and page dose surfaces", async () => {
+    const { profile } = seat("lv dose surfaces");
     const date = today(profile.id);
-    const doseId = dose(profile.id, "lv hero supplement");
-    const fd = new FormData();
-    fd.set("dose_id", String(doseId));
-    const result = await markAttentionDose(fd);
-    expect(result.ok).toBe(true);
+    const hero = dose(profile.id, "lv hero supplement");
+    const quick = dose(profile.id, "lv sheet supplement");
+    const page = dose(profile.id, "lv page supplement");
+
+    const heroForm = new FormData();
+    heroForm.set("dose_id", String(hero));
+    expect((await markAttentionDose(heroForm)).ok).toBe(true);
     // The attention card is a single-surface action, so it names itself rather than
     // reading a posted field — nothing else mounts it.
-    expect(doseOrigin(doseId, date)).toBe("dashboard-hero");
-  });
+    expect(doseOrigin(hero, date)).toBe("dashboard-hero");
 
-  it("a QUICK-LOG sheet write stores quick-log, on the SAME action the page posts", async () => {
-    const { profile } = seat("lv sheet");
-    const date = today(profile.id);
-    const doseId = dose(profile.id, "lv sheet supplement");
-    const fd = new FormData();
-    fd.set("dose_id", String(doseId));
+    const quickForm = new FormData();
+    quickForm.set("dose_id", String(quick));
     // What components/quick-entry/QuickDoseList.tsx sets.
-    fd.set(LOGGED_VIA_FIELD, "quick-log");
-    expect((await markTaken(fd)).ok).toBe(true);
-    expect(doseOrigin(doseId, date)).toBe("quick-log");
-  });
+    quickForm.set(LOGGED_VIA_FIELD, "quick-log");
+    expect((await markTaken(quickForm)).ok).toBe(true);
+    expect(doseOrigin(quick, date)).toBe("quick-log");
 
-  it("a PAGE form stores page — the same action, with no claim posted", async () => {
-    const { profile } = seat("lv page");
-    const date = today(profile.id);
-    const doseId = dose(profile.id, "lv page supplement");
-    const fd = new FormData();
-    fd.set("dose_id", String(doseId));
+    const pageForm = new FormData();
+    pageForm.set("dose_id", String(page));
     // The Upcoming page's inline confirm posts no surface field: `page` is the
     // action's own home, and the fallback is what an older client gets too.
-    expect((await markTaken(fd)).ok).toBe(true);
-    expect(doseOrigin(doseId, date)).toBe("page");
+    expect((await markTaken(pageForm)).ok).toBe(true);
+    expect(doseOrigin(page, date)).toBe("page");
   });
 
   it("a DASHBOARD-WIDGET control stores dashboard-widget", async () => {
@@ -348,30 +340,27 @@ describe("the VITALS half of a sitting is on the same surface as its body half",
     for (const [name, via] of Object.entries(origins)) {
       expect(via, name).toBe("page");
     }
-  });
 
-  it("gives ONE submission ONE answer across its two write cores", async () => {
     // The body half (`insertBodyMetric`) and the vitals half (`insertVitals`) are two
     // cores serving one form, twenty-seven lines apart in one action. They stamped
     // `page` and `offline-replay` respectively, so a single tap on Save produced two
     // rows that disagree about where the person was standing.
-    const { profile } = seat("lv vitals sitting");
-    const date = today(profile.id);
-    const fd = new FormData();
-    fd.set("date", date);
-    fd.set("weight", "80");
-    fd.set("weight_unit", "kg");
-    fd.set("temperature", "98.6");
-    fd.set("temp_unit", "F");
+    const quickDate = shiftDateStr(date, -1);
+    const quickForm = new FormData();
+    quickForm.set("date", quickDate);
+    quickForm.set("weight", "80");
+    quickForm.set("weight_unit", "kg");
+    quickForm.set("temperature", "98.6");
+    quickForm.set("temp_unit", "F");
     // The quick-log sheet's mounting of the same form (#3087) — which is also what
     // proves the value is READ rather than hard-coded on either side.
-    fd.set(LOGGED_VIA_FIELD, "quick-log");
-    await addMeasurements(fd);
+    quickForm.set(LOGGED_VIA_FIELD, "quick-log");
+    await addMeasurements(quickForm);
 
-    expect(weightOrigin(profile.id, date)?.logged_via).toBe("quick-log");
-    const origins = vitalOrigins(profile.id, date);
-    expect(Object.keys(origins).length).toBeGreaterThan(0);
-    for (const [name, via] of Object.entries(origins)) {
+    expect(weightOrigin(profile.id, quickDate)?.logged_via).toBe("quick-log");
+    const quickOrigins = vitalOrigins(profile.id, quickDate);
+    expect(Object.keys(quickOrigins).length).toBeGreaterThan(0);
+    for (const [name, via] of Object.entries(quickOrigins)) {
       expect(via, name).toBe("quick-log");
     }
   });
@@ -475,29 +464,6 @@ describe("an OFFLINE REPLAY records offline-replay — the REPLAY, deliberately,
               profileId: profile.id,
               payload: { practice: "lv replayed practice" },
             },
-          ],
-        }),
-      })
-    );
-    expect(res.status).toBe(200);
-    expect(practiceOrigin(profile.id, "lv replayed practice")).toBe(
-      "offline-replay"
-    );
-  });
-
-  it("stamps a replayed VITALS sitting too — the one caller of that core that IS a replay", async () => {
-    // The other half of the vitals fix, and the reason it had to be a parameter
-    // rather than a deletion: `insertVitals` has three callers, two of them online
-    // Server Actions, and exactly this one is the replay. Driven through the real
-    // route so the answer comes from the queue's own path.
-    const { profile } = seat("lv replay vitals");
-    const date = today(profile.id);
-    const res = await replayPost(
-      new Request("http://x/api/offline-replay", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          intents: [
             {
               key: `lv replay vitals key ${profile.id}`,
               flow: "vitals",
@@ -520,6 +486,9 @@ describe("an OFFLINE REPLAY records offline-replay — the REPLAY, deliberately,
       })
     );
     expect(res.status).toBe(200);
+    expect(practiceOrigin(profile.id, "lv replayed practice")).toBe(
+      "offline-replay"
+    );
     const origins = vitalOrigins(profile.id, date);
     expect(Object.keys(origins).length).toBeGreaterThan(0);
     for (const [name, via] of Object.entries(origins)) {

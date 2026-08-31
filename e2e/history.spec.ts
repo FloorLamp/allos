@@ -1,9 +1,9 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { zonedWallTimeToUtc } from "@/lib/date";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -21,7 +21,9 @@ import { zonedWallTimeToUtc } from "@/lib/date";
 // naive string would be right only for the zone a run's start hour happened to draw.
 
 const PROFILE = 1;
-const DAY = "2026-08-17";
+// Comfortably inside the 14-day recent band at any run date. The shared profile's
+// pinned timezone guarantees its local date equals the frozen instant's UTC date.
+const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -7);
 // A day in an EARLIER CALENDAR MONTH, so the fold spine this spec's rail scrubs has at
 // least two stops whatever else the shared seed holds. The rail is not offered below
 // two periods — a permanent strip down the edge of a one-period page is chrome

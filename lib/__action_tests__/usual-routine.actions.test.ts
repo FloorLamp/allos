@@ -130,10 +130,8 @@ describe("the offer the action answers", () => {
       doses.creatine,
       doses.collagen,
     ]);
-  });
 
-  it("is NO CONTROL once the food half is logged, even with the doses still pending", () => {
-    const { profile, anchor } = seedMorning("routine-food-gate");
+    // Once the food half lands, the offer collapses even with doses still pending.
     tap(profile.id, "fermented", anchor, "08:00:00");
     tap(profile.id, "berries", anchor, "08:01:00");
     expect(getUsualRoutineOffer(profile.id, "Morning", anchor)).toBeNull();
@@ -143,13 +141,13 @@ describe("the offer the action answers", () => {
 describe("logUsualRoutine", () => {
   it("logs the servings and confirms the doses in one tap, then collapses", async () => {
     const { profile, anchor, doses } = seedMorning("routine-happy");
-    const res = await logUsualRoutine(
+    const form = () =>
       fd({
         meal_slot: "Morning",
         groups: "berries,fermented",
         dose_ids: `${doses.creatine},${doses.collagen}`,
-      })
-    );
+      });
+    const res = await logUsualRoutine(form());
 
     expect(res.ok).toBe(true);
     if (!res.ok) return;
@@ -161,6 +159,10 @@ describe("logUsualRoutine", () => {
       { doseId: doses.creatine, name: "Creatine", outcome: "logged" },
       { doseId: doses.collagen, name: "Collagen", outcome: "logged" },
     ]);
+    expect(getUsualRoutineOffer(profile.id, "Morning", anchor)).toBeNull();
+
+    // A stale second tap must not duplicate either half of the composed write.
+    expect((await logUsualRoutine(form())).ok).toBe(false);
     expect(servings(profile.id, anchor)).toEqual([
       { group_key: "berries", servings: 1 },
       { group_key: "fermented", servings: 1 },
@@ -169,28 +171,8 @@ describe("logUsualRoutine", () => {
       { dose_id: doses.creatine, status: "taken" },
       { dose_id: doses.collagen, status: "taken" },
     ]);
-    expect(getUsualRoutineOffer(profile.id, "Morning", anchor)).toBeNull();
     expect(revalidate).toHaveBeenCalledWith("/");
     expect(revalidate).toHaveBeenCalledWith("/medications");
-  });
-
-  it("a STALE second tap refuses — never a second breakfast and never a fourth creatine", async () => {
-    const { profile, anchor, doses } = seedMorning("routine-repeat");
-    const form = () =>
-      fd({
-        meal_slot: "Morning",
-        groups: "berries,fermented",
-        dose_ids: `${doses.creatine},${doses.collagen}`,
-      });
-    await logUsualRoutine(form());
-    const again = await logUsualRoutine(form());
-
-    expect(again.ok).toBe(false);
-    expect(servings(profile.id, anchor)).toEqual([
-      { group_key: "berries", servings: 1 },
-      { group_key: "fermented", servings: 1 },
-    ]);
-    expect(doseLogs(profile.id, anchor)).toHaveLength(2);
   });
 
   it("writes only the intersection — a forged group, a forged dose id and another profile's dose land nothing", async () => {
@@ -396,14 +378,9 @@ describe("logUsualRoutine on a past day", () => {
         detail: target,
       },
     ]);
-  });
 
-  it("does NOT audit a contemporaneous tap, and stamps it with its own surface", async () => {
-    // The converse, in the same commit: auditing every usual tap would bury the
-    // retroactive ones it exists to make findable, and stamping every one
-    // `usual-backfill` would delete today's tap from the evidence for its own offer.
-    const { profile, anchor, creatine } = seedWithHole("routine-today", 14);
-    const res = await logUsualRoutine(
+    // The contemporaneous converse stays unaudited and keeps its posted surface.
+    const todayResult = await logUsualRoutine(
       fd({
         meal_slot: "Morning",
         groups: "berries,fermented",
@@ -411,8 +388,14 @@ describe("logUsualRoutine on a past day", () => {
         logged_via: "dashboard-widget",
       })
     );
-    expect(res.ok).toBe(true);
-    expect(auditRows(profile.id)).toEqual([]);
+    expect(todayResult.ok).toBe(true);
+    expect(auditRows(profile.id)).toEqual([
+      {
+        action: AUDIT_ACTIONS.usualBackfill,
+        target: "Morning",
+        detail: target,
+      },
+    ]);
     expect(
       db
         .prepare(

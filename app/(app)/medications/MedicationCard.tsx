@@ -13,6 +13,7 @@ import type {
 } from "@/lib/types";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
+import { parseItemPurposes } from "@/lib/intake-purposes";
 import type { PgxVariantInput } from "@/lib/pgx";
 import {
   STOP_REASONS,
@@ -261,6 +262,8 @@ export default function MedicationCard({
           pediatric={pediatric}
           age={age}
           conditions={conditions}
+          ingredients={ingredients}
+          purposes={parseItemPurposes(s.purposes_json)}
           course={open ?? ordered[ordered.length - 1]}
           todayStr={todayStr}
         />
