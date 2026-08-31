@@ -123,11 +123,7 @@ class Boundary extends Component<
 function mountSidebar(onError: (err: unknown) => void = () => {}) {
   return render(
     <Boundary onError={onError}>
-      <SidebarContent
-        active={ACTIVE}
-        username="sam"
-        profiles={[ACTIVE]}
-      />
+      <SidebarContent active={ACTIVE} username="sam" profiles={[ACTIVE]} />
     </Boundary>
   );
 }

@@ -96,11 +96,7 @@ const ACTIVE = { id: 1, name: "Sam", photo_path: null, photo_version: 0 };
 
 function mountSidebar() {
   return render(
-    <SidebarContent
-      active={ACTIVE}
-      username="sam"
-      profiles={[ACTIVE]}
-    />
+    <SidebarContent active={ACTIVE} username="sam" profiles={[ACTIVE]} />
   );
 }
 
