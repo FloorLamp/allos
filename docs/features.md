@@ -168,7 +168,9 @@ symptom backfill without requiring an illness episode.
 Symptoms are a standalone day-by-day record, not merely an illness feature.
 Choose from the curated vocabulary or add a custom symptom, then record severity
 from 1–4. Repeating a tap preserves the day's worst severity; lowering it is an
-explicit edit.
+explicit edit. A symptom is logged for today or up to two days back — the same
+small window a check-in uses — and a day already logged stays editable from the
+record afterwards.
 
 ### Quick entry and context
 
