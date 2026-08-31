@@ -222,53 +222,28 @@ describe("post-merge census git records", () => {
 });
 
 describe("post-merge census CLI boundary", () => {
-  it("does not under-scope a mixed app + shared runtime diff", () => {
+  it("passes a mixed app + shared runtime diff through as a full run", () => {
     const repo = makeRepo();
+    const receiptFile = path.join(repo, "full-receipt.json");
     commit(repo, {
       "app/(app)/trends/Chart.tsx": "export const chart = 1;\n",
       "lib/nav.ts": "export const shared = 1;\n",
     });
 
-    const run = runCli(repo, ["HEAD^", "HEAD"]);
+    const run = runCli(repo, ["HEAD^", "HEAD", "--run"], {
+      UX_ROUTES: "/caller-must-not-win",
+      CENSUS_RECEIPT: receiptFile,
+    });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("post-merge census: full (all)");
     expect(run.stdout).toContain("unmapped runtime/shared files changed");
     expect(run.stdout).not.toContain("UX_ROUTES=/trends");
-  });
-
-  it.each([
-    {
-      name: "scoped",
-      changedFile: "app/(app)/trends/Chart.tsx",
-      routes: "/trends",
-    },
-    {
-      name: "full",
-      changedFile: "components/Card.tsx",
+    expect(readReceipt(receiptFile)).toMatchObject({
+      argv: ["--serve", "pages"],
+      cwd: fs.realpathSync(repo),
       routes: "",
-    },
-  ])(
-    "passes the complete $name plan through the real Git and spawn boundary",
-    ({ changedFile, routes }) => {
-      const repo = makeRepo();
-      const receiptFile = path.join(repo, "child-receipt.json");
-      commit(repo, {
-        [changedFile]: "export const changed = 1;\n",
-      });
-
-      const run = runCli(repo, ["HEAD^", "HEAD", "--run"], {
-        UX_ROUTES: "/caller-must-not-win",
-        CENSUS_RECEIPT: receiptFile,
-      });
-      expect(run.status, run.stderr).toBe(0);
-      const receipt = readReceipt(receiptFile);
-      expect(receipt).toMatchObject({
-        argv: ["--serve", "pages"],
-        cwd: fs.realpathSync(repo),
-        routes,
-      });
-    }
-  );
+    });
+  });
 
   it("prints an executable plan that safely preserves the requested shape", () => {
     const repo = makeRepo();

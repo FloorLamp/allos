@@ -23,6 +23,13 @@ describe("mediaStartStage", () => {
     ["denied, phone-width", true, "denied", true, "chooser"],
     ["denied, wide", true, "denied", false, "chooser"],
     ["failed, phone-width", true, "failed", true, "chooser"],
+    [
+      "unreadable permissions, phone-width",
+      true,
+      "unreadable",
+      true,
+      "chooser",
+    ],
     ["granted, phone-width", true, "granted", true, "camera"],
     ["granted, wide", true, "granted", false, "camera"],
     ["unknown, phone-width", true, "unknown", true, "camera"],
