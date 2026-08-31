@@ -220,8 +220,15 @@ trap 'rm -rf "$TMP" "$FAIL_MARK"' EXIT
 for pg in 1 2 3; do
   fetch "$API/issues?state=open&per_page=100&page=$pg" > "$TMP/issues.$pg"
 done
+# IN FLIGHT, asked of the one reader (#4460 converged three callers and left
+# this one; #4473 finished it). `?` on any refusal, never a silent empty set:
+# an empty in-flight set means "nothing is running", and that is a dispatch
+# order — the same reason ledger.mjs exits rather than printing 0.
+LEDGER_FILE="${ALLOS_DISPATCH_LEDGER:-${STATE_DIR}/allos-dispatch-ledger.jsonl}"
+INFLIGHT=$(node "$(dirname "$0")/ledger.mjs" issues "$LEDGER_FILE" 2>/dev/null) \
+  || INFLIGHT="?"
 HOLDS_FILE="${STATE_DIR}/.holds" \
-LEDGER_FILE="${ALLOS_DISPATCH_LEDGER:-${STATE_DIR}/allos-dispatch-ledger.jsonl}" \
+INFLIGHT="$INFLIGHT" \
 node -e '
   const fs=require("fs");
   {
@@ -268,16 +275,15 @@ node -e '
       // of issue numbers because the next filed one joins it automatically.
       for(const m of holds.matchAll(/\blabel:([a-z0-9-]+)/g)) heldLabels.add(m[1]);
     }catch{}
-    try{
-      const live=new Map();
-      for(const l of fs.readFileSync(process.env.LEDGER_FILE,"utf8").trim().split("\n")){
-        let e;try{e=JSON.parse(l);}catch{continue;}
-        if(!e.branch) continue;
-        live.set(e.branch, e);            // last line per branch wins
-      }
-      for(const e of live.values())
-        if(e.status==="active") for(const n of e.issues||[]) inflight.add(Number(n));
-    }catch{}
+    // ledger.mjs owns the fold. This block used to redo it as "last row per
+    // branch wins", which an `update` row turns into a DROP — putting the
+    // issues of a still-running lane back on the pickable list. Refusal is
+    // `?`, and so is ABSENT: unset took the known branch and threw on .split.
+    const inflightRaw = process.env.INFLIGHT ?? "?";
+    const inflightKnown = inflightRaw !== "?";
+    if(inflightKnown)
+      for(const n of inflightRaw.split("\n").filter(Boolean))
+        inflight.add(Number(n));
     const rank=i=>{
       const p=prio(i);
       if(p==="P0") return 0;
@@ -290,10 +296,17 @@ node -e '
       .filter(i=>!held.has(i.number)&&!inflight.has(i.number))
       .filter(i=>!i.labels.some(l=>heldLabels.has(l.name)))
       .sort((a,b)=>rank(a)-rank(b)||b.number-a.number);
+    // THE BANNER GOES ABOVE THE LIST, not in the `(excluded: …)` line below it.
+    // The reader skimming NEXT UP for something to dispatch is the only reader
+    // this warning is for, and is exactly the one who does not read the footer.
+    // Unreadable roster means running lanes are listed as pickable, and the
+    // consequence is one issue dispatched twice into two worktrees.
+    if(!inflightKnown)
+      console.log("\n  !! IN FLIGHT UNKNOWN — the ledger could not be read, so the list below MAY NAME WORK ALREADY IN FLIGHT.\n     This is not a clear queue. Resolve the ledger before dispatching anything below.");
     console.log(`\n  NEXT UP (${Math.min(15,pickable.length)} of ${pickable.length} pickable) — dispatch order: P0, P1, P2 bugs, P2 rest, P3`);
     for(const i of pickable.slice(0,15)) console.log(line(i));
     const why=[];
-    if(inflight.size) why.push(`${inflight.size} in flight`);
+    if(inflightKnown && inflight.size) why.push(`${inflight.size} in flight`);
     if(held.size) why.push(`${held.size} owner-held`);
     if(heldLabels.size) why.push(`held domains: ${[...heldLabels].join(", ")}`);
     if(why.length) console.log(`  (excluded: ${why.join(", ")}, plus needs-human and parked)`);

@@ -13,9 +13,26 @@
 // GitHub API — laneIssues() coerces, and a reader comparing them raw matches
 // nothing while looking entirely correct.
 //
+// A FOURTH reader survived that convergence: catchup-digest.sh carried its own
+// last-row-wins fold, so an `update` row would have dropped its branch out of
+// the in-flight set and offered that lane's issues back as pickable — the same
+// defect this file's header describes, in the one place that decides what gets
+// dispatched next. No `update` row had ever been written when it was found
+// (47 active / 43 done / 21 promotion across 111 rows), so it was LATENT: armed
+// by `dispatch-brief.mjs update`, and never yet fired. The `issues` mode below
+// exists so that caller can ask instead of re-implementing (#4473).
+//
+// `issues` answers WHICH issues are in flight, not WHO holds one, because no
+// caller has needed the second yet. When one does: that question is the
+// issue-shaped twin of `dispatch-brief.mjs claims <path>`, and laneIssues()
+// already returns the number -> branch map it needs. Follow that vocabulary
+// rather than inventing a third — a mode designed by the thing that needs it
+// beats a general one designed by nobody.
+//
 // Usage:
 //   node scripts/orchestration/ledger.mjs branches [file]   # active branches
 //   node scripts/orchestration/ledger.mjs e2e-count [file]  # active e2e lanes
+//   node scripts/orchestration/ledger.mjs issues [file]     # issues in flight
 
 import fs from "node:fs";
 import path from "node:path";
@@ -96,15 +113,24 @@ export function laneIssues(rows) {
 if (isMain(process.argv, import.meta.url)) {
   const [mode, file] = process.argv.slice(2);
   const from = file || ledgerPath();
-  const known = ["branches", "e2e-count"].includes(mode) && fs.existsSync(from);
+  const known =
+    ["branches", "e2e-count", "issues"].includes(mode) && fs.existsSync(from);
   if (!known) {
     console.error(
       `ledger.mjs: no answer for \`${mode}\` at ${from} — see --help`
     );
     process.exit(2);
   }
-  const active = activeDispatches(readLedger(from));
-  const branches = active.map((d) => d.branch).sort();
-  if (mode === "branches") console.log(branches.join("\n"));
+  const rows = readLedger(from);
+  const active = activeDispatches(rows);
+  if (mode === "branches")
+    console.log(
+      active
+        .map((d) => d.branch)
+        .sort()
+        .join("\n")
+    );
+  else if (mode === "issues")
+    console.log([...laneIssues(rows).keys()].sort((a, b) => a - b).join("\n"));
   else console.log(active.filter((d) => d.e2e).length);
 }
