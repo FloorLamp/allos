@@ -2856,6 +2856,9 @@ uploads/deletes, and admin/family changes), reviewable with filters under
 **Settings → Logs & audit → Audit** (admin only); identifiers only, never medical content,
 retained for a configurable window (default **24 months**, set under **Settings
 → Server → Audit-log retention**; the hourly notify tick prunes older events).
+A backfill tapped from Telegram is attributed to the login that chat belongs to —
+the same binding that already decides which profile a tap may write to, used here
+only to name the actor.
 
 ## Data hub
 
