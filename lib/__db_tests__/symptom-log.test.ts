@@ -144,7 +144,9 @@ describe("the minting cores hold the shared date invariant (#4425)", () => {
       });
       expect(
         db
-          .prepare("SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?")
+          .prepare(
+            "SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?"
+          )
           .get(p) as { n: number }
       ).toEqual({ n: 0 });
     }

@@ -1390,7 +1390,9 @@ export function applyIntent(
       // always consulted `isDoseDateAccepted` for exactly this. The bound used to come
       // from the write core, which now takes any real past day like every other core,
       // so asking the core would silently land a stale capture on a closed day.
-      if (!isWithinTapReach("practice-session", today(profileId), intent.date)) {
+      if (
+        !isWithinTapReach("practice-session", today(profileId), intent.date)
+      ) {
         outcome = {
           status: "rejected",
           reason:
