@@ -30,7 +30,7 @@ export default function DestinationLink({
     <Link {...props} className={className || undefined}>
       {children}
       <span
-        className="ml-auto inline-flex shrink-0 items-center gap-1 pl-1 align-middle"
+        className="ml-auto inline-flex shrink-0 self-center items-center gap-1 pl-1 align-middle"
         aria-hidden="true"
       >
         <DestinationIndicator />
