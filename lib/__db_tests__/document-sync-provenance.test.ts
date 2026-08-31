@@ -299,26 +299,6 @@ beforeAll(async () => {
 });
 
 describe("the upload route records which IDENTITY a document was acquired for (#2999)", () => {
-  it("stamps the patient identity beside the portal it already stamped", async () => {
-    const docId = await upload(accountOne, LABEL_ONE, "acquisition-a1.pdf");
-    const row = db
-      .prepare(
-        `SELECT d.acquired_portal_id AS portal, pi.account_id AS account,
-                pi.patient_label AS patient
-           FROM medical_documents d
-           LEFT JOIN portal_identities pi ON pi.id = d.acquired_identity_id
-          WHERE d.id = ?`
-      )
-      .get(docId) as {
-      portal: number | null;
-      account: number | null;
-      patient: string | null;
-    };
-    expect(row.portal).toBe(portalId);
-    expect(row.account).toBe(accountOne.id);
-    expect(row.patient).toBe(LABEL_ONE);
-  });
-
   it("does not fail the ingest when the provenance stamp cannot be written", async () => {
     // The archive has already landed by the time this runs. A provenance write must never
     // turn a successful ingest into a 500 the tool answers by pushing everything again —
@@ -358,6 +338,21 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
     // RUN 1 on login ONE: two archives, then the report.
     const first = await upload(accountOne, LABEL_ONE, "run-one-a1.pdf");
     const second = await upload(accountOne, LABEL_ONE, "run-one-a2.pdf");
+    expect(
+      db
+        .prepare(
+          `SELECT d.acquired_portal_id AS portal, pi.account_id AS account,
+                  pi.patient_label AS patient
+             FROM medical_documents d
+             LEFT JOIN portal_identities pi ON pi.id = d.acquired_identity_id
+            WHERE d.id = ?`
+        )
+        .get(first)
+    ).toEqual({
+      portal: portalId,
+      account: accountOne.id,
+      patient: LABEL_ONE,
+    });
     const runOne = await reportRun(accountOne, LABEL_ONE);
 
     const claimedByOne = claimedDocuments(runOne);
@@ -609,6 +604,15 @@ describe("the #388 retention sweep does not release a claimed archive (#2999)", 
       ).not.toEqual({ at: null });
     }
 
+    // The login-row count reads documents, so it outlives the swept run rows too.
+    expect(
+      deliveredDocumentCountsByAccount(
+        authorized([profileOne]),
+        false,
+        "UTC"
+      ).get(accountOne.id)?.count
+    ).toBeGreaterThan(0);
+
     // The run that fabricated a delivery: `nothing-new`, all-zero split, nothing
     // uploaded. It must claim nothing and it must not reach the feed.
     const empty = await reportRun(accountOne, LABEL_ONE, {
@@ -621,26 +625,6 @@ describe("the #388 retention sweep does not release a claimed archive (#2999)", 
       .filter((e) => e.stream === "sync")
       .map((e) => (e.stream === "sync" ? e.event.id : 0));
     expect(ids).not.toContain(empty);
-  });
-
-  it("still states a swept login's delivery on its login row", async () => {
-    // The count is read from the documents, so it outlives the runs. A login whose events
-    // have aged out still says what it delivered instead of falling to zero.
-    const doc = await upload(accountOne, LABEL_ONE, "swept-a8.pdf");
-    spaceUploads([doc], 10);
-    const run = await reportRun(accountOne, LABEL_ONE);
-    db.prepare("UPDATE integration_sync_events SET at = ? WHERE id = ?").run(
-      "2026-01-06T09:00:00Z",
-      run
-    );
-    pruneSyncEvents();
-
-    const delivered = deliveredDocumentCountsByAccount(
-      authorized([profileOne]),
-      false,
-      "UTC"
-    ).get(accountOne.id);
-    expect(delivered?.count).toBeGreaterThan(0);
   });
 });
 
@@ -816,41 +800,13 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     expect(after.count).toBe(before.count - 1);
     // …the run still lists everything it delivered, and names the gap honestly.
     const rows = getSyncRowProvenance(profileOne, owningRun);
-    expect(rows.some((r) => r.targetId === victim && r.deleted)).toBe(true);
+    expect(rows.find((r) => r.targetId === victim)).toMatchObject({
+      deleted: true,
+      label: "Document",
+    });
     // And the deletion does not release the archive back to the claim: the row is gone,
     // so there is nothing left to claim twice.
     expect(claimedAnywhere(victim)).toBe(1);
-  });
-});
-
-describe("getSyncRowProvenance resolves a delivered document (#2999)", () => {
-  it("names the file, dates it, and links its import page — profile-scoped", async () => {
-    const docId = await upload(accountOne, LABEL_ONE, "resolvable-a6.pdf");
-    const run = await reportRun(accountOne, LABEL_ONE);
-
-    const rows = getSyncRowProvenance(profileOne, run);
-    const doc = rows.find((r) => r.targetId === docId)!;
-    expect(doc.targetTable).toBe("medical_documents");
-    expect(doc.label).toBe("resolvable-a6.pdf");
-    expect(doc.href).toBe(`/import/${docId}`);
-    expect(doc.deleted).toBe(false);
-    expect(doc.date).not.toBeNull();
-
-    // ANOTHER PROFILE RESOLVES NOTHING. The event is not theirs, so the read returns
-    // empty rather than resolving somebody else's archive by id.
-    expect(getSyncRowProvenance(bystanderProfile, run)).toEqual([]);
-  });
-
-  it("marks a document that has since been deleted rather than inventing a link", async () => {
-    const docId = await upload(accountOne, LABEL_ONE, "removed-a7.pdf");
-    const run = await reportRun(accountOne, LABEL_ONE);
-    db.prepare("DELETE FROM medical_documents WHERE id = ?").run(docId);
-
-    const doc = getSyncRowProvenance(profileOne, run).find(
-      (r) => r.targetId === docId
-    )!;
-    expect(doc.deleted).toBe(true);
-    expect(doc.label).toBe("Document");
   });
 });
 
@@ -871,10 +827,21 @@ describe("the Imports feed after a delivery (#2999)", () => {
     // returns — the #1991 rule, on this feed at last.
     expect(entry.drilldown?.count).toBe(2);
     expect(entry.drilldown?.noun).toBe("document");
-    expect(getSyncRowProvenance(profileOne, run)).toHaveLength(2);
+    const rows = getSyncRowProvenance(profileOne, run);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.targetId === first)).toMatchObject({
+      targetTable: "medical_documents",
+      label: "feed-a1.pdf",
+      href: `/import/${first}`,
+      deleted: false,
+    });
+    expect(rows.find((row) => row.targetId === first)?.date).not.toBeNull();
+    expect(getSyncRowProvenance(bystanderProfile, run)).toEqual([]);
     expect(claimedDocuments(run)).toEqual(
       [first, second].sort((a, b) => a - b)
     );
+    // Portal runs structurally have no data window to render in the feed.
+    expect(feedItemView(entry, (id) => id).meta).toBeNull();
   });
 
   it("offers NO drill-in for a run that recorded no provenance (#1771)", async () => {
@@ -931,16 +898,5 @@ describe("the Imports feed after a delivery (#2999)", () => {
     expect(ids).toContain(failed);
     expect(ids).toContain(takeout);
     expect(ids).toContain(skipped);
-  });
-
-  it("renders no data window for a portal run, which structurally has none", async () => {
-    await upload(accountOne, LABEL_ONE, "window-a1.pdf");
-    const run = await reportRun(accountOne, LABEL_ONE);
-    const entry = getImportDocumentsFeed(profileOne, 200).find(
-      (e) => e.stream === "sync" && e.event.id === run
-    )!;
-    // "—" on every run of this source is a column pretending to be information
-    // (#1991 defect 5).
-    expect(feedItemView(entry, (id) => id).meta).toBeNull();
   });
 });
