@@ -11,13 +11,14 @@
 // names, because where a case came from is part of what it teaches. They are the
 // reproductions of what they broke, unchanged except in ATTACK #5, whose quoted `FoodTab`
 // expression had to be updated to the fixed one — the claim it makes is the same.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
+import * as scheduleQueries from "@/lib/queries/intake/schedule";
 import { buildDayLedger, stackLabel, type LedgerStack } from "@/lib/day-ledger";
 import { createLogin, createProfile, actAs } from "./harness";
 
@@ -407,5 +408,26 @@ describe("profile scoping", () => {
     expect(getDayDoseLedger(mine.id, date).map((r) => r.name)).toEqual([
       "My dose",
     ]);
+  });
+});
+
+describe("FoodTab's bounded day-ledger gather (#4412)", () => {
+  it("reuses one full schedule read across the seven day-ledger calls", () => {
+    const login = createLogin();
+    const profile = createProfile("ledger schedule reuse", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const date = today(profile.id);
+    const dose = seedDose(profile.id, "Reuse D", "Morning stack");
+    markDoseTaken(profile.id, dose.doseId, dose.itemId, date, "page");
+
+    const expected = getDayDoseLedger(profile.id, date);
+    const read = vi.spyOn(scheduleQueries, "getIntakeDosesForHistory");
+    const schedules = scheduleQueries.getIntakeDosesForHistory(profile.id);
+    for (let i = 0; i < 7; i += 1)
+      expect(getDayDoseLedger(profile.id, date, schedules)).toEqual(expected);
+
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockRestore();
   });
 });
