@@ -83,32 +83,45 @@ function tableExists(db: Database.Database, table: string): boolean {
 }
 
 describe("migration 113 — folding both stores into saved_items", () => {
-  it("merges stars and pins, dedupes the overlap, and preserves pin order", () => {
+  it("folds the complete pre-113 fixture matrix without cross-profile or cleanup loss", () => {
     const db = preFoldDb();
-    const p = newProfile(db, "Fold Fixture");
-
-    // The pre-fold reality this issue describes: three starred analytes, and a pin
-    // list that overlaps ONE of them (ApoB is both starred AND pinned) plus a metric
-    // tile and a biomarker that was ONLY ever pinned.
-    star(db, p, "ApoB", "2026-01-01 00:00:00");
-    star(db, p, "hs-CRP", "2026-02-01 00:00:00");
-    star(db, p, "Lipoprotein(a)", "2026-03-01 00:00:00");
-    pins(db, p, [
+    const fold = newProfile(db, "Fold Fixture");
+    star(db, fold, "ApoB", "2026-01-01 00:00:00");
+    star(db, fold, "hs-CRP", "2026-02-01 00:00:00");
+    star(db, fold, "Lipoprotein(a)", "2026-03-01 00:00:00");
+    pins(db, fold, [
       "metric:weight",
       "bio:ApoB",
       "bio:Ferritin",
       "metric:bodyfat",
     ]);
+    const caseFold = newProfile(db, "Case Fixture");
+    star(db, caseFold, "ApoB");
+    pins(db, caseFold, ["bio:apob"]);
+    const a = newProfile(db, "Profile A");
+    const b = newProfile(db, "Profile B");
+    star(db, a, "ApoB");
+    star(db, b, "Ferritin");
+    pins(db, a, ["metric:weight"]);
+    pins(db, b, ["metric:bodyfat", "bio:ApoB"]);
+    const cleanup = newProfile(db, "Cleanup Fixture");
+    star(db, cleanup, "ApoB");
+    pins(db, cleanup, ["metric:weight"]);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')`
+    ).run(cleanup);
+    const garbage = newProfile(db, "Garbage Fixture");
+    star(db, garbage, "ApoB");
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'trend_pins', 'not json')`
+    ).run(garbage);
+    const junk = newProfile(db, "Junk Entries Fixture");
+    pins(db, junk, ["", "   ", 7, null, "provider:12", "bio:Ferritin"]);
+    const check = newProfile(db, "Check Fixture");
 
-    up113(db);
+    expect(() => up113(db)).not.toThrow();
 
-    const rows = savedRows(db, p);
-    // 3 stars + 2 metric pins + 1 pin-only biomarker = 6 (ApoB counted ONCE).
-    expect(rows.length).toBe(6);
-    expect(rows.filter((r) => r.key === "ApoB").length).toBe(1);
-
-    // The pinned four keep their list order as position 0..3; the star-only rows
-    // stay unpositioned and sort newest-first behind them.
+    const rows = savedRows(db, fold);
     expect(rows.map((r) => `${r.kind}:${r.key}`)).toEqual([
       "trend-metric:weight",
       "biomarker:ApoB",
@@ -119,47 +132,15 @@ describe("migration 113 — folding both stores into saved_items", () => {
     ]);
     expect(rows.slice(0, 4).map((r) => r.position)).toEqual([0, 1, 2, 3]);
     expect(rows.slice(4).map((r) => r.position)).toEqual([null, null]);
-
-    // The de-duped ApoB row is the STAR row (its created_at is the real save date),
-    // not a fresh insert — the pin only contributed its ordering.
-    const apob = rows.find((r) => r.key === "ApoB")!;
-    expect(apob.created_at).toBe("2026-01-01 00:00:00");
-
-    // Metric pins drop the namespace prefix: `kind` is the namespace now.
+    expect(rows.find((r) => r.key === "ApoB")?.created_at).toBe(
+      "2026-01-01 00:00:00"
+    );
     expect(
       rows.filter((r) => r.kind === "trend-metric").map((r) => r.key)
     ).toEqual(["weight", "bodyfat"]);
-    db.close();
-  });
-
-  it("dedupes the star/pin overlap case-insensitively", () => {
-    // The star store was NOCASE, so "apob" and "ApoB" were always ONE star; the fold
-    // must not resurrect them as two saves (a case-sensitive UNIQUE would).
-    const db = preFoldDb();
-    const p = newProfile(db, "Case Fixture");
-    star(db, p, "ApoB");
-    pins(db, p, ["bio:apob"]);
-
-    up113(db);
-
-    const rows = savedRows(db, p);
-    expect(rows.length).toBe(1);
-    expect(rows[0].key).toBe("ApoB"); // the star's spelling survives
-    expect(rows[0].position).toBe(0); // …and inherits the pin's ordering
-    db.close();
-  });
-
-  it("keeps each profile's saves under its own profile_id", () => {
-    const db = preFoldDb();
-    const a = newProfile(db, "Profile A");
-    const b = newProfile(db, "Profile B");
-    star(db, a, "ApoB");
-    star(db, b, "Ferritin");
-    pins(db, a, ["metric:weight"]);
-    pins(db, b, ["metric:bodyfat", "bio:ApoB"]);
-
-    up113(db);
-
+    expect(savedRows(db, caseFold)).toMatchObject([
+      { key: "ApoB", position: 0 },
+    ]);
     expect(savedRows(db, a).map((r) => `${r.kind}:${r.key}`)).toEqual([
       "trend-metric:weight",
       "biomarker:ApoB",
@@ -169,72 +150,31 @@ describe("migration 113 — folding both stores into saved_items", () => {
       "biomarker:ApoB",
       "biomarker:Ferritin",
     ]);
-    db.close();
-  });
-
-  it("drops the old table and DELETES the trend_pins settings rows (#203)", () => {
-    const db = preFoldDb();
-    const p = newProfile(db, "Cleanup Fixture");
-    star(db, p, "ApoB");
-    pins(db, p, ["metric:weight"]);
-    // A neighbouring profile setting must survive untouched.
-    db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', 'UTC')`
-    ).run(p);
-
-    up113(db);
-
     expect(tableExists(db, "starred_biomarkers")).toBe(false);
     expect(
       db
         .prepare(
           "SELECT COUNT(*) n FROM profile_settings WHERE key = 'trend_pins'"
         )
-        .get() as { n: number }
+        .get()
     ).toEqual({ n: 0 });
     expect(
       db
         .prepare(
           "SELECT value FROM profile_settings WHERE profile_id = ? AND key = 'timezone'"
         )
-        .get(p) as { value: string }
+        .get(cleanup)
     ).toEqual({ value: "UTC" });
-    db.close();
-  });
-
-  it("survives a malformed / legacy pin blob instead of failing the boot", () => {
-    const db = preFoldDb();
-    const p = newProfile(db, "Garbage Fixture");
-    star(db, p, "ApoB");
-    // Not JSON at all — an older shape, or a corrupt write.
-    db.prepare(
-      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'trend_pins', 'not json')`
-    ).run(p);
-    const q = newProfile(db, "Junk Entries Fixture");
-    pins(db, q, ["", "   ", 7, null, "provider:12", "bio:Ferritin"]);
-
-    expect(() => up113(db)).not.toThrow();
-
-    expect(savedRows(db, p).map((r) => r.key)).toEqual(["ApoB"]);
-    // Only the one resolvable entry became a save, and it starts the ordering.
-    const junk = savedRows(db, q);
-    expect(junk.map((r) => `${r.kind}:${r.key}`)).toEqual([
-      "biomarker:Ferritin",
+    expect(savedRows(db, garbage).map((r) => r.key)).toEqual(["ApoB"]);
+    expect(savedRows(db, junk)).toMatchObject([
+      { kind: "biomarker", key: "Ferritin", position: 0 },
     ]);
-    expect(junk[0].position).toBe(0);
-    db.close();
-  });
-
-  it("rejects an unknown kind (the CHECK is the gate for future kinds)", () => {
-    const db = preFoldDb();
-    const p = newProfile(db, "Check Fixture");
-    up113(db);
     expect(() =>
       db
         .prepare(
           `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'provider', '12')`
         )
-        .run(p)
+        .run(check)
     ).toThrow();
     db.close();
   });
