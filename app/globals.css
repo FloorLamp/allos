@@ -345,12 +345,11 @@
    PINS under it. Every sticky strip parking against the phone's top edge carries
    the inset itself, through the one utility below.
 
-   ONCE AS AN OFFSET, not once in the tree, and the difference is the point:
-   `env(safe-area-inset-top)` still appears nine more times, every one of them a
-   DIFFERENT composition — five `scroll-mt-[calc(Nrem+…)]` scroll-margins under
-   app/(app)/training/, and four `max(…, env(…))` floors on overlay and notice
-   gutters. A floor and a scroll-margin are not a park offset; folding them in here
-   would be a convergence of things that are not the same thing.
+   ONCE AS AN OFFSET, not once in the tree. The same top inset is read nine more
+   times and every one is a DIFFERENT composition: five scroll-MARGINS under
+   app/(app)/training/, four max() FLOORS on overlay and notice gutters. Neither is
+   a park offset, so folding them in here would converge things that are not the
+   same thing. (Spelled in prose on purpose — Tailwind's scanner reads comments.)
 
    `--top-edge-offset` is how much of that edge a strip ABOVE has already claimed —
    the mirror of `--bottom-edge-offset` in components/overlay/tokens.ts, and the
