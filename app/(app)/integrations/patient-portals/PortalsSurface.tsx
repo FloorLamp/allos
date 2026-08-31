@@ -856,7 +856,12 @@ export default function PortalsSurface({
                   className="flex flex-wrap justify-between gap-x-3 text-xs text-slate-500 dark:text-slate-400"
                 >
                   <span data-testid="portal-run-outcome">{run.outcome}</span>
-                  <SyncTimestamp value={run.at} relativeOnly />
+                  {/* THE surface that owns these runs (#4419 rule 1): a portal login's
+                      run history is the terminal detail view — nothing below it, nothing
+                      to drill into — so the absolute stamp is printed here rather than
+                      disclosed per row. Every other caller of this component renders
+                      relative-only precisely because a surface like this one exists. */}
+                  <SyncTimestamp value={run.at} />
                 </li>
               ))}
             </ol>

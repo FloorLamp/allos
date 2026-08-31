@@ -26,7 +26,9 @@ export default function SyncTimestamp({
 }: {
   value: string;
   className?: string;
-  // Dense rows show the relative half and disclose the absolute time on demand.
+  // Dense rows show the relative half and NOTHING else (#4419 rule 1): every caller
+  // passing this sits on — or links straight to — the integration's status/detail
+  // surface, which is where the absolute stamp lives.
   relativeOnly?: boolean;
   // Day-grouped ledgers already establish the calendar date in their header. Their
   // aligned TIME column shows the reader's clock and discloses the full absolute stamp.
@@ -66,7 +68,13 @@ export default function SyncTimestamp({
         <time dateTime={machine} suppressHydrationWarning>
           {clockOnly ? clock : relative}
         </time>
-        <InfoTooltipIcon label={absolute} />
+        {/* ONE PLACEMENT RULE FOR THE ABSOLUTE STAMP (#4419 rule 1). A ledger's TIME
+            column shows a clock with no date — its day header carries that — so this
+            surface's own full stamp is the disclosure, and it stays. A RELATIVE label
+            is a different case: the stamp it would disclose is already printed on the
+            status/detail surface the row sits on or links to, so a second copy per row
+            is the multiplied 34px button #3970 exists to remove, not a home. */}
+        {clockOnly ? <InfoTooltipIcon label={absolute} /> : null}
       </span>
     );
   }

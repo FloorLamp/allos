@@ -108,21 +108,20 @@ function staleBadge() {
 }
 
 // A small slate badge marking a read-time DERIVED index (issue #40) — computed
-// from other readings, not measured. The touch/keyboard info affordance keeps the
-// formula (with its component values) inspectable.
-function derivedBadge(formula?: string) {
-  const detail = formula
-    ? `Derived: ${formula}`
-    : "Computed from other readings";
+// from other readings, not measured.
+//
+// The badge is the WORD; the FORMULA is a per-row fact and lives at the row's detail
+// home (#4419 ruling 3), which every derived row links to — a derived record always
+// carries a canonical_name (lib/queries/derived.ts sets it from the index's own name),
+// so `nameCell` below always renders the link. The row still prints the formula in its
+// own Formula cell either way.
+function derivedBadge() {
   return (
-    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
-      <span
-        data-testid="derived-badge"
-        className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-      >
-        Derived
-      </span>
-      <InfoTooltipIcon label={detail} data-testid="clinical-derived-help" />
+    <span
+      data-testid="derived-badge"
+      className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+    >
+      Derived
     </span>
   );
 }
@@ -136,10 +135,9 @@ function nameCell(r: {
   canonical_name: string | null;
   stale?: boolean;
   derived?: boolean;
-  derived_formula?: string;
 }) {
   const stale = r.stale ? staleBadge() : null;
-  const derived = r.derived ? derivedBadge(r.derived_formula) : null;
+  const derived = r.derived ? derivedBadge() : null;
   if (!r.canonical_name)
     return (
       <span>
@@ -176,8 +174,7 @@ function dateCell(
   r: { date: string; category: string | null },
   now: string,
   showAge: boolean,
-  prefs: DisplayFormatPrefs,
-  reportedPanelDetail?: string
+  prefs: DisplayFormatPrefs
 ) {
   const line = readingDateLine(r, now, showAge, prefs);
   return (
@@ -197,21 +194,8 @@ function dateCell(
           </span>
         </>
       ) : null}
-      {reportedPanelDetail ? (
-        <InfoTooltipIcon
-          label={reportedPanelDetail}
-          data-testid="clinical-reported-panel-help"
-        />
-      ) : null}
     </span>
   );
-}
-
-function reportedPanelDisclosureLabel(
-  observation: ClinicalResultTableObservation,
-  reported: string
-) {
-  return `Reported under “${reported}” — ${tableNameKey(observation)}, ${observation.date}`;
 }
 
 // The Panel cell (#1502). It shows the NORMALIZED clinical panel resolved from the
@@ -219,8 +203,9 @@ function reportedPanelDisclosureLabel(
 // stable SLUG, replacing the old cell that printed and filtered by the stored
 // free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
 //
-// The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
-// through the row date's shared disclosure on a resolved row ("Reported under …"), and
+// The stored `panel` column is untouched PROVENANCE and still surfaces two ways: as a
+// "Reported under" column on the reading's detail page (#4419 ruling 3 — a per-row fact
+// belongs at the row's detail home, not behind a button on every row of a group), and
 // as the visible text for a row the taxonomy can't place — an un-canonicalized analyte the
 // extractor coined, where the document's own heading is the best label we have.
 // That fallback row is deliberately NOT a filter link: "everything drawn at
@@ -379,10 +364,6 @@ function ClinicalResultRow({
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
-  const reportedPanelAlias =
-    !r.derived && tablePanelId(r) !== OTHER_PANEL
-      ? r.panel?.trim() || null
-      : null;
   // The leading subject cell (multi-view only), rendered first in every row. On a
   // card it's the first meta item — the chip IS its own label (#534), so no
   // "Profile" prefix — and it drops out entirely on an acting-profile row.
@@ -544,15 +525,7 @@ function ClinicalResultRow({
         </Link>
       </Td>
       <Td slot="meta" label="Date">
-        {dateCell(
-          r,
-          now,
-          !!r.is_latest,
-          prefs,
-          reportedPanelAlias
-            ? reportedPanelDisclosureLabel(r, reportedPanelAlias)
-            : undefined
-        )}
+        {dateCell(r, now, !!r.is_latest, prefs)}
       </Td>
       <Td slot="actions">
         {/* The menu renders whenever it has at least one item (#2316). It used to be
