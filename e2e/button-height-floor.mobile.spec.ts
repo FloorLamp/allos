@@ -137,7 +137,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       { kind: "typed field", testId: "m-time", repairable: false },
     ],
   },
-  // THE QUICK-LOG SHEET'S TWO "Happened earlier?" DISCLOSURES (#3273). They are
+  // THE STOOL SHEET'S "Happened earlier?" DISCLOSURE (#3273). It is
   // `btn-ghost btn-sm` and carry no `.tap-target`, so the `/nutrition` sweep further
   // down is structurally unable to see them and no other entry here names them — two
   // new phone controls outside the standing census is the gap #3938 exists to close.
@@ -150,17 +150,6 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       {
         kind: "btn-ghost disclosure",
         testId: "stool-when-toggle",
-        repairable: true,
-      },
-    ],
-  },
-  {
-    route: "/?quick=log-practice",
-    ready: "quick-entry-practice-list",
-    surfaces: [
-      {
-        kind: "btn-ghost disclosure",
-        testId: "practice-when-toggle",
         repairable: true,
       },
     ],

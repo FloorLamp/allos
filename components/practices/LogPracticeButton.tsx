@@ -14,7 +14,6 @@ import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import {
@@ -66,7 +65,6 @@ export default function LogPracticeButton({
   liveSession = null,
   showDetails = false,
   inlineDuration = false,
-  inlineWhen = false,
   lastLoggedTime = null,
   usualSessionDay = false,
   compact = false,
@@ -104,15 +102,6 @@ export default function LogPracticeButton({
   // and any future condition on the stepper's visibility belongs there rather than in
   // the JSX, or the two drift and a value nobody saw gets logged.
   inlineDuration?: boolean;
-  // Render the collapsed "Happened earlier?" statement beside the tap (#3273). On for
-  // the quick-log sheet, which deliberately does NOT mount `showDetails` — stacking a
-  // modal over a one-tap sheet is not what that surface is for — and therefore had no
-  // way to say a session happened at 07:00 when it is tapped at 09:00.
-  //
-  // Same gate discipline as `stepperShown` below and for the same reason: `when` is
-  // component state, so the tap may only post a time where the control the user could
-  // have touched is actually on screen.
-  inlineWhen?: boolean;
   // The local HH:MM of today's most recent session, when the surface knows it. The
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
   // the count still asks an honest question rather than inventing a time.
@@ -167,8 +156,6 @@ export default function LogPracticeButton({
     setCount(todayCount);
     setLastTime(lastLoggedTime);
   }
-  const [whenOpen, setWhenOpen] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
@@ -190,17 +177,6 @@ export default function LogPracticeButton({
   // follow it. Adding it to the JSX alone would leave the tap posting a value that is
   // no longer on screen, which is precisely the failure the constraint names.
   const stepperShown = inlineDuration;
-  // The same ONE expression for the when-control: read by its render and by the tap's
-  // write, so a value nobody saw can never be posted.
-  const whenShown = inlineWhen;
-  // Follow `today` for the same reason `count` and `duration` do: the sheet's props
-  // are gathered on open, and a page left across local midnight would otherwise anchor
-  // a statement on a day the server no longer files taps under.
-  const [whenDay, setWhenDay] = useState(today);
-  if (whenDay !== today) {
-    setWhenDay(today);
-    setWhen({ date: today, statedAt: null });
-  }
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
   // non-numeric input reads as blank rather than NaN.
@@ -312,17 +288,6 @@ export default function LogPracticeButton({
       },
       settle: (outcome) => {
         report(outcome);
-        // A STATEMENT IS SPENT BY THE TAP IT ANSWERS: multi-session days are the
-        // point here, and a surviving 07:00 would quietly stamp the evening's sauna
-        // with the morning's time.
-        //
-        // A PLAIN RESET IS ENOUGH HERE, and the reason is one surface over: the stool
-        // picker scopes its reset to the statement the tap consumed, because its
-        // control stays live through the write and a statement can genuinely arrive
-        // mid-flight. This one hands `disabled` to the control while the tap is
-        // pending, so there is no window to defend and a scoped reset would be a
-        // guard for a state the UI cannot reach.
-        if (outcome.kind === "logged") setWhen({ date: today, statedAt: null });
         // A refused log (a forged date, a stale target) wrote nothing, so the tap
         // stays immediately retryable instead of cooling down.
         return outcome.kind === "logged"
@@ -552,39 +517,6 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {/* The collapsed WHEN (#3273): the sheet's one-tap row could not state an
-          earlier session at all, because the time it needs lives in the details modal
-          this surface deliberately does not mount. Absolute local times through the
-          shared control, with the day fixed to `today` — a past DAY is what the
-          details form and the history table are for. */}
-      {whenShown ? (
-        <div className="w-full">
-          <button
-            type="button"
-            data-testid="practice-when-toggle"
-            aria-expanded={whenOpen}
-            onClick={() => setWhenOpen((open) => !open)}
-            className="btn-ghost btn-sm"
-          >
-            Happened earlier?
-          </button>
-          {whenOpen ? (
-            <div className="mt-2">
-              <WhenControl
-                mode="state"
-                grain="minute"
-                value={when}
-                onChange={setWhen}
-                minDate={today}
-                maxDate={today}
-                timeLabel={`Time of this ${practice} session`}
-                disabled={pending || ledger.pending()}
-                testId="practice-when"
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}

@@ -7,7 +7,6 @@ import {
   openMeasurementGroup,
   openMobileDrawer,
   settledClick,
-  settledFill,
   stageMediaFiles,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -107,19 +106,25 @@ function shellProfileId(): number {
 // The single practice row this spec's tap wrote, for the #2204 assertions that are
 // about the STORE rather than about the screen.
 function readShellPracticeLog(): {
+  date: string;
   start_time: string | null;
+  end_time: string | null;
   duration_min: number | null;
+  live: number;
 } {
   const db = openDb();
   try {
     return db
       .prepare(
-        `SELECT start_time, duration_min FROM practice_logs
+        `SELECT date, start_time, end_time, duration_min, live FROM practice_logs
           WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
       )
       .get(shellProfileId()) as {
+      date: string;
       start_time: string | null;
+      end_time: string | null;
       duration_min: number | null;
+      live: number;
     };
   } finally {
     db.close();
@@ -1088,42 +1093,10 @@ test("switching profiles clears the originating food receipt and cannot target i
   }
 });
 
-// Tap "Log another" through the same-day re-log confirm the sheet asks on every tap
-// after the first (#2007 layer 3 / #798: informational, never permissive).
-async function logAnother(page: Page, row: Locator): Promise<void> {
-  await hydratedClick(page, row.getByTestId("practice-log-button"));
-  const dialog = page.getByTestId("confirm-dialog");
-  await expect(dialog).toBeVisible();
-  await settledClick(page, dialog.getByRole("button", { name: "Log session" }));
-}
-
-// CLEAR THE ONE-TAP COOLDOWN BETWEEN TWO TAPS OF THE SAME WRITE KEY (#2007), the
-// idiom every neighbour that does this already uses (food-limit-note.spec.ts,
-// substance-use.spec.ts, wellness-practices.spec.ts): a reload drops the client-side
-// ledger, without which the next tap is absorbed as an accidental double and reaches
-// neither the confirm nor the server.
-//
-// IT USED TO BE PROVIDED BY A BUG, which is why this arrives with #4334. Measured on
-// this test at 390x844: the second tap fires ~210ms after the first, well inside the
-// 2s window — and passed anyway, because the "Logged today's session" notice came to
-// rest ON the log button (notice band 709-771, button centre y=712, and
-// `document.elementFromPoint` at that centre returning the toast), so Playwright spent
-// the cooldown waiting for the interception to clear. Now that the sheet claims the
-// bottom edge the notice is out of the way, the tap lands at once, and the wait this
-// test always depended on has to be asked for out loud.
-async function reopenPastCooldown(page: Page): Promise<Locator> {
-  await page.reload();
-  return openQuickEntry(page, "log-practice");
-}
-
-// #3273 — the sheet can now STATE when a session happened.
-//
-// The gap this closes: the sheet mounts LogPracticeButton without `showDetails` (a
-// modal over a one-tap sheet is not what that surface is for), and the time lived only
-// in that modal — so a 07:00 sauna logged at 09:00 wore 09:00 forever and #4009's
-// correction had to repair it. The property that matters is the PAIR: a stated minute
-// is what the row carries, and an untouched sheet still writes the tap instant.
-test("the sheet states an earlier session time, and an untouched tap still writes the tap instant (#3273)", async ({
+// Both quick intents live in the same sheet row. The running half is server-rendered
+// again after navigation, and the day chart distinguishes the live block from the
+// finished minute-rounded window.
+test("the sheet starts and ends a live practice, then draws its exact tap window (#3143)", async ({
   browser,
 }) => {
   clearShellPracticeLogs();
@@ -1131,7 +1104,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
   const page = await signIn(browser);
   try {
     await page.goto("/");
-    const opened = await openQuickEntry(page, "log-practice");
+    let opened = await openQuickEntry(page, "log-practice");
     const rowIn = (sheet: Locator) =>
       sheet
         .getByTestId("quick-entry-practice-list")
@@ -1139,65 +1112,52 @@ test("the sheet states an earlier session time, and an untouched tap still write
         .filter({ hasText: SHELL_PRACTICE });
     let row = rowIn(opened);
     await expect(row).toBeVisible();
-
-    // COLLAPSED and empty: the fast path is one tap and nothing is stated until the
-    // affordance is opened, so the control is not even in the DOM.
-    await expect(row.getByTestId("practice-when-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    );
-    await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
-
-    // Leg 1 — the untouched tap. It must write what it wrote before this control
-    // existed: the tap instant's profile-local wall minute, off the app's clock seam.
-    await settledClick(page, row.getByTestId("practice-log-button"));
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "1 session logged"
-    );
-    expect(readShellPracticeLog().start_time).toBe(
-      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
+    await expect(row.getByTestId("practice-start-button")).toBeVisible();
+    await expect(row.getByTestId("practice-log-button")).toContainText(
+      "Just finished"
     );
 
-    row = rowIn(await reopenPastCooldown(page));
-    await expect(row).toBeVisible();
-    let toggle = row.getByTestId("practice-when-toggle");
+    const tapMinute = zonedDateParts(PINNED_TZ, frozenNow()).hhmm;
+    await settledClick(page, row.getByTestId("practice-start-button"));
+    await expect(page.getByTestId("toast")).toContainText("Session started");
+    await expect(row.getByTestId("practice-end-button")).toBeVisible();
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: tapMinute,
+      end_time: null,
+      duration_min: null,
+      live: 1,
+    });
 
-    // Leg 2 — the statement. Absolute local time, on the day the sheet is filing to;
-    // the day half is fixed, so a statement can only move the minute.
-    await hydratedClick(page, toggle);
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
-    await settledFill(page, row.getByTestId("practice-when-time"), "07:05");
-    // A second same-day tap ASKS (#2007 layer 3) — a genuine second session is
-    // legitimate, so the dialog's default is to proceed.
-    await logAnother(page, row);
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "2 sessions logged"
+    const day = readShellPracticeLog().date;
+    await page.goto(`/history?day=${day}`);
+    let chart = page
+      .getByTestId("intraday-panel")
+      .locator('[data-variant="compact"]');
+    await expect(chart.getByTestId("intraday-block")).toHaveAttribute(
+      "data-running",
+      "true"
     );
-    expect(readShellPracticeLog().start_time).toBe("07:05");
 
-    // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. Multi-session days are the point
-    // of this surface, so a surviving 07:05 would stamp the evening's session with the
-    // morning's time — the field empties IN FRONT OF THE USER, which is what this
-    // reads on the live surface before anything is remounted.
-    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
+    await page.goto("/");
+    opened = await openQuickEntry(page, "log-practice");
+    row = rowIn(opened);
+    await expect(row.getByTestId("practice-end-button")).toBeVisible();
+    await settledClick(page, row.getByTestId("practice-end-button"));
+    await expect(page.getByTestId("toast")).toContainText("Session finished");
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: tapMinute,
+      end_time: tapMinute,
+      duration_min: 1,
+      live: 0,
+    });
 
-    // Leg 3 — and the OTHER half of that claim: an open-but-empty when panel posts no
-    // time at all, so the next session carries the tap instant. The panel is opened
-    // again after the cooldown clear so this still runs the `whenShown` branch rather
-    // than the collapsed one leg 1 already covers.
-    row = rowIn(await reopenPastCooldown(page));
-    toggle = row.getByTestId("practice-when-toggle");
-    await hydratedClick(page, toggle);
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
-    await logAnother(page, row);
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "3 sessions logged"
-    );
-    expect(readShellPracticeLog().start_time).toBe(
-      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
-    );
+    await page.goto(`/history?day=${day}`);
+    chart = page
+      .getByTestId("intraday-panel")
+      .locator('[data-variant="compact"]');
+    const finished = chart.getByTestId("intraday-block");
+    await expect(finished).toHaveAttribute("data-title", SHELL_PRACTICE);
+    await expect(finished).not.toHaveAttribute("data-running", "true");
   } finally {
     clearShellPracticeLogs();
     await page.close();
