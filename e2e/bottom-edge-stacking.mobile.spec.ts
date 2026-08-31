@@ -316,9 +316,15 @@ for (const { rows, why } of CLAIM_HEIGHTS) {
     await expect(toast).toBeVisible();
     await expectStackedAbove(toast, panel);
 
-    // …so the control still owns its own centre, and three quick taps all land.
+    // …so the control still owns its own centre, and three more taps all land.
+    // SEQUENTIAL, not a `Promise.all` burst: what makes a tap land is the HIT
+    // TEST, not the interval between taps, and Playwright refuses a click whose
+    // point another element intercepts — so a notice resting on this control fails
+    // here rather than being timed around.
     expect(await testIdAtCentre(raise)).toBe("fixture-raise-notice");
-    await Promise.all([raise.click(), raise.click(), raise.click()]);
+    await raise.click();
+    await raise.click();
+    await raise.click();
     await expect(page.getByTestId("fixture-notice-count")).toHaveText("4");
     expect(await testIdAtCentre(raise)).toBe("fixture-raise-notice");
   });

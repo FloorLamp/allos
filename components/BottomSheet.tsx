@@ -253,14 +253,7 @@ export default function BottomSheet({
   //
   // The HANDLE gates it, so the claim is live exactly while the panel is
   // bottom-anchored: see useBottomEdgeClaim's `gateRef`.
-  const claimRef = useBottomEdgeClaim<HTMLDivElement>(handleRef);
-  const setPanel = useCallback(
-    (node: HTMLDivElement | null) => {
-      panelRef.current = node;
-      claimRef(node);
-    },
-    [panelRef, claimRef]
-  );
+  useBottomEdgeClaim(panelRef, { gate: handleRef, mounted });
   // Stop trapping focus / answering Escape the moment the exit starts, so a
   // closing sheet can't swallow the next Escape or steal focus back.
   // Scrim tap, flick and ESCAPE share ONE exit (#3420), so a consumer that guards
@@ -433,7 +426,7 @@ export default function BottomSheet({
         data-testid={`${testId}-backdrop`}
       />
       <div
-        ref={setPanel}
+        ref={panelRef}
         data-sheet-panel
         role="dialog"
         aria-modal="true"
