@@ -204,11 +204,15 @@ export const progressCandidates = {
     );
   },
   healthspan(ctx: DomainCandidateContext, key: string) {
+    // ONE MOMENT, NOT N ATOMS (#4232). The pillars stopped claiming a Standing seat,
+    // so the family label that used to head them is gone with the band — the shared
+    // `groupKey` is what folds them back into one block under one header in the tail,
+    // exactly as #3365's grammar already does for same-origin atoms.
     return reading(
       ctx,
       `healthspan.pillar:${key}`,
       `healthspan.pillar:${key}`,
-      null
+      "healthspan.pillars"
     );
   },
   recap(ctx: DomainCandidateContext, key: string, start: string, end: string) {

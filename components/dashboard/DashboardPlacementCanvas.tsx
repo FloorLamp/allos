@@ -299,7 +299,12 @@ export default function DashboardPlacementCanvas({
           className="group"
           testId="dashboard-all"
           summary={
-            <summary className="mb-3 cursor-pointer list-none text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100">
+            // THE ONLY FOLD CONTROL ON THE PAGE (#4232), so it carries the phone
+            // tap floor the retired Quiet summary carried. Merging the two folds
+            // moved every dormant line, quiet pillar, quiet result and out-ranked
+            // setup row behind THIS control; at its inherited 28px it was the one
+            // tap standing between a phone reader and all of them.
+            <summary className="mb-3 flex min-h-11 cursor-pointer list-none items-center text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100">
               <span
                 aria-hidden
                 className="mr-2 inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none"

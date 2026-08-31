@@ -11,7 +11,7 @@
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import { primaryReason } from "../reasons";
 import type { AppRoute } from "../hrefs";
-import { formatMessageLine } from "./message-line";
+import { formatMessageLine, messageLineQualifiers } from "./message-line";
 import { GLYPH } from "./glyphs";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
@@ -323,6 +323,63 @@ function namedLine(domain: UpcomingDomain): NamedLineDomain | undefined {
   return NAMED_LINE_DOMAINS[domain];
 }
 
+// ONE ITEM'S NAMED-LINE PARTS, produced once for every surface that draws them
+// (#1685/#1757, shared out by #4319). The cause is the producer's own `because`
+// fragment, never the card's supporting sentence; the deadline is carried only by the
+// domains that declare one, because a broken integration's `dueText` is a CTA label
+// and printing it as a deadline would invent one. `null` for a domain that has no
+// named line at all.
+export function namedLineParts(item: UpcomingItem): {
+  glyph: string;
+  because: string | null;
+  dueText: string | null;
+} | null {
+  const named = namedLine(item.domain);
+  if (!named) return null;
+  return {
+    glyph: named.glyph,
+    because: item.because ?? null,
+    dueText: named.carriesDeadline ? (item.dueText ?? null) : null,
+  };
+}
+
+// THE SAME FRAGMENTS, ON A DASHBOARD ROW (#4319). Ahead stated only WHEN a thing was
+// due and deferred the why one tap to /upcoming — owner ruling: "it's one tap away to
+// a page that I never use." The qualifiers a row states are produced HERE, from the
+// same pieces the digest reads, so the two surfaces cannot phrase one fact two ways
+// (#221 — one computation).
+//
+// A NAMED-LINE item's qualifiers ARE the digest line's, in the digest's own order:
+// cause, then the deadline its domain declares. That is what "phrased identically to
+// the digest" means, and it is why this returns the parts through the shared
+// `messageLineQualifiers` rather than joining them here.
+//
+// EVERY OTHER item states its SCHEDULE FIRST and appends its structured reason (#656)
+// after it: Ahead remains a schedule, so the reason is a note on the date rather than
+// a replacement for it (owner ruling). An item carrying no reason yields exactly
+// `[dueText]` — the row it already rendered — and a named-line item that states no
+// cause and no deadline keeps its schedule too, so no row loses what it said.
+export function upcomingRowQualifiers(
+  item: UpcomingItem,
+  dueText: string
+): string[] {
+  const named = namedLineParts(item);
+  if (named) {
+    const parts = messageLineQualifiers<string>({
+      head: item.title,
+      because: named.because,
+      deadline: named.dueText,
+    });
+    return parts.length > 0 ? [...parts] : [dueText];
+  }
+  return [
+    ...messageLineQualifiers<string>({
+      head: item.title,
+      notes: [dueText, primaryReason(item.reasons)?.text],
+    }),
+  ];
+}
+
 // The banded set's named data-plumbing items, in band order (#1685/#1757). Reads the
 // items straight off the model — title, cause and href as the shared builder already
 // decided them — so the digest can never word a broken sync, or a portal request,
@@ -331,18 +388,9 @@ export function digestSyncIssues(groups: BandGroup[]): DigestSyncIssue[] {
   const out: DigestSyncIssue[] = [];
   for (const g of groups) {
     for (const item of g.items) {
-      const named = namedLine(item.domain);
+      const named = namedLineParts(item);
       if (!named) continue;
-      out.push({
-        title: item.title,
-        glyph: named.glyph,
-        // The producer's own fragment, never the page's `detail` (#1913 item 6). A
-        // producer that writes none renders a bare title rather than borrowing a
-        // sentence that was written for a card.
-        because: item.because ?? null,
-        dueText: named.carriesDeadline ? (item.dueText ?? null) : null,
-        href: item.href,
-      });
+      out.push({ title: item.title, ...named, href: item.href });
     }
   }
   return out;
