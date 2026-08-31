@@ -319,6 +319,10 @@ test.describe("the record's month calendar clears the floor on a phone (#3377/#3
       } else {
         expect(
           column,
+          `the ruled ${column.toFixed(1)}px exception stays bounded at ${width}px`
+        ).toBeGreaterThan(38);
+        expect(
+          column,
           `a ${width}px viewport is the case that cannot pay the inline floor — ` +
             "if this stops being true the comment above it is stale"
         ).toBeLessThan(TAP_FLOOR_PX);
