@@ -159,7 +159,7 @@ async function queuedIntentCount(page: Page): Promise<number> {
 // fields in the DOM (they still post), so a fill has to open the group first.
 async function openMeasurementGroup(
   page: Page,
-  group: "body" | "vitals"
+  group: "body" | "vitals" | "sleep"
 ): Promise<void> {
   const toggle = page.getByTestId(`measurements-group-${group}-toggle`);
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
@@ -331,11 +331,22 @@ test("a measurements save whose vitals half is refused says which half it kept",
   await expect(form).toBeVisible();
   await openMeasurementGroup(page, "body");
   await openMeasurementGroup(page, "vitals");
+  await openMeasurementGroup(page, "sleep");
 
   await context.setOffline(true);
   await form.getByLabel("Weight", { exact: true }).fill("81.4");
-  await form.getByLabel("Systolic", { exact: true }).fill("118");
-  await form.getByLabel("Diastolic", { exact: true }).fill("76");
+  await form.getByLabel("Body Fat", { exact: true }).fill("22.5");
+  await form.getByLabel("Resting Heart Rate", { exact: true }).fill("61");
+  await form.getByLabel("Notes", { exact: true }).fill("after breakfast");
+  const refusedVitals =
+    "systolic=118 diastolic=76 glucose=5.6 spo2=98 temperature=98.6 sleep_hours=7.5 bed_time=22:30 wake_time=06:30 hrv=42 respiratory_rate=14 peak_flow=450"
+      .split(" ")
+      .map((pair) => pair.split("=") as [string, string]);
+  for (const [name, value] of refusedVitals) {
+    await form.locator(`[name="${name}"]`).fill(value);
+  }
+  await form.getByLabel("Glucose unit").selectOption("mmol/L");
+  await form.getByTestId("m-time").fill("08:15");
   await form.getByRole("button", { name: "Save measurements" }).click();
 
   // The sentence states the partial truth, and the shared one — which would be a lie
@@ -352,6 +363,21 @@ test("a measurements save whose vitals half is refused says which half it kept",
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
+
+  // The form must agree with the partial sentence too: the body half is already
+  // durable in the queue, so retaining it would let a retry enqueue a second
+  // uuid-keyed weigh-in. Only the refused vitals remain for the next save.
+  await expect(form.getByLabel("Weight", { exact: true })).toHaveValue("");
+  await expect(form.getByLabel("Body Fat", { exact: true })).toHaveValue("");
+  await expect(
+    form.getByLabel("Resting Heart Rate", { exact: true })
+  ).toHaveValue("");
+  await expect(form.getByLabel("Notes", { exact: true })).toHaveValue("");
+  for (const [name, value] of refusedVitals) {
+    await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
+  }
+  await expect(form.getByLabel("Glucose unit")).toHaveValue("mmol/L");
+  await expect(form.getByTestId("m-time")).toHaveValue("08:15");
 
   // RECONNECTING WITH THE REPLAY ROUTE SHUT, which is not fussiness in either
   // direction. Every other test here can go online freely because it refused BOTH
