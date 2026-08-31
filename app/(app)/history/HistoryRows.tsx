@@ -843,21 +843,24 @@ export default function HistoryRows({
                      control and one cue, and a row can never show both verbs. */
                   <DestinationLink
                     href={row.href}
-                    className="inline-flex shrink-0 items-center text-link"
+                    className="inline-flex min-w-0 items-center text-link"
                     data-testid="history-row-title"
                   >
-                    {row.title}
+                    <span className="min-w-0 truncate">{row.title}</span>
                   </DestinationLink>
                 ) : row.href ? (
                   <Link
                     href={row.href}
-                    className="shrink-0 text-link"
+                    className="min-w-0 truncate text-link"
                     data-testid="history-row-title"
                   >
                     {row.title}
                   </Link>
                 ) : (
-                  <span className="shrink-0" data-testid="history-row-title">
+                  <span
+                    className="min-w-0 truncate"
+                    data-testid="history-row-title"
+                  >
                     {row.title}
                   </span>
                 )}
