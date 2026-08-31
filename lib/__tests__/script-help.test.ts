@@ -20,7 +20,6 @@ import { describe, it, expect } from "vitest";
 // proves the guard fired first.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const TSX = path.join(REPO, "node_modules/.bin/tsx");
 const HELP_RUNS = new Map<string, SpawnSyncReturns<string>>();
 
 const ENTRY_SCRIPTS = [
@@ -51,12 +50,12 @@ function runHelp(rel: string) {
   const cached = HELP_RUNS.get(rel);
   if (cached) return cached;
   const abs = path.join(REPO, rel);
-  const cmd = rel.endsWith(".sh")
-    ? "bash"
+  const [cmd, args] = rel.endsWith(".sh")
+    ? ["bash", [abs, "--help"]]
     : rel.endsWith(".ts")
-      ? TSX
-      : process.execPath;
-  const run = spawnSync(cmd, [abs, "--help"], {
+      ? [process.execPath, ["--import", "tsx", abs, "--help"]]
+      : [process.execPath, [abs, "--help"]];
+  const run = spawnSync(cmd, args, {
     cwd: REPO,
     encoding: "utf8",
     timeout: 30_000,
