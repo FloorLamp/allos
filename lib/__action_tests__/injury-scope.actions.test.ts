@@ -72,6 +72,18 @@ describe("the declared precision round-trips (#2024)", () => {
     expect(v.kind).toBe("tempered");
     expect(v.factor).toBe(0.8);
     expect(v.fallback).toBe(false);
+
+    const statusForm = new FormData();
+    statusForm.set("id", String(row.id));
+    statusForm.set("status", "active");
+    expect((await setInjuryStatus(statusForm)).ok).toBe(true);
+
+    const [afterStatus] = getInjuries(profile.id);
+    expect(afterStatus.status).toBe("active");
+    expect(afterStatus.loadFactor).toBeNull();
+    expect(afterStatus.laterality).toBe("left");
+    expect(afterStatus.movements).toEqual(["legs"]);
+    expect(afterStatus.reviewDate).toBe("2026-10-01");
   });
 
   it("normalizes a raw exercise label to its canonical identity", async () => {
@@ -106,90 +118,50 @@ describe("the declared precision round-trips (#2024)", () => {
 });
 
 describe("boundary validation refuses bad input rather than storing it", () => {
-  it("drops an unknown side and an unknown movement pattern", async () => {
+  it("drops invalid enums, load preferences, dates, and status-inapplicable load", async () => {
     const { profile } = seedActor();
     await logInjury(
       injuryForm(
-        { label: "knee", laterality: "sideways" },
+        { label: "invalid enums", laterality: "sideways" },
         {
           regions: ["Legs"],
           movements: ["legs", "levitate"],
         }
       )
     );
-    const [row] = getInjuries(profile.id);
-    expect(row.laterality).toBeNull();
-    expect(row.movements).toEqual(["legs"]);
-  });
-
-  it("refuses an out-of-range load preference instead of clamping it", async () => {
-    const { profile } = seedActor();
     await logInjury(
       injuryForm(
-        { label: "knee", status: "recovering", loadFactor: "9" },
+        { label: "invalid factor", status: "recovering", loadFactor: "9" },
         { regions: ["Legs"] }
       )
     );
-    const [row] = getInjuries(profile.id);
-    // Null ⇒ the app's disclosed fallback applies; nothing silently became 100%.
-    expect(row.loadFactor).toBeNull();
-  });
-
-  it("drops a malformed review date", async () => {
-    const { profile } = seedActor();
     await logInjury(
       injuryForm(
-        { label: "knee", reviewDate: "next tuesday" },
+        { label: "invalid date", reviewDate: "next tuesday" },
         {
           regions: ["Legs"],
         }
       )
     );
-    expect(getInjuries(profile.id)[0].reviewDate).toBeNull();
-  });
-
-  it("keeps a load preference only while recovering", async () => {
-    const { profile } = seedActor();
     await logInjury(
       injuryForm(
-        { label: "knee", status: "active", loadFactor: "0.5" },
+        { label: "active factor", status: "active", loadFactor: "0.5" },
         { regions: ["Legs"] }
       )
     );
-    expect(getInjuries(profile.id)[0].loadFactor).toBeNull();
+
+    const byLabel = new Map(
+      getInjuries(profile.id).map((injury) => [injury.label, injury])
+    );
+    expect(byLabel.get("invalid enums")?.laterality).toBeNull();
+    expect(byLabel.get("invalid enums")?.movements).toEqual(["legs"]);
+    expect(byLabel.get("invalid factor")?.loadFactor).toBeNull();
+    expect(byLabel.get("invalid date")?.reviewDate).toBeNull();
+    expect(byLabel.get("active factor")?.loadFactor).toBeNull();
   });
 });
 
 describe("status changes never rewrite what the user declared", () => {
-  it("leaving recovering clears the load preference and keeps everything else", async () => {
-    const { profile } = seedActor();
-    await logInjury(
-      injuryForm(
-        {
-          label: "left knee",
-          status: "recovering",
-          laterality: "left",
-          loadFactor: "0.5",
-          reviewDate: "2026-10-01",
-        },
-        { regions: ["Legs"], movements: ["legs"] }
-      )
-    );
-    const id = getInjuries(profile.id)[0].id;
-
-    const form = new FormData();
-    form.set("id", String(id));
-    form.set("status", "active");
-    expect((await setInjuryStatus(form)).ok).toBe(true);
-
-    const [row] = getInjuries(profile.id);
-    expect(row.status).toBe("active");
-    expect(row.loadFactor).toBeNull(); // only meaningful while recovering
-    expect(row.laterality).toBe("left"); // untouched
-    expect(row.movements).toEqual(["legs"]); // untouched
-    expect(row.reviewDate).toBe("2026-10-01"); // untouched
-  });
-
   it("an edit can widen a constraint back to its region", async () => {
     const { profile } = seedActor();
     await logInjury(
@@ -234,8 +206,13 @@ describe("correcting a constraint after it is understood (#2297)", () => {
     const { profile } = seedActor();
     await logInjury(
       injuryForm(
-        { label: "shoulder", status: "active", since: "2026-07-01" },
-        { regions: ["Chest", "Shoulders"] }
+        {
+          label: "shoulder",
+          status: "active",
+          since: "2026-07-01",
+          notes: "sore on pressing",
+        },
+        { regions: ["Chest", "Shoulders"], muscles: ["delts"] }
       )
     );
     return { profileId: profile.id, id: getInjuries(profile.id)[0].id };
@@ -263,40 +240,13 @@ describe("correcting a constraint after it is understood (#2297)", () => {
       "excluded"
     );
     expect(exerciseInjuryVerdict(constraints, "Cable Fly").kind).toBe("clear");
-  });
-
-  it("keeps the start date, the status, the notes and the fine muscles it never mentions", async () => {
-    const { profile } = seedActor();
-    await logInjury(
-      injuryForm(
-        {
-          label: "left knee",
-          status: "recovering",
-          since: "2026-06-15",
-          notes: "tweaked it on a run",
-          loadFactor: "0.5",
-        },
-        { regions: ["Legs"], muscles: ["quads"] }
-      )
-    );
-    const before = getInjuries(profile.id)[0];
-
-    // The form submits ONLY the declaration it edits (#2359) — no status, no since,
-    // no notes, no muscles. Before the partial this would have cleared all four.
-    await updateInjury(
-      injuryForm(
-        { id: String(before.id), label: "left knee", loadFactor: "0.5" },
-        { regions: ["Legs"], movements: ["legs"] }
-      )
-    );
-
-    const after = getInjuries(profile.id)[0];
-    expect(after.since).toBe("2026-06-15"); // history, not a correction
-    expect(after.status).toBe("recovering"); // the chip's buttons own this
-    expect(after.notes).toBe("tweaked it on a run"); // no control for it, so not dropped
-    expect(after.muscles).toEqual(["quads"]); // likewise
-    expect(after.loadFactor).toBe(0.5);
-    expect(after.movements).toEqual(["legs"]); // …and the correction landed
+    const [after] = getInjuries(profileId);
+    expect(after.since).toBe("2026-07-01");
+    expect(after.status).toBe("active");
+    expect(after.notes).toBe("sore on pressing");
+    // The newly declared exercise scope replaces the prior fine-muscle scope.
+    expect(after.muscles).toEqual([]);
+    expect(after.exercises).toEqual([exerciseHistoryKey("Overhead Press")]);
   });
 
   // The trap #2359 removes, pinned as a PROPERTY rather than as a list of the fields
@@ -395,34 +345,6 @@ describe("correcting a constraint after it is understood (#2297)", () => {
     const [row] = getInjuries(profileId);
     expect(row.regions).toEqual(["Chest", "Shoulders"]);
   });
-
-  it("cannot correct another profile's constraint", async () => {
-    const { profile } = seedActor();
-    const otherId = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Someone Else")
-        .lastInsertRowid
-    );
-    const theirs = Number(
-      db
-        .prepare(
-          `INSERT INTO injuries (profile_id, label, regions, status)
-           VALUES (?, 'their shoulder', '["Chest"]', 'active')`
-        )
-        .run(otherId).lastInsertRowid
-    );
-    const res = await updateInjury(
-      injuryForm(
-        { id: String(theirs), label: "mine now", status: "active" },
-        { regions: ["Legs"] }
-      )
-    );
-    expect(res.ok).toBe(false);
-    const row = db
-      .prepare("SELECT label, regions FROM injuries WHERE id = ?")
-      .get(theirs) as { label: string; regions: string };
-    expect(row).toEqual({ label: "their shoulder", regions: '["Chest"]' });
-    expect(getInjuries(profile.id)).toHaveLength(0);
-  });
 });
 
 describe("profile scoping and migration compatibility", () => {
@@ -432,33 +354,43 @@ describe("profile scoping and migration compatibility", () => {
       db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Someone Else")
         .lastInsertRowid
     );
-    db.prepare(
-      `INSERT INTO injuries (profile_id, label, regions, status)
-       VALUES (?, 'their knee', '["Legs"]', 'active')`
-    ).run(otherId);
+    const theirId = Number(
+      db
+        .prepare(
+          `INSERT INTO injuries (profile_id, label, regions, status)
+           VALUES (?, 'their knee', '["Legs"]', 'active')`
+        )
+        .run(otherId).lastInsertRowid
+    );
 
     expect(getInjuries(profile.id)).toHaveLength(0);
     expect(getInjuryConstraints(profile.id)).toHaveLength(0);
 
-    const theirId = Number(
+    expect(
       (
-        db
-          .prepare("SELECT id FROM injuries WHERE profile_id = ?")
-          .get(otherId) as { id: number }
-      ).id
-    );
+        await updateInjury(
+          injuryForm(
+            { id: String(theirId), label: "mine now" },
+            { regions: ["Chest"] }
+          )
+        )
+      ).ok
+    ).toBe(false);
+
     const form = new FormData();
     form.set("id", String(theirId));
     form.set("status", "resolved");
-    // The acting profile cannot move a row it does not own.
     expect((await setInjuryStatus(form)).ok).toBe(false);
+
     expect(
-      (
-        db.prepare("SELECT status FROM injuries WHERE id = ?").get(theirId) as {
-          status: string;
-        }
-      ).status
-    ).toBe("active");
+      db
+        .prepare("SELECT label, regions, status FROM injuries WHERE id = ?")
+        .get(theirId)
+    ).toEqual({
+      label: "their knee",
+      regions: '["Legs"]',
+      status: "active",
+    });
   });
 
   it("a pre-#2024 row (all new columns NULL) reads back as a region constraint", async () => {
