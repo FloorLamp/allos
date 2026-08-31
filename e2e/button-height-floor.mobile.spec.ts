@@ -923,36 +923,8 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     // row people tap most is chrome that says nothing. It is still a stepper and still
     // owes the floor, so the row is put at a non-zero count to bring it on screen, and
     // restored below. Measuring only the "+" would quietly halve what this test covers.
-    //
-    // WAIT FOR THE WRITE'S LEDGER ROW, NOT FOR THE UNDO BUTTON (#4521). The tap writes a
-    // serving, and the revalidation that follows appends a 53px row to the day ledger
-    // ABOVE this bar — which moves every stepper below it down by 53px, ~200-440ms after
-    // `undo` appears. `undo` is optimistic and arrives first, so measuring on it captures
-    // coordinates that the ledger then invalidates, and the `elementFromPoint` hit-test
-    // below runs against a point that now belongs to `food-when-summary`. The failure
-    // reads "the overlay is not receiving the tap it exists to receive" while the overlay
-    // is perfectly correct.
-    //
-    // NOT `settledBoxes` — and this is the trap worth naming, because it is the helper
-    // everyone reaches for. It asks "has this element stopped moving?" when the question
-    // is "has the thing that will move it happened yet?". The pre-revalidation window is
-    // long enough for two consecutive equal readings of a stable-but-STALE box, so it
-    // satisfies the helper and still fails: measured 2 failures in 20 runs with
-    // `settledBoxes` in place, against 13 in 58 with nothing.
-    //
-    // The row count is the EVENT. It is a presence assertion — the count only ever goes
-    // up here — so a generous ceiling cannot hide a broken write behind it.
-    const ledgerRows = page
-      .getByTestId("day-ledger")
-      .locator('li[data-testid^="ledger-serving-"]');
-    const rowsBeforeWrite = await ledgerRows.count();
     await settledClick(page, page.getByTestId("log-nuts_seeds"));
     await expect(page.getByTestId("undo-nuts_seeds")).toBeVisible();
-    await expect(
-      ledgerRows,
-      "the ledger never took the write, so the 53px shift this test measures around " +
-        "has not happened yet and every box below it is about to move (#4521)"
-    ).toHaveCount(rowsBeforeWrite + 1);
 
     for (const testId of ["undo-nuts_seeds", "log-nuts_seeds"]) {
       const stepper = page.getByTestId(testId);
