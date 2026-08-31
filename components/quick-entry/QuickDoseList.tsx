@@ -5,8 +5,8 @@ import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
+import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { useWritePipeline } from "@/components/useWritePipeline";
-import { settleDayDoses } from "@/components/medications/dose-day-settlement";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -17,7 +17,6 @@ import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
 import { localDate } from "@/lib/offline/queue";
 import { markTaken } from "@/app/(app)/upcoming/actions";
-import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 import type {
   QuickEntryDose,
   QuickEntryPastDay,
@@ -309,70 +308,14 @@ function PastDayDoses({
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
 }) {
-  // Two affordances, two pipelines (#2041): a stack tap and the single taps beneath it
-  // are different writes and neither may be absorbed by the other's cooldown. The
-  // difference the ENROLLMENT GATE makes visible is the offline half — `dose-day` is a
-  // covered flow, so its `offline` decision is required; `dose-day-stack` is an argued
-  // exclusion in OFFLINE_QUEUE_COVERAGE, so passing one here is a compile error and the
-  // stack is online-only by declaration rather than by omission.
-  const single = useWritePipeline("dose-day");
-  const stack = useWritePipeline("dose-day-stack");
-  // The two answers this surface gives a dated settlement, which is the only thing that
-  // ever differed between it and the ledger's copy of the same choreography.
-  const row = { note: onNote, resolved: onResolved };
-
-  // A single dated tap MAY be captured offline: the queued intent already carries its
-  // own day and the replay re-checks the window with the same predicate the core does
-  // (lib/offline/writes.ts).
-  //
-  // WHAT OFFLINE ALSO CHANGES: the SLACK. `isDoseDateAccepted` is evaluated at REPLAY
-  // time, so a capture for today tolerates two days offline, yesterday one, and the
-  // oldest offered day NONE — reconnect the next morning and the replay refuses it. The
-  // refusal is reported rather than swallowed, so this is a tolerance the user can be
-  // told about, not a silent loss.
-  //
-  // No `clientTakenAt` — the tap instant belongs to TODAY, and `resolveQueuedTakenAt`
-  // refuses a stamp whose local date is not the row's own day, so sending it would only
-  // buy a discarded value.
-  async function resolveOne(doseId: number, status: "taken" | "skipped") {
-    const outcome = await single.run({
-      key: `${doseId}->${status}`,
-      fields: { date, status, dose_ids: String(doseId) },
-      action: resolveDayDoses,
-      settle: (result) => settleDayDoses(result, status, row),
-      failureMessage: "Couldn't update this dose. Try again.",
-      offline: () => ({
-        kind: "capture",
-        flow: status === "taken" ? "dose" : "skip-dose",
-        date,
-        payload: { doseId },
-        keptMessage:
-          status === "taken"
-            ? "Dose saved offline — will sync when you reconnect."
-            : "Skip saved offline — will sync when you reconnect.",
-      }),
-    });
-    // A kept capture IS a landing, so the row leaves the day's list the way an online
-    // resolution does. Today's row above already settles this way; the past-day row was
-    // doing it before the pipeline landed and must keep doing it.
-    if (outcome === "captured") onResolved([doseId]);
-  }
-
-  function resolveStack(doseIds: readonly number[]) {
-    void stack.run({
-      key: doseIds.join(","),
-      fields: { date, status: "taken", dose_ids: doseIds.join(",") },
-      action: resolveDayDoses,
-      settle: (result) => settleDayDoses(result, "taken", row),
-      // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its OWN
-      // transaction, so a failure on the third of five leaves the first two committed
-      // WITH their supply decrements — and "Couldn't log that stack" would be the one
-      // thing this file is otherwise careful never to do: report a write wrongly. We do
-      // not know what landed, so we say that and point at the record.
-      failureMessage:
+  const { resolveOne, resolveAll, singleBlocked, bulkBlocked } =
+    useDoseDayResolution({
+      date,
+      bulkFailureMessage:
         "Something went wrong — reopen this sheet to see what was logged.",
+      note: onNote,
+      resolved: onResolved,
     });
-  }
 
   if (slots.length === 0) {
     return (
@@ -404,8 +347,8 @@ function PastDayDoses({
                 data-testid={`quick-entry-dose-stack-${slot.bucket}`}
                 data-doses={ids.join(",")}
                 aria-label={`${heading}: ${phrase}`}
-                disabled={stack.blocked(ids.join(","))}
-                onClick={() => resolveStack(ids)}
+                disabled={bulkBlocked(ids)}
+                onClick={() => resolveAll(ids)}
                 className="mb-1.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
               >
                 <IconPlus
@@ -455,7 +398,7 @@ function PastDayDoses({
                       type="button"
                       data-testid="dose-take"
                       aria-label={`Mark ${dose.name} taken`}
-                      disabled={single.blocked(`${dose.doseId}->taken`)}
+                      disabled={singleBlocked(dose.doseId, "taken")}
                       onClick={() => void resolveOne(dose.doseId, "taken")}
                       className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_BRAND}`}
                     >
@@ -465,7 +408,7 @@ function PastDayDoses({
                       type="button"
                       data-testid="dose-skip"
                       aria-label={`Skip ${dose.name}`}
-                      disabled={single.blocked(`${dose.doseId}->skipped`)}
+                      disabled={singleBlocked(dose.doseId, "skipped")}
                       onClick={() => void resolveOne(dose.doseId, "skipped")}
                       className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
                     >
