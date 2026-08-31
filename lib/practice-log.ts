@@ -629,16 +629,12 @@ export function restampPracticeLogsCore(
         (r.logged_via === "telegram-nudge" ||
           r.logged_via === "telegram-command");
       const endDate =
-        chatFinished &&
-        r.start_time != null &&
-        r.end_time! <= r.start_time
+        chatFinished && r.start_time != null && r.end_time! <= r.start_time
           ? shiftDateStr(r.date, 1)
           : r.date;
       const statedAt = eventInstant(
         "practice_logs",
-        chatFinished
-          ? { ...r, date: endDate, start_time: r.end_time }
-          : r,
+        chatFinished ? { ...r, date: endDate, start_time: r.end_time } : r,
         tz
       );
       if (!tapAt.known || !statedAt.known) continue;
