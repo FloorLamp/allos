@@ -91,6 +91,25 @@ test("segmented sleep composes in one fixed family without regularity duplicatio
     await expect(
       page.locator('[data-candidate-id^="sleep.regularity:"]')
     ).toHaveCount(0);
+
+    // #3970's owner ruling on the usual band. It used to mount the SAME string as an
+    // InfoTooltipIcon on BOTH the bed-time and the wake-time member — one constant
+    // explainer, two 34px buttons, on one line. It inlines once now, as plain detail
+    // text after the wake time.
+    //
+    // This claim lives HERE and not in dashboard.spec.ts because this is the persona
+    // that renders the sleep members at all: the test it replaces sat on
+    // E2E_LOGIN_DAILY behind `if (bedCount === 0) return`, and that early return was
+    // taken on every run — measured 2026-08-31, 0 sleep.bed-time rows on that login.
+    // It also read a `title=` attribute, which #3375 removed app-wide. Two independent
+    // reasons it could no longer fail.
+    const wake = family.locator('[data-candidate-id^="sleep.wake-time:"]');
+    const bed = family.locator('[data-candidate-id^="sleep.bed-time:"]');
+    await expect(wake).toContainText(/Usual .+ – .+/);
+    await expect(bed).not.toContainText("Usual");
+    // No control anywhere carries it. Matched on the ACCESSIBLE NAME, because that is
+    // what InfoTooltipIcon puts on its button and these two mounts never had a testid.
+    await expect(page.getByRole("button", { name: /^Usual / })).toHaveCount(0);
   } finally {
     await page.context().close();
   }

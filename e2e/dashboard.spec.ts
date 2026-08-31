@@ -975,29 +975,6 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
   }
 });
 
-test("the sleep rows carry the profile's usual band as their hover sentence", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DAILY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const bed = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.bed-time:"]'
-    );
-    if ((await bed.count()) === 0) return; // the classifier declines below its gate
-    const bedLink = bed.getByRole("link").first(); // first-ok: the E2E_LOGIN_DAILY fixture's sleep.bed-time row, one link
-    const title = await bedLink.getAttribute("title");
-    // Either the band, or silence. Never a half-sentence, and never a derived number
-    // the classifier did not produce.
-    if (title != null) expect(title).toMatch(/^Usual .+ – .+$/);
-  } finally {
-    await page.context().close();
-  }
-});
-
 test("a page that just loaded animates nothing (#3253's resume half)", async ({
   page,
 }) => {

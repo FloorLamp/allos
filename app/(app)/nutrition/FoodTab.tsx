@@ -75,6 +75,7 @@ import {
   type LedgerServing,
 } from "@/lib/day-ledger";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
+import { getIntakeDosesForHistory } from "@/lib/queries/intake/schedule";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { doseLogDays } from "@/lib/dose-log-window";
 import {
@@ -366,6 +367,7 @@ export default async function FoodTab({
       ),
     ])
   );
+  const doseSchedules = getIntakeDosesForHistory(profile.id);
   const ledgerByDate: Record<string, LedgerGroup[]> = Object.fromEntries(
     mealDays.map((day) => [
       day.date,
@@ -383,7 +385,7 @@ export default async function FoodTab({
           hhmm: event.eatenAt ?? event.loggedTime,
           clockKind: event.eatenAt ? "stated" : "logged",
         })),
-        doses: getDayDoseLedger(profile.id, day.date),
+        doses: getDayDoseLedger(profile.id, day.date, doseSchedules),
         pending: pendingByDate.get(day.date) ?? [],
       }),
     ])

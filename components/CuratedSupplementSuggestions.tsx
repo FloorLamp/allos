@@ -26,6 +26,14 @@ import type {
 // Informational, never prescriptive: the curated map contains NO dose, so no card can
 // show one.
 
+// The CURATED badge's own look, named once because the list's items and the legend
+// that explains them must wear the same badge to read as the same vocabulary.
+const ORIGIN_BADGE_CLASS =
+  "rounded-sm bg-emerald-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300";
+
+const CURATED_ORIGIN_EXPLAINER =
+  "From the curated, human-reviewed biomarker→supplement map — the same suggestion every time, with no AI involved.";
+
 function noteIcon(kind: SupplementSafetyNoteKind) {
   return kind === "allergy" ? (
     <IconInfoCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -44,6 +52,19 @@ export default function CuratedSupplementSuggestions({
   if (suggestions.length === 0) return null;
   return (
     <div data-testid={testid} className="space-y-3">
+      {/* #3970 rule 1. The origin explainer is CONSTANT — every suggestion in this
+          list is curated — so it states itself once here, beside a sample of the
+          badge it glosses, instead of mounting an `h-8 w-8` button on every row.
+          It stays an InfoTooltipIcon and never a `title=`: this is the #2378
+          disclaimer #3375 made touch- and keyboard-reachable, and that binds the
+          single mount exactly as it bound the N. */}
+      <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+        <span className={ORIGIN_BADGE_CLASS}>Curated</span>
+        <InfoTooltipIcon
+          label={CURATED_ORIGIN_EXPLAINER}
+          data-testid="curated-origin-help"
+        />
+      </p>
       {suggestions.map((s) => {
         const reasons = s.triggeredBy.length > 0 ? s.triggeredBy : [s.label];
         return (
@@ -66,17 +87,11 @@ export default function CuratedSupplementSuggestions({
                     {reasons.length > 1 ? "are" : "is"}{" "}
                     {s.side === "high" ? "HIGH." : "LOW."} Options to consider:
                   </p>
-                  <span className="inline-flex items-center gap-1">
-                    <span
-                      data-testid="suggestion-origin-badge"
-                      className="rounded-sm bg-emerald-100 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                    >
-                      Curated
-                    </span>
-                    <InfoTooltipIcon
-                      label="From the curated, human-reviewed biomarker→supplement map — the same suggestion every time, with no AI involved."
-                      data-testid="curated-origin-help"
-                    />
+                  <span
+                    data-testid="suggestion-origin-badge"
+                    className={ORIGIN_BADGE_CLASS}
+                  >
+                    Curated
                   </span>
                 </div>
                 <ul
