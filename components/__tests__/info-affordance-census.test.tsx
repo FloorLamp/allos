@@ -106,7 +106,11 @@ describe("a rare warning keeps its icon (#3970 rule 3)", () => {
       calorieText: null,
     } as unknown as TrainingLogCardData;
     render(
-      <TrainingLogRow card={card} showSubjectChip={false} onFilterTag={() => {}} />
+      <TrainingLogRow
+        card={card}
+        showSubjectChip={false}
+        onFilterTag={() => {}}
+      />
     );
     expect(
       screen.getByRole("button", {

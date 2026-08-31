@@ -997,12 +997,12 @@ export default function ClinicalResultsTable({
               the rows are already partitioned into panel groups emitted in curated
               clinical order, so a panel sort would reorder rows within groups that
               no ordering can move (#1581 section B). */}
+              {/* #3970 rule 1. The "not mapped to a clinical panel" sentence is a
+                  property of the COLUMN, not of a row, and it used to mount a button
+                  on every row of an unmapped group. The header carries the same
+                  `hidden md:table-cell` visibility the cells do, so nothing that
+                  could reach the old mount loses the sentence. */}
               <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
-                {/* #3970 rule 1. The "not mapped to a clinical panel" sentence is a
-                    property of the COLUMN, not of a row, and it used to mount a
-                    button on every row of an unmapped group. The header carries the
-                    same `hidden md:table-cell` visibility the cells do, so nothing
-                    that could reach the old mount loses the sentence. */}
                 <span className="inline-flex items-center gap-1">
                   Panel
                   <InfoTooltipIcon

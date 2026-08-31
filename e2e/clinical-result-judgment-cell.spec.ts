@@ -97,7 +97,8 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   // ...and the string is still reachable, in full, where the rule says it lives: the
   // reading detail page's own "Lab reference" column. Asserted at the NEW location
   // rather than assumed — the row's own link is the path a reader takes.
-  await row.getByRole("link", { name: "Apolipoprotein B (ApoB)" }).first().click(); // first-ok: the analyte's name cell is the row's one identity link
+  const nameLink = row.getByRole("link", { name: "Apolipoprotein B (ApoB)" });
+  await nameLink.first().click(); // first-ok: the row's name cell is its one identity link
   await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
   await expect(
     page.getByTestId("reading-lab-reference").first() // first-ok: the newest reading's row, which is the one the index showed

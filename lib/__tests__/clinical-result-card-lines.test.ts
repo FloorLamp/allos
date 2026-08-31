@@ -49,10 +49,14 @@ function tagsLabelled(label: string): CellTag[] {
   return cellTags().filter((t) => t.label === label);
 }
 
-// A `<th>` whose only content is this column's name.
+// A `<th>` that LEADS with this column's name. It used to require the name to be the
+// header's only content; since #3970 rule 1 a column header is where a constant
+// explainer of its own cells' vocabulary lives, so one `<span>` wrapper and one
+// trailing info button are admitted. What is still asserted — and what #2316 needed —
+// is that the column exists and is named.
 function hasHeader(label: string): boolean {
   const src = fs.readFileSync(TABLE, "utf8");
-  return new RegExp(`<th[^>]*>\\s*${label}\\s*</th>`).test(src);
+  return new RegExp(`<th[^>]*>\\s*(?:<span[^>]*>\\s*)?${label}\\s*<`).test(src);
 }
 
 describe("Panel and Category are desktop-only detail (#2316)", () => {
