@@ -12,7 +12,7 @@ function beforeRetirement(): Database.Database {
 }
 
 describe("#2877 legacy medical category retirement", () => {
-  it("classifies from authority and presents unresolved rows without moving identity or links", () => {
+  it("classifies rows and rebuilds the category contract without identity or link loss", () => {
     const mem = beforeRetirement();
     mem
       .prepare("INSERT INTO profiles (id, name) VALUES (1, 'Category review')")
@@ -84,6 +84,17 @@ describe("#2877 legacy medical category retirement", () => {
        VALUES (1, 'biomarker:Provider Comment Score', '2020-04-06')`
       )
       .run();
+    mem
+      .prepare("INSERT INTO profiles (id, name) VALUES (2, 'Schema review')")
+      .run();
+    mem
+      .prepare(
+        `INSERT INTO medical_records
+         (id, profile_id, date, category, name)
+       VALUES (99, 2, '2020-04-05', 'biomarker', 'Unknown')`
+      )
+      .run();
+    mem.prepare("DELETE FROM medical_records WHERE id = 99").run();
 
     up(mem);
 
@@ -149,23 +160,6 @@ describe("#2877 legacy medical category retirement", () => {
       signal_key: "biomarker:Provider Comment Score",
       dismissed_at: "2020-04-06",
     });
-  });
-
-  it("rebuilds the category contract, indexes, sequence, and foreign keys replay-safely", () => {
-    const mem = beforeRetirement();
-    mem
-      .prepare("INSERT INTO profiles (id, name) VALUES (1, 'Schema review')")
-      .run();
-    mem
-      .prepare(
-        `INSERT INTO medical_records
-         (id, profile_id, date, category, name)
-       VALUES (99, 1, '2020-04-05', 'biomarker', 'Unknown')`
-      )
-      .run();
-    mem.prepare("DELETE FROM medical_records WHERE id = 99").run();
-
-    up(mem);
     const sql = (
       mem
         .prepare(
@@ -199,5 +193,6 @@ describe("#2877 legacy medical category retirement", () => {
     expect(() => up(mem)).not.toThrow();
     mem.pragma("foreign_keys = ON");
     expect(mem.pragma("foreign_key_check")).toEqual([]);
+    mem.close();
   });
 });

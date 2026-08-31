@@ -89,6 +89,12 @@ export function computeMetrics({ mergedPrs, openPrs, openIssues, now, days }) {
       unslotted,
       needsHuman: needsHuman.length,
       oldestNeedsHumanDays,
+      // A PHRASE count, not provenance (#4451). Measured against the only
+      // ground truth there is — the 8 still-open issues the orchestrator
+      // filed in one session — this pattern fires on 3 and misses 5, and all
+      // 8 carry the same GitHub author as owner-filed work, so the author
+      // field cannot stand in either. Named and rendered for what it is;
+      // real provenance needs a marker written at FILING time.
       selfFiledMarked: openIssues.filter((i) =>
         /found (while|by)/i.test(i.body ?? "")
       ).length,
@@ -142,7 +148,8 @@ export function renderMetrics(m) {
         : "")
   );
   lines.push(
-    `- self-filed (provenance-marked): ${m.queue.selfFiledMarked} — back of queue by rule`
+    `- bodies phrased "found while/by": ${m.queue.selfFiledMarked} — a PHRASE ` +
+      "count, not provenance (#4451: 3 of 8); self-filed is back of queue by rule"
   );
   return lines.join("\n");
 }

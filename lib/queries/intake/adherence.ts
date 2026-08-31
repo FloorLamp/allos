@@ -243,12 +243,9 @@ interface DoseResolveOptions {
   // the write (#613/#614) — the write always uses the dose row's own item_id — but a
   // token whose item contradicts the dose's real one is forged/stale and is refused.
   itemId?: number | null;
-  // An OPTIONAL captured intake instant (#1427), supplied only by the offline write
-  // queue's replay: the tap happened when the user actually took the dose, possibly
-  // hours before the connection came back. Validated (never trusted) by the pure
-  // resolveQueuedTakenAt and silently falling back to the server's own now when
-  // unusable — a skewed phone clock must cost the precise minute, never the dose log.
-  takenAt?: Date;
+  // A captured intake instant (#1427), or explicit null when a past-day one-tap states
+  // no instant (#4428). Undefined keeps the ordinary live-tap behavior: stamp now.
+  takenAt?: Date | null;
   // Which MESSAGE'S tap this confirm is (#2264): the `notify_messages` row id the
   // Telegram handler resolved from its (chat, message), or absent/null everywhere
   // else. Attribution for the dose-time correction ride-along only — the burst this
@@ -353,6 +350,7 @@ function applyDoseStatusCore(
       // instant; an unusable value costs only that precision and falls back to the app
       // clock. A skip records the action but asserts no administration.
       const capturedAt = clockNow();
+      const explicitlyUntimed = opts.takenAt === null;
       const stamp = opts.takenAt
         ? resolveQueuedTakenAt(
             opts.takenAt,
@@ -384,7 +382,9 @@ function applyDoseStatusCore(
         amount,
         target,
         utcInstant(capturedAt),
-        target === "taken" ? utcInstant(stamp ?? capturedAt) : null,
+        target === "taken" && !explicitlyUntimed
+          ? utcInstant(stamp ?? capturedAt)
+          : null,
         opts.notifyMessageId ?? null,
         loggedVia
       );
@@ -449,7 +449,7 @@ export function markDoseTaken(
   // optional tail, so omitting it is a compile error rather than an undefined that
   // reads as "unknown surface".
   loggedVia: LoggedVia,
-  takenAt?: Date,
+  takenAt?: Date | null,
   // Which message's tap this is (#2264) — Telegram reminder handlers only; see
   // DoseResolveOptions.notifyMessageId.
   notifyMessageId?: number | null

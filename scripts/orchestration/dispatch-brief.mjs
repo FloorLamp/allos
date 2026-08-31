@@ -73,7 +73,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { helpGuard } from "./usage.mjs";
-import { discoverNodeBin, resolveStateDir } from "./host.mjs";
+import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
@@ -855,6 +855,14 @@ ${MIGRATION_LINES}
   \`it()\` blocks, one fixture reused over three near-copies, an assertion that names the
   property over five that enumerate it — before you consider dropping coverage. Do not
   buy a smaller diff by proving less; say in your report what the diff cost and why.
+- SIMPLIFY, EXTRACT, UNIFY — OWNER RULING 2026-08-31, the line budget's positive half.
+  Most work (product, design, refactoring) should leave the code SMALLER or straighter
+  than it found it. Enforce invariants with TYPES, not guards: a wrong state the type
+  system cannot represent needs no runtime check, no registry, and no test to police
+  it — narrow the parameter, close the union, make the constructor the only door. The
+  moment your approach is ADDING complexity (a new layer, a parallel concept, a guard
+  where a type could be), STOP and re-ask: what is the REAL GOAL, and can it be reached
+  with less code? If you proceed anyway, your report states that answer.
 - A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
   ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
   If you encode THAT shape, your guard is green against a tree that never used it, and
@@ -1290,6 +1298,64 @@ function roleHandoff(entry) {
     : `ROLE UPDATE for ${entry.branch}: BANKED. Push durable checkpoints only; do not open or refresh a PR, and defer non-authored blast-radius specs until promoted.`;
 }
 
+// A DISPATCH IS WRITTEN AGAINST A TRACKER READ THAT CAN BE HOURS OLD (#4451).
+// The brief is generated from whatever the orchestrator last knew, and that
+// read has no expiry: #4347 was closed at 03:09:32Z and dispatched at 09:43Z,
+// and the lane spent half its dispatch discovering the diff was empty. The
+// snapshot downstream can only ANNOTATE a stale row; this is the point that
+// can refuse, so it asks GitHub once, here, before anything is written.
+//
+// Degrades: with no read token there is nothing to ask, so it warns and
+// dispatches — a check that cannot run must not become a check that blocks.
+
+/** Refusal text when any of these issue states is closed, else null. */
+export function closedIssueRefusal(states) {
+  const closed = states.filter((s) => s.state === "closed");
+  if (!closed.length) return null;
+  const named = closed
+    .map(
+      (s) => "#" + s.number + " closed " + (s.closedAt ?? "at an unknown time")
+    )
+    .join(", ");
+  return (
+    "REFUSED: " +
+    named +
+    ". A brief written against a stale tracker read sends a lane to an empty " +
+    "diff (#4451). Re-read with issue-read.mjs, drop the closed number from " +
+    "--issues, and dispatch the rest."
+  );
+}
+
+/** Live {number, state, closedAt} per issue; null when no token can be found. */
+function issueStates(
+  numbers,
+  repo = process.env.RECONCILE_REPO || "FloorLamp/allos"
+) {
+  const token = resolveReadToken();
+  if (!token) return null;
+  return numbers.map((number) => {
+    const out = execFileSync(
+      "curl",
+      [
+        "-sS",
+        "--fail-with-body",
+        "-H",
+        "Authorization: Bearer " + token,
+        "-H",
+        "Accept: application/vnd.github+json",
+        "https://api.github.com/repos/" + repo + "/issues/" + number,
+      ],
+      { encoding: "utf8", timeout: 30_000 }
+    );
+    const issue = JSON.parse(out);
+    return {
+      number,
+      state: issue.state,
+      closedAt: issue.closed_at ?? null,
+    };
+  });
+}
+
 function cmdNew(argv) {
   const opts = parseArgs(argv);
   if (!opts.branch) {
@@ -1385,6 +1451,21 @@ function cmdNew(argv) {
       "      Not a refusal — a P0 preempts. Otherwise consider waiting: the cap that\n" +
         "      binds first is REVIEW depth, not agent count (docs/orchestration/dispatch.md).\n"
     );
+  }
+
+  // Last check before anything is written: is this work still open?
+  const states = opts.issues.length ? issueStates(opts.issues) : [];
+  if (states === null) {
+    console.error(
+      "*** NO READ TOKEN: dispatching WITHOUT re-reading issue state (#4451). ***\n" +
+        "    A brief is only as fresh as the tracker read behind it."
+    );
+  } else {
+    const stale = closedIssueRefusal(states);
+    if (stale) {
+      console.error(stale);
+      process.exit(1);
+    }
   }
 
   const { brief, portBase } = buildBrief(opts);
@@ -1507,10 +1588,19 @@ function cmdList() {
     if (active.length < 3) {
       // The other measured under-dispatch shape: a few merges land and the
       // session sits at one lane. Refill is the default, not a decision.
+      // PER AXIS (owner, 2026-08-31): a live session read "both e2e slots
+      // full" as "the queue is thin" while three non-e2e slots sat open — a
+      // capacity limit substituted for a queue fact. Only the axis that is
+      // full gets to say so, and "thin" is a claim that needs receipts.
+      const e2eActive = active.filter((d) => d.e2e).length;
       console.log(
-        `  ${active.length} lane(s) active — UNDER-SATURATED unless the queue is truly thin:\n` +
-          "  refill after every merge, without asking; review depth (~3 unreviewed PRs)\n" +
-          "  binds before lane count (~5) does (dispatch.md §Dispatch)."
+        `  ${active.length} lane(s) active (e2e ${e2eActive}/${E2E_LANE_CAP}, ` +
+          `other ${active.length - e2eActive}) — UNDER-SATURATED. A full e2e lane\n` +
+          "  is NOT a thin queue: the caps are separate axes (2 e2e, ~5 lanes, ~3\n" +
+          "  unreviewed PRs). Before calling the queue thin: PAIR small issues into\n" +
+          "  one cluster, source self-filed P3s (back of the queue is still IN the\n" +
+          "  queue), do the standing work (reconcile, release notes) — or list why\n" +
+          "  each remaining issue is blocked, owner-gated, or dependency-bound."
       );
     }
   }

@@ -89,6 +89,7 @@ import {
 import Disclosure from "@/components/Disclosure";
 import SegmentedControl from "@/components/SegmentedControl";
 import DayLedger from "./DayLedger";
+import ProteinQuickAdd from "./ProteinQuickAdd";
 import type { LedgerGroup } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 
@@ -224,9 +225,13 @@ export default function FoodLogBar({
   // context and its add controls. Kept as server-rendered slots so this client island
   // continues to own only logging state while an older date gets its own nutrients.
   nutrientSummaryByDate?: { date: string; content: ReactNode }[];
-  // Gram-based protein logging styled as a peer to the serving rows. It remains
-  // day-scoped, so it is only rendered while Today is selected.
-  proteinQuickAdd?: ReactNode;
+  // Gram-based protein logging styled as a peer to the serving rows. The bar owns
+  // the selected day, so it also owns the date and starting total handed to the
+  // existing control; otherwise a past-day row could still post today's date.
+  proteinQuickAdd?: {
+    initialGramsByDate: Record<string, number>;
+    lastPreset: number | null;
+  };
   // The door to the food ledger (#3671), mounted in the day header beside the log
   // it opens rather than in a row of its own above the fasting card.
   ledgerDoor?: ReactNode;
@@ -1750,21 +1755,28 @@ export default function FoodLogBar({
   //
   // Live off the SAME optimistic counts the rows use, so tapping the shortcut (or the
   // rows one by one) makes it disappear on the same tap rather than a render later.
-  // Today only: the offer is a shortcut for the day being lived, never a bulk backfill
-  // of days nobody remembers — the ledger is where regularity comes from.
+  //
+  // AND ON A PAST DAY TOO (#4118). This was today-only, on the reasoning that a bulk
+  // backfill would feed the regularity evidence that derives the offer back into
+  // itself. #4312 answered that objection at its root rather than by forbidding the
+  // write: a dated bundle is stamped `USUAL_BACKFILL` in the core, decided from the day
+  // and unpostable from anywhere, and `getFoodRegularity` excludes exactly that value —
+  // so the offer stays measured from contemporaneous logs however many days are filled
+  // in behind it. What was left was this gate, on the one surface the criterion names
+  // beside `/history`'s door. `slotCounts` is already the ACTIVE day's, so the offer
+  // shrinks against the day being filled and not against today.
+  //
+  // The span needs no gate here: the picker offers today plus six days back, and
+  // `isUsualBackfillDateAccepted` bounds the core at the same six.
   const usualOffer = useMemo(
     () =>
-      activeDate === today
-        ? usualFoodOffer(
-            usualBySlot?.[activeSlot] ?? [],
-            new Set(
-              Object.keys(slotCounts).filter(
-                (slug) => (slotCounts[slug] ?? 0) > 0
-              )
-            )
-          )
-        : [],
-    [activeDate, today, usualBySlot, activeSlot, slotCounts]
+      usualFoodOffer(
+        usualBySlot?.[activeSlot] ?? [],
+        new Set(
+          Object.keys(slotCounts).filter((slug) => (slotCounts[slug] ?? 0) > 0)
+        )
+      ),
+    [usualBySlot, activeSlot, slotCounts]
   );
   const usualGroups = useMemo(
     () =>
@@ -1810,6 +1822,9 @@ export default function FoodLogBar({
       write: async () => {
         const fd = new FormData();
         fd.set("meal_slot", window);
+        // THE DAY BEING FILLED, posted (#4118). Without it the action fell back to
+        // today, so the control on a past day would have written to the wrong one.
+        fd.set("date", activeDate);
         // The keys the BUTTON named. The core intersects them with the offer it
         // re-derives from fresh state, so this list is an upper bound on the write and
         // never an instruction to write outside the offer that currently stands.
@@ -2036,6 +2051,9 @@ export default function FoodLogBar({
             prefs={dayLedger.prefs}
             keepApart={activeDate === today ? dayLedger.keepApart : []}
             dayContext={activeDate === today ? dayLedger.dayContext : null}
+            moveDays={days
+              .filter((day) => day.date !== activeDate)
+              .map((day) => ({ date: day.date, label: day.label }))}
             onCorrectServing={(eventId) => {
               const event = loggedEvents.find((e) => e.id === eventId);
               if (event) openCorrection(event);
@@ -2203,7 +2221,16 @@ export default function FoodLogBar({
                 siblings. */}
             <div data-testid="food-quick-rows" className="space-y-1.5">
               {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
-              {activeDate === today && proteinQuickAdd}
+              {proteinQuickAdd && (
+                <ProteinQuickAdd
+                  key={activeDate}
+                  today={activeDate}
+                  initialGrams={
+                    proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
+                  }
+                  lastPreset={proteinQuickAdd.lastPreset}
+                />
+              )}
               {proteinSplit < quickGroups.length &&
                 rows(quickGroups.slice(proteinSplit))}
             </div>

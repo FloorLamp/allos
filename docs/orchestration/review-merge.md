@@ -9,18 +9,19 @@
 - Check profile scoping, write transactions, authorization boundaries, identity
   handling, and shared one-question-one-computation models.
 - Require tests at the tier that can observe the defect.
-- Convergence is production-NEGATIVE or it is a third way of doing the thing.
+- Convergence is production-NEGATIVE or it is a third way (owner 2026-08-27).
 - Reject any scanner, registry, allowlist, variant, or compatibility layer.
+- Prefer TYPES over guards (owner 2026-08-31): an invariant a type can make
+  unrepresentable goes back when policed at runtime — simplify, extract,
+  unify, and ask what the real goal costs in less code.
 - Weigh line cost; compact proofs before doubting coverage that found a defect.
-- Check the ruling's OWN condition, not the one the implementation makes
-  easy. Verifying values where they change is a different question from
-  rendering the case the ruling names.
+- Check the ruling's OWN condition, not the one the implementation makes easy:
+  verifying values where they change ≠ rendering the case the ruling names.
 - A guard's existence is not its coverage. Ask which widths, states and
   roles it runs at, and say which in the review.
-- A REMOVAL is checked against the issue's acceptance criteria before it is
-  accepted. An unreachable export can be debris or an unfinished requirement,
-  and the code cannot tell you which — only the issue can. Delete it once the
-  issue does not ask for it; wire it up when the issue does.
+- A REMOVAL is checked against the issue's acceptance criteria: an unreachable
+  export can be debris or an unfinished requirement, and only the issue can
+  say which. Delete when the issue doesn't ask; wire up when it does.
 - Inspect cross-PR conflicts, stale shared signatures, binary-looking diffs,
   measured-count claims, and unintended generated-data changes.
 - Flag owner-visible judgment calls in the COMMENT review.
