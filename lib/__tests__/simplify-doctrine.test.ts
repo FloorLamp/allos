@@ -35,6 +35,12 @@ describe("the simplify-extract-unify doctrine", () => {
     expect(review).toContain("(owner 2026-08-27)");
   });
 
+  it("AGENTS.md carries the one-line universal form", () => {
+    expect(read("AGENTS.md")).toContain(
+      "Simplify, extract, unify. Types over guards; adding complexity means rethink."
+    );
+  });
+
   it("the filing skill shapes proposals toward the simplest shape", () => {
     const skill = read(".claude/skills/file-issue/SKILL.md");
     expect(skill).toContain("Simplest shape (owner, 2026-08-31)");
