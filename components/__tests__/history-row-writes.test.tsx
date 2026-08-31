@@ -243,7 +243,7 @@ it("renders a feed subject home as a link and a nav-only title as plain text", (
       id: "feed:activity:1",
       kind: "activity",
       title: "Run",
-      href: "/training/activity/1",
+      href: "/training/activity/1" as HistoryRow["href"],
     }),
     row({ id: "feed:injury:1", kind: "injury", title: "Sore ankle" }),
   ]);
