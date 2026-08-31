@@ -1,9 +1,10 @@
 import Database from "better-sqlite3";
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { zonedWallTimeToUtc } from "@/lib/date";
+import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { TIMELINE_RECENT_DAYS } from "@/lib/timeline-window";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -21,12 +22,53 @@ import { zonedWallTimeToUtc } from "@/lib/date";
 // naive string would be right only for the zone a run's start hour happened to draw.
 
 const PROFILE = 1;
-const DAY = "2026-08-17";
+
+// THE FIXTURE'S DAY, DERIVED FROM THE WINDOW IT HAS TO SIT IN (#4358).
+//
+// Two tests below read this spec's rows off `/history` with NO `?day=`, so the row
+// has to be inside the record's RECENT BAND — `today − (TIMELINE_RECENT_DAYS − 1) …
+// today`, computed in lib/timeline-window.ts from the same constant imported here.
+// A calendar literal is therefore a fuse with the run date as its match, and it does
+// not fail while it burns: `"2026-08-17"` was one day inside the band on 2026-08-30
+// and one day outside it on 2026-08-31, from which point it reddened two tests on
+// EVERY pull request with no re-run that could ever clear them, because no re-run
+// moves a calendar. Same class as #1048, which anchored e2e/seed/merge.ts's fixture
+// relative to today for the training log's own 14-day first page.
+//
+// THE OFFSET IS DERIVED FROM THE WINDOW rather than chosen beside it: the middle of
+// the band is the one position no single change to TIMELINE_RECENT_DAYS pushes out
+// of either end. Not today itself — the day header reads "Today" there, and profile
+// 1's servings on today are also whatever the food log's own specs last tapped.
+//
+// `frozenNow()` is the run's frozen clock (e2e/worker-env.ts), and its UTC date IS
+// profile 1's local today: that profile carries no timezone of its own (every one
+// that does is named in e2e/fixture-timezones.ts), so it resolves to the run's
+// instance pin, which puts local time at 13:mm precisely so the local and the UTC
+// date can never disagree (e2e/pinned-timezone.ts).
+const DAY = shiftDateStr(
+  frozenNow().toISOString().slice(0, 10),
+  -Math.floor((TIMELINE_RECENT_DAYS - 1) / 2)
+);
+// The month-and-day a row must NOT print, built from DAY and from the app's own
+// month table rather than an implicit-locale `toLocaleDateString` (#1020). Derived
+// so it can never name a day the fixture does not seed — which is exactly what a
+// literal "Aug 17" left beside a derived DAY would do, silently, by passing.
+const DAY_LABEL = `${MONTHS_SHORT[Number(DAY.slice(5, 7)) - 1]} ${Number(
+  DAY.slice(8, 10)
+)}`;
 // A day in an EARLIER CALENDAR MONTH, so the fold spine this spec's rail scrubs has at
 // least two stops whatever else the shared seed holds. The rail is not offered below
 // two periods — a permanent strip down the edge of a one-period page is chrome
 // charging rent — so without this the rail case would be conditional on a fixture
 // nothing here controls.
+//
+// LEFT ABSOLUTE ON PURPOSE, and checked rather than assumed (#4358 AC3): unlike DAY
+// above, this day must land OUTSIDE the recent band, which ageing only ever makes
+// more true. What it does depend on is the CALENDAR YEAR — `windowTimelineDays` gives
+// a top-level month fold only to months of the current year, and a closed year fold
+// renders no month cards at all — so a derived offset would not save it either. That
+// is a January problem for whatever day is chosen, not an ageing one; it is recorded
+// on #4358 rather than papered over here.
 const OLD_DAY = "2026-02-11";
 const PRACTICE = "E2e History Rowing";
 const FOOD_GROUP = "berries";
@@ -130,7 +172,7 @@ test.describe("the record (#3958)", () => {
     // NO PER-ROW DATE CELL EXISTS. Asserted as the row's own text rather than as the
     // absence of a testid: a row that started printing "Mon, Aug 17" would satisfy
     // every structural check and be exactly the regression.
-    await expect(serving).not.toContainText("Aug 17");
+    await expect(serving).not.toContainText(DAY_LABEL);
     await expect(serving).not.toContainText(DAY);
     // One clock grammar: bare and lower-case, or "logged" plus the same shape.
     const clock = (
