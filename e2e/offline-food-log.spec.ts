@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  settledFill,
+  settledSelect,
+} from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
 import {
   foodEventHighWater,
@@ -29,6 +34,39 @@ test.beforeEach(() => {
 });
 test.afterEach(() => {
   removeFoodEventsAfter(foodEventId, ["nuts_seeds", "berries"]);
+});
+
+test.describe("protein quick-add hydration (#4399)", () => {
+  test.use({ serviceWorkers: "block" });
+
+  test("the arming fill survives a forced pre-hydration window", async ({
+    page,
+  }) => {
+    let releaseChunks = (): void => {};
+    const chunksReleased = new Promise<void>((resolve) => {
+      releaseChunks = resolve;
+    });
+    await page.route(
+      /\/_next\/static\/chunks\/[^?]*\.js(\?|$)/,
+      async (route) => {
+        await chunksReleased;
+        await route.continue();
+      }
+    );
+    await page.goto("/nutrition", { waitUntil: "commit" });
+    const input = page.getByTestId("protein-quickadd-input");
+    await expect(input).toBeVisible();
+    expect(
+      await input.evaluate((node) =>
+        Object.keys(node).some((key) => key.startsWith("__react"))
+      )
+    ).toBe(false);
+
+    const fill = settledFill(page, input, "30");
+    releaseChunks();
+    await fill;
+    await expect(page.getByTestId("protein-quickadd-add")).toBeEnabled();
+  });
 });
 
 test("a food serving tapped offline queues, then syncs exactly once on reconnect (#1596)", async ({
@@ -96,7 +134,7 @@ test("protein grams added offline queue, then sync exactly once on reconnect (#1
   );
 
   await context.setOffline(true);
-  await page.getByTestId("protein-quickadd-input").fill("30");
+  await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
   await hydratedClick(page, page.getByTestId("protein-quickadd-add"));
 
   await expect(
