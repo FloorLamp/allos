@@ -26,7 +26,6 @@ import {
   correctionHintLine,
   DOSE_TIME_PREFIXES,
   FOOD_TIME_PREFIXES,
-  PRACTICE_TIME_PREFIXES,
 } from "@/lib/notifications/correction-rows";
 import {
   hasCorrectedAnyTime,
@@ -34,6 +33,12 @@ import {
   hasCorrectedFoodTime,
 } from "@/lib/queries/correction-history";
 import { getDoseCorrectionBursts } from "@/lib/queries/intake/adherence";
+import {
+  logPracticeSession,
+  restampPracticeLogsCore,
+} from "@/lib/practice-log";
+import { getRecentPracticeTaps } from "@/lib/queries/wellness";
+import { buildPracticeCorrectionRebuild } from "@/lib/notifications/practices";
 
 // One frozen evening in Berlin (UTC+2 in August), so "tapped within the last hour" is a
 // fact rather than a race.
@@ -291,16 +296,37 @@ describe("both hints render THROUGH the substrate helper, not beside it", () => 
     }
   });
 
-  it("gives a chip domain with no declared hint no sentence at all", () => {
-    // Practices gained the chips in #2875 and were left out of this issue's decisions,
-    // so the substrate answers for them by rendering nothing — not by letting a third
-    // surface write its own copy.
-    expect(PRACTICE_TIME_PREFIXES.hint).toBeUndefined();
-    expect(correctionHintLine(PRACTICE_TIME_PREFIXES, false)).toBeNull();
+  it("teaches practice correction, retires it, and debounces only a short repeat", () => {
+    const hint =
+      "Another ✅ logs another session; a time chip fixes when it happened.";
     expect(correctionHintLine(FOOD_TIME_PREFIXES, false)).toBe(
       FOOD_TIME_PREFIXES.hint
     );
     expect(correctionHintLine(FOOD_TIME_PREFIXES, true)).toBeNull();
+
+    const pid = newProfile("Practice hint");
+    const count = db
+      .prepare("SELECT COUNT(*) FROM practice_logs WHERE profile_id = ?")
+      .pluck();
+    const body = () =>
+      plainBody(buildPracticeCorrectionRebuild(pid, { now: clockNow() })!.body);
+    logPracticeSession(pid, "Sauna", today(pid), "telegram-nudge");
+    expect(body()).toContain(hint);
+    const logId = getRecentPracticeTaps(pid, clockNow())[0].id;
+    restampPracticeLogsCore(
+      pid,
+      logId,
+      (row) => new Date(new Date(row.statedAt!).getTime() - 30 * 60_000)
+    );
+    expect(body()).not.toContain(hint);
+    logPracticeSession(pid, "Sauna", today(pid), "telegram-nudge");
+    logPracticeSession(pid, "Breathwork", today(pid), "telegram-command");
+    expect(count.get(pid)).toBe(2);
+    db.prepare(
+      "UPDATE practice_logs SET created_at = datetime(created_at, '-121 seconds') WHERE profile_id = ? AND practice = 'Sauna'"
+    ).run(pid);
+    logPracticeSession(pid, "Sauna", today(pid), "telegram-nudge");
+    expect(count.get(pid)).toBe(3);
   });
 });
 
