@@ -79,9 +79,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
 - **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call** — receipt on the current head, checks green, zero unresolved
-  threads, read-only; exit 0 is the precondition. CI recomputes the same
-  verdict as the `merge-gate` commit status on pushes, reviews, CI settling.
+  call** — receipt on current head, checks green, no unresolved threads;
+  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT
+  STATUS, which check-runs does not list: all-green can still be `unstable`.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
