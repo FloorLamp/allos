@@ -171,27 +171,44 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     );
   });
 
-  it("an absolute local hour resolves in the PROFILE's timezone", async () => {
-    const login = createLogin();
-    const profile = createProfile("stated-hour", login.id);
-    actAs(login, profile);
-    const date = today(profile.id);
+  it.each([
+    ["before the skew window", "2026-08-30T23:45:00Z", "UTC"],
+    ["at the UTC day boundary", "2026-08-30T23:55:00Z", "UTC"],
+    [
+      "at a non-UTC profile's day boundary",
+      "2026-08-31T03:55:00Z",
+      "America/New_York",
+    ],
+  ])(
+    "resolves local midnight in the profile timezone %s",
+    async (_case, frozenNow, timezone) => {
+      const priorNow = process.env.ALLOS_TEST_NOW;
+      process.env.ALLOS_TEST_NOW = frozenNow;
+      try {
+        const login = createLogin();
+        const profile = createProfile(`stated-hour-${timezone}`, login.id);
+        setTimezone(profile.id, timezone);
+        actAs(login, profile);
+        const date = today(profile.id);
 
-    // Local midnight is always today-local and always already past, whatever hour CI
-    // runs at — so it is an offered hour by construction.
-    await logFoodServing(
-      fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
-    );
+        await logFoodServing(
+          fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
+        );
 
-    const [event] = events(profile.id);
-    expect(event.time_source).toBe("stated");
-    // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
-    // second-resolution UTC instant (#2205), so the expectation names the same writer
-    // the action uses rather than a second serialization of it.
-    expect(event.occurred_at).toBe(
-      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!)
-    );
-  });
+        const [event] = events(profile.id);
+        expect(event.time_source).toBe("stated");
+        // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
+        // second-resolution UTC instant (#2205), so the expectation names the same writer
+        // the action uses rather than a second serialization of it.
+        expect(event.occurred_at).toBe(
+          utcInstant(zonedWallTimeToUtc(timezone, date, "00:00")!)
+        );
+      } finally {
+        if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+        else process.env.ALLOS_TEST_NOW = priorNow;
+      }
+    }
+  );
 
   // ONE WIRE SHAPE (#3273). The bar used to post the WORD "now" beside a hand-rolled
   // hour-chip group; the chips are gone and so is the word. This is the table that
