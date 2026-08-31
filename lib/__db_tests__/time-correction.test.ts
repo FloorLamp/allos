@@ -42,6 +42,7 @@ import {
   logFoodServingCore,
   restampFoodEventsCore,
 } from "@/lib/food-log-write";
+import { foodSlotForProfileEvent } from "@/lib/profile-food-slot";
 import { markDoseTaken } from "@/lib/queries";
 import { restampDoseLogsCore } from "@/lib/queries/intake/adherence";
 import { now as clockNow } from "@/lib/clock";
@@ -266,6 +267,46 @@ describe("the correction rows are a QUERY over ledger state (#2019)", () => {
 });
 
 describe("a chip re-stamps the whole burst in one transaction (#2019)", () => {
+  it("retires a declared slot once the correction states an eating instant", () => {
+    const pid = newProfile("Slot Shirin");
+    logFoodServingCore(
+      pid,
+      "leafy_greens",
+      "2026-08-05",
+      "page",
+      "2026-08-05T19:02:00Z",
+      "Morning"
+    );
+    logFoodServingCore(
+      pid,
+      "berries",
+      "2026-08-05",
+      "page",
+      "2026-08-05T19:04:00Z"
+    );
+    const before = foodEvents(pid);
+    expect(before.map((row) => row.meal_slot)).toEqual(["Morning", null]);
+
+    expect(
+      restampFoodEventsCore(
+        pid,
+        before[0].id,
+        ({ tapAt }) => new Date(Date.parse(tapAt) - 3_600_000)
+      )
+    ).toEqual({ kind: "restamped", count: 2, movedDays: 0 });
+
+    const after = foodEvents(pid);
+    expect(after.map((row) => row.meal_slot)).toEqual([null, null]);
+    expect(
+      foodSlotForProfileEvent(
+        pid,
+        after[0].recorded_at,
+        null,
+        after[0].occurred_at
+      )
+    ).toBe("Evening");
+  });
+
   it("moves every row back from its own tap, flips the source, and answers honestly", async () => {
     const pid = newProfile("Chip Chris");
     seedLoginTelegram(pid, "5552022");

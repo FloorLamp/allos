@@ -42,7 +42,7 @@ function seedParents(mem: Database.Database): {
 }
 
 describe("#2876 dose event/record vocabulary migration", () => {
-  it("preserves tap and administration meaning for live rows and undo rows", () => {
+  it("preserves event meaning while rebuilding identity, triggers, and foreign keys", () => {
     const mem = beforeRename();
     const { itemId, doseId } = seedParents(mem);
     const insert = mem.prepare(
@@ -85,6 +85,13 @@ describe("#2876 dose event/record vocabulary migration", () => {
           },
         })
       );
+    mem
+      .prepare(
+        `INSERT INTO intake_item_logs (id, dose_id, item_id, date, taken_at, status)
+       VALUES (41, ?, ?, '2026-08-10', '2026-08-10 09:00:05', 'taken')`
+      )
+      .run(doseId, itemId);
+    mem.prepare("DELETE FROM intake_item_logs WHERE id = 41").run();
 
     up(mem);
 
@@ -123,20 +130,6 @@ describe("#2876 dose event/record vocabulary migration", () => {
       occurred_at: "2026-08-11T17:50:00Z",
     });
     expect(payload.administration).not.toHaveProperty("taken_at");
-  });
-
-  it("keeps identity, sequence, triggers, and foreign-key behavior through rebuild and replay", () => {
-    const mem = beforeRename();
-    const { itemId, doseId } = seedParents(mem);
-    mem
-      .prepare(
-        `INSERT INTO intake_item_logs (id, dose_id, item_id, date, taken_at, status)
-       VALUES (41, ?, ?, '2026-08-13', '2026-08-13 09:00:05', 'taken')`
-      )
-      .run(doseId, itemId);
-    mem.prepare("DELETE FROM intake_item_logs WHERE id = 41").run();
-
-    up(mem);
     const schema = (
       mem
         .prepare(
@@ -183,5 +176,6 @@ describe("#2876 dose event/record vocabulary migration", () => {
         }
       ).n
     ).toBe(0);
+    mem.close();
   });
 });
