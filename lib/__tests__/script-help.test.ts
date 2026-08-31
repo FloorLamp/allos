@@ -33,6 +33,7 @@ const ENTRY_SCRIPTS = [
   "scripts/orchestration/dependabot-eval-brief.mjs",
   "scripts/orchestration/dispatch-brief.mjs",
   "scripts/orchestration/host.mjs",
+  "scripts/orchestration/ledger.mjs",
   "scripts/orchestration/merge-gate.mjs",
   "scripts/orchestration/post-merge-census.mjs",
   "scripts/orchestration/pr-board.mjs",
@@ -67,5 +68,40 @@ describe("--help is always safe", () => {
     // The header is the usage, and headers here are substantial by house
     // style — a couple of characters would mean the guard printed nothing.
     expect(run.stdout.trim().length).toBeGreaterThan(80);
+  });
+});
+
+// AND IT ANSWERS FOR THE SCRIPT THAT WAS RUN, NOT FOR ONE IT IMPORTS (#4460).
+// helpGuard read `argv` alone, so the FIRST module-scope guard to run won: an
+// importer printed its import's header and exited 0. That is not a nicety —
+// it is why the dispatch ledger grew a third parser instead of an import, and
+// it would have blocked the next convergence in this directory too. Each pair
+// below is a real import edge, asserted in both directions: the importer's own
+// first header line present, and the import's absent.
+describe("--help belongs to the invoked script, not to its imports", () => {
+  // The absent marker is a phrase from the IMPORT'S OWN HEADER, never its
+  // filename: a header may legitimately name the module it delegates to, and
+  // an absence assertion keyed on the filename then fails on correct prose.
+  it.each([
+    [
+      "scripts/orchestration/queue-snapshot.mjs",
+      "Queue snapshot —",
+      "folded in ONE place",
+    ],
+    [
+      "scripts/orchestration/dispatch-brief.mjs",
+      "Dispatch-brief generator",
+      "folded in ONE place",
+    ],
+    [
+      "scripts/orchestration/ledger.mjs",
+      "The dispatch ledger, folded",
+      "Host resolution for orchestration",
+    ],
+  ])("%s prints its OWN header", (rel, own, imported) => {
+    const run = runHelp(rel);
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain(own);
+    expect(run.stdout).not.toContain(imported);
   });
 });
