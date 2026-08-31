@@ -114,46 +114,40 @@ async function upload(
   return id as number;
 }
 
-// A file allos REFUSES: an unsupported type that is not a health record. The engine
-// still lands a row — `insertFailedDoc`, `stored_path = ''`, zero bytes on disk — so
-// Review can show that the tool is pushing something allos will not take.
-async function uploadRefused(
+// Most cases below exercise the report-time claim, not upload/extraction. Keep one
+// successful real upload as the route witness; stage the remaining claim inputs at the
+// database boundary so each assertion pays only for the behavior it owns.
+function stageDoc(
   account: PortalAccount,
   patient: string,
-  filename: string
-): Promise<number> {
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([new TextEncoder().encode("not a health record at all")], {
-      type: "application/x-shockwave-flash",
-    }),
-    filename
-  );
-  const portalSlug = (
-    db.prepare("SELECT slug FROM portals WHERE id = ?").get(portalId) as {
-      slug: string;
-    }
-  ).slug;
-  const res = await UPLOAD(
-    new Request(
-      `http://x/api/documents?portal=${portalSlug}&account=${account.slug}&patient=${encodeURIComponent(patient)}`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${toolToken}` },
-        body: form,
-      }
+  filename: string,
+  stored = true
+): number {
+  const identity = db
+    .prepare(
+      `SELECT id, profile_id AS profileId
+         FROM portal_identities
+        WHERE account_id = ? AND patient_label = ?`
     )
-  );
-  const body = (await res.json()) as { documents: { id: number | null }[] };
-  const id = body.documents[0]?.id as number;
-  // It is a MARKER, not a document: a row with no bytes behind it.
-  expect(
+    .get(account.id, patient) as { id: number; profileId: number };
+  return Number(
     db
-      .prepare("SELECT stored_path AS p FROM medical_documents WHERE id = ?")
-      .get(id)
-  ).toEqual({ p: "" });
-  return id;
+      .prepare(
+        `INSERT INTO medical_documents
+           (filename, stored_path, mime_type, size_bytes, extraction_status,
+            uploaded_at, profile_id, acquired_portal_id, acquired_identity_id)
+         VALUES (?, ?, ?, 10, ?, strftime('%Y-%m-%d %H:%M:%S','now'), ?, ?, ?)`
+      )
+      .run(
+        filename,
+        stored ? `/fixture/${filename}` : "",
+        stored ? "application/pdf" : "application/x-shockwave-flash",
+        stored ? "done" : "failed",
+        identity.profileId,
+        portalId,
+        identity.id
+      ).lastInsertRowid
+  );
 }
 
 // The seconds a real push spans: the observed run uploaded documents at 19:36:17–19:36:24
@@ -333,11 +327,11 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
   it("claims this run's documents, and none from a previous run or another login", async () => {
     // Login TWO delivers first for the SAME label and profile. Account ownership is
     // therefore the only fact that can keep login ONE from claiming this archive.
-    const otherDoc = await upload(accountTwo, LABEL_ONE, "other-login-b1.pdf");
+    const otherDoc = stageDoc(accountTwo, LABEL_ONE, "other-login-b1.pdf");
 
     // RUN 1 on login ONE: two archives, then the report.
     const first = await upload(accountOne, LABEL_ONE, "run-one-a1.pdf");
-    const second = await upload(accountOne, LABEL_ONE, "run-one-a2.pdf");
+    const second = stageDoc(accountOne, LABEL_ONE, "run-one-a2.pdf");
     expect(
       db
         .prepare(
@@ -361,7 +355,7 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
     expect(claimedByOne).not.toContain(otherDoc);
 
     // RUN 2 on the same login: one more archive.
-    const third = await upload(accountOne, LABEL_ONE, "run-two-a3.pdf");
+    const third = stageDoc(accountOne, LABEL_ONE, "run-two-a3.pdf");
     const runTwo = await reportRun(accountOne, LABEL_ONE);
 
     expect(claimedDocuments(runTwo)).toEqual([third]);
@@ -382,7 +376,7 @@ describe("a run claims exactly the documents it delivered (#2999)", () => {
         )
         .run(profileOne).lastInsertRowid
     );
-    const mine = await upload(accountOne, LABEL_ONE, "after-hand-a5.pdf");
+    const mine = stageDoc(accountOne, LABEL_ONE, "after-hand-a5.pdf");
     const run = await reportRun(accountOne, LABEL_ONE);
     expect(claimedDocuments(run)).toEqual([mine]);
     expect(claimedDocuments(run)).not.toContain(handUploaded);
@@ -396,12 +390,8 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
     // apart and land before either report — which is exactly the arrangement that made
     // the login-keyed window claim patient one's archive and lose patient two's to
     // nobody at all.
-    const forOne = await upload(accountOne, LABEL_ONE, "push-sibling-a1.pdf");
-    const forTwo = await upload(
-      accountOne,
-      LABEL_SIBLING,
-      "push-sibling-b1.pdf"
-    );
+    const forOne = stageDoc(accountOne, LABEL_ONE, "push-sibling-a1.pdf");
+    const forTwo = stageDoc(accountOne, LABEL_SIBLING, "push-sibling-b1.pdf");
     spaceUploads([forOne, forTwo], 12);
 
     const runOne = await reportRun(accountOne, LABEL_ONE);
@@ -417,8 +407,8 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
   it("does not credit one patient's run with another patient's archive, same profile", async () => {
     // Two labels on one login for the SAME person — no privacy question, and the
     // drill-in's stated property (every document belongs to THAT run) still has to hold.
-    const asOne = await upload(accountOne, LABEL_ONE, "alias-a2.pdf");
-    const asAlias = await upload(accountOne, LABEL_ALIAS, "alias-a3.pdf");
+    const asOne = stageDoc(accountOne, LABEL_ONE, "alias-a2.pdf");
+    const asAlias = stageDoc(accountOne, LABEL_ALIAS, "alias-a3.pdf");
     spaceUploads([asOne, asAlias], 12);
 
     const runOne = await reportRun(accountOne, LABEL_ONE);
@@ -432,7 +422,7 @@ describe("one login, two patients: nobody's documents go unclaimed (#2914)", () 
     // The claim's profile filter, pinned by behaviour rather than by the source scanner.
     // A row mis-stamped with this identity but owned by somebody else stays unclaimed:
     // the identity is not authority over whose document this is.
-    const mine = await upload(accountOne, LABEL_ONE, "scoped-a4.pdf");
+    const mine = stageDoc(accountOne, LABEL_ONE, "scoped-a4.pdf");
     const identityId = (
       db
         .prepare(
@@ -470,15 +460,17 @@ describe("a run delivers DOCUMENTS, not markers (#2999)", () => {
     //
     // It is also the same fact `duplicate` and `blocked` already state by creating no row
     // at all: a delivery that carried nothing allos would store delivered nothing.
-    const refusedOne = await uploadRefused(
+    const refusedOne = stageDoc(
       accountOne,
       LABEL_ONE,
-      "refused-one.swf"
+      "refused-one.swf",
+      false
     );
-    const refusedTwo = await uploadRefused(
+    const refusedTwo = stageDoc(
       accountOne,
       LABEL_ONE,
-      "refused-two.swf"
+      "refused-two.swf",
+      false
     );
     spaceUploads([refusedOne, refusedTwo], 12);
 
@@ -508,8 +500,8 @@ describe("a run delivers DOCUMENTS, not markers (#2999)", () => {
   });
 
   it("claims the real archives in a push that also carried a refused file", async () => {
-    const refused = await uploadRefused(accountOne, LABEL_ONE, "mixed.swf");
-    const real = await upload(accountOne, LABEL_ONE, "mixed-real.pdf");
+    const refused = stageDoc(accountOne, LABEL_ONE, "mixed.swf", false);
+    const real = stageDoc(accountOne, LABEL_ONE, "mixed-real.pdf");
     spaceUploads([refused, real], 12);
     const run = await reportRun(accountOne, LABEL_ONE);
     expect(claimedDocuments(run)).toEqual([real]);
@@ -525,7 +517,7 @@ describe("the claim is written whole or not at all (#2999)", () => {
     // unre-claimable, permanently. "Unify the two provenance writers" is the most natural
     // cleanup anyone will ever propose here, and it would reintroduce exactly that with
     // the suite green.
-    const doc = await upload(accountOne, LABEL_ONE, "atomic-a1.pdf");
+    const doc = stageDoc(accountOne, LABEL_ONE, "atomic-a1.pdf");
     spaceUploads([doc], 10);
 
     db.exec(
@@ -570,7 +562,7 @@ describe("the #388 retention sweep does not release a claimed archive (#2999)", 
     // why nothing caught it. This one runs it.
     const delivered: number[] = [];
     for (const n of [1, 2, 3]) {
-      const doc = await upload(accountOne, LABEL_ONE, `retained-a${n}.pdf`);
+      const doc = stageDoc(accountOne, LABEL_ONE, `retained-a${n}.pdf`);
       spaceUploads([doc], 10);
       const run = await reportRun(accountOne, LABEL_ONE);
       expect(claimedDocuments(run)).toEqual([doc]);
@@ -643,7 +635,7 @@ describe("re-pointing a binding never re-attributes an archive (#2999)", () => {
     expect(bindPortalIdentity(accountTwo.id, LABEL_REMAP, profileTwo).ok).toBe(
       true
     );
-    const theirs = await upload(accountTwo, LABEL_REMAP, "remapped-b3.pdf");
+    const theirs = stageDoc(accountTwo, LABEL_REMAP, "remapped-b3.pdf");
     spaceUploads([theirs], 10);
     const identityId = (
       db
@@ -673,7 +665,7 @@ describe("re-pointing a binding never re-attributes an archive (#2999)", () => {
 
 describe("a failed run consumes nothing (#2999)", () => {
   it("leaves the documents for the next successful report", async () => {
-    const doc = await upload(accountOne, LABEL_ONE, "after-failure-a5.pdf");
+    const doc = stageDoc(accountOne, LABEL_ONE, "after-failure-a5.pdf");
     spaceUploads([doc], 10);
 
     const failed = await reportRun(accountOne, LABEL_ONE, {
@@ -695,8 +687,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     // the row that owned the documents — stranding them, because the unclaimed guard
     // stops any later run re-claiming them — and made the login row say "Delivered no
     // documents" over a real delivery.
-    const first = await upload(accountOne, LABEL_ONE, "quiet-a6.pdf");
-    const second = await upload(accountOne, LABEL_ONE, "quiet-a7.pdf");
+    const first = stageDoc(accountOne, LABEL_ONE, "quiet-a6.pdf");
+    const second = stageDoc(accountOne, LABEL_ONE, "quiet-a7.pdf");
     spaceUploads([first, second], 12);
     const run = await reportRun(accountOne, LABEL_ONE, {
       status: "nothing-new",
@@ -720,9 +712,9 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
     // Three archives, reported `inserted 1, unchanged 2`. Deriving the login row from
     // that split said "1" while the drill-in listed 3.
     const docs = [
-      await upload(accountOne, LABEL_ONE, "one-number-a8.pdf"),
-      await upload(accountOne, LABEL_ONE, "one-number-a9.pdf"),
-      await upload(accountOne, LABEL_ONE, "one-number-b1.pdf"),
+      stageDoc(accountOne, LABEL_ONE, "one-number-a8.pdf"),
+      stageDoc(accountOne, LABEL_ONE, "one-number-a9.pdf"),
+      stageDoc(accountOne, LABEL_ONE, "one-number-b1.pdf"),
     ];
     spaceUploads(docs, 20);
     const run = await reportRun(accountOne, LABEL_ONE, {
@@ -814,8 +806,8 @@ describe("a delivery reported as nothing-new is still a delivery (#2914)", () =>
 
 describe("the Imports feed after a delivery (#2999)", () => {
   it("offers a drill-in whose promised count is the provenance count, in DOCUMENTS", async () => {
-    const first = await upload(accountOne, LABEL_ONE, "feed-a1.pdf");
-    const second = await upload(accountOne, LABEL_ONE, "feed-a2.pdf");
+    const first = stageDoc(accountOne, LABEL_ONE, "feed-a1.pdf");
+    const second = stageDoc(accountOne, LABEL_ONE, "feed-a2.pdf");
     const run = await reportRun(accountOne, LABEL_ONE);
 
     const entry = getImportDocumentsFeed(profileOne, 200).find(
