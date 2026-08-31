@@ -252,7 +252,7 @@ export default function BottomSheet({
   // nobody owns — which is the shape that caused this.
   //
   // The HANDLE gates it, so the claim is live exactly while the panel is
-  // bottom-anchored: see useBottomEdgeClaim's `gateRef`.
+  // bottom-anchored: see useBottomEdgeClaim's `gate` argument.
   useBottomEdgeClaim(panelRef, { gate: handleRef, mounted });
   // Stop trapping focus / answering Escape the moment the exit starts, so a
   // closing sheet can't swallow the next Escape or steal focus back.
