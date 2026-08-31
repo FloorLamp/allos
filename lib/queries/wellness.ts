@@ -1042,8 +1042,8 @@ export interface PracticeTapRow extends TapEvent {
 //
 // THREE THINGS DIFFER FROM ITS SIBLINGS, and each is visible right here.
 //
-// 1. THE STORED VALUE IS NOT AN INSTANT. Food stores `occurred_at` and dose stores
-//    `given_at`, both full instants; a practice stores `date` (a profile-local day)
+// 1. THE STORED VALUE IS NOT AN INSTANT. Food and dose store `occurred_at`, a full
+//    instant; a practice stores `date` (a profile-local day)
 //    plus `start_time` (a profile-local "HH:MM"). The substrate works on ISO instants, so
 //    the two are COMPOSED in the profile's timezone — server-side (#450), never from
 //    a device clock — and the composition is `eventInstant`, the declared reader for
