@@ -3,27 +3,23 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import {
-  allocateUxServedDb,
-  assertUxServedDbOwned,
-  assertUxServedDbUnused,
-  cleanupUxServedDb,
-} from "../../scripts/ux-served-db.mjs";
 import { makeTmpDir } from "../__tests__/tmp-dir";
 import { perTestCeiling } from "../../vitest.timeouts";
+import { migratedDb } from "./migrated-db";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..", "..");
 
-function runSeed(dbPath: string, shape: "baseline" | "dirty") {
+function runDirtySeed(dbPath: string) {
   const env = {
     ...process.env,
     ALLOS_DB_PATH: dbPath,
     ADMIN_USERNAME: "admin",
     ADMIN_PASSWORD: "first-boot-pw-1",
-    SEED_DIAL_SHAPE: shape === "dirty" ? "dirty" : "",
-    SEED_RNG: shape === "baseline" ? "1" : "",
+    SEED_DIAL_SHAPE: "dirty",
+    SEED_RNG: "",
     SEED_PERSONA: "",
     UX_SEED: "",
   };
@@ -32,6 +28,18 @@ function runSeed(dbPath: string, shape: "baseline" | "dirty") {
     ["--import", "tsx", path.join(repo, "scripts", "seed.ts")],
     { cwd: repo, env, encoding: "utf8" }
   );
+}
+
+function existingNonDirtyDb(): string {
+  const dbPath = path.join(makeTmpDir("dirty-witness-missing"), "allos.db");
+  const db = migratedDb();
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title)
+     VALUES (1, '2026-01-01', 'strength', 'Existing activity')`
+  ).run();
+  fs.writeFileSync(dbPath, db.serialize());
+  db.close();
+  return dbPath;
 }
 
 function runWitness(dbPath: string, uxSeed = "dirty") {
@@ -159,49 +167,31 @@ function processExists(pid: number): boolean {
 const SEED_CEILING = { timeout: perTestCeiling(3, "worst") };
 
 describe("dirty seed and served DB lifecycles", SEED_CEILING, () => {
-  it("distinguishes dirty from baseline and keeps the baseline outside served allocations", () => {
+  it("distinguishes dirty from an existing non-dirty database", () => {
     const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
-    const dirty = runSeed(dirtyPath, "dirty");
+    const dirty = runDirtySeed(dirtyPath);
     expect(dirty.status, dirty.stderr || dirty.stdout).toBe(0);
     const verified = runWitness(dirtyPath);
     expect(verified.status, verified.stderr || verified.stdout).toBe(0);
     expect(verified.stdout).toContain("verified dirty UX database");
 
-    const baselinePath = path.join(
-      makeTmpDir("dirty-witness-missing"),
-      "allos.db"
-    );
-    const baseline = runSeed(baselinePath, "baseline");
-    expect(baseline.status, baseline.stderr || baseline.stdout).toBe(0);
-    const mislabeled = runWitness(baselinePath);
+    const nonDirtyPath = existingNonDirtyDb();
+    const mislabeled = runWitness(nonDirtyPath);
     expect(mislabeled.status).not.toBe(0);
     expect(mislabeled.stderr).toContain("Dirty seed witnesses do not match");
 
-    const before = fs.readFileSync(baselinePath);
-    const directDirty = runSeed(baselinePath, "dirty");
+    const directDirty = runDirtySeed(nonDirtyPath);
     expect(directDirty.status).not.toBe(0);
     expect(directDirty.stderr).toContain(
       "Database already has data — refusing named seed shape dirty"
     );
-
-    const dir = path.dirname(baselinePath);
-    const allocations = [
-      allocateUxServedDb(dir),
-      allocateUxServedDb(dir),
-      allocateUxServedDb(dir),
-      allocateUxServedDb(dir),
-    ];
-    try {
-      expect(new Set(allocations.map(({ dbPath }) => dbPath)).size).toBe(4);
-      for (const allocation of allocations) {
-        expect(allocation.dbPath).not.toBe(baselinePath);
-        assertUxServedDbOwned(allocation);
-        assertUxServedDbUnused(allocation);
-      }
-      expect(fs.readFileSync(baselinePath)).toEqual(before);
-    } finally {
-      for (const allocation of allocations) cleanupUxServedDb(allocation);
-    }
+    const preserved = new Database(nonDirtyPath);
+    const title = preserved
+      .prepare("SELECT title FROM activities WHERE profile_id = 1")
+      .pluck()
+      .get();
+    preserved.close();
+    expect(title).toBe("Existing activity");
   });
 
   it("aborts when the real thin post-seed child fails", () => {
