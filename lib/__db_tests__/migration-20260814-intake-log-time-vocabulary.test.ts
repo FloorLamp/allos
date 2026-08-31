@@ -1,15 +1,18 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { migrationsBefore } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/20260814-intake-log-time-vocabulary";
+
+const LOG_SCHEMA_IDS = new Set([
+  1, 5, 8, 11, 41, 56, 79, 80, 135, 156, 165, 170, 173,
+]);
 
 function beforeRename(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const migration of migrationsBefore(
-    "20260814-intake-log-time-vocabulary"
-  ))
-    migration.up(mem);
+  for (const migration of NUMBERED_MIGRATIONS) {
+    if (LOG_SCHEMA_IDS.has(migration.id)) migration.up(mem);
+  }
   return mem;
 }
 
@@ -24,8 +27,8 @@ function seedParents(mem: Database.Database): {
     mem
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, product, active, kind, condition, obligation)
-         VALUES (1, 'Ibuprofen', 'Oral suspension', 1, 'medication', 'daily', 'may')`
+           (profile_id, name, product, active, kind, condition)
+         VALUES (1, 'Ibuprofen', 'Oral suspension', 1, 'medication', 'daily')`
       )
       .run().lastInsertRowid
   );

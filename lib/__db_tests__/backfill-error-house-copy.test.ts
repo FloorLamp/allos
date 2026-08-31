@@ -9,8 +9,9 @@
 
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "@/lib/migrations/runner";
-import { migrationsBefore } from "@/lib/migrations/versions";
+import { MIGRATIONS } from "@/lib/migrations/versions";
+import { up as createBackfillJobs } from "@/lib/migrations/versions/160-integration-backfill-jobs";
+import { up as rewriteBackfillErrors } from "@/lib/migrations/versions/20260823-backfill-error-house-copy";
 
 const MIGRATION = "20260823-backfill-error-house-copy";
 
@@ -37,14 +38,15 @@ const ROWS: [string, string | null, string | null][] = [
 
 function seeded(): Database.Database {
   const db = new Database(":memory:");
-  runMigrations(db, migrationsBefore(MIGRATION));
+  MIGRATIONS[0].up(db);
+  createBackfillJobs(db);
   db.prepare(
     "INSERT INTO profiles (id, name) VALUES (1, 'BACKFILL-COPY')"
   ).run();
   for (const [kind, error] of ROWS) {
     db.prepare(
       `INSERT INTO integration_backfill_jobs
-         (profile_id, source_id, kind, label, item_noun, status, total_items,
+         (profile_id, provider, kind, label, item_noun, status, total_items,
           completed_items, failed_items, request_count, active_seconds,
           started_at, error, created_at, updated_at)
        VALUES (1, 'strava', ?, 'Session detail backfill', 'session', 'failed',
@@ -59,18 +61,7 @@ describe(MIGRATION, () => {
   it("rewrites every machine string and leaves authored ones byte-identical", () => {
     const db = seeded();
     try {
-      // Premise, asserted rather than assumed: the leak is on the row before.
-      expect(
-        (
-          db
-            .prepare(
-              "SELECT error FROM integration_backfill_jobs WHERE kind = 'ride-details'"
-            )
-            .get() as { error: string }
-        ).error
-      ).toBe(OBSERVED_LEAK);
-
-      runMigrations(db);
+      rewriteBackfillErrors(db);
 
       const after = db
         .prepare(

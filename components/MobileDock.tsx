@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { usePathname } from "next/navigation";
 import {
   IconBarbell,
@@ -109,7 +110,8 @@ export default function MobileDock({
     useMobileChrome();
   const slots = dockSlots(trainingRelevant);
   const active = activeDockSlotId(slots, pathname);
-  const edgeRef = useBottomEdgeClaim<HTMLElement>();
+  const edgeRef = useRef<HTMLElement>(null);
+  useBottomEdgeClaim(edgeRef);
 
   const renderSlot = (slot: DockSlot) => {
     const Icon = ICONS[slot.icon];
