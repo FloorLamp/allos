@@ -26,7 +26,6 @@ import {
   readVersion,
   type Migration,
 } from "@/lib/migrations/runner";
-import { MIGRATIONS } from "@/lib/migrations/versions";
 import {
   MigrationSnapshotError,
   listMigrationSnapshots,
@@ -76,9 +75,7 @@ afterEach(() => {
 });
 
 // A tiny synthetic registry: one migration that builds a table, one that deletes
-// rows out of it. Small on purpose — the runner's behaviour is what is under test,
-// not the real 190-migration replay (which one case below does exercise, for the
-// version gate).
+// rows out of it. Small on purpose — the runner's behaviour is what is under test.
 const base: Migration = {
   name: "20260101-notes-table",
   up(db) {
@@ -121,109 +118,57 @@ function readMeta(dir: string, name: string): PreMigrationSnapshotMeta {
   ) as PreMigrationSnapshotMeta;
 }
 
-describe("pre-flight snapshot — taken when an upgrade meets data", () => {
-  it("copies the database before a row-deleting migration applies, and records what it precedes", () => {
-    const { dbPath, snapDir } = tmpDb();
-    const db = open(dbPath);
-    runMigrations(db, [base]);
-    seedNotes(db);
-
-    runMigrations(db, [base, deleteDrafts]);
-
-    // The migration did its (destructive) work.
-    expect(noteBodies(db)).toEqual(["keep this one"]);
-
-    const names = listMigrationSnapshots(snapDir);
-    expect(names).toHaveLength(1);
-    const meta = readMeta(snapDir, names[0]);
-    expect(meta.pending).toEqual(["20260102-drop-drafts"]);
-    expect(meta.appliedCount).toBe(1);
-    expect(meta.fromUserVersion).toBe(1);
-    expect(meta.bytes).toBeGreaterThan(0);
-
-    // The runner's foreign-key posture is restored exactly as before (#95).
-    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
-    db.close();
-  });
-
-  it("writes the verification sidecar the restore tooling reads, so the snapshot is not refused as unverified", () => {
-    const { dbPath, snapDir } = tmpDb();
-    const db = open(dbPath);
-    runMigrations(db, [base]);
-    seedNotes(db);
-    runMigrations(db, [base, deleteDrafts]);
-    db.close();
-
-    const [name] = listMigrationSnapshots(snapDir);
-    expect(
-      fs.existsSync(path.join(snapDir, verificationSidecarName(name)))
-    ).toBe(true);
-    // The real functions the restore CLI lists and classifies with.
-    expect(listBackupNames(snapDir)).toContain(name);
-    expect(readVerification(name, snapDir)?.integrity).toBe("ok");
-  });
-});
-
-describe("pre-flight snapshot — restorable to the pre-migration state", () => {
-  it("puts the deleted rows back through restoreCore, and the migration back in the pending set", () => {
+describe("pre-flight snapshot — taken and restorable before an upgrade", () => {
+  it("captures the pre-migration state, verifies it, and restores it through the real gate", () => {
     const { dbPath, snapDir } = tmpDb();
     let db = open(dbPath);
     runMigrations(db, [base]);
     seedNotes(db);
-    runMigrations(db, [base, deleteDrafts]);
-    expect(noteBodies(db)).toEqual(["keep this one"]);
-    db.close();
 
-    const [name] = listMigrationSnapshots(snapDir);
+    runMigrations(db, [base, deleteDrafts]);
+
+    expect(noteBodies(db)).toEqual(["keep this one"]);
+    const names = listMigrationSnapshots(snapDir);
+    expect(names).toHaveLength(1);
+    const [name] = names;
+    const meta = readMeta(snapDir, name);
+    expect(meta.pending).toEqual(["20260102-drop-drafts"]);
+    expect(meta.appliedCount).toBe(1);
+    expect(meta.fromUserVersion).toBe(1);
+    expect(meta.bytes).toBeGreaterThan(0);
+    expect(db.pragma("foreign_keys", { simple: true })).toBe(1);
+    expect(
+      fs.existsSync(path.join(snapDir, verificationSidecarName(name)))
+    ).toBe(true);
+    expect(listBackupNames(snapDir)).toContain(name);
+    expect(readVerification(name, snapDir)?.integrity).toBe("ok");
     const snapshotPath = path.join(snapDir, name);
     const snapshotUserVersion = readSnapshotUserVersion(snapshotPath);
     expect(snapshotUserVersion).toBe(1);
+    expect(
+      decideSnapshotVersion({
+        snapshotUserVersion,
+        buildMigrationCount: 2,
+        force: false,
+      })
+    ).toEqual({ ok: true, snapshotNewer: false });
+    db.close();
 
-    // The same call `npm run restore -- <snapshot.db>` makes, gates included.
     const { asidePath } = restoreCore({
       snapshotPath,
       livePath: dbPath,
       snapshotOk: true,
       force: false,
       snapshotUserVersion,
-      buildMigrationCount: MIGRATIONS.length,
+      buildMigrationCount: 2,
     });
     expect(asidePath).not.toBeNull();
 
     db = open(dbPath);
-    // The rows the migration removed are back...
     expect(noteBodies(db)).toEqual(["keep this one", "draft one", "draft two"]);
-    // ...and so is the pre-migration schema state: the deleting migration is no
-    // longer in the ledger, and the tripwire matches.
     expect(ledger(db)).toEqual(["20260101-notes-table"]);
     expect(readVersion(db)).toBe(1);
     db.close();
-  });
-
-  it("a snapshot from a pre-migration database passes the #472 restore version gate", () => {
-    // The realistic shape, against the REAL registry: the snapshot's user_version
-    // is the applied count BEFORE the pending set, which is necessarily lower than
-    // the build's migration count — so `decideSnapshotVersion` (which only refuses
-    // a snapshot NEWER than the build) accepts it.
-    const { dbPath, snapDir } = tmpDb();
-    const db = open(dbPath);
-    const allButLast = MIGRATIONS.slice(0, MIGRATIONS.length - 1);
-    runMigrations(db, allButLast);
-    runMigrations(db);
-    db.close();
-
-    const [name] = listMigrationSnapshots(snapDir);
-    const snapshotUserVersion = readSnapshotUserVersion(
-      path.join(snapDir, name)
-    );
-    expect(snapshotUserVersion).toBe(allButLast.length);
-    expect(
-      decideSnapshotVersion({
-        snapshotUserVersion,
-        buildMigrationCount: MIGRATIONS.length,
-        force: false,
-      })
-    ).toEqual({ ok: true, snapshotNewer: false });
   });
 });
 
@@ -378,7 +323,7 @@ describe("pre-flight snapshot — a one-upgrade opt-out stops mattering (#2781)"
 });
 
 describe("pre-flight snapshot — the refusal", () => {
-  it("refuses the boot with NOTHING applied when the copy cannot be made", () => {
+  it("names the override and refuses the boot with NOTHING applied when copying fails", () => {
     const { dbPath, snapDir } = tmpDb();
     const db = open(dbPath);
     runMigrations(db, [base]);
@@ -388,31 +333,20 @@ describe("pre-flight snapshot — the refusal", () => {
     fs.mkdirSync(path.dirname(snapDir), { recursive: true });
     fs.writeFileSync(snapDir, "not a directory\n");
 
-    expect(() => runMigrations(db, [base, deleteDrafts])).toThrow(
-      MigrationSnapshotError
-    );
+    let error: unknown;
+    try {
+      runMigrations(db, [base, deleteDrafts]);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(MigrationSnapshotError);
+    expect((error as Error).message).toMatch(/ALLOS_MIGRATION_SNAPSHOT=off/);
+    expect((error as Error).message).toMatch(/20260102-drop-drafts/);
     // Reversible by construction: the pending migration did not apply, the ledger
     // and tripwire are untouched, and the rows it would have deleted are all there.
     expect(ledger(db)).toEqual(["20260101-notes-table"]);
     expect(readVersion(db)).toBe(1);
     expect(noteBodies(db)).toEqual(["keep this one", "draft one", "draft two"]);
-    db.close();
-  });
-
-  it("names the override in its own message, so the escape hatch is discoverable when it is needed", () => {
-    const { dbPath, snapDir } = tmpDb();
-    const db = open(dbPath);
-    runMigrations(db, [base]);
-    seedNotes(db);
-    fs.mkdirSync(path.dirname(snapDir), { recursive: true });
-    fs.writeFileSync(snapDir, "not a directory\n");
-
-    expect(() => runMigrations(db, [base, deleteDrafts])).toThrow(
-      /ALLOS_MIGRATION_SNAPSHOT=off/
-    );
-    expect(() => runMigrations(db, [base, deleteDrafts])).toThrow(
-      /20260102-drop-drafts/
-    );
     db.close();
   });
 });

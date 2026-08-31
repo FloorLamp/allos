@@ -842,6 +842,17 @@ describe("every surface-reading action has a mounting that declares itself", () 
         "from this mounting, whatever surface it actually is."
     ).toEqual([]);
   });
+
+  it("keeps both dose-history backfill posts stamped", () => {
+    const code = (rel: string) =>
+      stripComments(fs.readFileSync(path.join(REPO, rel), "utf8"));
+    expect(code("components/intake/DoseHistoryPanel.tsx")).toMatch(
+      /logHistoricalDose\s*\(\s*stampLoggedVia\s*\(\s*fd\s*\)\s*\)/
+    );
+    expect(code("components/medications/HistoricalDoseForm.tsx")).toMatch(
+      /logHistoricalDose\s*\(\s*stampLoggedVia\s*\(\s*formData\s*\)\s*\)/
+    );
+  });
 });
 
 describe("the census's reach", () => {
