@@ -8,7 +8,7 @@ import {
   resolveStandingMembers,
   standingFamilyForCandidate,
   STANDING_READING_ORDER,
-  type StandingBandKey,
+  type StandingRenderedBand,
   type StandingFamilyKey,
   type StandingSectionKey,
 } from "./dashboard-standing";
@@ -161,7 +161,7 @@ export type DashboardPlacement =
       lane: "standing";
       standingFamilyKey: StandingFamilyKey;
       standingSection: StandingSectionKey;
-      standingBand: StandingBandKey;
+      standingBand: StandingRenderedBand;
     })
   | (DashboardPlacementBase & {
       lane: "ahead";

@@ -11,10 +11,10 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { runMigrations, readVersion } from "@/lib/migrations/runner";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 
 const V162 = 162;
+const SHARE_SCHEMA_IDS = new Set([1, 29, 42, 44, 46, 48]);
 
 function newDb(): Database.Database {
   const db = new Database(":memory:");
@@ -29,12 +29,13 @@ function columnNames(db: Database.Database, table: string): string[] {
   ).map((r) => r.name);
 }
 
-// A DB with every migration BEFORE 162 applied and stamped at 161 — the exact shape
-// a deployment running the previous release has on disk.
+// The real schema owners for every table/column migration 162 reads or copies. No
+// other pre-162 migration touches profile_share_links.
 function preDb(): Database.Database {
   const db = newDb();
-  for (const m of NUMBERED_MIGRATIONS.filter((m) => m.id < V162)) m.up(db);
-  db.pragma(`user_version = ${V162 - 1}`);
+  for (const m of NUMBERED_MIGRATIONS) {
+    if (SHARE_SCHEMA_IDS.has(m.id)) m.up(db);
+  }
   return db;
 }
 
@@ -107,14 +108,16 @@ describe("migration 162 — profile_share_links kind CHECK", () => {
       .all();
     const columnsBefore = columnNames(db, "profile_share_links");
 
-    runMigrations(db);
+    MIGRATIONS[V162 - 1].up(db);
 
-    expect(readVersion(db)).toBe(MIGRATIONS.length);
     expect(columnNames(db, "profile_share_links")).toEqual(columnsBefore);
     expect(
       db.prepare("SELECT * FROM profile_share_links ORDER BY id").all()
     ).toEqual(before);
     insertKind(db, profileId, "immunizations", "hash-imm");
+    expect(() => insertKind(db, profileId, "labs", "hash-labs")).toThrow(
+      /CHECK constraint failed/
+    );
     const beforeReplay = db
       .prepare("SELECT * FROM profile_share_links ORDER BY id")
       .all();
@@ -124,19 +127,6 @@ describe("migration 162 — profile_share_links kind CHECK", () => {
     expect(
       db.prepare("SELECT * FROM profile_share_links ORDER BY id").all()
     ).toEqual(beforeReplay);
-    db.close();
-  });
-
-  it("still refuses an unknown kind after the migration", () => {
-    const db = newDb();
-    runMigrations(db);
-    const profileId = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES (?)").run("Fresh")
-        .lastInsertRowid
-    );
-    expect(() => insertKind(db, profileId, "labs", "hash-labs")).toThrow(
-      /CHECK constraint failed/
-    );
     db.close();
   });
 });

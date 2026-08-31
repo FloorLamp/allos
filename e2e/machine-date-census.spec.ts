@@ -17,7 +17,7 @@ import {
 } from "@/lib/machine-date-census";
 import { MACHINE_LAB_UNIT_RE } from "@/lib/machine-lab-unit-census";
 import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
-import { openStandingTail } from "./dashboard-candidate";
+
 import { plantTrashCaptures, sweepTrashProbes } from "./trash-probe";
 import { openGoalFact } from "./goal-form-helpers";
 
@@ -211,14 +211,13 @@ const ROUTES: CensusRoute[] = [
       page.locator(
         '[data-testid="dashboard-candidate"][data-candidate-id="labs.latest:Selenium"]'
       ),
-    // TWO folds now, and the second is the reason this route reveals at all. A quiet
-    // clinical result sits in Standing's collapsed tail since #3548 — present in the
-    // DOM, hidden — so a census that reads RENDERED copy stops seeing it. Copy one tap
-    // behind a disclosure is still copy a person reaches, so the census opens the fold
-    // and looks; it does not lower its expectation to "visible or hidden", which would
-    // make it unable to tell reachable copy from copy that is gone.
+    // ONE fold since #4232, and it is the reason this route reveals at all. A quiet
+    // clinical result sits behind Show everything — present in the DOM, hidden — so a
+    // census that reads RENDERED copy stops seeing it. Copy one tap behind a disclosure
+    // is still copy a person reaches, so the census opens the fold and looks; it does
+    // not lower its expectation to "visible or hidden", which would make it unable to
+    // tell reachable copy from copy that is gone.
     reveal: async (page) => {
-      await openStandingTail(page);
       await openDashboardAll(page);
     },
   },

@@ -6,7 +6,20 @@ export type StandingSectionKey = "today" | "body" | "longer-view";
 // Standing is one RANKED surface in three bands (#3548). Membership is derived
 // from the candidate model — never from a closed id list — so a new candidate with
 // a rank reason lifts into the tier with no edit here.
+//
+// "tail" is no longer a Standing band that renders (#4232). Standing shrinks to its
+// attention tier and its stable rest — always open, purely the glance surface — and a
+// member whose band resolves to "tail" STOPS CLAIMING: `resolveStandingMembers` drops
+// it, so the exact-once partition routes it itself. It is still named here because it
+// is the verdict the registry's `quietBand` declares and the value this resolver
+// computes to reach it, not because a third band draws anything.
 export type StandingBandKey = "attention" | "rest" | "tail";
+
+// The bands Standing DRAWS. "tail" is the resolver's verdict for a member that holds
+// no seat at all, so it can never reach a placement — narrowing it out of the placement
+// type is what makes "Standing shows attention + rest only" a type error to violate
+// rather than a convention to remember.
+export type StandingRenderedBand = Exclude<StandingBandKey, "tail">;
 
 // How many never-recorded bootstrap CTAs may hold a cold-start claim at once
 // (owner ruling #3548: 2-3, ordered by onboarding value). The order is
@@ -38,10 +51,12 @@ export interface StandingReadingFamily {
   composition: "single" | "composed" | "members";
   matches: (candidate: DashboardCandidate) => boolean;
   /**
-   * Where this family's members sit when they hold NO live claim (#3548). Default
-   * "rest": a daily instrument you glance by position stays where it always is.
-   * "tail" is for the families whose quiet rows are a months-old record rather
-   * than an instrument — the owner named quiet pillars and months-old results.
+   * Where this family's members sit when they hold NO live claim (#3548, narrowed by
+   * #4232). Default "rest": a daily instrument you glance by position stays where it
+   * always is. "tail" is for the families whose quiet rows are a months-old record
+   * rather than an instrument — the owner named quiet pillars and months-old results —
+   * and since #4232 that verdict means the member does not claim Standing at all, so
+   * the one bottom fold takes it.
    */
   quietBand?: StandingBandKey;
   memberOrder:
@@ -239,6 +254,10 @@ export interface StandingMember {
   band: StandingBandKey;
 }
 
+export interface StandingClaimedMember extends StandingMember {
+  band: StandingRenderedBand;
+}
+
 // A candidate's claim on the attention tier, read from the SAME `rankReasons`
 // the Now lane reads and in the same precedence `nowScore` scores them in
 // (safety > owed > changed). It is a precedence over existing reasons, not a
@@ -313,7 +332,7 @@ export function resolveStandingMembers(
   candidates: readonly DashboardCandidate[],
   activeProfileId: number
 ): {
-  members: StandingMember[];
+  members: StandingClaimedMember[];
   memberIds: ReadonlySet<string>;
   factKeys: ReadonlySet<string>;
   cappedOverflowIds: ReadonlySet<string>;
@@ -394,8 +413,8 @@ export function resolveStandingMembers(
   }
 
   // The bands ARE the render order: the tier first, ranked by claim; then the
-  // stable rest and the quiet tail, both in the registry's own declaration order,
-  // which is what keeps a glance-by-position row byte-stable while no claim moves.
+  // stable rest, in the registry's own declaration order, which is what keeps a
+  // glance-by-position row byte-stable while no claim moves.
   const bandOrder: Record<StandingBandKey, number> = {
     attention: 0,
     rest: 1,
@@ -417,10 +436,20 @@ export function resolveStandingMembers(
     )
     .map(({ member }) => member);
 
+  // ONE FOLD (#4232). A quiet member is not claimed, so the Standing lane hands it
+  // back to the exact-once partition and `everythingGroup` routes it on its own model:
+  // dormancy and the two quiet families to Read, out-ranked never-recorded CTAs to
+  // Setup. The loop above still walked every member — the family caps, the composed
+  // claims and the cold-start ranking are all computed over the full set — because
+  // what a family CLAIMS is what decides which of its rows the tier can seat, and that
+  // question is unchanged. Only the seat is withdrawn.
+  const claimed = ranked.filter(
+    (member): member is StandingClaimedMember => member.band !== "tail"
+  );
   return {
-    members: ranked,
-    memberIds,
-    factKeys: claimedFacts,
+    members: claimed,
+    memberIds: new Set(claimed.map((member) => member.candidate.candidateId)),
+    factKeys: new Set(claimed.map((member) => member.candidate.factKey)),
     cappedOverflowIds,
   };
 }

@@ -8,13 +8,12 @@ import StandingSparkline, {
 } from "./StandingSparkline";
 import {
   STANDING_READING_ORDER,
-  type StandingBandKey,
+  type StandingRenderedBand,
   type StandingReadingFamily,
   type StandingSectionKey,
 } from "@/lib/dashboard-standing";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
-import Disclosure from "@/components/Disclosure";
 
 export interface DashboardStandingPresentation {
   label?: string;
@@ -401,11 +400,10 @@ export default function DashboardStandingCluster({
   placements: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
-  const inBand = (band: StandingBandKey) =>
+  const inBand = (band: StandingRenderedBand) =>
     placements.filter((placement) => placement.standingBand === band);
   const attention = inBand("attention");
   const rest = inBand("rest");
-  const tail = inBand("tail");
   return (
     <section
       className="section-seam-lg mb-8"
@@ -464,27 +462,12 @@ export default function DashboardStandingCluster({
             </section>
           );
         })}
-        {/* THE QUIET TAIL (#3548). Everything static — a source that went dormant,
-          a months-old result, a quiet pillar, a connect-a-source CTA past the
-          cold-start cap — stays PRESENT and reachable, and stops occupying the
-          open page. Native <details>, so the rows are hidden and not unmounted,
-          in-page find still opens it, and the summary carries the expanded state
-          without an aria attribute of our own. Nothing is remembered: the fold is
-          computed from claims, never configured. */}
-        {tail.length > 0 && (
-          <Disclosure
-            data-standing-band="tail"
-            data-testid="dashboard-standing-tail"
-          >
-            <summary
-              data-testid="dashboard-standing-tail-summary"
-              className="band flex min-h-11 cursor-pointer list-none items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase marker:content-none dark:text-slate-400"
-            >
-              Quiet ({tail.length})
-            </summary>
-            <BandRows placements={tail} presentations={presentations} />
-          </Disclosure>
-        )}
+        {/* NO THIRD BAND (#4232, narrowing #3548). Everything static — a source that
+          went dormant, a months-old result, a quiet pillar, a connect-a-source CTA
+          past the cold-start cap — is not claimed by Standing at all now, so it
+          stays PRESENT and reachable in the page's ONE bottom fold instead of behind
+          a second drawer of its own. Standing is the glance surface: attention and
+          rest, always open. */}
       </div>
     </section>
   );
