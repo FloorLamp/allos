@@ -12,7 +12,6 @@ import {
 } from "./helpers";
 import { frozenNow } from "./worker-env";
 
-
 // Content clipped inside its own container at 390px (issue #2614).
 //
 // Four independent surfaces, one shared rule: wide content scrolls inside its own

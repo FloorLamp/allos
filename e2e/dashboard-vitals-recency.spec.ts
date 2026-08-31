@@ -9,9 +9,7 @@ import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { setFixtureTimezone } from "./fixture-timezones";
-import {
-  dashboardCandidatePrefix,
-} from "./dashboard-candidate";
+import { dashboardCandidatePrefix } from "./dashboard-candidate";
 import { openDashboardAll, settledClick } from "./helpers";
 import { dormantRecordSince } from "@/lib/domain-dormancy";
 

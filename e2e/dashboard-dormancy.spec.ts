@@ -208,9 +208,7 @@ for (const [label, viewport] of [
     const tail = page.getByTestId("dashboard-all");
     await expect(tail).toHaveCount(1);
     await expect(tail).toHaveJSProperty("open", false);
-    await expect(
-      page.getByTestId("dashboard-standing-tail")
-    ).toHaveCount(0);
+    await expect(page.getByTestId("dashboard-standing-tail")).toHaveCount(0);
     await expect(
       page.getByTestId("dashboard-standing").locator("details")
     ).toHaveCount(0);

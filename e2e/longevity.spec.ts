@@ -6,7 +6,6 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
 } from "./fixture-logins";
 
-
 // The Longevity page (#1042 phase 4): the expanded formatter over the SAME
 // healthspan-pillar model the dashboard Standing cluster compact-renders.
 //   1. Every section renders for seeded profile 1 (it owns a complete PhenoAge

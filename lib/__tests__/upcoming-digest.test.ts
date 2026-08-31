@@ -452,7 +452,8 @@ describe("an Ahead row's qualifiers, from the digest's producers (#4319)", () =>
     const portal = item("portal-sync", {
       title: "Run the portal tool for tbh",
       // The CARD's sentence, which re-contains the title. The row must not borrow it.
-      detail: "tbh has never been checked — run the portal tool on your computer.",
+      detail:
+        "tbh has never been checked — run the portal tool on your computer.",
       because: "never checked",
       dueText: "expires today",
     });

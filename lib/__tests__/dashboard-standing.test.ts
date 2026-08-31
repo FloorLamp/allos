@@ -603,11 +603,9 @@ describe("Standing's ranked bands", () => {
     // candidate here could never notice.
     [
       "a result collected inside the freshness window (#4232)",
-      careCandidates.lab(
-        { subject: profile, sourceOrder: 302 },
-        "ferritin",
-        { fresh: true }
-      ),
+      careCandidates.lab({ subject: profile, sourceOrder: 302 }, "ferritin", {
+        fresh: true,
+      }),
       ["standing", "attention"],
     ],
     [
@@ -744,10 +742,7 @@ describe("Standing's ranked bands", () => {
       ["activity.steps-bootstrap", "attention"],
       ["nutrition.bootstrap", "attention"],
     ]);
-    expect(everythingIds(ctas)).toEqual([
-      "weight.bootstrap",
-      "labs.bootstrap",
-    ]);
+    expect(everythingIds(ctas)).toEqual(["weight.bootstrap", "labs.bootstrap"]);
   });
 
   // #3245's other half, at the tier that can see it: a behind target carries the

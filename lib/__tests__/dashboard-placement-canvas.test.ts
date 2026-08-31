@@ -195,25 +195,24 @@ describe("dashboard placement canvas", () => {
         standingSection: "today",
         standingBand: "rest",
       },
-      ...([
-        [pillar, "read"],
-        [lab, "read"],
-        [cta, "setup"],
-      ] as const
-      ).map(
-        ([candidate, everythingGroup], index): DashboardPlacement => ({
-          candidate: {
-            ...candidate,
-            groupKey: everythingGroup === "setup" ? null : `moment.${index}`,
-          },
-          lane: "everything",
-          laneOrder: index,
-          timingDisposition: { kind: "active" },
-          everythingGroup,
-          memberOrder: index,
-          admitted: true,
-        })
-      ),
+      ...(
+        [
+          [pillar, "read"],
+          [lab, "read"],
+          [cta, "setup"],
+        ] as const
+      ).map(([candidate, everythingGroup], index): DashboardPlacement => ({
+        candidate: {
+          ...candidate,
+          groupKey: everythingGroup === "setup" ? null : `moment.${index}`,
+        },
+        lane: "everything",
+        laneOrder: index,
+        timingDisposition: { kind: "active" },
+        everythingGroup,
+        memberOrder: index,
+        admitted: true,
+      })),
     ];
     const rows = new Map<string, DashboardStandingPresentation>([
       [steps.candidateId, { label: "Steps today", value: "8,000" }],

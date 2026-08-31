@@ -810,7 +810,8 @@ describe("actual atomic dashboard manifests", () => {
         const fresh = placement.candidate.rankReasons.owed;
         reach.set(
           fresh ? "labs.latest:fresh" : "labs.latest:quiet",
-          (reach.get(fresh ? "labs.latest:fresh" : "labs.latest:quiet") ?? 0) + 1
+          (reach.get(fresh ? "labs.latest:fresh" : "labs.latest:quiet") ?? 0) +
+            1
         );
         expect(
           [
@@ -831,7 +832,9 @@ describe("actual atomic dashboard manifests", () => {
       );
       expect(standing.length, persona).toBeGreaterThan(0);
       expect(
-        [...new Set(standing.map((placement) => placement.standingBand))].sort(),
+        [
+          ...new Set(standing.map((placement) => placement.standingBand)),
+        ].sort(),
         persona
       ).not.toContain("tail");
     }
