@@ -25,11 +25,10 @@ const pr = (
 const issue = (
   number: number,
   labels: string[],
-  over: Partial<{ body: string; createdAt: string }> = {}
+  over: Partial<{ createdAt: string }> = {}
 ) => ({
   number,
   labels,
-  body: over.body ?? "",
   createdAt: over.createdAt ?? "2026-08-20T00:00:00Z",
 });
 
@@ -92,19 +91,20 @@ describe("computeMetrics", () => {
     expect(m.queue.oldestNeedsHumanDays).toBe(14);
   });
 
-  it("marks provenance-marked (self-filed) issues and draft PRs as drift", () => {
+  it("marks draft PRs as drift, and publishes no phrase count (#4460)", () => {
+    // `selfFiledMarked` counted /found (while|by)/i over the body: 3 right in
+    // 8 against the only ground truth there was. A number nobody should act
+    // on is noise on the pulse, so the pulse no longer carries it.
     const m = metrics({
-      openIssues: [
-        issue(1, ["P3", "ui"], { body: "Found while implementing #7." }),
-        issue(2, ["P2", "db"]),
-      ],
+      openIssues: [issue(1, ["P3", "ui"]), issue(2, ["P2", "db"])],
       openPrs: [
         { number: 40, draft: false },
         { number: 41, draft: true },
       ],
     });
-    expect(m.queue.selfFiledMarked).toBe(1);
     expect(m.reviewQueue.drafts).toEqual([41]);
+    expect(m.queue).not.toHaveProperty("selfFiledMarked");
+    expect(renderMetrics(m)).not.toContain("found while/by");
   });
 
   it("renders an empty window as zeros over stated denominators, never n/a-quiet", () => {

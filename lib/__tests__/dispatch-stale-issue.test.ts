@@ -4,7 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
-import { closedIssueRefusal } from "../../scripts/orchestration/dispatch-brief.mjs";
+import {
+  closedIssueRefusal,
+  unreachableIssueWarning,
+} from "../../scripts/orchestration/dispatch-brief.mjs";
 
 // A BRIEF IS ONLY AS FRESH AS THE TRACKER READ BEHIND IT (#4451). #4347 was
 // closed at 03:09:32Z and dispatched at 09:43Z; the lane spent half its
@@ -67,6 +70,18 @@ function stubCurl(dir: string, issue: Record<string, unknown>): string {
   fs.writeFileSync(
     path.join(bin, "curl"),
     `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(JSON.stringify(issue))});\n`,
+    { mode: 0o755 }
+  );
+  return bin;
+}
+
+/** A stub `curl` that FAILS the way --fail-with-body fails: body, exit 22. */
+function failingCurl(dir: string, body: string): string {
+  const bin = path.join(dir, "bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "curl"),
+    `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(body)});\nprocess.exit(22);\n`,
     { mode: 0o755 }
   );
   return bin;
@@ -144,5 +159,60 @@ describe("dispatch-brief.mjs new, driven against a tracker that has moved", () =
     const run = runNew(dir, bin, { GH_TOKEN: "", GITHUB_TOKEN: "", PATH: bin });
     expect(run.status).toBe(0);
     expect(run.stderr).toContain("NO READ TOKEN");
+  });
+});
+
+// A CHECK THAT CANNOT RUN MUST NOT BECOME A CHECK THAT BLOCKS (#4460). The
+// no-token path above honours that; the REQUEST path did not — curl runs under
+// execFileSync with --fail-with-body and no try/catch, so a 404, a rate limit
+// or a proxy blip threw and crashed `new` outright. With the repo unreachable
+// EVERY dispatch was blocked by a check that could not run, which is exactly
+// what the comment above issueStates disclaims. Only a CLOSED answer refuses.
+
+describe("unreachableIssueWarning", () => {
+  const st = (number: number, over = {}) => ({
+    number,
+    state: "open",
+    closedAt: null,
+    ...over,
+  });
+  it.each([
+    [[st(1), st(2)], null, "GitHub answered for every issue"],
+    [
+      [st(1), st(9, { state: "unknown", error: "no such issue (404)" })],
+      "#9: no such issue (404)",
+      "one unanswered — named, not swallowed",
+    ],
+    [[], null, "a dispatch that names no issue"],
+  ])("%#: %s", (states, expected, _why) => {
+    const warning = unreachableIssueWarning(states);
+    if (expected === null) expect(warning).toBeNull();
+    else expect(warning).toContain(expected as string);
+  });
+});
+
+describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
+  it.each([
+    [
+      '{"message":"Not Found","status":"404"}',
+      "no such issue (404) — mistyped --issues?",
+      "a mistyped number gets a named message, not a stack trace",
+    ],
+    [
+      '{"message":"API rate limit exceeded"}',
+      "API rate limit exceeded",
+      "a rate limit is quoted as GitHub sent it",
+    ],
+  ])("%#: %s", (body, expected, _why) => {
+    const dir = makeTmpDir("dispatch-unreachable");
+    const run = runNew(dir, failingCurl(dir, body));
+    // Warn and DISPATCH, in the no-token path's voice.
+    expect(run.status).toBe(0);
+    expect(run.stderr).toContain("GITHUB DID NOT ANSWER");
+    expect(run.stderr).toContain(expected as string);
+    expect(run.stderr).not.toContain("REFUSED");
+    expect(fs.readFileSync(path.join(dir, "ledger.jsonl"), "utf8")).toContain(
+      '"status":"active"'
+    );
   });
 });
