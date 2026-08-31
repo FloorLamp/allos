@@ -8,10 +8,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setWeekMode } from "@/lib/settings";
+import { setTimezone, setWeekMode } from "@/lib/settings";
 import {
   logPracticeSession,
+  updatePracticeSession,
   logPracticeByTargetId,
+  logFinishedPracticeByTargetId,
   logFinishedPracticeSession,
   startLivePracticeSession,
   endLivePracticeSession,
@@ -525,13 +527,36 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(inferPracticeSchedule(tapped, "Breathwork").hour).toBe(7);
   });
 
-  it("records Telegram Done ✅ as an end-only acknowledgement without a duration", () => {
+  it("keeps Upcoming start-only and records Telegram Done as end-only", () => {
     const pid = makeProfile("quick-time-telegram");
     const tid = practiceTarget(pid, "Red light therapy", 3, null);
     expect(logPracticeByTargetId(pid, tid, "page")).toMatchObject({
       kind: "logged",
     });
-    expect(rows(pid).map((r) => r.start_time)).toEqual([null]);
+    expect(
+      logFinishedPracticeByTargetId(pid, tid, "telegram-command")
+    ).toMatchObject({ kind: "logged" });
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT start_time, end_time, logged_via FROM practice_logs
+              WHERE profile_id = ? ORDER BY id`
+          )
+          .all(pid) as {
+          start_time: string | null;
+          end_time: string | null;
+          logged_via: string | null;
+        }[]
+      ).map((r) => ({
+        start: r.start_time,
+        end: r.end_time,
+        via: r.logged_via,
+      }))
+    ).toEqual([
+      { start: "07:05", end: null, via: "page" },
+      { start: null, end: "07:05", via: "telegram-command" },
+    ]);
   });
 
   it("writes the duration the quick path supplies, and prefills the NEXT tap from it", () => {
@@ -667,6 +692,129 @@ describe("live practice sessions (#3143)", () => {
       end_time: null,
       duration_min: null,
       live: 0,
+    });
+  });
+
+  it("keeps a notes-only live edit open, then closes an explicitly ended edit", () => {
+    const pid = makeProfile("live-edit");
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    expect(
+      updatePracticeSession(pid, started.session.id, {
+        date: "2026-08-31",
+        startTime: "11:55",
+        endTime: null,
+        durationMin: null,
+        notes: "still running",
+      })
+    ).toMatchObject({ kind: "updated", session: { live: 1 } });
+
+    expect(
+      updatePracticeSession(pid, started.session.id, {
+        date: "2026-08-31",
+        startTime: "11:55",
+        endTime: "12:10",
+        durationMin: 15,
+        notes: "finished by edit",
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { live: 0, end_time: "12:10", duration_min: 15 },
+    });
+    expect(endLivePracticeSession(pid, started.session.id)).toEqual({
+      kind: "not-live",
+    });
+
+    const moved = startLivePracticeSession(pid, "Breathwork", "page");
+    expect(moved.kind).toBe("started");
+    if (moved.kind !== "started") return;
+    expect(
+      updatePracticeSession(pid, moved.session.id, {
+        date: "2026-08-30",
+        startTime: "11:55",
+        endTime: null,
+        durationMin: null,
+        notes: null,
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { date: "2026-08-30", live: 0, end_time: null },
+    });
+
+    const cleared = startLivePracticeSession(pid, "Meditation", "page");
+    expect(cleared.kind).toBe("started");
+    if (cleared.kind !== "started") return;
+    expect(
+      updatePracticeSession(pid, cleared.session.id, {
+        date: "2026-08-31",
+        startTime: null,
+        endTime: null,
+        durationMin: null,
+        notes: null,
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { start_time: null, live: 0, end_time: null },
+    });
+  });
+
+  it("derives elapsed duration from instants across a DST clock jump", () => {
+    const pid = makeProfile("live-dst");
+    setTimezone(pid, "America/New_York");
+    vi.setSystemTime(new Date("2026-03-08T06:50:00Z")); // 01:50 EST
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started).toMatchObject({
+      kind: "started",
+      date: "2026-03-08",
+      session: { startTime: "01:50" },
+    });
+
+    vi.setSystemTime(new Date("2026-03-08T07:10:00Z")); // 03:10 EDT
+    expect(
+      started.kind === "started"
+        ? endLivePracticeSession(pid, started.session.id)
+        : null
+    ).toMatchObject({
+      kind: "ended",
+      date: "2026-03-08",
+      session: {
+        start_time: "01:50",
+        end_time: "03:10",
+        duration_min: 20,
+        live: 0,
+      },
+    });
+
+    expect(
+      logFinishedPracticeSession(pid, "Breathwork", "page", 30)
+    ).toMatchObject({ kind: "logged", date: "2026-03-08" });
+    expect(getPracticeSessions(pid, "Breathwork")[0]).toMatchObject({
+      date: "2026-03-08",
+      start_time: "01:40",
+      end_time: "03:10",
+      duration_min: 30,
+    });
+
+    const repeated = makeProfile("live-dst-repeated-hour");
+    setTimezone(repeated, "America/New_York");
+    vi.setSystemTime(new Date("2026-11-01T05:50:00Z")); // 01:50 EDT
+    const repeatedStart = startLivePracticeSession(repeated, "Sauna", "page");
+    vi.setSystemTime(new Date("2026-11-01T06:20:00Z")); // 01:20 EST
+    expect(
+      repeatedStart.kind === "started"
+        ? endLivePracticeSession(repeated, repeatedStart.session.id)
+        : null
+    ).toMatchObject({
+      kind: "ended",
+      date: "2026-11-01",
+      session: {
+        start_time: "01:50",
+        end_time: "01:20",
+        duration_min: 30,
+        live: 0,
+      },
     });
   });
 

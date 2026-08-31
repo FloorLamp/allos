@@ -32,10 +32,28 @@ describe(MIGRATION, () => {
     expect(
       db
         .prepare(
-          "SELECT 1 AS present FROM sqlite_master WHERE type = 'index' AND name = 'idx_practice_logs_profile_live'"
+          "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_practice_logs_profile_live'"
         )
         .get()
-    ).toEqual({ present: 1 });
+    ).toMatchObject({ sql: expect.stringMatching(/WHERE live = 1/i) });
+    expect(
+      (
+        db
+          .prepare("PRAGMA index_info(idx_practice_logs_profile_live)")
+          .all() as {
+          name: string;
+        }[]
+      ).map((column) => column.name)
+    ).toEqual(["profile_id", "live"]);
+    expect(
+      (
+        db.prepare("PRAGMA table_info(practice_logs)").all() as {
+          name: string;
+          notnull: number;
+          dflt_value: string | null;
+        }[]
+      ).find((column) => column.name === "live")
+    ).toMatchObject({ notnull: 1, dflt_value: "0" });
     expect(() =>
       db.prepare("UPDATE practice_logs SET live = 2 WHERE id = ?").run(id)
     ).toThrow(/CHECK/i);

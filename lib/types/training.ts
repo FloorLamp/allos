@@ -390,8 +390,8 @@ export interface PracticeLog {
   // The session's START, local HH:MM in the profile's timezone; null for a bare tick
   // / a date-only one-tap. A tap-stamped start trails the true one (#3142).
   start_time: string | null;
-  // The stated END (#3142). NULL on every tap and every import — the window is then
-  // derived from `duration_min` by `activityWindow`, never stored.
+  // The stated END (#3142/#3143). NULL when no surface stated an end; detailed forms,
+  // just-finished acknowledgements, and live End taps may supply one.
   end_time: string | null;
   // One-tap session currently in progress. A stated start-only row keeps this false.
   live: number;

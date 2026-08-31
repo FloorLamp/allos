@@ -55,7 +55,7 @@ import {
 import {
   getPracticeCorrectionBursts,
   getRecentPracticeTaps,
-  logPracticeByTargetId,
+  logFinishedPracticeByTargetId,
   logPracticeSession,
 } from "@/lib/queries";
 import { restampPracticeLogsCore } from "@/lib/practice-log";
@@ -437,7 +437,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     const targetId = practiceTarget(pid, "Sauna");
 
     // The write path carries the pointer through, which is what the binding reads.
-    logPracticeByTargetId(pid, targetId, "telegram-nudge", null);
+    logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", null);
     const unattributed = lastLogId(pid);
     expect(
       (
@@ -461,7 +461,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     });
     const messageRow = messagePointerIdAt(pid, "5552875", 4210)!;
     expect(messageRow).toBeGreaterThan(0);
-    logPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
+    logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
     const attributed = lastLogId(pid);
 
     const taps = getRecentPracticeTaps(pid, clockNow());

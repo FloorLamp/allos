@@ -10,7 +10,7 @@ import { writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { shiftDateStr, zonedDateParts } from "./date";
 import { TAP_REACH, isPastWriteAccepted } from "./log-manifest";
-import { sqlNow } from "./clock";
+import { now, sqlNow } from "./clock";
 import {
   burstFrom,
   type CorrectionBurst,
@@ -61,31 +61,6 @@ function inClause(values: readonly string[]): string {
 // through `zonedMinuteStr`, so a frozen e2e instant stamps the frozen minute.
 function tapInstant(profileId: number, date: string): string | null {
   return date === today(profileId) ? nowTime(profileId) : null;
-}
-
-function clockMinute(value: string): number | null {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  return hour <= 23 && minute <= 59 ? hour * 60 + minute : null;
-}
-
-function subtractLocalMinutes(
-  date: string,
-  time: string,
-  durationMin: number
-): { date: string; time: string } {
-  const minute = clockMinute(time) ?? 0;
-  const total = minute - durationMin;
-  const dayOffset = Math.floor(total / 1440);
-  const wrapped = ((total % 1440) + 1440) % 1440;
-  return {
-    date: shiftDateStr(date, dayOffset),
-    time: `${String(Math.floor(wrapped / 60)).padStart(2, "0")}:${String(
-      wrapped % 60
-    ).padStart(2, "0")}`,
-  };
 }
 
 // One-tap log a practice session. NOT idempotent — multi-session days are the point
@@ -149,9 +124,9 @@ export function logPracticeSession(
       ? tapInstant(profileId, date)
       : (opts.startTime ?? null);
   const startTime = stated && /^\d{2}:\d{2}$/.test(stated) ? stated : null;
-  // TAP PATHS NEVER WRITE `end_time` (#3142) — being one-tap is the point, and the
-  // expanded form is the only surface that can state a window. `opts.endTime` is
-  // therefore two-valued, not three: a string or nothing.
+  // `end_time` is two-valued, not three: a string or nothing. The detailed form can
+  // state a window, and #3143's just-finished/end taps state their server-side local
+  // minute; ordinary quick logs and imports state no end.
   const endTime =
     opts.endTime && /^\d{2}:\d{2}$/.test(opts.endTime) ? opts.endTime : null;
   const durationMin =
@@ -251,43 +226,58 @@ export function updatePracticeSession(
     endTime?: string | null;
     durationMin?: number | null;
     notes?: string | null;
-    live?: boolean;
   }
 ): PracticeSessionMutationOutcome {
-  const current = getPracticeSession(profileId, id);
-  if (!current) return { kind: "not-found" };
-  if (!isPracticeDateAccepted(profileId, input.date))
-    return { kind: "invalid-date" };
-  const startTime =
-    input.startTime && /^\d{2}:\d{2}$/.test(input.startTime)
-      ? input.startTime
-      : null;
-  const endTime =
-    input.endTime && /^\d{2}:\d{2}$/.test(input.endTime) ? input.endTime : null;
-  const durationMin =
-    input.durationMin != null &&
-    Number.isFinite(input.durationMin) &&
-    input.durationMin > 0
-      ? Math.round(input.durationMin)
-      : null;
-  const notes = input.notes?.trim() || null;
-  db.prepare(
-    `UPDATE practice_logs
+  return writeTx(() => {
+    const current = getPracticeSession(profileId, id);
+    if (!current) return { kind: "not-found" };
+    if (!isPracticeDateAccepted(profileId, input.date))
+      return { kind: "invalid-date" };
+    const startTime =
+      input.startTime && /^\d{2}:\d{2}$/.test(input.startTime)
+        ? input.startTime
+        : null;
+    const endTime =
+      input.endTime && /^\d{2}:\d{2}$/.test(input.endTime)
+        ? input.endTime
+        : null;
+    const durationMin =
+      input.durationMin != null &&
+      Number.isFinite(input.durationMin) &&
+      input.durationMin > 0
+        ? Math.round(input.durationMin)
+        : null;
+    const notes = input.notes?.trim() || null;
+    // An ordinary edit cannot open a lifecycle row. It may preserve one only while
+    // the row is still on the profile's today, still has its start, and still has no
+    // stated end. Supplying an end, clearing the start, or moving the row to another
+    // day is an explicit completion/abandonment statement, so keeping `live = 1`
+    // would leave an unendable or ended row offering "End session".
+    const live =
+      current.live === 1 &&
+      input.date === today(profileId) &&
+      startTime != null &&
+      endTime == null
+        ? 1
+        : 0;
+    db.prepare(
+      `UPDATE practice_logs
         SET date = ?, start_time = ?, end_time = ?, duration_min = ?, notes = ?,
             live = ?, edited = 1
       WHERE id = ? AND profile_id = ?`
-  ).run(
-    input.date,
-    startTime,
-    endTime,
-    durationMin,
-    notes,
-    input.live == null ? current.live : input.live ? 1 : 0,
-    id,
-    profileId
-  );
-  const session = getPracticeSession(profileId, id);
-  return session ? { kind: "updated", session } : { kind: "not-found" };
+    ).run(
+      input.date,
+      startTime,
+      endTime,
+      durationMin,
+      notes,
+      live,
+      id,
+      profileId
+    );
+    const session = getPracticeSession(profileId, id);
+    return session ? { kind: "updated", session } : { kind: "not-found" };
+  });
 }
 
 // Close yesterday's unfinished lifecycle without inventing an end. Request gathers
@@ -296,12 +286,15 @@ export function closeAbandonedPracticeSessions(
   profileId: number,
   localDay = today(profileId)
 ): number {
-  return db
-    .prepare(
-      `UPDATE practice_logs SET live = 0
+  return writeTx(
+    () =>
+      db
+        .prepare(
+          `UPDATE practice_logs SET live = 0
         WHERE profile_id = ? AND live = 1 AND date < ?`
-    )
-    .run(profileId, localDay).changes;
+        )
+        .run(profileId, localDay).changes
+  );
 }
 
 function openPracticeSession(
@@ -331,12 +324,13 @@ export function startLivePracticeSession(
   const name = normalizePracticeName(practice);
   if (!name) return { kind: "invalid-date" };
   return writeTx(() => {
-    const date = today(profileId);
+    const localStart = zonedDateParts(getTimezone(profileId), now());
+    const date = localStart.date;
     closeAbandonedPracticeSessions(profileId, date);
     const existing = openPracticeSession(profileId, name);
     if (existing) return { kind: "already-live" as const, session: existing };
     const outcome = logPracticeSession(profileId, name, date, loggedVia, {
-      startTime: nowTime(profileId),
+      startTime: localStart.hhmm,
       live: true,
     });
     if (outcome.kind !== "logged") return { kind: "invalid-date" as const };
@@ -356,27 +350,31 @@ export function endLivePracticeSession(
   id: number
 ): PracticeLiveEndOutcome {
   return writeTx(() => {
-    const date = today(profileId);
+    // One instant answers both questions: its profile-local day/minute is what the
+    // row states, while its absolute distance from the start tap is the elapsed
+    // duration. Subtracting HH:MM values would turn a 20-minute session across the
+    // spring DST jump into 80 minutes (and loses the repeated hour in autumn).
+    const endedAt = now();
+    const localEnd = zonedDateParts(getTimezone(profileId), endedAt);
+    const date = localEnd.date;
     closeAbandonedPracticeSessions(profileId, date);
     const current = getPracticeSession(profileId, id);
     if (!current || current.live !== 1 || current.date !== date)
       return { kind: "not-live" as const };
-    const endTime = nowTime(profileId);
-    const startMinute = current.start_time
-      ? clockMinute(current.start_time)
-      : null;
-    const endMinute = clockMinute(endTime);
+    const startTap = recordInstant("practice_logs", {
+      created_at: current.created_at,
+    });
+    const elapsedMs = startTap.known
+      ? endedAt.getTime() - new Date(startTap.at).getTime()
+      : -1;
     const durationMin =
-      startMinute != null && endMinute != null && endMinute >= startMinute
-        ? Math.max(1, endMinute - startMinute)
-        : null;
+      elapsedMs >= 0 ? Math.max(1, Math.round(elapsedMs / 60_000)) : null;
     const updated = updatePracticeSession(profileId, id, {
       date,
       startTime: current.start_time,
-      endTime,
+      endTime: localEnd.hhmm,
       durationMin,
       notes: current.notes,
-      live: false,
     });
     return updated.kind === "updated"
       ? {
@@ -396,48 +394,47 @@ export function logFinishedPracticeSession(
   durationMin: number | null,
   notifyMessageId?: number | null
 ): PracticeLogOutcome {
-  const endDate = today(profileId);
-  const endTime = nowTime(profileId);
+  const endedAt = now();
+  const tz = getTimezone(profileId);
+  const end = zonedDateParts(tz, endedAt);
   const duration =
     durationMin != null && Number.isFinite(durationMin) && durationMin > 0
       ? Math.round(durationMin)
       : null;
   const start =
-    duration == null ? null : subtractLocalMinutes(endDate, endTime, duration);
+    duration == null
+      ? null
+      : zonedDateParts(tz, new Date(endedAt.getTime() - duration * 60_000));
   return logPracticeSession(
     profileId,
     practice,
-    start?.date ?? endDate,
+    start?.date ?? end.date,
     loggedVia,
     {
-      startTime: start?.time ?? null,
-      endTime,
+      startTime: start?.hhmm ?? null,
+      endTime: end.hhmm,
       durationMin: duration,
       notifyMessageId: notifyMessageId ?? null,
     }
   );
 }
 
-// Log a session against a practice frequency TARGET id (the Telegram Done button path,
-// #1259): resolve the target's practice NAME under profile scope, then log for TODAY.
+// Log a session against a practice frequency TARGET id (#1259): resolve the target's
+// practice NAME under profile scope, then log for TODAY.
 // A deleted / cross-profile / non-practice target answers `stale-target` (the frozen-
 // snapshot contract — the message may be stale) — nothing is written. The `date` is the
 // profile-local today (the tap's day).
 //
-// It passes NO `startTime`, which now means "stamp the tap" (#2204). It used to say that
-// "Telegram stamps its own time-of-day for free" — which was never true of the ROW:
-// the chat message carries a timestamp, the session's start was written null, and
-// #2202 then retimed this very nudge onto a typical-hour inference that this path was
-// feeding nothing. A one-tap Done ✅ is a statement that the session is happening now,
-// and that is what the row records.
+// This is the Upcoming web action's ordinary one-tap statement: the session is
+// happening now, so omitted `startTime` stamps the tap. Telegram's explicit Done
+// acknowledgement uses `logFinishedPracticeByTargetId` below instead.
 export function logPracticeByTargetId(
   profileId: number,
   targetId: number,
   loggedVia: LoggedVia,
   // The message this tap came from (#2264/#2875), stamped onto the row so the burst it
   // creates renders on THIS message and never on a sibling.
-  notifyMessageId?: number | null,
-  durationMin?: number | null
+  notifyMessageId?: number | null
 ): PracticeLogOutcome {
   const row = db
     .prepare(
@@ -446,12 +443,12 @@ export function logPracticeByTargetId(
     )
     .get(targetId, profileId) as { scope_value: string } | undefined;
   if (!row) return { kind: "stale-target" };
-  return logFinishedPracticeSession(
+  return logPracticeSession(
     profileId,
     row.scope_value,
+    today(profileId),
     loggedVia,
-    durationMin ?? null,
-    notifyMessageId ?? null
+    { notifyMessageId: notifyMessageId ?? null }
   );
 }
 
@@ -472,6 +469,38 @@ export function practiceUsualDurationForTarget(
   return practiceDurationPrefill(
     getPracticeSessions(profileId, row.scope_value, 50)
   );
+}
+
+// Telegram's Done button is a just-finished statement, not the Upcoming page's
+// "happening now" statement. Resolve the usual duration and write the derived window
+// under one IMMEDIATE transaction, so a concurrent target edit cannot pair one
+// practice's duration with another practice's row. The callback remains
+// practice-identity-only; no duration is carried through Telegram.
+export function logFinishedPracticeByTargetId(
+  profileId: number,
+  targetId: number,
+  loggedVia: LoggedVia,
+  notifyMessageId?: number | null
+): PracticeLogOutcome {
+  return writeTx(() => {
+    const row = db
+      .prepare(
+        `SELECT scope_value FROM frequency_targets
+          WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
+      )
+      .get(targetId, profileId) as { scope_value: string } | undefined;
+    if (!row) return { kind: "stale-target" };
+    const durationMin = practiceDurationPrefill(
+      getPracticeSessions(profileId, row.scope_value, 50)
+    );
+    return logFinishedPracticeSession(
+      profileId,
+      row.scope_value,
+      loggedVia,
+      durationMin,
+      notifyMessageId ?? null
+    );
+  });
 }
 
 // Delete one logged session by id (a correction). Profile-scoped so a leaked id no-ops.
@@ -688,12 +717,15 @@ export function restampPracticeLogsCore(
       if (chatFinished) {
         const start =
           row.duration_min != null
-            ? subtractLocalMinutes(local.date, local.hhmm, row.duration_min)
+            ? zonedDateParts(
+                tz,
+                new Date(instant.getTime() - row.duration_min * 60_000)
+              )
             : null;
         if (start && start.date !== row.date)
           return { kind: "crosses-day" as const };
         targets.set(id, {
-          start: start?.time ?? null,
+          start: start?.hhmm ?? null,
           end: local.hhmm,
         });
       } else {

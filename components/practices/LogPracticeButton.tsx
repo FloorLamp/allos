@@ -159,11 +159,10 @@ export default function LogPracticeButton({
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
-  // Follow the SERVER's prefill for the same reason the count does: the prefill is
-  // "the last LOGGED duration", and a session can be corrected or deleted from the
-  // history table beside this button. A local value frozen at mount would keep
-  // offering a duration the log no longer contains — which is the "last-shown"
-  // failure #2204 constraint 4 names, arriving by the back door.
+  // Follow the SERVER's usual-duration prefill for the same reason the count does: a
+  // session can be corrected or deleted from the history table beside this button. A
+  // local value frozen at mount would keep offering a duration the log no longer
+  // supports.
   const [serverDuration, setServerDuration] = useState(defaultDurationMin);
   if (serverDuration !== defaultDurationMin) {
     setServerDuration(defaultDurationMin);
@@ -176,7 +175,10 @@ export default function LogPracticeButton({
   // the weekly ceiling", "hide it on a narrow row") is added HERE and both halves
   // follow it. Adding it to the JSX alone would leave the tap posting a value that is
   // no longer on screen, which is precisely the failure the constraint names.
-  const stepperShown = inlineDuration;
+  // The duration belongs to the Just-finished statement. A running session's End
+  // action derives elapsed time from its two taps, so leaving this input beside End
+  // would show a value that the action deliberately ignores.
+  const stepperShown = inlineDuration && !currentLive;
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
   // non-numeric input reads as blank rather than NaN.
@@ -276,9 +278,9 @@ export default function LogPracticeButton({
         fd.set("intent", "finished");
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
-        // No `start_time` field is set on any path here — its absence is what tells
-        // the write core to stamp the tap instant (#2204 part 2). No `end_time`
-        // either: a tap never states a window (#3142).
+        // The intent is the statement: the server stamps the end tap and derives a
+        // start only from the visible usual duration. Client clock fields never cross
+        // this boundary.
         const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
         // Only where the control is rendered AND a time was stated. The field's

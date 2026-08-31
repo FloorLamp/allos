@@ -54,6 +54,7 @@ import {
 import {
   getRecentFoodTaps,
   getPracticeCorrectionBursts,
+  logFinishedPracticeByTargetId,
   logPracticeByTargetId,
 } from "@/lib/queries";
 import { restampFoodEventsCore } from "@/lib/food-log-write";
@@ -465,9 +466,19 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
       return messagePointerIdAt(pid, chatId, messageId)!;
     });
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targets[0], "telegram-nudge", messageRows[0]);
+    logFinishedPracticeByTargetId(
+      pid,
+      targets[0],
+      "telegram-nudge",
+      messageRows[0]
+    );
     setNow("2026-08-05T12:05:00Z");
-    logPracticeByTargetId(pid, targets[1], "telegram-nudge", messageRows[1]);
+    logFinishedPracticeByTargetId(
+      pid,
+      targets[1],
+      "telegram-nudge",
+      messageRows[1]
+    );
     const logs = db
       .prepare(
         "SELECT id, start_time, end_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
@@ -824,7 +835,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     });
     const messageRow = messagePointerIdAt(pid, chatId, 4410)!;
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
+    logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
     const logId = (
       db
         .prepare(

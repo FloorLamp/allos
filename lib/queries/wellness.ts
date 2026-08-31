@@ -477,10 +477,9 @@ export interface TrackedPractice {
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
   // The quick sheet's inline duration stepper starts here (#2204) — `practiceDurationPrefill`
-  // over the identity's LAST LOGGED session, the same pure resolution the Wellness card's
-  // expanded form uses. Null means blank, and blank is a real answer: the sheet does not
-  // invent a duration for a practice with no history, or for one whose last session
-  // deliberately carried none.
+  // over the identity's recent positive durations, the same pure resolution the
+  // Wellness card's expanded form uses. Null means blank: the sheet does not invent a
+  // duration for a practice with no duration history.
   previousDurationMin: number | null;
   liveSession: { id: number; date: string; startTime: string } | null;
 }

@@ -68,6 +68,7 @@ describe("practice one-tap cooldown (#4491)", () => {
         practice="Sauna"
         todayCount={0}
         today="2026-08-31"
+        inlineDuration
         liveSession={{ id: 7, date: "2026-08-31", startTime: "09:15" }}
       />
     );
@@ -77,5 +78,6 @@ describe("practice one-tap cooldown (#4491)", () => {
     expect(
       screen.queryByRole("button", { name: /just finished a sauna/i })
     ).toBeNull();
+    expect(screen.queryByTestId("practice-inline-duration")).toBeNull();
   });
 });
