@@ -40,6 +40,12 @@ const PROFILE = 1;
 // of either end. Not today itself — the day header reads "Today" there, and profile
 // 1's servings on today are also whatever the food log's own specs last tapped.
 //
+// AND NOT THE SAME DAY AS e2e/logged-event-row.mobile.spec.ts, which seeds `berries`
+// on this same profile five days back. Measured, not assumed: the two specs actually
+// SURVIVE a shared day — each deletes by (profile, day, group) before every test and
+// both delete `berries`, so they clean up after each other. Distinct days are
+// insurance against that accident ending, not a repair of a live defect.
+//
 // `frozenNow()` is the run's frozen clock (e2e/worker-env.ts), and its UTC date IS
 // profile 1's local today: that profile carries no timezone of its own (every one
 // that does is named in e2e/fixture-timezones.ts), so it resolves to the run's
