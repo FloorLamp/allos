@@ -135,6 +135,7 @@ export const PRACTICE_TIME_PREFIXES: CorrectionPrefixes = {
   at: "practimeat",
   dayKeyed: true,
   appSurface: "the practice log in the app",
+  hint: `Another ${GLYPH.done} logs another session; a time chip fixes when it happened.`,
 };
 
 // Which bursts a day-keyed domain can still correct FROM THE CHAT, and which it cannot
