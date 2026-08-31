@@ -22,7 +22,10 @@ export const CHECKLIST_TASKS: Record<
     label: "Connect an app or device",
     href: "/data?section=import#integrations",
   },
-  "metrics-labs": { label: "Import medical data", href: "/data?section=import" },
+  "metrics-labs": {
+    label: "Import medical data",
+    href: "/data?section=import",
+  },
   "preventive-care": {
     label: "Add your next appointment",
     href: "/records/history/visits",

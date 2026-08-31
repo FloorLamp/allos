@@ -24,7 +24,11 @@ export default function FindingDismissButton({
 }) {
   return (
     <form action={dismissAction}>
-      <input type="hidden" name="dedupe_key" value={dismissKey ?? f.dedupeKey} />
+      <input
+        type="hidden"
+        name="dedupe_key"
+        value={dismissKey ?? f.dedupeKey}
+      />
       <Button
         type="submit"
         pendingLabel="…"

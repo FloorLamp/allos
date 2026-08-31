@@ -86,7 +86,9 @@ test("a structurally complete profile emits no Data quality candidate (#1045)", 
   await expect(page.getByRole("main")).toBeVisible();
   // …but there is no structural gap to mint a data-quality candidate.
   await expect(
-    page.getByRole("main").locator('[data-candidate-id^="data-quality.finding:"]')
+    page
+      .getByRole("main")
+      .locator('[data-candidate-id^="data-quality.finding:"]')
   ).toHaveCount(0);
 
   await page.context().close();
@@ -118,7 +120,9 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
     main
       .getByTestId("dashboard-candidate")
       .filter({ hasText: "Set a birthdate" })
-      .filter({ has: main.locator('[data-candidate-id^="coaching.observation:"]') })
+      .filter({
+        has: main.locator('[data-candidate-id^="coaching.observation:"]'),
+      })
   ).toHaveCount(0);
   // One row on the whole dashboard, not two — counted across every zone.
   const gapRows = main

@@ -164,7 +164,9 @@ test("Now stays one column at every viewport", async ({ browser }) => {
     );
     try {
       const strip = page.getByTestId("now-strip");
-      const cards = strip.locator('[data-testid="dashboard-candidate"][data-lane="now"]');
+      const cards = strip.locator(
+        '[data-testid="dashboard-candidate"][data-lane="now"]'
+      );
       await expect(cards).toHaveCount(2);
       const [top, bottom] = await settledBoxes([cards.nth(0), cards.nth(1)]);
       expect(bottom.y).toBeGreaterThan(top.y + top.height / 2);
@@ -208,7 +210,9 @@ test("an empty Now keeps its quiet state and mobile date", async ({
       "Nothing needs you."
     );
     await expect(strip.getByTestId("now-strip-date")).toBeVisible();
-    await expect(strip.locator('[data-testid="dashboard-candidate"][data-lane="now"]')).toHaveCount(0);
+    await expect(
+      strip.locator('[data-testid="dashboard-candidate"][data-lane="now"]')
+    ).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -597,9 +601,8 @@ test("a Now row puts its label and detail on one line, one gutter inside its own
         labelTop: label.top,
         detailLeft: detail.left,
         detailTop: detail.top,
-        icons: node.querySelectorAll(
-          '[data-testid="standing-label"] svg'
-        ).length,
+        icons: node.querySelectorAll('[data-testid="standing-label"] svg')
+          .length,
       };
     });
 

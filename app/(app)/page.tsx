@@ -316,8 +316,7 @@ function coachingRowDetail(rec: Recommendation) {
         <>
           {" · "}
           <span data-testid="coaching-also">
-            <span className="font-medium">Also:</span>{" "}
-            {rec.also.join("; ")}.
+            <span className="font-medium">Also:</span> {rec.also.join("; ")}.
           </span>
         </>
       ) : null}
@@ -340,7 +339,9 @@ function findingRow(
     label: finding.title,
     detail: [finding.detail, finding.evidence].filter(Boolean).join(" · "),
     href: finding.actionHref,
-    actionLabel: finding.actionHref ? (finding.actionLabel ?? "View") : undefined,
+    actionLabel: finding.actionHref
+      ? (finding.actionLabel ?? "View")
+      : undefined,
     moment: { title: momentTitle },
     control: (
       <FindingDismissButton

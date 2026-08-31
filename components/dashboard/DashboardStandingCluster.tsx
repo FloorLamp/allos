@@ -168,24 +168,25 @@ export function DashboardFactRow({
   // destination is not lost: the label carries it as an ordinary link, which is also
   // the only element on the row whose words name where it goes.
   const control = presentation.control;
-  const linked = control == null && presentation.href ? (
-    door ? (
-      <StandingDestinationLink
-        href={presentation.href}
-        className={`${surfaceClass}standing-row ${rowClass} ${rowDisclosure ? "" : linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
-        destinationLabel={door}
-      >
-        {content}
-      </StandingDestinationLink>
-    ) : (
-      <Link
-        href={presentation.href}
-        className={`${surfaceClass}standing-row ${rowClass} hover:text-brand-700 dark:hover:text-brand-400`}
-      >
-        {content}
-      </Link>
-    )
-  ) : null;
+  const linked =
+    control == null && presentation.href ? (
+      door ? (
+        <StandingDestinationLink
+          href={presentation.href}
+          className={`${surfaceClass}standing-row ${rowClass} ${rowDisclosure ? "" : linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
+          destinationLabel={door}
+        >
+          {content}
+        </StandingDestinationLink>
+      ) : (
+        <Link
+          href={presentation.href}
+          className={`${surfaceClass}standing-row ${rowClass} hover:text-brand-700 dark:hover:text-brand-400`}
+        >
+          {content}
+        </Link>
+      )
+    ) : null;
   const body = linked ? (
     rowDisclosure ? (
       <div className={`flex min-w-0 items-center ${linkClass}`}>

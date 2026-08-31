@@ -92,7 +92,10 @@ test("the household-history action follows its existing 14-day window", async ({
     // The control: the tail rendered and holds entries, so the door's absence below
     // is about a populated tail and not an empty selector.
     expect(
-      await tail.getByTestId("dashboard-all-contents").getByTestId("dashboard-candidate").count()
+      await tail
+        .getByTestId("dashboard-all-contents")
+        .getByTestId("dashboard-candidate")
+        .count()
     ).toBeGreaterThan(0);
     await expect(tail.getByTestId("dashboard-all-door")).toHaveCount(0);
   } finally {

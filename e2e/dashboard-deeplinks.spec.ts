@@ -59,10 +59,11 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
       await page.goto("/");
       await openDashboardAll(page);
       const ctaFor = (label: string) =>
-        dashboardCandidateWithText(page, "data-quality.finding:", label).getByRole(
-          "link",
-          { name: "Fix it" }
-        );
+        dashboardCandidateWithText(
+          page,
+          "data-quality.finding:",
+          label
+        ).getByRole("link", { name: "Fix it" });
 
       // Each CTA names the exact target (asserted before navigating).
       await expect(ctaFor("Record smoking status")).toHaveAttribute(

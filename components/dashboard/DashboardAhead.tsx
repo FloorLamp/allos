@@ -35,7 +35,9 @@ function Member({
   return (
     <DashboardFactRow
       candidate={member.candidate}
-      presentation={href ? { ...member.presentation, href } : member.presentation}
+      presentation={
+        href ? { ...member.presentation, href } : member.presentation
+      }
       lane="ahead"
       className="relative min-w-0"
     />

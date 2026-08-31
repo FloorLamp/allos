@@ -262,9 +262,9 @@ test("Show everything remembers its open state on this device", async ({
     // The offer's decline posts from the ROW's control slot now (#4076) — the card
     // that used to host it left `/` with every other card.
     await settledClick(page, page.getByTestId("stream-offer-decline-onboard"));
-    await expect(
-      page.getByTestId("stream-offer-decline-onboard")
-    ).toHaveCount(0);
+    await expect(page.getByTestId("stream-offer-decline-onboard")).toHaveCount(
+      0
+    );
   } finally {
     resetDashboardAllOffer();
     await page.context().close();
@@ -847,7 +847,8 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
         "http://www.w3.org/2000/svg",
         "svg"
       );
-      forged.dataset.forged = "FORGED BY A SPEC on purpose — not a shipped glyph";
+      forged.dataset.forged =
+        "FORGED BY A SPEC on purpose — not a shipped glyph";
       label.prepend(forged);
       const seen = [
         ...document.querySelectorAll(

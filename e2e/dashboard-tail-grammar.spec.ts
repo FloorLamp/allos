@@ -44,8 +44,8 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
       expect(await rows.count(), `${group} renders entries`).toBeGreaterThan(0);
       // …and every entry is a ROW: `<li>` in the block's list, never a card shell.
       expect(
-        await rows.evaluateAll((nodes) =>
-          nodes.filter((node) => node.tagName !== "LI").length
+        await rows.evaluateAll(
+          (nodes) => nodes.filter((node) => node.tagName !== "LI").length
         ),
         `${group}: an entry that is not a row`
       ).toBe(0);
@@ -144,8 +144,7 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
     // populated set and not an empty one.
     expect(headers.length).toBeGreaterThan(0);
     const seen = new Map<string, number>();
-    for (const header of headers)
-      seen.set(header, (seen.get(header) ?? 0) + 1);
+    for (const header of headers) seen.set(header, (seen.get(header) ?? 0) + 1);
     expect([...seen].filter(([, count]) => count > 1)).toEqual([]);
   });
 
