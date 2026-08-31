@@ -74,16 +74,20 @@ function membershipSignatures(
 describe("profile-1 undated documents follow the illness fixture clock (#3949)", () => {
   it("has identical episode membership across dates and all 24 pinned zones", () => {
     const profileId = newProfile();
-    for (let dayIndex = 0; dayIndex < RUN_DAY_COUNT; dayIndex++) {
-      const runDay = shiftDateStr(FIRST_RUN_DAY, dayIndex);
-      const signatures = membershipSignatures(
-        profileId,
-        runDay,
-        (filename, zone) =>
-          profileOneUndatedDocumentUploadedAt(filename, runDay, zone)
-      );
-      expect([...signatures], runDay).toEqual([""]);
-    }
+    // Keep all 1,440 observations, but do not benchmark an autocommit after every
+    // fixture rewrite; each query still sees the exact writes for its zone.
+    db.transaction(() => {
+      for (let dayIndex = 0; dayIndex < RUN_DAY_COUNT; dayIndex++) {
+        const runDay = shiftDateStr(FIRST_RUN_DAY, dayIndex);
+        const signatures = membershipSignatures(
+          profileId,
+          runDay,
+          (filename, zone) =>
+            profileOneUndatedDocumentUploadedAt(filename, runDay, zone)
+        );
+        expect([...signatures], runDay).toEqual([""]);
+      }
+    })();
   });
 
   it("would red when the documents are pinned back to the old fixed clock", () => {
