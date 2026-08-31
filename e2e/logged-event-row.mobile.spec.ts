@@ -1,9 +1,9 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { hydratedClick } from "./helpers";
-import { utcInstant, zonedWallTimeToUtc } from "../lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../lib/date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE COMPACT LOGGED-EVENT ROW (#3671).
@@ -31,14 +31,44 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // for the zone a given run's start hour happened to draw.
 
 const PROFILE = 1;
-// A day well inside the ledgers' reach, addressed explicitly in every URL so this
-// never depends on a default window.
-const DAY = "2026-08-18";
+
+// THE FIXTURE'S DAY, DERIVED — never a calendar literal (#4358 AC3).
+//
+// THE COMMENT THAT USED TO STAND HERE WAS FALSE, and its being false is the whole
+// bug: it claimed this day was "addressed explicitly in every URL so this never
+// depends on a default window". The `/history` and `/nutrition?date=` reads below
+// are indeed day-addressed — but the two that open the IN-CARD dose panel go to
+// `/nutrition?tab=supplements`, which carries no date at all and lists doses over
+// its own window (`DOSE_HISTORY_DAYS` = 90 in lib/intake-adherence.ts, applied as
+// `historySince = today - 89` in SupplementsTab). So a pinned `"2026-08-18"` was a
+// fuse, exactly like the one #4358 was filed for: bisected on this branch, the file
+// is green at a 2026-11-15 clock and red at 2026-11-16 with `dose-history-row`
+// `Expected: 1 / Received: 0` — 89 days after 2026-08-18, to the day.
+//
+// Derived from the run's frozen clock, so the offset is a DISTANCE and can never
+// age out. Five days back is inside every window these surfaces apply, the tightest
+// proven one being that 90; keeping it near today also keeps it clear of any
+// shorter window a future surface might introduce.
+//
+// FIVE, AND NOT SEVEN: e2e/history.spec.ts seeds profile 1's `berries` seven days
+// back (#4367). Keeping the two apart is CHEAP INSURANCE, NOT A LOAD-BEARING CLAIM —
+// and that is measured rather than asserted, because the first draft of this comment
+// claimed otherwise. Forcing both specs onto one day and running them together under
+// `--workers=1` leaves both GREEN: each deletes by (profile, day, group) and re-seeds
+// immediately before every test, and both delete `berries`, so on a shared day they
+// simply clean up after each other.
+//
+// THAT MUTUAL RESCUE IS ACCIDENTAL, which is the reason to keep the days apart
+// anyway. It holds only while both specs keep deleting before every test and neither
+// starts counting rows on a day it did not itself seed. Distinct days cost nothing
+// and do not rely on a property no one is watching.
+const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -5);
 const ITEM = "E2e Row Magnesium";
 const ITEM_AMOUNT = "3 g";
 // THE STACK DAY (#3937). Two items dosed in the SAME MINUTE is the shape the ledger
-// was unreadable in — under the old slotting both rows read "Tuesday, August 18 ·
-// 8:46am" and both ⋯ announced those same words.
+// was unreadable in — under the old slotting both rows read the SAME day and clock
+// ("<weekday>, <month> <day> · 8:46am", whichever day the fixture is on) and both ⋯
+// announced those same words.
 const ITEM_TWO = "E2e Row Zinc";
 const ITEM_TWO_AMOUNT = "15 mg";
 // The trailing-less consumer (#3904): two columns, and the second is the person's
