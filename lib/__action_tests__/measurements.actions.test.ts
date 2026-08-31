@@ -549,4 +549,46 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     expect(after!.target.gramsLow).toBeLessThan(before!.target.gramsLow);
     expect(after!.target.gramsHigh).toBeLessThan(before!.target.gramsHigh);
   });
+  // ALL FIVE CORES, ONE ANSWER (#4425 review). The sitting fans out across
+  // `insertBodyMetric`, `insertVitals`, `insertGrowth`, `insertWaistCirc` and
+  // `insertComposition`; when only the first two held the not-future invariant the
+  // form wrote its tape reading and dropped its weigh-in — a PARTIAL sitting, under a
+  // "Measurements saved" toast. The table names each store so a core that drifts back
+  // says which one it was.
+  it.each([
+    ["body_metrics", (p: number) => bodyRows(p).length],
+    ["medical_records", (p: number) => medRows(p, "Blood Pressure Systolic").length],
+    ["height (growth)", (p: number) => (sampleValue(p, "height_cm") == null ? 0 : 1)],
+    [
+      "waist (tape)",
+      (p: number) => (sampleValue(p, "waist_circumference_cm") == null ? 0 : 1),
+    ],
+    [
+      "lean mass (composition)",
+      (p: number) => (sampleValue(p, "lean_mass_kg") == null ? 0 : 1),
+    ],
+  ])("writes no %s row for a sitting dated after the profile's day", async (_store, count) => {
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+    const tomorrow = "2026-05-21";
+    expect(tomorrow > today(profile.id)).toBe(true);
+
+    await addMeasurements(
+      fd({
+        date: tomorrow,
+        weight: "80",
+        weight_unit: "kg",
+        systolic: "118",
+        diastolic: "76",
+        height: "180",
+        height_unit: "cm",
+        waist_circ: "82",
+        waist_circ_unit: "cm",
+        lean_mass: "56",
+        lean_mass_unit: "kg",
+      })
+    );
+
+    expect(count(profile.id)).toBe(0);
+  });
 });

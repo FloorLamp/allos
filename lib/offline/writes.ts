@@ -658,7 +658,14 @@ export function insertGrowth(
   date: string,
   raw: GrowthInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  // The shared date invariant (#4425), and the SITTING is why it matters here rather
+  // than only on the two cores the review named. One "Log measurements" submission fans
+  // out across five cores; the moment two of them answered different questions about
+  // the day, a future-dated sitting wrote its tape reading and dropped its weigh-in,
+  // with the form saying "Measurements saved" either way. All five ask the same
+  // question, so the sitting is all-or-nothing. `insertWaistCirc` and
+  // `insertComposition` below take it for the same reason.
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeGrowthInput(raw);
   if ("error" in normalized) return false;
   if (normalized.samples.length === 0) return false;
@@ -690,7 +697,7 @@ export function insertWaistCirc(
   date: string,
   raw: WaistInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeWaistInput(raw);
   if ("error" in normalized) return false;
   writeTx(() => {
@@ -717,7 +724,7 @@ export function insertComposition(
   date: string,
   raw: CompositionInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeCompositionInput(raw);
   if ("error" in normalized) return false;
   writeTx(() => {
