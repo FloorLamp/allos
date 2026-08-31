@@ -6,7 +6,6 @@ import {
   expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
-  openDashboardAll,
   overflowStory,
   settledBoxes,
   touchSwipe,
@@ -292,13 +291,12 @@ test.describe("mobile clipping batch (#2614)", () => {
     // milder one, because seating is flagged-first and the values carrying a
     // severity word are exactly the seated ones.
     await page.goto("/");
-    // The family is not claimed by Standing when nothing about it is claiming
-    // attention (#4232); its rows keep the same anatomy inside the page's one fold,
-    // which is exactly what this measures.
-    await openDashboardAll(page);
-    const family = page
-      .getByTestId("dashboard-everything-read")
-      .locator('[data-moment-key="clinical-result.recent"]');
+    // On this fixture the seated draws are inside the ruled 30-day collection window
+    // (#4232), so they are FRESH and claim Standing's attention tier — the same rows,
+    // the same anatomy, the band above the fold instead of the one behind it.
+    const family = page.locator(
+      '[data-standing-band="attention"] [data-standing-family="clinical-results"]'
+    );
     await expect(family).toBeVisible();
     const rows = family.getByTestId("dashboard-candidate");
     await expect(rows.first()).toBeVisible(); // first-ok: presence proves the family rendered; the assertions below are over ALL of them

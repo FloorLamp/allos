@@ -161,27 +161,25 @@ test("attention facts carry their write outside read-only Ahead", async ({
 
 test("clinical results render as dense individual facts", async ({ page }) => {
   await page.goto("/");
-  // A months-old result with nothing claiming attention is what the ONE fold now holds
-  // (#4232, narrowing #3548); the rows and their density are unchanged inside it, and
-  // the family label the retired Standing band printed is the moment block's header.
-  await openDashboardAll(page);
-  const block = page
-    .getByTestId("dashboard-everything-read")
-    .locator('[data-moment-key="clinical-result.recent"]');
-  const rows = block.locator(
+  // WHERE THIS FIXTURE'S RESULTS SIT, AND WHY (#4232 ruling 3). The shared seed's
+  // seated draws are 1 day to 1 month old — inside the ruled 30-day collection
+  // window — so they are FRESH and claim Standing's attention tier rather than
+  // folding. Measured on the seed, not assumed: LAB_DATES' newest entry is
+  // daysAgo(30) and e2e adds nearer draws on top of it. The row anatomy this test
+  // exists for is the same in either band.
+  const family = page
+    .getByRole("main")
+    .locator(
+      '[data-standing-band="attention"] [data-standing-family="clinical-results"]'
+    );
+  const rows = family.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"]'
   );
 
   expect(await rows.count()).toBeGreaterThan(1);
   await expect(
-    block.getByText("Recent clinical results", { exact: true })
+    family.getByText("Recent clinical results", { exact: true })
   ).toBeVisible();
-  // …and the rows really are in the fold rather than left behind in Standing.
-  await expect(
-    page
-      .getByTestId("dashboard-standing")
-      .locator('[data-candidate-id^="labs.latest:"]')
-  ).toHaveCount(0);
 });
 
 test("ordinary other-profile attention stays off the acting dashboard", async ({
