@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
+const HELP_RUNS = new Map<string, SpawnSyncReturns<string>>();
 
 const ENTRY_SCRIPTS = [
   "scripts/orchestrator-checkin.sh",
@@ -47,11 +48,15 @@ const ENTRY_SCRIPTS = [
 ] as const;
 
 function runHelp(rel: string) {
+  const cached = HELP_RUNS.get(rel);
+  if (cached) return cached;
   const abs = path.join(REPO, rel);
-  const [cmd, args] = rel.endsWith(".sh")
-    ? ["bash", [abs, "--help"]]
-    : [TSX, [abs, "--help"]];
-  return spawnSync(cmd, args, {
+  const cmd = rel.endsWith(".sh")
+    ? "bash"
+    : rel.endsWith(".ts")
+      ? TSX
+      : process.execPath;
+  const run = spawnSync(cmd, [abs, "--help"], {
     cwd: REPO,
     encoding: "utf8",
     timeout: 30_000,
@@ -59,6 +64,8 @@ function runHelp(rel: string) {
     // nothing to lean on and fails loudly rather than quietly doing work.
     env: { ...process.env, GH_TOKEN: "", GITHUB_TOKEN: "" },
   });
+  HELP_RUNS.set(rel, run);
+  return run;
 }
 
 describe("--help is always safe", () => {
