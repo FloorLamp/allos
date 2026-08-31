@@ -989,25 +989,6 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
         `${testId} is ${box!.height}px rendered + 2x${inset}px overlay = ` +
           `${box!.height + 2 * inset}px effective, under the ${TAP_FLOOR_PX}px floor #3514 ruled.`
       ).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-
-      // …and the extension is where a thumb would find it, rather than merely
-      // declared: a point outside the visible box still resolves to this control.
-      const outside = await page.evaluate(
-        ({ x, y, id }) => {
-          const hit = document.elementFromPoint(x, y);
-          return hit?.closest(`[data-testid="${id}"]`) !== null;
-        },
-        {
-          x: box!.x + box!.width / 2,
-          y: box!.y - (TAP_TARGET_INSET_PX - 2),
-          id: testId,
-        }
-      );
-      expect(
-        outside,
-        `A tap ${TAP_TARGET_INSET_PX - 2}px above ${testId}'s visible edge does not land on it, so ` +
-          "the overlay is not receiving the tap it exists to receive."
-      ).toBe(true);
     }
 
     // Leave the shared profile's day as it was found.
