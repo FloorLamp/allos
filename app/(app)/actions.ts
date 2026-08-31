@@ -29,9 +29,10 @@ import {
   type UsualRoutineDayOffer,
 } from "@/lib/queries/usual-routine";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
-import { logUsualRoutineCore } from "@/lib/usual-routine-write";
-import { recordAudit } from "@/lib/audit";
-import { AUDIT_ACTIONS } from "@/lib/audit-actions";
+import {
+  logUsualRoutineCore,
+  recordUsualBackfillAudit,
+} from "@/lib/usual-routine-write";
 import { getActiveFastCached } from "@/lib/queries/fasting";
 import { promptsEndOfFast } from "@/lib/fasting";
 import type { UsualFoodLogged } from "@/lib/food-usual-write";
@@ -312,21 +313,9 @@ export async function logUsualRoutine(
     return { ok: false, error: "That day is out of range." };
   if (outcome.kind === "nothing-to-log")
     return { ok: false, error: "That's already logged." };
-  // A DATED bundle is audited, exactly as `logHistoricalDose` is (#1933's reasoning,
-  // #4118's ruling): writing several servings and several dose confirms onto a day
-  // somebody has already lived through is a retroactive claim about what happened, and
-  // where a caregiver files one it is a claim about somebody else. A contemporaneous tap
-  // is ordinary use and stays unaudited — the ledger rows are their own record. target =
-  // the meal window, detail = the affected date (identifiers and dates only).
-  if (outcome.date !== day) {
-    recordAudit({
-      loginId: login.id,
-      profileId: profile.id,
-      action: AUDIT_ACTIONS.usualBackfill,
-      target: outcome.window,
-      detail: outcome.date,
-    });
-  }
+  // A DATED bundle is audited (#4118) — the rule and the row shape live beside the
+  // write core so the Telegram surface files the identical one (#4306).
+  recordUsualBackfillAudit(login.id, profile.id, outcome, day);
   // The follow-up offer, resolved AFTER the write and only when the bundle actually
   // landed FOOD: confirming a dose is not eating, and prompting "End your fast?" over a
   // dose-only tap would be the app inferring a meal from a medication. The day the write

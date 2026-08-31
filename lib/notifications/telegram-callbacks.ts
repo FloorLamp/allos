@@ -36,6 +36,7 @@ import {
 import { shiftDateStr } from "../date";
 import {
   getProfilesByTelegramChatId,
+  loginIdForTelegramChatProfile,
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
@@ -128,6 +129,7 @@ import {
 } from "./callback-data";
 import {
   logUsualRoutineCore,
+  recordUsualBackfillAudit,
   usualRoutineDoseLogged,
 } from "../usual-routine-write";
 import { usualRoutineAnswerText } from "../usual-routine";
@@ -1488,21 +1490,24 @@ async function handleUsualRoutineTap(
   cq: TelegramCallbackQuery,
   token: OfferCallback
 ): Promise<TapWrote> {
-  const chatId = cq.message?.chat?.id;
+  // Narrowed to a string ONCE: the rebuilds below and the audit's binding lookup are
+  // the same chat, and `String(...)` at each site is how they drift apart.
+  const chatId = cq.message?.chat?.id == null ? null : String(cq.message.chat.id);
   const profileId =
     chatId != null
-      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(chatId))
       : null;
-  if (profileId == null) {
+  if (profileId == null || chatId == null) {
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
     return;
   }
+  const t = today(profileId);
   const row = readOfferRow<StoredUsualOffer>(
     profileId,
     USUAL_OFFER_FAMILY,
     token.offerId
   );
-  if (!row || !isDoseDateAccepted(today(profileId), row.date)) {
+  if (!row || !isDoseDateAccepted(t, row.date)) {
     // Forged, another profile's, or minted further back than the window reaches. The
     // honest refusal, and nothing is written — day 3+ still answers the outdated text.
     await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT, { alert: true });
@@ -1511,9 +1516,7 @@ async function handleUsualRoutineTap(
   const { payload: offer, date } = row;
   const messageId = cq.message?.message_id;
   const notifyMessageId =
-    chatId != null && messageId != null
-      ? messagePointerIdAt(profileId, chatId, messageId)
-      : null;
+    messageId != null ? messagePointerIdAt(profileId, chatId, messageId) : null;
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
@@ -1522,6 +1525,17 @@ async function handleUsualRoutineTap(
     offer.doseIds,
     NUDGE,
     notifyMessageId
+  );
+  // THE DATED-WRITE TRAIL HAS NO HOLE ON THE MOST-USED SURFACE (#4306, owner ruling
+  // 2026-08-31). A backfill from a nudge writes the rows the web backfill writes, so it
+  // writes the same audit row. The ACTOR comes off the chat binding, which is already
+  // what decided which profile this tap may write — naming it in the log is that same
+  // trust made explicit, and nothing else about the profile/login split moves.
+  recordUsualBackfillAudit(
+    loginIdForTelegramChatProfile(chatId, profileId),
+    profileId,
+    outcome,
+    t
   );
   const wrote = outcome.kind === "logged";
   const doses = wrote ? outcome.doses : [];
@@ -1542,7 +1556,7 @@ async function handleUsualRoutineTap(
   // fixes whichever host was tapped; the sweep the dispatcher runs on this answer is
   // what fixes the other one, in the same request cycle.
   const swept = wrote ? profileId : undefined;
-  if (chatId == null || messageId == null) return swept;
+  if (messageId == null) return swept;
   const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
   if (rows.length === 0) return swept;
   // WHICH MESSAGE THIS IS, asked of the keyboard rather than of the token — the whole

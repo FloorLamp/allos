@@ -47,11 +47,28 @@
 // its own reason, while the rows still count everywhere a person looks.
 //
 // The food half owns the reach (`isUsualBackfillDateAccepted`: today and the six days
-// before) and refuses beyond it. The DOSE half has its own, NARROWER window and always
-// did: `markDoseTaken` gates on `isDoseDateAccepted` (±2, coupled to Telegram pointer
-// retention). So on a day three-to-six back the food lands and every dose comes back
-// `stale-dose` — reported, never assumed away, exactly as a paused item is. The deep
-// door (`logHistoricalDose`) is where a dose that old is filed.
+// before) and the dose half now goes the whole way with it (#4305, owner ruling
+// 2026-08-31) — ONE TAP FILLS THE WHOLE MORNING, which is the case #4118 was filed for
+// and is usually three or more days back by the time anybody notices the hole.
+//
+// It gets there by WHICH WRITER IT PICKS, not by widening anything:
+//
+//   • inside `isDoseDateAccepted` (±2) the dose half is `markDoseTaken`, unchanged —
+//     the ordinary dated confirm, with its supply coupling and its typed refusals;
+//   • outside it, and only inside the food half's reach, each dose goes through
+//     `logHistoricalDose` — the SAME audited deep-door core the `/history` backfill
+//     writes through, which is bounded by the medication course rather than by the
+//     stale-button window.
+//
+// `DOSE_LOG_DATE_WINDOW_DAYS` therefore keeps its ONE meaning: how far a stale tap on a
+// message may reach, coupled to Telegram pointer retention. No other surface changes,
+// and no ordinary tap reaches further than it did.
+//
+// TWO PROPERTIES THE DEEP DOOR HAS THAT THE STALE-TAP WRITER DOES NOT, both wanted:
+// a medication whose courses do not cover that day is refused `outside-course` rather
+// than written, and the amount snapshotted onto the row is the dose's CURRENT amount.
+// The second is a known, accepted cost until #3984 versions amounts — it is exactly what
+// the deep door does today, so it is not a new one.
 //
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
@@ -60,22 +77,43 @@
 // minted, no cadence row is touched. Adherence moves exactly where dueness already
 // existed, as if each row had been tapped by hand.
 
+import { now as clockNow } from "./clock";
 import { today } from "./db";
+import { recordAudit } from "./audit";
+import { AUDIT_ACTIONS } from "./audit-actions";
+import { isDoseDateAccepted } from "./dose-log-window";
+import { parseClockHhmm } from "./format-date";
+import { zonedDateParts } from "./date";
+import { statedInstantOnDate } from "./stated-time";
+import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
-import { markDoseTaken } from "./queries/intake/adherence";
-import { getPendingRoutineDoses } from "./queries/usual-routine";
-import type { DoseTakenOutcome } from "./types";
+import {
+  logHistoricalDose,
+  markDoseTaken,
+} from "./queries/intake/adherence";
+import {
+  getPendingRoutineDoses,
+  type PendingDayDose,
+} from "./queries/usual-routine";
+import type { DoseTakenOutcome, HistoricalDoseOutcome } from "./types";
 
-// What one named dose actually did. `outcome` is `markDoseTaken`'s own typed answer,
-// carried out unflattened so the surface can say "3 taken, 1 already logged" rather
-// than a bare count — the composed answer may never claim more than was written.
+// What one named dose actually did — the writer's own typed answer, carried out
+// unflattened so the surface can say "3 taken, 1 already logged" rather than a bare
+// count. The composed answer may never claim more than was written.
+//
+// `outside-course` is the ONE state only the dated writer can reach (#4305): a
+// medication whose recorded courses do not cover that day. It is kept as itself rather
+// than folded into `stale-dose`, because "that dose doesn't exist" is not what happened
+// and a refusal that lies is the defect #1933 removed from this very core.
+export type UsualRoutineDoseOutcome = DoseTakenOutcome | "outside-course";
+
 export interface UsualRoutineDoseResult {
   doseId: number;
   name: string;
-  outcome: DoseTakenOutcome;
+  outcome: UsualRoutineDoseOutcome;
 }
 
 // `nothing-to-log` only when BOTH halves came back empty: the offer the tap came from
@@ -96,8 +134,61 @@ export type UsualRoutineOutcome =
 
 // A dose confirm that actually moved the ledger. `logged-off-day` counts: the row was
 // written and supply moved; only the framing differs (#1602).
-export function usualRoutineDoseLogged(outcome: DoseTakenOutcome): boolean {
+export function usualRoutineDoseLogged(
+  outcome: UsualRoutineDoseOutcome
+): boolean {
   return outcome === "logged" || outcome === "logged-off-day";
+}
+
+// ── THE DATED DOSE WRITE (#4305) ─────────────────────────────────────────────
+
+// WHAT TIME A BUNDLE SAYS A DOSE WAS TAKEN, on a day the ±2 window no longer reaches.
+// `logHistoricalDose` derives the row's DATE from the instant it is handed, so an
+// instant is not optional here — it has to land on `date` or the row lands on the wrong
+// day. The rule is the one the dose-history panel's missed-day offer already uses, and
+// for the same reason: it is a one-tap backfill with no visible time field, so the
+// dose's OWN declared clock is the only statement standing for it. Free text that is a
+// bucket word rather than a clock ("Morning", "with dinner") states no hour, and neither
+// does an anytime dose, so those fall back to the wall clock the tap happened at — the
+// same default the deep door's form prefills. Null only on a DST gap, which refuses the
+// write rather than silently moving the hour.
+function datedDoseWrite(
+  profileId: number,
+  tz: string,
+  date: string,
+  dose: PendingDayDose,
+  loggedVia: LoggedVia
+): UsualRoutineDoseOutcome {
+  const hhmm =
+    parseClockHhmm(dose.timeOfDay) ?? zonedDateParts(tz, clockNow()).hhmm;
+  const at = statedInstantOnDate(date, hhmm, tz);
+  if (!at) return "stale-dose";
+  return datedDoseOutcome(
+    // amountOverride null keeps the dose row's own amount, and supply moves exactly as
+    // the ±2 writer moves it — one tap is one tap, whichever writer it reaches.
+    logHistoricalDose(profileId, dose.itemId, dose.doseId, at, null, true, loggedVia)
+  );
+}
+
+// The deep door's answer in the composed tap's vocabulary. Every member is carried
+// across as itself; `invalid-time` is the only one with no counterpart — it means the
+// instant above did not survive its own day (a DST gap), so nothing was written and
+// nothing about the dose is wrong, which is what `stale-dose` already says to a surface.
+// `duplicate` is unreachable: it is the PRN dedup, and a `may` item has no dueness at
+// all (#1505), so no `may` dose is ever in a standing bundle.
+function datedDoseOutcome(
+  outcome: HistoricalDoseOutcome
+): UsualRoutineDoseOutcome {
+  switch (outcome.kind) {
+    case "logged":
+      return "logged";
+    case "already-taken":
+    case "already-skipped":
+    case "outside-course":
+      return outcome.kind;
+    default:
+      return "stale-dose";
+  }
 }
 
 // Log the still-offered half of `namedGroups` into `window`, then confirm the
@@ -148,6 +239,10 @@ export function logUsualRoutineCore(
   const pending = new Map(
     getPendingRoutineDoses(profileId, window, date).map((d) => [d.doseId, d])
   );
+  // WHICH WRITER (#4305). One question, asked once for the whole bundle, because the
+  // day is the same for every dose in it. Inside the stale-tap window nothing moves.
+  const dated = !isDoseDateAccepted(t, date);
+  const tz = dated ? getTimezone(profileId) : "";
   const doses: UsualRoutineDoseResult[] = [];
   for (const doseId of namedDoseIds) {
     const offered = pending.get(doseId);
@@ -158,21 +253,56 @@ export function logUsualRoutineCore(
     doses.push({
       doseId,
       name: offered.name,
-      // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or a
-      // paused item on its own terms. Its answer is carried, never assumed.
-      outcome: markDoseTaken(
-        profileId,
-        doseId,
-        offered.itemId,
-        date,
-        via,
-        undefined,
-        notifyMessageId
-      ),
+      outcome: dated
+        ? datedDoseWrite(profileId, tz, date, offered, via)
+        : // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or
+          // a paused item on its own terms. Its answer is carried, never assumed.
+          markDoseTaken(
+            profileId,
+            doseId,
+            offered.itemId,
+            date,
+            via,
+            undefined,
+            notifyMessageId
+          ),
     });
   }
 
   if (groups.length === 0 && doses.length === 0)
     return { kind: "nothing-to-log" };
   return { kind: "logged", date, window, groups, doses };
+}
+
+// ── THE DATED BUNDLE'S AUDIT ROW (#4118/#4306) ───────────────────────────────
+//
+// Writing several servings and several dose confirms onto a day somebody has already
+// lived through is a retroactive claim about what happened, and where a caregiver files
+// one it is a claim about somebody else — so it is audited, exactly as `logHistoricalDose`
+// is (#1933's reasoning). A contemporaneous tap is ordinary use and stays unaudited: the
+// ledger rows are their own record.
+//
+// ONE SPELLING, TWO SURFACES. The web action and the Telegram handler both call this, so
+// "the chat writes the same row the web path writes" (#4306's ruling) is structural
+// rather than a thing two call sites have to keep agreeing about. The date test lives in
+// here for the same reason — half a rule in two places is how they drift.
+//
+// PHI: target = the meal window, detail = the affected date. Identifiers and dates only.
+export function recordUsualBackfillAudit(
+  // The acting login. Null is a real answer — a chat whose binding no longer names one —
+  // and `recordAudit` stores it, because a row that says WHAT happened to WHOSE data
+  // without a name is still the trail; dropping the row would be the hole this closes.
+  loginId: number | null,
+  profileId: number,
+  outcome: UsualRoutineOutcome,
+  todayStr: string
+): void {
+  if (outcome.kind !== "logged" || outcome.date === todayStr) return;
+  recordAudit({
+    loginId,
+    profileId,
+    action: AUDIT_ACTIONS.usualBackfill,
+    target: outcome.window,
+    detail: outcome.date,
+  });
 }
