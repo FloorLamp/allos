@@ -2,9 +2,9 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import {
   expectNoClippedContent,
+  followLink,
   hydratedClick,
   settledCheck,
-  settledBoxes,
   settledSelect,
 } from "./helpers";
 import { loginAs } from "./nav";
@@ -149,46 +149,46 @@ test("tapping a group expands its results, and only that group (#1499)", async (
   await page.context().close();
 });
 
-test("a mapped panel's reported heading is available by touch and keyboard at 390px", async ({
+test("a mapped panel's reported heading lives on the reading, not on every row (#4419)", async ({
   browser,
 }) => {
   const page = await openBrowser(browser);
   const lipids = group(page, "lipids");
   await hydratedClick(page, lipids.getByTestId("clinical-result-panel-toggle"));
 
-  // Every mapped row was reported under the fixture lab heading. The one shared
-  // disclosure stays beside its row date, and each control includes analyte + date so a
-  // controls list does not collapse eleven E2E Lab rows into identical choices.
-  const triggers = lipids.getByTestId("clinical-reported-panel-help");
-  await expect(triggers).toHaveCount(11);
-  const names = await triggers.evaluateAll((elements) =>
-    elements.map((element) => element.getAttribute("aria-label") ?? "")
+  // THE FIXTURE REACHES THE STATE THE ASSERTION FORBIDS, eleven times over: every one
+  // of these mapped rows was reported under the fixture lab heading, and every one of
+  // them mounted its own 34px disclosure button until #4419 ruling 3 — this test
+  // asserted `toHaveCount(11)` on exactly that id. So the zero below is measured
+  // against eleven live chances to fail, not against an empty group.
+  await expect(lipids.locator("tr")).toHaveCount(12); // 1 header + 11 results
+  await expect(
+    lipids.getByTestId("clinical-reported-panel-help")
+  ).toHaveCount(0);
+  // BY NAME as well as by id: the label is what a reader hears, and a mount that
+  // came back without its testid would slip past an id-only sweep.
+  await expect(
+    lipids.getByRole("button", { name: /^Reported under/ })
+  ).toHaveCount(0);
+
+  // RELOCATION, NEVER DELETION. The heading is a per-row fact, so it is a column on
+  // the row's own detail page — reached the way a reader reaches it, through the
+  // analyte's name.
+  await followLink(
+    page,
+    lipids.getByRole("link", { name: "LDL Cholesterol", exact: true }).first(), // first-ok: the run-heading link; all three LDL rows lead to the one detail page
+    /\/results\/clinical-results\/view/
   );
-  expect(new Set(names).size).toBe(names.length);
-  expect(
-    names.every((name) =>
-      /^Reported under “E2E Lab” — .+, \d{4}-\d{2}-\d{2}$/.test(name)
-    )
-  ).toBe(true);
-
-  const trigger = triggers.first(); // first-ok: all eleven uniquely named controls share the same closed tooltip interaction; the complete unique-name set is asserted above
-  const triggerName = names[0];
-  const [box] = await settledBoxes([trigger]);
-  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-  const tooltip = page.getByRole("tooltip");
-  await expect(tooltip).toHaveText(triggerName);
+  const reported = page.getByTestId("reading-reported-panel");
+  await expect(reported).toHaveCount(3); // LDL has three readings on this fixture
+  for (const cell of await reported.all())
+    await expect(cell).toContainText("E2E Lab");
   await expectNoClippedContent(page);
-
-  await page.keyboard.press("Escape");
-  await trigger.focus();
-  await expect(tooltip).toHaveText(triggerName);
-  await page.keyboard.press("Escape");
-  await expect(tooltip).toHaveCount(0);
 
   await page.context().close();
 });
 
-test("table continuation rows keep one contextual alias control at 700 and 1280px", async ({
+test("a continuation row carries no info affordance at 700 and 1280px", async ({
   browser,
 }) => {
   for (const width of [700, 1280]) {
@@ -215,20 +215,24 @@ test("table continuation rows keep one contextual alias control at 700 and 1280p
       }),
     });
     await expect(ldlRows).toHaveCount(3);
+    // A CONTINUATION row is the one #3970's criterion was hardest on: it repeats no
+    // name, so the "Reported under …" disclosure was its own second control. The
+    // criterion is "at most one info affordance per row, plus the ⋯ menu", and this
+    // row now meets it exactly — ONE button, and it is the menu. Counting ALL buttons
+    // and then naming the survivor is what makes this an assertion about the row
+    // rather than about one id: a mount that came back under any other label fails it.
     const continuation = ldlRows.nth(1);
-    const trigger = continuation.getByTestId("clinical-reported-panel-help");
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toHaveAccessibleName(
-      /^Reported under “E2E Lab” — LDL Cholesterol, \d{4}-\d{2}-\d{2}$/
-    );
-    const dateCell = trigger.locator("xpath=ancestor::td[1]");
-    await expect(dateCell).toHaveAttribute("data-card", "meta");
-    await expect(dateCell).toContainText(/Date[A-Z][a-z]{2} \d{1,2}, \d{4}/);
+    await expect(continuation.getByRole("button")).toHaveCount(1);
     await expect(
-      continuation
-        .locator('td[data-card="title"]')
-        .getByTestId("clinical-reported-panel-help")
-    ).toHaveCount(0);
+      continuation.getByTestId("overflow-menu-trigger")
+    ).toHaveCount(1);
+    // …and it still prints the date it always did, which is the half an absence
+    // assertion cannot see on its own.
+    const dateCell = continuation
+      .locator('td[data-card="meta"]')
+      .filter({ hasText: /^Date/ });
+    await expect(dateCell).toHaveCount(1);
+    await expect(dateCell).toContainText(/Date[A-Z][a-z]{2} \d{1,2}, \d{4}/);
 
     await page.context().close();
   }
@@ -569,9 +573,14 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   await page.goto(`${CLINICAL_RESULTS}?panel=biological-age`);
   const bioAge = group(page, "biological-age");
   await expect(bioAge).toHaveAttribute("data-open", "true");
-  await expect(
-    bioAge.getByTestId("derived-badge").first() // first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
-  ).toBeVisible();
+  // Every row in this group is derived, so the group is where a per-row derived
+  // affordance would multiply. The badge — the WORD — stays on each; the formula it
+  // used to disclose is on the detail page each of those names links to (#4419
+  // ruling 3), stated once as a sentence rather than once per row.
+  const derivedBadges = bioAge.getByTestId("derived-badge");
+  await expect(derivedBadges).toHaveCount(3);
+  await expect(derivedBadges.first()).toBeVisible(); // first-ok: spec-owned e2e_panelindex; the group holds only PhenoAge rows
+  await expect(bioAge.getByRole("button", { name: /^Derived/ })).toHaveCount(0);
 
   await page.context().close();
 });

@@ -121,36 +121,14 @@ test("a registered detail works by touch and keyboard without covering its trigg
   await expect(row).toHaveCount(0);
 });
 
-test("a sync timestamp discloses beside its whole-card destination", async ({
-  page,
-}) => {
-  await page.goto("/data?section=import");
-  const connected = page.getByTestId("grid-connected");
-  const timestamp = connected.getByTestId("sync-timestamp-compact").first(); // first-ok: every connected timestamp uses the same registered composition
-  const trigger = timestamp.getByRole("button");
-  await expect(trigger).toBeVisible();
-  const content = trigger.locator(
-    "xpath=ancestor::*[@data-overlay-destination-content]"
-  );
-  const destination = content.locator("..").getByRole("link");
-  await expect(destination.getByRole("button")).toHaveCount(0);
-
-  const initialUrl = page.url();
-  await trigger.scrollIntoViewIfNeeded();
-  const [triggerBox] = await settledBoxes([trigger]);
-  await page.touchscreen.tap(
-    triggerBox.x + triggerBox.width / 2,
-    triggerBox.y + triggerBox.height / 2
-  );
-  await expect(page.getByRole("tooltip")).toBeVisible();
-  expect(page.url()).toBe(initialUrl);
-
-  await page.keyboard.press("Escape");
-  await destination.focus();
-  await expect(destination).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(page).not.toHaveURL(initialUrl);
-});
+// GONE WITH ITS SUBJECT (#4419 rule 1): "a sync timestamp discloses beside its
+// whole-card destination" drove the info button inside the Data › Import connected
+// card. That button was the last production instance of a disclosure nested in an
+// OverlayDestination — every one of them came from `SyncTimestamp relativeOnly`, and
+// the absolute stamp now lives on the surface each card links to. The COMPOSITION it
+// guarded (a detail control that is a sibling of the whole-surface link, tappable
+// without navigating) is still asserted, on a synthetic fixture that needs no
+// production instance, in components/__tests__/overlay-destination.test.tsx.
 
 test("standing history fits a touch tablet and discloses by touch and keyboard", async ({
   browser,
