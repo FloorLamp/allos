@@ -84,7 +84,9 @@ test("the therapeutic-duplication note surfaces on the dashboard coaching rollup
   });
   await page.goto("/");
   await openDashboardAll(page);
-  const rollup = page.getByTestId("coaching-observations");
+  // The rollup is a folded BLOCK of rows since #4076 — one observation, one row,
+  // all of them under one "Coaching observations" header.
+  const rollup = page.locator('[data-moment-key="coaching.observation"]');
   await expect(rollup).toBeVisible();
   await expect(rollup).toContainText(
     "Ibuprofen appears in 2 active medications"
