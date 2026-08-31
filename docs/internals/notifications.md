@@ -834,9 +834,10 @@ through the same `judgeEatenAt` gate, which is `resolveQueuedTakenAt`'s untruste
 clock posture applied to eating time. A refused instant costs the statement and never the
 serving — and since #2296 never silently: the replay answers `done` with a `timeNotice`,
 and the reconnect confirmation says the minute was lost and why
-(`docs/internals/time-model.md`). On the dose side there is no
-schema at all: `intake_item_logs.recorded_at` has carried the administration instant
-since migration 041, and the PRN redose window already arms off it.
+(`docs/internals/time-model.md`). On the dose side, `intake_item_logs.recorded_at` is
+the immutable capture stamp and `occurred_at` is the administration instant (#2876).
+The PRN redose window reads the administration instant first and falls back to capture
+only when nobody stated one.
 
 #### The third domain: `practime` (#2875)
 
@@ -857,7 +858,7 @@ that turned out to be wrong rather than general — see the fourth bullet. Four 
 genuinely differ:
 
 - **The stored value is not an instant.** Food stores `occurred_at` and dose stores
-  `given_at`; a practice stores `date` (a profile-local day) plus `time` (a
+  `occurred_at`; a practice stores `date` (a profile-local day) plus `time` (a
   profile-local `HH:MM`). The tap reader COMPOSES them through the profile's zone and
   the write core DECOMPOSES the answer back — both through the declared readers
   (`eventInstant` / `recordInstant`, `lib/row-instants.ts`) rather than a second
@@ -1033,7 +1034,7 @@ re-date falls out of the same computation.
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the
 `food_daily_totals` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
-(#614), so `dosetime` moves `recorded_at` and nothing else, and the toast says so. The
+(#614), so `dosetime` moves `occurred_at` and nothing else, and the toast says so. The
 dose correction also never re-runs the phantom-dose proximity guard (it runs at
 INSERT time and a correction may legitimately move two administrations together) and
 never re-arms an escalation (#1933) — it is a correction of history. It can only
@@ -3202,11 +3203,12 @@ be logged", which is the drift being fixed. If ±2 days is too generous,
 `DOSE_LOG_DATE_WINDOW_DAYS` moves the button, the Telegram tap, the web path and the
 offline replay together. The resulting lifetimes:
 
-| family                                                                       | button lives                                            | bounded by                                   |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
-| `intake-dose`, `escalation`                                                  | through the end of D+2                                  | `isDoseDateAccepted`                         |
-| `food`, `household-round`, `mood`                                            | until the next nudge, or local midnight                 | the #947/#1945 rotation, then `tapDateGuard` |
-| `workout-draft`, `preventive`, `refill`, `symptom`, `practice`, `food-optin` | while the family's own `dead` predicate says it is live | that predicate alone                         |
+| family                                                                       | button lives                                            | bounded by                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------- |
+| `intake-dose`, `escalation`                                                  | through the end of D+2                                  | `isDoseDateAccepted`                               |
+| `food`                                                                       | until the next food nudge, or the end of D+2            | the #947/#1945 rotation, then `isDoseDateAccepted` |
+| `household-round`, `mood`                                                    | until the next nudge, or local midnight                 | the #1945 rotation, then `tapDateGuard`            |
+| `workout-draft`, `preventive`, `refill`, `symptom`, `practice`, `food-optin` | while the family's own `dead` predicate says it is live | that predicate alone                               |
 
 Two couplings this creates. `DOSE_LOG_DATE_WINDOW_DAYS` (2) must stay strictly below
 `MESSAGE_POINTER_RETENTION_DAYS` (3): past retention the pointer is pruned and the
@@ -3221,9 +3223,25 @@ and since reconciliation may only ever REDUCE what a chat claims, closing at the
 boundary is the safe direction — should that handler ever gain a date check it must be
 `tapDateGuard`, not a third rule.
 
-Rollover also closed the residual #947 gap — the last food nudge of an evening used
-to keep a live keyboard until the next send, which may never come — and it still
-does, because food is an `exact-day` family.
+**#4118 MOVED `food` ONTO THE DOSE WINDOW**, and the row above is the change. The
+owner's report was that on a stale morning message the ✅ dose buttons still worked and
+the food buttons did not — "I can only update the morning supplement times, not food" —
+and this table was half the reason: the sweep closed the food keyboard at the rollover
+while its dose neighbours on the SAME message lived to D+2. #947's reasoning is
+overturned rather than forgotten. It read the token's date as the system's GUESS at when
+eating happened, so a cross-date tap had two candidate answers and refused. #4118 splits
+that in two: the DAY the serving belongs to is settled by the message and is not a guess,
+while the eating INSTANT genuinely is — so the handler honours the tap on the message's
+own day and declines to invent an `occurred_at` for a day that has ended (the row carries
+the nudge's declared window and a NULL instant, the same shape the `/history` door
+writes). The residual #947 gap the rollover used to close — the last food nudge of an
+evening keeping a live keyboard until a next send that may never come — is now closed by
+the `expired` branch at D+3 instead, three days later and with the honest sentence.
+The #947/#1945 POINTER ROTATION IS UNTOUCHED, which is why `food` needs its own row
+above rather than sitting with the dose families: every send still strips the previous
+food keyboard (`telegram.ts`, asserted in `reconcile-registry.ts`), so in practice a food
+nudge usually ends at the NEXT one and the D+2 sweep bound is what governs the last nudge
+of a day — the case where no next send comes.
 
 **A failed edit is CLASSIFIED, never assumed dead (#1885).** The transport used to
 throw a bare `Error` for every Bot API failure alike, so the sweep's catch dropped

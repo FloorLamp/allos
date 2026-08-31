@@ -127,7 +127,7 @@ function dueOn(itemId: number, doseId: number, date: string): boolean {
 // ---- The edit that MOVES a boundary ----------------------------------------
 
 describe("#1973 — a dueness-relevant edit appends a version and closes the old one", () => {
-  it("re-times a dose, and a pre-edit day still resolves to the pre-edit slot", async () => {
+  it("re-times across days, collapses same-day edits, and invalidates the reader memo", async () => {
     setDay("2026-07-01");
     await addIntakeItem(
       fd({
@@ -139,6 +139,8 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
     const doseId = doseRows(itemId)[0].id;
     // Birth version, seeded by the add path so the first edit has something to close.
     expect(versionsOf(doseId)).toEqual([["2026-07-01", "Morning", null]]);
+    // Prime the schedule memo before the edit, as the form-rendering page does.
+    expect(doseBucketOn(readDose(doseId), "2026-07-01")).toBe("Morning");
 
     setDay("2026-07-20");
     await updateIntakeItem(
@@ -164,6 +166,38 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
     expect(doseBucketOn(readDose(doseId), "2026-07-20")).toBe("Evening");
     // The boundary is the effective day itself, not the day after it.
     expect(doseBucketOn(readDose(doseId), "2026-07-19")).toBe("Morning");
+
+    setDay("2026-07-25");
+    await updateIntakeItem(
+      fd({
+        id: String(itemId),
+        name: "Magnesium",
+        doses: JSON.stringify([
+          { id: doseId, ...dose({ time_of_day: "Midday" }) },
+        ]),
+      })
+    );
+    setDay("2026-07-30");
+    for (const slot of ["Evening", "Before sleep"]) {
+      await updateIntakeItem(
+        fd({
+          id: String(itemId),
+          name: "Magnesium",
+          doses: JSON.stringify([
+            { id: doseId, ...dose({ time_of_day: slot }) },
+          ]),
+        })
+      );
+    }
+
+    expect(versionsOf(doseId)).toEqual([
+      ["2026-07-01", "Morning", null],
+      ["2026-07-20", "Evening", null],
+      ["2026-07-25", "Midday", null],
+      ["2026-07-30", "Before sleep", null],
+    ]);
+    expect(doseBucketOn(readDose(doseId), "2026-07-24")).toBe("Evening");
+    expect(doseBucketOn(readDose(doseId), "2026-07-27")).toBe("Midday");
   });
 
   it("narrowing to weekdays leaves the pre-edit days due, and the post-edit days not", async () => {
@@ -194,135 +228,6 @@ describe("#1973 — a dueness-relevant edit appends a version and closes the old
     // The same weekday AFTER it: correctly not due.
     expect(dueOn(itemId, doseId, "2026-07-24")).toBe(false);
     expect(dueOn(itemId, doseId, "2026-07-27")).toBe(true); // a Monday
-  });
-
-  it("two edits on separate days stack; two on one day collapse to that day's final state", async () => {
-    setDay("2026-07-01");
-    await addIntakeItem(
-      fd({ name: "Stacker", doses: JSON.stringify([dose()]) })
-    );
-    const itemId = lastItemId();
-    const doseId = doseRows(itemId)[0].id;
-
-    setDay("2026-07-10");
-    await updateIntakeItem(
-      fd({
-        id: String(itemId),
-        name: "Stacker",
-        doses: JSON.stringify([
-          { id: doseId, ...dose({ time_of_day: "Midday" }) },
-        ]),
-      })
-    );
-    setDay("2026-07-20");
-    for (const slot of ["Evening", "Before sleep"]) {
-      await updateIntakeItem(
-        fd({
-          id: String(itemId),
-          name: "Stacker",
-          doses: JSON.stringify([
-            { id: doseId, ...dose({ time_of_day: slot }) },
-          ]),
-        })
-      );
-    }
-
-    // Three versions, not four: dueness is evaluated per DAY, so one day holds one
-    // rule — the last one stated that day (the ON CONFLICT upsert).
-    expect(versionsOf(doseId)).toEqual([
-      ["2026-07-01", "Morning", null],
-      ["2026-07-10", "Midday", null],
-      ["2026-07-20", "Before sleep", null],
-    ]);
-    expect(doseBucketOn(readDose(doseId), "2026-07-15")).toBe("Midday");
-  });
-});
-
-// ---- The edit that moves NOTHING --------------------------------------------
-
-describe("#1973 — a cosmetic edit records no version at all", () => {
-  it("changing amount, food timing and order leaves the history untouched", async () => {
-    setDay("2026-07-01");
-    await addIntakeItem(
-      fd({
-        name: "Creatine",
-        doses: JSON.stringify([
-          dose({ amount: "5 g", time_of_day: "Morning" }),
-          dose({ amount: "1 scoop", time_of_day: "Evening" }),
-        ]),
-      })
-    );
-    const itemId = lastItemId();
-    const [first, second] = doseRows(itemId);
-    const before = [versionsOf(first.id), versionsOf(second.id)];
-
-    setDay("2026-07-20");
-    await updateIntakeItem(
-      fd({
-        id: String(itemId),
-        name: "Creatine",
-        // Amount, food timing and the submitted ORDER all change; not one of them is a
-        // field `doseScheduleDiffers` can see, so none of them can move a boundary.
-        doses: JSON.stringify([
-          {
-            id: second.id,
-            ...dose({
-              amount: "2 scoops",
-              time_of_day: "Evening",
-              food_timing: "with",
-            }),
-          },
-          {
-            id: first.id,
-            ...dose({
-              amount: "10 g",
-              time_of_day: "Morning",
-              food_timing: "with",
-            }),
-          },
-        ]),
-      })
-    );
-
-    expect(
-      doseRows(itemId)
-        .map((d) => d.amount)
-        .sort()
-    ).toEqual(["10 g", "2 scoops"]);
-    expect([versionsOf(first.id), versionsOf(second.id)]).toEqual(before);
-  });
-});
-
-// ---- The memoized reader on the other side of the write (#2066) --------------
-
-describe("#2066 — the memoized history reader never serves a stale edit", () => {
-  it("shows the appended version on the very next current-schedule read", async () => {
-    setDay("2026-07-01");
-    await addIntakeItem(
-      fd({ name: "Primed", doses: JSON.stringify([dose()]) })
-    );
-    const itemId = lastItemId();
-    const doseId = doseRows(itemId)[0].id;
-    // PRIME the memo, which is the state a real edit arrives in: the page that drew the
-    // form read this profile's schedule seconds earlier.
-    expect(doseBucketOn(readDose(doseId), "2026-07-01")).toBe("Morning");
-
-    setDay("2026-07-20");
-    await updateIntakeItem(
-      fd({
-        id: String(itemId),
-        name: "Primed",
-        doses: JSON.stringify([
-          { id: doseId, ...dose({ time_of_day: "Evening" }) },
-        ]),
-      })
-    );
-
-    // No waiting out the TTL: the write drops the memo, so the re-render this action
-    // revalidates into reads the version it just wrote …
-    expect(doseBucketOn(readDose(doseId), "2026-07-20")).toBe("Evening");
-    // … and the days before it are still judged by the rule that was in force then.
-    expect(doseBucketOn(readDose(doseId), "2026-07-10")).toBe("Morning");
   });
 });
 
@@ -419,7 +324,11 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
           dose({ amount: "2 mg", time_of_day: "Midday" }),
           {
             id: morning.id,
-            ...dose({ amount: "5 mg", time_of_day: "Morning" }),
+            ...dose({
+              amount: "7.5 mg",
+              time_of_day: "Morning",
+              food_timing: "with_food",
+            }),
           },
         ]),
       })
@@ -430,8 +339,16 @@ describe("#1973 — a dose with no recorded history gets its pre-edit rule backf
       ["2026-07-01", "Evening", null],
       ["2026-07-20", "Before sleep", null],
     ]);
-    // … the untouched row is still historyless, because nothing about it changed …
+    // … amount, food timing and order changed on the morning row, but none can move a
+    // schedule boundary, so it stays historyless while its live values update …
     expect(versionsOf(morning.id)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT amount, food_timing FROM intake_item_doses WHERE id = ?"
+        )
+        .get(morning.id)
+    ).toEqual({ amount: "7.5 mg", food_timing: "with_food" });
     // … and the dose born in this edit gets exactly one version, dated today.
     const added = doseRows(itemId).find(
       (d) => d.id !== morning.id && d.id !== evening.id

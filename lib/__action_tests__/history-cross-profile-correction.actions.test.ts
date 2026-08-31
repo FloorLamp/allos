@@ -413,54 +413,34 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
   // NEXT_REDIRECT, so the action aborts before any core runs — and the row is read back
   // to prove nothing was written on the way to the throw.
   describe.each(KINDS)("$name", (kind) => {
-    it("refuses a correction forged for an UNGRANTED profile", async () => {
+    it("refuses corrections for both ungranted and read-only profiles", async () => {
       const login = createLogin({ role: "member" });
-      const acting = createProfile(`acting ${kind.name} 1`, login.id);
-      const stranger = createProfile(`stranger ${kind.name} 1`);
-      actAs(login, acting);
-      const id = kind.seed(stranger.id, DATE);
-      const before = kind.read(id, stranger.id, DATE);
-
-      await expect(
-        kind.correctFn(
-          fd({ ...kind.correct(id, DATE), profile_id: stranger.id })
-        )
-      ).rejects.toThrow();
-      await expect(
-        kind.removeFn(
-          fd({ ...kind.remove(id, stranger.id), profile_id: stranger.id })
-        )
-      ).rejects.toThrow();
-
-      // NOT MERELY THAT IT THREW: the subject's row is byte-identical and still there.
-      expect(kind.read(id, stranger.id, DATE)).toEqual(before);
-      expect(kind.present(id, stranger.id, DATE)).toBe(true);
-    });
-
-    it("refuses a correction forged for a READ-ONLY-granted profile", async () => {
-      const login = createLogin({ role: "member" });
-      const acting = createProfile(`acting ${kind.name} 2`, login.id);
-      const ro = createProfile(`readonly ${kind.name} 2`);
+      const acting = createProfile(`acting ${kind.name}`, login.id);
+      const ungranted = createProfile(`ungranted ${kind.name}`);
+      const readOnly = createProfile(`readonly ${kind.name}`);
       db.prepare(
         "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
-      ).run(login.id, ro.id);
+      ).run(login.id, readOnly.id);
       actAs(login, acting);
-      const id = kind.seed(ro.id, DATE);
-      const before = kind.read(id, ro.id, DATE);
 
-      // BOTH VERBS, not just the delete. A mutation that reverted only the CORRECT
-      // half of one kind's gate left this case green while the ungranted one went
-      // red — the read-only arm was driving the delete alone, so it could not see
-      // half of what it claims to cover.
-      await expect(
-        kind.correctFn(fd({ ...kind.correct(id, DATE), profile_id: ro.id }))
-      ).rejects.toThrow();
-      await expect(
-        kind.removeFn(fd({ ...kind.remove(id, ro.id), profile_id: ro.id }))
-      ).rejects.toThrow();
+      for (const target of [ungranted, readOnly]) {
+        const id = kind.seed(target.id, DATE);
+        const before = kind.read(id, target.id, DATE);
 
-      expect(kind.read(id, ro.id, DATE)).toEqual(before);
-      expect(kind.present(id, ro.id, DATE)).toBe(true);
+        // Both verbs must abort before the row changes or disappears.
+        await expect(
+          kind.correctFn(
+            fd({ ...kind.correct(id, DATE), profile_id: target.id })
+          )
+        ).rejects.toThrow();
+        await expect(
+          kind.removeFn(
+            fd({ ...kind.remove(id, target.id), profile_id: target.id })
+          )
+        ).rejects.toThrow();
+        expect(kind.read(id, target.id, DATE)).toEqual(before);
+        expect(kind.present(id, target.id, DATE)).toBe(true);
+      }
     });
 
     // THE CAPABILITY HALF, and it is why the two refusals above are not enough on

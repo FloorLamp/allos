@@ -14,6 +14,7 @@ import {
   getProteinQuickAddPreset,
   getProteinToday,
   getLoggedFoodWindows,
+  hasCorrectedAnyTime,
 } from "../queries";
 import { getTimezone, getProfileAge } from "../settings";
 import { getProfileSubstanceTelegram } from "../settings/notifications";
@@ -22,6 +23,7 @@ import type { FoodTapRow } from "../food-log-write";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
+import { today } from "../db";
 import { profileFoodSlotBoundaries } from "../profile-food-slot";
 import { foodWindowGap, foodWindowGapDates } from "../food-window-gap";
 import {
@@ -144,9 +146,22 @@ export function buildFoodNudge(
   // ONE suffix rule to every button on the keyboard.
   const proteinTaps = getProteinTapsOnDate(profileId, date);
   if (proteinTaps > 0) dayServings.set(PROTEIN_NUDGE_KEY, proteinTaps);
-  // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
+  // Day-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
-  const pt = getProteinToday(profileId);
+  //
+  // `date`, NOT TODAY (#4118). Every other figure on this message is already read for the
+  // day the message is FOR — the tally, the button counts, the protein taps, the day
+  // grams, the empty-window notice — and this one line resolved its own `today()`
+  // inside. Unreachable while a food nudge could only be live on its own date; the
+  // moment the sweep began rebuilding a message up to two days old, the hourly tick
+  // started repainting a past day's nudge with the CURRENT day's protein figure and its
+  // "goal reached" verdict. `food` is `reissuable: false`, so that message stays live
+  // and keeps being repainted until the next food nudge — permanently, if they stop.
+  const pt = getProteinToday(profileId, date);
+  // WHOSE DAY THE MESSAGE IS ABOUT, in the words it uses. A past-day rebuild must not
+  // say "Today" — that is the same defect as the wrong figure, in the label rather than
+  // in the number.
+  const isToday = date === today(profileId);
   // Gathered as PARTS (#1710) so the "reached / below" conclusion is decided once in
   // lib/protein and the renderer only decides emphasis.
   let proteinLine: ReturnType<typeof proteinTodayLineParts> | string | null = pt
@@ -158,7 +173,10 @@ export function buildFoodNudge(
   // total — no second engine (#221).
   if (!proteinLine && rankedKeys.includes(PROTEIN_NUDGE_KEY)) {
     const grams = getProteinDailyGrams(profileId, date);
-    if (grams > 0) proteinLine = `Protein ${grams} g today`;
+    if (grams > 0)
+      proteinLine = isToday
+        ? `Protein ${grams} g today`
+        : `Protein ${grams} g on ${date}`;
   }
   const presetGrams = getProteinQuickAddPreset(profileId) ?? undefined;
   // The eating-time correction ride-along (#2019), derived from ledger state and BOUND
@@ -192,10 +210,22 @@ export function buildFoodNudge(
     logged: getLoggedFoodWindows(profileId, gapDates.from, gapDates.to),
   });
   return renderFoodNudge(profileId, window, date, rankedKeys, dayServings, {
+    // The tally's own label, decided HERE because only this side can ask the clock
+    // (food-format is the DB-free renderer). "Today" on a message the sweep rebuilt
+    // two days later is the same false claim as a wrong figure, worn as a word.
+    dayLabel: isToday ? "Today" : date,
     proteinLine,
     visibleCount,
     proteinPresetGrams: presetGrams,
-    corrections: { bursts: corrections, now },
+    corrections: {
+      bursts: corrections,
+      now,
+      // The hint's retirement gate (#2874). Asked only when there is something to hint
+      // ABOUT — a nudge with no correctable burst renders no sentence either way, so a
+      // profile that has never tapped a chip never pays for the probe.
+      hasCorrectedAnyTime:
+        corrections.length > 0 ? hasCorrectedAnyTime(profileId) : false,
+    },
     gap,
     tz,
     ...(opts.picker

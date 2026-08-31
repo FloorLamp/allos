@@ -38,10 +38,10 @@ async function revealFoodGroup(page: Page, slug: string) {
   }
 }
 
-// The day's serving ROWS. Scoped to <li data-group> inside the list so the section
-// wrapper (whose test id shares the prefix) can never pad a count.
+// The day's serving ROWS. Scoped to <li data-group> inside the DAY LEDGER (#3987,
+// which absorbed the LOGGED-TODAY list) so the group wrappers can never pad a count.
 function loggedRows(page: Page) {
-  return page.getByTestId("food-logged-list").locator("li[data-group]");
+  return page.getByTestId("day-ledger").locator("li[data-group]");
 }
 
 // The ids currently rendered in the day's serving list.
@@ -60,7 +60,7 @@ async function newRowId(page: Page, before: string[]): Promise<string> {
     throw new Error(
       `expected exactly one new serving row, saw ${added.length}: ${added.join(", ")}`
     );
-  return added[0].replace("food-logged-", "");
+  return added[0].replace("ledger-serving-", "");
 }
 
 // Remove ONE serving through the product's own ⋯ → "Remove this serving" (#1963),
@@ -68,20 +68,27 @@ async function newRowId(page: Page, before: string[]): Promise<string> {
 // action revalidates /nutrition, so the list the server re-derives from food_log_events
 // is what re-renders.
 async function removeServingRow(page: Page, eventId: string): Promise<void> {
-  const row = page.getByTestId(`food-logged-${eventId}`);
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
   await hydratedClick(
     page,
     row.getByRole("button", { name: /^Actions for the/ })
   );
-  await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
+  await settledClick(
+    page,
+    page.getByTestId(`ledger-serving-remove-${eventId}`)
+  );
   await expect(row).toHaveCount(0);
 }
 
+// HOW MANY SERVINGS THIS MEAL HOLDS, off the ledger that states them (#3987). The
+// Meals cards' per-slot counter retired with the cards; the same quantity is the number
+// of serving rows the meal's ledger group carries, and a meal with nothing in it has no
+// group at all — which counts as zero, exactly as the card's "0" did.
 async function slotTotal(page: Page, meal: string): Promise<number> {
-  const text = await page
-    .getByTestId(`food-slot-total-${meal.toLowerCase()}`)
-    .textContent();
-  return Number((text ?? "0").trim());
+  return page
+    .getByTestId(`ledger-group-${meal.toLowerCase()}`)
+    .locator("li[data-group]")
+    .count();
 }
 
 test("a mis-slotted serving is corrected from the log and the meal tallies follow (#1934)", async ({
@@ -111,14 +118,14 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const eventId = await newRowId(page, idsBefore);
 
-  const row = page.getByTestId(`food-logged-${eventId}`);
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
   await expect(row).toHaveAttribute("data-slot", "Morning");
   await expect(row).toHaveAttribute("data-group", "nuts_seeds");
-  expect(await slotTotal(page, "Morning")).toBe(morningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore + 1);
 
   // ⋯ → Correct this serving → move it to Evening.
   await row.getByRole("button", { name: /^Actions for the/ }).click();
-  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await settledSelect(page, page.getByTestId("food-correct-slot"), "Evening");
   await settledClick(page, page.getByTestId("food-correct-save"));
@@ -126,20 +133,16 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
 
   // THE PIN: the serving MOVED. Evening gained exactly one and Morning is back where
   // it started — an increment-without-decrement bug would leave Morning inflated.
-  await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
-    String(eveningBefore + 1)
-  );
-  await expect(page.getByTestId("food-slot-total-morning")).toHaveText(
-    String(morningBefore)
-  );
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
   // The Morning button count for the group is back to its pre-tap value too.
   await expect(page.getByTestId("count-nuts_seeds")).toHaveText(
     String(countBefore)
   );
-  // The Evening meal card now names the group; the row itself re-files too.
-  await expect(
-    page.getByTestId("food-meal-item-evening-nuts_seeds")
-  ).toBeVisible();
+  // The Evening ledger group now names the group; the row itself re-files too.
+  await expect(page.getByTestId("ledger-group-evening")).toContainText(
+    "Nuts & seeds"
+  );
   await expect(row).toHaveAttribute("data-slot", "Evening");
 
   // Leave the fixture as found — see the row-addressed note at the top of this file.
@@ -150,10 +153,8 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   await removeServingRow(page, eventId);
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(page.getByTestId(`food-logged-${eventId}`)).toHaveCount(0);
-  await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
-    String(eveningBefore)
-  );
+  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toHaveCount(0);
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore);
 });
 
 test("the ⋯ menu removes the serving it names, even when a correction left it older than its neighbour (#1963)", async ({
@@ -197,20 +198,16 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
 
   // 3. Correct the Morning serving into Evening. Now both sit in Evening and the one the
   //    user just acted on is the OLDER of the two — the configuration this issue is about.
-  const corrected = page.getByTestId(`food-logged-${correctedId}`);
+  const corrected = page.getByTestId(`ledger-serving-${correctedId}`);
   await corrected.getByRole("button", { name: /^Actions for the/ }).click();
-  await page.getByTestId(`food-logged-correct-${correctedId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${correctedId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await settledSelect(page, page.getByTestId("food-correct-slot"), "Evening");
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
   await expect(corrected).toHaveAttribute("data-slot", "Evening");
-  await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
-    String(eveningBefore + 2)
-  );
-  await expect(page.getByTestId("food-slot-total-morning")).toHaveText(
-    String(morningBefore)
-  );
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 2);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
 
   // 4. THE PIN. Remove the CORRECTED serving from its own ⋯ menu. The row that goes is
   //    the one that was named; the untouched neighbour — which the group-scoped "−"
@@ -218,20 +215,16 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await corrected.getByRole("button", { name: /^Actions for the/ }).click();
   await settledClick(
     page,
-    page.getByTestId(`food-logged-remove-${correctedId}`)
+    page.getByTestId(`ledger-serving-remove-${correctedId}`)
   );
   await expect(page.getByText("Serving removed.")).toBeVisible();
   await expect(corrected).toHaveCount(0);
-  await expect(page.getByTestId(`food-logged-${untouchedId}`)).toBeVisible();
+  await expect(page.getByTestId(`ledger-serving-${untouchedId}`)).toBeVisible();
 
   // The tallies follow the row that actually left: Evening is down by exactly one and
   // Morning never moves (the serving had already left it).
-  await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
-    String(eveningBefore + 1)
-  );
-  await expect(page.getByTestId("food-slot-total-morning")).toHaveText(
-    String(morningBefore)
-  );
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 1);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
   await expect(page.getByTestId("count-shellfish")).toHaveText(
     String(eveningCountBefore + 1)
   );
@@ -242,14 +235,14 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await removeServingRow(page, untouchedId);
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(page.getByTestId(`food-logged-${correctedId}`)).toHaveCount(0);
-  await expect(page.getByTestId(`food-logged-${untouchedId}`)).toHaveCount(0);
-  await expect(page.getByTestId("food-slot-total-evening")).toHaveText(
-    String(eveningBefore)
+  await expect(page.getByTestId(`ledger-serving-${correctedId}`)).toHaveCount(
+    0
   );
-  await expect(page.getByTestId("food-slot-total-morning")).toHaveText(
-    String(morningBefore)
+  await expect(page.getByTestId(`ledger-serving-${untouchedId}`)).toHaveCount(
+    0
   );
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore);
+  await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
 });
 
 test("removing one serving offers Undo, and Undo brings the serving back (#2038)", async ({
@@ -278,15 +271,18 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
 
   // ⋯ → Remove this serving. Until #2038 this was permanent: the PRECISE control was
   // the unforgiving one, sitting beside a group "−" whose mistap costs one tap.
-  const row = page.getByTestId(`food-logged-${eventId}`);
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
   await row.getByRole("button", { name: /^Actions for the/ }).click();
-  await settledClick(page, page.getByTestId(`food-logged-remove-${eventId}`));
+  await settledClick(
+    page,
+    page.getByTestId(`ledger-serving-remove-${eventId}`)
+  );
   await expect(page.getByText("Serving removed.")).toBeVisible();
   await expect(row).toHaveCount(0);
   await expect(page.getByTestId("count-berries")).toHaveText(
     String(countBefore)
   );
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
 
   // THE PIN: the toast carries an Undo, and taking it gives the serving back — both the
   // ledger row and the day counter it decremented.
@@ -295,24 +291,23 @@ test("removing one serving offers Undo, and Undo brings the serving back (#2038)
   await expect(page.getByTestId("count-berries")).toHaveText(
     String(countBefore + 1)
   );
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore + 1);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore + 1);
   // The restore re-inserts with a NEW id (the undo substrate's contract), so the row is
   // identified as the one row this test added rather than by its original id.
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const restoredId = await newRowId(page, idsBefore);
-  await expect(page.getByTestId(`food-logged-${restoredId}`)).toHaveAttribute(
-    "data-group",
-    "berries"
-  );
+  await expect(
+    page.getByTestId(`ledger-serving-${restoredId}`)
+  ).toHaveAttribute("data-group", "berries");
 
   // Leave the fixture as found.
   await removeServingRow(page, restoredId);
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length);
-  expect(await slotTotal(page, "Midday")).toBe(middayBefore);
+  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
 });
 
 test("the sheet corrects a serving's eating time; Meal follows the hour until touched; Not stated clears (#2227)", async ({
@@ -331,10 +326,10 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   await page.getByTestId("log-legumes").click();
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const eventId = await newRowId(page, idsBefore);
-  const row = page.getByTestId(`food-logged-${eventId}`);
+  const row = page.getByTestId(`ledger-serving-${eventId}`);
 
   await row.getByRole("button", { name: /serving logged at/ }).click();
-  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     "No eating time recorded"
@@ -378,11 +373,17 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   // (the row renders eatenAt ?? loggedTime, and this row now has an eatenAt).
   await page.getByTestId("food-day-yesterday").click();
   await expect(row).toBeVisible();
-  await expect(row).toContainText("Evening · 19:00");
+  // THE ROW STATES THE CLOCK; THE GROUP STATES THE MEAL (#3987). The meal used to be
+  // repeated on every row beside its time; it is the heading the row now sits under,
+  // which is the same fact said once.
+  await expect(row).toContainText("19:00");
+  await expect(page.getByTestId("ledger-group-evening")).toContainText(
+    "Legumes & beans"
+  );
 
   // Reopen: the sheet opens on the "Ate at" line and the select shows the hour.
   await row.getByRole("button", { name: /serving eaten at 19:00/ }).click();
-  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     "Ate at 19:00."
@@ -394,10 +395,13 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   await settledClick(page, page.getByTestId("food-correct-save"));
   await expect(page.getByTestId("food-correct-modal")).toBeHidden();
   // Back on the logged time: the row shows the tap clock again…
-  await expect(row).toContainText(/Evening · \d{2}:\d{2}/);
+  // Back on a FILING-TIME clock, in #3958's grammar — "logged 13:36" says which
+  // question the clock answers, where a bare time would claim an eating minute the
+  // row no longer states.
+  await expect(row).toContainText(/logged \d{1,2}:\d{2}/);
   // …and the sheet reopens on the honest opening line.
   await row.getByRole("button", { name: /serving logged at/ }).click();
-  await page.getByTestId(`food-logged-correct-${eventId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${eventId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     /No eating time recorded — logged at \d{2}:\d{2}\./
@@ -435,6 +439,7 @@ test("the correction sheet names the time it shows: eating time when stated, log
   //    a second tap of the same row inside the tap ledger's cooldown is absorbed as an
   //    accidental double.
   await revealFoodGroup(page, "berries");
+  await hydratedClick(page, page.getByTestId("food-when-summary"));
   await page.getByTestId("food-when-now").click();
   await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
   await page.getByTestId("log-berries").click();
@@ -446,9 +451,9 @@ test("the correction sheet names the time it shows: eating time when stated, log
   // THE PIN, unstated half: the ⋯ menu's accessible name claims the LOGGED time and
   // the sheet opens with the "No eating time recorded" line — never a bare clock
   // wearing the wrong claim.
-  const unstated = page.getByTestId(`food-logged-${unstatedId}`);
+  const unstated = page.getByTestId(`ledger-serving-${unstatedId}`);
   await unstated.getByRole("button", { name: /serving logged at/ }).click();
-  await page.getByTestId(`food-logged-correct-${unstatedId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${unstatedId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     /No eating time recorded — logged at \d{2}:\d{2}\./
@@ -458,9 +463,9 @@ test("the correction sheet names the time it shows: eating time when stated, log
 
   // THE PIN, stated half: the menu names the EATING time and the sheet opens with
   // "Ate at …" — the words "logged at" no longer sit over an eating time.
-  const stated = page.getByTestId(`food-logged-${statedId}`);
+  const stated = page.getByTestId(`ledger-serving-${statedId}`);
   await stated.getByRole("button", { name: /serving eaten at/ }).click();
-  await page.getByTestId(`food-logged-correct-${statedId}`).click();
+  await page.getByTestId(`ledger-serving-correct-${statedId}`).click();
   await expect(page.getByTestId("food-correct-modal")).toBeVisible();
   await expect(page.getByTestId("food-correct-provenance")).toContainText(
     /Ate at \d{2}:\d{2}\./

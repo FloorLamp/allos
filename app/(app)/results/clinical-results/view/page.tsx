@@ -1124,9 +1124,14 @@ export default async function ClinicalResultDetailPage(props: {
                         </div>
                       ))}
                     </Td>
+                    {/* The HOME of the lab's own printed range (#2315, and since
+                        #3970 rule 2 its only one — the index row spends no control
+                        on a second copy). Marked so the index's guard can assert
+                        the fact is still reachable here rather than assume it. */}
                     <Td
                       slot="meta"
                       label="Lab reference"
+                      data-testid="reading-lab-reference"
                       empty={!r.reference_range}
                       className="text-slate-500 dark:text-slate-400"
                     >

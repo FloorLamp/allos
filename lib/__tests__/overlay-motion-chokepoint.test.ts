@@ -56,10 +56,6 @@ const OVERLAY_SURFACES = new Map<string, string>([
     "components/ActivityOverlay.tsx",
     "the activity workspace — session lifecycle; its draggable bar minimizes rather than discards",
   ],
-  [
-    "components/ProfileIdentityBar.tsx",
-    "the mobile profile switcher — TOP-anchored; it drops from the identity bar and swipe-UP resolves to CLOSE, retreating through the bar it came from (#1801)",
-  ],
 ]);
 
 // ── Rule 2: full-viewport overlays that are deliberately NOT this system ─────
@@ -261,6 +257,10 @@ function sourceFiles(): SourceFile[] {
 const FILES = sourceFiles();
 const byPath = new Map(FILES.map((f) => [f.rel, f.text]));
 
+const RETIRED_MOBILE_IDENTITY_LITERAL = /surface="mobile"|search-mobile/;
+const RETIRED_MOBILE_IDENTITY_TOLERANT =
+  /(?:IdentitySurface|surface)[\s\S]{0,24}["']mobile["']|search\s*-\s*mobile/;
+
 // A full-viewport overlay, structurally: it covers the viewport. That single fact
 // is what makes something an overlay, regardless of what it is called.
 //
@@ -430,6 +430,28 @@ const HAND_ROLLED_SLIDE: { pattern: RegExp; what: string }[] = [
 ];
 
 describe("overlay motion chokepoint", () => {
+  it("has one unsuffixed ProfileIdentityBar mount and no retired mobile branch", () => {
+    expect("surface = {'mobile'}").toMatch(RETIRED_MOBILE_IDENTITY_TOLERANT);
+    expect("search - mobile").toMatch(RETIRED_MOBILE_IDENTITY_TOLERANT);
+    const offenders = FILES.filter(
+      (file) =>
+        RETIRED_MOBILE_IDENTITY_LITERAL.test(file.text) ||
+        RETIRED_MOBILE_IDENTITY_TOLERANT.test(withoutComments(file.text))
+    ).map((file) => file.rel);
+    const mounts = FILES.flatMap((file) => {
+      const source = withoutComments(file.text);
+      return [...source.matchAll(/<ProfileIdentityBar\b/g)].map((match) => ({
+        rel: file.rel,
+        tag: openingTag(source, match.index),
+      }));
+    });
+    expect(offenders).toEqual([]);
+    expect(mounts.map((mount) => mount.rel)).toEqual([
+      "components/SidebarContent.tsx",
+    ]);
+    expect(mounts.some((mount) => /\bsurface\s*=/.test(mount.tag))).toBe(false);
+  });
+
   it("every converged overlay surface consumes components/overlay", () => {
     const offenders: string[] = [];
     for (const rel of OVERLAY_SURFACES.keys()) {

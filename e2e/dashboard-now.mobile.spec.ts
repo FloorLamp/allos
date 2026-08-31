@@ -164,7 +164,9 @@ test("Now stays one column at every viewport", async ({ browser }) => {
     );
     try {
       const strip = page.getByTestId("now-strip");
-      const cards = strip.locator("[data-testid^='now-strip-card-']");
+      const cards = strip.locator(
+        '[data-testid="dashboard-candidate"][data-lane="now"]'
+      );
       await expect(cards).toHaveCount(2);
       const [top, bottom] = await settledBoxes([cards.nth(0), cards.nth(1)]);
       expect(bottom.y).toBeGreaterThan(top.y + top.height / 2);
@@ -208,9 +210,9 @@ test("an empty Now keeps its quiet state and mobile date", async ({
       "Nothing needs you."
     );
     await expect(strip.getByTestId("now-strip-date")).toBeVisible();
-    await expect(strip.locator("[data-testid^='now-strip-card-']")).toHaveCount(
-      0
-    );
+    await expect(
+      strip.locator('[data-testid="dashboard-candidate"][data-lane="now"]')
+    ).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -247,12 +249,11 @@ test("read-only safety facts remain uncapped and actionable", async ({
   });
   try {
     await expect(page.getByTestId("now-strip-empty")).toHaveCount(0);
-    const safety = page.locator(
-      "[data-testid^='now-strip-card-attention.fact:mental-health:crisis']"
+    const fact = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:mental-health:crisis"]'
     );
-    await expect(safety).toHaveCount(1);
-    const fact = safety.getByTestId("dashboard-candidate");
-    await expect(fact.getByTestId("dashboard-attention-atom")).toBeVisible();
+    await expect(fact).toHaveCount(1);
+    await expect(fact).toBeVisible();
     await expect(fact).toHaveAttribute("data-kind", "statement");
     await expect(fact).toHaveAttribute("data-lane", "now");
     const links = fact.getByRole("link");
@@ -548,163 +549,84 @@ const ATOM_VIEWPORTS = [
   { label: "desktop", size: { width: 1280, height: 900 }, oneLine: false },
 ] as const;
 
-test("the attention atom flows on one line inside one gutter on a phone, and keeps its stacked block and hover inset above `sm`", async ({
+// ONE GUTTER, ONE ROW, AT EVERY WIDTH (#3460/#3920, restated for #4076). The atom
+// this used to measure — a card with its own frame, its own inset row and a glyph in
+// a desktop gutter beside it — is gone: Now renders the shared row like every other
+// zone. What the ruling was actually about survives and is what is measured here.
+//
+// THE CLAIM IS A RELATIONSHIP FIRST AND AN ABSOLUTE SECOND, which is #3920's lesson
+// stated on this surface: "the label is at 16px" is satisfied exactly by the broken
+// tree where the fill is inset and the text is flush against its own edge. So the
+// first assertion is text-to-ITS-OWN-FILL — the label sits one row gutter inside the
+// band, at every width — and the page-rag absolute is asserted only below `sm`,
+// where the band bleeds and the two answers coincide. Above `sm` the band keeps its
+// frame, so the label sits a border plus a gutter inside it and the absolute would
+// be a different, wrong claim.
+test("a Now row puts its label and detail on one line, one gutter inside its own band", async ({
   page,
 }) => {
   for (const viewport of ATOM_VIEWPORTS) {
     await page.setViewportSize(viewport.size);
     await page.goto("/");
-    const card = page
-      .locator("[data-testid^='now-strip-card-']")
+    const row = page
+      .locator('[data-testid="dashboard-candidate"][data-lane="now"]')
       .filter({ has: page.getByTestId("attention-item-detail") })
-      .first(); // first-ok: every ordinary Now card is laid out by the same atom
-    await expect(card).toBeVisible();
-    // Wait for the DETAIL, not the card: the thing being measured is the flow
-    // between two elements, and a card that has only painted its title would let
-    // this pass by measuring nothing.
-    const detail = card.getByTestId("attention-item-detail").first(); // first-ok: the card above is one atom
-    await expect(detail).toBeVisible();
+      .first(); // first-ok: every Now row is laid out by the same renderer
+    await expect(row).toBeVisible();
+    // Wait for the DETAIL, not the row: the thing being measured is the flow between
+    // two elements, and a row that has only painted its label would let this pass by
+    // measuring nothing.
+    await expect(row.getByTestId("attention-item-detail")).toBeVisible();
 
-    const geometry = await card.evaluate((node) => {
+    const geometry = await row.evaluate((node) => {
       const strip = document
         .querySelector('[data-testid="now-strip"]')!
         .getBoundingClientRect();
-      const atomNode = node.querySelector<HTMLElement>(
-        '[data-testid="dashboard-attention-atom"]'
-      )!;
-      const atom = atomNode.getBoundingClientRect();
-      const atomStyle = getComputedStyle(atomNode);
-      const rowNode = node.querySelector<HTMLElement>(
-        '[data-testid^="attention-item-"]'
-      )!;
-      const rowStyle = getComputedStyle(rowNode);
-      const icon = rowNode.querySelector("svg")!.getBoundingClientRect();
-      const title = node
-        .querySelector('[data-testid="dashboard-attention-atom"] a')!
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const label = node
+        .querySelector('[data-testid="standing-label"]')!
         .getBoundingClientRect();
       const detail = node
         .querySelector('[data-testid="attention-item-detail"]')!
         .getBoundingClientRect();
-      const separator = node.querySelector<HTMLElement>(
-        '[data-testid="dashboard-attention-atom"] span[aria-hidden="true"]'
-      );
-      const glyph = node.querySelector<HTMLElement>("[data-kind-glyph]");
       return {
         stripLeft: strip.left,
-        stripWidth: strip.width,
-        atomLeft: atom.left,
-        atomWidth: atom.width,
-        // The card's OWN gutter, from the card itself — the only inset the phone
-        // ruling leaves standing.
-        cardGutter:
-          parseFloat(atomStyle.borderLeftWidth) +
-          parseFloat(atomStyle.paddingLeft),
-        // How far the row's first mark sits from the STRIP's edge. Independent of
-        // anything inside the card: a glyph gutter outside the card and a row
-        // inset inside it both show up here, and only here.
-        firstMarkInset: icon.left - strip.left,
-        rowPaddingLeft: rowStyle.paddingLeft,
-        rowPaddingTop: rowStyle.paddingTop,
-        titleTop: title.top,
-        titleLeft: title.left,
-        titleRight: title.right,
-        titleBottom: title.bottom,
-        detailTop: detail.top,
+        rowContentLeft:
+          box.left +
+          Number.parseFloat(style.borderLeftWidth) +
+          Number.parseFloat(style.paddingLeft),
+        rowGutter: Number.parseFloat(style.paddingLeft),
+        labelLeft: label.left,
+        labelTop: label.top,
         detailLeft: detail.left,
-        separatorDisplay: separator
-          ? getComputedStyle(separator).display
-          : null,
-        glyphDisplay: glyph ? getComputedStyle(glyph).display : null,
+        detailTop: detail.top,
+        icons: node.querySelectorAll('[data-testid="standing-label"] svg')
+          .length,
       };
     });
 
-    if (viewport.oneLine) {
-      // ONE LINE: the detail sits BESIDE the title, sharing its line.
+    // THE RELATIONSHIP: the label starts exactly at the row's content edge — never
+    // flush against the fill it is printed on, and never a second inset in from it.
+    expect(
+      geometry.labelLeft,
+      `label at ${geometry.labelLeft}, row content edge at ${geometry.rowContentLeft}`
+    ).toBeCloseTo(geometry.rowContentLeft, 0);
+    expect(geometry.rowGutter).toBeGreaterThan(0);
+
+    // THE ABSOLUTE, below `sm` only: the band bleeds the page gutter outward and the
+    // row re-spends it inward, so the label lands on the page's own left rag.
+    if (viewport.oneLine)
       expect(
-        geometry.detailLeft,
-        `detail starts at ${geometry.detailLeft}, title ends at ${geometry.titleRight}`
-      ).toBeGreaterThan(geometry.titleRight);
-      expect(Math.abs(geometry.detailTop - geometry.titleTop)).toBeLessThan(8);
-      expect(geometry.separatorDisplay).not.toBe("none");
+        geometry.labelLeft - geometry.stripLeft,
+        `label sits ${geometry.labelLeft - geometry.stripLeft}px from the page rag`
+      ).toBeCloseTo(0, 0);
 
-      // ONE GUTTER, measured from OUTSIDE the card so it can see both ways it
-      // could be doubled. Since #3920 the card CANCELS the page gutter outward and
-      // re-spends it inward, so the two net to zero and the first mark lands on the
-      // strip's own edge — the page's left rag. A glyph gutter beside the card
-      // still shows up here, and so does the row's `px-2` inset.
-      expect(
-        geometry.firstMarkInset,
-        `first mark sits ${geometry.firstMarkInset}px from the strip edge, card gutter is ${geometry.cardGutter}px`
-      ).toBeCloseTo(0, 1);
-      expect({
-        left: geometry.rowPaddingLeft,
-        top: geometry.rowPaddingTop,
-      }).toEqual({ left: "0px", top: "0px" });
-
-      // And the CARD takes the width back — the atom itself, not the wrapper that
-      // contains the gutter and would match the strip whatever is inside it. Its
-      // FILL takes a page gutter more on each side since #3920, so the claim is
-      // about the atom's CONTENT line: read through the same `cardGutter` the mark
-      // is checked against, a gutter that moved on one side only cannot pass.
-      expect(geometry.atomLeft + geometry.cardGutter).toBeCloseTo(
-        geometry.stripLeft,
-        1
-      );
-      expect(geometry.atomWidth - 2 * geometry.cardGutter).toBeCloseTo(
-        geometry.stripWidth,
-        1
-      );
-      expect(geometry.glyphDisplay).toBe("none");
-    } else {
-      // ABOVE `sm` NOTHING MOVED. The desktop block stays stacked, the separator
-      // is a phone mark only, the row keeps the inset its hover fill needs, and
-      // the gutter glyph still rides beside the card.
-      expect(
-        geometry.detailTop,
-        `detail top ${geometry.detailTop} vs title bottom ${geometry.titleBottom}`
-      ).toBeGreaterThanOrEqual(geometry.titleBottom - 1);
-      expect(Math.abs(geometry.detailLeft - geometry.titleLeft)).toBeLessThan(
-        1
-      );
-      expect(geometry.separatorDisplay).toBe("none");
-      expect({
-        left: geometry.rowPaddingLeft,
-        top: geometry.rowPaddingTop,
-      }).toEqual({ left: "8px", top: "8px" });
-      expect(geometry.glyphDisplay).not.toBe("none");
-    }
-  }
-});
-
-test("the Now gutter glyph is not shown at 390px, and Ahead keeps its inline one", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const cards = page.locator("[data-testid^='now-strip-card-']");
-  await expect(cards.first()).toBeVisible(); // first-ok: presence of the strip's cards, asserted by count next
-  expect(await cards.count()).toBeGreaterThan(0);
-  const glyphs = await cards
-    .locator("[data-kind-glyph]")
-    .evaluateAll((nodes) =>
-      nodes.map((node) => getComputedStyle(node).display)
-    );
-  // The glyphs are still IN the markup — the ruling is about where they show, not
-  // about deleting them — so an empty list here would be this test measuring
-  // nothing rather than measuring the ruling.
-  expect(glyphs.length).toBeGreaterThan(0);
-  expect(new Set(glyphs)).toEqual(new Set(["none"]));
-
-  // Ahead is untouched at every width: its glyph rides inline in the member row,
-  // which is already the folded-in form.
-  const ahead = page.getByTestId("dashboard-ahead");
-  if ((await ahead.count()) > 0) {
-    const inline = await ahead
-      .locator("[data-kind-glyph]")
-      .evaluateAll((nodes) =>
-        nodes.map((node) => getComputedStyle(node).display)
-      );
-    expect(inline.length).toBeGreaterThan(0);
-    expect(inline.every((display) => display !== "none")).toBe(true);
+    // Label and detail share the line, at every width: the row IS the one-line form.
+    expect(geometry.detailLeft).toBeGreaterThan(geometry.labelLeft);
+    expect(Math.abs(geometry.detailTop - geometry.labelTop)).toBeLessThan(8);
+    // And no glyph rides beside the words that identify the row (#4076).
+    expect(geometry.icons).toBe(0);
   }
 });
 
@@ -720,7 +642,10 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
     const name = (el: Element) =>
       `${el.tagName.toLowerCase()}[${el.getAttribute("data-testid") ?? (el.textContent ?? "").trim().slice(0, 20)}]`;
     for (const card of Array.from(
-      document.querySelectorAll("[data-testid^='now-strip-card-']")
+      // EVERY row in the strip, the illness cockpit's included: the cockpit is the
+      // one entry that is not a fact, and its toggle is exactly the control this
+      // audit exists for.
+      document.querySelectorAll('[data-testid="now-strip"] > ul > li')
     )) {
       for (const el of Array.from(
         card.querySelectorAll("a, button, [role='button']")
@@ -776,12 +701,17 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
   expect(audit.short, audit.short.join("\n")).toEqual([]);
 });
 
-test("the strip's own chrome is tighter on a phone and unchanged on the desktop", async ({
+// #3460's claim, restated for the band (#4076). The strip used to be a GRID of cards
+// whose row-gap it tightened on a phone; it is a band of rows now, so the separation
+// is a divider and there is no gap to tighten. What survives unchanged is the
+// section's own rhythm under the strip, which is what #3460 was buying: every unit it
+// keeps pushes the first reading further down a 390px page.
+test("the strip's own rhythm is tighter on a phone and unchanged on the desktop", async ({
   browser,
 }) => {
-  for (const [options, gap, margin] of [
-    [PHONE, "8px", "16px"],
-    [DESKTOP, "12px", "24px"],
+  for (const [options, margin] of [
+    [PHONE, "16px"],
+    [DESKTOP, "24px"],
   ] as const) {
     const page = await openDashboard(
       browser,
@@ -790,19 +720,26 @@ test("the strip's own chrome is tighter on a phone and unchanged on the desktop"
     );
     try {
       const strip = page.getByTestId("now-strip");
-      await expect(
-        strip.locator("[data-testid^='now-strip-card-']").first() // first-ok: the grid's own gap, read off the cards' parent
-      ).toBeVisible();
+      const rows = strip.locator(
+        '[data-testid="dashboard-candidate"][data-lane="now"]'
+      );
+      // The control: the band drew more than one row, so the divider claim below is
+      // about a real seam and not about a single row's top border.
+      expect(await rows.count()).toBeGreaterThan(1);
       const chrome = await strip.evaluate((section) => {
-        const grid = section.querySelector(
-          "[data-testid^='now-strip-card-']"
-        )!.parentElement!;
+        const row = section.querySelector<HTMLElement>(
+          '[data-testid="dashboard-candidate"][data-lane="now"]:nth-child(2)'
+        )!;
         return {
-          gap: getComputedStyle(grid).rowGap,
           margin: getComputedStyle(section).marginBottom,
+          gap: getComputedStyle(row.parentElement!).rowGap,
+          seam: getComputedStyle(row).borderTopWidth,
         };
       });
-      expect(chrome).toEqual({ gap, margin });
+      // Rows are separated by a DIVIDER, not by a gap — a band, not a card stack.
+      expect(chrome.gap).toBe("normal");
+      expect(Number.parseFloat(chrome.seam)).toBeGreaterThan(0);
+      expect(chrome.margin).toBe(margin);
     } finally {
       await page.context().close();
     }

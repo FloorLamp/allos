@@ -36,6 +36,9 @@ export function attentionCandidates(
       item.signalGroup == null &&
       (bandForItem(item, today) === "overdue" ||
         bandForItem(item, today) === "today");
+    // Upcoming exposes one due-now fact, so this producer cannot distinguish
+    // owed from window-open. The separate Now tiers remain reachable through
+    // target-log candidates, which carry the two booleans independently (#4255).
     // Carry the owning Upcoming surface's declared affordances. `actionLabel`
     // covers only navigation-first status rows; the typed one-tap actions have
     // their own source fields and are still action candidates even when the

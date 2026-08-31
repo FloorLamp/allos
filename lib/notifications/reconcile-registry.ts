@@ -289,8 +289,8 @@ export const RECONCILE_DATE_GUARD: Record<
     why: "handleHouseholdDoseTap consults tapDateGuard directly (#1719) before touching the member's ledger, so closing at the day boundary is exactly the refusal a tap would be answered with.",
   },
   food: {
-    guard: "exact-day",
-    why: "handleFoodTap consults foodTapDateGuard (#947). The token's date is the system's GUESS at a user-owned fact — a tap means 'I am eating now', and the button carries nothing that settles which day that was — so the handler writes only where its two candidate answers agree and refuses where they diverge. That guess expires at the day boundary, so rollover-close is correct here.",
+    guard: "dose-window",
+    why: "handleFoodLog consults foodTapDateGuard, which #4118 widened from #947's exact-day rule to the SAME isDoseDateAccepted window its dose neighbours use. The reasoning that made exact-day right has been overturned rather than forgotten: #947 read the token date as the system's GUESS at when eating happened, so a cross-date tap had two candidate answers and refused. #4118 keeps that half — a tap on a day that has ended states NO eating time — and separates it from the day the serving belongs to, which the message settles and is not a guess at all. Closing at the rollover would now delete buttons the handler still honors, which is the pure loss 'intake-dose' names one entry up; it is also exactly the asymmetry #4118 was filed about, since the dose buttons on the SAME message survive on this guard.",
   },
   "food-optin": {
     guard: "none",

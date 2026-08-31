@@ -53,7 +53,7 @@ function targetRow(profileId: number) {
 }
 
 describe("recordSubstanceInstrumentAction", () => {
-  it("administers an AUDIT-C in-app: total derived from the 0..4 answers, answers stored", async () => {
+  it("derives AUDIT-C totals and rejects answers outside an item's options", async () => {
     const login = createLogin();
     const profile = createProfile("su-admin", login.id);
     actAs(login, profile);
@@ -74,13 +74,8 @@ describe("recordSubstanceInstrumentAction", () => {
       )
       .get(profile.id) as { n: number };
     expect(respCount.n).toBe(3);
-  });
 
-  it("rejects an answer outside the item's own option set", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-badanswer", login.id);
-    actAs(login, profile);
-    const r = await recordSubstanceInstrumentAction(
+    const invalid = await recordSubstanceInstrumentAction(
       fd({
         instrument: "AUDIT-C",
         mode: "administer",
@@ -88,10 +83,11 @@ describe("recordSubstanceInstrumentAction", () => {
         answers: JSON.stringify([2, 1, 5]), // 5 is not an AUDIT-C option
       })
     );
-    expect(r.ok).toBe(false);
+    expect(invalid.ok).toBe(false);
+    expect(scoreRow(profile.id, "AUDIT-C")?.value_num).toBe(7);
   });
 
-  it("administers a DAST-10 in-app (#1085): total derived server-side from the 10 yes/no answers", async () => {
+  it("derives DAST-10 totals and validates answer length and options (#1085)", async () => {
     const login = createLogin();
     const profile = createProfile("su-dast-admin", login.id);
     actAs(login, profile);
@@ -114,12 +110,7 @@ describe("recordSubstanceInstrumentAction", () => {
       )
       .get(profile.id) as { n: number };
     expect(respCount.n).toBe(10);
-  });
 
-  it("rejects a wrong-length or out-of-option DAST-10 answer set", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-dast-bad", login.id);
-    actAs(login, profile);
     for (const answers of [
       [1, 1, 1], // wrong length
       [1, 1, 1, 0, 0, 0, 0, 0, 0, 2], // 2 is not a 0/1 yes-no option value
@@ -134,13 +125,14 @@ describe("recordSubstanceInstrumentAction", () => {
       );
       expect(r.ok, JSON.stringify(answers)).toBe(false);
     }
+    expect(scoreRow(profile.id, "DAST-10")?.value_num).toBe(3);
   });
 
-  it("refuses in-app administration of the total-only AUDIT (no baked item text)", async () => {
+  it("accepts bounded outside totals while refusing unsupported administrations and keys", async () => {
     const login = createLogin();
     const profile = createProfile("su-totalonly", login.id);
     actAs(login, profile);
-    const r = await recordSubstanceInstrumentAction(
+    const totalOnly = await recordSubstanceInstrumentAction(
       fd({
         instrument: "AUDIT",
         mode: "administer",
@@ -148,14 +140,9 @@ describe("recordSubstanceInstrumentAction", () => {
         answers: JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
       })
     );
-    expect(r.ok).toBe(false);
-  });
+    expect(totalOnly.ok).toBe(false);
 
-  it("still accepts an outside DAST-10 total (#1085 keeps the #998 total path working)", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-dast-outside", login.id);
-    actAs(login, profile);
-    const r = await recordSubstanceInstrumentAction(
+    const dast = await recordSubstanceInstrumentAction(
       fd({
         instrument: "DAST-10",
         mode: "outside",
@@ -163,15 +150,10 @@ describe("recordSubstanceInstrumentAction", () => {
         total: "4",
       })
     );
-    expect(r.ok).toBe(true);
+    expect(dast.ok).toBe(true);
     // Same canonical_name series as an in-app administration — one identity.
     expect(scoreRow(profile.id, "DAST-10")?.value_num).toBe(4);
-  });
 
-  it("accepts an outside AUDIT total and bounds it to 0..40", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-outside", login.id);
-    actAs(login, profile);
     const ok = await recordSubstanceInstrumentAction(
       fd({
         instrument: "AUDIT",
@@ -192,12 +174,7 @@ describe("recordSubstanceInstrumentAction", () => {
       })
     );
     expect(oob.ok).toBe(false);
-  });
 
-  it("rejects an unknown instrument (incl. a mental-health key on this action)", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-bad", login.id);
-    actAs(login, profile);
     for (const instrument of ["BOGUS", "PHQ-9"]) {
       const r = await recordSubstanceInstrumentAction(
         fd({ instrument, mode: "outside", date: "2026-07-01", total: "1" })
@@ -208,7 +185,7 @@ describe("recordSubstanceInstrumentAction", () => {
 });
 
 describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance ledger dispatch", () => {
-  it("alcohol logs into the food_daily_totals group and reports the weekly count; undo reverses", async () => {
+  it("dispatches alcohol and nicotine to separate ledgers with symmetric undo", async () => {
     const login = createLogin();
     const profile = createProfile("su-drink", login.id);
     actAs(login, profile);
@@ -241,34 +218,34 @@ describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance led
 
     const undone = await undoSubstanceUnitAction(fd({ substance: "alcohol" }));
     expect(undone).toEqual({ ok: true, weekCount: 1 });
-  });
 
-  it("nicotine logs into substance_daily_totals (#1078) and reports the weekly count; undo reverses", async () => {
-    const login = createLogin();
-    const profile = createProfile("su-nicotine", login.id);
-    actAs(login, profile);
+    const nicotineOne = await logSubstanceUnitAction(
+      fd({ substance: "nicotine" })
+    );
+    expect(nicotineOne).toEqual({ ok: true, weekCount: 1 });
+    const nicotineTwo = await logSubstanceUnitAction(
+      fd({ substance: "nicotine" })
+    );
+    expect(nicotineTwo).toEqual({ ok: true, weekCount: 2 });
 
-    const one = await logSubstanceUnitAction(fd({ substance: "nicotine" }));
-    expect(one).toEqual({ ok: true, weekCount: 1 });
-    const two = await logSubstanceUnitAction(fd({ substance: "nicotine" }));
-    expect(two).toEqual({ ok: true, weekCount: 2 });
-
-    const row = db
+    const nicotineRow = db
       .prepare(
         `SELECT units FROM substance_daily_totals WHERE profile_id = ? AND substance = 'nicotine'`
       )
       .get(profile.id) as { units: number };
-    expect(row.units).toBe(2);
-    // The food ledger is untouched — no nutrition pollution (#1078).
+    expect(nicotineRow.units).toBe(2);
+    // Nicotine added nothing to the food ledger: its only row remains alcohol.
     const food = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?`
+        `SELECT group_key FROM food_daily_totals WHERE profile_id = ? ORDER BY group_key`
       )
-      .get(profile.id) as { n: number };
-    expect(food.n).toBe(0);
+      .all(profile.id) as { group_key: string }[];
+    expect(food).toEqual([{ group_key: "alcohol" }]);
 
-    const undone = await undoSubstanceUnitAction(fd({ substance: "nicotine" }));
-    expect(undone).toEqual({ ok: true, weekCount: 1 });
+    const nicotineUndone = await undoSubstanceUnitAction(
+      fd({ substance: "nicotine" })
+    );
+    expect(nicotineUndone).toEqual({ ok: true, weekCount: 1 });
   });
 
   // #3279 MOVED THIS FIXTURE ACROSS ITS OWN BOUNDARY, DELIBERATELY. It used to post
@@ -592,6 +569,7 @@ describe("substance consumption history actions (#2009)", () => {
         date: past,
         amount: "2",
         notes: "Dinner with friends",
+        logged_via: "quick-log",
       })
     );
     expect(added.kind).toBe("added");
@@ -605,7 +583,6 @@ describe("substance consumption history actions (#2009)", () => {
         notes: "Dinner with friends",
       },
     ]);
-
     const updated = await updateSubstanceDailyTotalAction(
       fd({
         id: String(added.id),
@@ -613,17 +590,19 @@ describe("substance consumption history actions (#2009)", () => {
         date: td,
         amount: "3",
         notes: "Corrected amount",
+        logged_via: "dashboard-widget",
       })
     );
     expect(updated).toEqual({ kind: "updated", id: added.id });
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
     const eventCount = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events
+        `SELECT COUNT(*) AS n, GROUP_CONCAT(DISTINCT logged_via) AS via FROM food_log_events
          WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
       )
-      .get(profile.id, td) as { n: number };
+      .get(profile.id, td) as { n: number; via: string };
     expect(eventCount.n).toBe(3);
+    expect(eventCount.via).toBe("quick-log,dashboard-widget");
 
     const deleted = await deleteSubstanceDailyTotalAction(
       fd({ id: String(added.id), substance: "alcohol" })
@@ -877,17 +856,13 @@ describe("substance history actions refuse another profile's row (#2072)", () =>
 // the layer the #1174 e2e (nav-hidden + redirect) structurally can't see. An
 // adult/unknown-age profile is unaffected (the many passing tests above).
 describe("substance-use actions refuse a known minor (#1279)", () => {
-  function minorActor(slug: string) {
+  it("refuses every direct write path without changing any substance store", async () => {
     const login = createLogin();
-    const profile = createProfile(slug, login.id);
+    const profile = createProfile("su-minor-actions", login.id);
     // Stored-age fallback = 15 → isMinor(getProfileAge) true (no birthdate needed).
     setProfileSetting(profile.id, "age", "15");
     actAs(login, profile);
-    return profile;
-  }
 
-  it("recordSubstanceInstrumentAction refuses (in-app administer AND outside total)", async () => {
-    const profile = minorActor("su-minor-instrument");
     const administered = await recordSubstanceInstrumentAction(
       fd({
         instrument: "AUDIT-C",
@@ -906,23 +881,12 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
       })
     );
     expect(outside.ok).toBe(false);
-    // Nothing was written for the minor.
-    const n = db
-      .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?")
-      .get(profile.id) as { n: number };
-    expect(n.n).toBe(0);
-  });
 
-  it("logSubstanceUnitAction / undoSubstanceUnitAction refuse (alcohol + nicotine ledgers)", async () => {
-    minorActor("su-minor-log");
     for (const substance of ["alcohol", "nicotine"]) {
       expect((await logSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
       expect((await undoSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
     }
-  });
 
-  it("setSubstanceTargetAction / clearSubstanceTargetAction refuse", async () => {
-    const profile = minorActor("su-minor-target");
     expect(
       (await setSubstanceTargetAction(fd({ substance: "alcohol", cap: "7" })))
         .ok
@@ -930,16 +894,7 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
     expect(
       (await clearSubstanceTargetAction(fd({ substance: "alcohol" }))).ok
     ).toBe(false);
-    const rows = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
-      )
-      .get(profile.id) as { n: number };
-    expect(rows.n).toBe(0);
-  });
 
-  it("historical add/edit/delete actions refuse", async () => {
-    const profile = minorActor("su-minor-history");
     expect(
       await addSubstanceDailyTotalAction(
         fd({ substance: "alcohol", date: "2026-07-01", amount: "2" })
@@ -960,11 +915,22 @@ describe("substance-use actions refuse a known minor (#1279)", () => {
         fd({ id: "1", substance: "alcohol" })
       )
     ).toMatchObject({ kind: "not-found", undoId: null });
-    const rows = db
+
+    // The shared minor boundary stopped every action before any backing store moved.
+    const counts = db
       .prepare(
-        "SELECT COUNT(*) AS n FROM food_daily_totals WHERE profile_id = ?"
+        `SELECT
+           (SELECT COUNT(*) FROM medical_records WHERE profile_id = @profileId) AS records,
+           (SELECT COUNT(*) FROM frequency_targets WHERE profile_id = @profileId) AS targets,
+           (SELECT COUNT(*) FROM food_daily_totals WHERE profile_id = @profileId) AS food,
+           (SELECT COUNT(*) FROM substance_daily_totals WHERE profile_id = @profileId) AS substances`
       )
-      .get(profile.id) as { n: number };
-    expect(rows.n).toBe(0);
+      .get({ profileId: profile.id }) as {
+      records: number;
+      targets: number;
+      food: number;
+      substances: number;
+    };
+    expect(counts).toEqual({ records: 0, targets: 0, food: 0, substances: 0 });
   });
 });

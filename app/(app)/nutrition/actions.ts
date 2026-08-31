@@ -19,6 +19,7 @@ import { logUsualFoodCore } from "@/lib/food-usual-write";
 import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
 import { statedHourInstant } from "@/lib/correction-time";
 import { normalizeClockTime } from "@/lib/vitals-input";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
@@ -190,18 +191,31 @@ export async function logFoodServing(
   const at = clockNow();
   const tz = getTimezone(profileId);
   const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
-  // THE DAY RULE GETS THE SAME CLOCK TOLERANCE THE ACCEPTANCE GATE DOES, and it has
-  // to since #3273 moved the offer client-side. `statedHourInstant` reads a wall time
-  // later than `now` as YESTERDAY's — right for a picker whose hours the server
-  // enumerated, wrong for a field the browser filled from its own clock. Measured: a
-  // 90-second skew re-dated the statement and lost it. One decision, one tolerance.
-  const resolved = stated
-    ? statedHourInstant(
-        stated,
-        new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
-        tz
-      )
-    : null;
+  // WHICH DAY A BARE WALL TIME MEANS, and the two cases are genuinely different.
+  //
+  //   THE ROW'S DAY IS TODAY — THE DAY RULE, with the acceptance gate's own clock
+  //   tolerance, as it has been since #3273 moved the offer client-side.
+  //   `statedHourInstant` reads a wall time later than `now` as YESTERDAY's: right for
+  //   a picker whose hours the server enumerated, wrong for a field the browser filled
+  //   from its own clock, so the skew rides along. Measured: a 90-second skew re-dated
+  //   the statement and lost it. The re-dating is what keeps the backfill guard below
+  //   non-vacuous for the today case.
+  //
+  //   THE ROW'S DAY IS A PAST DAY — ANCHORED ON THAT DAY, by construction (#4118's
+  //   past-day amendment). The form NAMES its day, the surface offered that day's own
+  //   hours, and `statedInstantOnDate` enforces the (date, hhmm) pair or refuses: a
+  //   wall time that does not exist there (a spring-forward gap) comes back null and is
+  //   reported as malformed rather than settling silently onto a different reading.
+  //   Re-dating relative to `now` here is simply wrong — "8pm" stated about last
+  //   Tuesday is last Tuesday's, and the day rule would resolve it to today or
+  //   yesterday and then refuse it as "not on that day", which is how the amendment's
+  //   sticky-time batch would have silently lost every minute it set. This is the same
+  //   split `offeredHourInstant` already makes between its `today` and `prev` levels.
+  const resolved = !stated
+    ? null
+    : fields.date === dateStrInTz(tz, at)
+      ? statedHourInstant(stated, at, tz, EATEN_AT_FUTURE_SKEW_MS)
+      : statedInstantOnDate(fields.date, stated, tz);
   const judged: StatedTimeVerdict = !stated
     ? { kind: "unstated" }
     : resolved === null
@@ -245,6 +259,9 @@ export async function logFoodServing(
       : undefined
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
+  // The core's own day bound (#4118). The picker offers today and six days back; a POST
+  // that names a day it never offered — the future especially — is answered, not stored.
+  if (outcome.kind === "invalid-date") return formError("Pick a valid day.");
   // The curated limit note (#2377), resolved AFTER the write for two reasons. The
   // food–drug ledger detects a co-occurrence from the day's servings, so the serving has
   // to be on the counter for it to see one; and nothing in this decision may influence
@@ -368,23 +385,24 @@ export type UsualFoodResult =
       window: FoodSlot;
       groups: { groupKey: string; servings: number; mealServings: number }[];
       // ONE "End your fast?" offer for the whole bundle (#2756) — a bundled write
-      // prompts ONCE, however many servings it landed. This path has no `date` field
-      // and always writes the profile's today, so the pure predicate's day test is
-      // satisfied by construction; it is still asked through `promptsEndOfFast` so
-      // there is exactly one rule for when a food write prompts.
+      // prompts ONCE, however many servings it landed. Since #4118 the bundle may land
+      // on a PAST day, so the predicate is asked with the day the write actually used
+      // rather than with today twice: reconstructing Tuesday's breakfast is not a
+      // reason to offer to end a fast that is running now.
       endFastOffer?: true;
     }
   | { ok: false; error: string };
 
-// Log one serving of each still-offered "usual" group into a meal window, on the
-// profile's today. The user's tap is the write — the app never logs food on anyone's
-// behalf (#2380) — and the button that raised it named every group in `groups`.
+// Log one serving of each still-offered "usual" group into a meal window, on a day.
+// The user's tap is the write — the app never logs food on anyone's behalf (#2380) —
+// and the button that raised it named every group in `groups`.
 //
 // The action validates SHAPE only. WHICH groups may land is the core's question, and
 // it re-derives the offer from fresh server state rather than trusting this form, so a
 // forged, replayed or simply stale submission can never write outside the offer that
-// currently stands. There is no `date` field: the core resolves the profile's own
-// today, so this path cannot backfill.
+// currently stands. The `date` field is optional and defaults to today (#4118); how far
+// back it may reach is the CORE's bound, never this parse — so a surface that grows a
+// day picker inherits the rule rather than restating it.
 export async function logUsualFood(
   formData: FormData
 ): Promise<UsualFoodResult> {
@@ -396,18 +414,25 @@ export async function logUsualFood(
     .map((slug) => slug.trim())
     .filter(Boolean);
   if (named.length === 0) return formError("Nothing to log.");
+  const rawDate = String(formData.get("date") ?? "").trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+    ? rawDate
+    : today(profile.id);
   const outcome = logUsualFoodCore(
     profile.id,
     rawWindow,
+    date,
     named,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
+  if (outcome.kind === "invalid-date")
+    return formError("That day is out of range.");
   if (outcome.kind === "nothing-to-log")
     return formError("Those servings are already logged.");
   const day = today(profile.id);
   const endFastOffer = promptsEndOfFast(
     getActiveFastCached(profile.id),
-    day,
+    outcome.date,
     day
   );
   revalidateRoute("/nutrition");
@@ -605,6 +630,7 @@ export async function addProteinGrams(
   );
   if (outcome.kind === "invalid")
     return formError("Enter a protein amount between 1 and 300 grams.");
+  if (outcome.kind === "invalid-date") return formError("Pick a valid day.");
   revalidateRoute("/nutrition");
   revalidateRoute("/");
   return { ok: true, grams: outcome.grams };

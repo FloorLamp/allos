@@ -770,6 +770,38 @@ export function resolveDoseLabelsByVaccine<T extends DoseWithVaccine>(
   return out;
 }
 
+// Timeline labels may claim a fixed series position only when the schedule
+// assessor credited every stored row for that exact vaccine. A spacing collapse
+// or a combination product makes the stored row-to-ordinal mapping ambiguous,
+// so those rows deliberately remain unlabeled.
+export function resolveAssessedDoseLabels<T extends DoseWithVaccine>(
+  doses: T[],
+  summary: ScheduleSummary
+): Map<number, string> {
+  const assessmentByCode = new Map(
+    summary.assessments.map((assessment) => [assessment.code, assessment])
+  );
+  const byCode = new Map<string, T[]>();
+  for (const dose of doses) {
+    const list = byCode.get(dose.vaccine);
+    if (list) list.push(dose);
+    else byCode.set(dose.vaccine, [dose]);
+  }
+  const out = new Map<number, string>();
+  for (const [code, list] of byCode) {
+    const assessment = assessmentByCode.get(code);
+    if (
+      assessment?.dosesRequired == null ||
+      assessment.dosesReceived > assessment.dosesRequired ||
+      assessment.dosesReceived !== list.length
+    )
+      continue;
+    for (const [id, label] of resolveDoseLabels(list, assessment.dosesRequired))
+      out.set(id, label);
+  }
+  return out;
+}
+
 export function assessSchedule(
   records: ImmunizationRecordLite[],
   ageMonths: number | null,

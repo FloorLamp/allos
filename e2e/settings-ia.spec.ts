@@ -288,6 +288,28 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       ).toBeVisible();
       await expect(member.getByTestId("matrix-cell-push-food")).toHaveCount(0);
 
+      // #3970 rule 1, on the census's worst multiplier: "can't deliver this
+      // button-only reminder" used to mount a 34px button in every such CELL, and a
+      // column holds several. It is a property of the COLUMN, so it is said once per
+      // column, on the head that already carries that column's ⓘ. Two columns can
+      // fail to carry a button-only kind (push and email); the rest carry them all.
+      await expect(
+        member.getByTestId("matrix-unavailable-push-food").getByRole("button")
+      ).toHaveCount(0);
+      await expect(
+        member.getByRole("button", { name: /button-only reminder/ })
+      ).toHaveCount(2);
+      await expect(
+        member
+          .locator('[data-matrix-head-cell="push"]')
+          .getByRole("button", { name: /button-only reminder/ })
+      ).toHaveCount(1);
+      // The cell stays readable without a mouse: the dash keeps the sentence as text
+      // for assistive tech even though it no longer keeps a control.
+      await expect(
+        member.getByTestId("matrix-unavailable-push-food")
+      ).toContainText("can’t deliver this button-only reminder");
+
       // Toggling a Telegram kind persists across a reload (tier-correct action).
       // State-relative + self-restoring so it's repeat-each safe (the fixture DB
       // persists across the 3 repeats).

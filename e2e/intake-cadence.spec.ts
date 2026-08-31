@@ -130,14 +130,15 @@ function dropItem(db: Database.Database, itemId: number | null): void {
   db.prepare("DELETE FROM intake_items WHERE id = ?").run(itemId);
 }
 
-// The due-today dose card for a fixture item, scoped to its time-bucket section the way
-// the sibling dose-history spec does — the page also lists the item in its full-schedule
-// card, so an unscoped name filter matches two elements.
+// The stack row for a fixture item. It used to be scoped to a time-bucket section,
+// because the page listed the same item twice — once under the day's schedule and once
+// in its full-schedule card — and an unscoped name filter matched both. #3987 retired
+// exactly that duplication: the day is the Day ledger's, this page lists each dose once,
+// and the scoping the duplication forced goes with it.
 function doseCard(page: import("@playwright/test").Page, name: string) {
   return page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Morning" }) })
-    .locator("div.card")
+    .getByTestId("supplement-stack")
+    .getByTestId("supplement-row")
     .filter({ hasText: name });
 }
 

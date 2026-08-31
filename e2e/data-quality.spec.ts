@@ -63,11 +63,10 @@ test("the dashboard surfaces the highest-leverage data-quality gap with a fix-it
   await expect(atom).toBeVisible();
   // The highest-leverage gap (no birthdate → age unknown) leads, and each row carries
   // a fix-it CTA link (an EXISTING explicit-entry surface, never an auto-fix).
-  const birthdate = atom
-    .getByTestId("data-quality-item")
-    .filter({ hasText: "Set a birthdate" });
-  await expect(birthdate).toBeVisible();
-  await expect(birthdate.getByRole("link")).toBeVisible();
+  // The row IS the finding since #4076 — one gap, one candidate, one row — and it
+  // still carries a fix-it CTA link (an EXISTING explicit-entry surface, never an
+  // auto-fix).
+  await expect(atom.getByRole("link", { name: "Fix it" })).toBeVisible();
   // NO score / percentage ring — a count and a list.
   await expect(atom).not.toContainText("%");
 
@@ -86,9 +85,11 @@ test("a structurally complete profile emits no Data quality candidate (#1045)", 
   // The dashboard rendered successfully…
   await expect(page.getByRole("main")).toBeVisible();
   // …but there is no structural gap to mint a data-quality candidate.
-  await expect(page.getByRole("main").getByTestId("data-quality")).toHaveCount(
-    0
-  );
+  await expect(
+    page
+      .getByRole("main")
+      .locator('[data-candidate-id^="data-quality.finding:"]')
+  ).toHaveCount(0);
 
   await page.context().close();
 });
@@ -112,30 +113,25 @@ test("a structural gap renders EXACTLY ONCE on the dashboard (#1533)", async ({
     "Set a birthdate"
   );
   await expect(atom).toBeVisible();
-  await expect(
-    atom.getByTestId("data-quality-item").filter({ hasText: "Set a birthdate" })
-  ).toBeVisible();
+  await expect(atom).toContainText("Set a birthdate");
   // …and the Coaching-observations rollup defers: the gap is NOT a second row a
   // screen further down (which is what the mobile stack used to show).
   await expect(
     main
-      .getByTestId("coaching-observations-item")
+      .getByTestId("dashboard-candidate")
       .filter({ hasText: "Set a birthdate" })
+      .filter({
+        has: main.locator('[data-candidate-id^="coaching.observation:"]'),
+      })
   ).toHaveCount(0);
-  // One row on the whole dashboard, not two — counted across BOTH cards' rows.
+  // One row on the whole dashboard, not two — counted across every zone.
   const gapRows = main
     .getByTestId("dashboard-candidate")
     .filter({ hasText: "Set a birthdate" });
   await expect(gapRows).toHaveCount(1);
 
   // Dismissing the atom still writes to the shared suppression bus.
-  await settledClick(
-    page,
-    atom
-      .getByTestId("data-quality-item")
-      .filter({ hasText: "Set a birthdate" })
-      .getByTestId("data-quality-dismiss")
-  );
+  await settledClick(page, atom.getByTestId("finding-dismiss"));
   await expect(gapRows).toHaveCount(0);
 
   await page.context().close();

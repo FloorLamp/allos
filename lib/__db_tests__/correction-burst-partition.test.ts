@@ -465,9 +465,9 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
       return messagePointerIdAt(pid, chatId, messageId)!;
     });
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targets[0], "page", messageRows[0]);
+    logPracticeByTargetId(pid, targets[0], "telegram-nudge", messageRows[0]);
     setNow("2026-08-05T12:05:00Z");
-    logPracticeByTargetId(pid, targets[1], "page", messageRows[1]);
+    logPracticeByTargetId(pid, targets[1], "telegram-nudge", messageRows[1]);
     const logs = db
       .prepare(
         "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
@@ -490,6 +490,13 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
         isNewest: false,
       }).map((b) => b.ids)
     ).toEqual([[logs[1].id]]);
+    logPracticeByTargetId(pid, targets[0], "page", null);
+    expect(
+      getPracticeCorrectionBursts(pid, clockNow(), {
+        messageRef: null,
+        isNewest: true,
+      })
+    ).toEqual([]);
 
     // The write core partitions the same way: anchored on the first tap, it moves the
     // Sauna session's stored HH:MM and leaves the other message's row untouched.

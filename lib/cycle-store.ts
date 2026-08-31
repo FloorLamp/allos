@@ -28,6 +28,7 @@ export interface CycleRow extends CyclePeriod {
 }
 
 const COLS = "id, period_start, period_end, flow, note";
+export const CYCLE_HISTORY_LIMIT = 10;
 
 // Map a stored row to the pure derivation shape (lib/cycle.ts). Identity here since the
 // selected columns already match CyclePeriod; kept explicit so a future column can't leak
@@ -61,6 +62,18 @@ export function listCyclePeriods(profileId: number): CyclePeriod[] {
         ORDER BY period_start DESC, id DESC`
     )
     .all(profileId) as CyclePeriod[];
+}
+
+// The Cycle page's correction window; analyses deliberately keep the full reader.
+export function listRecentCyclePeriods(profileId: number): CyclePeriod[] {
+  return db
+    .prepare(
+      `SELECT ${COLS} FROM cycles
+        WHERE profile_id = ?
+        ORDER BY period_start DESC, id DESC
+        LIMIT ?`
+    )
+    .all(profileId, CYCLE_HISTORY_LIMIT) as CyclePeriod[];
 }
 
 // The current OPEN period (period_end IS NULL), most-recently started, or null — the

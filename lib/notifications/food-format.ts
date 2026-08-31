@@ -26,6 +26,7 @@ import type { FoodWindowGap } from "../food-window-gap";
 import {
   correctionActions,
   correctionBodyStatement,
+  correctionHintLine,
   correctionPickerActions,
   correctionPickerTitle,
   FOOD_TIME_PREFIXES,
@@ -262,7 +263,13 @@ function rowFor(index: number): string {
 // slot counts. Empty string when nothing's been logged yet today (the caller shows the
 // prompt instead). The reserved __protein__ key can't appear (it never lands in food_daily_totals),
 // but is filtered defensively so it can never leak into the food-serving tally (#1073).
-function tallyLine(dayServings: Map<string, number>): MessageBody | null {
+function tallyLine(
+  dayServings: Map<string, number>,
+  // WHICH DAY THIS TALLY IS ABOUT, in the word the line uses (#4118). "Today" for a
+  // live message and the date itself for one the sweep rebuilt on a later day — the
+  // renderer cannot ask the clock, so the builder that knows both dates decides.
+  dayLabel: string
+): MessageBody | null {
   const logged = [...dayServings.entries()]
     .filter(([slug, n]) => n > 0 && !isProteinNudgeKey(slug))
     .map(([slug, n]) => ({
@@ -278,7 +285,9 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
   // the line already wraps on a phone — and each is led by its catalog glyph, which is
   // what makes a five-group tally scannable rather than a run-on sentence. The counts
   // stay plain so the eye lands on WHAT was eaten first.
-  const parts: (string | ReturnType<typeof bold>)[] = [`${GLYPH.done} Today: `];
+  const parts: (string | ReturnType<typeof bold>)[] = [
+    `${GLYPH.done} ${dayLabel}: `,
+  ];
   logged.forEach((x, i) => {
     if (i > 0) parts.push(" · ");
     if (x.emoji) parts.push(`${x.emoji} `);
@@ -291,6 +300,11 @@ function tallyLine(dayServings: Map<string, number>): MessageBody | null {
 // Options for renderFoodNudge (the growing set of #974/#1073/#1075 knobs), so the
 // positional signature stays stable while behavior is added.
 export interface FoodNudgeRenderOpts {
+  // The word the "✅ <label>:" tally uses (#4118) — "Today" for a live message, the
+  // date itself once the sweep is rebuilding a message on a later day. Defaults to
+  // "Today", which is what every pre-#4118 caller meant and what a same-day render
+  // still means.
+  dayLabel?: string;
   // Today-vs-goal protein status (issue #974 / day-grams line #1073), gathered as PARTS
   // (#1710) so the classification is decided once in lib/protein and only the emphasis
   // is decided here. Null/omitted when there's no target and no logged protein, so the
@@ -315,7 +329,22 @@ export interface FoodNudgeRenderOpts {
   // the bursts but not the bound would render exactly the unbounded button this issue took
   // off the keyboard. Pairing them makes that combination unspellable rather than silently
   // dropping the rows.
-  corrections?: { bursts: readonly CorrectionBurst[]; now: Date };
+  //
+  // `hasCorrectedAnyTime` is the hint's retirement gate (#2874), answered by the gather
+  // (lib/queries/correction-history.ts) because this renderer is DB-free. It rides here
+  // beside the bursts for the same reason `now` does: the two are only ever read
+  // together, and the sentence they decide is about these chips.
+  //
+  // REQUIRED, NOT OPTIONAL, and that is this issue's own lesson applied one layer up.
+  // An optional flag defaults to the PERMISSIVE answer — keep teaching — so a second
+  // gather that simply never mentioned it would reintroduce exactly the forever-hint
+  // #2874 exists to remove, silently and while typechecking. A guard must not fail into
+  // the state it guards against, so the gather has to answer.
+  corrections?: {
+    bursts: readonly CorrectionBurst[];
+    now: Date;
+    hasCorrectedAnyTime: boolean;
+  };
   // The profile's timezone, for the correction rows' wall-clock labels. Only read when
   // there are corrections to render.
   tz?: string;
@@ -474,7 +503,7 @@ export function renderFoodNudge(
     );
   }
 
-  const tally = tallyLine(dayServings);
+  const tally = tallyLine(dayServings, opts.dayLabel ?? "Today");
   // The prompt falls away once anything is logged (#1710): with a tally present, "Tap
   // what you've eaten to log a serving" is redundant chrome on a small screen — the
   // buttons are right there, and the tally is the information.
@@ -492,9 +521,13 @@ export function renderFoodNudge(
       opts.picker && tz
         ? correctionPickerTitle("when did you eat", opts.picker.burst, tz)
         : corrections
-          ? // Says what the chips now SAY (#2206): each one names the time it will store,
-            // so the sentence only has to explain that they can be pressed again.
-            `${GLYPH.eventTime} Ate earlier than you tapped? Each chip shows the time it sets — press again to go further, or tap the row for an exact time.`
+          ? // The hint, owned by the substrate every chip surface shares and retiring
+            // once this profile has corrected any time at all (#2874) — never a
+            // sentence this renderer spells for itself.
+            correctionHintLine(
+              FOOD_TIME_PREFIXES,
+              corrections.hasCorrectedAnyTime
+            )
           : null,
       // The statement of record (#2264 bug 1): once a burst is corrected, the BODY names
       // the stored time — the row's label states it too, but Telegram truncates buttons

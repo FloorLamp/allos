@@ -44,7 +44,7 @@ it("owns intake context, status, and semantic actions", () => {
   expect(heading.textContent).toContain("Workout day");
   fireEvent.click(screen.getByTestId("food-day-yesterday"));
   expect(onChange).toHaveBeenCalledWith(DAYS[1].date);
-  fireEvent.click(screen.getByTestId("food-preferences-open-mobile"));
+  fireEvent.click(screen.getByTestId("food-preferences-open"));
   expect(onActivate).toHaveBeenCalledOnce();
 });
 

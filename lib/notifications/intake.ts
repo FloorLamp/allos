@@ -33,7 +33,12 @@ import {
   doseWindowSince,
   indexTakenByDose,
 } from "../intake-adherence";
-import { doseDueOn, isPostWorkoutReady, timeBucket } from "../intake-schedule";
+import {
+  doseBucketOn,
+  doseDueOn,
+  isPostWorkoutReady,
+  timeBucket,
+} from "../intake-schedule";
 import type { IntakeItem, IntakeDose } from "../types";
 import {
   doseSendSlot,
@@ -57,10 +62,12 @@ import { reminderOfferAction } from "./offer-tail";
 import { getOfferedIntakeForSlot } from "../queries/intake";
 import { now as clockNow } from "../clock";
 import { getDoseCorrectionBursts } from "../queries/intake/adherence";
+import { hasCorrectedAnyTime } from "../queries/correction-history";
 import type { CorrectionDay } from "../correction-time";
 import {
   correctionActions,
   correctionBodyStatement,
+  correctionHintLine,
   correctionPickerActions,
   correctionPickerTitle,
   DOSE_TIME_PREFIXES,
@@ -132,11 +139,22 @@ export function withDoseCorrections(
   // the BODY — the label button states it too, but Telegram truncates buttons. One
   // computation with the food side (correctionBodyStatement over burstLabel).
   const statement = correctionBodyStatement(bursts, tz, now);
+  // The twin of the food nudge's hint (#2874), from the same substrate helper: this
+  // domain has carried the identical chips since #2020 and explained them nowhere, on
+  // the side where the corrected instant arms the PRN redose window. It pairs with the
+  // picker title exactly as the food side pairs them — an open drill-down asks its
+  // question, and the hint takes its place otherwise — and it APPENDS, below the dose
+  // content, so it can never displace the reminder itself. `bursts` is non-empty by the
+  // early return above, so this never rides a message with nothing to correct.
+  const hint = open
+    ? null
+    : correctionHintLine(DOSE_TIME_PREFIXES, hasCorrectedAnyTime(profileId));
   const lines = [
     plainBody(message.body),
     ...(open
       ? [correctionPickerTitle("when did you take these", open, tz)]
       : []),
+    ...(hint ? [hint] : []),
     ...(statement ? [statement] : []),
   ];
   const body = lines.length > 1 ? lines.join("\n") : message.body;
@@ -358,14 +376,8 @@ function gatherWindowDoses(
     // stay `must` (reminders + missed-dose escalation intact) precisely because the
     // machinery can now say "not today" instead of the user having to silence it.
     if (!doseDueOn(item, dose, ctx)) continue;
-    if (
-      doseSendSlot(
-        item.condition,
-        timeBucket(dose.time_of_day),
-        workoutTimed
-      ) !== slot
-    )
-      continue;
+    const bucket = doseBucketOn(dose, date);
+    if (doseSendSlot(item.condition, bucket, workoutTimed) !== slot) continue;
     // The TRAVEL gate on the SEND path (#3263), the twin of the #1602 calendar gate
     // above: an eastward switch means this dose's hour never arrived on this
     // profile-local day, so there is nothing to remind about. A dose ALREADY
@@ -377,11 +389,7 @@ function gatherWindowDoses(
     // The dueness gate is a claim about the SCHEDULE, which it does not: taking a dose
     // the day never owed is an extra, and re-admitting it would put rows that are never
     // scheduled-due into the unfiltered set the missed-dose escalation reads.
-    if (
-      isExcused(dose.time_of_day, date) &&
-      !taken.has(dose.id) &&
-      !skipped.has(dose.id)
-    )
+    if (isExcused(bucket, date) && !taken.has(dose.id) && !skipped.has(dose.id))
       continue;
     // A dose is "due" on a past date when its item was due that day — workout and
     // situational logic both resolved per-day (situationsOn, #654), never as of now.
@@ -421,7 +429,7 @@ function gatherWindowDoses(
         }),
       dd?.taken ?? new Set<string>(),
       dd?.skipped ?? new Set<string>(),
-      (d) => isExcused(dose.time_of_day, d)
+      (d) => isExcused(doseBucketOn(dose, d), d)
     );
     entries.push({
       dose,
@@ -614,7 +622,7 @@ export function slotSessionForKeyboard(
     const item = items.get(d.item_id);
     if (!item) continue;
     wanted.add(
-      doseSendSlot(item.condition, timeBucket(d.time_of_day), workoutTimed)
+      doseSendSlot(item.condition, doseBucketOn(d, date), workoutTimed)
     );
   }
   const parts: IntakeSlotPart[] = [];

@@ -1584,10 +1584,19 @@ function cmdList() {
     if (active.length < 3) {
       // The other measured under-dispatch shape: a few merges land and the
       // session sits at one lane. Refill is the default, not a decision.
+      // PER AXIS (owner, 2026-08-31): a live session read "both e2e slots
+      // full" as "the queue is thin" while three non-e2e slots sat open — a
+      // capacity limit substituted for a queue fact. Only the axis that is
+      // full gets to say so, and "thin" is a claim that needs receipts.
+      const e2eActive = active.filter((d) => d.e2e).length;
       console.log(
-        `  ${active.length} lane(s) active — UNDER-SATURATED unless the queue is truly thin:\n` +
-          "  refill after every merge, without asking; review depth (~3 unreviewed PRs)\n" +
-          "  binds before lane count (~5) does (dispatch.md §Dispatch)."
+        `  ${active.length} lane(s) active (e2e ${e2eActive}/${E2E_LANE_CAP}, ` +
+          `other ${active.length - e2eActive}) — UNDER-SATURATED. A full e2e lane\n` +
+          "  is NOT a thin queue: the caps are separate axes (2 e2e, ~5 lanes, ~3\n" +
+          "  unreviewed PRs). Before calling the queue thin: PAIR small issues into\n" +
+          "  one cluster, source self-filed P3s (back of the queue is still IN the\n" +
+          "  queue), do the standing work (reconcile, release notes) — or list why\n" +
+          "  each remaining issue is blocked, owner-gated, or dependency-bound."
       );
     }
   }

@@ -23,7 +23,7 @@ function columns(db: Database.Database, table: string): string[] {
 }
 
 describe("#2883 instant-column renames", () => {
-  it("preserves both stored metric shapes, row identity, indexes, and high-water marks", () => {
+  it("preserves stored shapes, identity, indexes, high-water marks, and natural keys", () => {
     const db = beforeRenames();
     db.prepare(
       `INSERT INTO substance_daily_totals
@@ -117,36 +117,22 @@ describe("#2883 instant-column renames", () => {
     expect(
       indexes.find((index) => index.name === "idx_metric_samples_end")?.sql
     ).toContain("ended_at");
-    expect(db.pragma("foreign_key_check")).toEqual([]);
-    expect(() => runMigrations(db)).not.toThrow();
-    db.close();
-  });
-
-  it.each([
-    ["vendor ISO", "2026-08-14T04:00:00.123Z", "2026-08-14T20:00:00.987Z"],
-    ["day anchor", "2026-08-14T00:00:00", "2026-08-14T00:00:00"],
-  ])("keeps a %s re-push on the renamed natural key", (_, start, end) => {
-    const db = beforeRenames();
-    db.prepare(
-      `INSERT INTO metric_samples
-         (profile_id, source, origin, metric, date, start_time, end_time, value)
-       VALUES (1, 'health-connect', 'Fitbit', 'steps', '2026-08-14', ?, ?, 100)`
-    ).run(start, end);
-    runMigrations(db);
-
-    db.prepare(
+    db.exec(
       `INSERT INTO metric_samples
          (profile_id, source, origin, metric, date, started_at, ended_at, value)
-       VALUES (1, 'health-connect', 'Fitbit', 'steps', '2026-08-14', ?, ?, 250)
+       SELECT profile_id, source, origin, metric, date, started_at, ended_at, 250
+         FROM metric_samples WHERE true
        ON CONFLICT DO UPDATE SET value = excluded.value,
          ended_at = excluded.ended_at`
-    ).run(start, end);
-
+    );
     expect(
-      db
-        .prepare("SELECT id, started_at, ended_at, value FROM metric_samples")
-        .all()
-    ).toEqual([{ id: 1, started_at: start, ended_at: end, value: 250 }]);
+      db.prepare("SELECT id, value FROM metric_samples ORDER BY id").all()
+    ).toEqual([
+      { id: 51, value: 250 },
+      { id: 52, value: 250 },
+    ]);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+    expect(() => runMigrations(db)).not.toThrow();
     db.close();
   });
 });

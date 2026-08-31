@@ -340,12 +340,10 @@ async function contentEdges(page: import("@playwright/test").Page) {
 // half rather than being replaced — every run still starts at the page gutter, and
 // where it sits on a band's fill that fill reaches at least a gutter further left.
 //
-// SCOPED TO THE SURFACES #3673 RULED, and the scope is the honest part: a filled
-// `subpanel-inset*` one level inside a card is the same shape one layer in, and it
-// is #3673's residue rather than this rule's subject (the issue's own scope note).
 // The nearest FILLED band is what a run sits on; an unfilled row inside a filled
 // card resolves to the card, which is the surface a reader actually sees under it.
-const FILL_SELECTOR = "main .card, main .card-quiet, main .band";
+const FILL_SELECTOR =
+  "main .card, main .card-quiet, main .band, main .subpanel-inset, main .subpanel-inset-sm, main .subpanel-inset-xs";
 
 // ── #3920 scope: FULL-BLEED IS AGAINST THE PAGE, OR IT IS NOT A BLEED ────────
 //
@@ -689,6 +687,45 @@ test("#3920 a one-sided safe-area inset leaves no gap and no overhang", async ({
   );
   expect(edges.length).toBeGreaterThan(0);
   expect([...new Set(edges)]).toEqual([`0→${VIEWPORT_PX}`]);
+});
+
+test("#3932 a filled sub-panel cancels and re-spends its card gutter only below sm", async ({
+  page,
+}) => {
+  await page.goto("/settings/server");
+  const card = page.getByTestId("backup-settings");
+  const panel = page.getByTestId("backup-integrity");
+  await expect(panel).toBeVisible();
+
+  await page.addStyleTag({
+    content: `:root { --page-gutter-left: ${SIMULATED_INSET_PX}px; }`,
+  });
+  const [cardBox, panelBox] = await settledBoxes([card, panel]);
+  expect([panelBox.x, panelBox.x + panelBox.width]).toEqual([
+    cardBox.x,
+    cardBox.x + cardBox.width,
+  ]);
+  expect(await padding(panel)).toEqual([
+    10,
+    PAGE_GUTTER_PX,
+    10,
+    SIMULATED_INSET_PX,
+  ]);
+
+  const unfilledPadding = await card.evaluate((host) => {
+    const probe = document.createElement("div");
+    probe.className = "subpanel-inset-sm p-3 hover:bg-slate-50";
+    host.append(probe);
+    const style = getComputedStyle(probe);
+    const result = [style.paddingRight, style.paddingLeft];
+    probe.remove();
+    return result;
+  });
+  expect(unfilledPadding).toEqual(["0px", "0px"]);
+
+  await page.setViewportSize({ width: 640, height: 844 });
+  expect(await padding(panel)).toEqual([12, 12, 12, 12]);
+  expect(await px(panel, "margin-left")).toBe(0);
 });
 
 test("#3673 the record's band bleeds and its rows keep the gutter", async ({
@@ -1117,18 +1154,17 @@ test("#3673 object-ness is the affordance: two rows in one band differ only by t
   // …and the two kinds are visually indistinguishable. No frame, no fill step.
   expect([...new Set([...split.acting, ...split.reporting])]).toHaveLength(1);
 
-  // The Now zone's own cards draw no frame either, which is the same ruling on the
-  // zone the acceptance criterion names: nothing there but the affordance.
+  // The Now zone draws no card frame either, which is the same ruling on the zone the
+  // acceptance criterion names: nothing there but the affordance. Since #4076 Now is
+  // a BAND of rows, so what is read is the row's own corner — a band's rows share one
+  // frame and round nothing of their own.
   const nowShapes = await page
-    .locator("[data-testid^='now-strip-card-']")
+    .locator('[data-testid="dashboard-candidate"][data-lane="now"]')
     .evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const style = getComputedStyle(node);
-        return `${style.borderTopWidth}|${style.borderTopLeftRadius}`;
-      })
+      nodes.map((node) => getComputedStyle(node).borderTopLeftRadius)
     );
   expect(nowShapes.length).toBeGreaterThan(0);
-  expect([...new Set(nowShapes)]).toEqual(["0px|0px"]);
+  expect([...new Set(nowShapes)]).toEqual(["0px"]);
 });
 
 test.describe("dark", () => {

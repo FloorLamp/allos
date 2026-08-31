@@ -68,14 +68,12 @@ describe("a canonical entry answers — the cell states the bands that judged th
     expect(cell.text).toBe("ref ≤ 5.7 · optimal ≤ 5.3");
   });
 
-  it("keeps the lab's own string as hover provenance", () => {
-    const cell = cellFor("Uric Acid", "3.4-8.5");
-    expect(cell.title).toBe("Lab reference: 3.4-8.5");
-  });
-
-  it("claims no provenance when the document printed none", () => {
-    expect(cellFor("Uric Acid", null).title).toBeNull();
-    expect(cellFor("Uric Acid", "   ").title).toBeNull();
+  // #3970 rule 2 took the lab's string off the row: the cell carries the verdict and
+  // the reading detail page's "Lab reference" column carries the derivation, so this
+  // module no longer spells a hover at all. What it must still do is REFUSE to let the
+  // printed string leak into the judged cell's own text.
+  it("never prints the lab's own string in a judged cell", () => {
+    expect(cellFor("Uric Acid", "3.4-8.5").text).not.toContain("3.4-8.5");
   });
 });
 
@@ -106,8 +104,6 @@ describe("no canonical entry — the printed string IS the deciding range", () =
     expect(cell.judged).toBe(false);
     expect(cell.label).toBe("Lab reference");
     expect(cell.text).toBe("lab 0.5-2.0");
-    // Nothing to hover: the content already IS the lab's string.
-    expect(cell.title).toBeNull();
   });
 
   it("makes the cell self-describing, so the desktop table needs no second channel", () => {

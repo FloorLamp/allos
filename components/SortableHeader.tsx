@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
@@ -51,6 +52,7 @@ export default function SortableHeader({
   defaultSort,
   defaultDir = "asc",
   className = "",
+  children,
 }: {
   column: string;
   label: string;
@@ -63,6 +65,12 @@ export default function SortableHeader({
   // Appended to the base header classes (e.g. responsive visibility) — callers
   // never need to restate the sticky/th defaults.
   className?: string;
+  // Rendered inside the `<th>` AFTER the sort link. A column-level explainer lives
+  // here (#3970 rule 1: a constant explainer states itself once, at the structural
+  // level that owns it) and it cannot live inside the link, which is an `<a>`.
+  // Nothing is rendered when a caller passes none, so a header without one is
+  // byte-identical to what it was.
+  children?: ReactNode;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -89,6 +97,7 @@ export default function SortableHeader({
       >
         <SortHeaderLabel label={label} active={active} dir={dir} />
       </Link>
+      {children}
     </th>
   );
 }

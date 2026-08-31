@@ -209,7 +209,11 @@ test("a new profile completes the six-step onboarding journey", async ({
 
     await expect(page).toHaveURL(/\/$/);
     await openDashboardAll(page);
-    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
+    // The checklist is a ROW since #4076 — its suggestions in the facts column, its
+    // "Hide" on the row — so it is found by the candidate it always was.
+    await expect(
+      page.locator('[data-fact-key="onboarding.checklist-progress"]')
+    ).toBeVisible();
   } finally {
     await page.context().close();
   }

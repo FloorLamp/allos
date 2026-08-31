@@ -21,12 +21,23 @@
 // the payload deterministically (fixed key order, deterministic member order) or it
 // will not match itself, and never read an offer id as a per-mint receipt.
 //
-// ── EXPIRY IS THE DAY ROLLOVER, AND NOTHING ELSE ─────────────────────────────
+// ── EVERY TENANT JUDGES ITS OWN DAY ──────────────────────────────────────────
 //
-// `date` is the subject's local day at mint time, exactly as `notify_messages.date`
-// is, and `readOffer` refuses a row whose day is not the day asked for — the rule that
-// retires yesterday's keyboards. A tenant whose payload is dated by the SCHEDULE reads
-// `readOfferRow` and judges the day itself. `pruneNotifyOffers` reclaims either way.
+// `date` is the subject's local day at mint time, exactly as `notify_messages.date` is.
+// This module states the day and refuses to have an opinion about it: `readOfferRow`
+// RETURNS it and the tenant decides.
+//
+// `readOffer` is the same read with the day MATCHED rather than returned, and #4118
+// changed what that match means rather than retiring it. It used to be asked with
+// `today`, which made it the rollover expiry: yesterday's `usual:` button refused. The
+// redemption path now asks `readOfferRow` and gates the day with `isDoseDateAccepted`,
+// the same message-date ±2 the dose buttons beside it accept — so a stale morning
+// message keeps a working bundle. `readOffer` survives as the RENDER-side question
+// (`standingUsualOffer`): re-deriving an attachment for a given day may only ever use
+// the offer minted for THAT day, and every rebuild passes the message's own date.
+// `pruneNotifyOffers` reclaims either way, on a horizon (`OFFER_RETENTION_DAYS`) that
+// must stay wider than any tenant's redemption window or a live button would find its
+// bundle already swept.
 //
 // Profile-scoped: every statement names `profile_id`, and a read for the wrong profile
 // answers null rather than another profile's bundle.
@@ -75,8 +86,9 @@ export function mintOffer(
 // The bundle an offer id names AND the day it was minted for, or null when this profile
 // has no such offer in this family (one refusal for both, so a forged token cannot
 // learn whether an id exists). The day is RETURNED, not matched, because the tenants
-// judge it differently: `usual:` expires at the rollover, while `stacktake:` names doses
-// whose day the schedule assigned, so matching here would impose one answer on both.
+// judge it differently — `stacktake:` names doses whose day the schedule assigned, and
+// since #4118 `usual:` accepts the message-date ±2 window its dose neighbours use — so
+// matching here would impose one answer on both.
 export function readOfferRow<T>(
   profileId: number,
   family: OfferFamily,
@@ -97,7 +109,12 @@ export function readOfferRow<T>(
   }
 }
 
-// The same read, refused unless the offer is FOR THIS DAY (#2460's rollover expiry).
+// The same read, refused unless the offer is FOR the day asked about.
+//
+// NOT "today" AND NOT AN EXPIRY since #4118 — see the header. The caller supplies the
+// day, and the only production caller (`standingUsualOffer`) supplies the day it is
+// RENDERING, which for a rebuild is the message's own. Reading this as the rollover rule
+// is what it used to be and is no longer.
 export function readOffer<T>(
   profileId: number,
   family: OfferFamily,

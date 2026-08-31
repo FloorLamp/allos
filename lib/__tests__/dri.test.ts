@@ -2160,6 +2160,8 @@ describe("doseUnitCount (#2856)", () => {
   // reason: it is now READ as one rather than defaulted to one, and only a case that
   // reads a number other than 1 can tell those apart.
   it.each([
+    ["0.5 x 500 mg capsule", 0.5],
+    ["0.5 tablet", 0.5],
     ["2 x 500 mg capsules", 2],
     ["3 x 400 mg tablets", 3],
     ["2x500mg capsules", 2],
@@ -2168,7 +2170,7 @@ describe("doseUnitCount (#2856)", () => {
     ["one scoop", 1],
     ["three gummies", 3],
     ["one capsule", 1],
-  ])("reads %s as %i", (amount, count) => {
+  ])("reads %s as %s", (amount, count) => {
     expect(doseUnitCount(amount)).toBe(count);
   });
 
@@ -2295,6 +2297,33 @@ describe("composition stacking (#2856)", () => {
     );
     const [warning] = compositionUl([twoForms]);
     expect(warning.total).toBeCloseTo(50, 5);
+  });
+
+  it("re-reads one compound after its ingredient rows are combined", () => {
+    const splitCompound = blend(
+      "Magtein Blend",
+      ["1 capsule"],
+      [
+        { name: "Magnesium L-Threonate", amount: 1000, unit: "mg" },
+        { name: "Mag L-Threonate", amount: 1_000_000, unit: "mcg" },
+      ]
+    );
+    const [total] = summarizeStack([splitCompound], 40, "male");
+    expect(total.total).toBeCloseTo(166, 0);
+    expect(compositionUl([splitCompound])).toEqual([]);
+  });
+
+  it("keeps distinct ingredient compounds as separately stated amounts", () => {
+    const distinctForms = blend(
+      "Magnesium Blend",
+      ["1 capsule"],
+      [
+        { name: "Magnesium Glycinate", amount: 1000, unit: "mg" },
+        { name: "Magnesium Citrate", amount: 1000, unit: "mg" },
+      ]
+    );
+    const [warning] = compositionUl([distinctForms]);
+    expect(warning.total).toBe(2000);
   });
 
   it("ignores an ingredient row with no parseable amount", () => {

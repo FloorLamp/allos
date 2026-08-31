@@ -96,24 +96,12 @@ function insertKind(
 }
 
 describe("migration 162 — profile_share_links kind CHECK", () => {
-  it("refuses 'immunizations' before the migration and admits it after", () => {
+  it("upgrades existing links without data loss, admits immunizations, and is replay-safe", () => {
     const db = preDb();
     const profileId = seedLinks(db);
     expect(() =>
       insertKind(db, profileId, "immunizations", "hash-imm-early")
     ).toThrow(/CHECK constraint failed/);
-
-    runMigrations(db);
-    expect(readVersion(db)).toBe(MIGRATIONS.length);
-    expect(() =>
-      insertKind(db, profileId, "immunizations", "hash-imm")
-    ).not.toThrow();
-    db.close();
-  });
-
-  it("carries every existing row and column through the rebuild unchanged", () => {
-    const db = preDb();
-    seedLinks(db);
     const before = db
       .prepare("SELECT * FROM profile_share_links ORDER BY id")
       .all();
@@ -121,10 +109,21 @@ describe("migration 162 — profile_share_links kind CHECK", () => {
 
     runMigrations(db);
 
+    expect(readVersion(db)).toBe(MIGRATIONS.length);
     expect(columnNames(db, "profile_share_links")).toEqual(columnsBefore);
     expect(
       db.prepare("SELECT * FROM profile_share_links ORDER BY id").all()
     ).toEqual(before);
+    insertKind(db, profileId, "immunizations", "hash-imm");
+    const beforeReplay = db
+      .prepare("SELECT * FROM profile_share_links ORDER BY id")
+      .all();
+
+    MIGRATIONS[V162 - 1].up(db);
+
+    expect(
+      db.prepare("SELECT * FROM profile_share_links ORDER BY id").all()
+    ).toEqual(beforeReplay);
     db.close();
   });
 
@@ -138,23 +137,6 @@ describe("migration 162 — profile_share_links kind CHECK", () => {
     expect(() => insertKind(db, profileId, "labs", "hash-labs")).toThrow(
       /CHECK constraint failed/
     );
-    db.close();
-  });
-
-  it("is a no-op on replay (guarded on the stored table SQL)", () => {
-    const db = preDb();
-    const profileId = seedLinks(db);
-    runMigrations(db);
-    insertKind(db, profileId, "immunizations", "hash-imm-replay");
-    const before = db
-      .prepare("SELECT * FROM profile_share_links ORDER BY id")
-      .all();
-
-    MIGRATIONS[V162 - 1].up(db);
-
-    expect(
-      db.prepare("SELECT * FROM profile_share_links ORDER BY id").all()
-    ).toEqual(before);
     db.close();
   });
 });

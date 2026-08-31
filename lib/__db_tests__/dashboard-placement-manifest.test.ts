@@ -31,7 +31,10 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
-import { everythingTail } from "@/lib/dashboard-relevance";
+import {
+  everythingTail,
+  type DashboardEverythingGroup,
+} from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
 
@@ -280,9 +283,9 @@ const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
 >();
-const standingPresentations = new Map<
+const rowPresentations = new Map<
   string,
-  DashboardPlacementCanvasProps["standingPresentations"]
+  DashboardPlacementCanvasProps["presentations"]
 >();
 const aheadPresentations = new Map<
   string,
@@ -365,10 +368,7 @@ describe("actual atomic dashboard manifests", () => {
       const element = await renderDashboard();
       expect(element.type).toBe(DashboardPlacementCanvas);
       manifests.set(persona.name, element.props.placements);
-      standingPresentations.set(
-        persona.name,
-        element.props.standingPresentations
-      );
+      rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
@@ -431,7 +431,7 @@ describe("actual atomic dashboard manifests", () => {
     let externalStanding = 0;
     for (const [persona, placements] of manifests) {
       const profileId = personaProfileIds.get(persona)!;
-      const presentations = standingPresentations.get(persona)!;
+      const presentations = rowPresentations.get(persona)!;
       const standing = placements.filter(
         (placement) => placement.lane === "standing"
       );
@@ -569,34 +569,122 @@ describe("actual atomic dashboard manifests", () => {
     expect(seen).toEqual(new Set(order));
   });
 
-  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  // THE #3077 COMPLETENESS CONTRACT, NOW THE ONLY TIER THAT CARRIES IT (#3366/#4076).
   //
   // Show everything no longer renders every placement, so "nothing the ranker gathers
-  // can go missing" stopped being something a reader could verify by scrolling. It is
-  // verified here instead, against the REAL manifests and by ITERATING THE DROPS:
-  // each non-admitted placement names a page, that page is one of the doors the tail
-  // draws, and the app has a name for it — which is exactly what the canvas needs to
-  // draw the row (it throws otherwise). A candidate builder that starts dropping
-  // without a named page fails here, on the day the guarantee would have quietly
-  // stopped holding rather than the day someone noticed.
-  it("keeps every dropped Show everything fact one named door away", () => {
+  // can go missing" stopped being something a reader could verify by scrolling. #3366
+  // moved half of it here and left the other half as a rendered "Elsewhere" list of
+  // page names; #4076 retired that list (owner: "utterly useless"), so this is now
+  // the whole of the guarantee. It is asserted against the REAL manifests and by
+  // ITERATING THE DROPS: each non-admitted placement names a page, and the app has a
+  // name for that page. A candidate builder that starts dropping without a named page
+  // fails here, on the day the guarantee would have quietly stopped holding rather
+  // than the day someone noticed.
+  it("keeps every dropped Show everything fact on a page the app can name", () => {
     const dropped: string[] = [];
     for (const [persona, placements] of manifests) {
-      const { doors } = everythingTail(placements);
       for (const placement of placements) {
         if (placement.lane !== "everything" || placement.admitted) continue;
         const page = placement.candidate.navDuplicateOf;
         dropped.push(`${persona}:${placement.candidate.candidateId}`);
         expect(
-          page && doors.includes(page) && trackedPageFor(page)?.label,
-          `${persona}:${placement.candidate.candidateId} has no named door`
+          page && trackedPageFor(page)?.label,
+          `${persona}:${placement.candidate.candidateId} has no named page`
         ).toBeTruthy();
       }
-      expect(new Set(doors).size, persona).toBe(doors.length);
     }
     // The loop above is satisfiable by admitting everything, so the seeded profiles
     // must actually exercise a drop for it to have asserted anything.
     expect(dropped.length).toBeGreaterThan(0);
+  });
+
+  // AND THE CONVERSE, WHICH THE DROP LOOP ABOVE IS STRUCTURALLY UNABLE TO STATE
+  // (#3366). That loop walks the drops, so it stays green on a tree that drops far
+  // too MUCH: a builder that put `navDuplicateOf` on a whole group would hand every
+  // one of those candidates a named door, satisfy every clause up there, and empty
+  // the group out of the tail. `dropped.length > 0` cannot see it either — it only
+  // asks that SOMETHING dropped. The ruling's acceptance is that the tail stays
+  // exhaustive, so that is asserted here in the direction it is written: these facts
+  // are still DRAWN, and the drop reaches exactly one candidate and no further.
+  //
+  // The survivor list is short and hand-written on purpose, one per tail group. A
+  // list derived from the manifests would restate whatever the manifests happen to
+  // say and could never contradict them.
+  it("keeps drawing the tail it did not drop", () => {
+    const drawn = new Map(
+      [...manifests].map(([persona, placements]) => [
+        persona,
+        everythingTail(placements),
+      ])
+    );
+    const survivors: readonly {
+      persona: string;
+      group: DashboardEverythingGroup;
+      candidate: string;
+    }[] = [
+      {
+        persona: "biohacker",
+        group: "act",
+        candidate: "attention.fact:review",
+      },
+      { persona: "biohacker", group: "read", candidate: "protocol.adherence:" },
+      {
+        persona: "biohacker",
+        group: "active-states",
+        candidate: "protocol.state:",
+      },
+      {
+        persona: "household",
+        group: "understand",
+        candidate: "appointment.next",
+      },
+      {
+        persona: "marathon-runner",
+        group: "setup",
+        candidate: "attention.fact:screening:hiv_screening",
+      },
+    ];
+    for (const { persona, group, candidate } of survivors) {
+      expect(
+        drawn
+          .get(persona)!
+          .some(
+            (placement) =>
+              placement.everythingGroup === group &&
+              placement.candidate.candidateId.startsWith(candidate)
+          ),
+        `${persona}: ${candidate} is no longer drawn in ${group}`
+      ).toBe(true);
+    }
+    // Exactly one candidate in the whole seeded population is a link the nav already
+    // carries, which is what `care.ts` claims in prose. Widening the drop reddens
+    // here rather than quietly shortening the tail.
+    //
+    // SO A NEW CANDIDATE THAT LEGITIMATELY DECLARES `navDuplicateOf` REDDENS THIS
+    // LINE, AND THAT IS THE PIN WORKING, NOT A STALE FIXTURE. Add it to the list
+    // deliberately, having satisfied yourself the tail is meant to stop drawing it;
+    // the whole point of pinning the set rather than counting it is that widening
+    // the drop has to be a decision somebody wrote down.
+    expect(
+      [...manifests].flatMap(([persona, placements]) =>
+        placements.flatMap((placement) =>
+          placement.lane === "everything" && !placement.admitted
+            ? [`${persona}:${placement.candidate.candidateId}`]
+            : []
+        )
+      )
+    ).toEqual(["household:household.episode-history"]);
+    // Drawn against dropped against the lane, per persona: a member the split loses
+    // on its way to the canvas is neither, and no absence assertion can see that.
+    for (const [persona, placements] of manifests) {
+      const lane = placements.filter(
+        (placement) => placement.lane === "everything"
+      );
+      const dropped = lane.filter((placement) => !placement.admitted);
+      expect(drawn.get(persona)!.length, persona).toBe(
+        lane.length - dropped.length
+      );
+    }
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
@@ -734,13 +822,17 @@ describe("actual atomic dashboard manifests", () => {
   // #1851 makes the sleep read per-night, which DELETES the profile-wide source
   // election and the DISTINCT source scan that fed it — one statement back for every
   // persona, household included, since every dashboard reaches a sleep session.
+  // −1 on every persona EXCEPT household (#4076): retiring the PRN dose candidates
+  // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
+  // unchanged because that read was already skipped there — it is gated on a WELL day
+  // and the household fixture carries an open illness.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 227,
-    "marathon-runner": 226,
+    bodybuilder: 226,
+    "marathon-runner": 225,
     household: 269,
-    pregnant: 223,
-    "diabetic-cgm": 234,
-    biohacker: 240,
+    pregnant: 222,
+    "diabetic-cgm": 233,
+    biohacker: 239,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

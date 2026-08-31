@@ -211,6 +211,20 @@ function rememberGroup(
   }
 }
 
+const UNCONTROLLED_VITAL_FIELDS = [
+  "systolic",
+  "diastolic",
+  "glucose",
+  "spo2",
+  "temperature",
+  "sleep_hours",
+  "bed_time",
+  "wake_time",
+  "hrv",
+  "respiratory_rate",
+  "peak_flow",
+] as const;
+
 export default function MeasurementsQuickAdd({
   defaultDate,
   defaultStatedAt = null,
@@ -304,6 +318,29 @@ export default function MeasurementsQuickAdd({
     );
   }
 
+  // React resets uncontrolled fields when a form action resolves. Pin the refused
+  // vitals as that reset's defaults for a partial save, then restore the ordinary
+  // empty/default baseline at the start of the next action (after FormData exists).
+  function pinVitalsAcrossActionReset(data?: FormData) {
+    const form = formRef.current;
+    if (!form) return;
+    for (const name of UNCONTROLLED_VITAL_FIELDS) {
+      const field = form.elements.namedItem(name);
+      if (field instanceof HTMLInputElement) {
+        field.defaultValue = data ? String(data.get(name) ?? "") : "";
+      }
+    }
+    const unit = form.elements.namedItem("glucose_unit");
+    if (unit instanceof HTMLSelectElement) {
+      const selected = data
+        ? String(data.get("glucose_unit") ?? "mg/dL")
+        : "mg/dL";
+      for (const option of unit.options) {
+        option.defaultSelected = option.value === selected;
+      }
+    }
+  }
+
   // The detail page applies this before rendering its Log Manually trigger. Keep
   // the form guarded too so a future mounting context cannot bypass the gates.
   if (
@@ -318,6 +355,7 @@ export default function MeasurementsQuickAdd({
   }
 
   async function handle(formData: FormData) {
+    pinVitalsAcrossActionReset();
     setError(null);
     const s = (k: string): string | null => {
       const v = formData.get(k);
@@ -453,6 +491,19 @@ export default function MeasurementsQuickAdd({
       }
       form.reset();
     };
+    const clearQueuedBodyFields = (): void => {
+      const form = formRef.current;
+      if (!form) return;
+      for (const name of ["weight", "body_fat_pct", "resting_hr", "notes"]) {
+        const field = form.elements.namedItem(name);
+        if (
+          field instanceof HTMLInputElement ||
+          field instanceof HTMLTextAreaElement
+        ) {
+          field.value = "";
+        }
+      }
+    };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
@@ -527,8 +578,19 @@ export default function MeasurementsQuickAdd({
           ...vitals,
           occurredAt: s("occurred_at"),
         });
-        if (kept !== "kept")
-          return keptBody && kept === "failed" ? "partial" : "refused";
+        if (kept !== "kept") {
+          if (keptBody && kept === "failed") {
+            // The body intent is durable but the vitals are not. Keep the refused
+            // half (and its shared date/time) ready for retry while removing every
+            // field another body intent would duplicate (#3830).
+            clearQueuedBodyFields();
+            pinVitalsAcrossActionReset(formData);
+            rememberWritten();
+            refreshSummaries();
+            return "partial";
+          }
+          return "refused";
+        }
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");

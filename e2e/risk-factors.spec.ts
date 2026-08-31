@@ -125,9 +125,8 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
     // The dashboard offers the gap, with its fix-it CTA.
     await page.goto("/");
     await openDashboardAll(page);
-    const widget = main.getByTestId("data-quality");
-    const gapRow = widget
-      .getByTestId("data-quality-item")
+    const gapRow = main
+      .locator('[data-candidate-id^="data-quality.finding:"]')
       .filter({ hasText: "Review risk factors" });
     await expect(gapRow).toBeVisible();
 
@@ -168,10 +167,13 @@ test.describe("risk-factor review — the negative declaration (#2299)", () => {
     await openDashboardAll(page);
     await expect(
       main
-        .getByTestId("data-quality-item")
+        .locator('[data-candidate-id^="data-quality.finding:"]')
         .filter({ hasText: "Review risk factors" })
     ).toHaveCount(0);
-    await expect(main.getByTestId("data-quality")).toHaveCount(0);
+    // It was this profile's ONLY structural gap, so no data-quality row is left.
+    await expect(
+      main.locator('[data-candidate-id^="data-quality.finding:"]')
+    ).toHaveCount(0);
 
     await page.context().close();
   });

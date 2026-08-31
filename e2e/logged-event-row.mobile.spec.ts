@@ -1,9 +1,9 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import { hydratedClick } from "./helpers";
-import { utcInstant, zonedWallTimeToUtc } from "../lib/date";
+import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../lib/date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
 // THE COMPACT LOGGED-EVENT ROW (#3671).
@@ -31,14 +31,44 @@ import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 // for the zone a given run's start hour happened to draw.
 
 const PROFILE = 1;
-// A day well inside the ledgers' reach, addressed explicitly in every URL so this
-// never depends on a default window.
-const DAY = "2026-08-18";
+
+// THE FIXTURE'S DAY, DERIVED — never a calendar literal (#4358 AC3).
+//
+// THE COMMENT THAT USED TO STAND HERE WAS FALSE, and its being false is the whole
+// bug: it claimed this day was "addressed explicitly in every URL so this never
+// depends on a default window". The `/history` and `/nutrition?date=` reads below
+// are indeed day-addressed — but the two that open the IN-CARD dose panel go to
+// `/nutrition?tab=supplements`, which carries no date at all and lists doses over
+// its own window (`DOSE_HISTORY_DAYS` = 90 in lib/intake-adherence.ts, applied as
+// `historySince = today - 89` in SupplementsTab). So a pinned `"2026-08-18"` was a
+// fuse, exactly like the one #4358 was filed for: bisected on this branch, the file
+// is green at a 2026-11-15 clock and red at 2026-11-16 with `dose-history-row`
+// `Expected: 1 / Received: 0` — 89 days after 2026-08-18, to the day.
+//
+// Derived from the run's frozen clock, so the offset is a DISTANCE and can never
+// age out. Five days back is inside every window these surfaces apply, the tightest
+// proven one being that 90; keeping it near today also keeps it clear of any
+// shorter window a future surface might introduce.
+//
+// FIVE, AND NOT SEVEN: e2e/history.spec.ts seeds profile 1's `berries` seven days
+// back (#4367). Keeping the two apart is CHEAP INSURANCE, NOT A LOAD-BEARING CLAIM —
+// and that is measured rather than asserted, because the first draft of this comment
+// claimed otherwise. Forcing both specs onto one day and running them together under
+// `--workers=1` leaves both GREEN: each deletes by (profile, day, group) and re-seeds
+// immediately before every test, and both delete `berries`, so on a shared day they
+// simply clean up after each other.
+//
+// THAT MUTUAL RESCUE IS ACCIDENTAL, which is the reason to keep the days apart
+// anyway. It holds only while both specs keep deleting before every test and neither
+// starts counting rows on a day it did not itself seed. Distinct days cost nothing
+// and do not rely on a property no one is watching.
+const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -5);
 const ITEM = "E2e Row Magnesium";
 const ITEM_AMOUNT = "3 g";
 // THE STACK DAY (#3937). Two items dosed in the SAME MINUTE is the shape the ledger
-// was unreadable in — under the old slotting both rows read "Tuesday, August 18 ·
-// 8:46am" and both ⋯ announced those same words.
+// was unreadable in — under the old slotting both rows read the SAME day and clock
+// ("<weekday>, <month> <day> · 8:46am", whichever day the fixture is on) and both ⋯
+// announced those same words.
 const ITEM_TWO = "E2e Row Zinc";
 const ITEM_TWO_AMOUNT = "15 mg";
 // The trailing-less consumer (#3904): two columns, and the second is the person's
@@ -237,13 +267,11 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     await page.goto("/nutrition?tab=supplements");
 
     // The fixture item carries no scheduled time of day, so the supplements tab
-    // files it under "More supplements" — a closed <details>. Opening it is the
-    // route to the panel, and it keeps the fixture this spec's own rather than
-    // borrowing a seeded supplement whose dose count nothing here controls.
-    await hydratedClick(
-      page,
-      page.locator('[data-testid="not-scheduled-section"] summary')
-    );
+    // lists it in the stack like any other item — #3987 retired the "not scheduled"
+    // fold, which asked a DAY question on what is now a management surface (and hid a
+    // freshly added item behind a closed disclosure). Keeping the fixture this spec's
+    // own still matters: it borrows no seeded supplement whose dose count nothing
+    // here controls.
     const card = page
       .locator('[data-testid="supplement-row"]')
       .filter({ hasText: ITEM });
@@ -287,10 +315,10 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     seedServing();
     await phone(page);
 
-    // ── The food log's own "Logged <day>" list ──────────────────────────────────
+    // ── The Day ledger's own serving rows (#3987 absorbed the "Logged <day>" list)
     await page.goto(`/nutrition?date=${DAY}`);
     const logRow = page
-      .getByTestId("food-logged-list")
+      .getByTestId("day-ledger")
       .locator("li[data-group]")
       .first(); // first-ok: the anatomy claim is about any row of the list, not a chosen one
     await expect(logRow).toBeVisible();
@@ -298,21 +326,55 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
 
     // DIVIDERS, NOT PER-ROW CARDS: the frame is the LIST's, the hairline is the
     // row's, and the row itself has neither a corner nor a fill of its own.
-    const listChrome = await logRow.evaluate((el) => {
-      const row = getComputedStyle(el);
-      const list = getComputedStyle(el.parentElement!);
-      return {
-        rowRadius: row.borderTopLeftRadius,
-        rowBackground: row.backgroundColor,
-        rowDivider: row.borderTopWidth,
-        listRadius: list.borderTopLeftRadius,
-        listBorder: list.borderTopWidth,
-      };
-    });
-    expect(listChrome.rowRadius).toBe("0px");
-    expect(listChrome.rowBackground).toBe("rgba(0, 0, 0, 0)");
-    expect(listChrome.listBorder).toBe("1px");
-    expect(listChrome.listRadius).not.toBe("0px");
+    //
+    // THE READ IS POLLED, AND ONLY THE READ. `getComputedStyle` on a node that is not
+    // in a rendered document answers an EMPTY declaration rather than throwing, so
+    // every field below comes back `""` — and a bare `evaluate` asserts whatever that
+    // instant returned. This list is client-rendered, so the row Playwright resolves
+    // can be mid-remount when the callback runs, and `""` is then compared against
+    // `"0px"` and reported as a wrong corner radius. Seen in CI on 2026-08-30
+    // (`e2e (4)`): `Expected: "0px" / Received: ""`, on a branch that renders nothing
+    // on this page, irreproducible in 28 local runs across two trees.
+    //
+    // Waiting for a non-empty read cannot invent a measurement: a row that genuinely
+    // carried a corner would answer with that corner, and a list that never rendered
+    // would time out with `""` and say so. So the four claims below stay exactly as
+    // they were and do NOT retry — what retries is the act of measuring.
+    type ListChrome = {
+      rowRadius: string;
+      rowBackground: string;
+      rowDivider: string;
+      listRadius: string;
+      listBorder: string;
+    };
+    let listChrome: ListChrome | null = null;
+    await expect
+      .poll(
+        async () => {
+          listChrome = await logRow.evaluate((el) => {
+            const row = getComputedStyle(el);
+            const list = getComputedStyle(el.parentElement!);
+            return {
+              rowRadius: row.borderTopLeftRadius,
+              rowBackground: row.backgroundColor,
+              rowDivider: row.borderTopWidth,
+              listRadius: list.borderTopLeftRadius,
+              listBorder: list.borderTopWidth,
+            };
+          });
+          return listChrome.rowRadius;
+        },
+        {
+          message:
+            "the row's computed style never became readable — the node stayed detached",
+        }
+      )
+      .not.toBe("");
+    const chrome = listChrome as unknown as ListChrome;
+    expect(chrome.rowRadius).toBe("0px");
+    expect(chrome.rowBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(chrome.listBorder).toBe("1px");
+    expect(chrome.listRadius).not.toBe("0px");
 
     // ── THE SAME FACT ON THE RECORD, THROUGH THE SAME PRIMITIVE (#3958) ───────
     //
@@ -411,12 +473,8 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // the cross-item LEDGER here until #3958 deleted that route; the panel is the
     // same component at item scope, which is what makes it the honest stand-in.
     await page.goto("/nutrition?tab=supplements");
-    // The fixture item carries no scheduled time of day, so the tab files it under
-    // "More supplements" — a closed <details>, exactly as the panel test above.
-    await hydratedClick(
-      page,
-      page.locator('[data-testid="not-scheduled-section"] summary')
-    );
+    // The fixture item is in the stack list, unfolded, exactly as in the panel test
+    // above (#3987).
     const card = page
       .locator('[data-testid="supplement-row"]')
       .filter({ hasText: ITEM });

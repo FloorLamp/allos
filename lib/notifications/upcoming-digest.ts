@@ -19,7 +19,7 @@ import { GLYPH } from "./glyphs";
 // "vaccine" mirror the page's language.
 const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   dose: "dose",
-  // A `may` item on offer (#1505). NEVER pushed — omitted from DOMAIN_SEQ, so it is
+  // A `may` item on offer (#1505). NEVER pushed — declared `never` below, so it is
   // never counted in this digest; its access path is the digest's own "➕ Doses (N)"
   // tail, which is user-initiated. The noun exists only because the Record is
   // exhaustive.
@@ -28,14 +28,14 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   refill: "refill",
   "dietary-limit": "intake limit",
   // A food-log × food–drug co-occurrence (#2021). Care-tier on the dashboard/Upcoming and
-  // deliberately NOT pushed — omitted from DOMAIN_SEQ, so it is never counted in this
+  // deliberately NOT pushed — declared `never` below, so it is never counted in this
   // digest. Nobody declared "tell me when I drink" (the contact-consent rule), and a
   // message that arrives because you logged a beer would be surveillance-shaped. The
   // noun exists only because the Record is exhaustive.
   "food-drug-event": "food note",
   "illness-care": "illness check",
   // A condition-review suggestion (#685). Care-tier on the dashboard/Upcoming, but
-  // deliberately NOT pushed — omitted from DOMAIN_SEQ (like the "something's off"
+  // deliberately NOT pushed — declared `never` below (like the "something's off"
   // signals), so it's never counted in this digest even though the noun exists.
   "condition-review": "condition to review",
   // A recorded drug allergy met by an active med (#1029). Care-tier, counted in the
@@ -59,7 +59,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   biomarker: "lab",
   // A med-driven monitoring retest (#995). Care-tier entries push via the #656 highlight
   // (their cited reason), NOT via this per-band count — `med-monitor` is deliberately
-  // omitted from DOMAIN_SEQ, so a coaching-tier monitoring lab is never counted in the
+  // declared `highlight-only` below, so a coaching-tier monitoring lab is never counted in the
   // push. The noun exists only because the Record is exhaustive.
   "med-monitor": "monitoring lab",
   goal: "goal",
@@ -72,23 +72,23 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   "nutrition-target": "nutrition target",
   "mobility-target": "mobility target",
   // A wellness-practice weekly target (#1259). Coaching-tier (calm) — its OWN pace-aware
-  // nudge is the push channel, so it's deliberately omitted from DOMAIN_SEQ and never
+  // nudge is the push channel, so it's declared `never` below and never
   // counted in this digest; the exhaustive Record needs the noun.
   practice: "practice target",
   careplan: "care-plan item",
   // A finding follow-up (#700). Care-tier on the dashboard/Upcoming (an overdue one
   // escalates there + resists dismiss), but the Telegram digest push is deliberately
-  // scoped OUT for v1 (like condition-review) — omitted from DOMAIN_SEQ, so it's
+  // scoped OUT for v1 (like condition-review) — declared `never` below, so it's
   // never counted here even though the noun exists. A push is a follow-up decision.
   followup: "finding follow-up",
   // A mental-health crisis finding (#716). Care-tier on the dashboard/Upcoming, but
-  // DELIBERATELY never pushed on any channel — omitted from DOMAIN_SEQ, so it's never
+  // DELIBERATELY never pushed on any channel — declared `never` below, so it's never
   // counted in this digest even though the exhaustive Record needs the noun. The
   // decided harm case is crisis content landing on a shared/locked device.
   "mental-health": "mental-health check-in",
   // The unified model's "something's off" signals (issue #524) never reach this
   // digest — it groups collectUpcoming, which is date-scheduled due-signals only —
-  // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're
+  // but the exhaustive Record needs an entry. Their `never` admission means they're
   // never counted even if one ever appeared.
   "biomarker-flag": "flagged result",
   // A broken sync (#1685) and an open portal sync request (#1757). Both are NAMED-LINE
@@ -121,7 +121,7 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
 // only the surfaces you have to open to see inverts the feature's purpose. It rides the
 // digest that already sends — no dedicated notification, no escalation, no new schedule
 // (the ride-the-nag corollary of the attention doctrine).
-const DOMAIN_SEQ: UpcomingDomain[] = [
+const COUNTED_DOMAIN_SEQ = [
   "dose",
   "integration",
   "portal-sync",
@@ -148,7 +148,38 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "training",
   "nutrition-target",
   "mobility-target",
-];
+] as const satisfies readonly UpcomingDomain[];
+
+type DigestAdmission = "counted" | "highlight-only" | "never";
+
+const DIGEST_DOMAIN_ADMISSION = {
+  counted: COUNTED_DOMAIN_SEQ,
+  "highlight-only": ["med-monitor"],
+  never: [
+    "available",
+    "food-drug-event",
+    "condition-review",
+    "practice",
+    "followup",
+    "mental-health",
+    "biomarker-flag",
+    "review",
+  ],
+} as const satisfies Record<DigestAdmission, readonly UpcomingDomain[]>;
+
+type RegisteredDigestDomain =
+  (typeof DIGEST_DOMAIN_ADMISSION)[DigestAdmission][number];
+
+function hasDigestAdmission(
+  domain: UpcomingDomain extends RegisteredDigestDomain
+    ? UpcomingDomain
+    : never,
+  admission: DigestAdmission
+): boolean {
+  return (
+    DIGEST_DOMAIN_ADMISSION[admission] as readonly UpcomingDomain[]
+  ).includes(domain);
+}
 
 // A surfaced "why" for a high-priority item (issue #656 item 3): the item's title
 // plus its TOP reason text, so the push says WHY the important thing matters instead
@@ -215,7 +246,7 @@ export interface UpcomingDigestModel {
 const MAX_HIGHLIGHTS = 3;
 
 // The high-priority items' top reasons (issue #656 item 3). Scans the banded set in
-// urgency order (Overdue → Today → …, each already within-band sorted so the higher-
+// near-band urgency order (Overdue → Today → This week, each already sorted so the higher-
 // priority item leads), keeps items that carry a structured reason, prefers higher
 // `priority`, de-dupes by title, and caps the list. The reason shown is
 // primaryReason(item) — the SAME lead reason Upcoming/dashboard render, never re-derived.
@@ -223,8 +254,13 @@ export function digestHighlights(groups: BandGroup[]): DigestHighlight[] {
   const candidates: { item: UpcomingItem; order: number }[] = [];
   let order = 0;
   for (const g of groups) {
+    if (g.band === "later") continue;
     for (const item of g.items) {
-      if (primaryReason(item.reasons))
+      if (
+        (hasDigestAdmission(item.domain, "counted") ||
+          hasDigestAdmission(item.domain, "highlight-only")) &&
+        primaryReason(item.reasons)
+      )
         candidates.push({ item, order: order++ });
     }
   }
@@ -357,7 +393,9 @@ export function summarizeBand(
     kept.push(item);
     byDomain.set(item.domain, kept);
   }
-  const present = DOMAIN_SEQ.filter((d) => byDomain.has(d));
+  const present = DIGEST_DOMAIN_ADMISSION.counted.filter((d) =>
+    byDomain.has(d)
+  );
   const shown = present.reduce((n, d) => n + byDomain.get(d)!.length, 0);
   const nameable = shown > 0 && shown <= (opts.nameAtMost ?? 0);
   const parts = present.map((d) => {

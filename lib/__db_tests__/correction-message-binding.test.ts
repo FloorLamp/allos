@@ -32,7 +32,9 @@ import {
 } from "@/lib/notifications/message-pointers";
 import { keyboardTokens } from "@/lib/notifications/reconcile-core";
 import { messageKeyboard } from "@/lib/notifications/telegram-render";
+import { plainBody } from "@/lib/notifications/rich-text";
 import { now as clockNow } from "@/lib/clock";
+import { logFoodServingCore } from "@/lib/food-log-write";
 import { burstsForMessage, burstFrom } from "@/lib/correction-time";
 import {
   getDoseCorrectionBursts,
@@ -172,6 +174,9 @@ describe("migration 170 — the provenance link (#2264)", () => {
     // into "unattributed" (rides only the newest live message), never a dangling id.
     db.prepare(`DELETE FROM notify_messages WHERE id = ?`).run(pointer.id);
     expect(foodEvents(pid)[0].notify_message_id).toBeNull();
+    expect(
+      foodtimeTokens(buildFoodNudge(pid, "Morning", today(pid))!)
+    ).not.toEqual([]);
   });
 });
 
@@ -294,6 +299,33 @@ describe("a food correction row renders only on the message that produced it (#2
     setNow("2026-08-05T10:43:00Z");
     expect(foodtimeTokens(buildFoodNudge(pid, "Midday", date)!)).toEqual([]);
   });
+
+  it("keeps page-stated and page quick logs off a live chat nudge (#4356)", async () => {
+    const pid = newProfile("Page Petra");
+    seedLoginTelegram(pid, "5664005");
+    await dispatch(pid, buildFoodNudge(pid, "Midday", today(pid))!);
+    const pointer = liveMessagePointers(pid)[0];
+    setNow(MIDDAY_ISO);
+    logFoodServingCore(
+      pid,
+      "red_meat",
+      today(pid),
+      "page",
+      MIDDAY_ISO,
+      undefined,
+      {
+        eatenAt: "2026-08-05T10:00:00Z",
+        source: "stated",
+      }
+    );
+    logFoodServingCore(pid, "berries", today(pid), "page", MIDDAY_ISO);
+
+    const rebuilt = buildFoodNudge(pid, "Midday", today(pid), undefined, {
+      ref: { chatId: "5664005", messageId: pointer.messageId },
+    })!;
+    expect(foodtimeTokens(rebuilt)).toEqual([]);
+    expect(plainBody(rebuilt.body)).not.toContain("Recorded:");
+  });
 });
 
 // ---- the dose twin ----------------------------------------------------------
@@ -405,10 +437,8 @@ describe("a dose correction row renders only on the message that produced it (#2
     expect(betaLog.messageRef).not.toBe(pointerA.id);
     stampTap(betaLog.id, "2026-08-05 10:42:00");
 
-    // And Gamma is confirmed from the WEB — no message, honestly unattributed. Its
-    // tap sits 18 minutes after Beta's. That spacing stopped being load-bearing with
-    // #3092: an unattributed tap now partitions away from an attributed one BEFORE
-    // the gap rule runs, so these are two bursts at any spacing.
+    // And Gamma is confirmed from the WEB — its correction home is the page, so it
+    // must never add a chat correction row even though the log is fresh.
     markDoseTaken(pid, c.doseId, c.itemId, date, "page");
     const gammaLog = doseLogs(pid)[2];
     expect(gammaLog.messageRef).toBeNull();
@@ -432,18 +462,16 @@ describe("a dose correction row renders only on the message that produced it (#2
     });
     expect(dosetimeTokens(onA)).toEqual([]);
 
-    // The NEW reminder: Beta's burst is ATTRIBUTED to it, and Gamma's unattributed
-    // burst rides it too — it is the newest live dose message in this chat.
+    // The NEW reminder carries Beta's attributed chat burst, not Gamma's page row.
     const onB = withDoseCorrections(pid, base, {
       ref: { chatId, messageId: 9922 },
     });
     const onBTokens = dosetimeTokens(onB);
     expect(onBTokens).toContain(`dosetime:${pid}:${betaLog.id}:30`);
-    expect(onBTokens).toContain(`dosetime:${pid}:${gammaLog.id}:30`);
+    expect(onBTokens).not.toContain(`dosetime:${pid}:${gammaLog.id}:30`);
 
     // A yet-newer dose message appears: attribution STICKS (Beta stays on 9922, and
-    // never moves to the newcomer), while the unattributed Gamma burst moves to the
-    // newest — never an older one.
+    // never moves to the newcomer), while Gamma stays absent from chat.
     const reminderC = buildIntakeReminderForSlots(pid, ["Evening"]);
     recordMessagePointer({
       profileId: pid,
@@ -462,7 +490,7 @@ describe("a dose correction row renders only on the message that produced it (#2
     const onC = dosetimeTokens(
       withDoseCorrections(pid, base, { ref: { chatId, messageId: 9933 } })
     );
-    expect(onC).toContain(`dosetime:${pid}:${gammaLog.id}:30`);
+    expect(onC).not.toContain(`dosetime:${pid}:${gammaLog.id}:30`);
     expect(onC).not.toContain(`dosetime:${pid}:${betaLog.id}:30`);
   });
 
@@ -621,7 +649,7 @@ describe("a message binds only bursts of its own domain (#3108)", () => {
       d.doseId,
       d.itemId,
       date,
-      "page",
+      "telegram-command",
       undefined,
       digestPtr.id
     );

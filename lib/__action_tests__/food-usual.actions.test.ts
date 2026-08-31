@@ -184,3 +184,131 @@ describe("logUsualFood", () => {
     expect(servings(profile.id).length).toBeGreaterThan(0);
   });
 });
+
+// ── THE DATED USUAL WRITE (#4118) ────────────────────────────────────────────
+//
+// The header above claims the action can "never [write] on a day the user is not
+// living", which used to be true because no date crossed the wire at all. It is still
+// true, and now for a stated reason instead of by omission: the day is posted, the CORE
+// bounds it, and a day outside that bound is a REFUSAL rather than a silent fallback to
+// today. That distinction is the whole test — a parse that quietly substituted today
+// would look identical from the caller and would write a breakfast onto the wrong day.
+describe("logUsualFood on a past day", () => {
+  function eventsOn(profileId: number, date: string) {
+    return db
+      .prepare(
+        `SELECT group_key, meal_slot, occurred_at, logged_via FROM food_log_events
+          WHERE profile_id = ? AND date = ? ORDER BY group_key`
+      )
+      .all(profileId, date) as {
+      group_key: string;
+      meal_slot: string | null;
+      occurred_at: string | null;
+      logged_via: string | null;
+    }[];
+  }
+
+  it("writes the bundle onto the posted day, stamped so the measure cannot read it back", async () => {
+    // The seeded habit occupies days 1-12 back, so day 13 is the empty day this is
+    // about — and it is OUT of reach. Day 6 is in reach but occupied, so this profile
+    // gets its hole at day 6 instead.
+    const login = createLogin();
+    const profile = createProfile("usual-dated", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const anchor = today(profile.id);
+    for (let d = 1; d <= 13; d++) {
+      if (d === 6) continue;
+      const date = shiftDateStr(anchor, -d);
+      tap(profile.id, "fermented", date, "08:00:00");
+      tap(profile.id, "berries", date, "08:05:00");
+    }
+    const target = shiftDateStr(anchor, -6);
+
+    const res = await logUsualFood(
+      fd({ meal_slot: "Morning", groups: "berries,fermented", date: target })
+    );
+    expect(res.ok).toBe(true);
+
+    // On the TARGET day, not today.
+    expect(
+      servings(profile.id)
+        .filter((r) => r.date === target)
+        .map((r) => r.group_key)
+    ).toEqual(["berries", "fermented"]);
+    expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([]);
+    // Declared window, no invented eating time, and the backfill stamp.
+    expect(eventsOn(profile.id, target)).toEqual([
+      {
+        group_key: "berries",
+        meal_slot: "Morning",
+        occurred_at: null,
+        logged_via: "usual-backfill",
+      },
+      {
+        group_key: "fermented",
+        meal_slot: "Morning",
+        occurred_at: null,
+        logged_via: "usual-backfill",
+      },
+    ]);
+  });
+
+  it("stamps TODAY's tap with its own surface, not the backfill value", async () => {
+    // The converse, and the reason it is here: a stamp applied to every usual write
+    // would pass the assertion above and would silently delete the contemporaneous tap
+    // from the evidence that makes the offer exist at all.
+    const { profile, anchor } = seedUsualMorning("usual-dated-today");
+    await logUsualFood(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        date: anchor,
+        logged_via: "dashboard-widget",
+      })
+    );
+    expect(eventsOn(profile.id, anchor).map((r) => r.logged_via)).toEqual([
+      "dashboard-widget",
+      "dashboard-widget",
+    ]);
+  });
+
+  it.each([
+    ["a day past the reach", -7],
+    ["a fortnight back", -14],
+    ["tomorrow", 1],
+    ["next year", 365],
+  ] as const)("refuses %s and writes nothing at all", async (why, delta) => {
+    const { profile, anchor } = seedUsualMorning(`usual-out-of-reach${delta}`);
+    const target = shiftDateStr(anchor, delta);
+    // The WHOLE ledger before and after, not just the target day: `seedUsualMorning`
+    // already occupies the past week, so "nothing on that day" would be a false claim
+    // there, and a bounded assertion would miss a fallback landing anywhere else.
+    const before = servings(profile.id);
+    const res = await logUsualFood(
+      fd({ meal_slot: "Morning", groups: "berries,fermented", date: target })
+    );
+    expect(res.ok, why).toBe(false);
+    expect(servings(profile.id)).toEqual(before);
+    // Named separately because it is the failure a silent fallback to today produces,
+    // and it is the one a reader will want to see asserted.
+    expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([]);
+  });
+
+  it("a malformed date is TODAY, because it is an absent field and not a claim", async () => {
+    // The parse's own rule, stated because it differs from the refusals above: a field
+    // that is not a date at all was never a request for a day, so the action defaults —
+    // exactly as `logFoodServing`'s and `addProteinGrams`' parses already do. A
+    // WELL-FORMED day out of reach is a claim, and that is what gets refused.
+    const { profile, anchor } = seedUsualMorning("usual-garbage-date");
+    const res = await logUsualFood(
+      fd({ meal_slot: "Morning", groups: "berries,fermented", date: "soon" })
+    );
+    expect(res.ok).toBe(true);
+    expect(
+      servings(profile.id)
+        .filter((r) => r.date === anchor)
+        .map((r) => r.group_key)
+    ).toEqual(["berries", "fermented"]);
+  });
+});

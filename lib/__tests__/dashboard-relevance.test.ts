@@ -1154,12 +1154,14 @@ describe("Show everything admission and doors (#3366)", () => {
       false,
     ]);
 
-    const { members, doors } = everythingTail(placements);
-    expect(members.map((placement) => placement.candidate.candidateId)).toEqual(
-      ["kept"]
-    );
-    // Two dropped facts on one page owe the reader ONE row, in placement order.
-    expect(doors).toEqual(["/medical/episodes", "/trends"]);
+    // The tail DRAWS only the admitted member; the three nav duplicates are dropped.
+    // Since #4076 nothing is drawn in their place — the completeness guarantee is
+    // asserted at the manifest tier instead.
+    expect(
+      everythingTail(placements).map(
+        (placement) => placement.candidate.candidateId
+      )
+    ).toEqual(["kept"]);
   });
 
   it("keeps a safety candidate out of the drop by never letting it reach the tail", () => {
@@ -1172,6 +1174,6 @@ describe("Show everything admission and doors (#3366)", () => {
         (placement) => placement.candidate.candidateId
       )
     ).toEqual(["flagged"]);
-    expect(everythingTail(placements).doors).toEqual([]);
+    expect(everythingTail(placements)).toEqual([]);
   });
 });

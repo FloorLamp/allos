@@ -16,9 +16,11 @@ import {
 } from "@/lib/portals";
 import {
   deliveredDocumentCountsByAccount,
+  listVisiblePortalRunHistory,
   listVisiblePendingIdentities,
   listVisiblePortalRegistry,
   listVisiblePortalRunReports,
+  portalRunOutcome,
 } from "@/lib/portal-visibility";
 import { portalChecklist, portalSetupStage } from "@/lib/portal-setup-stage";
 import { portalLoginStatus } from "@/lib/portal-status";
@@ -146,6 +148,7 @@ export default async function PatientPortalsPage() {
   // admin-only unclaimed clause as everything else on this page.
   const reports = listVisiblePortalRunReports(accessibleIds, isAdmin);
   const reportByAccount = new Map(reports.map((r) => [r.accountId, r]));
+  const runHistory = listVisiblePortalRunHistory(accessibleIds, isAdmin);
   // Sync requests may be raised by the same population that can act on the page at all.
   const canAct = isAdmin || writableProfiles.length > 0;
   // The expiry countdown reads the SESSION's day — a formatting context for "expires in
@@ -290,6 +293,9 @@ export default async function PatientPortalsPage() {
         viewerTimeZone
       ),
       openRequestLine: requestLines.get(a.id) ?? null,
+      history: runHistory
+        .filter((run) => run.accountId === a.id)
+        .map((run) => ({ ...run, outcome: portalRunOutcome(run) })),
     };
   });
 

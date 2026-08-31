@@ -121,23 +121,40 @@ test("the dashboard renders the fixed four-zone instrument cluster", async ({
   ).toBeVisible();
 });
 
-test("attention facts use write-capable atoms outside read-only Ahead", async ({
+// #3215's invariant, following the controls to the row (#4076). An attention fact is
+// write-capable everywhere except Ahead, which is read-only by construction — what
+// changed is that the write now sits in the row's own trailing slot instead of in a
+// card only that atom could draw. Both directions are asserted, because "no controls
+// in Ahead" alone is satisfied by a page where the controls vanished everywhere.
+test("attention facts carry their write outside read-only Ahead", async ({
   page,
 }) => {
   await page.goto("/");
+  await openDashboardAll(page);
   const facts = page.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:"]'
   );
   const count = await facts.count();
 
   expect(count).toBeGreaterThan(1);
+  let writeCapable = 0;
+  let inAhead = 0;
   for (let index = 0; index < count; index += 1) {
     const fact = facts.nth(index);
     const lane = await fact.getAttribute("data-lane");
-    await expect(fact.getByTestId("dashboard-attention-atom")).toHaveCount(
-      lane === "ahead" ? 0 : 1
-    );
+    const controls = await fact
+      .getByTestId("dashboard-row-controls")
+      .locator("button")
+      .count();
+    if (lane === "ahead") {
+      inAhead += 1;
+      expect(controls, "Ahead is read-only").toBe(0);
+    } else if (controls > 0) writeCapable += 1;
   }
+  // Both halves of the split are exercised on this fixture, so neither claim above
+  // passed by never meeting a case.
+  expect(writeCapable).toBeGreaterThan(0);
+  expect(inAhead).toBeGreaterThan(0);
 });
 
 test("clinical results render as dense individual facts", async ({ page }) => {
@@ -242,8 +259,12 @@ test("Show everything remembers its open state on this device", async ({
       )
       .toBe(true);
 
+    // The offer's decline posts from the ROW's control slot now (#4076) — the card
+    // that used to host it left `/` with every other card.
     await settledClick(page, page.getByTestId("stream-offer-decline-onboard"));
-    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+    await expect(page.getByTestId("stream-offer-decline-onboard")).toHaveCount(
+      0
+    );
   } finally {
     resetDashboardAllOffer();
     await page.context().close();
@@ -774,38 +795,69 @@ test("the Standing link covers its phone label and desktop plot without covering
   }
 });
 
-test("cards carry exactly one kind glyph and reading lines carry none", async ({
-  page,
-}) => {
+// NO ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076). The kind glyph existed because
+// "a line that earned a glyph would be halfway to a card"; with no cards left the
+// rule has no element, and the owner ruled that NO domain icon replaces it ("too many
+// icons"). Identity is carried by the label column and the block header instead.
+//
+// The absence is asserted with its POSITIVE CONTROL in the same test: a page whose
+// rows never rendered would satisfy "no icons in rows" on an empty screen, which is
+// the failure this shape exists to catch.
+test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   await page.goto("/");
+  await openDashboardAll(page);
   const main = page.getByRole("main");
-  const cards = main.locator("[data-testid^='now-strip-card-']");
-  const cardCount = await cards.count();
-  expect(cardCount).toBeGreaterThan(0);
-  for (let index = 0; index < cardCount; index += 1) {
-    const glyph = cards.nth(index).locator("[data-kind-glyph]").first(); // first-ok: the nth card's own glyph; its count is asserted on the next line
-    await expect(glyph).toBeAttached();
-    // ONE glyph for the card itself. A nested candidate's own markup carries none,
-    // so this count is the card's own.
-    expect(await cards.nth(index).locator("[data-kind-glyph]").count()).toBe(1);
-  }
-  const ahead = main.getByTestId("dashboard-ahead");
-  if ((await ahead.count()) > 0) {
-    const members = ahead.getByTestId("dashboard-candidate");
-    const memberCount = await members.count();
-    for (let index = 0; index < memberCount; index += 1) {
-      expect(
-        await members.nth(index).locator("[data-kind-glyph]").count()
-      ).toBe(1);
-    }
-  }
-  // And the boundary the glyphs exist to draw: a reading LINE never earns one.
-  expect(
-    await main
-      .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
-      .locator("[data-kind-glyph]")
-      .count()
-  ).toBe(0);
+  const rows = main.getByTestId("dashboard-candidate");
+  expect(await rows.count()).toBeGreaterThan(0);
+
+  // The retired glyph, by its own marker, across every zone.
+  expect(await main.locator("[data-kind-glyph]").count()).toBe(0);
+
+  // …AND NO DOMAIN ICON TOOK ITS PLACE, which is the half of the ruling a bare
+  // "[data-kind-glyph] is gone" cannot state: deleting one component and adding
+  // another satisfies it exactly.
+  //
+  // THE ELEMENT IS THE ROW'S IDENTITY CELL, and that scope is a finding rather than
+  // a convenience. Three marks the tree already ships render INSIDE a row's value or
+  // detail and are not identity glyphs: `TrendArrow` and `PillarToneBadge` on a
+  // healthspan pillar, and `MedicalValue`'s flag caret, which is the NON-COLOUR
+  // channel for a flagged result (#1220/#2315) — asserting them away would take an
+  // accessibility channel with them. The ruling's element is the glyph that named
+  // what KIND of thing a row is, and its cell is the label. So: nothing decorative
+  // beside the words that identify the row.
+  // ONE LOCATOR, USED BOTH WAYS. The claim and its control run through the SAME
+  // object below — `labels` — because a control that queries the forged element back
+  // through a different selector path proves only that *some* query can see it, not
+  // that this guard can. That is exactly how the sibling card sweep in
+  // dashboard-tail-grammar.spec.ts shipped blind: its assertion was scoped to `main`
+  // and then asked for `main .card`, matching a `<main>` inside a `<main>`, while its
+  // control queried the document and dutifully went red.
+  // IT REPORTS THE LABELS, NOT A COUNT. `Expected: 0, Received: 133` says a guard
+  // fired; it does not say which rows to open. The offending label's own text is the
+  // shortest route from a red to the markup that caused it, so the sweep returns
+  // texts and the assertion compares against an empty list.
+  const labels = rows.locator('[data-testid="standing-label"]');
+  const labelsWithIcons = () =>
+    labels.evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.querySelector("svg"))
+        .map((node) => (node.textContent ?? "").trim())
+    );
+
+  expect(await labelsWithIcons()).toEqual([]);
+
+  // …and this locator CAN see one: a glyph put into a label on purpose, counted back
+  // through `labels` itself, then returned to the shipped tree.
+  const anyLabel = labels.first(); // first-ok: the control plants a glyph in ONE label cell of the set the claim above counted in full
+  const forged = await anyLabel.evaluateHandle((label) => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.dataset.forged = "FORGED BY A SPEC on purpose — not a shipped glyph";
+    label.prepend(svg);
+    return svg;
+  });
+  expect(await labelsWithIcons()).toHaveLength(1);
+  await forged.evaluate((node) => (node as Element).remove());
+  expect(await labelsWithIcons()).toEqual([]);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({
@@ -918,29 +970,6 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
         .getByTestId("standing-sparkline")
         .count()
     ).toBe(0);
-  } finally {
-    await page.context().close();
-  }
-});
-
-test("the sleep rows carry the profile's usual band as their hover sentence", async ({
-  browser,
-}) => {
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_DAILY,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/");
-    const bed = page.locator(
-      '[data-testid="dashboard-candidate"][data-candidate-id^="sleep.bed-time:"]'
-    );
-    if ((await bed.count()) === 0) return; // the classifier declines below its gate
-    const bedLink = bed.getByRole("link").first(); // first-ok: the E2E_LOGIN_DAILY fixture's sleep.bed-time row, one link
-    const title = await bedLink.getAttribute("title");
-    // Either the band, or silence. Never a half-sentence, and never a derived number
-    // the classifier did not produce.
-    if (title != null) expect(title).toMatch(/^Usual .+ – .+$/);
   } finally {
     await page.context().close();
   }

@@ -15,6 +15,7 @@ import OverflowMenu, {
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
+import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import {
   addAccountAction,
   addPortalAction,
@@ -81,6 +82,7 @@ export interface AccountView {
   // `segments` carry the sentence in pieces because a DELIVERY row links its document
   // count into Data → Review (#2914) — the module still owns every word.
   status: PortalLoginStatus;
+  history: { id: number; at: string; outcome: string }[];
   // The open sync request's line, formatted server-side by the shared formatter
   // (lib/sync-requests.ts) — the card, the Upcoming item and the digest quote one text.
   openRequestLine: string | null;
@@ -841,6 +843,24 @@ export default function PortalsSurface({
           <p className="text-xs text-slate-500 dark:text-slate-400">
             No patients yet — a run reports who this login covers.
           </p>
+        )}
+        {account.history.length > 0 && (
+          <div className="border-t border-black/5 pt-2 dark:border-white/5">
+            <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              Run history · kept 90 days; latest run stays visible
+            </p>
+            <ol className="mt-1 space-y-1" data-testid="portal-run-history">
+              {account.history.map((run) => (
+                <li
+                  key={run.id}
+                  className="flex flex-wrap justify-between gap-x-3 text-xs text-slate-500 dark:text-slate-400"
+                >
+                  <span data-testid="portal-run-outcome">{run.outcome}</span>
+                  <SyncTimestamp value={run.at} relativeOnly />
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
         {prebind(account)}
         <RowNote id={groupKey} note={note} />

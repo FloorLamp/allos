@@ -1,4 +1,4 @@
-import { cloneElement, type ReactElement, type ReactNode } from "react";
+import { cloneElement, type ReactElement } from "react";
 import { redirect } from "next/navigation";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
@@ -22,7 +22,6 @@ import {
   getNapHistory,
   typicalWakeTime,
   typicalBedTime,
-  getPrnIntakeItemsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
   getSessionRecap,
@@ -43,10 +42,12 @@ import {
 } from "@/lib/life-stage";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import {
+  canAcknowledgeRest,
   recommendCoaching,
   recentCardioPRs,
   recentPRs,
   strengthAppropriateCoachingInput,
+  type Recommendation,
 } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
@@ -57,7 +58,12 @@ import {
   isStrengthProgrammingScope,
 } from "@/lib/frequency-targets";
 import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
-import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
+import {
+  activeByKey,
+  activeFindings,
+  coachingDedupeKey,
+  type Finding,
+} from "@/lib/findings";
 import { routineOrder } from "@/lib/dismissal-fatigue";
 import { requireSession } from "@/lib/auth";
 import { requireScope, type ProfileScope } from "@/lib/scope";
@@ -91,7 +97,9 @@ import { ALL_ROWS } from "@/lib/trends";
 import {
   formatClockMinutes,
   formatLongDate,
+  formatRelativeTime,
   daysRemainingLabel,
+  type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import { RECENT_LAB_STALE_LABEL, recentLabHighlights } from "@/lib/recent-labs";
 import {
@@ -147,20 +155,37 @@ import {
   onboardingNeedsSetup,
 } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
-import DashboardAttentionAtom from "@/components/dashboard/DashboardAttentionAtom";
-import PreventiveReviewAtom from "@/components/dashboard/PreventiveReviewAtom";
 import PageContainer from "@/components/PageContainer";
 import DashboardPlacementCanvas from "@/components/dashboard/DashboardPlacementCanvas";
-import type { DashboardAheadPresentation } from "@/components/dashboard/DashboardPlacementCanvas";
 import IllnessNowGroup, {
   type IllnessContextCockpit,
 } from "@/components/dashboard/IllnessNowGroup";
 import type { DashboardStandingPresentation } from "@/components/dashboard/DashboardStandingCluster";
-import DashboardAtomCard from "@/components/dashboard/DashboardAtomCard";
-import RecentlyResolvedReopen, {
+import RecentlyResolvedReopenControls, {
   type RecentlyResolvedItem,
-} from "@/components/dashboard/RecentlyResolvedReopen";
-import StreamLifecycleOffers from "@/components/integrations/StreamLifecycleOffers";
+} from "@/components/dashboard/RecentlyResolvedReopenControls";
+import StreamLifecycleOfferControls from "@/components/integrations/StreamLifecycleOfferControls";
+import Button from "@/components/Button";
+import DoseConfirmButton from "@/components/DoseConfirmButton";
+import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
+import FollowUpResolveControls from "@/components/FollowUpResolveControls";
+import FindingDismissButton from "@/components/FindingDismissButton";
+import PreventiveReviewControls from "@/components/PreventiveReviewControls";
+import { preventiveReviewQuestion } from "@/lib/preventive-review";
+import {
+  confirmPreventiveRecord,
+  dismissPreventiveRecord,
+  resolveFollowUp,
+} from "./upcoming/actions";
+import {
+  acceptStreamReminder,
+  declineStreamReminder,
+  dismissStreamReminderOffer,
+  keepStreamReminder,
+} from "./stream-lifecycle-actions";
+import { dismissOnboardingChecklist } from "./onboarding/actions";
+import { CHECKLIST_TASKS } from "@/lib/onboarding-checklist";
+import { remainingOnboardingChecklistSuggestions } from "@/lib/onboarding";
 import {
   episodeStatesForProfiles,
   openEpisodeRowsForProfiles,
@@ -180,38 +205,34 @@ import {
 } from "@/lib/dashboard-illness-cockpit";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { householdFanoutWithActing } from "@/lib/household-fanout";
-import {
-  GoalProgressAtom,
-  HabitProgressAtom,
-} from "@/components/dashboard/ProgressAtoms";
-import CoachingRecommendationAtom from "@/components/dashboard/CoachingRecommendationAtom";
-import CoachingObservations from "@/components/dashboard/CoachingObservations";
-import DataQualityAtom from "@/components/dashboard/DataQualityAtom";
-import RecentLabReadout, {
-  type RecentLabRow,
-} from "@/components/dashboard/RecentLabReadout";
-import NextAppointmentAtom, {
-  type NextAppointment,
-} from "@/components/dashboard/NextAppointmentAtom";
+import type { RecentLabRow } from "@/lib/recent-labs";
 import {
   PillarToneBadge,
   TrendArrow,
 } from "@/components/dashboard/HealthspanPillarPresentation";
-import SleepWaitingAtom from "@/components/dashboard/SleepWaitingAtom";
-import NapAtom from "@/components/dashboard/NapAtom";
+import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import {
   formatHm,
   formatSleepWindow,
   formatUsualSleepBand,
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
-import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
-import { UsualRoutineAtom } from "@/components/dashboard/NutritionAtoms";
+import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
-import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import { dismissRecentlyResolved, saveIllnessNowState } from "./actions";
+import {
+  acknowledgeRest,
+  dismissAttention,
+  dismissCoachingObservation,
+  dismissDataQualityGap,
+  dismissRecentlyResolved,
+  markAttentionDose,
+  saveIllnessNowState,
+  snoozeAttention,
+  snoozeCoaching,
+  undoAttentionDose,
+} from "./actions";
 import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
@@ -236,13 +257,101 @@ import {
   prCardioDismissalKey,
   prStrengthDismissalKey,
 } from "@/lib/dismissal-keys";
-import { upcomingDueText } from "@/lib/upcoming";
+import {
+  isItemSuppressibleFlag,
+  upcomingDueText,
+  type UpcomingItem,
+} from "@/lib/upcoming";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
 export const dynamic = "force-dynamic";
+
+// The soonest scheduled visit, flattened by the page (#171/#1215). `whenLabel`
+// carries date AND clock time through the login's display prefs — a 9am and a 4pm
+// visit must be distinguishable, so the time is half the answer.
+interface NextAppointment {
+  title: string;
+  whenLabel: string;
+  dueText: string;
+  detail: string | null;
+  href: AppRoute;
+}
+
+// AN ATTENTION ROW SAYS WHAT, THEN WHEN (#4076). Outside Ahead the item's own detail
+// is the content a person came to read — the biomarker retest sentence, "Vitamin D3 ·
+// 2000 IU" — and the due text seconds it. The detail keeps its own testid because the
+// machine-date census ledger (e2e/machine-date-census.spec.ts) tracks
+// `attention-item-detail` on `/` as a known offender, and a shrink-only ledger reads a
+// silent deletion as a failure — correctly.
+function attentionRowDetail(
+  item: UpcomingItem,
+  today: string,
+  formatPrefs: DisplayFormatPrefs
+) {
+  const due = upcomingDueText(item, today, formatPrefs);
+  if (!item.detail) return due;
+  return (
+    <>
+      <span data-testid="attention-item-detail">{item.detail}</span>
+      {due ? ` · ${due}` : null}
+    </>
+  );
+}
+
+// Every sentence the coaching card printed, in the row's facts column. `also` is the
+// #1148 rule: concurrent under-recovery signals are shown BEFORE a snooze can suppress
+// them, so a dismissal is informed and cannot silently bury a signal never seen.
+function coachingRowDetail(rec: Recommendation) {
+  const rest = [
+    rec.target ? `Suggested set: ${rec.target}` : null,
+    ...(rec.notes ?? []),
+  ].filter(Boolean);
+  return (
+    <>
+      {rec.detail}
+      {rec.also?.length ? (
+        <>
+          {" · "}
+          <span data-testid="coaching-also">
+            <span className="font-medium">Also:</span> {rec.also.join("; ")}.
+          </span>
+        </>
+      ) : null}
+      {rest.length > 0 ? ` · ${rest.join(" · ")}` : null}
+    </>
+  );
+}
+
+// A FINDING AS A ROW, WITHOUT LOSING WHAT IT SAYS (#4076). The card carried title,
+// detail, EVIDENCE and a CTA beside its dismiss; the row keeps all four — sentence and
+// evidence in the facts column, the CTA as the row's door — and hosts the same
+// dedupeKey-posting dismiss in the trailing slot. Reusing Ahead's presentation here
+// would have deleted the sentence, which is the trap this issue recorded twice.
+function findingRow(
+  finding: Finding,
+  dismissAction: (formData: FormData) => void | Promise<void>,
+  momentTitle: string
+): DashboardStandingPresentation {
+  return {
+    label: finding.title,
+    detail: [finding.detail, finding.evidence].filter(Boolean).join(" · "),
+    href: finding.actionHref,
+    actionLabel: finding.actionHref
+      ? (finding.actionLabel ?? "View")
+      : undefined,
+    moment: { title: momentTitle },
+    control: (
+      <FindingDismissButton
+        finding={finding}
+        dismissAction={dismissAction}
+        dismissTestid="finding-dismiss"
+      />
+    ),
+  };
+}
 
 export default async function Dashboard() {
   return withSettingReadCache(async () => {
@@ -409,7 +518,6 @@ async function renderDashboard(
         includeEmpty: true,
       })
     : [];
-  const activeSick = activeEpisodes.length > 0;
   const otherSick = illnessProfiles.flatMap((p) =>
     openStateByProfile.has(p.id)
       ? openEpisodesFromState(openStateByProfile.get(p.id)!, {
@@ -1030,14 +1138,6 @@ async function renderDashboard(
       ? { day: cycleControl.day, phase: cycleControl.phase }
       : null;
 
-  // symptom-log intake branch (#1221/#3174): the folded PRN quick-log. Shown ONLY on a WELL day
-  // with active `may` items — when illness is active its Now cockpit already embeds
-  // the SAME logger (so we omit the branch to avoid the duplicate the old availability
-  // gate hand-managed), and a profile with no active PRN items gets no branch at all.
-  const checkinPrnItems = !activeSick
-    ? getPrnIntakeItemsForQuickLog(profile.id)
-    : [];
-
   // Ongoing N-of-1 protocols reuse the same detail-page computations (comparison,
   // adherence, outcome, and practice) before each fact becomes its own candidate.
   const activeProtocols = adultContentApplicable
@@ -1068,33 +1168,19 @@ async function renderDashboard(
 
   const profileSubject = { scope: "profile" as const, profileId: profile.id };
   const candidates: DashboardCandidate[] = [];
-  const candidateNodes = new Map<string, ReactNode>();
-  const standingPresentations = new Map<
-    string,
-    DashboardStandingPresentation
-  >();
-  const aheadPresentations = new Map<string, DashboardAheadPresentation>();
-  // A candidate declares a card node, a row presentation, or both. Which one the
-  // canvas draws is the LANE's business (#3365): Standing and the tail's Read /
-  // Understand / Setup groups render the row, everywhere else renders the node. A
-  // fact that only ever reports declares only a row, and the canvas fails loudly for
-  // a candidate that placed with neither.
+  const presentations = new Map<string, DashboardStandingPresentation>();
+  const aheadPresentations = new Map<string, DashboardStandingPresentation>();
+  // ONE DECLARATION PER CANDIDATE (#4076): its row. Cards left `/` entirely, so
+  // there is no second node to declare and no lane left that would render one — what
+  // a fact EARNS goes in the row's trailing slot, its write included. A candidate
+  // that places with no row at all is a hard failure in the canvas, EXCEPT for the
+  // nav duplicates the tail deliberately drops (they own no content of their own).
   const add = (
     candidate: DashboardCandidate,
-    node: ReactNode | undefined,
-    standingPresentation?: DashboardStandingPresentation
+    presentation?: DashboardStandingPresentation
   ) => {
     candidates.push(candidate);
-    if (node !== undefined) candidateNodes.set(candidate.candidateId, node);
-    if (standingPresentation)
-      standingPresentations.set(candidate.candidateId, standingPresentation);
-  };
-  const addStandingOnly = (
-    candidate: DashboardCandidate,
-    presentation: DashboardStandingPresentation
-  ) => {
-    candidates.push(candidate);
-    standingPresentations.set(candidate.candidateId, presentation);
+    if (presentation) presentations.set(candidate.candidateId, presentation);
   };
   let sourceOrder = 0;
 
@@ -1109,28 +1195,56 @@ async function renderDashboard(
       (entry) =>
         dashboardAttentionCandidateId(entry.key) === candidate.candidateId
     )!;
+    // AHEAD SAYS WHEN (#4076). A schedule's sentence is its due text; the row below
+    // says WHAT, because outside Ahead the item's own detail is the content a person
+    // came to read — the biomarker retest sentence, "Vitamin D3 · 2000 IU".
     aheadPresentations.set(candidate.candidateId, {
       label: item.title,
       detail: upcomingDueText(item, on, formatPrefs),
       href: item.href,
     });
-    // NO ROW, and the reason is the same one that keeps the coaching card a card
-    // (#3365): this atom is WRITE-CAPABLE. A non-actionable attention fact is still
-    // suppressible (isItemSuppressibleFlag), and this is where its snooze/dismiss
-    // lives — #3215 pins "attention facts use write-capable atoms outside read-only
-    // Ahead" as an invariant, and an invariant outranks a presentation rule.
-    // A row would also silently DROP `item.detail`: Ahead's presentation states when
-    // a thing is due, which is the right sentence for a schedule and the wrong one
-    // for the tail, where the item's own detail is the content.
-    add(
-      candidate,
-      <DashboardAttentionAtom
-        item={item}
-        today={on}
-        formatPrefs={formatPrefs}
-        canWrite={canWrite}
-      />
-    );
+    // The write follows the control to the row (#4076). A non-actionable attention
+    // fact is still suppressible (isItemSuppressibleFlag) and this is the only mount
+    // of its snooze/dismiss, so the row hosts it in the trailing slot rather than the
+    // card that used to be the only shape that could.
+    add(candidate, {
+      label: item.title,
+      detail: attentionRowDetail(item, on, formatPrefs),
+      href: item.href,
+      control: canWrite ? (
+        <>
+          {item.doseId != null && (
+            <DoseConfirmButton
+              action={markAttentionDose}
+              undoAction={undoAttentionDose}
+              fields={{ dose_id: item.doseId }}
+              testid="attention-mark-taken"
+            >
+              Mark taken
+            </DoseConfirmButton>
+          )}
+          {item.followUpResolve != null && (
+            <FollowUpResolveControls
+              action={async (fd) => {
+                "use server";
+                await resolveFollowUp(fd);
+              }}
+              carePlanItemId={item.followUpResolve.carePlanItemId}
+              resolvingRecordId={item.followUpResolve.resolvingRecordId}
+            />
+          )}
+          {isItemSuppressibleFlag(item) && (
+            <SnoozeDismissMenu
+              itemName={item.title}
+              signalKey={item.key}
+              snoozeOnly={item.carePersistent === true}
+              snoozeAction={snoozeAttention}
+              dismissAction={dismissAttention}
+            />
+          )}
+        </>
+      ) : undefined,
+    });
   }
   sourceOrder += attentionItems.length;
 
@@ -1142,19 +1256,34 @@ async function renderDashboard(
   // the Upcoming row shows beside the due item, and never a send.
   for (const item of attentionItems) {
     for (const offer of item.preventiveReview ?? []) {
-      add(
-        preventiveReviewCandidate(profileSubject, offer, sourceOrder++),
-        <PreventiveReviewAtom
-          title={item.title}
-          recordId={offer.recordId}
-          ruleKey={offer.ruleKey}
-          recordName={offer.recordName}
-          recordDate={offer.recordDate}
-          today={on}
-          profileId={profile.id}
-          canWrite={canWrite}
-        />
-      );
+      add(preventiveReviewCandidate(profileSubject, offer, sourceOrder++), {
+        label: item.title,
+        detail: (
+          <>
+            {preventiveReviewQuestion(offer.ruleKey)}{" "}
+            <span className="font-medium">{offer.recordName}</span>
+          </>
+        ),
+        control: canWrite ? (
+          <PreventiveReviewControls
+            confirmAction={async (fd) => {
+              "use server";
+              return confirmPreventiveRecord(fd);
+            }}
+            dismissAction={async (fd) => {
+              "use server";
+              return dismissPreventiveRecord(fd);
+            }}
+            recordId={offer.recordId}
+            ruleKey={offer.ruleKey}
+            recordName={offer.recordName}
+            recordDate={offer.recordDate}
+            question={preventiveReviewQuestion(offer.ruleKey)}
+            today={on}
+            profileId={profile.id}
+          />
+        ) : undefined,
+      });
     }
   }
 
@@ -1164,11 +1293,11 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         workoutPresence.activityId
       ),
-      <DashboardAtomCard
-        title="Workout in progress"
-        href="/training"
-        actionLabel="Continue"
-      />
+      {
+        label: "Workout in progress",
+        href: "/training",
+        actionLabel: "Continue",
+      }
     );
   }
 
@@ -1198,12 +1327,12 @@ async function renderDashboard(
         key,
         { ...episodeGroup, memberRole: "state", memberOrder: 0 }
       ),
-      <DashboardAtomCard
-        title={`${cockpit.displayName} is sick`}
-        value={cockpit.status.dayLabel}
-        detail={stateDetail}
-        href={href}
-      />
+      {
+        label: `${cockpit.displayName} is sick`,
+        value: cockpit.status.dayLabel,
+        detail: stateDetail,
+        href,
+      }
     );
     if (cockpit.status.temperature) {
       add(
@@ -1217,12 +1346,6 @@ async function renderDashboard(
           cockpit.status.temperature.id,
           { ...episodeGroup, memberRole: "reading", memberOrder: 0 }
         ),
-        <DashboardAtomCard
-          title={`${cockpit.displayName}'s latest temperature`}
-          value={cockpit.status.temperature.value}
-          detail={cockpit.status.temperature.when}
-          href={href}
-        />,
         {
           label: `${cockpit.displayName}'s latest temperature`,
           value: cockpit.status.temperature.value,
@@ -1244,12 +1367,6 @@ async function renderDashboard(
           medication.id,
           { ...episodeGroup, memberRole: "reading", memberOrder: 1 }
         ),
-        <DashboardAtomCard
-          title={`${cockpit.displayName}'s latest illness medicine`}
-          value={[medication.name, medication.dose].filter(Boolean).join(" · ")}
-          detail={medication.when}
-          href={href}
-        />,
         {
           label: `${cockpit.displayName}'s latest illness medicine`,
           value: [medication.name, medication.dose].filter(Boolean).join(" · "),
@@ -1271,10 +1388,18 @@ async function renderDashboard(
         },
         key
       ),
-      <RecentlyResolvedReopen
-        items={[item]}
-        dismissAction={dismissRecentlyResolved}
-      />
+      {
+        label: "Recently resolved",
+        value: item.situation,
+        detail: item.crossProfile ? item.displayName : undefined,
+        href: item.episodeHref,
+        control: (
+          <RecentlyResolvedReopenControls
+            item={item}
+            dismissAction={dismissRecentlyResolved}
+          />
+        ),
+      }
     );
   }
   if (promoteHouseholdHistory) {
@@ -1296,11 +1421,28 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         offer.key
       ),
-      <StreamLifecycleOffers
-        profileId={profile.id}
-        canWrite={access === "write"}
-        offers={[offer]}
-      />
+      {
+        label: offer.title,
+        detail: offer.body,
+        control: (
+          <StreamLifecycleOfferControls
+            offer={offer}
+            // The accept/decline PAIR is chosen by the offer's kind, once, here — so
+            // a row can never wire "Keep them ready" to the action that turns the
+            // reminder off.
+            acceptAction={
+              offer.kind === "onboard"
+                ? acceptStreamReminder
+                : declineStreamReminder
+            }
+            declineAction={
+              offer.kind === "onboard"
+                ? dismissStreamReminderOffer
+                : keepStreamReminder
+            }
+          />
+        ),
+      }
     );
   }
 
@@ -1322,11 +1464,6 @@ async function renderDashboard(
           key,
           workoutPresence?.sinceMin ?? -1
         ),
-        <DashboardAtomCard
-          title="Session complete"
-          value={value}
-          href="/training"
-        />,
         {
           value,
           href: "/training",
@@ -1356,12 +1493,6 @@ async function renderDashboard(
         on,
         0
       ),
-      <DashboardAtomCard
-        title={loadContextLabel(record.exercise, record.equipment)}
-        value={strengthValue}
-        detail="New personal record"
-        href="/training?tab=analyze"
-      />,
       {
         label: loadContextLabel(record.exercise, record.equipment),
         value: strengthValue,
@@ -1385,12 +1516,6 @@ async function renderDashboard(
         on,
         0
       ),
-      <DashboardAtomCard
-        title={record.activity}
-        value={value}
-        detail="New personal record"
-        href="/training?tab=analyze"
-      />,
       {
         label: record.activity,
         value,
@@ -1423,12 +1548,6 @@ async function renderDashboard(
           { subject: profileSubject, sourceOrder: sourceOrder++ },
           step
         ),
-        <DashboardAtomCard
-          title={stepLabels[step - 1]}
-          detail={`Setup step ${step} of ${ONBOARDING_STEP_COUNT}`}
-          href={`/onboarding?step=${step}` as AppRoute}
-          actionLabel="Continue"
-        />,
         {
           label: stepLabels[step - 1],
           detail: `Setup step ${step} of ${ONBOARDING_STEP_COUNT}`,
@@ -1442,11 +1561,6 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "wizard"
       ),
-      <DashboardAtomCard
-        title="Profile setup progress"
-        value={`${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`}
-        href="/onboarding"
-      />,
       {
         label: "Profile setup progress",
         value: `${firstRemainingStep - 1} of ${ONBOARDING_STEP_COUNT} steps complete`,
@@ -1455,17 +1569,32 @@ async function renderDashboard(
     );
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
+    const onboardingChecklistSteps = remainingOnboardingChecklistSuggestions(
+      onboardingChecklist.focuses,
+      onboardingChecklistCompletion
+    )
+      .slice(0, 4)
+      .map((suggestion) => CHECKLIST_TASKS[suggestion]);
     add(
       setupCandidates.onboardingProgress(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "checklist"
       ),
-      // NO ROW: the checklist is N suggestions with their own doors and a dismiss,
-      // and one summary row would be a count where the list is the point.
-      <OnboardingChecklist
-        focuses={onboardingChecklist.focuses}
-        completion={onboardingChecklistCompletion}
-      />
+      {
+        label: "A few useful next steps",
+        // The suggestions themselves, named in the facts column: one row cannot hold
+        // N doors, and a bare count would be the thing this list exists to avoid.
+        // The door goes to the first remaining step; the dismiss stays on the row.
+        detail: onboardingChecklistSteps.map((step) => step.label).join(" · "),
+        href: onboardingChecklistSteps[0]?.href,
+        control: (
+          <form action={dismissOnboardingChecklist}>
+            <Button type="submit" pendingLabel="…">
+              Hide
+            </Button>
+          </form>
+        ),
+      }
     );
   }
 
@@ -1481,21 +1610,16 @@ async function renderDashboard(
       : localTimeWindow(nowSlots.Evening, 1439),
     todayMood == null
   );
-  add(
-    moodCheckinCandidate,
-    <DashboardQuickEntryAction
-      title={todayMood ? "Update today's mood" : "Log today's mood"}
-      detail={
-        isMoodCheckinPaused({
-          enabled: getProfileMoodCheckin(profile.id),
-          ignoredCount: getMoodCheckinIgnored(profile.id),
-        })
-          ? "Daily reminders are paused."
-          : undefined
-      }
-      form="mood"
-    />
-  );
+  add(moodCheckinCandidate, {
+    label: todayMood ? "Update today's mood" : "Log today's mood",
+    detail: isMoodCheckinPaused({
+      enabled: getProfileMoodCheckin(profile.id),
+      ignoredCount: getMoodCheckinIgnored(profile.id),
+    })
+      ? "Daily reminders are paused."
+      : undefined,
+    control: <DashboardQuickEntryAction form="mood" />,
+  });
   aheadPresentations.set(moodCheckinCandidate.candidateId, {
     label: todayMood ? "Update today's mood" : "Log today's mood",
     ...(nowSlots.Evening == null
@@ -1530,7 +1654,6 @@ async function renderDashboard(
           key,
           on
         ),
-        <DashboardAtomCard title={title} value={value} href="/trends#body" />,
         {
           label: title,
           value,
@@ -1542,29 +1665,10 @@ async function renderDashboard(
     sourceOrder += moodReadings.length;
   }
 
-  checkinPrnItems.forEach((med, index) =>
-    add(
-      dailyCandidates.prn(
-        {
-          subject: profileSubject,
-          applicable: canWrite && !activeSick,
-          sourceOrder: sourceOrder + index,
-        },
-        med.id
-      ),
-      <DashboardAtomCard title={`Log ${med.displayName}`} testId="prn-atom">
-        <QuickLogPrnContent
-          meds={[med]}
-          tz={timezone}
-          timeFormat={formatPrefs.timeFormat}
-          title={null}
-          compact
-          showPageLink={false}
-        />
-      </DashboardAtomCard>
-    )
-  );
-  sourceOrder += checkinPrnItems.length;
+  // PRN DOSE CONTROLS LEFT THE TAIL (#4076 ruling 4, the #4083 pattern verbatim).
+  // The quick logger's Consume segment (`log-dose`, lib/log-sheet.ts) already owns
+  // doses, so the capability follows the sheet and the per-supplement tail rows retire
+  // with their controls rather than being restated as a row that cannot host them.
 
   coachingRecs.forEach((rec, index) =>
     add(
@@ -1578,10 +1682,52 @@ async function renderDashboard(
         rec.id,
         `coaching.${coachingDedupeKey(rec.id)}`
       ),
-      // NO ROW. This card is the ONLY mount of `snoozeCoaching` and
-      // `acknowledgeRest`, so an index row here would delete two writes rather
-      // than restate them; it stays a card until those live somewhere else.
-      <CoachingRecommendationAtom recommendation={rec} />
+      // BOTH WRITES FOLLOW THE CONTROLS TO THE ROW (#4076). This is still the only
+      // mount of `snoozeCoaching` and `acknowledgeRest`; what changed is that a row
+      // can now host them. Every sentence the card printed is kept, in the facts
+      // column — the recommendation, its concurrent firing reasons (#1148: shown
+      // BEFORE a snooze can suppress them), its suggested set and its injury notes.
+      {
+        label: "Coaching",
+        value: rec.title,
+        detail: coachingRowDetail(rec),
+        href: rec.actionHref ?? "/training",
+        actionLabel: rec.actionHref ? (rec.actionLabel ?? "Open") : undefined,
+        control: (
+          <>
+            {canAcknowledgeRest(rec) && (
+              <form action={acknowledgeRest}>
+                <input
+                  type="hidden"
+                  name="reason_ids"
+                  value={(rec.firingReasonIds ?? []).join(",")}
+                />
+                <Button
+                  type="submit"
+                  pendingLabel="…"
+                  data-testid="coaching-training-anyway"
+                >
+                  Training anyway
+                </Button>
+              </form>
+            )}
+            <form action={snoozeCoaching}>
+              <input
+                type="hidden"
+                name="dedupe_key"
+                value={coachingDedupeKey(rec.id)}
+              />
+              <Button
+                type="submit"
+                pendingLabel="…"
+                data-testid="coaching-snooze"
+              >
+                Snooze
+              </Button>
+            </form>
+          </>
+        ),
+      }
     )
   );
   sourceOrder += coachingRecs.length;
@@ -1594,11 +1740,6 @@ async function renderDashboard(
         goal.id,
         outcomeGoalProgressChanged(goal, goalProgress.get(goal.id), on)
       ),
-      <GoalProgressAtom
-        goal={goal}
-        progress={goalProgress.get(goal.id)}
-        today={on}
-      />,
       {
         label: goal.title,
         value: pct == null ? "In progress" : `${pct}%`,
@@ -1637,7 +1778,6 @@ async function renderDashboard(
           !behind,
         behind
       ),
-      <HabitProgressAtom progress={progress} />,
       {
         label: frequencyScopeLabel(
           progress.target.scope_kind,
@@ -1686,16 +1826,15 @@ async function renderDashboard(
         behind && momentOpen,
         momentOpen
       ),
-      <DashboardAtomCard
-        title={`Log ${progress.target.scope_value}`}
-        detail={`${progress.count} of ${progress.per_week} this week`}
-        href={
+      {
+        label: `Log ${progress.target.scope_value}`,
+        detail: `${progress.count} of ${progress.per_week} this week`,
+        href:
           dashboardHabitDomain(progress.target.scope_kind) === "food"
             ? "/nutrition"
-            : "/training"
-        }
-        actionLabel="Log"
-      />
+            : "/training",
+        actionLabel: "Log",
+      }
     );
   });
   sourceOrder += orderedFreqTargets.length * 2;
@@ -1711,11 +1850,11 @@ async function renderDashboard(
         "state",
         protocol.id
       ),
-      <DashboardAtomCard
-        title={protocol.name}
-        value={`${protocol.daysElapsed} days`}
-        href={protocol.href}
-      />
+      {
+        label: protocol.name,
+        value: `${protocol.daysElapsed} days`,
+        href: protocol.href,
+      }
     );
     if (protocol.adherence)
       add(
@@ -1727,12 +1866,6 @@ async function renderDashboard(
           "adherence",
           protocol.id
         ),
-        <DashboardAtomCard
-          title={`${protocol.name} adherence`}
-          value={protocol.adherence.value}
-          detail={protocol.adherence.detail}
-          href={protocol.href}
-        />,
         {
           label: "Adherence",
           value: protocol.adherence.value,
@@ -1751,11 +1884,6 @@ async function renderDashboard(
           "outcome",
           protocol.id
         ),
-        <DashboardAtomCard
-          title={protocol.primaryOutcome.label}
-          value={protocol.primaryOutcome.framing}
-          href={protocol.href}
-        />,
         {
           label: protocol.primaryOutcome.label,
           value: protocol.primaryOutcome.framing,
@@ -1775,11 +1903,11 @@ async function renderDashboard(
           on,
           protocol.practiceUsuallyToday
         ),
-        <DashboardAtomCard
-          title={`Log ${protocol.practiceName}`}
-          href={protocol.href}
-          actionLabel="Open"
-        />
+        {
+          label: `Log ${protocol.practiceName}`,
+          href: protocol.href,
+          actionLabel: "Open",
+        }
       );
   });
   sourceOrder += activeProtocols.length * 4;
@@ -1790,9 +1918,14 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "data-quality.finding",
         finding.dedupeKey,
-        `finding.${finding.dedupeKey}`
+        `finding.${finding.dedupeKey}`,
+        // THE SHARED groupKey (#4076 part 2). Five findings each carrying a unique
+        // key gave the moment-block fold nothing to fold on, so five rows each
+        // headed "Data quality" scrolled past saying the same words. It is only
+        // REACHABLE now: while these rendered cards the fold was never consulted.
+        "data-quality.finding"
       ),
-      <DataQualityAtom finding={finding} />
+      findingRow(finding, dismissDataQualityGap, "Data quality")
     );
   }
 
@@ -1818,11 +1951,9 @@ async function renderDashboard(
           : "manual",
         mealTimeWindows(nowMealAnchors)
       ),
-      // ROW ONLY (#3365). This reading can reach no card lane — it carries no rank
-      // reason, so `nowScore` is null — and the row below renders every part of
-      // #3257's copy: the figure with its floor "+", the band, the trailing average
-      // in "g", and the derivation behind the disclosure control.
-      undefined,
+      // The row renders every part of #3257's copy: the figure with its floor "+",
+      // the band, the trailing average in "g", and the derivation behind the
+      // disclosure control.
       {
         value: proteinLine.amount,
         detail: [
@@ -1839,7 +1970,7 @@ async function renderDashboard(
       }
     );
   } else if (foodLoggingApplicable)
-    addStandingOnly(
+    add(
       dailyCandidates.nutritionBootstrap({
         subject: profileSubject,
         applicable: canWrite,
@@ -1864,11 +1995,21 @@ async function renderDashboard(
         on,
         routineTiming
       ),
-      <UsualRoutineAtom {...routineControl} />
+      {
+        // A CONTROL-ONLY ROW, and the one on the page. The composed-morning offer's
+        // control IS its own label: it names EVERY serving and EVERY dose the tap
+        // will write, because a label is a promise the write core re-derives and
+        // intersects (#2458) — and #3736 already ruled that a control naming doses
+        // cannot compress into a pill. Giving the row its own label as well would
+        // print the same promise twice, which is the defect this grammar replaced.
+        // The control is unchanged from the quick-log sheet's mount, whose reserved
+        // height pins it (LOG_SHEET_CONTEXT_RESERVE_PX).
+        control: <UsualRoutineControl {...routineControl} />,
+      }
     );
 
   if (stepsSummary)
-    addStandingOnly(
+    add(
       dailyCandidates.steps(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         on
@@ -1913,7 +2054,7 @@ async function renderDashboard(
       }
     );
   else
-    addStandingOnly(
+    add(
       dailyCandidates.stepsBootstrap({
         subject: profileSubject,
         applicable: canWrite,
@@ -1952,7 +2093,7 @@ async function renderDashboard(
       })
     : null;
   if (vitalsModel?.bp?.dormant)
-    addStandingOnly(
+    add(
       dailyCandidates.vitalDormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "blood-pressure",
@@ -1972,7 +2113,7 @@ async function renderDashboard(
       }
     );
   else if (vitalsModel?.bp)
-    addStandingOnly(
+    add(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "blood-pressure",
@@ -2007,7 +2148,7 @@ async function renderDashboard(
       }
     );
   if (vitalsModel?.restingHr?.dormant)
-    addStandingOnly(
+    add(
       dailyCandidates.vitalDormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "resting-heart-rate",
@@ -2027,7 +2168,7 @@ async function renderDashboard(
       }
     );
   else if (vitalsModel?.restingHr)
-    addStandingOnly(
+    add(
       dailyCandidates.vital(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "resting-heart-rate",
@@ -2076,7 +2217,7 @@ async function renderDashboard(
       }
     );
   if (cycleModel)
-    addStandingOnly(
+    add(
       dailyCandidates.cyclePhase(
         {
           subject: profileSubject,
@@ -2102,7 +2243,6 @@ async function renderDashboard(
         },
         nextAppt.href
       ),
-      <NextAppointmentAtom appointment={nextAppt} />,
       {
         label: nextAppt.title,
         value: nextAppt.whenLabel,
@@ -2126,7 +2266,6 @@ async function renderDashboard(
         row.name,
         labPromotions.get(row.name)
       ),
-      <RecentLabReadout row={row} today={on} />,
       {
         label: row.name,
         value: (
@@ -2160,7 +2299,6 @@ async function renderDashboard(
         applicable: canWrite,
         sourceOrder: sourceOrder++,
       }),
-      undefined,
       {
         label: "Clinical results",
         href: "/data",
@@ -2177,7 +2315,7 @@ async function renderDashboard(
       domain: "weight",
     }) === "dormant";
   if (lastWeightRecord == null)
-    addStandingOnly(
+    add(
       progressCandidates.weightBootstrap({
         subject: profileSubject,
         applicable: canWrite,
@@ -2194,7 +2332,7 @@ async function renderDashboard(
     const ageDays =
       freshnessAgeDays(lastWeightRecord, on) ??
       DORMANCY_DOMAINS.weight.collapseAfterDays;
-    addStandingOnly(
+    add(
       progressCandidates.weightDormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         lastWeightRecord
@@ -2209,7 +2347,7 @@ async function renderDashboard(
   } else {
     const latestWeight = bodyMetrics.at(-1);
     if (latestWeight)
-      addStandingOnly(
+      add(
         progressCandidates.weightLatest(
           { subject: profileSubject, sourceOrder: sourceOrder++ },
           latestWeight.date,
@@ -2243,7 +2381,7 @@ async function renderDashboard(
           presence: "current",
         }
       );
-    addStandingOnly(
+    add(
       progressCandidates.weightTrend(
         {
           subject: profileSubject,
@@ -2281,14 +2419,34 @@ async function renderDashboard(
           (typicalWakeMinutes ?? 420) + 180
         )
       ),
-      <SleepWaitingAtom
-        state={sleepWaiting}
-        formatPrefs={formatPrefs}
-        previousNightLabel={sleepPreviousNightLabel}
-      />
+      {
+        label: "Sleep",
+        // The SAME headline /sleep prints, marked the same way: one decision, three
+        // surfaces (#2097). The row replaces the figures rather than sitting above
+        // them — the state exists precisely because the only number available is a
+        // different night's.
+        value: (
+          <span
+            data-testid="sleep-waiting-headline"
+            data-kind={sleepWaiting.kind}
+          >
+            {sleepWaiting.headline}
+          </span>
+        ),
+        detail: [
+          sleepWaitingDetail(sleepWaiting, {
+            clock: (min) => formatClockMinutes(formatPrefs.timeFormat, min),
+            when: (iso) => formatRelativeTime(iso),
+          }),
+          sleepPreviousNightLabel,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: "/sleep",
+      }
     );
   else if (lastSleepRecord == null)
-    addStandingOnly(
+    add(
       sleepCandidates.bootstrap({
         subject: profileSubject,
         sourceOrder: sourceOrder++,
@@ -2304,7 +2462,7 @@ async function renderDashboard(
     const ageDays =
       freshnessAgeDays(lastSleepRecord, on) ??
       DORMANCY_DOMAINS.sleep.collapseAfterDays;
-    addStandingOnly(
+    add(
       sleepCandidates.dormant(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         lastSleepRecord
@@ -2326,11 +2484,7 @@ async function renderDashboard(
         },
         on
       ),
-      <DashboardAtomCard
-        title="Sleep"
-        href="/data"
-        actionLabel="Sync a source"
-      />
+      { label: "Sleep", href: "/data", actionLabel: "Sync a source" }
     );
   } else if (sleepSummary) {
     const wakeDayAge = freshnessAgeDays(sleepSummary.wakeDay, on);
@@ -2376,13 +2530,16 @@ async function renderDashboard(
               nowMinutes
             )
         ),
-        <DashboardAtomCard title={title} value={value} href="/sleep" />,
         {
           label: title,
           value,
-          // The band sits behind the two rows it is a band FOR. A duration has no
-          // usual bed-and-wake pair to be measured against, so it carries nothing.
-          disclosure: key === "duration" ? undefined : usualSleepBand,
+          // #3970 owner ruling (2026-08-30). The band used to be a DISCLOSURE on
+          // both the bed-time and the wake-time member — the same string, two 34px
+          // buttons, on one line. It inlines ONCE instead, as plain detail text after
+          // the wake time, so #3253's glance-context rider survives with no per-row
+          // control. Duration never carried it and still does not: a duration has no
+          // usual bed-and-wake pair to be measured against.
+          detail: key === "wake-time" ? usualSleepBand : undefined,
           href: "/sleep",
           presence: "current",
         }
@@ -2400,7 +2557,6 @@ async function renderDashboard(
         engagementFromSource(nap.source),
         nowMinutes - nap.endMinutes
       ),
-      <NapAtom nap={nap} timeFormat={formatPrefs.timeFormat} />,
       {
         label: formatSleepWindow(
           formatPrefs.timeFormat,
@@ -2414,7 +2570,7 @@ async function renderDashboard(
     )
   );
   if (todayNaps.length > 0)
-    addStandingOnly(
+    add(
       sleepCandidates.napTotal(
         {
           subject: profileSubject,
@@ -2434,7 +2590,7 @@ async function renderDashboard(
   sourceOrder += todayNaps.length + 1;
 
   pillars.forEach((pillar, index) =>
-    addStandingOnly(
+    add(
       progressCandidates.healthspan(
         {
           subject: profileSubject,
@@ -2470,9 +2626,10 @@ async function renderDashboard(
         { subject: profileSubject, sourceOrder: sourceOrder + index },
         "coaching.observation",
         finding.dedupeKey,
-        `finding.${finding.dedupeKey}`
+        `finding.${finding.dedupeKey}`,
+        "coaching.observation"
       ),
-      <CoachingObservations findings={[finding]} />
+      findingRow(finding, dismissCoachingObservation, "Coaching observations")
     )
   );
   sourceOrder += coachingObservations.length;
@@ -2498,7 +2655,6 @@ async function renderDashboard(
         weeklyRecap.start,
         weeklyRecap.end
       ),
-      undefined,
       {
         // A bare line is already self-labelled (#1935); printing the label
         // beside it would name the row twice.
@@ -2604,8 +2760,7 @@ async function renderDashboard(
         <DashboardPlacementCanvas
           dateLabel={formatLongDate(on, formatPrefs)}
           placements={dashboardPlacements}
-          candidateNodes={candidateNodes}
-          standingPresentations={standingPresentations}
+          presentations={presentations}
           aheadPresentations={aheadPresentations}
           attentionBadgeCount={attentionBadgeCount}
           illnessGroupNode={

@@ -87,7 +87,6 @@ describe("setGrants optimistic concurrency (issue #467)", () => {
       grantsForm(member.id, [{ id: p1.id, access: "write" }], staleSnapshot)
     );
 
-    expect(res.ok).toBe(false);
     expect(res).toMatchObject({ ok: false });
     if (!res.ok) expect(res.error.toLowerCase()).toContain("reload");
     // P2 survives — the fresh grant was NOT revoked.
@@ -97,9 +96,18 @@ describe("setGrants optimistic concurrency (issue #467)", () => {
     ]);
   });
 
-  it("applies the diff when the snapshot matches current state", async () => {
+  it("reports an unchanged snapshot, then applies a matching diff", async () => {
     const snapshot = grantSignature([{ profileId: p1.id, access: "write" }]);
-    const res = await setGrants(
+
+    const unchanged = await setGrants(
+      grantsForm(member.id, [{ id: p1.id, access: "write" }], snapshot)
+    );
+    expect(unchanged).toEqual({ ok: true, message: "No changes." });
+    expect(currentGrants(member.id)).toEqual([
+      { profileId: p1.id, access: "write" },
+    ]);
+
+    const changed = await setGrants(
       grantsForm(
         member.id,
         [
@@ -109,21 +117,10 @@ describe("setGrants optimistic concurrency (issue #467)", () => {
         snapshot
       )
     );
-    expect(res.ok).toBe(true);
+    expect(changed.ok).toBe(true);
     expect(currentGrants(member.id)).toEqual([
       { profileId: p1.id, access: "read" },
       { profileId: p2.id, access: "write" },
-    ]);
-  });
-
-  it("reports no changes for a matching snapshot with an identical desired set", async () => {
-    const snapshot = grantSignature([{ profileId: p1.id, access: "write" }]);
-    const res = await setGrants(
-      grantsForm(member.id, [{ id: p1.id, access: "write" }], snapshot)
-    );
-    expect(res).toEqual({ ok: true, message: "No changes." });
-    expect(currentGrants(member.id)).toEqual([
-      { profileId: p1.id, access: "write" },
     ]);
   });
 });
@@ -156,16 +153,16 @@ describe("setGrants performs an admin's notification opt-in (#2345)", () => {
     other = createProfile("Other Oona");
   });
 
-  it("writes the row, and the fan-out's managing set then includes that admin", async () => {
+  it("adds and removes the admin's notification opt-in", async () => {
     // Today's state: no row, so a per-profile event reaches this admin's channels
     // never — the exact shape that froze three profiles' delivery for weeks.
     expect(managingLoginIdsForProfile(ward.id)).not.toContain(adminTarget.id);
 
-    const res = await setGrants(
+    const added = await setGrants(
       grantsForm(adminTarget.id, [{ id: ward.id, access: "write" }], "")
     );
 
-    expect(res).toEqual({ ok: true, message: "Notifications updated." });
+    expect(added).toEqual({ ok: true, message: "Notifications updated." });
     // The stored level is the inert, non-restricting 'write' every other writer of an
     // admin's row uses — a column default, not a decision.
     expect(currentGrants(adminTarget.id)).toEqual([
@@ -173,17 +170,11 @@ describe("setGrants performs an admin's notification opt-in (#2345)", () => {
     ]);
     // And the ONE edge-set definition the fan-out reads now carries the admin.
     expect(managingLoginIdsForProfile(ward.id)).toContain(adminTarget.id);
-  });
-
-  it("unchecking removes the row and drops the admin back out of the set", async () => {
-    await setGrants(
-      grantsForm(adminTarget.id, [{ id: ward.id, access: "write" }], "")
-    );
     const snapshot = grantSignature([{ profileId: ward.id, access: "write" }]);
 
-    const res = await setGrants(grantsForm(adminTarget.id, [], snapshot));
+    const removed = await setGrants(grantsForm(adminTarget.id, [], snapshot));
 
-    expect(res.ok).toBe(true);
+    expect(removed.ok).toBe(true);
     expect(currentGrants(adminTarget.id)).toEqual([]);
     expect(managingLoginIdsForProfile(ward.id)).not.toContain(adminTarget.id);
   });

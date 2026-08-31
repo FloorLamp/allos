@@ -14,8 +14,24 @@
 // surfaces only: a reminder here would be the system increasing contact toward a
 // behavior goal, which contact-consent forbids unless the user schedules one themselves.
 // The elapsed counter states a fact and stops.
+//
+// FOLDED WHEN IDLE, NEVER WHEN LIVE (#3672, owner decision; implemented by #3987).
+// The idle state spent a whole card at the top of the page saying nothing happened —
+// a section label, "No fast running.", a button and a text link, ~150px of chrome ahead
+// of the surface the tab exists for. It is now ONE "Start fast" affordance in the
+// day-controls row, in the app's rare-cadence disclosure idiom (#1497: a standing form
+// is a tax charged on every visit whether or not the visit is an entry visit); opening
+// it reveals today's controls unchanged, history included, because history is reference
+// and belongs behind the fold with them.
+//
+// A RUNNING fast keeps its full prominence. Live state announces itself in this app —
+// the same reason the workout dock parks visibly — and folding it would be the one
+// change here that costs something real.
 
 import { useEffect, useState } from "react";
+import { IconChevronDown, IconPlus } from "@tabler/icons-react";
+import Button from "@/components/Button";
+import Disclosure from "@/components/Disclosure";
 import { useToast } from "@/components/Toast";
 import {
   fastControlLabel,
@@ -212,34 +228,21 @@ export default function FastingCard({
         >
           You have a fast open. You can close it out here.
         </p>
-        <button
-          type="button"
+        <Button
           data-testid="fasting-control"
           disabled={pending}
           onClick={() => void run(endFastAction, new FormData())}
-          className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
         >
           End fast
-        </button>
+        </Button>
       </section>
     );
   }
 
-  return (
-    <section
-      data-testid="fasting-card"
-      className="mb-4 rounded-lg border border-black/10 p-3 dark:border-white/10"
-    >
-      <h2 className="mb-2 section-label">Fasting</h2>
-
-      {state.kind === "start" ? (
-        <p
-          data-testid="fasting-state"
-          className="mb-2 text-sm text-slate-500 dark:text-slate-400"
-        >
-          No fast running.
-        </p>
-      ) : (
+  const idle = state.kind === "start";
+  const body = (
+    <>
+      {!idle && (
         <p
           data-testid="fasting-state"
           className="mb-2 text-sm text-slate-700 dark:text-slate-200"
@@ -248,41 +251,36 @@ export default function FastingCard({
         </p>
       )}
 
-      <button
-        type="button"
+      <Button
         data-testid="fasting-control"
         disabled={pending}
         onClick={() =>
           void run(
-            state.kind === "start" ? startFastAction : endFastAction,
-            state.kind === "start"
-              ? withBackdate("started_at")
-              : withBackdate("ended_at")
+            idle ? startFastAction : endFastAction,
+            idle ? withBackdate("started_at") : withBackdate("ended_at")
           )
         }
-        className="rounded-md border border-black/10 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-white/10"
       >
         {fastControlLabel(state)}
-      </button>
+      </Button>
 
       {/* BACKDATING (#2756): forgot-to-tap is the common failure, so both writes accept
           an explicit instant. Behind a disclosure because the overwhelmingly common tap
           is "now" and a date field in the default path would make a one-tap control a
           form. The field is the profile's own WALL time; the server resolves it. */}
       <div className="mt-2">
-        <button
-          type="button"
+        <Button
           data-testid="fasting-backdate-toggle"
+          aria-expanded={showBackdate}
           onClick={() => setShowBackdate((v) => !v)}
-          className="text-xs text-slate-500 underline dark:text-slate-400"
         >
-          {state.kind === "start" ? "Started earlier?" : "Stopped earlier?"}
-        </button>
+          {idle ? "Started earlier?" : "Stopped earlier?"}
+        </Button>
         {showBackdate && (
           <input
             type="datetime-local"
             data-testid="fasting-backdate-input"
-            aria-label={state.kind === "start" ? "Start time" : "End time"}
+            aria-label={idle ? "Start time" : "End time"}
             value={backdate}
             onChange={(e) => setBackdate(e.target.value)}
             className="input mt-1 block text-sm"
@@ -308,8 +306,7 @@ export default function FastingCard({
             . End it at the time you actually stopped — set that time under
             “Stopped earlier?” above — or discard it if it never happened.
           </p>
-          <button
-            type="button"
+          <Button
             data-testid="fasting-discard"
             disabled={pending}
             onClick={() => {
@@ -317,10 +314,9 @@ export default function FastingCard({
               fd.set("id", String(state.fast.id));
               void run(discardFastAction, fd);
             }}
-            className="rounded-md border border-black/10 px-2 py-1 text-xs disabled:opacity-50 dark:border-white/10"
           >
             Discard
-          </button>
+          </Button>
         </div>
       )}
 
@@ -361,16 +357,15 @@ export default function FastingCard({
                     times asserts what actually did. Same disclosure shape as the backdate
                     field above, and the same division of labour — the field carries the
                     profile's WALL time and the server resolves it. */}
-                <button
-                  type="button"
+                <Button
                   data-testid="fasting-edit-toggle"
+                  aria-expanded={editing}
                   onClick={() =>
                     editing ? setEditingId(null) : openEdit(entry)
                   }
-                  className="text-xs text-slate-500 underline dark:text-slate-400"
                 >
                   {editing ? "Cancel" : "Edit times"}
-                </button>
+                </Button>
                 {editing && (
                   <div
                     data-testid="fasting-edit-form"
@@ -392,8 +387,7 @@ export default function FastingCard({
                       onChange={(e) => setEditEnd(e.target.value)}
                       className="input block text-sm"
                     />
-                    <button
-                      type="button"
+                    <Button
                       data-testid="fasting-edit-save"
                       disabled={pending}
                       onClick={() => {
@@ -419,10 +413,9 @@ export default function FastingCard({
                           if (saved) setEditingId(null);
                         });
                       }}
-                      className="rounded-md border border-black/10 px-2 py-1 text-xs disabled:opacity-50 dark:border-white/10"
                     >
                       Save times
-                    </button>
+                    </Button>
                   </div>
                 )}
               </li>
@@ -435,6 +428,36 @@ export default function FastingCard({
           A fast counts for the day it ends.
         </p>
       )}
+    </>
+  );
+
+  // IDLE: one affordance, and everything else behind it. The summary is the whole
+  // control at rest, so `fasting-state` — the sentence that said "No fast running." —
+  // has no reason to exist any more: the collapsed fold IS that statement.
+  if (idle) {
+    return (
+      <Disclosure data-testid="fasting-card" className="mb-4">
+        <summary
+          data-testid="fasting-fold"
+          className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden dark:text-slate-300"
+        >
+          <IconPlus className="h-4 w-4 shrink-0" stroke={2} />
+          <span className="flex-1">Start fast</span>
+          <IconChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-2">{body}</div>
+      </Disclosure>
+    );
+  }
+
+  // RUNNING: unchanged. Live state announces itself.
+  return (
+    <section
+      data-testid="fasting-card"
+      className="mb-4 rounded-lg border border-black/10 p-3 dark:border-white/10"
+    >
+      <h2 className="mb-2 section-label">Fasting</h2>
+      {body}
     </section>
   );
 }

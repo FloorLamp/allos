@@ -134,61 +134,36 @@ describe("addResult", () => {
     expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
-  it("rejects an impossible date (no row written)", async () => {
+  it("rejects impossible dates and blank names without writing", async () => {
     const { profile } = seedActor();
     await addResult(
       fd({ date: "2026-02-30", category: "lab", name: "Glucose", value: "90" })
     );
     expect(recordRows(profile.id)).toHaveLength(0);
-  });
-
-  it("rejects a blank name", async () => {
-    const { profile } = seedActor();
     await addResult(fd({ date: "2026-01-15", category: "lab", name: "  " }));
     expect(recordRows(profile.id)).toHaveLength(0);
   });
 
-  it("validates the category server-side instead of 500-ing on the CHECK (#385)", async () => {
+  it("normalizes invalid and prescription categories to lab (#385)", async () => {
     const { profile } = seedActor();
-    // A crafted/stale category the CHECK forbids would otherwise raise a
-    // SqliteError; the action now falls back to 'lab' (as updateResult does),
-    // writing a valid row rather than throwing.
-    await addResult(
-      fd({
-        date: "2026-01-15",
-        category: "bogus",
-        name: "Glucose",
-        value: "90",
-      })
-    );
-    const rows = recordRows(profile.id);
-    expect(rows).toHaveLength(1);
+    // A stale value would otherwise trip the CHECK, while prescription must not let
+    // a crafted Clinical results POST create a medication-category record.
+    for (const [category, name, value] of [
+      ["bogus", "Glucose", "90"],
+      ["prescription", "Atorvastatin", "10mg"],
+    ]) {
+      await addResult(fd({ date: "2026-01-15", category, name, value }));
+    }
     expect(
       db
-        .prepare("SELECT category FROM medical_records WHERE id = ?")
-        .get(rows[0].id)
-    ).toEqual({ category: "lab" });
-  });
-
-  it("does not let 'prescription' be created from the Clinical results add path (#385)", async () => {
-    const { profile } = seedActor();
-    // The add form only offers RESULTS_CATALOG_CATEGORIES (no 'prescription'); a crafted
-    // POST is coerced to 'lab' so meds can't sneak into the clinical results catalog.
-    await addResult(
-      fd({
-        date: "2026-01-15",
-        category: "prescription",
-        name: "Atorvastatin",
-        value: "10mg",
-      })
-    );
-    const rows = recordRows(profile.id);
-    expect(rows).toHaveLength(1);
-    expect(
-      db
-        .prepare("SELECT category FROM medical_records WHERE id = ?")
-        .get(rows[0].id)
-    ).toEqual({ category: "lab" });
+        .prepare(
+          "SELECT name, category FROM medical_records WHERE profile_id = ? ORDER BY id"
+        )
+        .all(profile.id)
+    ).toEqual([
+      { name: "Glucose", category: "lab" },
+      { name: "Atorvastatin", category: "lab" },
+    ]);
   });
 });
 
@@ -389,22 +364,6 @@ describe("the result lifecycle + collection attributes round-trip (#1404)", () =
   });
 });
 
-describe("deleteResult", () => {
-  it("removes the record and revalidates", async () => {
-    const { profile } = seedActor();
-    await addResult(
-      fd({ date: "2026-01-15", category: "lab", name: "LDL", value: "120" })
-    );
-    const id = recordRows(profile.id)[0].id;
-    revalidate.mockClear();
-
-    await deleteResult(fd({ id }));
-
-    expect(getClinicalObservations(profile.id)).toHaveLength(0);
-    expect(revalidate).toHaveBeenCalledWith("/results");
-  });
-});
-
 describe("manual record (no document_id) round-trips edit + delete", () => {
   it("a manually-added record edits and deletes, and both are profile-scoped", async () => {
     const { login, profile: profileA } = seedActor();
@@ -461,9 +420,11 @@ describe("manual record (no document_id) round-trips edit + delete", () => {
     expect(recordRows(profileA.id)).toHaveLength(1);
 
     // A deletes its own row — gone.
+    revalidate.mockClear();
     actAs(login, profileA);
     await deleteResult(fd({ id: row.id }));
     expect(recordRows(profileA.id)).toHaveLength(0);
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 });
 
@@ -488,7 +449,7 @@ describe("uploadMedicalDocument content sniffing (issue #27)", () => {
     return form;
   }
 
-  it("rejects a file whose bytes contradict its declared type without storing it", async () => {
+  it("rejects contradictory and unrecognized bytes without storing either file", async () => {
     const { profile } = seedActor();
     // PNG magic bytes but named/declared as a PDF → a content contradiction. The
     // action records a 'failed' row (no file on disk) instead of trusting file.type.
@@ -497,25 +458,19 @@ describe("uploadMedicalDocument content sniffing (issue #27)", () => {
       uploadForm(png, "report.pdf", "application/pdf")
     );
 
+    const html = Buffer.from("<html><script>alert(1)</script></html>");
+    await uploadMedicalDocument(uploadForm(html, "evil.png", "image/png"));
+
     const rows = docRows(profile.id);
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0].status).toBe("failed");
     // Nothing was persisted to disk — the row carries no stored_path.
     expect(rows[0].stored_path ?? "").toBe("");
     expect(rows[0].error).toMatch(/named like a PDF/i);
     expect(rows[0].error).toMatch(/PNG image/i);
-  });
-
-  it("rejects a .png whose contents carry no image magic (mislabeled HTML)", async () => {
-    const { profile } = seedActor();
-    const html = Buffer.from("<html><script>alert(1)</script></html>");
-    await uploadMedicalDocument(uploadForm(html, "evil.png", "image/png"));
-
-    const rows = docRows(profile.id);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].status).toBe("failed");
-    expect(rows[0].stored_path ?? "").toBe("");
-    expect(rows[0].error).toMatch(/named like an image/i);
+    expect(rows[1].status).toBe("failed");
+    expect(rows[1].stored_path ?? "").toBe("");
+    expect(rows[1].error).toMatch(/named like an image/i);
   });
 });
 

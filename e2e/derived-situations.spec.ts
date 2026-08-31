@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_DERIVED,
   E2E_MEMBER_PASSWORD,
@@ -97,7 +97,11 @@ test.describe("derived situations (#1292/#1298/#1726)", () => {
     // Period context — and the line — go away, restoring the starting state.
     await page.goto("/medical/cycles");
     await settledClick(page, page.getByTestId("period-ended-button"));
-    await settledClick(page, page.getByTestId("cycle-delete-button").first()); // first-ok: deletes the period THIS spec just created (its own fixture data)
+    const row = page.getByTestId("cycle-history-row").first(); // first-ok: this spec's newest fixture row
+    await hydratedClick(page, row.getByTestId("overflow-menu-trigger"));
+    await hydratedClick(page, page.getByTestId("cycle-delete-button"));
+    const confirm = page.getByRole("button", { name: "Delete period" });
+    await settledClick(page, confirm);
     await expect(page.getByTestId("period-started-button")).toBeVisible();
 
     await page.goto("/nutrition?tab=supplements");

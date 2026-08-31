@@ -343,6 +343,12 @@ function inserts(root: string): Insert[] {
 
 const TRANCHE = new Set<string>(LEDGERS_WITH_LOGGED_VIA);
 
+function truncatedTrancheInserts(found: Insert[]): string[] {
+  return found
+    .filter((i) => TRANCHE.has(i.table) && !columnListVisible(i.statement))
+    .map((i) => `${i.file}: INSERT INTO ${i.table}`);
+}
+
 /**
  * The corpus floor. Measured 2026-08-26 over `lib` + `app` actions/routes + `scripts`:
  * 1463 files scanned, 373 INSERT statements, 123 distinct tables. Set well below the
@@ -493,9 +499,7 @@ describe("the user-write ledger census", () => {
     // absence is only meaningful over text that was actually read. A statement wider
     // than STATEMENT_WINDOW would be reported as unstamped while naming the column
     // just past the edge of the frame.
-    const truncated = trancheInserts
-      .filter((i) => !columnListVisible(i.statement))
-      .map((i) => `${i.file}: INSERT INTO ${i.table}`);
+    const truncated = truncatedTrancheInserts(trancheInserts);
     expect(
       truncated,
       `The census read only ${STATEMENT_WINDOW} characters of this statement and ` +
@@ -721,7 +725,9 @@ describe("the census's reach", () => {
     // The column IS named — just out of frame — so the naive check reads "unstamped"…
     expect(/\blogged_via\b/.test(found[0].statement)).toBe(false);
     // …and `columnListVisible` is what stops that becoming a verdict.
-    expect(columnListVisible(found[0].statement)).toBe(false);
+    expect(truncatedTrancheInserts(found)).toEqual([
+      "lib/very-wide.ts: INSERT INTO activities",
+    ]);
     // The compliant narrow case still reads as visible, so this is not vacuous.
     const narrow = inserts(
       corpus({

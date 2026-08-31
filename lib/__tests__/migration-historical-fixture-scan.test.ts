@@ -93,10 +93,6 @@ const ALLOWED: Record<string, string> = {
   // hand. It slices to a count, never to stand in for a named migration.
   "lib/__db_tests__/runner.test.ts":
     "asserts the registry's positional invariants themselves",
-  // "one migration behind the build" is genuinely relative to the build's count
-  // — the point is that a pending set exists, not which migration it is.
-  "lib/__db_tests__/migration-snapshot.test.ts":
-    "needs a database one behind the build, not one before a named migration",
   // Walks EVERY prefix in turn, so no slice stands in for a named migration —
   // the loop's subject is "each body over the state that body produced", which
   // is a positional question by construction (#3590).

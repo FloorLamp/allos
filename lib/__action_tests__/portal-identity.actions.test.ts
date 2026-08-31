@@ -63,40 +63,18 @@ function identityExists(id: number): boolean {
 }
 
 describe("unbindIdentityAction authorization (#1747)", () => {
-  it("REFUSES to delete another profile's binding, even with a forged profile_id the caller may write", async () => {
+  it("REFUSES bindings owned by inaccessible or read-only profiles", async () => {
     const { accountId } = makePortal();
 
-    // The victim: a profile the attacker has no grant on at all.
     const victimLogin = createLogin({ role: "member" });
     const victimProfile = createProfile("Unbind Victim", victimLogin.id);
-    const bound = bindPortalIdentity(
+    const victimBound = bindPortalIdentity(
       accountId,
       "Victim Patient",
       victimProfile.id
     );
-    expect(bound.ok).toBe(true);
-    if (!bound.ok) return;
-
-    // The attacker: a member with genuine write access to their own profile only.
-    const attackerLogin = createLogin({ role: "member" });
-    const attackerProfile = createProfile("Unbind Attacker", attackerLogin.id);
-    actAs(attackerLogin, attackerProfile);
-
-    // The forged post: someone else's row id, their own profile id. The gate on the
-    // supplied profile id would pass — they really can write it — so the only thing
-    // that can save the victim's binding is resolving the row's real owner.
-    await expect(
-      unbindIdentityAction(
-        fd({ identity_id: bound.id, profile_id: attackerProfile.id })
-      )
-    ).rejects.toThrow(/not accessible|read-only/);
-
-    expect(identityExists(bound.id)).toBe(true);
-    expect(portalIdentityProfile(bound.id)).toBe(victimProfile.id);
-  });
-
-  it("REFUSES when the caller only holds read on the profile the binding points at", async () => {
-    const { accountId } = makePortal();
+    expect(victimBound.ok).toBe(true);
+    if (!victimBound.ok) return;
 
     const login = createLogin({ role: "member" });
     const readOnly = createProfile("Unbind ReadOnly", login.id);
@@ -106,21 +84,29 @@ describe("unbindIdentityAction authorization (#1747)", () => {
     const writable = createProfile("Unbind Writable", login.id);
     actAs(login, writable);
 
-    const bound = bindPortalIdentity(
+    const readOnlyBound = bindPortalIdentity(
       accountId,
       "Read Only Patient",
       readOnly.id
     );
-    expect(bound.ok).toBe(true);
-    if (!bound.ok) return;
+    expect(readOnlyBound.ok).toBe(true);
+    if (!readOnlyBound.ok) return;
 
     await expect(
-      unbindIdentityAction(fd({ identity_id: bound.id }))
+      unbindIdentityAction(
+        fd({ identity_id: victimBound.id, profile_id: writable.id })
+      )
+    ).rejects.toThrow(/not accessible|read-only/);
+    await expect(
+      unbindIdentityAction(fd({ identity_id: readOnlyBound.id }))
     ).rejects.toThrow(/read-only/);
-    expect(identityExists(bound.id)).toBe(true);
+
+    expect(identityExists(victimBound.id)).toBe(true);
+    expect(portalIdentityProfile(victimBound.id)).toBe(victimProfile.id);
+    expect(identityExists(readOnlyBound.id)).toBe(true);
   });
 
-  it("removes a binding the caller may write, and reports a typed outcome both times", async () => {
+  it("validates the row id, removes an owned binding, and reports stale deletion", async () => {
     const { accountId } = makePortal();
 
     const login = createLogin({ role: "member" });
@@ -139,6 +125,15 @@ describe("unbindIdentityAction authorization (#1747)", () => {
       (i) => i.patientLabel === "Owned Patient"
     )!.id;
 
+    expect(
+      await unbindIdentityAction(fd({ identity_id: "not-a-number" }))
+    ).toEqual({ ok: false, error: "Unknown mapping." });
+    expect(await unbindIdentityAction(fd({}))).toEqual({
+      ok: false,
+      error: "Unknown mapping.",
+    });
+    expect(identityExists(id)).toBe(true);
+
     expect(await unbindIdentityAction(fd({ identity_id: id }))).toEqual({
       ok: true,
     });
@@ -151,20 +146,6 @@ describe("unbindIdentityAction authorization (#1747)", () => {
       error: "That mapping is already gone.",
     });
   });
-
-  it("rejects a non-numeric or missing row id without touching the table", async () => {
-    const login = createLogin({ role: "member" });
-    const profile = createProfile("Unbind Garbage", login.id);
-    actAs(login, profile);
-
-    expect(
-      await unbindIdentityAction(fd({ identity_id: "not-a-number" }))
-    ).toEqual({ ok: false, error: "Unknown mapping." });
-    expect(await unbindIdentityAction(fd({}))).toEqual({
-      ok: false,
-      error: "Unknown mapping.",
-    });
-  });
 });
 
 // ── One-tap mapping off the card (#1739) ─────────────────────────────────────
@@ -175,11 +156,13 @@ describe("unbindIdentityAction authorization (#1747)", () => {
 // "Jane Q. Doe" is a fresh, wrong key — and the next run refuses again for a reason nobody
 // can see.
 describe("pending-identity actions (#1739)", () => {
-  it("binds the label EXACTLY as it was reported, and clears the pending row", async () => {
+  it("binds the reported label to a writable profile and refuses a foreign target", async () => {
     const { accountId, slug } = makePortal();
     const login = createLogin({ role: "member" });
     const profile = createProfile("Pending Owner", login.id);
     actAs(login, profile);
+    const strangerLogin = createLogin({ role: "member" });
+    const strangerProfile = createProfile("Pending Stranger", strangerLogin.id);
 
     // A label a human would plausibly retype wrong.
     recordPendingIdentity(slug, null, "Jane Q. Doe", "discovered");
@@ -197,38 +180,38 @@ describe("pending-identity actions (#1739)", () => {
     expect(r.profileId).toBe(profile.id);
     expect(r.accountId).toBe(accountId);
     expect(pendingFor(accountId)).toHaveLength(0);
-  });
-
-  it("REFUSES to bind onto a profile the caller cannot write", async () => {
-    const { slug, accountId } = makePortal();
-    const strangerLogin = createLogin({ role: "member" });
-    const strangerProfile = createProfile("Pending Stranger", strangerLogin.id);
-
-    const login = createLogin({ role: "member" });
-    const own = createProfile("Pending Mine", login.id);
-    actAs(login, own);
 
     recordPendingIdentity(slug, null, "Someone Else", "discovered");
-    const [row] = pendingFor(accountId);
+    const [foreignRow] = pendingFor(accountId);
 
     await expect(
       bindPendingIdentityAction(
-        fd({ pending_id: row.id, profile_id: strangerProfile.id })
+        fd({ pending_id: foreignRow.id, profile_id: strangerProfile.id })
       )
     ).rejects.toThrow(/not accessible|read-only/);
     expect(pendingFor(accountId)).toHaveLength(1);
   });
 
-  it("IGNORE writes a durable binding that points nowhere and stops the prompt", async () => {
+  it("keeps durable Ignore admin-only, persists it, and allows un-ignore", async () => {
     const { slug, accountId } = makePortal();
-    // Admin, because durable Ignore is admin-only since #1875.
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Ignore Owner", login.id);
-    actAs(login, profile);
+    const memberLogin = createLogin({ role: "member" });
+    const memberProfile = createProfile("Ignore Caregiver", memberLogin.id);
+    actAs(memberLogin, memberProfile);
 
     recordPendingIdentity(slug, null, "Not Ours", "discovered");
     const [row] = pendingFor(accountId);
 
+    await expect(
+      ignorePendingIdentityAction(fd({ pending_id: row.id }))
+    ).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(pendingFor(accountId)).toHaveLength(1);
+    expect(
+      listPortalIdentities().some((i) => i.patientLabel === "Not Ours")
+    ).toBe(false);
+
+    const adminLogin = createLogin({ role: "admin" });
+    const adminProfile = createProfile("Ignore Owner", adminLogin.id);
+    actAs(adminLogin, adminProfile);
     expect(
       await ignorePendingIdentityAction(fd({ pending_id: row.id }))
     ).toEqual({ ok: true });
@@ -243,11 +226,17 @@ describe("pending-identity actions (#1739)", () => {
     expect(recordPendingIdentity(slug, null, "Not Ours", "discovered")).toBe(
       false
     );
+
+    // An ignored binding has no profile to authorize against, so unbind takes the
+    // any-profile-write tier and scopes the delete to ignored = 1.
+    expect(await unbindIdentityAction(fd({ identity_id: binding.id }))).toEqual(
+      { ok: true }
+    );
+    expect(identityExists(binding.id)).toBe(false);
   });
 
-  it("REFUSES dismiss for a login that can write nothing", async () => {
+  it("allows dismiss only after a member has write access somewhere", async () => {
     const { slug, accountId } = makePortal();
-    // A caregiver with read-only access everywhere cannot clear a portal prompt.
     const login = createLogin({ role: "member" });
     const readOnly = createProfile("No Write Anywhere", login.id);
     db.prepare(
@@ -262,45 +251,12 @@ describe("pending-identity actions (#1739)", () => {
       dismissPendingIdentityAction(fd({ pending_id: row.id }))
     ).rejects.toThrow(/no write access/);
     expect(pendingFor(accountId)).toHaveLength(1);
-  });
-
-  it("REFUSES durable Ignore for ANY member — admin-only since #1875", async () => {
-    // The caregiver fixture from the issue: genuine WRITE access to one profile. Under
-    // the old any-writer gate this member could permanently refuse a pending belonging
-    // to another adult's login, silently breaking that person's future imports.
-    const { slug, accountId } = makePortal();
-    const login = createLogin({ role: "member" });
-    const writable = createProfile("Ignore Caregiver", login.id);
+    const writable = createProfile("Now Writable", login.id);
     actAs(login, writable);
-
-    recordPendingIdentity(slug, null, "Not Theirs To Refuse", "discovered");
-    const [row] = pendingFor(accountId);
-
-    await expect(
-      ignorePendingIdentityAction(fd({ pending_id: row.id }))
-    ).rejects.toThrow(/NEXT_REDIRECT/);
-    // Nothing was refused, nothing was cleared.
-    expect(pendingFor(accountId)).toHaveLength(1);
-    expect(
-      listPortalIdentities().some(
-        (i) => i.patientLabel === "Not Theirs To Refuse"
-      )
-    ).toBe(false);
-  });
-
-  it("a MEMBER with write access to one profile may act on the list", async () => {
-    // Caregiver-members still clear their own prompts without an admin: "Not now" is
-    // self-expiring and low-stakes, so it keeps the any-writer gate (#1875).
-    const { slug, accountId } = makePortal();
-    const login = createLogin({ role: "member" });
-    const writable = createProfile("Caregiver Writable", login.id);
-    actAs(login, writable);
-
-    recordPendingIdentity(slug, null, "Caregiver Patient", "discovered");
-    const [row] = pendingFor(accountId);
     expect(
       await dismissPendingIdentityAction(fd({ pending_id: row.id }))
     ).toEqual({ ok: true });
+    expect(pendingFor(accountId)).toHaveLength(0);
   });
 
   it("reports typed outcomes for a stale or garbage pending id", async () => {
@@ -334,30 +290,6 @@ describe("pending-identity actions (#1739)", () => {
       }
     );
   });
-
-  it("removes an IGNORED binding through the un-ignore path, which needs no profile", async () => {
-    const { slug, accountId } = makePortal();
-    // Admin to WRITE the ignore (#1875); the un-ignore below stays any-writer.
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Unignore Owner", login.id);
-    actAs(login, profile);
-
-    recordPendingIdentity(slug, null, "Reconsidered", "discovered");
-    const [row] = pendingFor(accountId);
-    await ignorePendingIdentityAction(fd({ pending_id: row.id }));
-    const binding = listPortalIdentities().find(
-      (i) => i.patientLabel === "Reconsidered"
-    )!;
-
-    // An ignored binding has no profile to authorize against, so unbind takes the
-    // any-profile-write tier and the delete is scoped to ignored = 1.
-    expect(await unbindIdentityAction(fd({ identity_id: binding.id }))).toEqual(
-      {
-        ok: true,
-      }
-    );
-    expect(identityExists(binding.id)).toBe(false);
-  });
 });
 
 // ── Hand-typed bind over an existing binding (#2103) ─────────────────────────
@@ -370,42 +302,18 @@ describe("pending-identity actions (#1739)", () => {
 // documents onto themselves. The action now resolves the current owner from the row
 // (#1747) and takes remapIdentityAction's discipline: BOTH sides gated, one CAS.
 describe("bindIdentityAction re-point protection (#2103)", () => {
-  it("REFUSES a member re-pointing another profile's binding through a hand-typed label", async () => {
+  it("REFUSES re-pointing bindings owned by inaccessible or read-only profiles", async () => {
     const { accountId } = makePortal();
 
-    // The victim: a profile the attacker has no grant on at all, already mapped.
     const victimLogin = createLogin({ role: "member" });
     const victimProfile = createProfile("Repoint Victim", victimLogin.id);
-    const bound = bindPortalIdentity(
+    const victimBound = bindPortalIdentity(
       accountId,
       "Household Member B",
       victimProfile.id
     );
-    expect(bound.ok).toBe(true);
-    if (!bound.ok) return;
-
-    // The attacker: genuine write access to their own profile only — the gate on the
-    // TARGET side passes, so only the resolved current owner's gate can refuse.
-    const attackerLogin = createLogin({ role: "member" });
-    const attackerProfile = createProfile("Repoint Attacker", attackerLogin.id);
-    actAs(attackerLogin, attackerProfile);
-
-    await expect(
-      bindIdentityAction(
-        fd({
-          account_id: accountId,
-          patient_label: "Household Member B",
-          profile_id: attackerProfile.id,
-        })
-      )
-    ).rejects.toThrow(/not accessible|read-only/);
-
-    // B's binding is untouched: future records still land on the victim's profile.
-    expect(portalIdentityProfile(bound.id)).toBe(victimProfile.id);
-  });
-
-  it("REFUSES when the caller holds only READ on the profile currently bound", async () => {
-    const { accountId } = makePortal();
+    expect(victimBound.ok).toBe(true);
+    if (!victimBound.ok) return;
 
     const login = createLogin({ role: "member" });
     const readOnly = createProfile("Repoint ReadOnly", login.id);
@@ -415,10 +323,23 @@ describe("bindIdentityAction re-point protection (#2103)", () => {
     const writable = createProfile("Repoint Writable", login.id);
     actAs(login, writable);
 
-    const bound = bindPortalIdentity(accountId, "Read Only Bound", readOnly.id);
-    expect(bound.ok).toBe(true);
-    if (!bound.ok) return;
+    const readOnlyBound = bindPortalIdentity(
+      accountId,
+      "Read Only Bound",
+      readOnly.id
+    );
+    expect(readOnlyBound.ok).toBe(true);
+    if (!readOnlyBound.ok) return;
 
+    await expect(
+      bindIdentityAction(
+        fd({
+          account_id: accountId,
+          patient_label: "Household Member B",
+          profile_id: writable.id,
+        })
+      )
+    ).rejects.toThrow(/not accessible|read-only/);
     await expect(
       bindIdentityAction(
         fd({
@@ -428,10 +349,12 @@ describe("bindIdentityAction re-point protection (#2103)", () => {
         })
       )
     ).rejects.toThrow(/read-only/);
-    expect(portalIdentityProfile(bound.id)).toBe(readOnly.id);
+
+    expect(portalIdentityProfile(victimBound.id)).toBe(victimProfile.id);
+    expect(portalIdentityProfile(readOnlyBound.id)).toBe(readOnly.id);
   });
 
-  it("re-points when the caller may write BOTH sides — the same row, atomically", async () => {
+  it("re-points the same row atomically and stays idempotent", async () => {
     const { accountId } = makePortal();
 
     const login = createLogin({ role: "member" });
@@ -454,27 +377,16 @@ describe("bindIdentityAction re-point protection (#2103)", () => {
     ).toEqual({ ok: true });
     // The SAME row was re-pointed (remap CAS), not a second row minted.
     expect(portalIdentityProfile(bound.id)).toBe(to.id);
-  });
-
-  it("binding the profile it already points at stays an idempotent success", async () => {
-    const { accountId } = makePortal();
-    const login = createLogin({ role: "member" });
-    const profile = createProfile("Repoint Same", login.id);
-    actAs(login, profile);
-
-    const bound = bindPortalIdentity(accountId, "Same Again", profile.id);
-    expect(bound.ok).toBe(true);
-    if (!bound.ok) return;
 
     expect(
       await bindIdentityAction(
         fd({
           account_id: accountId,
-          patient_label: "Same Again",
-          profile_id: profile.id,
+          patient_label: "Both Sides Writable",
+          profile_id: to.id,
         })
       )
     ).toEqual({ ok: true });
-    expect(portalIdentityProfile(bound.id)).toBe(profile.id);
+    expect(portalIdentityProfile(bound.id)).toBe(to.id);
   });
 });

@@ -1284,17 +1284,26 @@ Nutrition is a food-group serving log at the **habit tier**, deliberately _not_
 a calorie counter. A curated ~25-group catalog (fatty fish, leafy greens,
 legumes, nuts & seeds, whole grains, red/processed meat, sugary drinks, alcohol,
 …; `lib/datasets/data/food-groups.json`, regenerated with `npm run gen:food-groups`) is logged
-as **servings, one tap each** (undo decrements), each row badged by whether the
-guidance is to eat _more_, _balance_, or _less_. The **six quick rows are the head
-of one ranking** — recency-decayed frequency plus how near to this meal window you
-usually eat the group, minus your own dietary exclusions — and the Telegram nudge
-slices the same six off the same list, at the same shared constant (#2225). Tier
-labels a row and sections the "More food groups" disclosure that holds the rest;
-it never decides which are fast, because a group you log often is a group you need
-to log fast (#1980). Every catalog group stays one disclosure away (#559). The day's
-servings are listed beneath the
-meal cards, each with ⋯ row actions to **correct** it — the food group, the day,
-or the meal it belongs to — or to **remove** that one serving. A correction MOVES
+as **servings, one tap each** (undo decrements). A row is one dense line — icon,
+name, stepper — with no minus until there is something to remove. The **six quick
+rows are the head of one ranking** — recency-decayed frequency plus how near to this
+meal window you usually eat the group, minus your own dietary exclusions — and the
+Telegram nudge slices the same six off the same list, at the same shared constant
+(#2225). Tier sections the "More food groups" disclosure that holds the rest; it
+never decides which are fast, because a group you log often is a group you need to
+log fast (#1980). Every catalog group stays one disclosure away (#559).
+
+**One ledger states the day (#3987).** Servings and supplement doses interleave in
+Morning / Midday / Evening groups — one physical morning, one list, where the page
+used to draw the same facts as meal cards, a logged-today list, and a separate
+schedule on the Supplements tab. Doses written by one composed tap collapse to a
+single expandable row; a partly-answered routine says "4 of 6" rather than a bare
+tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
+every dose it will write and writes only the ones the day still owes. A **skip**
+shows with the reason you gave it. A row with no stated time says which clock it is
+showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
+actions to **correct** it — the food group, the day, or the meal it belongs to — or
+to **remove** that one serving. A correction MOVES
 the serving: the day's totals and the per-meal tallies follow it, so a serving tapped into the wrong meal is repaired
 rather than deleted and re-logged under the current time. "Remove this serving"
 is ROW-scoped and is the removal that honours that per-row identity: the group
@@ -1306,7 +1315,12 @@ offers an **Undo** toast that puts both back.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
-(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp, and the nudge
+(`occurred_at`, `time_source = 'tap'`) beside the immutable tap stamp — on the day the
+message is FOR. Since #4118 a food button keeps working for two days after its message,
+the same window the ✅ dose buttons beside it already had, and the serving lands on the
+message's own day; "I'm eating now" is untrue about a day that has ended, so a tap that
+late states no eating time at all and takes the nudge's window instead. Past those two
+days nothing is written and the reply says which day the message was from. The nudge
 carries burst-collapsed correction chips plus an absolute-hour picker for the common
 case of being slow to tap. **The chips state the time they set, not an offset**
 (#2206): `19:41 · −30m` and `19:11 · −1h`, in the same absolute vocabulary the picker
@@ -1319,13 +1333,14 @@ and, when it crosses local midnight, its day and counter row — so last night's
 logged after midnight is a tap plus one chip rather than a dead end. A web log with no stated
 time still records NO eating time rather than a confident wrong one — the web "+" carries
 no "I'm eating now" contract, since the same button logs the apple in your hand and
-backfills Sunday's dinner. What it has instead (#2053) is a small **Now / Earlier…** row
-above the add controls: an explicit choice writes `time_source = 'stated'`, silence writes
-nothing, and the offered "earlier" hours are absolute local wall times resolved server-side
-in the profile's timezone and filtered to hours that land on the day being logged to, so a
-chip the write would refuse is never on screen. The statement is sticky across the taps of
-one meal, hidden on a backfill day (where "now" is meaningless), and rides the **offline
-queue**: an offline tap carries the chosen instant into replay, which validates it —
+backfills Sunday's dinner. What it has instead is one folded question above the add
+controls: **"Happened earlier?"** on today, **"Set time?"** on a day you are filling
+in. An explicit choice writes `time_source = 'stated'`, silence writes nothing, and
+the offered hours are absolute local wall times resolved server-side in the profile's
+timezone and filtered to the day being logged to, so a time the write would refuse is
+never on screen. On a past day a bare tap records the meal slot and no instant — no
+fabricated minute — while a time you set is sticky for that day's taps and clears when
+you move to another. The statement rides the **offline queue**: an offline tap carries the chosen instant into replay, which validates it —
 future, or a profile-local date that isn't the row's own day, costs the STATEMENT and never
 the serving. The web's ⋯ **correction sheet** answers the same question after the fact
 (#2227): it opens naming which time it shows ("Ate at 19:40." vs "No eating time recorded
@@ -1346,7 +1361,9 @@ computation (`lib/food-daily-totals.ts`) — feeds both the on-page "this week" 
 the **Trends → Nutrition** tab, and food-habit target progress, so the surfaces
 can't disagree. The page also surfaces the deterministic food suggestions from
 your flagged labs (#577) as "food before pills," each offering a one-tap **Track
-as weekly habit**. A **Weekly habits** card makes "fatty fish 2×/week" a
+as weekly habit**. **This week** is one list: every group you logged, with its servings — and where you
+track one, its target, its pace and its consistency strip on the same row. That makes
+"fatty fish 2×/week" a
 first-class **food-habit target** — a `food_group` scope on the same
 `frequency_targets` table the training weekly-routine uses, so its progress is
 the same weekly serving rollup (one question, one computation) and it can be

@@ -897,8 +897,19 @@ export default function NotificationPrefs({
                     data-matrix-head-short
                   >
                     {c.short}
+                    {/* #3970 rule 1. This column's ONE explainer. It also absorbs
+                        the "can't deliver this button-only reminder" sentence that
+                        used to mount a 34px button in every unavailable CELL — the
+                        worst multiplier in the census, since a column can hold
+                        several. The sentence is a property of the COLUMN (push and
+                        email cannot carry a button, whatever the row is), so the
+                        column head is where it is true once. */}
                     <InfoTooltipIcon
-                      label={`${c.label} — follows ${c.owner}`}
+                      label={
+                        rows.some((e) => !cellAvailable(c.id, e.kind))
+                          ? `${c.label} — follows ${c.owner}. A — in this column is a button-only reminder ${c.label} can’t deliver.`
+                          : `${c.label} — follows ${c.owner}`
+                      }
                     />
                   </span>
                   {/* #2565 part B: the state is stated for EVERY column, in words, in
@@ -1231,9 +1242,11 @@ export default function NotificationPrefs({
                           data-matrix-dash
                         >
                           &mdash;
-                          <InfoTooltipIcon
-                            label={`${c.label} can’t deliver this button-only reminder.`}
-                          />
+                          {/* The dash stays visually quiet (#3970): its column
+                              head carries the explanation now. The sentence keeps
+                              a non-visual channel here so a screen reader still
+                              gets it cell by cell — text, not a control. */}
+                          <span className="sr-only">{`${c.label} can’t deliver this button-only reminder.`}</span>
                         </span>
                         <span
                           className="hidden text-xs font-normal text-slate-500 dark:text-slate-400"

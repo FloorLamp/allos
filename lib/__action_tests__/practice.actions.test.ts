@@ -48,10 +48,14 @@ function sessionId(profileId: number): number {
 }
 
 describe("logPractice action (#1259)", () => {
-  it("logs a session for the acting profile and reports the running day count", async () => {
+  it("rejects a blank name, then logs additive sessions for the acting profile", async () => {
     const admin = createLogin({ role: "admin" });
     const profile = createProfile("Test Patient");
     actAs(admin, profile);
+
+    const invalid = await logPractice(fd({ practice: "   " }));
+    expect(invalid).toEqual({ kind: "invalid-date" });
+    expect(rows(profile.id)).toHaveLength(0);
 
     const first = await logPractice(fd({ practice: "Red light therapy" }));
     expect(first).toEqual({
@@ -68,16 +72,6 @@ describe("logPractice action (#1259)", () => {
     expect(rows(profile.id).every((r) => r.date === today(profile.id))).toBe(
       true
     );
-  });
-
-  it("refuses a blank practice name (nothing written)", async () => {
-    const admin = createLogin({ role: "admin" });
-    const profile = createProfile("Test Patient");
-    actAs(admin, profile);
-
-    const out = await logPractice(fd({ practice: "   " }));
-    expect(out).toEqual({ kind: "invalid-date" });
-    expect(rows(profile.id)).toHaveLength(0);
   });
 
   it("caregiver shape: a member acting-as a child logs the CHILD's practice", async () => {
@@ -121,9 +115,10 @@ describe("logPractice action (#1259)", () => {
     expect(rows(bystander.id)).toHaveLength(1); // bystander untouched
   });
 
-  it("edits session details, reapplying the 30-day date guard", async () => {
+  it("edits an owned session and refuses a foreign delete before deleting it", async () => {
     const admin = createLogin({ role: "admin" });
     const profile = createProfile("Editor");
+    const other = createProfile("Other");
     actAs(admin, profile);
     await logPractice(fd({ practice: "Meditation" }));
     const id = sessionId(profile.id);
@@ -155,15 +150,6 @@ describe("logPractice action (#1259)", () => {
         notes: "Morning",
       },
     });
-  });
-
-  it("delete is profile-scoped and returns not-found for a foreign id", async () => {
-    const admin = createLogin({ role: "admin" });
-    const owner = createProfile("Owner");
-    const other = createProfile("Other");
-    actAs(admin, owner);
-    await logPractice(fd({ practice: "Sauna" }));
-    const id = sessionId(owner.id);
 
     // Since #2038 the action answers in the `{ undoId }` shape the shared Undo toast
     // consumes: a refused delete carries the message and no token, a real one carries
@@ -173,19 +159,35 @@ describe("logPractice action (#1259)", () => {
       undoId: null,
       error: "Couldn't find that session.",
     });
-    expect(rows(owner.id)).toHaveLength(1);
+    expect(rows(profile.id)).toHaveLength(1);
 
-    actAs(admin, owner);
+    actAs(admin, profile);
     expect(await removePracticeSession(fd({ id }))).toEqual({
       undoId: expect.any(Number),
     });
-    expect(rows(owner.id)).toHaveLength(0);
+    expect(rows(profile.id)).toHaveLength(0);
   });
 
-  it("renaming a practice rekeys its case-variant history", async () => {
+  it("validates, renames, and untracks a target without deleting sessions", async () => {
     const admin = createLogin({ role: "admin" });
     const profile = createProfile("Rename");
     actAs(admin, profile);
+
+    expect(
+      await savePractice(fd({ name: "Sauna", per_week: 5, per_week_max: 3 }))
+    ).toEqual({
+      ok: false,
+      error: "The weekly maximum must be greater than the minimum.",
+    });
+    expect(
+      db
+        .prepare(
+          `SELECT id FROM frequency_targets
+            WHERE profile_id = ? AND scope_kind = 'practice'`
+        )
+        .all(profile.id)
+    ).toEqual([]);
+
     await logPractice(fd({ practice: " sauna " }));
     expect(
       await savePractice(fd({ name: "Sauna", per_week: 3, per_week_max: 5 }))
@@ -210,47 +212,13 @@ describe("logPractice action (#1259)", () => {
     expect(rows(profile.id).map((row) => row.practice)).toEqual([
       "Heat therapy",
     ]);
-  });
 
-  it("rejects a weekly maximum at or below the minimum without writing (#1619)", async () => {
-    const admin = createLogin({ role: "admin" });
-    const profile = createProfile("Invalid cadence");
-    actAs(admin, profile);
-
-    expect(
-      await savePractice(fd({ name: "Sauna", per_week: 5, per_week_max: 3 }))
-    ).toEqual({
-      ok: false,
-      error: "The weekly maximum must be greater than the minimum.",
-    });
-    expect(
-      db
-        .prepare(
-          `SELECT id FROM frequency_targets
-            WHERE profile_id = ? AND scope_kind = 'practice'`
-        )
-        .all(profile.id)
-    ).toEqual([]);
-  });
-
-  it("stops weekly tracking without deleting sessions and unlinks protocols", async () => {
-    const admin = createLogin({ role: "admin" });
-    const profile = createProfile("Untrack");
-    actAs(admin, profile);
-    await logPractice(fd({ practice: "Sauna" }));
-    await savePractice(fd({ name: "Sauna", per_week: 3 }));
-    const target = db
-      .prepare(
-        `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = 'practice'`
-      )
-      .get(profile.id) as { id: number };
     const protocolId = Number(
       db
         .prepare(
           `INSERT INTO protocols
              (profile_id, name, start_date, frequency_target_id)
-           VALUES (?, 'Sauna block', ?, ?)`
+           VALUES (?, 'Heat block', ?, ?)`
         )
         .run(profile.id, today(profile.id), target.id).lastInsertRowid
     );
@@ -288,9 +256,10 @@ describe("logPractice action (#1259)", () => {
     ).toBeUndefined();
   });
 
-  it("deletes a tracked practice family and undo restores its target, sessions, dismissal, and card (#1621)", async () => {
+  it("scopes tracked-family deletion, then restores its full graph on undo (#1621)", async () => {
     const admin = createLogin({ role: "admin" });
     const profile = createProfile("Practice undo");
+    const other = createProfile("Practice bystander");
     actAs(admin, profile);
     await savePractice(fd({ name: "Breathwork", per_week: 3 }));
     await logPractice(fd({ practice: "Breathwork" }));
@@ -315,6 +284,28 @@ describe("logPractice action (#1259)", () => {
          (profile_id, signal_key, snooze_until)
        VALUES (?, ?, ?)`
     ).run(profile.id, practiceSignalKey(target.id), today(profile.id));
+
+    actAs(admin, other);
+    expect(
+      await deletePractice(fd({ target_id: target.id, practice: "Breathwork" }))
+    ).toEqual({
+      undoId: null,
+      error: "Couldn't find that practice.",
+    });
+    expect(await deletePractice(fd({ practice: "Breathwork" }))).toEqual({
+      undoId: null,
+      error: "Couldn't find that practice.",
+    });
+    expect(rows(profile.id)).toHaveLength(2);
+    expect(
+      db
+        .prepare(
+          "SELECT 1 FROM frequency_targets WHERE id = ? AND profile_id = ?"
+        )
+        .get(target.id, profile.id)
+    ).toBeTruthy();
+
+    actAs(admin, profile);
 
     const deleted = await deletePractice(
       fd({ target_id: target.id, practice: "Breathwork" })
@@ -371,41 +362,6 @@ describe("logPractice action (#1259)", () => {
         sessionCount: 2,
       },
     ]);
-  });
-
-  it("practice-family delete is profile-scoped for tracked and logs-only cards (#1621)", async () => {
-    const admin = createLogin({ role: "admin" });
-    const owner = createProfile("Practice owner");
-    const other = createProfile("Practice bystander");
-    actAs(admin, owner);
-    await savePractice(fd({ name: "Sauna", per_week: 2 }));
-    await logPractice(fd({ practice: "Sauna" }));
-    const target = db
-      .prepare(
-        `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = 'practice'`
-      )
-      .get(owner.id) as { id: number };
-
-    actAs(admin, other);
-    expect(
-      await deletePractice(fd({ target_id: target.id, practice: "Sauna" }))
-    ).toEqual({
-      undoId: null,
-      error: "Couldn't find that practice.",
-    });
-    expect(await deletePractice(fd({ practice: "Sauna" }))).toEqual({
-      undoId: null,
-      error: "Couldn't find that practice.",
-    });
-    expect(rows(owner.id)).toHaveLength(1);
-    expect(
-      db
-        .prepare(
-          "SELECT 1 FROM frequency_targets WHERE id = ? AND profile_id = ?"
-        )
-        .get(target.id, owner.id)
-    ).toBeTruthy();
   });
 
   it("deletes and restores a logs-only practice without inventing a target (#1621)", async () => {
@@ -525,22 +481,5 @@ describe("logPractice — the stated session time (#3273)", () => {
       duration_min: null,
       notes: null,
     });
-  });
-
-  it("keeps multi-session days additive across statements", async () => {
-    const login = createLogin();
-    const profile = createProfile("two-stated", login.id);
-    actAs(login, profile);
-
-    await logPractice(fd({ practice: "Sauna", start_time: "07:05" }));
-    const second = await logPractice(
-      fd({ practice: "Sauna", start_time: "19:40" })
-    );
-
-    expect(second).toMatchObject({ kind: "logged", count: 2 });
-    expect(logged(profile.id).map((r) => r.start_time)).toEqual([
-      "07:05",
-      "19:40",
-    ]);
   });
 });

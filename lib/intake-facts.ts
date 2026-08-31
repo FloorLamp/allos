@@ -274,21 +274,19 @@ export function intakeFactSummary(f: IntakeFactInput): IntakeFactSummary {
     "stopDate",
     f.stopDate.trim() && `stops ${f.stopDate.trim()}`
   );
-  if (f.kind === "supplement")
-    pushOptional(
-      chips,
-      more,
-      "composition",
-      f.ingredientCount > 0 &&
-        `${f.ingredientCount} ingredient${f.ingredientCount === 1 ? "" : "s"}`
-    );
-  if (f.kind === "supplement")
-    pushOptional(
-      chips,
-      more,
-      "purpose",
-      f.purposeSummary.trim() && `for ${f.purposeSummary.trim()}`
-    );
+  pushOptional(
+    chips,
+    more,
+    "composition",
+    f.ingredientCount > 0 &&
+      `${f.ingredientCount} ingredient${f.ingredientCount === 1 ? "" : "s"}`
+  );
+  pushOptional(
+    chips,
+    more,
+    "purpose",
+    f.purposeSummary.trim() && `for ${f.purposeSummary.trim()}`
+  );
   pushOptional(chips, more, "notes", f.notes.trim() && "notes");
 
   return {

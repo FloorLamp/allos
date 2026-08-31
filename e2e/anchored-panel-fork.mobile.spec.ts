@@ -107,7 +107,7 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     // This test logs its OWN serving and removes it again through the product's
     // own row action, so it leaves the shared profile as it found it — the same
     // fixture discipline as e2e/food-log-correction.spec.ts.
-    const rows = page.getByTestId("food-logged-list").locator("li[data-group]");
+    const rows = page.getByTestId("day-ledger").locator("li[data-group]");
     const before = await rows.evaluateAll((nodes) =>
       nodes.map((n) => n.getAttribute("data-testid") ?? "")
     );
@@ -119,9 +119,9 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
       )
     ).filter((id) => !before.includes(id));
     expect(added).toHaveLength(1);
-    const eventId = added[0].replace("food-logged-", "");
+    const eventId = added[0].replace("ledger-serving-", "");
 
-    const row = page.getByTestId(`food-logged-${eventId}`);
+    const row = page.getByTestId(`ledger-serving-${eventId}`);
     await hydratedClick(
       page,
       row.getByRole("button", { name: /^Actions for the/ })
@@ -131,7 +131,7 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
     // THE INVARIANT THIS TEST EXISTS FOR: the item's testid and its handler are
     // untouched by the host swap, so the same tap that removed a serving from a
     // popover removes it from a sheet.
-    const remove = page.getByTestId(`food-logged-remove-${eventId}`);
+    const remove = page.getByTestId(`ledger-serving-remove-${eventId}`);
     const [removeBox] = await settledBoxes([remove]);
     expect(removeBox.height).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
     await settledClick(page, remove);

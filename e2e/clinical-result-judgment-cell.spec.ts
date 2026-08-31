@@ -79,10 +79,12 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
   const cell = row.getByTestId("clinical-result-reference");
   await expect(cell).toHaveText("ref ≤ 90 · optimal ≤ 60");
   await expect(cell).toHaveAttribute("data-judged", "true");
-  // The lab's own string did not disappear — it moved from assertion to
-  // provenance, on the cell that replaced it.
-  await row.getByTestId("clinical-reference-help").click();
-  await expect(page.getByRole("tooltip")).toHaveText("Lab reference: <90");
+  // #3970 rule 2: the row keeps the VERDICT and spends no control on the lab's own
+  // string. The row carries no reference button at all any more...
+  await expect(row.getByTestId("clinical-reference-help")).toHaveCount(0);
+  await expect(
+    table.getByRole("button", { name: /^Lab reference: / })
+  ).toHaveCount(0);
 
   // Nothing on this filtered view falls back: every lipid analyte is canonical, so
   // no row is still printing the lab's range as if it were the deciding one.
@@ -91,6 +93,19 @@ test("the Reference cell states the bands the flag came from, and keeps the lab'
       '[data-testid="clinical-result-reference"][data-judged="false"]'
     )
   ).toHaveCount(0);
+
+  // ...and the string is still reachable, in full, where the rule says it lives: the
+  // reading detail page's own "Lab reference" column. Asserted at the NEW location
+  // rather than assumed — the row's own link is the path a reader takes.
+  const nameLink = row.getByRole("link", { name: "Apolipoprotein B (ApoB)" });
+  await nameLink.first().click(); // first-ok: the row's name cell is its one identity link
+  await expect(page).toHaveURL(/\/results\/clinical-results\/view/);
+  // `toContainText`, not `toHaveText`: the cell also carries its own card-mode label
+  // ("Lab reference"), which is the ResponsiveTable contract and not this claim. The
+  // scope is the ONE cell, so nothing else on the page can satisfy the substring.
+  await expect(
+    page.getByTestId("reading-lab-reference").first() // first-ok: the newest reading's row, which is the one the index showed
+  ).toContainText("<90");
 });
 
 test("a flagged row's severity word is in the visible text, not only the accessibility tree", async ({
