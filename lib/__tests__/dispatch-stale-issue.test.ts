@@ -203,6 +203,13 @@ describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
       "API rate limit exceeded",
       "a rate limit is quoted as GitHub sent it",
     ],
+    [
+      // The row that can REACH the token: with no body there is nothing to
+      // quote but err.message, and that is the whole curl command.
+      "",
+      "curl exited 22",
+      "a proxy blip answers with no body at all",
+    ],
   ])("%#: %s", (body, expected, _why) => {
     const dir = makeTmpDir("dispatch-unreachable");
     const run = runNew(dir, failingCurl(dir, body));
@@ -211,6 +218,9 @@ describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
     expect(run.stderr).toContain("GITHUB DID NOT ANSWER");
     expect(run.stderr).toContain(expected as string);
     expect(run.stderr).not.toContain("REFUSED");
+    // execFileSync's own message carries the whole command; quoting it here
+    // would print the Bearer token, which is what the crash path did.
+    expect(run.stderr).not.toContain("stub token 2");
     expect(fs.readFileSync(path.join(dir, "ledger.jsonl"), "utf8")).toContain(
       '"status":"active"'
     );

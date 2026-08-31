@@ -1296,17 +1296,17 @@ function issueStates(
       return { number, state: issue.state, closedAt: issue.closed_at ?? null };
     } catch (err) {
       // A 404, a rate limit or a proxy blip is GitHub NOT ANSWERING, which is
-      // the no-token case wearing a different error — same degradation.
-      const body = String(err.stdout || err.message)
-        .trim()
-        .slice(0, 200);
+      // the no-token case wearing a different error — same degradation. Quote
+      // the BODY, never err.message: execFileSync puts the whole command in
+      // it, Bearer token included, and that is what the crash path printed.
+      const body = String(err.stdout ?? "").trim();
       return {
         number,
         state: "unknown",
         closedAt: null,
         error: /Not Found/.test(body)
           ? "no such issue (404) — mistyped --issues?"
-          : body,
+          : body.slice(0, 200) || "curl exited " + err.status,
       };
     }
   });
