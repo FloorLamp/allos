@@ -1305,7 +1305,9 @@ export function closedIssueRefusal(states) {
   const closed = states.filter((s) => s.state === "closed");
   if (!closed.length) return null;
   const named = closed
-    .map((s) => "#" + s.number + " closed " + (s.closedAt ?? "at an unknown time"))
+    .map(
+      (s) => "#" + s.number + " closed " + (s.closedAt ?? "at an unknown time")
+    )
     .join(", ");
   return (
     "REFUSED: " +
@@ -1317,7 +1319,10 @@ export function closedIssueRefusal(states) {
 }
 
 /** Live {number, state, closedAt} per issue; null when no token can be found. */
-function issueStates(numbers, repo = process.env.RECONCILE_REPO || "FloorLamp/allos") {
+function issueStates(
+  numbers,
+  repo = process.env.RECONCILE_REPO || "FloorLamp/allos"
+) {
   const token = resolveReadToken();
   if (!token) return null;
   return numbers.map((number) => {

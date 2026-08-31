@@ -178,7 +178,7 @@ describe("laneIssues, over a ledger in the shape the live one has", () => {
     [3987, "nut-4118", "the second issue of a two-issue cluster"],
     [4280, null, "closed by a `done` row — no longer a lane"],
     [9999, null, "never dispatched"],
-  ])("#%s -> %s (%s)", (number, branch) => {
+  ])("#%s -> %s (%s)", (number, branch, _why) => {
     expect(lanes.get(number as number) ?? null).toBe(branch);
   });
 

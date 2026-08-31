@@ -45,7 +45,7 @@ describe("closedIssueRefusal", () => {
       "closed with no timestamp",
     ],
     [[], null, "a dispatch that names no issue"],
-  ])("%#: %s", (states, expected) => {
+  ])("%#: %s", (states, expected, _why) => {
     const refusal = closedIssueRefusal(states);
     if (expected === null) expect(refusal).toBeNull();
     else expect(refusal).toContain(expected as string);
