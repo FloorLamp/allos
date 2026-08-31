@@ -135,6 +135,7 @@ import {
 } from "@/lib/dashboard-standing";
 import {
   attentionCandidates,
+  attentionAheadDetail,
   careCandidates,
   dailyCandidates,
   engagementFromSource,
@@ -1200,7 +1201,7 @@ async function renderDashboard(
     // came to read — the biomarker retest sentence, "Vitamin D3 · 2000 IU".
     aheadPresentations.set(candidate.candidateId, {
       label: item.title,
-      detail: upcomingDueText(item, on, formatPrefs),
+      detail: attentionAheadDetail(item, on, formatPrefs),
       href: item.href,
     });
     // The write follows the control to the row (#4076). A non-actionable attention

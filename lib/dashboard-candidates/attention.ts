@@ -1,6 +1,9 @@
 import type { UpcomingItem } from "../upcoming";
-import { bandForItem } from "../upcoming";
+import { bandForItem, upcomingDueText } from "../upcoming";
 import { itemSuppressionPolicy } from "../upcoming-suppress";
+import { doseBucketFromSortHint } from "../dose-order";
+import { TIME_BUCKET_OPENS_AT } from "../intake-schedule";
+import { formatClockMinutes, type DisplayFormatPrefs } from "../format-date";
 import { preventiveReviewFactKey } from "../preventive-review";
 import { actionCandidate, statementCandidate } from "./candidate";
 import type {
@@ -12,6 +15,25 @@ import {
   dashboardAttentionCandidateId,
   dashboardAttentionFactKey,
 } from "../dashboard-attention-identity";
+import { localTimeWindow } from "../dashboard-relevance";
+
+function doseOpensAt(item: UpcomingItem): number | null {
+  if (item.domain !== "dose") return null;
+  const bucket = doseBucketFromSortHint(item.sortHint);
+  return bucket == null ? null : TIME_BUCKET_OPENS_AT[bucket];
+}
+
+export function attentionAheadDetail(
+  item: UpcomingItem,
+  today: string,
+  prefs: DisplayFormatPrefs
+): string {
+  const detail = upcomingDueText(item, today, prefs);
+  const opensAt = doseOpensAt(item);
+  return opensAt == null
+    ? detail
+    : `${detail} · from ${formatClockMinutes(prefs.timeFormat, opensAt)}`;
+}
 
 function attentionObligation(
   item: UpcomingItem,
@@ -31,6 +53,7 @@ export function attentionCandidates(
   sourceOrder = 0
 ): DashboardCandidate[] {
   return items.map((item, index) => {
+    const opensAt = doseOpensAt(item);
     const setup = item.signalGroup === "setup";
     const dueNow =
       item.signalGroup == null &&
@@ -74,6 +97,8 @@ export function attentionCandidates(
         changed:
           item.signalGroup === "flagged" || item.signalGroup === "review",
       },
+      timing:
+        opensAt == null ? undefined : localTimeWindow(opensAt, 24 * 60 - 1),
       // The candidate's rank tiebreak IS this list's index, so the order the
       // model arrives in decides which owed `must` doses survive
       // NOW_CANDIDATE_CAP when they all score alike. buildAttentionModel states
