@@ -85,15 +85,18 @@ describe("a capture dated ahead of the profile's day (#4425 review)", () => {
         ).n,
     ],
     ["vitals", VITALS_PAYLOAD, readingCount],
-  ])("dead-letters a queued %s capture instead of losing it", (flow, payload, count) => {
-    const p = newProfile(`device-ahead-${flow}`);
-    const ahead = shiftDateStr(today(p), 1);
+  ])(
+    "dead-letters a queued %s capture instead of losing it",
+    (flow, payload, count) => {
+      const p = newProfile(`device-ahead-${flow}`);
+      const ahead = shiftDateStr(today(p), 1);
 
-    const result = applyIntent(p, buildIntent(flow, ahead, payload, p));
+      const result = applyIntent(p, buildIntent(flow, ahead, payload, p));
 
-    expect(result.status).toBe("rejected");
-    expect(count(p)).toBe(0);
-  });
+      expect(result.status).toBe("rejected");
+      expect(count(p)).toBe(0);
+    }
+  );
 
   // The sitting is the one whose refusal had no channel, so it is also asserted at the
   // core's own door: `wrote: true` over an empty table is the exact shape the loops'

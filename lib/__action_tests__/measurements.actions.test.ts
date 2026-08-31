@@ -557,8 +557,14 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
   // says which one it was.
   it.each([
     ["body_metrics", (p: number) => bodyRows(p).length],
-    ["medical_records", (p: number) => medRows(p, "Blood Pressure Systolic").length],
-    ["height (growth)", (p: number) => (sampleValue(p, "height_cm") == null ? 0 : 1)],
+    [
+      "medical_records",
+      (p: number) => medRows(p, "Blood Pressure Systolic").length,
+    ],
+    [
+      "height (growth)",
+      (p: number) => (sampleValue(p, "height_cm") == null ? 0 : 1),
+    ],
     [
       "waist (tape)",
       (p: number) => (sampleValue(p, "waist_circumference_cm") == null ? 0 : 1),
@@ -567,28 +573,31 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
       "lean mass (composition)",
       (p: number) => (sampleValue(p, "lean_mass_kg") == null ? 0 : 1),
     ],
-  ])("writes no %s row for a sitting dated after the profile's day", async (_store, count) => {
-    const { profile } = seedActor();
-    pinUtc(profile.id);
-    const tomorrow = "2026-05-21";
-    expect(tomorrow > today(profile.id)).toBe(true);
+  ])(
+    "writes no %s row for a sitting dated after the profile's day",
+    async (_store, count) => {
+      const { profile } = seedActor();
+      pinUtc(profile.id);
+      const tomorrow = "2026-05-21";
+      expect(tomorrow > today(profile.id)).toBe(true);
 
-    await addMeasurements(
-      fd({
-        date: tomorrow,
-        weight: "80",
-        weight_unit: "kg",
-        systolic: "118",
-        diastolic: "76",
-        height: "180",
-        height_unit: "cm",
-        waist_circ: "82",
-        waist_circ_unit: "cm",
-        lean_mass: "56",
-        lean_mass_unit: "kg",
-      })
-    );
+      await addMeasurements(
+        fd({
+          date: tomorrow,
+          weight: "80",
+          weight_unit: "kg",
+          systolic: "118",
+          diastolic: "76",
+          height: "180",
+          height_unit: "cm",
+          waist_circ: "82",
+          waist_circ_unit: "cm",
+          lean_mass: "56",
+          lean_mass_unit: "kg",
+        })
+      );
 
-    expect(count(profile.id)).toBe(0);
-  });
+      expect(count(profile.id)).toBe(0);
+    }
+  );
 });
