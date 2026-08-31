@@ -56,6 +56,7 @@ const DAY_LABEL = `${MONTHS_SHORT[Number(DAY.slice(5, 7)) - 1]} ${Number(
 // is a January problem for whatever day is chosen, not an ageing one; it is recorded
 // on #4358 rather than papered over here.
 const OLD_DAY = "2026-02-11";
+const HISTORY_WITH_OLD_YEAR = `/history?open=${OLD_DAY.slice(0, 4)}`;
 const PRACTICE = "E2e History Rowing";
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
@@ -423,7 +424,7 @@ test.describe("the record (#3958)", () => {
     seedDay();
     for (const width of [WIDE_PX, NARROW_DESKTOP_PX]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("/history");
+      await page.goto(HISTORY_WITH_OLD_YEAR);
       // THE PREMISE BEFORE THE VERDICT, as the phone case does: no rail, no lane, and
       // an alignment assertion over a page with nothing to align is the empty result
       // that flatters every one of these.
@@ -489,7 +490,7 @@ test.describe("the record (#3958)", () => {
     // accident on a sparse profile, and a scroll-reset assertion over a page that never
     // scrolled is the empty result that passes on the bug.
     await page.setViewportSize({ width: NARROW_DESKTOP_PX, height: 600 });
-    await page.goto("/history");
+    await page.goto(HISTORY_WITH_OLD_YEAR);
 
     // PINNED TO ONE CARD BY KEY, not left as "the first shut month": that locator
     // re-resolves after the tap and quietly moves to the NEXT shut card, so every

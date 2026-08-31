@@ -3,12 +3,14 @@ import { followLink } from "./helpers";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { deleteActivitiesTitled } from "./shared-profile-guard";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 import {
   serializeCyclingStreamSummary,
   summarizeCyclingStreams,
 } from "@/lib/cycling-stream-summary";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { shiftDateStr } from "@/lib/date";
+import { formatLongDate } from "@/lib/format-date";
 
 // Two tests below plant cycling-family rides on the SHARED profile, dated inside
 // Analyze's default range — the exact shape that made this file's own Cycling quick
@@ -21,6 +23,7 @@ const PLANTED_RIDES = [
   "Fictional trail loops",
   "Fictional max-only ride",
 ];
+const ZONE_RIDE_DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -2);
 test.afterEach(() => deleteActivitiesTitled(...PLANTED_RIDES));
 
 // The Log feed is a slim index. Selecting a ride navigates directly to its
@@ -162,7 +165,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   );
   await expect(
     comparisonChart.locator('[data-current="true"]')
-  ).not.toContainText("2026");
+  ).not.toContainText(/\b(?:19|20)\d{2}\b/);
   await expect(
     comparisonChart.locator('[data-current="true"]').getByRole("link")
   ).toHaveCount(0);
@@ -179,7 +182,7 @@ test("a Training Log ride opens a read-first detail with the stored ride measure
   ).toBe(true);
   await expect(
     comparisonRideLinks.first() // first-ok: the seeded comparison cohort is deterministically ranked
-  ).toContainText(/^\w+, \w+ \d{1,2}, 2026/);
+  ).toContainText(formatLongDate(ZONE_RIDE_DAY, undefined, { year: "always" }));
   await comparisonChart
     .getByRole("button", { name: "Power", exact: true })
     .click();
