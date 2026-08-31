@@ -11,12 +11,18 @@ import {
   type NextSetSeed,
 } from "@/lib/coaching";
 import {
+  exerciseInjuryVerdict,
   RECOVERING_LOAD_FACTOR,
   regionInjuryConstraint,
   temperedRegions,
   type InjuryConstraint,
 } from "@/lib/injury-model";
 import { regionForExercise } from "@/lib/lifts";
+import {
+  NIGGLE_LOAD_FACTOR,
+  niggleTempers,
+  resolveTrainingTemper,
+} from "@/lib/niggle-model";
 
 // #1115 Fix B — contextualNextSet is the ONE composition of every next-set context
 // modifier (deload week #741, recovering injury #838), so a new modifier reaches all
@@ -183,6 +189,67 @@ describe("form ⇄ Analyze-panel agreement on the recovering-injury axis (#1144)
     };
     expect(ctx.recoveringRegion).toBe(false);
     expect(contextualNextSet(base, "Squat", ctx)).toBe(base);
+  });
+});
+
+describe("form ⇄ coaching-card agreement on the live-niggle axis (#3244)", () => {
+  const base = suggestNextSet(seed, "kg")!;
+  const tempers = niggleTempers(
+    [{ region: "Legs", label: "right knee", lastReportedDay: "2026-08-18" }],
+    new Set(),
+    "2026-08-19"
+  );
+
+  it("uses the shared verdict, preserving the healthy and injury converses", () => {
+    const niggle = resolveTrainingTemper(
+      exerciseInjuryVerdict([], "Back Squat"),
+      tempers,
+      "Back Squat"
+    );
+    expect(niggle).toMatchObject({
+      tier: "niggle",
+      factor: NIGGLE_LOAD_FACTOR,
+      rationale: "Easing off — right knee niggle",
+    });
+    const tempered = contextualNextSet(base, "Back Squat", {
+      recoveringRegion: niggle.recoveringRegion,
+      recoveringFactor: niggle.factor,
+      temperRationale: niggle.rationale,
+    })!;
+    expect(tempered.weightKg).toBeLessThan(base.weightKg);
+    expect(tempered.rationale).toBe("Easing off — right knee niggle");
+    const healthy = resolveTrainingTemper(
+      exerciseInjuryVerdict([], "Bench Press"),
+      tempers,
+      "Bench Press"
+    );
+    expect(healthy.tier).toBe("clear");
+    const constraints = [
+      regionInjuryConstraint({
+        id: 2,
+        label: "Knee injury",
+        status: "recovering",
+        regions: ["Legs"],
+      }),
+    ];
+    const injured = resolveTrainingTemper(
+      exerciseInjuryVerdict(constraints, "Back Squat"),
+      tempers,
+      "Back Squat"
+    );
+    expect(injured.factor).toBe(RECOVERING_LOAD_FACTOR);
+  });
+
+  it("gathers the axis and routes the live form through the shared verdict", () => {
+    const root = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+    const read = (file: string) =>
+      fs.readFileSync(path.join(root, file), "utf8");
+    expect(read("app/(app)/layout.tsx")).toContain(
+      "getNiggleContext(profile.id)"
+    );
+    expect(read("components/activity-form/StrengthSets.tsx")).toContain(
+      "recoveringContext.niggleTempers ?? []"
+    );
   });
 });
 
