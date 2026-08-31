@@ -17,7 +17,8 @@
 // NEVER GAMIFIED (#998/#1078 law): these writes never touch `activities`, so the
 // milestone/streak machinery stays structurally blind to the domain.
 
-import { writeTx } from "./db";
+import { today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import { now as clockNow } from "./clock";
 import { substanceDayCounter } from "./day-counter-ledger-db";
 import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
@@ -30,7 +31,10 @@ import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
 //                       normalizes at the request boundary (resolveSubstanceKey).
 export type SubstanceLogOutcome =
   | { kind: "logged"; units: number; substance: SubstanceKey }
-  | { kind: "unknown-substance" };
+  | { kind: "unknown-substance" }
+  // A day that is not a real past day (#4425) — the shared invariant's refusal,
+  // spelled the way the history core next door spells it.
+  | { kind: "invalid-date" };
 
 // The typed result of an undo: a use was removed and `units` is the REMAINING
 // daily total (0 once the row is dropped). Undo is idempotent — undoing a day
@@ -51,6 +55,12 @@ export function logSubstanceUnitCore(
   loggedAt: string = clockNow().toISOString()
 ): SubstanceLogOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
+  // THE SHARED DATE INVARIANT (#4425). This core re-checked NOTHING about its day: it
+  // took whatever its action resolved, which is `today(profileId)` on the one-tap path
+  // and would have been anything at all on a future dated one. Its history sibling
+  // `addSubstanceDailyTotalCore` has always carried the rule.
+  if (!isPastWriteAccepted(today(profileId), date))
+    return { kind: "invalid-date" };
   return writeTx(() => {
     const units = substanceDayCounter.bump(profileId, date, [substance], 1, [
       loggedAt,

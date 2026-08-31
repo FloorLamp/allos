@@ -168,7 +168,8 @@ symptom backfill without requiring an illness episode.
 Symptoms are a standalone day-by-day record, not merely an illness feature.
 Choose from the curated vocabulary or add a custom symptom, then record severity
 from 1–4. Repeating a tap preserves the day's worst severity; lowering it is an
-explicit edit.
+explicit edit. A symptom can be logged for any past day — the record's day view
+logs against the day you are reading — and never for a future one.
 
 ### Quick entry and context
 
@@ -943,7 +944,8 @@ and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
 view, while longer ranges show the appropriate aggregate. Mood and other
 self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
-used by integrations.
+used by integrations. A sitting can be dated any past day and not a future one; a
+future date is refused on the form rather than saved in part.
 
 **Four measures that could only arrive from a device can now be typed** (#1851).
 Water, lean mass, bone mass and respiratory rate join the same **Log measurements**
