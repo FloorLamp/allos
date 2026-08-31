@@ -2181,9 +2181,9 @@ try {
       }
     });
     let ready = false;
-    // First compile can take minutes on a slow filesystem — poll patiently.
-    for (let i = 0; i < 120 && !ready && !serverFailure; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
+    // First compile can take minutes on a slow filesystem. Probe immediately, then
+    // wait between misses so an already-ready or already-failed child returns fast.
+    for (let i = 0; i < 600 && !ready && !serverFailure; i++) {
       const ownsConfiguredDb = await fetch(`${BASE}/api/health`)
         .then(
           (response) =>
@@ -2196,6 +2196,9 @@ try {
         (await fetch(`${BASE}/login`)
           .then((response) => response.status === 200)
           .catch(() => false));
+      if (!ready && !serverFailure && i < 599) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
     if (!ready) {
       if (serverFailure) throw serverFailure;
