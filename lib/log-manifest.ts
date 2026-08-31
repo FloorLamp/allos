@@ -449,7 +449,8 @@ export const LOG_MANIFEST = {
     writeConventions: {
       kind: "diverges",
       what: "Failure is TOAST-ONLY on a surface that has a field: the picker's \"Happened earlier?\" fold collects a stated time, and #3276's convention is that anything with fields answers inline as well.",
-      reason: "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
+      reason:
+        "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
       ref: "#3276",
     },
     cores: ["logBristolStool"],

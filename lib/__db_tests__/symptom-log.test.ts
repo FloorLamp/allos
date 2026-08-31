@@ -125,7 +125,6 @@ describe("derived episode association (#799)", () => {
   });
 });
 
-
 // A DAY THAT DOES NOT EXIST (#4425). The action's window gate refuses these before the
 // core sees them, so this is the core's OWN answer — the two cores here that can MINT a
 // row, reached directly the way an import or a future surface would reach them.
@@ -144,7 +143,9 @@ describe("the minting cores refuse a day that is not a day (#4425)", () => {
       });
       expect(
         db
-          .prepare("SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?")
+          .prepare(
+            "SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?"
+          )
           .get(p) as { n: number }
       ).toEqual({ n: 0 });
     }

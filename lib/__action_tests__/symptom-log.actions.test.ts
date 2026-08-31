@@ -344,7 +344,6 @@ describe("profile scoping", () => {
   });
 });
 
-
 // THE BACKFILL WINDOW (#4425). Symptoms were the one logged domain with NO date bound
 // at all: the action shape-checked `\d{4}-\d{2}-\d{2}` (not `isRealIsoDate`) and the
 // core bounded nothing, so a post could file a symptom-day on any string that looked
@@ -365,7 +364,9 @@ describe("logSymptom — the #4425 backfill window", () => {
     actAs(login, profile);
 
     const day = shiftDateStr(today(profile.id), -back);
-    const res = await logSymptom(fd({ symptom: "cough", severity: 2, date: day }));
+    const res = await logSymptom(
+      fd({ symptom: "cough", severity: 2, date: day })
+    );
     expect(res).toEqual(
       accepted
         ? { ok: true, symptom: "cough", severity: 2 }
@@ -384,7 +385,9 @@ describe("logSymptom — the #4425 backfill window", () => {
       const profile = createProfile(`unreal-${day}`, login.id);
       actAs(login, profile);
 
-      expect(await logSymptom(fd({ symptom: "cough", severity: 2, date: day }))).toEqual({
+      expect(
+        await logSymptom(fd({ symptom: "cough", severity: 2, date: day }))
+      ).toEqual({
         ok: false,
         error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR,
       });

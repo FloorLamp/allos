@@ -151,12 +151,7 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
       D_MINUS_1,
       null
     );
-    const closed = createEpisodeRow(
-      profile.id,
-      "Closed",
-      D_MINUS_3,
-      D_MINUS_1
-    );
+    const closed = createEpisodeRow(profile.id, "Closed", D_MINUS_3, D_MINUS_1);
 
     for (const [symptom, episodeId] of [
       ["cough", "garbage"],
@@ -239,12 +234,7 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     // A profile the member is NOT granted (created under a different admin login).
     const admin = createLogin({ role: "admin" });
     const foreign = createProfile("Ungranted", admin.id);
-    const foreignEp = createEpisodeRow(
-      foreign.id,
-      "Illness",
-      D_MINUS_1,
-      null
-    );
+    const foreignEp = createEpisodeRow(foreign.id, "Illness", D_MINUS_1, null);
     actAs(member, own);
 
     // Posting an explicit cross-profile target the member can't reach must throw at the

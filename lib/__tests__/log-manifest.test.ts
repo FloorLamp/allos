@@ -14,7 +14,10 @@ import {
   isLogDateAccepted,
   type LogDomain,
 } from "@/lib/log-manifest";
-import { DOSE_LOG_DATE_WINDOW_DAYS, isDoseDateAccepted } from "@/lib/dose-log-window";
+import {
+  DOSE_LOG_DATE_WINDOW_DAYS,
+  isDoseDateAccepted,
+} from "@/lib/dose-log-window";
 import { MOOD_LOG_DATE_WINDOW_DAYS, isMoodDateAccepted } from "@/lib/mood";
 import { shiftDateStr } from "@/lib/date";
 

@@ -13,7 +13,6 @@
 //   • Calm and optional — skipping is frictionless and never escalates; the only
 //     downstream signals are coaching-tier observations (lib/mood-observation.ts).
 
-
 import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
 
 export const MOOD_MIN = 1;

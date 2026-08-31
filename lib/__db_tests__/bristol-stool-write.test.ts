@@ -73,8 +73,12 @@ beforeEach(() => {
 describe("logBristolStool — instant grain", () => {
   it("keeps two movements on one day as two rows", () => {
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 2, "08:12")).toEqual({ wrote: true });
-    expect(logBristolStool(profileId, date, 6, "19:40")).toEqual({ wrote: true });
+    expect(logBristolStool(profileId, date, 2, "08:12")).toEqual({
+      wrote: true,
+    });
+    expect(logBristolStool(profileId, date, 6, "19:40")).toEqual({
+      wrote: true,
+    });
 
     const stored = rows();
     expect(stored).toHaveLength(2);
@@ -92,8 +96,12 @@ describe("logBristolStool — instant grain", () => {
     // A stated wall time is a claim about WHEN, so restating it corrects that
     // reading rather than inventing a second movement at the same minute.
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 5, "09:00")).toEqual({ wrote: true });
-    expect(logBristolStool(profileId, date, 4, "09:00")).toEqual({ wrote: true });
+    expect(logBristolStool(profileId, date, 5, "09:00")).toEqual({
+      wrote: true,
+    });
+    expect(logBristolStool(profileId, date, 4, "09:00")).toEqual({
+      wrote: true,
+    });
     expect(rows()).toEqual([
       { date, started_at: `${date}T09:00:00`, value: 4 },
     ]);
@@ -110,7 +118,9 @@ describe("logBristolStool — instant grain", () => {
     // Asserted through the stated-time door, because this file pins the clock seam
     // (ALLOS_TEST_NOW, above) and it cannot advance to demonstrate it.
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 3, "09:00")).toEqual({ wrote: true });
+    expect(logBristolStool(profileId, date, 3, "09:00")).toEqual({
+      wrote: true,
+    });
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', ?, ?, ?, ?, 6)`
@@ -161,14 +171,20 @@ describe("logBristolStool — the vocabulary reaches the table", () => {
   it("refuses every non-type and writes nothing", () => {
     const date = today(profileId);
     for (const bad of [0, 8, 3.5, -1, NaN, "four", null, undefined]) {
-      expect(logBristolStool(profileId, date, bad), String(bad)).toEqual({ wrote: false });
+      expect(logBristolStool(profileId, date, bad), String(bad)).toEqual({
+        wrote: false,
+      });
     }
     expect(rows()).toEqual([]);
   });
 
   it("refuses an impossible date", () => {
-    expect(logBristolStool(profileId, "2026-02-30", 4)).toEqual({ wrote: false });
-    expect(logBristolStool(profileId, "not-a-date", 4)).toEqual({ wrote: false });
+    expect(logBristolStool(profileId, "2026-02-30", 4)).toEqual({
+      wrote: false,
+    });
+    expect(logBristolStool(profileId, "not-a-date", 4)).toEqual({
+      wrote: false,
+    });
     expect(rows()).toEqual([]);
   });
 });
@@ -201,7 +217,6 @@ describe("the reader is profile-scoped and metric-scoped", () => {
     ]);
   });
 });
-
 
 // THE STATED TIME IS JUDGED, NOT SHAPE-CHECKED (#4425). This core ran
 // `normalizeClockTime` alone, so "Happened earlier?" took a wall time the day had not
