@@ -8,7 +8,12 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HistoryRows from "@/app/(app)/history/HistoryRows";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
-import type { HistoryRow } from "@/lib/history-format";
+import {
+  detailSegment,
+  historyClock,
+  type HistoryRow,
+} from "@/lib/history-format";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 
 // WHAT THE RECORD'S ⋯ ACTUALLY POSTS (#3958, after the #4016 falsifying pass).
 //
@@ -181,6 +186,9 @@ const ACTING = 7;
 // the row's own id, and dropping the subject's zone, both passed. Pacific/Niue is
 // UTC−11 while the mocked provider says UTC, and their days differ too: a caregiver in
 // UTC on 2026-08-28 is a member in Niue still on 2026-08-27.
+// 24h, so every fixture clock below reads as the "HH:MM" it was written with — the
+// grammar is still the formatter's, and this file is not the one that pins meridiem.
+const H24: DisplayFormatPrefs = { timeFormat: "24h", dateFormat: "mdy" };
 const MEMBER = 11;
 const MEMBER_TZ = "Pacific/Niue";
 const ACTING_TODAY = "2026-08-28";
@@ -196,7 +204,7 @@ function row(over: Partial<HistoryRow> & Pick<HistoryRow, "id" | "kind">) {
     clockKind: "stated" as const,
     title: "A row",
     href: null,
-    detail: "",
+    detail: detailSegment([]),
     media: 0,
     edit: null,
     ...over,
@@ -257,7 +265,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         id: "practice:5",
         kind: "practice",
         sortTime: "19:43",
-        clock: "logged 19:43",
+        clock: historyClock("19:43", "logged", H24),
         clockKind: "logged",
         title: "Breathwork",
         edit: {
@@ -298,7 +306,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         id: "practice:6",
         kind: "practice",
         sortTime: "07:15",
-        clock: "07:15",
+        clock: historyClock("07:15", "stated", H24),
         title: "Sauna",
         edit: {
           kind: "practice",
@@ -399,7 +407,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           id: "body:weight_kg:3",
           kind: "body",
           title: "Weight",
-          detail: `${measure.value}${measure.unit}`,
+          detail: detailSegment([`${measure.value}${measure.unit}`]),
           edit: {
             kind: "body",
             target: measure.target,
@@ -434,7 +442,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         id: "food:11",
         kind: "food",
         sortTime: "08:46",
-        clock: "08:46",
+        clock: historyClock("08:46", "stated", H24),
         title: "Berries",
         edit: {
           kind: "food",
@@ -551,7 +559,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         id: "dose:21",
         kind: "dose",
         sortTime: "10:07",
-        clock: "10:07",
+        clock: historyClock("10:07", "stated", H24),
         title: "Magnesium",
         edit: {
           kind: "dose",
@@ -585,7 +593,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         id: "dose:22",
         kind: "dose",
         sortTime: "07:02",
-        clock: "logged 07:02",
+        clock: historyClock("07:02", "logged", H24),
         clockKind: "logged",
         title: "Magnesium",
         edit: {
@@ -1058,7 +1066,7 @@ describe("the record's row disclosure", () => {
       id: "feed:medical:5",
       kind: "lab",
       title: "Complete blood count",
-      detail: "3 flagged · Quest",
+      detail: detailSegment(["3 flagged", "Quest"]),
       detailItems: [
         { label: "Glucose", value: "130", unit: "mg/dL", flag: "high" },
         { label: "HDL", value: "55" },
@@ -1071,7 +1079,13 @@ describe("the record's row disclosure", () => {
     // row on this page still renders its detail as plain text with no control. A
     // predicate keyed on the row's KIND rather than on its content would draw an empty
     // panel's chevron on every lab row that has no breakdown, and this is what sees it.
-    openRow([row({ id: "food:1", kind: "food", detail: "Berries · Morning" })]);
+    openRow([
+      row({
+        id: "food:1",
+        kind: "food",
+        detail: detailSegment(["Berries", "Morning"]),
+      }),
+    ]);
     expect(screen.queryByTestId("history-row-disclosure")).toBeNull();
     expect(screen.getByTestId("history-row-detail").tagName).toBe("SPAN");
   });
@@ -1122,7 +1136,7 @@ describe("the record's row disclosure", () => {
         id: "feed:visit:3",
         kind: "visit",
         title: "Ophthalmology",
-        detail: "Excessive involuntary blinking",
+        detail: detailSegment(["Excessive involuntary blinking"]),
         linkedRefs: LINEAGE,
         linkedScope: scope,
       }),
