@@ -14,7 +14,6 @@ import {
   settledBoxes,
   settledClick,
 } from "./helpers";
-import { openStandingTail } from "./dashboard-candidate";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -102,7 +101,10 @@ test("the dashboard renders the fixed four-zone instrument cluster", async ({
           nodes.map((node) => node.getAttribute("data-standing-band"))
         ),
       ])
-  ).toEqual(["attention", "rest", "tail"]);
+    // #4232 narrowed #3548's three bands to two: Standing is the glance surface, so
+    // the quiet band is not a band any more — everything static is in the page's one
+    // bottom fold.
+  ).toEqual(["attention", "rest"]);
   expect(
     await standing
       .locator("[data-standing-section]")
@@ -159,19 +161,27 @@ test("attention facts carry their write outside read-only Ahead", async ({
 
 test("clinical results render as dense individual facts", async ({ page }) => {
   await page.goto("/");
-  // A months-old result with nothing claiming attention is what the quiet tail
-  // collapses (#3548); the rows and their density are unchanged inside it.
-  await openStandingTail(page);
-  const main = page.getByRole("main");
-  const family = main.locator('[data-standing-family="clinical-results"]');
-  const rows = family.locator(
+  // A months-old result with nothing claiming attention is what the ONE fold now holds
+  // (#4232, narrowing #3548); the rows and their density are unchanged inside it, and
+  // the family label the retired Standing band printed is the moment block's header.
+  await openDashboardAll(page);
+  const block = page
+    .getByTestId("dashboard-everything-read")
+    .locator('[data-moment-key="clinical-result.recent"]');
+  const rows = block.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"]'
   );
 
   expect(await rows.count()).toBeGreaterThan(1);
   await expect(
-    family.getByText("Recent clinical results", { exact: true })
+    block.getByText("Recent clinical results", { exact: true })
   ).toBeVisible();
+  // …and the rows really are in the fold rather than left behind in Standing.
+  await expect(
+    page
+      .getByTestId("dashboard-standing")
+      .locator('[data-candidate-id^="labs.latest:"]')
+  ).toHaveCount(0);
 });
 
 test("ordinary other-profile attention stays off the acting dashboard", async ({
@@ -184,30 +194,28 @@ test("ordinary other-profile attention stays off the acting dashboard", async ({
   await expect(facts).toHaveCount(0);
 });
 
-test("Ahead expands by keyboard without opening Show everything", async ({
-  page,
-}) => {
+// AHEAD OPENS (#4232, owner ruling, second sighting). The zone's "+N more" is retired
+// and with it the only ephemeral disclosure state on the page. This test used to drive
+// that expander by keyboard; what it asserts now is the ruling that replaced it —
+// every member of every bucket is on the page, unhidden, with no expander at all.
+//
+// AND THE CONVERSE IN THE SAME TEST, because "no expander anywhere" is equally true of
+// a page where Ahead lost its members: the horizon bucket carries MORE THAN ONE
+// visible row, which is exactly the state the fold used to hide, and Show everything is
+// still shut, so the one fold has not been traded for no fold.
+test("Ahead states every member with no fold of its own", async ({ page }) => {
   await page.goto("/");
   const ahead = page.getByTestId("dashboard-ahead");
   await expect(ahead).toBeVisible();
+  await expect(ahead.getByRole("button")).toHaveCount(0);
+  await expect(ahead.locator("[aria-expanded]")).toHaveCount(0);
+
   const horizon = ahead.locator('[data-ahead-bucket="horizon"]');
-  const expander = horizon.getByRole("button", {
-    name: /^\+\d+ more in This week and later$/,
-  });
-  const controlled = await expander.getAttribute("aria-controls");
-  expect(controlled).toBeTruthy();
-  await expect(expander).toHaveAccessibleName(
-    /^\+\d+ more in This week and later$/
-  );
-  await expect(expander).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(`#${controlled}`)).toBeHidden();
-  await expander.focus();
-  await expander.press("Enter");
-  await expect(expander).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator(`#${controlled}`)).toBeVisible();
-  await expander.press("Space");
-  await expect(expander).toHaveAttribute("aria-expanded", "false");
-  await expect(page.locator(`#${controlled}`)).toBeHidden();
+  const rows = horizon.locator('[data-testid="dashboard-candidate"]');
+  expect(await rows.count()).toBeGreaterThan(1);
+  for (let index = 0; index < (await rows.count()); index += 1)
+    await expect(rows.nth(index)).toBeVisible();
+
   await expect(page.getByTestId("dashboard-all")).not.toHaveAttribute(
     "open",
     ""

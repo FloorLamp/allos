@@ -45,6 +45,28 @@ export const RECENT_LAB_STALE_LABEL = "a year";
 export const LAB_CATEGORIES: ReadonlySet<MedicalCategory> =
   new Set<MedicalCategory>(["lab"]);
 
+// FRESH ENOUGH TO CLAIM, as ONE decision (#4232). The ruling composes two halves —
+// the collection-date window above and the acknowledge lifecycle #3225 already runs —
+// and says the claim ends at "whichever is first". Split across two call sites that is
+// a rule nobody can state; here it is one function with one table behind it.
+//
+// `collectedOn` is the reading's own COLLECTION date. An undatable reading is not
+// fresh: `freshnessState` answers "not-applicable" for it, which is honestly neither
+// current nor lapsed, and a claim needs a positive answer.
+export function clinicalResultClaimsFreshness(
+  collectedOn: string | null | undefined,
+  today: string,
+  acknowledged: boolean
+): boolean {
+  if (acknowledged) return false;
+  return (
+    freshnessState(
+      freshnessAgeDays(collectedOn, today),
+      CLINICAL_RESULT_FRESH_DAYS
+    ) === "current"
+  );
+}
+
 // One latest lab reading, flattened for display by a surface.
 export interface RecentLabRow {
   name: string;

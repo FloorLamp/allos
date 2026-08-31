@@ -396,11 +396,13 @@ test("a cold-start profile's tier is the getting-started list", async ({
         .getByRole("heading", { level: 2, name: "Right now", exact: true })
     ).toBeVisible();
     await expect(page.getByTestId("now-strip-date")).toBeVisible();
-    // Past the cap the remaining CTAs are folded, not dropped.
+    // Past the cap the remaining CTAs are folded, not dropped — and since #4232 the
+    // fold is the page's one bottom fold, in the Setup group the partition routes a
+    // never-recorded candidate to.
     await expect(
-      page.locator(
-        '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
-      )
+      page
+        .getByTestId("dashboard-everything-setup")
+        .locator('[data-testid="dashboard-candidate"][data-presence="never"]')
     ).not.toHaveCount(0);
   } finally {
     await page.context().close();
@@ -440,11 +442,11 @@ test("the first log retires the getting-started list to the fold", async ({
       ).toBeVisible();
       await expect(tierCtas(after)).toHaveCount(0);
       // Retired, not dropped: every one of them is still in the document, in the
-      // tail, reachable behind the fold.
+      // page's one fold, reachable (#4232).
       await expect(
-        after.locator(
-          '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
-        )
+        after
+          .getByTestId("dashboard-everything-setup")
+          .locator('[data-testid="dashboard-candidate"][data-presence="never"]')
       ).not.toHaveCount(0);
     } finally {
       await after.context().close();

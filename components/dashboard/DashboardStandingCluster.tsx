@@ -8,7 +8,7 @@ import StandingSparkline, {
 } from "./StandingSparkline";
 import {
   STANDING_READING_ORDER,
-  type StandingBandKey,
+  type StandingRenderedBand,
   type StandingReadingFamily,
   type StandingSectionKey,
 } from "@/lib/dashboard-standing";
@@ -396,7 +396,7 @@ export default function DashboardStandingCluster({
   placements: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
-  const inBand = (band: StandingBandKey) =>
+  const inBand = (band: StandingRenderedBand) =>
     placements.filter((placement) => placement.standingBand === band);
   const attention = inBand("attention");
   const rest = inBand("rest");

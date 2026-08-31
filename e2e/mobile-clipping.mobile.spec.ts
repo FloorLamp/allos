@@ -6,12 +6,13 @@ import {
   expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
+  openDashboardAll,
   overflowStory,
   settledBoxes,
   touchSwipe,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
-import { openStandingTail } from "./dashboard-candidate";
+
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -291,11 +292,13 @@ test.describe("mobile clipping batch (#2614)", () => {
     // milder one, because seating is flagged-first and the values carrying a
     // severity word are exactly the seated ones.
     await page.goto("/");
-    // The family folds into Standing's quiet tail when nothing is claiming
-    // attention (#3548); its rows keep the same anatomy inside the fold, which is
-    // exactly what this measures.
-    await openStandingTail(page);
-    const family = page.locator('[data-standing-family="clinical-results"]');
+    // The family is not claimed by Standing when nothing about it is claiming
+    // attention (#4232); its rows keep the same anatomy inside the page's one fold,
+    // which is exactly what this measures.
+    await openDashboardAll(page);
+    const family = page
+      .getByTestId("dashboard-everything-read")
+      .locator('[data-moment-key="clinical-result.recent"]');
     await expect(family).toBeVisible();
     const rows = family.getByTestId("dashboard-candidate");
     await expect(rows.first()).toBeVisible(); // first-ok: presence proves the family rendered; the assertions below are over ALL of them

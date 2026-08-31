@@ -102,7 +102,7 @@ import {
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import {
-  CLINICAL_RESULT_FRESH_DAYS,
+  clinicalResultClaimsFreshness,
   RECENT_LAB_STALE_LABEL,
   recentLabHighlights,
 } from "@/lib/recent-labs";
@@ -114,7 +114,7 @@ import {
   dormantRecordSince,
 } from "@/lib/domain-dormancy";
 import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
-import { freshnessAgeDays, freshnessState } from "@/lib/freshness";
+import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
@@ -867,12 +867,11 @@ async function renderDashboard(
       // acknowledge lifecycle #3225 already runs, read through the same suppression
       // bus above. The date is the COLLECTION date the record carries, so a
       // backfilled import of old results claims nothing.
-      const fresh =
-        !labAcknowledged(name) &&
-        freshnessState(
-          freshnessAgeDays(observation.date, on),
-          CLINICAL_RESULT_FRESH_DAYS
-        ) === "current";
+      const fresh = clinicalResultClaimsFreshness(
+        observation.date,
+        on,
+        labAcknowledged(name)
+      );
       labPromotions.set(name, {
         changed,
         fresh,

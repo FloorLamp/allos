@@ -15,6 +15,12 @@ export type StandingSectionKey = "today" | "body" | "longer-view";
 // computes to reach it, not because a third band draws anything.
 export type StandingBandKey = "attention" | "rest" | "tail";
 
+// The bands Standing DRAWS. "tail" is the resolver's verdict for a member that holds
+// no seat at all, so it can never reach a placement — narrowing it out of the placement
+// type is what makes "Standing shows attention + rest only" a type error to violate
+// rather than a convention to remember.
+export type StandingRenderedBand = Exclude<StandingBandKey, "tail">;
+
 // How many never-recorded bootstrap CTAs may hold a cold-start claim at once
 // (owner ruling #3548: 2-3, ordered by onboarding value). The order is
 // STANDING_READING_ORDER's own declaration order, which already puts the
@@ -248,6 +254,10 @@ export interface StandingMember {
   band: StandingBandKey;
 }
 
+export interface StandingClaimedMember extends StandingMember {
+  band: StandingRenderedBand;
+}
+
 // A candidate's claim on the attention tier, read from the SAME `rankReasons`
 // the Now lane reads and in the same precedence `nowScore` scores them in
 // (safety > owed > changed). It is a precedence over existing reasons, not a
@@ -322,7 +332,7 @@ export function resolveStandingMembers(
   candidates: readonly DashboardCandidate[],
   activeProfileId: number
 ): {
-  members: StandingMember[];
+  members: StandingClaimedMember[];
   memberIds: ReadonlySet<string>;
   factKeys: ReadonlySet<string>;
   cappedOverflowIds: ReadonlySet<string>;
@@ -433,7 +443,9 @@ export function resolveStandingMembers(
   // claims and the cold-start ranking are all computed over the full set — because
   // what a family CLAIMS is what decides which of its rows the tier can seat, and that
   // question is unchanged. Only the seat is withdrawn.
-  const claimed = ranked.filter((member) => member.band !== "tail");
+  const claimed = ranked.filter(
+    (member): member is StandingClaimedMember => member.band !== "tail"
+  );
   return {
     members: claimed,
     memberIds: new Set(claimed.map((member) => member.candidate.candidateId)),

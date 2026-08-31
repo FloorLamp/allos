@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   actionCandidate,
+  careCandidates,
   profileDataRelevance,
   readingCandidate,
   stateCandidate,
@@ -9,6 +10,7 @@ import {
 import {
   rankDashboardCandidates,
   type DashboardCandidate,
+  type DashboardPlacement,
 } from "../dashboard-relevance";
 import {
   cappedFamilyGather,
@@ -69,6 +71,35 @@ function standingIds(candidates: readonly DashboardCandidate[]): string[] {
   return rank(candidates)
     .filter((placement) => placement.lane === "standing")
     .map((placement) => placement.candidate.candidateId);
+}
+
+function everythingIds(candidates: readonly DashboardCandidate[]): string[] {
+  return rank(candidates)
+    .filter((placement) => placement.lane === "everything")
+    .map((placement) => placement.candidate.candidateId);
+}
+
+// WHERE A CANDIDATE LANDS, now that quiet is not a Standing band (#4232). Standing
+// keeps its tier and its stable rest; a member the registry calls quiet is not
+// claimed at all, so the exact-once partition routes it and the verdict a case
+// asserts is a LANE plus the band or the tail group inside it. Absent ⇒ placed
+// nowhere, which is its own verdict (#3186's capped tail).
+function placedAs(
+  candidates: readonly DashboardCandidate[],
+  candidateId: string
+): [DashboardPlacement["lane"], string] | undefined {
+  const placement = rank(candidates).find(
+    (entry) => entry.candidate.candidateId === candidateId
+  );
+  if (!placement) return undefined;
+  return [
+    placement.lane,
+    placement.lane === "standing"
+      ? placement.standingBand
+      : placement.lane === "everything"
+        ? placement.everythingGroup
+        : placement.lane,
+  ];
 }
 
 describe("fixed Standing instrument cluster", () => {
@@ -142,9 +173,15 @@ describe("fixed Standing instrument cluster", () => {
       "vitals.blood-pressure:2026-08-18",
       "vitals.resting-heart-rate:2026-08-18",
     ]);
+    // The clinical family still SEATS six — the cap is unchanged (#3186) — but since
+    // #4232 its quiet members are not claimed by Standing, so the six it seats are
+    // the six the one fold draws in Read.
     expect(expected.filter((id) => id.startsWith("labs.latest:"))).toHaveLength(
-      6
+      0
     );
+    expect(
+      everythingIds(candidates).filter((id) => id.startsWith("labs.latest:"))
+    ).toHaveLength(6);
     expect(
       expected.filter((id) => id.startsWith("goal.progress:"))
     ).toHaveLength(4);
@@ -183,8 +220,20 @@ describe("fixed Standing instrument cluster", () => {
     ).toEqual([
       ["sleep.bootstrap", "last-night-sleep", "attention"],
       ["labs.bootstrap", "clinical-results", "attention"],
-      ["weight.dormant", "weight", "tail"],
     ]);
+    // …and the quiet source is in the ONE fold, in the group its own model routes it
+    // to (#4232): a dormant reading reads.
+    expect(
+      placedAs(
+        [
+          replacement("sleep.bootstrap", "never", 40),
+          replacement("weight.dormant", "dormant", 2),
+          replacement("labs.bootstrap", "never", 1),
+          { ...reading("cycle.phase:today", 0), applicable: false },
+        ],
+        "weight.dormant"
+      )
+    ).toEqual(["everything", "read"]);
   });
 
   it("leaves unclaimed kinds, shared actions, individual naps, and regularity out", () => {
@@ -290,12 +339,15 @@ describe("a capped Standing family's tail", () => {
     );
     const placements = rank(markers);
 
+    // The six the family SEATS are placed — since #4232 quiet results are not claimed
+    // by Standing, so their lane is the one fold — and the five past the cap are
+    // placed nowhere at all, which is the ruling this case exists for.
     expect(
       placements.map(({ candidate, lane }) => [candidate.candidateId, lane])
     ).toEqual(
       markers
         .slice(0, cap)
-        .map((candidate) => [candidate.candidateId, "standing"])
+        .map((candidate) => [candidate.candidateId, "everything"])
     );
     // Exact-once by factKey holds over the census NET of the tail: what is placed
     // is placed once, and the tail is placed nowhere.
@@ -322,8 +374,11 @@ describe("a capped Standing family's tail", () => {
       candidate: { readingPromotion: "clinical-non-notable-to-notable" },
     });
     expect(
-      placements.filter((placement) => placement.lane === "standing")
+      placements.filter((placement) => placement.lane === "everything")
     ).toHaveLength(cap);
+    expect(
+      placements.filter((placement) => placement.lane === "standing")
+    ).toHaveLength(0);
   });
 
   it("keeps a tail entry with a live promotion, even when Now is full", () => {
@@ -415,7 +470,7 @@ describe("a capped Standing family's tail", () => {
     const pillars = Array.from({ length: cap + 3 }, (_, index) =>
       reading(`healthspan.pillar:pillar-${index}`, 200 + index)
     );
-    expect(rank(pillars).every(({ lane }) => lane === "standing")).toBe(true);
+    expect(rank(pillars).every(({ lane }) => lane === "everything")).toBe(true);
     expect(rank(pillars)).toHaveLength(pillars.length);
   });
 });
@@ -496,14 +551,22 @@ describe("Standing's ranked bands", () => {
       ["sleep.wake-time:2026-08-18", "attention"],
     ]);
 
+    // A `members` family is NOT composed, so its claim stays per member: the marker
+    // that turned notable holds the tier and its quiet sibling is not claimed at all.
+    const withMarkers = [
+      ...fillNow(),
+      claimed("labs.latest:tsh", "changed", 300),
+      reading("labs.latest:ldl", 301),
+    ];
     expect(
       bands([
         claimed("labs.latest:tsh", "changed", 300),
         reading("labs.latest:ldl", 301),
       ])
-    ).toEqual([
-      ["labs.latest:tsh", "attention"],
-      ["labs.latest:ldl", "tail"],
+    ).toEqual([["labs.latest:tsh", "attention"]]);
+    expect(placedAs(withMarkers, "labs.latest:ldl")).toEqual([
+      "everything",
+      "read",
     ]);
 
     expect(
@@ -519,55 +582,93 @@ describe("Standing's ranked bands", () => {
     ]);
   });
 
-  const bandOf = (candidate: DashboardCandidate) =>
-    rank([...fillNow(), candidate]).find(
-      (placement) => placement.lane === "standing"
-    )?.standingBand;
-
+  // ONE FOLD (#4232): every row that used to reach the quiet band now leaves Standing
+  // entirely and is routed by the exact-once partition's own model — dormancy and the
+  // two quiet families to Read, an out-ranked never-recorded CTA to Setup. The table
+  // states the whole verdict (lane, then band or group) so a row that silently swaps
+  // one side of it for the other cannot pass.
   it.each([
     [
       "a behind weekly target (owed)",
       claimed("target.weekly-progress:9", "owed", 900),
-      "attention",
+      ["standing", "attention"],
     ],
     [
       "a marker that just turned notable (changed)",
       claimed("labs.latest:tsh", "changed", 300),
-      "attention",
+      ["standing", "attention"],
+    ],
+    // THROUGH THE REAL BUILDER, not a hand-made rank reason: the claim #4232 rules
+    // is worth nothing if `careCandidates.lab` stops declaring it, and a synthetic
+    // candidate here could never notice.
+    [
+      "a result collected inside the freshness window (#4232)",
+      careCandidates.lab(
+        { subject: profile, sourceOrder: 302 },
+        "ferritin",
+        { fresh: true }
+      ),
+      ["standing", "attention"],
+    ],
+    [
+      "the same result once its window lapses or it is acknowledged",
+      careCandidates.lab({ subject: profile, sourceOrder: 302 }, "ferritin", {
+        fresh: false,
+      }),
+      ["everything", "read"],
     ],
     [
       "a fresh daily instrument",
       reading("activity.steps:2026-08-19", 12),
-      "rest",
+      ["standing", "rest"],
     ],
     [
       "an on-pace weekly target",
       reading("target.weekly-progress:8", 901),
-      "rest",
+      ["standing", "rest"],
     ],
     [
       "an open window without a Standing claim (#3245)",
       claimed("activity.steps:window-open", "windowOpen", 12),
-      "rest",
+      ["standing", "rest"],
     ],
     [
       "a quiet pillar",
       reading("healthspan.pillar:sleep-regularity", 199),
-      "tail",
+      ["everything", "read"],
     ],
-    ["a quiet clinical result", reading("labs.latest:ldl", 301), "tail"],
+    [
+      "a quiet clinical result",
+      reading("labs.latest:ldl", 301),
+      ["everything", "read"],
+    ],
     [
       "a source that went dormant",
       replacement("weight.dormant", "dormant", 100),
-      "tail",
+      ["everything", "read"],
     ],
     [
       "a never-recorded family's CTA",
       replacement("sleep.bootstrap", "never", 1),
-      "attention",
+      ["standing", "attention"],
     ],
-  ])("bands %s as %s", (_label, candidate, band) => {
-    expect(bandOf(candidate)).toBe(band);
+  ])("places %s in %s", (_label, candidate, where) => {
+    expect(placedAs([...fillNow(), candidate], candidate.candidateId)).toEqual(
+      where
+    );
+  });
+
+  // …AND AN OUT-RANKED CTA IS SETUP, not Read: the partition routes on the
+  // candidate's own relevance, so the two former quiet populations do not collapse
+  // into one group on their way out of Standing.
+  it("routes an out-ranked cold-start CTA into the fold's Setup group", () => {
+    const ctas = [
+      replacement("sleep.bootstrap", "never", 1),
+      replacement("activity.steps-bootstrap", "never", 2),
+      replacement("nutrition.bootstrap", "never", 3),
+      replacement("labs.bootstrap", "never", 5),
+    ];
+    expect(placedAs(ctas, "labs.bootstrap")).toEqual(["everything", "setup"]);
   });
 
   // The tier's order IS the ranker's reason precedence — safety, then owed, then
@@ -594,9 +695,6 @@ describe("Standing's ranked bands", () => {
       ["labs.latest:tsh", "attention"],
       ["activity.steps:2026-08-19", "rest"],
       ["weight.latest:2026-08-19", "rest"],
-      ["sleep.bootstrap", "tail"],
-      ["vitals.blood-pressure:2019-01-01", "tail"],
-      ["healthspan.pillar:vo2", "tail"],
     ]);
   });
 
@@ -613,10 +711,16 @@ describe("Standing's ranked bands", () => {
           candidate.candidateId,
           standingBand,
         ])
-    ).toEqual([
-      ["activity.steps:2026-08-19", "rest"],
-      ["sleep.bootstrap", "tail"],
-    ]);
+    ).toEqual([["activity.steps:2026-08-19", "rest"]]);
+    expect(
+      placedAs(
+        [
+          replacement("sleep.bootstrap", "never", 1),
+          reading("activity.steps:2026-08-19", 12),
+        ],
+        "sleep.bootstrap"
+      )
+    ).toEqual(["everything", "setup"]);
   });
 
   it("caps the cold-start claim and folds the CTAs beyond it", () => {
@@ -639,8 +743,10 @@ describe("Standing's ranked bands", () => {
       ["sleep.bootstrap", "attention"],
       ["activity.steps-bootstrap", "attention"],
       ["nutrition.bootstrap", "attention"],
-      ["weight.bootstrap", "tail"],
-      ["labs.bootstrap", "tail"],
+    ]);
+    expect(everythingIds(ctas)).toEqual([
+      "weight.bootstrap",
+      "labs.bootstrap",
     ]);
   });
 

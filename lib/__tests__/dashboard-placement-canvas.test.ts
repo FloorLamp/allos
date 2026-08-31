@@ -141,9 +141,13 @@ describe("dashboard placement canvas", () => {
     expect(html.indexOf('aria-label="Active states"')).toBeLessThan(
       html.indexOf('aria-label="Act"')
     );
-    expect(html).toContain("+1 more");
-    expect(html).toContain('aria-label="+1 more in Later today"');
-    expect(html).toContain('aria-expanded="false"');
+    // AHEAD OPENS (#4232). No "+N more" control and no expanded state anywhere in
+    // the zone — everything in Ahead is relevant-soon, so every member renders — and
+    // the converse in the same assertion: the member that used to sit behind the fold
+    // is on the page, and the bucket's own door still leads to /upcoming.
+    expect(html).not.toContain("more in Later today");
+    expect(html).not.toContain("aria-expanded");
+    expect(html).toContain("Later row");
     expect(html).toContain("Later second row");
     expect(html).toContain('href="/upcoming#later"');
 
@@ -166,6 +170,106 @@ describe("dashboard placement canvas", () => {
       })
     );
     expect(weekHtml).toContain('href="/upcoming#week"');
+  });
+
+  // ONE FOLD ON THE WHOLE PAGE, AND ITS CONVERSE (#4232, re-targeting #3934's pair).
+  //
+  // The removal half — no Quiet disclosure, exactly one `<details>` — is an ABSENCE,
+  // and an absence passes just as happily on a page that lost the rows along with the
+  // drawer. So the same render asserts where each former quiet row WENT: into the
+  // Show-everything group its own model routes it to, drawn, under one moment header.
+  // The two halves read the same rendered markup, so they cannot disagree about which
+  // page they are looking at.
+  it("draws one fold, and the former quiet rows inside it", () => {
+    const steps = statement("activity.steps:d");
+    const pillar = statement("healthspan.pillar:vo2");
+    const lab = statement("labs.latest:ldl");
+    const cta = statement("labs.bootstrap");
+    const placements: DashboardPlacement[] = [
+      {
+        candidate: steps,
+        lane: "standing",
+        laneOrder: 0,
+        timingDisposition: { kind: "active" },
+        standingFamilyKey: "steps-today",
+        standingSection: "today",
+        standingBand: "rest",
+      },
+      ...([
+        [pillar, "read"],
+        [lab, "read"],
+        [cta, "setup"],
+      ] as const
+      ).map(
+        ([candidate, everythingGroup], index): DashboardPlacement => ({
+          candidate: {
+            ...candidate,
+            groupKey: everythingGroup === "setup" ? null : `moment.${index}`,
+          },
+          lane: "everything",
+          laneOrder: index,
+          timingDisposition: { kind: "active" },
+          everythingGroup,
+          memberOrder: index,
+          admitted: true,
+        })
+      ),
+    ];
+    const rows = new Map<string, DashboardStandingPresentation>([
+      [steps.candidateId, { label: "Steps today", value: "8,000" }],
+      [
+        pillar.candidateId,
+        {
+          label: "VO2 max",
+          value: "Quiet",
+          moment: { title: "Healthspan pillars" },
+        },
+      ],
+      [
+        lab.candidateId,
+        {
+          label: "LDL",
+          value: "128 mg/dL",
+          moment: { title: "Recent clinical results" },
+        },
+      ],
+      [cta.candidateId, { label: "Clinical results", actionLabel: "Import" }],
+    ]);
+    const html = renderToStaticMarkup(
+      createElement(DashboardPlacementCanvas, {
+        dateLabel: "August 19, 2026",
+        placements,
+        presentations: rows,
+        aheadPresentations: new Map(),
+        attentionBadgeCount: 0,
+      })
+    );
+
+    // The removal: no second drawer anywhere, and the surviving one is the tail's.
+    expect(html.match(/<details/g)).toHaveLength(1);
+    expect(html).toContain('data-testid="dashboard-all"');
+    expect(html).not.toContain("dashboard-standing-tail");
+    expect(html).not.toContain("Quiet (");
+    expect(html).not.toContain('data-standing-band="tail"');
+
+    // The converse: the rest row is still above the fold, and each former quiet row
+    // is drawn inside the group it was routed to, under its moment header.
+    const read = html.slice(
+      html.indexOf('data-testid="dashboard-everything-read"')
+    );
+    const setup = html.slice(
+      html.indexOf('data-testid="dashboard-everything-setup"')
+    );
+    expect(
+      html
+        .slice(0, html.indexOf('data-testid="dashboard-all"'))
+        .includes('data-candidate-id="activity.steps:d"')
+    ).toBe(true);
+    expect(read).toContain('data-candidate-id="healthspan.pillar:vo2"');
+    expect(read).toContain('data-candidate-id="labs.latest:ldl"');
+    expect(read).toContain("Healthspan pillars");
+    expect(read).toContain("Recent clinical results");
+    expect(setup).toContain('data-candidate-id="labs.bootstrap"');
   });
 
   it("renders the supplied five-group order and omits empty groups", () => {
