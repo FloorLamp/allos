@@ -274,7 +274,10 @@ test.describe("the record (#3958)", () => {
       };
     });
 
-    expect(title.text, "the title has no box that can ellipsize").not.toBeNull();
+    expect(
+      title.text,
+      "the title has no box that can ellipsize"
+    ).not.toBeNull();
     expect(
       title.text!,
       `the fixture's title is ${title.text}px of text in a ${Math.round(
