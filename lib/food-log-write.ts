@@ -836,7 +836,7 @@ export function restampFoodEventsCore(
       }
       db.prepare(
         `UPDATE food_log_events
-            SET occurred_at = ?, time_source = 'stated', date = ?
+            SET occurred_at = ?, time_source = 'stated', date = ?, meal_slot = NULL
           WHERE id = ? AND profile_id = ?`
       ).run(eatenAt, reDate ? nextDate : row.date, id, profileId);
     }
