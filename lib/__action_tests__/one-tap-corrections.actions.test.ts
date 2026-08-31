@@ -136,56 +136,6 @@ describe("updateFoodLogEvent (#1934)", () => {
     expect(day.counts.fruit).toBe(1);
   });
 
-  it("refuses without write access and leaves the serving where it was", async () => {
-    const login = createLogin({ role: "member" });
-    const profile = createProfile(`food-readonly ${login.id}`, login.id);
-    actAs(login, profile);
-    const date = today(profile.id);
-    const eventId = seedServing(profile.id, date);
-
-    actAs(login, profile, "read");
-    await expect(
-      updateFoodLogEvent(fd({ event_id: eventId, meal_slot: "Evening" }))
-    ).rejects.toThrow();
-
-    expect(slotServingsOnDate(profile.id, "Morning", date).get("berries")).toBe(
-      1
-    );
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
-  it("refuses another profile's serving without touching it", async () => {
-    const ownerLogin = createLogin();
-    const owner = createProfile(`food-owner ${ownerLogin.id}`, ownerLogin.id);
-    actAs(ownerLogin, owner);
-    const date = today(owner.id);
-    const eventId = seedServing(owner.id, date);
-
-    const intruderLogin = createLogin();
-    const intruder = createProfile(
-      `food-intruder ${intruderLogin.id}`,
-      intruderLogin.id
-    );
-    actAs(intruderLogin, intruder);
-
-    const res = await updateFoodLogEvent(
-      fd({ event_id: eventId, group_key: "fruit", meal_slot: "Evening" })
-    );
-    expect(res).toEqual({
-      ok: false,
-      error: "That serving is no longer available.",
-    });
-    // The victim's ledger row and counter are exactly as they were.
-    expect(counters(owner.id)).toEqual([
-      { date, group_key: "berries", servings: 1 },
-    ]);
-    expect(slotServingsOnDate(owner.id, "Morning", date).get("berries")).toBe(
-      1
-    );
-    expect(counters(intruder.id)).toEqual([]);
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
   it("answers typed errors for a bad group, date, or id", async () => {
     const login = createLogin();
     const profile = createProfile(`food-bad ${login.id}`, login.id);
@@ -247,55 +197,6 @@ describe("deleteFoodLogEvent (#1963)", () => {
     expect(revalidate).toHaveBeenCalledWith("/");
   });
 
-  it("refuses without write access and leaves the serving alone", async () => {
-    const login = createLogin({ role: "member" });
-    const profile = createProfile(`food-remove-readonly ${login.id}`, login.id);
-    actAs(login, profile);
-    const date = today(profile.id);
-    const eventId = seedServing(profile.id, date);
-
-    actAs(login, profile, "read");
-    await expect(
-      deleteFoodLogEvent(fd({ event_id: eventId }))
-    ).rejects.toThrow();
-
-    expect(counters(profile.id)).toEqual([
-      { date, group_key: "berries", servings: 1 },
-    ]);
-    expect(slotServingsOnDate(profile.id, "Morning", date).get("berries")).toBe(
-      1
-    );
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
-  it("refuses another profile's serving without touching it", async () => {
-    const ownerLogin = createLogin();
-    const owner = createProfile(
-      `food-remove-owner ${ownerLogin.id}`,
-      ownerLogin.id
-    );
-    actAs(ownerLogin, owner);
-    const date = today(owner.id);
-    const eventId = seedServing(owner.id, date);
-
-    const intruderLogin = createLogin();
-    const intruder = createProfile(
-      `food-remove-intruder ${intruderLogin.id}`,
-      intruderLogin.id
-    );
-    actAs(intruderLogin, intruder);
-    revalidate.mockClear();
-
-    expect(await deleteFoodLogEvent(fd({ event_id: eventId }))).toEqual({
-      ok: false,
-      error: "That serving is no longer available.",
-    });
-    expect(counters(owner.id)).toEqual([
-      { date, group_key: "berries", servings: 1 },
-    ]);
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
   it("answers typed errors for a bad id and for the protein ranking row", async () => {
     const login = createLogin();
     const profile = createProfile(`food-remove-bad ${login.id}`, login.id);
@@ -331,6 +232,53 @@ describe("deleteFoodLogEvent (#1963)", () => {
     expect(counters(profile.id)).toEqual([
       { date, group_key: "berries", servings: 1 },
     ]);
+    expect(revalidate).not.toHaveBeenCalled();
+  });
+});
+
+describe("food event correction access", () => {
+  it("keeps both rows intact for read-only and foreign update/delete attempts", async () => {
+    const ownerLogin = createLogin({ role: "member" });
+    const owner = createProfile(`food-access ${ownerLogin.id}`, ownerLogin.id);
+    actAs(ownerLogin, owner);
+    const date = today(owner.id);
+    const updateId = seedServing(owner.id, date);
+    const deleteId = seedServing(owner.id, date);
+
+    actAs(ownerLogin, owner, "read");
+    await expect(
+      updateFoodLogEvent(fd({ event_id: updateId, meal_slot: "Evening" }))
+    ).rejects.toThrow();
+    await expect(
+      deleteFoodLogEvent(fd({ event_id: deleteId }))
+    ).rejects.toThrow();
+
+    const intruderLogin = createLogin();
+    const intruder = createProfile(
+      `food-intruder ${intruderLogin.id}`,
+      intruderLogin.id
+    );
+    actAs(intruderLogin, intruder);
+    expect(
+      await updateFoodLogEvent(
+        fd({ event_id: updateId, group_key: "fruit", meal_slot: "Evening" })
+      )
+    ).toEqual({
+      ok: false,
+      error: "That serving is no longer available.",
+    });
+    expect(await deleteFoodLogEvent(fd({ event_id: deleteId }))).toEqual({
+      ok: false,
+      error: "That serving is no longer available.",
+    });
+
+    expect(counters(owner.id)).toEqual([
+      { date, group_key: "berries", servings: 2 },
+    ]);
+    expect(slotServingsOnDate(owner.id, "Morning", date).get("berries")).toBe(
+      2
+    );
+    expect(counters(intruder.id)).toEqual([]);
     expect(revalidate).not.toHaveBeenCalled();
   });
 });
@@ -443,36 +391,20 @@ describe("updateProgressPhoto (#1934)", () => {
     );
   });
 
-  it("refuses without write access", async () => {
-    const login = createLogin({ role: "member" });
-    const profile = createProfile(`photo-readonly ${login.id}`, login.id);
-    actAs(login, profile);
+  it("keeps one photo intact for both read-only and foreign correction attempts", async () => {
+    const ownerLogin = createLogin({ role: "member" });
+    const owner = createProfile(`photo-owner ${ownerLogin.id}`, ownerLogin.id);
+    actAs(ownerLogin, owner);
     const id = await seedPhoto(13, { pose: "front", date: "2026-05-03" });
+    const before = photoRow(id);
 
-    actAs(login, profile, "read");
+    actAs(ownerLogin, owner, "read");
     await expect(
       updateProgressPhoto(
         fd({ photo_id: id, pose: "back", date: "2026-05-03", caption: "" })
       )
     ).rejects.toThrow();
-    expect(photoRow(id).pose).toBe("front");
-
-    fs.rmSync(
-      path.dirname(path.resolve(process.cwd(), photoRow(id).stored_path)),
-      { recursive: true, force: true }
-    );
-  });
-
-  it("refuses another profile's photo without touching it", async () => {
-    const ownerLogin = createLogin();
-    const owner = createProfile(`photo-owner ${ownerLogin.id}`, ownerLogin.id);
-    actAs(ownerLogin, owner);
-    const id = await seedPhoto(14, {
-      pose: "front",
-      date: "2026-05-04",
-      caption: "mine",
-    });
-    const before = photoRow(id);
+    expect(photoRow(id)).toEqual(before);
 
     const intruderLogin = createLogin();
     const intruder = createProfile(
