@@ -102,9 +102,18 @@ const FIXED = /[\s"'`{]fixed[\s"'`}]/;
 const SPANS = /[\s"'`{](?:inset-0|inset-x-0)[\s"'`}]/;
 const ANCHORS_BOTTOM = /[\s"'`{](?:bottom-0|items-end)[\s"'`}]|bottom-\[/;
 
+function mightBeBottomEdgeSurface(source: string): boolean {
+  return (
+    FIXED.test(source) && SPANS.test(source) && ANCHORS_BOTTOM.test(source)
+  );
+}
+
 export function isBottomEdgeSurface(source: string): boolean {
+  // Comment stripping is deliberately exact but expensive over the whole tree.
+  // The raw source must contain all three tokens before its code possibly can.
+  if (!mightBeBottomEdgeSurface(source)) return false;
   const code = stripComments(source).replace(/\s+/g, " ");
-  return FIXED.test(code) && SPANS.test(code) && ANCHORS_BOTTOM.test(code);
+  return mightBeBottomEdgeSurface(code);
 }
 
 /**
@@ -128,8 +137,16 @@ function registersWithTheEdge(source: string): boolean {
   );
 }
 
-function sourceFiles(): string[] {
-  const out: string[] = [];
+interface SourceFile {
+  file: string;
+  source: string;
+}
+
+let sourceCorpusCache: SourceFile[] | undefined;
+
+function sourceCorpus(): SourceFile[] {
+  if (sourceCorpusCache) return sourceCorpusCache;
+  const files: string[] = [];
   const walk = (dir: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
@@ -139,12 +156,27 @@ function sourceFiles(): string[] {
         }
         walk(full);
       } else if (/\.(ts|tsx)$/.test(entry.name)) {
-        out.push(path.relative(REPO, full));
+        files.push(path.relative(REPO, full));
       }
     }
   };
   for (const dir of SCAN_DIRS) walk(path.join(REPO, dir));
-  return out;
+  sourceCorpusCache = files.map((file) => ({
+    file,
+    source: fs.readFileSync(path.join(REPO, file), "utf8"),
+  }));
+  return sourceCorpusCache;
+}
+
+function scanOffenders(matches: (source: string) => boolean): string[] {
+  return sourceCorpus()
+    .filter(
+      ({ file, source }) =>
+        !file.startsWith(TOKENS_HOME) &&
+        !file.startsWith("lib/__tests__/") &&
+        matches(source)
+    )
+    .map(({ file }) => file);
 }
 
 describe("bottom-edge tokens (#1520)", () => {
@@ -189,12 +221,7 @@ describe("bottom-edge tokens (#1520)", () => {
     // (which resolves to exactly this when no base layer is claimed) instead.
     const HAND_WRITTEN =
       /bottom-\[max\(1rem,\s*env\(safe-area-inset-bottom\)\)\]/;
-    const offenders = sourceFiles().filter(
-      (file) =>
-        !file.startsWith(TOKENS_HOME) &&
-        !file.startsWith("lib/__tests__/") &&
-        HAND_WRITTEN.test(fs.readFileSync(path.join(REPO, file), "utf8"))
-    );
+    const offenders = scanOffenders((source) => HAND_WRITTEN.test(source));
     expect(
       offenders,
       "hand-written bottom-edge inset — use BOTTOM_EDGE_NOTICE_BOTTOM from components/overlay"
@@ -207,12 +234,7 @@ describe("bottom-edge tokens (#1520)", () => {
     // disagreeing by a quarter rem.
     const HAND_WRITTEN =
       /bottom-\[calc\(3\.5rem\s*\+\s*env\(safe-area-inset-bottom\)\)\]/;
-    const offenders = sourceFiles().filter(
-      (file) =>
-        !file.startsWith(TOKENS_HOME) &&
-        !file.startsWith("lib/__tests__/") &&
-        HAND_WRITTEN.test(fs.readFileSync(path.join(REPO, file), "utf8"))
-    );
+    const offenders = scanOffenders((source) => HAND_WRITTEN.test(source));
     expect(
       offenders,
       "hand-written nav-dock lift — use BOTTOM_EDGE_ABOVE_NAV from components/overlay"
@@ -240,14 +262,8 @@ describe("bottom-edge tokens (#1520)", () => {
   });
 
   it("every bottom-anchored fixed surface registers with the edge", () => {
-    const offenders = sourceFiles().filter(
-      (file) =>
-        !file.startsWith(TOKENS_HOME) &&
-        !file.startsWith("lib/__tests__/") &&
-        (() => {
-          const src = fs.readFileSync(path.join(REPO, file), "utf8");
-          return isBottomEdgeSurface(src) && !registersWithTheEdge(src);
-        })()
+    const offenders = scanOffenders(
+      (source) => isBottomEdgeSurface(source) && !registersWithTheEdge(source)
     );
     expect(
       offenders,
