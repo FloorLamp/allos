@@ -155,9 +155,9 @@ export function seedSleep(): void {
   //     `mainSleepSession`'s duration-tie → earliest-END tiebreak are pinned by
   //     sleep-page.spec, and the block above owns that day entirely on purpose.
   //   * `today-2` already HAS a history row — the #160 SRI block seeds a nightly
-  //     `sleep_min` session for every wake-day today-1 … today-28 — and every row
-  //     this block writes carries `date = today-2`, so it adds sessions to an
-  //     existing row rather than creating one. `data-history-count`, the 10-row
+  //     `sleep_min` session for every wake-day today-1 … today-28 — and this block
+  //     replaces that day's manual sessions with its own night plus three naps.
+  //     The date remains represented, so `data-history-count`, the 10-row
   //     page size and `sleep-mood-history-row` counts (sleep-page.spec
   //     :384/:437/:443) are therefore all unchanged, and today-2 sits on page 1.
   //   * The naps are AFTERNOON windows (14:00/16:00/18:00 local), and the block
@@ -205,15 +205,16 @@ export function seedSleep(): void {
         ] as [string, string, number]
     ),
   ];
-  // Idempotent: clear only THIS block's own windows, never the SRI overnight that
-  // shares the wake-day.
-  const napDelete = db.prepare(
+  // Own the whole manual wake-day, as the `today` fixture above does. On weekends
+  // the SRI night is 00:30→08:30 rather than this fixture's 23:00→07:00; retaining
+  // both leaves the unclaimed eight-hour block classified as a fourth nap. The
+  // replacement night keeps the SRI corpus at one night for this date.
+  db.prepare(
     `DELETE FROM metric_samples
       WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
-        AND date = ? AND started_at = ?`
-  );
+        AND date = ?`
+  ).run(PROFILE_ID, NAP_DAY);
   for (const [start, end, minutes] of napDayWindows) {
-    napDelete.run(PROFILE_ID, NAP_DAY, start);
     sleepSessionInsert.run(PROFILE_ID, NAP_DAY, start, end, minutes);
   }
   console.log(
