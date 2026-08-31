@@ -214,11 +214,7 @@ export async function logFoodServing(
   const resolved = !stated
     ? null
     : fields.date === dateStrInTz(tz, at)
-      ? statedHourInstant(
-          stated,
-          new Date(at.getTime() + EATEN_AT_FUTURE_SKEW_MS),
-          tz
-        )
+      ? statedHourInstant(stated, at, tz, EATEN_AT_FUTURE_SKEW_MS)
       : statedInstantOnDate(fields.date, stated, tz);
   const judged: StatedTimeVerdict = !stated
     ? { kind: "unstated" }

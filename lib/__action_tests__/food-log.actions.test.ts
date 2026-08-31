@@ -56,41 +56,16 @@ beforeEach(() => {
 });
 
 describe("logFoodServing", () => {
-  it("increments a single (date, group) row on repeated taps", async () => {
+  it("rejects unknown groups, then returns authoritative totals for repeated taps", async () => {
     const login = createLogin();
     const profile = createProfile("logger", login.id);
     actAs(login, profile);
 
-    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
-    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
-
-    const r = rows(profile.id);
-    expect(r).toHaveLength(1);
-    expect(r[0]).toMatchObject({
-      group_key: "fatty_fish",
-      servings: 2,
-      date: DATE,
-    });
-    expect(getFoodServingsOnDate(profile.id, DATE).get("fatty_fish")).toBe(2);
-    expect(revalidate).toHaveBeenCalledWith("/nutrition");
-  });
-
-  it("rejects an unknown food group", async () => {
-    const login = createLogin();
-    const profile = createProfile("bad-group", login.id);
-    actAs(login, profile);
-
-    const res = await logFoodServing(
+    const invalid = await logFoodServing(
       fd({ group_key: "not_a_group", date: DATE })
     );
-    expect(res.ok).toBe(false);
+    expect(invalid.ok).toBe(false);
     expect(rows(profile.id)).toEqual([]);
-  });
-
-  it("returns the authoritative daily total so the bar can reconcile (#748 item 2)", async () => {
-    const login = createLogin();
-    const profile = createProfile("reconciler", login.id);
-    actAs(login, profile);
 
     const first = await logFoodServing(
       fd({ group_key: "berries", date: DATE })
@@ -108,6 +83,16 @@ describe("logFoodServing", () => {
       eventId: expect.any(Number),
       servings: 2,
     });
+
+    const r = rows(profile.id);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({
+      group_key: "berries",
+      servings: 2,
+      date: DATE,
+    });
+    expect(getFoodServingsOnDate(profile.id, DATE).get("berries")).toBe(2);
+    expect(revalidate).toHaveBeenCalledWith("/nutrition");
   });
 });
 
@@ -171,27 +156,44 @@ describe("logFoodServing — eating-time statement (#2053)", () => {
     );
   });
 
-  it("an absolute local hour resolves in the PROFILE's timezone", async () => {
-    const login = createLogin();
-    const profile = createProfile("stated-hour", login.id);
-    actAs(login, profile);
-    const date = today(profile.id);
+  it.each([
+    ["before the skew window", "2026-08-30T23:45:00Z", "UTC"],
+    ["at the UTC day boundary", "2026-08-30T23:55:00Z", "UTC"],
+    [
+      "at a non-UTC profile's day boundary",
+      "2026-08-31T03:55:00Z",
+      "America/New_York",
+    ],
+  ])(
+    "resolves local midnight in the profile timezone %s",
+    async (_case, frozenNow, timezone) => {
+      const priorNow = process.env.ALLOS_TEST_NOW;
+      process.env.ALLOS_TEST_NOW = frozenNow;
+      try {
+        const login = createLogin();
+        const profile = createProfile(`stated-hour-${timezone}`, login.id);
+        setTimezone(profile.id, timezone);
+        actAs(login, profile);
+        const date = today(profile.id);
 
-    // Local midnight is always today-local and always already past, whatever hour CI
-    // runs at — so it is an offered hour by construction.
-    await logFoodServing(
-      fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
-    );
+        await logFoodServing(
+          fd({ group_key: "fatty_fish", date, occurred_at: "00:00" })
+        );
 
-    const [event] = events(profile.id);
-    expect(event.time_source).toBe("stated");
-    // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
-    // second-resolution UTC instant (#2205), so the expectation names the same writer
-    // the action uses rather than a second serialization of it.
-    expect(event.occurred_at).toBe(
-      utcInstant(zonedWallTimeToUtc(getTimezone(profile.id), date, "00:00")!)
-    );
-  });
+        const [event] = events(profile.id);
+        expect(event.time_source).toBe("stated");
+        // utcInstant, not toISOString: food_log_events.occurred_at stores the canonical
+        // second-resolution UTC instant (#2205), so the expectation names the same writer
+        // the action uses rather than a second serialization of it.
+        expect(event.occurred_at).toBe(
+          utcInstant(zonedWallTimeToUtc(timezone, date, "00:00")!)
+        );
+      } finally {
+        if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+        else process.env.ALLOS_TEST_NOW = priorNow;
+      }
+    }
+  );
 
   // ONE WIRE SHAPE (#3273). The bar used to post the WORD "now" beside a hand-rolled
   // hour-chip group; the chips are gone and so is the word. This is the table that
@@ -591,7 +593,7 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
 
   // Fixtures sit on YESTERDAY so a stated noon is in the past whatever hour CI runs
   // at — the acceptance gate's future rule never bites the cases that aren't about it.
-  it('"HH:MM" states the wall time of the submitted day', async () => {
+  it("states, preserves, refuses, and clears an eating-time correction", async () => {
     const login = createLogin();
     const profile = createProfile("time-stater", login.id);
     actAs(login, profile);
@@ -611,69 +613,24 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     );
     // The audit stamp is not the statement's to touch.
     expect(after.recorded_at).toBe(event.recorded_at);
-  });
-
-  it('"none" clears the statement back to "nobody said"', async () => {
-    const login = createLogin();
-    const profile = createProfile("time-clearer", login.id);
-    actAs(login, profile);
-    const date = shiftDateStr(today(profile.id), -1);
-    await logFoodServing(fd({ group_key: "berries", date }));
-    const event = eventRow(profile.id);
-    await updateFoodLogEvent(
-      fd({ event_id: event.id, date, occurred_at: "12:00" })
-    );
-
-    const res = await updateFoodLogEvent(
-      fd({ event_id: event.id, date, occurred_at: "none" })
-    );
-    expect(res.ok).toBe(true);
-    expect(eventRow(profile.id)).toMatchObject({
-      occurred_at: null,
-      time_source: null,
-    });
-  });
-
-  it("an absent field leaves the stated time alone", async () => {
-    const login = createLogin();
-    const profile = createProfile("time-keeper", login.id);
-    actAs(login, profile);
-    const date = shiftDateStr(today(profile.id), -1);
-    await logFoodServing(fd({ group_key: "berries", date }));
-    const event = eventRow(profile.id);
-    await updateFoodLogEvent(
-      fd({ event_id: event.id, date, occurred_at: "12:00" })
-    );
-    const stated = eventRow(profile.id).occurred_at;
+    const stated = after.occurred_at;
 
     // A meal-only correction says nothing about the time — and changes nothing.
-    const res = await updateFoodLogEvent(
+    const mealOnly = await updateFoodLogEvent(
       fd({ event_id: event.id, date, meal_slot: "Evening" })
     );
-    expect(res.ok).toBe(true);
+    expect(mealOnly.ok).toBe(true);
     expect(eventRow(profile.id)).toMatchObject({
       meal_slot: "Evening",
       occurred_at: stated,
       time_source: "stated",
     });
-  });
-
-  it("a refused instant is a formError the user sees, never a silent clear", async () => {
-    const login = createLogin();
-    const profile = createProfile("time-refused", login.id);
-    actAs(login, profile);
-    const yesterday = shiftDateStr(today(profile.id), -1);
-    await logFoodServing(fd({ group_key: "berries", date: yesterday }));
-    const event = eventRow(profile.id);
-    await updateFoodLogEvent(
-      fd({ event_id: event.id, date: yesterday, occurred_at: "12:00" })
-    );
     const before = eventRow(profile.id);
 
     // Tomorrow noon is meaningfully future by construction, whatever hour the suite
     // runs at — the acceptance gate refuses it, and the INVERTED posture surfaces
     // that refusal instead of dropping the statement the way the log path would.
-    const res = await updateFoodLogEvent(
+    const refused = await updateFoodLogEvent(
       fd({
         event_id: event.id,
         date: shiftDateStr(today(profile.id), 1),
@@ -683,38 +640,28 @@ describe("updateFoodLogEvent — eating-time correction (#2227)", () => {
     // #2296: the refusal now names the rule that fired. This one is FUTURE, and the
     // old copy blamed the day for it — sending the user to correct a date that was
     // already exactly what they meant.
-    expect(res).toEqual({ ok: false, error: "That time hasn't happened yet." });
+    expect(refused).toEqual({
+      ok: false,
+      error: "That time hasn't happened yet.",
+    });
     // NOTHING moved — not the day, and (the silent-clear hazard) not the statement.
     expect(eventRow(profile.id)).toEqual(before);
 
     // Garbage is refused as loudly, not coerced and not swallowed.
     const garbage = await updateFoodLogEvent(
-      fd({ event_id: event.id, date: yesterday, occurred_at: "25:99" })
+      fd({ event_id: event.id, date, occurred_at: "25:99" })
     );
     expect(garbage.ok).toBe(false);
     expect(eventRow(profile.id)).toEqual(before);
-  });
-});
 
-describe("undoFoodServing", () => {
-  it("decrements, then removes the row at zero", async () => {
-    const login = createLogin();
-    const profile = createProfile("undoer", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "legumes", date: DATE }));
-    await logFoodServing(fd({ group_key: "legumes", date: DATE }));
-    const afterUndo = await undoFoodServing(
-      fd({ group_key: "legumes", date: DATE })
+    const cleared = await updateFoodLogEvent(
+      fd({ event_id: event.id, date, occurred_at: "none" })
     );
-    expect(afterUndo).toEqual({ ok: true, servings: 1 }); // remaining total
-    expect(rows(profile.id)[0].servings).toBe(1);
-
-    const atZero = await undoFoodServing(
-      fd({ group_key: "legumes", date: DATE })
-    );
-    expect(atZero).toEqual({ ok: true, servings: 0 }); // row dropped → 0
-    expect(rows(profile.id)).toEqual([]); // dropped at zero
+    expect(cleared.ok).toBe(true);
+    expect(eventRow(profile.id)).toMatchObject({
+      occurred_at: null,
+      time_source: null,
+    });
   });
 });
 
@@ -734,36 +681,9 @@ describe("food_log_events ledger through the actions (#950)", () => {
     }[];
   }
 
-  it("logFoodServing appends a per-tap event alongside the counter", async () => {
+  it("appends events and supports exact then newest-event undo to zero", async () => {
     const login = createLogin();
     const profile = createProfile("event-logger", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
-    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
-
-    const evs = ledger(profile.id);
-    expect(evs).toHaveLength(2);
-    expect(evs[0]).toMatchObject({ group_key: "fatty_fish", date: DATE });
-    // recorded_at is a real ISO instant (tap time), not the food date.
-    expect(evs[0].recorded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-  });
-
-  it("undoFoodServing pops the newest event", async () => {
-    const login = createLogin();
-    const profile = createProfile("event-undoer", login.id);
-    actAs(login, profile);
-
-    await logFoodServing(fd({ group_key: "berries", date: DATE }));
-    await logFoodServing(fd({ group_key: "berries", date: DATE }));
-    await undoFoodServing(fd({ group_key: "berries", date: DATE }));
-
-    expect(ledger(profile.id)).toHaveLength(1);
-  });
-
-  it("wires an exact event id through the guarded toast inverse", async () => {
-    const login = createLogin();
-    const profile = createProfile("event-exact-undoer", login.id);
     actAs(login, profile);
 
     const first = await logFoodServing(
@@ -772,8 +692,30 @@ describe("food_log_events ledger through the actions (#950)", () => {
     const second = await logFoodServing(
       fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
     );
+    expect(first).toMatchObject({
+      ok: true,
+      servings: 1,
+      mealSlot: "Morning",
+      mealServings: 1,
+    });
+    expect(second).toMatchObject({
+      ok: true,
+      servings: 2,
+      mealSlot: "Morning",
+      mealServings: 2,
+    });
     const firstEventId = addedEventId(first);
     const secondEventId = addedEventId(second);
+
+    const evs = ledger(profile.id);
+    expect(evs).toHaveLength(2);
+    expect(evs[0]).toMatchObject({
+      group_key: "berries",
+      date: DATE,
+      meal_slot: "Morning",
+    });
+    // recorded_at is a real ISO instant (tap time), not the food date.
+    expect(evs[0].recorded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
     expect(
       await undoFoodServing(
@@ -788,28 +730,6 @@ describe("food_log_events ledger through the actions (#950)", () => {
     expect(ledger(profile.id).map((event) => event.id)).toEqual([
       secondEventId,
     ]);
-  });
-
-  it("persists and returns the selected meal slot for a backfill", async () => {
-    const login = createLogin();
-    const profile = createProfile("meal-backfiller", login.id);
-    actAs(login, profile);
-
-    const logged = await logFoodServing(
-      fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
-    );
-    expect(logged).toEqual({
-      ok: true,
-      eventId: expect.any(Number),
-      servings: 1,
-      mealSlot: "Morning",
-      mealServings: 1,
-    });
-    expect(ledger(profile.id)[0]).toMatchObject({
-      group_key: "berries",
-      date: DATE,
-      meal_slot: "Morning",
-    });
 
     const undone = await undoFoodServing(
       fd({ group_key: "berries", date: DATE, meal_slot: "Morning" })
@@ -821,6 +741,7 @@ describe("food_log_events ledger through the actions (#950)", () => {
       mealServings: 0,
     });
     expect(ledger(profile.id)).toEqual([]);
+    expect(rows(profile.id)).toEqual([]);
   });
 
   it("rejects a forged meal slot without writing", async () => {
@@ -837,7 +758,7 @@ describe("food_log_events ledger through the actions (#950)", () => {
 });
 
 describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
-  it("tracks a food group as a food_group frequency target, updating cadence on re-track", async () => {
+  it("tracks idempotently, updates cadence, and detaches protocols on untrack", async () => {
     const login = createLogin();
     const profile = createProfile("habit-tracker", login.id);
     actAs(login, profile);
@@ -856,12 +777,6 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
     targets = getFrequencyTargets(profile.id);
     expect(targets).toHaveLength(1);
     expect(targets[0].per_week).toBe(3);
-  });
-
-  it("a double-tap can't create two targets for one group (#748 item 4)", async () => {
-    const login = createLogin();
-    const profile = createProfile("double-tapper", login.id);
-    actAs(login, profile);
 
     // Two near-simultaneous "Track" posts (the FoodSuggestions button + the card form,
     // or a fat-fingered double tap). The partial unique index + upsert collapse them.
@@ -869,29 +784,26 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
       trackFoodHabit(fd({ group_key: "berries", per_week: 2 })),
       trackFoodHabit(fd({ group_key: "berries", per_week: 2 })),
     ]);
-    const targets = getFrequencyTargets(profile.id).filter(
+    const berryTargets = getFrequencyTargets(profile.id).filter(
       (t) => t.scope_value === "berries"
     );
-    expect(targets).toHaveLength(1);
-  });
+    expect(berryTargets).toHaveLength(1);
 
-  it("untrack nulls a referencing protocol's link, then removes the target", async () => {
-    const login = createLogin();
-    const profile = createProfile("habit-untracker", login.id);
-    actAs(login, profile);
-
-    await trackFoodHabit(fd({ group_key: "legumes", per_week: 4 }));
-    const target = getFrequencyTargets(profile.id)[0];
+    const fishTarget = getFrequencyTargets(profile.id).find(
+      (target) => target.scope_value === "fatty_fish"
+    )!;
     // A protocol adopts it as its intervention.
     db.prepare(
       `INSERT INTO protocols
          (profile_id, name, start_date, outcome_keys, frequency_target_id, owns_frequency_target)
        VALUES (?, 'Legumes', '2026-05-01', '[]', ?, 1)`
-    ).run(profile.id, target.id);
+    ).run(profile.id, fishTarget.id);
 
-    await untrackFoodHabit(fd({ target_id: target.id }));
+    await untrackFoodHabit(fd({ target_id: fishTarget.id }));
 
-    expect(getFrequencyTargets(profile.id)).toEqual([]);
+    expect(
+      getFrequencyTargets(profile.id).map((target) => target.scope_value)
+    ).toEqual(["berries"]);
     const p = db
       .prepare("SELECT frequency_target_id FROM protocols WHERE profile_id = ?")
       .get(profile.id) as { frequency_target_id: number | null };
@@ -900,7 +812,7 @@ describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
 });
 
 describe("canonicalizes the persisted slug, never storing the raw input (#883)", () => {
-  it("log and undo normalize variants while canonical slugs remain unchanged", async () => {
+  it("normalizes log, undo, and habit variants to canonical slugs", async () => {
     const login = createLogin();
     const profile = createProfile("canon-log", login.id);
     actAs(login, profile);
@@ -926,12 +838,6 @@ describe("canonicalizes the persisted slug, never storing the raw input (#883)",
     r = rows(profile.id);
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ group_key: "leafy_greens", servings: 2 });
-  });
-
-  it("trackFoodHabit stores the canonical scope_value for a variant", async () => {
-    const login = createLogin();
-    const profile = createProfile("canon-habit", login.id);
-    actAs(login, profile);
 
     await trackFoodHabit(fd({ group_key: "Fatty-Fish", per_week: 2 }));
     const targets = getFrequencyTargets(profile.id);
