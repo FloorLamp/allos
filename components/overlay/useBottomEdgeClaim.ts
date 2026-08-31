@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BOTTOM_EDGE_OFFSET_VAR } from "./tokens";
 
 // Claim the bottom edge for a base-layer surface (issue #1520 part B, #2651).
@@ -41,7 +41,9 @@ import { BOTTOM_EDGE_OFFSET_VAR } from "./tokens";
 //
 // A claimant that is not RENDERED — the nav dock is `md:hidden`, and a
 // `display: none` element's rect is all zeros, which would otherwise read as "the
-// whole viewport is claimed" — publishes nothing at all.
+// whole viewport is claimed" — publishes nothing at all. A claimant that is
+// bottom-anchored only at SOME widths says so with the `gateRef` argument below,
+// which is the same rule applied to a second element.
 
 // Module-scope, because the var is: it lives on `<html>` and there is exactly one
 // of it. Keyed on the element so a claimant that unmounts withdraws only its own
@@ -59,14 +61,43 @@ function publish(): void {
   }
 }
 
-export function useBottomEdgeClaim<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
+export function useBottomEdgeClaim<T extends HTMLElement>(
+  // OPTIONAL SECOND ELEMENT WHOSE RENDERED BOX GATES THE CLAIM (#4334). A
+  // claimant whose bottom anchoring is RESPONSIVE cannot answer "am I on the
+  // bottom edge right now?" from its own box — BottomSheet's `dialog`
+  // presentation is a sheet below `md` and a centred card above it, and the
+  // panel has a real box either way. It already renders its DRAG HANDLE exactly
+  // when it is bottom-anchored (`md:hidden` on the responsive presentation, not
+  // drawn at all on a centred card), and BottomSheet already treats that
+  // handle's rendered box as the DOM truth gating the drag. Reusing the same
+  // element here means the two facts cannot drift into two answers, and the
+  // breakpoint stays in the stylesheet — no JS width check, no resize-listener
+  // race, no wrong first paint (#2305).
+  //
+  // Passing a gate at all means "claim only while the gate is rendered", so a
+  // gate that is absent from the tree withdraws the claim rather than ignoring
+  // it. A claimant that is unconditionally bottom-anchored passes nothing.
+  gateRef?: React.RefObject<HTMLElement | null>
+) {
+  // A CALLBACK REF OVER A STATE CELL, not a plain ref object, because the
+  // claimant's ELEMENT can be replaced while this hook stays mounted. The docks
+  // render their bar for as long as they are mounted, so a ref object was enough
+  // for them; a sheet host mounts once and mounts/unmounts its panel on every
+  // open, so an effect keyed on `[]` would have measured the first panel, kept
+  // its claim after that panel was gone, and never seen the next one.
+  const [el, setEl] = useState<T | null>(null);
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const measure = () => {
+      const gate = gateRef ? gateRef.current : el;
       // `display: none` (the nav dock above `md`) — no rendered box, no claim.
-      if (el.offsetHeight === 0) {
+      // Same rule applied to the gate, which is how a responsive claimant stops
+      // claiming at the width where it stops being bottom-anchored.
+      if (
+        el.offsetHeight === 0 ||
+        !gate ||
+        gate.getClientRects().length === 0
+      ) {
         claims.delete(el);
       } else {
         const top = el.getBoundingClientRect().top;
@@ -87,12 +118,23 @@ export function useBottomEdgeClaim<T extends HTMLElement>() {
         : new ResizeObserver(measure);
     ro?.observe(el);
     window.addEventListener("resize", measure);
+    // A surface that ARRIVES has a transform on it while it arrives, and
+    // `getBoundingClientRect` reads the transformed box — so a sheet measured on
+    // mount reports the edge it is sliding up FROM rather than the one it is
+    // coming to rest on (#4334). The keyframe carries no `forwards` fill, so the
+    // element's own `animationend` is the moment the box becomes the settled one.
+    // Nothing else fires there: a transform changes no border box, so the
+    // ResizeObserver above never sees it.
+    el.addEventListener("animationend", measure);
     return () => {
       ro?.disconnect();
       window.removeEventListener("resize", measure);
+      el.removeEventListener("animationend", measure);
       claims.delete(el);
       publish();
     };
+  }, [el, gateRef]);
+  return useCallback((node: T | null) => {
+    setEl(node);
   }, []);
-  return ref;
 }

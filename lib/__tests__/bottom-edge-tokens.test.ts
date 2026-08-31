@@ -6,6 +6,7 @@ import {
   BOTTOM_EDGE_ABOVE_NAV,
   BOTTOM_EDGE_NAV_ROW_HEIGHT,
 } from "@/components/overlay/tokens";
+import { stripComments } from "./strip-comments";
 
 // The bottom-edge convention (issue #1520 part B, #2651) — a source scan in the
 // shape of the overlay-motion chokepoint one level down, over the five FIXED
@@ -30,6 +31,18 @@ import {
 //   3. NOBODY outside components/overlay hand-writes the bottom-edge inset literal,
 //      or the lift that clears the nav dock.
 //   4. That lift agrees with the nav dock's own row height.
+//   5. A FIXED SURFACE THAT SPANS THE VIEWPORT AND ANCHORS TO ITS BOTTOM either
+//      claims the edge or consumes the tokens — no list, no exemptions.
+//
+// RULE 5 IS THERE BECAUSE RULES 1-2 COULD NOT SEE #4334. They iterate the map
+// below, so a bottom-anchored surface ABSENT from it was invisible to both — and
+// `BottomSheet` was absent for as long as the sheet has existed. Rules 3 and 4 do
+// read every file, but only for two exact literals, and the sheet anchors itself
+// with neither (`fixed inset-0` plus a flex anchor). So the one failure mode this
+// file was written to prevent was the one it structurally could not detect, and it
+// was green throughout. Rule 5 is DERIVED — it needs nobody to remember a
+// filename — and it carries no allowlist: a surface it flags answers by claiming
+// or by composing a token, never by being written down as an exception.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
@@ -58,7 +71,42 @@ const BOTTOM_EDGE_SURFACES = new Map<string, string>([
     "components/UpdateReadyBar.tsx",
     "LAYER 2 — the deploy update offer (#1700), bottom-left, one row above the offline pill's slot so the two never overlap",
   ],
+  [
+    "components/BottomSheet.tsx",
+    "LAYER 1 (session) — an OPEN bottom sheet is base-layer while it is up, so it claims the edge and the notice layers clear it instead of landing on the row that raised them (#4334)",
+  ],
 ]);
+
+// A `fixed` element that SPANS the viewport horizontally and anchors to its
+// BOTTOM, in the spellings this repository actually writes. Measured over the
+// tracked tree rather than taken from #4334's prose, which describes the sheet
+// only: the nav dock writes `fixed inset-x-0 bottom-0`, the sheet writes
+// `fixed inset-0` with `items-end` doing the anchoring from a composed variable
+// three functions away, and the workout dock anchors through an imported token.
+//
+// SPANNING IS HALF THE PREDICATE, and it is what keeps this quiet on the
+// neighbours. A bare `fixed inset-0` is a SCRIM — every overlay in the app has one
+// — and it owns no more of the bottom edge than of any other part of the screen.
+// A `fixed` strip that anchors low but is NOT full width is not a bottom-edge
+// surface either: `components/JumpRailScrubber.tsx` is a 44px rail down the right
+// gutter, ending 5rem above the bottom, and a notice has never been at risk of
+// landing on it.
+const FIXED = /[\s"'`{]fixed[\s"'`}]/;
+const SPANS = /[\s"'`{](?:inset-0|inset-x-0)[\s"'`}]/;
+const ANCHORS_BOTTOM = /[\s"'`{](?:bottom-0|items-end)[\s"'`}]|bottom-\[/;
+
+export function isBottomEdgeSurface(source: string): boolean {
+  const code = stripComments(source).replace(/\s+/g, " ");
+  return FIXED.test(code) && SPANS.test(code) && ANCHORS_BOTTOM.test(code);
+}
+
+/** Registered by DOING it: claiming the edge, or composing a bottom-edge token. */
+function registersWithTheEdge(source: string): boolean {
+  const code = stripComments(source);
+  return (
+    code.includes("useBottomEdgeClaim") || /BOTTOM_EDGE_[A-Z_]+/.test(code)
+  );
+}
 
 function sourceFiles(): string[] {
   const out: string[] = [];
@@ -83,10 +131,14 @@ describe("bottom-edge tokens (#1520)", () => {
   it("every bottom-edge surface consumes the shared tokens", () => {
     for (const [file, why] of BOTTOM_EDGE_SURFACES) {
       const src = fs.readFileSync(path.join(REPO, file), "utf8");
+      // Composing a token OR claiming the edge. A NOTICE has to be told where the
+      // edge is, so it composes; a BASE LAYER is the thing being cleared, so it
+      // claims and may never write an inset at all — which is `BottomSheet`, whose
+      // panel is positioned by its container's flex anchor (#4334).
       expect(
-        src,
-        `${file} (${why}) must import the bottom-edge tokens`
-      ).toMatch(/BOTTOM_EDGE_[A-Z_]+/);
+        registersWithTheEdge(src),
+        `${file} (${why}) must consume the bottom-edge tokens or claim the edge`
+      ).toBe(true);
     }
   });
 
@@ -97,6 +149,10 @@ describe("bottom-edge tokens (#1520)", () => {
     for (const file of [
       "components/MobileDock.tsx",
       "components/WorkoutDock.tsx",
+      // #4334: an open sheet is the third. It publishes its top edge through the
+      // same hook, gated on its drag handle so it stops claiming at the width
+      // where it stops being a sheet.
+      "components/BottomSheet.tsx",
     ]) {
       const src = fs.readFileSync(path.join(REPO, file), "utf8");
       expect(src, `${file} must claim the bottom edge`).toContain(
@@ -159,5 +215,78 @@ describe("bottom-edge tokens (#1520)", () => {
     expect(Number(lift)).toBe(step * 0.25);
     // …and above `md` the nav dock does not render, so the lift drops back flush.
     expect(BOTTOM_EDGE_ABOVE_NAV).toContain("md:bottom-0");
+  });
+
+  it("every bottom-anchored fixed surface registers with the edge", () => {
+    const offenders = sourceFiles().filter(
+      (file) =>
+        !file.startsWith(TOKENS_HOME) &&
+        !file.startsWith("lib/__tests__/") &&
+        (() => {
+          const src = fs.readFileSync(path.join(REPO, file), "utf8");
+          return isBottomEdgeSurface(src) && !registersWithTheEdge(src);
+        })()
+    );
+    expect(
+      offenders,
+      "a fixed, viewport-spanning, bottom-anchored surface must claim the edge " +
+        "(useBottomEdgeClaim) or compose a BOTTOM_EDGE_* token — a notice cannot " +
+        "move out of the way of something it has never been told about (#4334)"
+    ).toEqual([]);
+  });
+
+  // The scan's own see-and-stay-silent pair, in the tradition of the overlay
+  // chokepoint's. A green sweep over a COMPLYING tree says nothing about what the
+  // sweep can see, and this rule's whole reason for existing is that its four
+  // neighbours above were green while blind.
+  it.each([
+    [
+      "a dock spelled the way the nav dock spells it",
+      '<nav className="fixed inset-x-0 bottom-0 z-30" />',
+    ],
+    [
+      "a sheet spelled the way BottomSheet spells it",
+      'const anchor = "items-end";\n<div className={`fixed inset-0 z-60 flex ${anchor}`} />',
+    ],
+    [
+      "a bar lifted clear of another bar",
+      '<div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))]" />',
+    ],
+  ])("the scan sees %s", (_why, source) => {
+    expect(isBottomEdgeSurface(source)).toBe(true);
+    expect(registersWithTheEdge(source)).toBe(false);
+  });
+
+  it.each([
+    [
+      "a full-viewport scrim, which owns no edge in particular",
+      '<div className="fixed inset-0 bg-black/40" />',
+    ],
+    ["a top-anchored bar", '<div className="fixed inset-x-0 top-0 h-1" />'],
+    [
+      "a narrow rail that ends above the edge",
+      '<div className="fixed right-0 top-20 bottom-[calc(5rem+env(safe-area-inset-bottom))] w-11" />',
+    ],
+    ["a sticky header", '<div className="sticky top-0 z-10 bg-surface" />'],
+    [
+      "prose that only NAMES the shape",
+      "// a fixed inset-0 surface with items-end would anchor to the bottom",
+    ],
+  ])("the scan stays silent on %s", (_why, source) => {
+    expect(isBottomEdgeSurface(source)).toBe(false);
+  });
+
+  it("the registration half reads DOING it, not saying it", () => {
+    expect(
+      registersWithTheEdge("const r = useBottomEdgeClaim<HTMLDivElement>();")
+    ).toBe(true);
+    expect(registersWithTheEdge("className={BOTTOM_EDGE_NOTICE_BOTTOM}")).toBe(
+      true
+    );
+    expect(
+      registersWithTheEdge(
+        "// this surface should really useBottomEdgeClaim one day"
+      )
+    ).toBe(false);
   });
 });

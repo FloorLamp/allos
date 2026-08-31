@@ -7,6 +7,7 @@ import {
   deleteActivityFromForm,
   dismissToast,
   settledAfterAnimation,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -225,4 +226,152 @@ test("with no session at all, a toast still clears the nav dock (#2651)", async 
   } finally {
     cleanupMetric(NAV_TOAST_WEIGHT);
   }
+});
+
+// ── THE SHEET IS A BOTTOM-EDGE SURFACE TOO (#4334) ───────────────────────────
+//
+// The two tests above are about BARS. This one is about the surface a person is
+// looking AT when the notice arrives: an open bottom sheet is `fixed`,
+// bottom-anchored and base-layer, exactly like the docks, and until #4334 it did
+// not claim. So a toast raised BY a row inside the sheet came to rest ON that
+// row, and the next tap went to the notice instead of the control — three quick
+// taps logging two servings, with a confirmation on screen saying it worked.
+//
+// WHAT IS ASSERTED IS THE RELATIONSHIP, not a number: the published claim IS the
+// panel's own top edge, and the notice ends at or above it. #4323 bought the same
+// safety with padding derived from the notice band, which held for one content
+// height and nothing more — so this runs the whole sequence TWICE, at the list's
+// two real content heights (folded, and with "More groups" open), and the
+// assertion is the same both times. A pixel gap that survives one list is what
+// this file exists to stop being the contract.
+const SHEET_GROUP = "cruciferous";
+
+/** The published claim in px — 0 when nothing claims the edge. */
+function claimedOffset(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    parseFloat(
+      document.documentElement.style.getPropertyValue("--bottom-edge-offset") ||
+        "0"
+    )
+  );
+}
+
+/**
+ * What a tap at this control's centre would actually hit — the issue's own probe,
+ * and the only one that answers the reported bug directly. A box that merely
+ * misses the notice by a few pixels and an element that owns its own centre are
+ * different claims, and only the second is what a thumb experiences.
+ */
+async function testIdAtCentre(control: Locator): Promise<string> {
+  const box = (await control.boundingBox())!;
+  return control.page().evaluate(
+    ([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return (
+        hit?.closest<HTMLElement>("[data-testid]")?.dataset.testid ??
+        hit?.tagName ??
+        "none"
+      );
+    },
+    [box.x + box.width / 2, box.y + box.height / 2]
+  );
+}
+
+/** Drive the row's own +/- back to `target`, so the fixture is left as found. */
+async function restoreCount(page: Page, target: number) {
+  const count = page.getByTestId(`count-${SHEET_GROUP}`);
+  for (let step = 0; step < 12; step++) {
+    const now = Number((await count.textContent())?.trim() || "0");
+    if (now === target) return;
+    const up = now < target;
+    await page
+      .getByTestId(up ? `log-${SHEET_GROUP}` : `undo-${SHEET_GROUP}`)
+      .click();
+    await expect(count).toHaveText(String(up ? now + 1 : now - 1));
+  }
+  throw new Error(`could not restore ${SHEET_GROUP} to ${target}`);
+}
+
+test("a notice raised inside an open sheet clears the sheet, at either content height (#4334)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/nutrition");
+  const logSheet = await openLogSheet(page);
+  await settledClick(page, await showLogRow(logSheet, "log-food"));
+
+  const sheet = page.getByTestId("quick-entry-sheet");
+  const panel = sheet.locator("[data-sheet-panel]");
+  const bar = page.getByTestId("food-log-bar");
+  await expect(bar).toBeVisible();
+
+  // THE CLAIM IS LIVE WHILE THE CONTENT IS STILL ARRIVING, which is the window the
+  // bug lived in: the body loads behind a Server Action, so the panel grows AFTER
+  // it opens and the rows sit lower while it does. Read before anything is settled.
+  const settling = await panel.boundingBox();
+  expect(settling).not.toBeNull();
+  expect(await claimedOffset(page)).toBeCloseTo(
+    page.viewportSize()!.height - settling!.y,
+    0
+  );
+
+  const count = page.getByTestId(`count-${SHEET_GROUP}`);
+  let restoreTo = 0;
+  try {
+    for (const foldOpen of [false, true]) {
+      if (foldOpen) {
+        const more = page.getByTestId("food-more-groups-summary");
+        if (await more.isVisible()) await more.click();
+      }
+      const row = page.getByTestId(`food-group-${SHEET_GROUP}`);
+      if (!(await row.isVisible())) {
+        await page.getByTestId("food-more-groups-summary").click();
+      }
+      await expect(row).toBeVisible();
+      const add = page.getByTestId(`log-${SHEET_GROUP}`);
+
+      // A notice raised by THIS sheet's own row. The minus is the one control here
+      // that always has something to say — the plus's notices are all conditional
+      // on the day's state, and a fixture that only sometimes produces a toast is a
+      // fixture that only sometimes tests anything.
+      const before = Number((await count.textContent())?.trim() || "0");
+      if (foldOpen === false) restoreTo = before;
+      if (before === 0) {
+        await add.click();
+        await expect(count).toHaveText("1");
+      }
+      await page.getByTestId(`undo-${SHEET_GROUP}`).click();
+      const toast = page.getByTestId("toast").filter({ hasText: "removed" });
+      await expect(toast).toBeVisible({ timeout: 25_000 });
+
+      // The claim IS the panel's top edge, and the notice ends at or above it.
+      const [panelBox] = await settledBoxes([panel]);
+      expect(await claimedOffset(page)).toBeCloseTo(
+        page.viewportSize()!.height - panelBox.y,
+        0
+      );
+      await expectStackedAbove(toast, panel);
+
+      // …and the row therefore still owns its own centre. Three quick taps, none
+      // of them awaited: the reported failure is the SECOND one landing on the
+      // notice the first raised.
+      expect(await testIdAtCentre(add)).toBe(`log-${SHEET_GROUP}`);
+      const settled = Number((await count.textContent())?.trim() || "0");
+      await Promise.all([add.click(), add.click(), add.click()]);
+      await expect(count).toHaveText(String(settled + 3));
+      expect(await testIdAtCentre(add)).toBe(`log-${SHEET_GROUP}`);
+
+      await dismissToast(page, /removed/);
+    }
+  } finally {
+    await restoreCount(page, restoreTo);
+  }
+
+  // Closing the sheet RELEASES its claim down to the nav dock — the same shape the
+  // workout-dock test pins for a session ending, and the half a claim that is never
+  // withdrawn would pass without.
+  await page.getByTestId("quick-entry-sheet-backdrop").click();
+  await expect(sheet).toHaveCount(0);
+  const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
+  await expect.poll(() => claimedOffset(page)).toBeCloseTo(navBox.height, 0);
 });
