@@ -175,6 +175,10 @@ describe("a rare warning keeps its icon (#3970 rule 3)", () => {
 const SYNCED_AT = "2026-08-30 10:00:00";
 const SYNCED_ABSOLUTE =
   formatTimestampDisplay(SYNCED_AT, DEFAULT_FORMAT_PREFS)?.absolute ?? "";
+const SYNCED_ABSOLUTE_UTC =
+  formatTimestampDisplay(SYNCED_AT, DEFAULT_FORMAT_PREFS, {
+    timeZone: "UTC",
+  })?.absolute ?? "";
 
 describe("the absolute sync stamp lives on one surface (#4419 rule 1)", () => {
   it("gives a three-row status list three timestamps and no buttons", () => {
@@ -197,7 +201,7 @@ describe("the absolute sync stamp lives on one surface (#4419 rule 1)", () => {
   it("keeps the day ledger's clock disclosure — that column has no date", () => {
     render(<SyncTimestamp value={SYNCED_AT} clockOnly timeZone="UTC" />);
     expect(
-      screen.getAllByRole("button", { name: SYNCED_ABSOLUTE })
+      screen.getAllByRole("button", { name: SYNCED_ABSOLUTE_UTC })
     ).toHaveLength(1);
   });
 
