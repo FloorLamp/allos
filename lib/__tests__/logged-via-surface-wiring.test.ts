@@ -42,9 +42,9 @@ const DIRECT_READ_RE = /parseWebOrigin\s*\(/g;
 /** `export async function name(` / `export function name(` — the action boundary. */
 const EXPORT_RE = /^export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/gm;
 
-/** The spellings of "this file declares a surface". */
+/** The code shapes that declare a surface; imports and name prefixes do not. */
 const DECLARES_RE =
-  /useLoggedViaStamp|LoggedViaField|LoggedViaSurface|LOGGED_VIA_FIELD/;
+  /\buseLoggedViaStamp\s*\(|<LoggedViaField\b|<LoggedViaSurface\b|\.set\s*\(\s*LOGGED_VIA_FIELD\b/;
 
 function dirents(dir: string): fs.Dirent[] {
   try {
@@ -892,6 +892,22 @@ export async function logThing(formData: FormData) {
     ]);
   });
 
+  it("rejects declaration prefixes and import paths without a declaration", () => {
+    const root = corpus({
+      "app/(app)/x/actions.ts": ACTION,
+      "components/PrefixOnly.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        "const useLoggedViaStampX = () => undefined;\n",
+      "components/ImportOnly.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        'import "@/components/LoggedViaSurface";\n',
+    });
+    expect(unwiredPosters(root)).toEqual([
+      "components/ImportOnly.tsx posts logThing (app/(app)/x/actions.ts)",
+      "components/PrefixOnly.tsx posts logThing (app/(app)/x/actions.ts)",
+    ]);
+  });
+
   it("attributes a read to the RIGHT action when a file exports several", () => {
     // The failure this rules out is an off-by-one that blames a neighbour: a file
     // with a plain action above and a reading action below must name the second.
@@ -916,13 +932,16 @@ export async function logThing(formData: FormData) {
       // Compliant three ways.
       "components/Stamped.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { useLoggedViaStamp } from '@/components/LoggedViaSurface';\n",
+        "import { useLoggedViaStamp } from '@/components/LoggedViaSurface';\n" +
+        "export default function Stamped() { useLoggedViaStamp(); return null; }\n",
       "components/Fielded.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { LoggedViaField } from '@/components/LoggedViaSurface';\n",
+        "import { LoggedViaField } from '@/components/LoggedViaSurface';\n" +
+        "export default function Fielded() { return <LoggedViaField />; }\n",
       "components/Region.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { LoggedViaSurface } from '@/components/LoggedViaSurface';\n",
+        "import { LoggedViaSurface } from '@/components/LoggedViaSurface';\n" +
+        'export default function Region() { return <LoggedViaSurface value="quick-log" />; }\n',
       // A SERVER component: it posts through an inline server action on the page it
       // IS, which is what `page` means. Not a mounting that can declare anything.
       "app/(app)/x/page.tsx":
