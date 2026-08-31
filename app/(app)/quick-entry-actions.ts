@@ -24,15 +24,18 @@ import {
   type FoodMealEvent,
   getFoodBarOrder,
   getMoodOnDate,
+  getPrnMedicationsForQuickLog,
   getProteinDailyGrams,
   getProteinQuickAddPreset,
   getTrackedPractices,
   type TrackedPractice,
+  type PrnMedForQuickLog,
 } from "@/lib/queries";
 import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
+import type { TimeFormat } from "@/lib/format-date";
 import {
   pendingDayDoses,
   type PendingDayDose,
@@ -99,6 +102,13 @@ export interface QuickEntryDose {
   title: string;
   detail: string | null;
   dueText: string;
+}
+
+export interface QuickEntryPrn {
+  meds: PrnMedForQuickLog[];
+  tz: string;
+  timeFormat: TimeFormat;
+  nowIso: string;
 }
 
 // One recent-past day the dose sheet can switch to, with what it still owes grouped
@@ -168,6 +178,7 @@ export type QuickEntryData =
       // TODAY's offer, unchanged: the arrived-slot due-now slice. An evening dose is
       // still not "due right now" in the morning.
       doses: QuickEntryDose[];
+      prn: QuickEntryPrn;
       // The recent-past days the sheet may switch to (#3936), newest first — exactly
       // `doseLogDays(today)` minus today, so the switcher offers precisely the window
       // the write cores accept. A day with nothing left to log is still LISTED (with
@@ -471,8 +482,11 @@ export async function loadQuickEntry(
   // the shared scheduled-dose evaluation, so an evening dose cannot be called
   // "due right now" in the morning while Household/Upcoming retain their honest
   // whole-day view.
-  const nowHhmm = zonedDateParts(getTimezone(profile.id), clockNow()).hhmm;
+  const tz = getTimezone(profile.id);
+  const now = clockNow();
+  const nowHhmm = zonedDateParts(tz, now).hhmm;
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const prnMeds = getPrnMedicationsForQuickLog(profile.id);
   const doses = collectDueDosesNow(profile.id, date, nowHhmm).map((item) => ({
     doseId: item.doseId!,
     title: item.title,
@@ -492,10 +506,25 @@ export async function loadQuickEntry(
       label: back === 0 ? "Yesterday" : formatWeekdayDate(day, formatPrefs),
       slots: groupDosesByBucket(pendingDayDoses(profile.id, day)),
     }));
-  if (doses.length === 0 && pastDays.every((day) => day.slots.length === 0)) {
+  if (
+    doses.length === 0 &&
+    prnMeds.length === 0 &&
+    pastDays.every((day) => day.slots.length === 0)
+  ) {
     return { form: "unavailable", message: "No doses are due right now." };
   }
-  return { form: "dose", today: date, doses, pastDays };
+  return {
+    form: "dose",
+    today: date,
+    doses,
+    prn: {
+      meds: prnMeds,
+      tz,
+      timeFormat: formatPrefs.timeFormat,
+      nowIso: now.toISOString(),
+    },
+    pastDays,
+  };
 }
 
 // A day's unresolved doses in declared-bucket order, empty buckets dropped. The order

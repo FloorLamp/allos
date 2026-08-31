@@ -45,9 +45,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { helpGuard } from "./usage.mjs";
+import { helpGuard, isMain } from "./usage.mjs";
 import { resolveReadToken, resolveStateDir } from "./host.mjs";
+import { laneIssues, readLedger } from "./ledger.mjs";
 helpGuard(process.argv, import.meta.url);
 
 // Literal, not an import: reconcile-tracker-core is TypeScript and this
@@ -55,37 +55,6 @@ helpGuard(process.argv, import.meta.url);
 // in lib/__tests__/queue-snapshot-script.test.ts, so a rename breaks there.
 const WATERMARK_TITLE = "Reconcile watermark (machine state)";
 const SLOTS = ["P0", "P1", "P2", "P3"];
-
-/**
- * Issue number -> branch, for every dispatch the ledger still holds open.
- *
- * The same replay orchestrator-checkin.sh runs for the e2e axis: walk the
- * append-only JSONL, last word per branch wins, `done` closes the branch. Two
- * row kinds make a naive "last status per branch" read wrong, and the live
- * ledger holds both — a `promotion` row carries NO branch, and an `update` row
- * carries a branch with NO `issues`, so letting it win would erase the lane it
- * was only re-prioritising. Only a row that carries issues may set them.
- */
-export function laneIssues(ledgerText) {
-  const byBranch = new Map();
-  for (const line of ledgerText.split("\n")) {
-    if (!line.trim()) continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue; // a torn append is not a reason to write a shorter queue
-    }
-    if (!entry.branch) continue;
-    if (entry.status === "done") byBranch.delete(entry.branch);
-    else if (entry.issues) byBranch.set(entry.branch, entry.issues);
-  }
-  const lanes = new Map();
-  for (const [branch, issues] of byBranch) {
-    for (const number of issues) lanes.set(Number(number), branch);
-  }
-  return lanes;
-}
 
 /** Pure: one snapshot from raw open issues. Exported for the test drive. */
 export function buildSnapshot(raw, now = new Date(), lanes = new Map()) {
@@ -155,23 +124,12 @@ function main() {
     if (batch.length < 100) break;
   }
 
-  const stateDir = resolveStateDir();
-  const ledgerFile =
-    process.env.ALLOS_DISPATCH_LEDGER ??
-    path.join(stateDir, "allos-dispatch-ledger.jsonl");
-  const lanes = fs.existsSync(ledgerFile)
-    ? laneIssues(fs.readFileSync(ledgerFile, "utf8"))
-    : new Map();
-
-  const snapshot = buildSnapshot(issues, new Date(), lanes);
-  const file = path.join(stateDir, ".queue");
+  const snapshot = buildSnapshot(issues, new Date(), laneIssues(readLedger()));
+  const file = path.join(resolveStateDir(), ".queue");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, snapshot.text);
   process.stdout.write(snapshot.text);
   console.error(`written to ${file}`);
 }
 
-const invoked = process.argv[1]
-  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-  : false;
-if (invoked) main();
+if (isMain(process.argv, import.meta.url)) main();
