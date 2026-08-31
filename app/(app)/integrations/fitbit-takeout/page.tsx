@@ -12,6 +12,7 @@ import {
 } from "@/lib/integrations/source-state";
 import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
+import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import TakeoutUpload from "./TakeoutUpload";
 import BackLink from "@/components/BackLink";
 
@@ -132,11 +133,19 @@ export default async function FitbitTakeoutPage() {
           data-testid="takeout-status"
           className="mt-1 text-sm text-slate-600 dark:text-slate-300"
         >
-          {lastImport
-            ? `Last import ${lastImport}.`
-            : conn
-              ? "Set up, but nothing imported yet."
-              : "No archive imported yet."}
+          {lastImport ? (
+            <>
+              {/* THIS is the surface that carries the absolute stamp for this source
+                  (#4419 rule 1) — the sub-panel below renders relative-only against it.
+                  It printed the raw SQLite value, which is neither the reader's clock
+                  nor their date shape; SyncTimestamp is the one treatment (#1772). */}
+              Last import <SyncTimestamp value={lastImport} />.
+            </>
+          ) : conn ? (
+            "Set up, but nothing imported yet."
+          ) : (
+            "No archive imported yet."
+          )}
         </p>
         {policy && (
           <p
