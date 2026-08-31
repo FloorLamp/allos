@@ -380,7 +380,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       await expect(panel).toBeVisible();
       // `exact`, because "Previous month" and "Next month" are labels too.
       await panel.getByLabel("Year", { exact: true }).selectOption("2026");
-      await panel.getByLabel("Month", { exact: true }).selectOption({ label: "Jun" });
+      await panel
+        .getByLabel("Month", { exact: true })
+        .selectOption({ label: "Jun" });
       await expect(markedDay("June 11, 2026")).toHaveCount(1);
     };
 
