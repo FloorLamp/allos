@@ -143,13 +143,53 @@ describe("buildDayLedger — untimed rows sink (#3958 clock grammar)", () => {
     ]);
   });
 
-  it("closes the group with the due row, below even the untimed", () => {
-    const groups = buildDayLedger({
-      servings: [serving(1, "Evening", "23:59", "logged")],
+  // THE DUE ROW LEADS ITS GROUP (#4315, owner ruling): the ledger is opened to act, so
+  // the one actionable row reads first — and the record keeps the order it would have
+  // had alone. Two claims, and a test that checked only the first would pass against a
+  // comparator that also alphabetized the tail.
+  //
+  // THE FIXTURE'S REACH, COUNTED rather than assumed. The group holds FIVE rows: ONE due
+  // and FOUR recorded, and the four span BOTH tail classes — two stated at different
+  // clocks, two filing-time at different clocks. With one due row and no recorded rows
+  // "the due row is first" cannot fail; with recorded rows of a single class or a single
+  // clock, "the tail is unchanged" cannot fail either. A bucket mints AT MOST ONE due
+  // row (`due:${bucket}`), so the due count is 1 here and everywhere — the count that
+  // has to exceed one for this to bite is the RECORDED one.
+  it("leads the group with the due row, record unchanged below it", () => {
+    const day = {
+      servings: [
+        serving(1, "Evening", "19:30", "stated"),
+        serving(2, "Evening", "18:15", "stated"),
+        serving(3, "Evening", "23:59", "logged"),
+        serving(4, "Evening", "20:06", "logged"),
+      ],
       doses: [],
-      pending: [pending(9, "Evening")],
-    });
-    expect(groups[0].rows.map((r) => r.kind)).toEqual(["serving", "due"]);
+    };
+    const rows = buildDayLedger({ ...day, pending: [pending(9, "Evening")] })[0]
+      .rows;
+    expect(rows.filter((r) => r.kind === "due")).toHaveLength(1);
+    expect(rows.filter((r) => r.kind !== "due")).toHaveLength(4);
+    expect(
+      new Set(rows.map((r) => (r.kind === "due" ? "due" : r.clockKind)))
+    ).toEqual(new Set(["due", "stated", "logged"]));
+
+    // The record's own order, pinned once: stated rows by clock, then filing-time rows
+    // by clock (#3958).
+    const record = buildDayLedger({ ...day, pending: [] })[0].rows;
+    expect(record.map((r) => r.id)).toEqual([
+      "serving:2",
+      "serving:1",
+      "serving:4",
+      "serving:3",
+    ]);
+    // Both halves of the ruling in one assertion, and the tail is compared against an
+    // INDEPENDENTLY BUILT order rather than a second literal: a comparator that lifted
+    // the due row and re-sorted what was left would satisfy a hand-written tail only
+    // because the tail had been written to match it, and fails here.
+    expect(rows.map((r) => r.id)).toEqual([
+      "due:Evening",
+      ...record.map((r) => r.id),
+    ]);
   });
 });
 

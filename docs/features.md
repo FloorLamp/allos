@@ -1299,7 +1299,12 @@ used to draw the same facts as meal cards, a logged-today list, and a separate
 schedule on the Supplements tab. Doses written by one composed tap collapse to a
 single expandable row; a partly-answered routine says "4 of 6" rather than a bare
 tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
-every dose it will write and writes only the ones the day still owes. A **skip**
+every dose it will write and writes only the ones the day still owes. That due
+row **leads** its group (#4315): the ledger is opened to act, so the one
+actionable row reads first and the record keeps its stated order unchanged
+below it — the rule for any surface rendering due-and-done together, and a
+surface with no single aggregated due row is outside it (the Medications Today
+panel's slots stay in dose-day order, #2652). A **skip**
 shows with the reason you gave it. A row with no stated time says which clock it is
 showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
 actions to **correct** it — the food group, the day, or the meal it belongs to — or
