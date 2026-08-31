@@ -676,7 +676,7 @@ test.describe("the Day ledger's selection edit", () => {
     // 08:15, deliberately BEFORE the run's pinned 13:mm local time: a stated instant
     // later than now is refused by the same gate every other occurred_at write passes,
     // so a batch that asked for the evening would be testing the refusal instead.
-    await page.getByTestId("ledger-selection-time-input").fill("08:15");
+    await page.getByTestId("ledger-selection-when-time").fill("08:15");
     await hydratedClick(page, page.getByTestId("ledger-selection-time-apply"));
 
     const stated = stampAt(day, "08:15");

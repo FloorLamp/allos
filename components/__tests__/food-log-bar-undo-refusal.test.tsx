@@ -16,6 +16,10 @@ import {
 } from "@/components/Toast";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
+// The ledger's batch Delete asks ONE confirmation (#4118), through the app-wide
+// dialog `app/(app)/layout.tsx` mounts around every page. The bar renders the ledger,
+// so a tree without the provider is a tree the app never renders.
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import FoodLogBar, { type FoodLogDay } from "@/app/(app)/nutrition/FoodLogBar";
 import { buildDayLedger } from "@/lib/day-ledger";
 import type { DisplayFormatPrefs } from "@/lib/settings";
@@ -191,30 +195,36 @@ function barTree({
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={profileId}>
-        <ToastProvider>
-          <ProfileSwitchWatcher activeProfileId={profileId} />
-          {captureProfileScope && (
-            <CaptureProfileScopeAfterCommit capture={captureProfileScope} />
-          )}
-          {layoutProfileNote && (
-            <PostProfileNoteOnLayout {...layoutProfileNote} />
-          )}
-          <FoodSelectedDateProvider key={providerKey} today={DATE} days={[day]}>
-            <FoodLogBar
-              key={barKey}
+        <ConfirmProvider>
+          <ToastProvider>
+            <ProfileSwitchWatcher activeProfileId={profileId} />
+            {captureProfileScope && (
+              <CaptureProfileScopeAfterCommit capture={captureProfileScope} />
+            )}
+            {layoutProfileNote && (
+              <PostProfileNoteOnLayout {...layoutProfileNote} />
+            )}
+            <FoodSelectedDateProvider
+              key={providerKey}
               today={DATE}
               days={[day]}
-              groupsBySlot={GROUPS}
-              excludedGroups={[]}
-              slot={slot}
-              slotBoundaries={{ midday: 660, evening: 900 }}
-              dayLedger={ledgerFor(day)}
-            />
-            {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
-            {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
-            <SlotProjectionProbe />
-          </FoodSelectedDateProvider>
-        </ToastProvider>
+            >
+              <FoodLogBar
+                key={barKey}
+                today={DATE}
+                days={[day]}
+                groupsBySlot={GROUPS}
+                excludedGroups={[]}
+                slot={slot}
+                slotBoundaries={{ midday: 660, evening: 900 }}
+                dayLedger={ledgerFor(day)}
+              />
+              {tapBeforePassiveEffect && <TapBeforePassiveEffect />}
+              {onLayoutCommit && <RunOnLayoutCommit run={onLayoutCommit} />}
+              <SlotProjectionProbe />
+            </FoodSelectedDateProvider>
+          </ToastProvider>
+        </ConfirmProvider>
       </ActiveProfileProvider>
     </TimezoneProvider>
   );
@@ -270,11 +280,13 @@ function twoBarTree({ showFirst = true, day = DAY } = {}) {
   return (
     <TimezoneProvider tz="UTC">
       <ActiveProfileProvider profileId={7}>
-        <ToastProvider>
-          <ProfileSwitchWatcher activeProfileId={7} />
-          <div data-testid="first-food-bar">{showFirst && bar("first")}</div>
-          <div data-testid="second-food-bar">{bar("second")}</div>
-        </ToastProvider>
+        <ConfirmProvider>
+          <ToastProvider>
+            <ProfileSwitchWatcher activeProfileId={7} />
+            <div data-testid="first-food-bar">{showFirst && bar("first")}</div>
+            <div data-testid="second-food-bar">{bar("second")}</div>
+          </ToastProvider>
+        </ConfirmProvider>
       </ActiveProfileProvider>
     </TimezoneProvider>
   );

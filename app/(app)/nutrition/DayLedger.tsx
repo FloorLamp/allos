@@ -37,6 +37,9 @@ import {
 } from "@/lib/day-ledger";
 import type { PendingDayDose } from "@/lib/queries/usual-routine";
 import CheckboxControl from "@/components/CheckboxControl";
+import WhenControl from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm, type WhenValue } from "@/lib/stated-time";
 import { useConfirm } from "@/components/ConfirmDialog";
 import {
   deleteLedgerSelection,
@@ -308,7 +311,15 @@ export default function DayLedger({
   );
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<"time" | "day" | null>(null);
-  const [batchTime, setBatchTime] = useState("");
+  // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the ledger's own:
+  // min === max, so it renders the day as text and the pair rule holds trivially. The
+  // batch never re-dates through this control — Move to day… is the other verb, and
+  // giving Set time… a day picker too would be two answers to one question.
+  const tz = useTimezone();
+  const [batchWhen, setBatchWhen] = useState<WhenValue>(() => ({
+    date,
+    statedAt: null,
+  }));
   const [batchDay, setBatchDay] = useState("");
   const pickedCount = picked.servings.length + picked.doses.length;
 
@@ -328,6 +339,7 @@ export default function DayLedger({
     setSelecting(false);
     setSheet(null);
     setPicked({ servings: [], doses: [] });
+    setBatchWhen({ date, statedAt: null });
   }
 
   /** The box a selectable row carries while selection mode is on, and nothing otherwise. */
@@ -794,24 +806,28 @@ export default function DayLedger({
           </Button>
           {sheet === "time" && (
             <span className="flex items-center gap-2">
-              {/* ONE time for the batch (#3273's vocabulary, at batch grain). Anchored on
-                  the day being rendered by the core, so the pair rule holds by
-                  construction and a time that has not happened yet is refused there
-                  rather than talked out of here. */}
-              <input
-                type="time"
-                aria-label="Time for the selected rows"
-                data-testid="ledger-selection-time-input"
-                className="input"
-                value={batchTime}
-                onChange={(event) => setBatchTime(event.target.value)}
+              {/* ONE time for the batch, in the app's one time vocabulary. The wall
+                  clock is what travels; the core re-anchors it on the day being
+                  rendered, so a time that has not happened yet is refused THERE by the
+                  same gate every other stated instant passes, rather than talked out
+                  of here. */}
+              <WhenControl
+                mode="state"
+                grain="minute"
+                timeRequired
+                value={batchWhen}
+                onChange={setBatchWhen}
+                minDate={date}
+                maxDate={date}
+                timeLabel="Time for the selected rows"
+                testId="ledger-selection-when"
               />
               <Button
                 data-testid="ledger-selection-time-apply"
-                disabled={busy || batchTime === ""}
+                disabled={busy || batchWhen.statedAt === null}
                 onClick={() =>
                   void runBatch("Updated", setLedgerSelectionTime, {
-                    time: batchTime,
+                    time: statedHhmm(batchWhen.statedAt, tz),
                   })
                 }
               >
