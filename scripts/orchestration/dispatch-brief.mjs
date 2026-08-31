@@ -684,6 +684,21 @@ ${landingLines}
   not. This is the twin of the fixture rule above -- that one asks whether your test can
   REACH the state it forbids, this one asks whether your explanation EXISTS. Both are one
   cheap command.
+- A CONTROL THAT RE-QUERIES INSTEAD OF RE-USING PROVES NOTHING ABOUT YOUR GUARD.
+  When you forge the forbidden state to show an assertion can fail, the control must
+  run through the SAME locator, selector or query object the assertion runs through
+  -- not a fresh one you write to check your work. Measured 2026-08-31: a lane wrote
+  the positive control this brief demands, forged a card into the page, and watched
+  its detector return 1. The detector counted through a document-rooted query; the
+  guard chained a CSS selector onto an already-scoped root, so it asked for a main
+  element nested inside a main element. It matched nothing, ever. The control proved
+  that A query can find a card. It never proved that THE GUARD can.
+  This is worse than an assertion that simply cannot fail, because every visible
+  signal is right: the control exists, it reds on demand, the reasoning is sound,
+  and the guard is blind behind it. The lane found the same mismatch in a second
+  guard once it knew the shape. THE TELL IS A CONTROL THAT RE-QUERIES RATHER THAN
+  RE-USES: count through the guard's own object, mutate, count again through that
+  same object, restore, count again.
   AND THIS APPLIES TO WHAT YOU ARE TOLD, not only to what you infer. A claim's
   SOURCE does not change whether it is checkable. Measured 2026-08-31: a lane
   re-derived every number in its own PR body against the pushed head -- catching a
