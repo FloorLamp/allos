@@ -4,7 +4,6 @@ import type { Page } from "@playwright/test";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
 import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
-import { TIMELINE_RECENT_DAYS } from "@/lib/timeline-window";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -22,43 +21,24 @@ import { TIMELINE_RECENT_DAYS } from "@/lib/timeline-window";
 // naive string would be right only for the zone a run's start hour happened to draw.
 
 const PROFILE = 1;
-
-// THE FIXTURE'S DAY, DERIVED FROM THE WINDOW IT HAS TO SIT IN (#4358).
+// Comfortably inside the 14-day recent band at any run date. The shared profile's
+// pinned timezone guarantees its local date equals the frozen instant's UTC date.
+const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -7);
+// The month-and-day a row must NOT print, derived from DAY and built from the app's
+// own month table rather than an implicit-locale `toLocaleDateString` (#1020).
 //
-// Two tests below read this spec's rows off `/history` with NO `?day=`, so the row
-// has to be inside the record's RECENT BAND — `today − (TIMELINE_RECENT_DAYS − 1) …
-// today`, computed in lib/timeline-window.ts from the same constant imported here.
-// A calendar literal is therefore a fuse with the run date as its match, and it does
-// not fail while it burns: `"2026-08-17"` was one day inside the band on 2026-08-30
-// and one day outside it on 2026-08-31, from which point it reddened two tests on
-// EVERY pull request with no re-run that could ever clear them, because no re-run
-// moves a calendar. Same class as #1048, which anchored e2e/seed/merge.ts's fixture
-// relative to today for the training log's own 14-day first page.
+// #4367 DERIVED THE DAY AND LEFT THE ASSERTION BELOW AS THE LITERAL "Aug 17", which
+// made that guard VACUOUS: the fixture no longer seeds 2026-08-17, so the absence it
+// states is true of every tree — including one that HAS started printing a per-row
+// date cell, which is the single regression it exists to catch. An absence assertion
+// whose subject can no longer occur passes for the wrong reason and reports nothing.
+// Derived, it names whatever day the fixture is actually on.
 //
-// THE OFFSET IS DERIVED FROM THE WINDOW rather than chosen beside it: the middle of
-// the band is the one position no single change to TIMELINE_RECENT_DAYS pushes out
-// of either end. Not today itself — the day header reads "Today" there, and profile
-// 1's servings on today are also whatever the food log's own specs last tapped.
-//
-// AND NOT THE SAME DAY AS e2e/logged-event-row.mobile.spec.ts, which seeds `berries`
-// on this same profile five days back. Measured, not assumed: the two specs actually
+// Five days back is e2e/logged-event-row.mobile.spec.ts's day for `berries` on this
+// same profile, so seven keeps the two apart. Measured, not assumed: they actually
 // SURVIVE a shared day — each deletes by (profile, day, group) before every test and
 // both delete `berries`, so they clean up after each other. Distinct days are
 // insurance against that accident ending, not a repair of a live defect.
-//
-// `frozenNow()` is the run's frozen clock (e2e/worker-env.ts), and its UTC date IS
-// profile 1's local today: that profile carries no timezone of its own (every one
-// that does is named in e2e/fixture-timezones.ts), so it resolves to the run's
-// instance pin, which puts local time at 13:mm precisely so the local and the UTC
-// date can never disagree (e2e/pinned-timezone.ts).
-const DAY = shiftDateStr(
-  frozenNow().toISOString().slice(0, 10),
-  -Math.floor((TIMELINE_RECENT_DAYS - 1) / 2)
-);
-// The month-and-day a row must NOT print, built from DAY and from the app's own
-// month table rather than an implicit-locale `toLocaleDateString` (#1020). Derived
-// so it can never name a day the fixture does not seed — which is exactly what a
-// literal "Aug 17" left beside a derived DAY would do, silently, by passing.
 const DAY_LABEL = `${MONTHS_SHORT[Number(DAY.slice(5, 7)) - 1]} ${Number(
   DAY.slice(8, 10)
 )}`;

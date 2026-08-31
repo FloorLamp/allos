@@ -50,10 +50,10 @@ const PROFILE = 1;
 // proven one being that 90; keeping it near today also keeps it clear of any
 // shorter window a future surface might introduce.
 //
-// FIVE, AND NOT SIX: e2e/history.spec.ts seeds profile 1's `berries` six days back.
-// Keeping the two apart is CHEAP INSURANCE, NOT A LOAD-BEARING CLAIM — and that is
-// measured rather than asserted, because the first draft of this comment claimed
-// otherwise. Forcing both specs onto six days back and running them together under
+// FIVE, AND NOT SEVEN: e2e/history.spec.ts seeds profile 1's `berries` seven days
+// back (#4367). Keeping the two apart is CHEAP INSURANCE, NOT A LOAD-BEARING CLAIM —
+// and that is measured rather than asserted, because the first draft of this comment
+// claimed otherwise. Forcing both specs onto one day and running them together under
 // `--workers=1` leaves both GREEN: each deletes by (profile, day, group) and re-seeds
 // immediately before every test, and both delete `berries`, so on a shared day they
 // simply clean up after each other.
