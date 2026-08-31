@@ -31,7 +31,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
-import { createApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import {
   accountsForPortal,
   bindPortalIdentity,
@@ -233,7 +233,7 @@ function claimedDocuments(eventId: number): number[] {
   ).map((r) => r.id);
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   toolLogin = Number(
     db
       .prepare(
@@ -241,8 +241,7 @@ beforeAll(async () => {
       )
       .run().lastInsertRowid
   );
-  toolToken = (await createApiToken(toolLogin, "tool", "upload:documents"))
-    .token;
+  toolToken = routeTestToken(toolLogin, "tool", "upload:documents").token;
 
   const mk = (name: string): number =>
     Number(
