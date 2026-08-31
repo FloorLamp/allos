@@ -35,6 +35,7 @@ import {
 } from "@/lib/coaching";
 import type { FormDeloadContext } from "@/lib/routines";
 import type { FormRecoveringContext } from "@/lib/injuries";
+import { resolveTrainingTemper } from "@/lib/niggle-model";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
@@ -347,11 +348,16 @@ export default function StrengthSets({
   // exactly the lift the user named — and their own declared load preference wins over
   // the app's fallback fraction. Off any recovering constraint the verdict is "clear",
   // so a normal lift is byte-for-byte prior.
-  const injuryVerdict =
+  // #3244 threads live niggles through the card's shared resolver too, preserving its
+  // weaker factor and niggle-specific rationale rather than inventing an injury.
+  const trainingTemper =
     p.name.trim() !== ""
-      ? exerciseInjuryVerdict(recoveringContext.constraints, p.name)
+      ? resolveTrainingTemper(
+          exerciseInjuryVerdict(recoveringContext.constraints, p.name),
+          recoveringContext.niggleTempers ?? [],
+          p.name
+        )
       : null;
-  const recovering = injuryVerdict?.kind === "tempered";
   // Build a next-set suggestion from a set list (one shared computation, so a
   // per-side left/right suggestion progresses each side by the SAME rule as the
   // bilateral one — #335). A weighted lift whose newest session carries only
@@ -389,8 +395,9 @@ export default function StrengthSets({
     // recovering injury, so an ordinary lift is byte-for-byte the prior progression.
     return contextualNextSet(base, p.name, {
       deloadWeek: deload,
-      recoveringRegion: recovering,
-      recoveringFactor: injuryVerdict?.factor ?? RECOVERING_LOAD_FACTOR,
+      recoveringRegion: trainingTemper?.recoveringRegion,
+      recoveringFactor: trainingTemper?.factor ?? RECOVERING_LOAD_FACTOR,
+      temperRationale: trainingTemper?.rationale,
     });
   };
   // Bilateral parts get one suggestion; per-side parts get an independent

@@ -316,6 +316,45 @@ function walk(dir: string): string[] {
   return out;
 }
 
+describe("the retired dose timestamp spelling (#4347)", () => {
+  it("keeps `given_at` in migration history, not current code or notification doctrine", () => {
+    const historical = new Set(["lib/queries/correction-history.ts"]);
+    const seenHistorical = new Set<string>();
+    const offenders: string[] = [];
+    for (const dir of ["lib", "app", "components", "scripts"]) {
+      for (const full of walk(path.join(REPO, dir))) {
+        const rel = path.relative(REPO, full).split(path.sep).join("/");
+        if (
+          rel.includes("__tests__") ||
+          rel.includes("__db_tests__") ||
+          rel.includes("__action_tests__") ||
+          rel.startsWith("lib/migrations/versions/")
+        ) {
+          continue;
+        }
+        if (!fs.readFileSync(full, "utf8").includes("given_at")) continue;
+        if (historical.has(rel)) seenHistorical.add(rel);
+        else offenders.push(rel);
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+    expect(
+      [...historical].filter((rel) => !seenHistorical.has(rel)),
+      "historical source exception no longer names the retired column"
+    ).toEqual([]);
+
+    const notifications = fs.readFileSync(
+      path.join(REPO, "docs/internals/notifications.md"),
+      "utf8"
+    );
+    expect(notifications).not.toContain("given_at");
+    expect(notifications).toMatch(/dose stores\s+`occurred_at`/);
+    expect(notifications).toContain(
+      "`dosetime` moves `occurred_at` and nothing else"
+    );
+  });
+});
+
 function stripComments(text: string): string {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")

@@ -59,6 +59,7 @@ import {
   getMostRecentActivityEditData,
   getActivityEditData,
   getWorkoutPresence,
+  getNiggleContext,
   profileHasIntakeItems,
   getNavRelevance,
 } from "@/lib/queries";
@@ -66,6 +67,8 @@ import { getSegmentLogDays } from "@/lib/queries/log-sheet";
 import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
+import { excludedRegions } from "@/lib/injury-model";
+import { niggleTempers } from "@/lib/niggle-model";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
 import { getRpeTracking } from "@/lib/rpe-tracking";
 import { today } from "@/lib/db";
@@ -160,7 +163,15 @@ export default async function AppLayout({
   // returning from a RECOVERING injury (#838), read from the SAME temperedRegions gather
   // the Analyze/detail panel uses so the live logger and its deep-link target agree on
   // the injury axis (#221/#1115).
-  const recoveringContext = getFormRecoveringContext(profile.id);
+  const injuryContext = getFormRecoveringContext(profile.id);
+  const recoveringContext = {
+    ...injuryContext,
+    niggleTempers: niggleTempers(
+      getNiggleContext(profile.id),
+      excludedRegions(injuryContext.constraints),
+      now
+    ),
+  };
   const plateauHints = buildActivePlateauHints(profile.id, now);
   // The set grid's effort column is opted into (#3335): this is null unless the
   // profile holds the opt-in row, and null is the whole reason no surface can render

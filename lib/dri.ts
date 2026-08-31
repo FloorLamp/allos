@@ -1221,6 +1221,18 @@ export interface ElementalReading {
   compound: string | null;
 }
 
+function compoundFormFor(itemName: string, nutrient: DriNutrient) {
+  return COMPOUND_FORMS.filter(
+    (form) => form.nutrientKey === nutrient.key && form.pattern.test(itemName)
+  ).reduce<CompoundForm | null>(
+    (best, form) =>
+      best == null || form.elementalFraction > best.elementalFraction
+        ? form
+        : best,
+    null
+  );
+}
+
 // Read an item's DAILY TOTAL (already unit-converted) as the nutrient's ELEMENTAL
 // content. Returns the amount unchanged (and `compound: null`) unless BOTH gates hold:
 // the total is above the nutrient's stated-elemental ceiling, and the item's name
@@ -1242,13 +1254,7 @@ export function elementalReading(
   if (ceiling == null || statedAmount <= ceiling) {
     return { amount: statedAmount, compound: null };
   }
-  const form = COMPOUND_FORMS.filter(
-    (f) => f.nutrientKey === nutrient.key && f.pattern.test(itemName)
-  ).reduce<CompoundForm | null>(
-    (best, f) =>
-      best == null || f.elementalFraction > best.elementalFraction ? f : best,
-    null
-  );
+  const form = compoundFormFor(itemName, nutrient);
   if (!form) return { amount: statedAmount, compound: null };
   return {
     amount: statedAmount * form.elementalFraction,
@@ -1443,8 +1449,11 @@ function itemNutrientAmounts(
   );
   if (unitsPerDay <= 0) return out;
 
-  const composed = new Map<string, { amount: number; via: string[] }>();
-  for (const ing of ingredients) {
+  const ingredientReadings = new Map<
+    string,
+    { name: string; nutrient: DriNutrient; amount: number; via: string[] }
+  >();
+  for (const [index, ing] of ingredients.entries()) {
     if (ing.amount == null || ing.unit == null) continue;
     const key = resolveNutrientKey(ing.name);
     if (!key) continue;
@@ -1455,15 +1464,27 @@ function itemNutrientAmounts(
       nutrient
     );
     if (converted == null) continue;
-    // The compound/elemental re-read (#2798) applies per INGREDIENT ROW here, because
-    // one row is one labeled compound — "Magnesium L-Threonate 2 g" on a line of a
-    // blend's label means exactly what it means on the front of its own bottle.
-    const reading = elementalReading(ing.name, nutrient, converted);
+    // Combine the SAME compound before its ceiling; distinct compounds still sum (#3159).
+    const form = compoundFormFor(ing.name, nutrient);
+    const readingKey = `${key}\0${form?.label ?? `row:${index}`}`;
+    const group = ingredientReadings.get(readingKey) ?? {
+      name: ing.name,
+      nutrient,
+      amount: 0,
+      via: [],
+    };
+    group.amount += converted;
+    group.via.push(ing.name);
+    ingredientReadings.set(readingKey, group);
+  }
+
+  const composed = new Map<string, { amount: number; via: string[] }>();
+  for (const group of ingredientReadings.values()) {
+    const reading = elementalReading(group.name, group.nutrient, group.amount);
+    const key = group.nutrient.key;
     const bucket = composed.get(key) ?? { amount: 0, via: [] };
-    // Two rows CAN name one nutrient ("zinc picolinate" + "zinc gluconate"); those
-    // genuinely sum — it is the same element twice, stated twice.
     bucket.amount += reading.amount;
-    bucket.via.push(ing.name);
+    bucket.via.push(...group.via);
     composed.set(key, bucket);
   }
 

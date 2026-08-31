@@ -14,6 +14,7 @@ import {
   getProteinQuickAddPreset,
   getProteinToday,
   getLoggedFoodWindows,
+  hasCorrectedAnyTime,
 } from "../queries";
 import { getTimezone, getProfileAge } from "../settings";
 import { getProfileSubstanceTelegram } from "../settings/notifications";
@@ -216,7 +217,15 @@ export function buildFoodNudge(
     proteinLine,
     visibleCount,
     proteinPresetGrams: presetGrams,
-    corrections: { bursts: corrections, now },
+    corrections: {
+      bursts: corrections,
+      now,
+      // The hint's retirement gate (#2874). Asked only when there is something to hint
+      // ABOUT — a nudge with no correctable burst renders no sentence either way, so a
+      // profile that has never tapped a chip never pays for the probe.
+      hasCorrectedAnyTime:
+        corrections.length > 0 ? hasCorrectedAnyTime(profileId) : false,
+    },
     gap,
     tz,
     ...(opts.picker

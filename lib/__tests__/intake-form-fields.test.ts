@@ -89,7 +89,7 @@ describe("intake form field mapping (#3216)", () => {
     expect(value(both, "redose_notice")).toBe("1");
   });
 
-  it("the medication-only fields are not posted for a supplement", () => {
+  it("keeps kind-specific fields apart while posting shared child rows", () => {
     const supp: IntakeItemFormState = {
       ...emptyIntakeItemFormState("supplement"),
       prescriber: "Dr. Rivera",
@@ -98,12 +98,19 @@ describe("intake form field mapping (#3216)", () => {
     };
     expect(value(supp, "prescriber")).toBeNull();
     expect(value(supp, "rx")).toBeNull();
-    // …and the supplement-only ones are.
+    // The stack stays supplement-only; composition and purpose rows belong to either
+    // kind so an edit can preserve, change, or clear them after a flip (#3649).
     expect(value(supp, "stack")).toBe("D3 + K2");
     expect(value(supp, "ingredients")).toBe("[]");
-    // A medication never posts the supplement-only ones.
-    expect(value(med(), "stack")).toBeNull();
-    expect(value(med(), "ingredients")).toBeNull();
+    const flipped = med({
+      ingredients: [{ name: "Zinc", amount: "5 mg" }],
+      purposes: [{ kind: "goal", goalKey: "immunity" }],
+    });
+    expect(value(flipped, "stack")).toBeNull();
+    expect(JSON.parse(value(flipped, "ingredients")!)).toEqual(
+      flipped.ingredients
+    );
+    expect(JSON.parse(value(flipped, "purposes")!)).toEqual(flipped.purposes);
   });
 
   it("the situation only rides along while the condition is situational", () => {

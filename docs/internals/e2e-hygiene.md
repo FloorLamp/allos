@@ -120,6 +120,10 @@ mechanically-detectable settle anti-patterns per file and fails a NEW one:
 - `test.skip(...)` — frozen at ZERO. A committed skip makes the same revision run
   different coverage depending on time or environment. Delete obsolete coverage,
   or make the boundary deterministic in the fixture.
+- a bare fixed year in `toContainText` — frozen at ZERO. A relative fixture will
+  eventually leave that year, and the negated form then passes vacuously. Derive the
+  complete displayed date from the fixture, or use a year-shape regex when the
+  contract is that the row renders no date (#4369).
 
 ### The runner is not a property of the app (`process.env.CI`, #2645/#2648)
 
