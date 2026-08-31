@@ -684,6 +684,21 @@ ${landingLines}
   not. This is the twin of the fixture rule above -- that one asks whether your test can
   REACH the state it forbids, this one asks whether your explanation EXISTS. Both are one
   cheap command.
+- EVERY NUMBER YOU PUBLISH NEEDS A COMMAND BEHIND IT, AND THE COMMAND GOES BESIDE IT.
+  A count read off the length of a listing is not a measurement, and it does not
+  become one by being written in a table. Measured 2026-08-31: a lane produced a
+  site census whose per-site verdicts were every one exact -- it had read each line
+  -- above a summary reading "92 hits, 60 mounts" that corresponded to NO quantity
+  in the tree. Not files, not mounts, not lines, not occurrences. Its own account
+  afterwards is the rule: the verdicts came from reading each line, the summary did
+  not come from anywhere. Re-deriving it turned up a SECOND invented figure in the
+  same body, a comment-line count that had silently measured only lines beginning
+  with a marker and missed every wrapped continuation, understating by half.
+  The tell is that a number appears in your body without a command in your shell
+  history that produced it. So print the command next to the figure, in the body,
+  where a reader can run it -- a number nobody can reproduce is a claim, and a
+  claim in a table wearing the costume of a measurement is worse than no number at
+  all, because the next lane quotes it instead of counting.
 - A CONTROL THAT RE-QUERIES INSTEAD OF RE-USING PROVES NOTHING ABOUT YOUR GUARD.
   When you forge the forbidden state to show an assertion can fail, the control must
   run through the SAME locator, selector or query object the assertion runs through
