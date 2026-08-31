@@ -173,23 +173,37 @@ test.afterEach(() => {
   cleanup();
 });
 
-test("a stale clinical-result explanation is reachable by tap (#3375)", async ({
+// #3970 rule 1 rehomed the stale vocabulary. It used to be the SAME sentence on two
+// buttons of every stale row — the amber age token's and the Stale badge's — and it is
+// now stated once, on the Date column header the amber age sits under. `thead` is
+// hidden below `sm` (app/globals.css `table-cards`), so this half of the claim is a
+// desktop one; the phone card still shows the word "Stale" and the amber "⚠️ 1y".
+test("the stale vocabulary is explained once, on the column that carries it (#3970)", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/results/clinical-results?q=${encodeURIComponent(BARE)}`);
-  const row = page
-    .getByTestId("clinical-results-table")
-    .getByRole("row")
-    .filter({ hasText: BARE });
+  const table = page.getByTestId("clinical-results-table");
+  const row = table.getByRole("row").filter({ hasText: BARE });
   await expect(row).toBeVisible();
-  await row.getByTestId("clinical-stale-help").click();
+  // Not "no row has one AND the header has one" as two independent reads: the SAME
+  // locator, scoped two ways, so a stale sweep cannot pass by finding nothing.
+  const help = page.getByTestId("clinical-stale-help");
+  await expect(help).toHaveCount(1);
+  await expect(row.getByTestId("clinical-stale-help")).toHaveCount(0);
+  await expect(
+    table.locator("thead").getByTestId("clinical-stale-help")
+  ).toHaveCount(1);
+  // Still reachable without a mouse at its new home — #3375's constraint binds the
+  // single mount exactly as it bound the per-row ones.
+  await help.click();
   await expect(page.getByRole("tooltip")).toHaveText(
-    "Latest result over a year old — consider retesting"
+    "Over a year old — consider retesting"
   );
+  // The row keeps the VERDICT in words and in colour; only the button left.
+  await expect(row.getByTestId("clinical-result-age")).toContainText("⚠️");
 });
 
-test("a starred stale-result help tap does not activate its detail link (#3375)", async ({
+test("a starred stale-result explanation is stated once and reachable by tap (#3375/#3970)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -203,12 +217,19 @@ test("a starred stale-result help tap does not activate its detail link (#3375)"
   if (!(await tile.isVisible()))
     await card.getByTestId("starred-fold-toggle").click();
   await expect(tile).toBeVisible();
+  // The tile still says "stale" in words; the sentence behind the word is the card's,
+  // once, and no tile mounts a button for it (#3970 rule 1).
+  await expect(tile).toContainText("stale");
+  await expect(tile.getByTestId("starred-stale-help")).toHaveCount(0);
+  const help = card.getByTestId("starred-stale-help");
+  await expect(help).toHaveCount(1);
 
   const listUrl = page.url();
-  await tile.getByTestId("starred-stale-help").click();
+  await help.click();
   await expect(page.getByRole("tooltip")).toHaveText(
     "Over a year old — consider retesting"
   );
+  // The legend sits outside every tile's detail link, so the tap navigates nowhere.
   await expect(page).toHaveURL(listUrl);
 });
 

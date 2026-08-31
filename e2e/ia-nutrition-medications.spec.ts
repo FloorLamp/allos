@@ -333,7 +333,13 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(curated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Curated"
     );
-    await curated.getByTestId("curated-origin-help").click();
+    // #3970 rule 1: the origin explainer is a CONSTANT — every card in this list is
+    // curated — so it states itself ONCE for the list, not once per card, and stays
+    // touch- and keyboard-reachable there (#3375/#2378 bind the single mount too).
+    await expect(curated.getByTestId("curated-origin-help")).toHaveCount(0);
+    const curatedHelp = dialog.getByTestId("curated-origin-help");
+    await expect(curatedHelp).toHaveCount(1);
+    await curatedHelp.click();
     await expect(page.getByRole("tooltip")).toContainText(
       "human-reviewed biomarker→supplement map"
     );
@@ -349,7 +355,10 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(generated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Generated"
     );
-    await generated.getByTestId("generated-origin-help").click();
+    await expect(generated.getByTestId("generated-origin-help")).toHaveCount(0);
+    const generatedHelp = dialog.getByTestId("generated-origin-help");
+    await expect(generatedHelp).toHaveCount(1);
+    await generatedHelp.click();
     await expect(page.getByRole("tooltip")).toContainText(
       "Written by AI from your data"
     );
