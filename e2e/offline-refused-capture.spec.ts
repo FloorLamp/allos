@@ -8,6 +8,7 @@ import {
   hydratedClick,
   ledgerDoseRow,
   settledClick,
+  settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 import { loginAs, openCommandPalette } from "./nav";
@@ -281,7 +282,7 @@ test("refused protein grams say so and roll the total back", async ({
   const before = ((await total.textContent()) ?? "").trim();
 
   await context.setOffline(true);
-  await page.getByTestId("protein-quickadd-input").fill("30");
+  await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
   await hydratedClick(page, page.getByTestId("protein-quickadd-add"));
 
   await expectRefusedOnly(page);

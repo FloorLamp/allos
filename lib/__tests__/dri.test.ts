@@ -2160,6 +2160,8 @@ describe("doseUnitCount (#2856)", () => {
   // reason: it is now READ as one rather than defaulted to one, and only a case that
   // reads a number other than 1 can tell those apart.
   it.each([
+    ["0.5 x 500 mg capsule", 0.5],
+    ["0.5 tablet", 0.5],
     ["2 x 500 mg capsules", 2],
     ["3 x 400 mg tablets", 3],
     ["2x500mg capsules", 2],
@@ -2168,7 +2170,7 @@ describe("doseUnitCount (#2856)", () => {
     ["one scoop", 1],
     ["three gummies", 3],
     ["one capsule", 1],
-  ])("reads %s as %i", (amount, count) => {
+  ])("reads %s as %s", (amount, count) => {
     expect(doseUnitCount(amount)).toBe(count);
   });
 
