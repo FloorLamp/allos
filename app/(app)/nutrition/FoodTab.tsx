@@ -71,6 +71,7 @@ import {
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 import {
   buildDayLedger,
+  LEDGER_DAY_SPAN,
   type LedgerGroup,
   type LedgerServing,
 } from "@/lib/day-ledger";
@@ -304,11 +305,13 @@ export default async function FoodTab({
             : [],
         }
       : null;
-  // A deliberately bounded recent-meal picker: today plus the previous six days.
-  // This is enough to recover a missed meal without turning the one-tap habit log into
-  // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
-  // arrive together, so changing day/meal is instant on the client.
-  const recentDates = Array.from({ length: 7 }, (_, i) =>
+  // A deliberately bounded recent-meal picker: today plus the previous six days
+  // (`LEDGER_DAY_SPAN`, shared with the selection edit's server-side move bound so the
+  // two cannot disagree about which days this surface is about). This is enough to
+  // recover a missed meal without turning the one-tap habit log into an unrestricted
+  // historical editor. Each day's daily counters and meal-slot ledger arrive together, so
+  // changing day/meal is instant on the client.
+  const recentDates = Array.from({ length: LEDGER_DAY_SPAN }, (_, i) =>
     shiftDateStr(date, -i)
   );
   const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(

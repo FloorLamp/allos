@@ -361,6 +361,24 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // which a body that gates nothing at all also satisfies.
   {
     file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "setLedgerSelectionTime",
+    why: "Day-ledger selection edit (#4118): stamps one wall time on the SELECTED rows through the SAME per-row correction cores the single-row ⋯ menu uses, so it takes the same gate — gateItemProfile() → requireProfileWriteAccess(rowProfileId), with every core call scoped to the profile it returns and the day's rows re-derived server-side, so a row belonging to another profile is simply not in the batch",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "moveLedgerSelectionToDay",
+    why: "Day-ledger selection edit (#4118): re-dates the SELECTED rows through the SAME per-row correction cores the single-row ⋯ menu uses, so it takes the same gate — gateItemProfile() → requireProfileWriteAccess(rowProfileId), with every core call scoped to the profile it returns and the day's rows re-derived server-side, so a row belonging to another profile is simply not in the batch",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "deleteLedgerSelection",
+    why: "Day-ledger selection edit (#4118): removes the SELECTED rows through the SAME per-row correction cores the single-row ⋯ menu uses, so it takes the same gate — gateItemProfile() → requireProfileWriteAccess(rowProfileId), with every core call scoped to the profile it returns and the day's rows re-derived server-side, so a row belonging to another profile is simply not in the batch",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
     fn: "deleteAdministration",
     why: "record correction (#4009): deletes the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the audit entry is stamped with the same gated profile",
     gate: "gateItemProfile",
