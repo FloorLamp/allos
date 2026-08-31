@@ -113,7 +113,11 @@ export function DashboardFactRow({
         // rather than about any one family.
         <span
           data-testid="standing-label"
-          className="text-xs text-slate-500 dark:text-slate-400"
+          className={
+            presentation.value == null
+              ? "text-sm text-slate-900 dark:text-slate-100"
+              : "text-xs text-slate-500 dark:text-slate-400"
+          }
         >
           {labelLink ? (
             <Link
@@ -426,11 +430,11 @@ export default function DashboardStandingCluster({
           <section
             aria-labelledby="dashboard-standing-attention"
             data-standing-band="attention"
-            className="border-b border-(--divider) last:border-b-0"
+            className="border-b border-l-4 border-(--divider) border-l-amber-500 bg-amber-50 last:border-b-0 dark:border-l-amber-400 dark:bg-amber-950"
           >
             <h3
               id="dashboard-standing-attention"
-              className="band bg-amber-50 px-4 py-2 text-xs font-semibold tracking-wide text-amber-800 uppercase dark:bg-amber-950/40 dark:text-amber-300"
+              className="band px-4 py-2 text-xs font-semibold tracking-wide text-amber-800 uppercase dark:text-amber-200"
             >
               Attention
             </h3>

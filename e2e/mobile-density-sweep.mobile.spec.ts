@@ -535,11 +535,14 @@ test("#3673 one left edge, and the line it reclaims", async ({ page }) => {
 
   // TWO values, both named, neither a range. `16/358` is the gutter a band's rows
   // and labels spend; `0/390` is the FRAME that delegates its gutter to them and
-  // since #3920 reaches the viewport edge to do it. A third entry is the 16px step
-  // the prototype's ochre guide made visible, whichever way it steps.
+  // since #3920 reaches the viewport edge to do it. The third is Attention's 4px edge.
   expect(await contentEdges(page)).toEqual([
     { key: `0/${VIEWPORT_PX}`, count: expect.any(Number) },
     { key: `${PAGE_GUTTER_PX}/${CONTENT_PX}`, count: expect.any(Number) },
+    {
+      key: `${PAGE_GUTTER_PX + 4}/${CONTENT_PX - 4}`,
+      count: expect.any(Number),
+    },
   ]);
 
   // …AND THE HALF #3673 COULD NOT SEE (#3920). The line above is satisfied by the
@@ -640,7 +643,9 @@ test("#3920 the fill reaches both edges and the first character does not", async
   expect(measured).toEqual(
     FULL_BLEED_SURFACES.map(([what]) => [
       what,
-      `fill 0→${VIEWPORT_PX}, first character ${PAGE_GUTTER_PX}`,
+      `fill 0→${VIEWPORT_PX}, first character ${
+        what === "the Standing cluster" ? PAGE_GUTTER_PX + 4 : PAGE_GUTTER_PX
+      }`,
     ])
   );
 });

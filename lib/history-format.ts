@@ -304,14 +304,14 @@ export interface HistoryRow extends MergeableRow {
   date: string;
   sortTime: string | null;
   /** The rendered clock, in the page's one meridiem style. Null on a date-only row. */
-  clock: string | null;
+  clock: HistoryClock | null;
   clockKind: HistoryClockKind;
   /** The row's identity — what happened. Snapshotted: a retired item keeps its name. */
   title: string;
   /** "Does this thing have a home?" — independent of the trailing affordance. */
   href: AppRoute | null;
   /** `detailSegment`'s output. Empty string when the row has nothing to add. */
-  detail: string;
+  detail: HistoryDetail;
   /** How many media files this row carries — the Photos filter's whole predicate. */
   media: number;
   edit: HistoryRowEdit | null;
@@ -340,6 +340,20 @@ export interface HistoryRow extends MergeableRow {
 }
 
 /**
+ * THE TWO GRAMMARS, AS TYPES (#4452). Only `historyClock` and `detailSegment` produce
+ * these, so "one clock grammar and one `detailSegment` grammar page-wide" is enforced
+ * by the compiler rather than remembered by every future gather: a hand-written
+ * `clock: "2:03 PM"` on a row does not typecheck, and that is the whole guard.
+ *
+ * NOT `HistoryRowEdit`'s food `clock`, which is the raw "HH:MM" the correction form
+ * seeds and posts back to a write core — a stored wall clock, not a rendered one.
+ * Branding it would push a display string into the database.
+ */
+declare const RENDERED: unique symbol;
+export type HistoryClock = string & { readonly [RENDERED]: "clock" };
+export type HistoryDetail = string & { readonly [RENDERED]: "detail" };
+
+/**
  * THE DETAIL SEGMENT. Joins with "·", drops empties, and NEVER truncates.
  *
  * The no-truncation rule is the load-bearing half. A string-level cap cannot know the
@@ -352,11 +366,11 @@ export interface HistoryRow extends MergeableRow {
  */
 export function detailSegment(
   parts: readonly (string | null | undefined | false)[]
-): string {
+): HistoryDetail {
   return parts
     .map((part) => (typeof part === "string" ? part.trim() : ""))
     .filter((part) => part.length > 0)
-    .join(" · ");
+    .join(" · ") as HistoryDetail;
 }
 
 /**
@@ -371,10 +385,27 @@ export function historyClock(
   hhmm: string | null,
   clockKind: HistoryClockKind,
   prefs: DisplayFormatPrefs
-): string | null {
+): HistoryClock | null {
   const clock = formatClockValue(hhmm, prefs.timeFormat, "", "lower-nospace");
   if (!clock) return null;
-  return clockKind === "stated" ? clock : `logged ${clock}`;
+  return (clockKind === "stated" ? clock : `logged ${clock}`) as HistoryClock;
+}
+
+/**
+ * A ROW'S THREE TIME FIELDS, ANSWERED ONCE (#4452). Nine gathers spelled the
+ * (sortTime, clock, clockKind) triple out by hand, two computing the same ternary
+ * twice — one minute in, one call. It is also how a gather obtains a `clock` at all.
+ */
+export function historyClockFields(
+  hhmm: string | null,
+  clockKind: HistoryClockKind,
+  prefs: DisplayFormatPrefs
+): Pick<HistoryRow, "sortTime" | "clock" | "clockKind"> {
+  return {
+    sortTime: hhmm,
+    clock: historyClock(hhmm, clockKind, prefs),
+    clockKind,
+  };
 }
 
 const first = (value: string | string[] | undefined): string | undefined =>
@@ -508,7 +539,7 @@ export interface HistoryRollup {
   key: string;
   profileId: number;
   /** "6 doses · 4 servings", in `detailSegment`'s one separator. */
-  label: string;
+  label: HistoryDetail;
   /** How many rows it stands for — what the day header already counted. */
   count: number;
   /** The collapsed rows, in the merge's own order. Rendered only when expanded. */
