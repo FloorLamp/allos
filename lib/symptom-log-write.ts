@@ -18,6 +18,8 @@
 // leaving rows that already differ only by case alone, is in lib/vocabulary-store.ts.
 
 import { db, writeTx } from "./db";
+import { isRealIsoDate } from "./date";
+import { LOG_MANIFEST } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import {
   resolveSymptomKey,
@@ -39,6 +41,11 @@ import { resolveProfileVocabularyKey } from "./vocabulary-store";
 //   invalid — empty symptom or an out-of-range severity; nothing written.
 export type SymptomLogOutcome =
   { kind: "logged"; symptom: string; severity: number } | { kind: "invalid" };
+
+// The refusal `logSymptom` answers a well-formed but out-of-reach day with — the
+// mood sibling (`MOOD_DATE_OUT_OF_WINDOW_ERROR`), reading its number off the one
+// declaration so the sentence and the bound can never drift apart (#4425).
+export const SYMPTOM_DATE_OUT_OF_WINDOW_ERROR = `Symptoms can be logged for today or up to ${LOG_MANIFEST.symptom.window.back} days back. Older days stay editable from the record once logged.`;
 
 function normalizeNote(note: string | null | undefined): string | null {
   const v = (note ?? "").trim();
@@ -100,7 +107,15 @@ export function logSymptomCore(
     profileId,
     symptomInput
   );
-  if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
+  // A DAY THAT DOES NOT EXIST IS NOT A DAY (#4425). This core and
+  // `setSymptomSeverityCore` below are the two here that can MINT a row, and until
+  // this line neither asked: the action's shape check let `2026-13-45` through as a
+  // literal string, and `2026-02-30` is worse — `Date.parse` rolls it silently to
+  // March 2, so it would not even read as garbage downstream. Every other core in
+  // this file only ever updates or deletes a row the app just rendered, so an unreal
+  // day finds nothing and answers `invalid` on its own.
+  if (!symptom || !isRealIsoDate(date) || !isValidSeverity(severity))
+    return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
     // #1093: a symptom logged while an illness episode is OPEN default-associates to it.
@@ -191,7 +206,10 @@ export function setSymptomSeverityCore(
   note?: string | null
 ): SymptomLogOutcome {
   const symptom = resolveSymptomKey(symptomInput);
-  if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
+  // Mints a row too — see the note in `logSymptomCore`. The BOUND is deliberately not
+  // here: a correction of a row that already stands reaches as far back as the row does.
+  if (!symptom || !isRealIsoDate(date) || !isValidSeverity(severity))
+    return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
     db.prepare(

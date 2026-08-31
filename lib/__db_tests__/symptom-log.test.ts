@@ -124,3 +124,29 @@ describe("derived episode association (#799)", () => {
     expect(getActiveSituations(p)).toContain("Illness");
   });
 });
+
+
+// A DAY THAT DOES NOT EXIST (#4425). The action's window gate refuses these before the
+// core sees them, so this is the core's OWN answer — the two cores here that can MINT a
+// row, reached directly the way an import or a future surface would reach them.
+// `2026-02-30` is the one worth having: `Date.parse` rolls it silently to March 2, so a
+// day-difference bound answers for it and only `isRealIsoDate` does not.
+describe("the minting cores refuse a day that is not a day (#4425)", () => {
+  it.each([["2026-13-45"], ["2026-02-30"], ["2026-04-31"], ["not-a-date"]])(
+    "%s writes nothing",
+    (day) => {
+      const p = newProfile(`unreal-${day}`);
+      expect(logSymptomCore(p, "cough", 2, day, "page")).toEqual({
+        kind: "invalid",
+      });
+      expect(setSymptomSeverityCore(p, "cough", 2, day, "page")).toEqual({
+        kind: "invalid",
+      });
+      expect(
+        db
+          .prepare("SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?")
+          .get(p) as { n: number }
+      ).toEqual({ n: 0 });
+    }
+  );
+});

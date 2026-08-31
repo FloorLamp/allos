@@ -11,7 +11,9 @@ import { logTemperatureCore } from "@/lib/temperature-log";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
+import { isLogDateAccepted } from "@/lib/log-manifest";
 import {
+  SYMPTOM_DATE_OUT_OF_WINDOW_ERROR,
   logSymptomCore,
   setSymptomSeverityCore,
   lowerSymptomSeverityCore,
@@ -49,9 +51,19 @@ export type SymptomLogResult =
   | { ok: true; symptom: string; severity: number; undoId?: number | null }
   | { ok: false; error: string };
 
+// The day a post is about: what was STATED, or the profile's today when nothing was.
+//
+// It used to shape-check `\d{4}-\d{2}-\d{2}` and fall back to today on a miss, which
+// is two defects in one line (#4425). The regex is not `isRealIsoDate`, so `2026-13-45`
+// passed it and reached the cores as a literal string; and a date that FAILED it was
+// laundered into today rather than refused, so a forged post silently wrote a different
+// day than it asked for. Both halves are gone: a stated day travels to the core exactly
+// as stated, and each core answers for it under its own declared bound
+// (`LOG_MANIFEST.symptom`). Absence still means today — that is a real answer, not a
+// laundering, and it is what every one-tap mount posts.
 function parseDate(formData: FormData, profileId: number): string {
   const raw = String(formData.get("date") ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : today(profileId);
+  return raw || today(profileId);
 }
 
 function parseSeverity(formData: FormData): number {
@@ -113,11 +125,23 @@ export async function logSymptom(
   const episodeTarget = parseEpisodeTarget(formData);
   if (episodeTarget.kind === "invalid")
     return { ok: false, error: "That episode is no longer available." };
+  // THE BACKFILL WINDOW (#4425), on the USER-DATED ENTRY PATH — the placement the
+  // ruling's "matching mood" names, because that is where mood puts it (`logMood`,
+  // not `upsertMoodLog`): the bound belongs to what a person may POST, while the
+  // auth-blind core stays reachable by the paths that legitimately carry an old day
+  // (an import, a fixture, a replay of a capture that was in-window when it was made).
+  // The core still refuses a day that does not exist at all; this refuses a real day
+  // out of reach. `/history`'s day-view edit is deliberately not here — it is
+  // `editSymptom`, a correction of a row that already stands.
+  const date = parseDate(formData, profileId);
+  if (!isLogDateAccepted("symptom", today(profileId), date)) {
+    return { ok: false, error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR };
+  }
   const outcome = logSymptomCore(
     profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profileId),
+    date,
     // The symptom bar renders on the dashboard, on its own page and in the quick-log
     // sheet, all posting THIS action — so the surface rides the post.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),

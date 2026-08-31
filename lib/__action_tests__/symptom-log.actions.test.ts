@@ -8,7 +8,9 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
+import { LOG_MANIFEST } from "@/lib/log-manifest";
+import { db, today } from "@/lib/db";
 import {
   logSymptom,
   editSymptom,
@@ -20,6 +22,7 @@ import {
   activateIllnessForSymptoms,
 } from "@/app/(app)/symptom-actions";
 import { toggleSituationIllnessType } from "@/app/(app)/nutrition/intake-actions";
+import { SYMPTOM_DATE_OUT_OF_WINDOW_ERROR } from "@/lib/symptom-log-write";
 import {
   getSymptomsOnDate,
   getSymptomSeveritiesOnDate,
@@ -32,8 +35,16 @@ import {
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
-const DATE = "2026-07-08";
-const DATE2 = "2026-07-09";
+// Dates here are relative to the profile's own today, because #4425 bounded
+// `logSymptom` to `LOG_MANIFEST.symptom`'s backfill window — the same conversion
+// #2128 made to the mood action tests, for the same reason: a FIXED past date is now
+// refused. Every profile in this file takes the instance-default timezone (no test
+// sets one), so `today(0)` resolves the same day `today(profile.id)` will, and the
+// window's two-day slack absorbs a run that crosses local midnight between the two.
+const WINDOW_ANCHOR = 0;
+const dayBack = (back: number) => shiftDateStr(today(WINDOW_ANCHOR), -back);
+const DATE = dayBack(1);
+const DATE2 = dayBack(0);
 
 function rows(profileId: number) {
   return db
@@ -330,5 +341,73 @@ describe("profile scoping", () => {
     actAs(b, pb);
     expect(getSymptomsOnDate(pb.id, DATE)).toEqual([]);
     expect(getSymptomsOnDate(pa.id, DATE)).toHaveLength(1);
+  });
+});
+
+
+// THE BACKFILL WINDOW (#4425). Symptoms were the one logged domain with NO date bound
+// at all: the action shape-checked `\d{4}-\d{2}-\d{2}` (not `isRealIsoDate`) and the
+// core bounded nothing, so a post could file a symptom-day on any string that looked
+// like a date. The window is the manifest's, read from the declaration rather than
+// restated, so widening it moves this table with it.
+const BACK = LOG_MANIFEST.symptom.window.back;
+
+describe("logSymptom — the #4425 backfill window", () => {
+  it.each([
+    ["today", 0, true],
+    ["the oldest day the window reaches", BACK, true],
+    ["one day past the window", BACK + 1, false],
+    // Past-only, matching mood: a symptom cannot be pre-logged for tomorrow.
+    ["tomorrow", -1, false],
+  ])("%s: accepted=%s", async (_label, back, accepted) => {
+    const login = createLogin();
+    const profile = createProfile(`window-${back}`, login.id);
+    actAs(login, profile);
+
+    const day = shiftDateStr(today(profile.id), -back);
+    const res = await logSymptom(fd({ symptom: "cough", severity: 2, date: day }));
+    expect(res).toEqual(
+      accepted
+        ? { ok: true, symptom: "cough", severity: 2 }
+        : { ok: false, error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR }
+    );
+    expect(getSymptomsOnDate(profile.id, day)).toHaveLength(accepted ? 1 : 0);
+  });
+
+  // The filed defect, exactly: `2026-13-45` matched the old regex and reached the core
+  // as a literal string. `2026-02-30` is the quieter half — `Date.parse` rolls it to
+  // March 2, so a day-difference check alone answers for a day that does not exist.
+  it.each([["2026-13-45"], ["2026-02-30"], ["not-a-date"]])(
+    "refuses %s, which names no real day",
+    async (day) => {
+      const login = createLogin();
+      const profile = createProfile(`unreal-${day}`, login.id);
+      actAs(login, profile);
+
+      expect(await logSymptom(fd({ symptom: "cough", severity: 2, date: day }))).toEqual({
+        ok: false,
+        error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR,
+      });
+      expect(rows(profile.id)).toEqual([]);
+    }
+  );
+
+  // The correction path is deliberately OUTSIDE the window (#4425 scope): the record's
+  // day view edits a row that already stands, however old it is.
+  it("editSymptom still reaches a day the log window refuses", async () => {
+    const login = createLogin();
+    const profile = createProfile("old-correction", login.id);
+    actAs(login, profile);
+
+    const old = shiftDateStr(today(profile.id), -(BACK + 30));
+    expect(
+      await logSymptom(fd({ symptom: "cough", severity: 2, date: old }))
+    ).toMatchObject({ ok: false });
+    expect(
+      await editSymptom(
+        fd({ symptom: "cough", severity: 3, date: old, profile_id: profile.id })
+      )
+    ).toMatchObject({ ok: true, severity: 3 });
+    expect(getSymptomSeveritiesOnDate(profile.id, old)).toEqual({ cough: 3 });
   });
 });
