@@ -120,11 +120,16 @@ describe("promoteEpisodeToConditionAction", () => {
     ).toBe(0);
   });
 
-  it("rejects a garbage episode id without writing", async () => {
-    const res = await promoteEpisodeToConditionAction(
+  it("rejects malformed and missing episode ids without writing", async () => {
+    const malformed = await promoteEpisodeToConditionAction(
       fd({ episodeId: "nope" })
     );
-    expect(res.ok).toBe(false);
+    expect(malformed.ok).toBe(false);
+
+    const missing = await promoteEpisodeToConditionAction(
+      fd({ episodeId: episodeId + 9999 })
+    );
+    expect(missing.ok).toBe(false);
     expect(
       (
         db
@@ -133,17 +138,10 @@ describe("promoteEpisodeToConditionAction", () => {
       ).n
     ).toBe(0);
   });
-
-  it("errors when no episode row matches the id", async () => {
-    const res = await promoteEpisodeToConditionAction(
-      fd({ episodeId: episodeId + 9999 })
-    );
-    expect(res.ok).toBe(false);
-  });
 });
 
 describe("endEpisodeAction", () => {
-  it("closes the episode and resolves its promoted condition", async () => {
+  it("closes and reopens an episode with its promoted condition", async () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile("End Actor", login.id);
     actAs(login, profile);
@@ -175,27 +173,18 @@ describe("endEpisodeAction", () => {
     // promoted Condition resolves today.
     expect(condition.resolved_date).toBe(today(profile.id));
     expect(condition.external_id).toBe(`illness-episode:${episodeId}`);
-  });
 
-  it("reopens a recent episode and reactivates its promoted condition", async () => {
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Reopen Actor", login.id);
-    actAs(login, profile);
-    const episodeId = makeSick(profile.id);
-    await promoteEpisodeToConditionAction(fd({ episodeId }));
-    await endEpisodeAction(fd({ episodeId }));
-
-    const res = await reopenEpisodeAction(fd({ episodeId }));
-    expect(res.ok).toBe(true);
+    const reopened = await reopenEpisodeAction(fd({ episodeId }));
+    expect(reopened.ok).toBe(true);
     expect(getOpenEpisodeRow(profile.id, "Illness")?.id).toBe(episodeId);
     expect(getEpisodeRow(profile.id, episodeId)?.end_date).toBeNull();
-    const condition = db
+    const reactivated = db
       .prepare(
         `SELECT status, resolved_date FROM conditions
           WHERE profile_id = ? AND source = 'episode'`
       )
       .get(profile.id) as { status: string; resolved_date: string | null };
-    expect(condition).toEqual({ status: "active", resolved_date: null });
+    expect(reactivated).toEqual({ status: "active", resolved_date: null });
   });
 
   it("refuses to reopen an episode after the relapse window", async () => {
@@ -223,7 +212,7 @@ describe("endEpisodeAction", () => {
 });
 
 describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
-  it("edits a closed episode's dates, note, and outcome as a plain row edit", async () => {
+  it("edits closed and open episodes while enforcing closed date boundaries", async () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile("Edit Actor", login.id);
     actAs(login, profile);
@@ -277,28 +266,30 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
           .get(profile.id) as { n: number }
       ).n
     ).toBe(0);
-  });
 
-  it("rejects an end before the start, allows a one-day episode (end == start)", async () => {
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Bad Range", login.id);
-    actAs(login, profile);
-    const newId = createEpisodeRowFor(profile.id, "2026-05-01", "2026-05-06");
-    const res = await editEpisodeAction(
-      fd({ episodeId: newId, startDate: "2026-05-05", endDate: "2026-05-04" })
+    const boundaryId = createEpisodeRowFor(
+      profile.id,
+      "2026-05-01",
+      "2026-05-06"
     );
-    expect(res.ok).toBe(false);
+    const invalid = await editEpisodeAction(
+      fd({
+        episodeId: boundaryId,
+        startDate: "2026-05-05",
+        endDate: "2026-05-04",
+      })
+    );
+    expect(invalid.ok).toBe(false);
     const oneDay = await editEpisodeAction(
-      fd({ episodeId: newId, startDate: "2026-05-05", endDate: "2026-05-05" })
+      fd({
+        episodeId: boundaryId,
+        startDate: "2026-05-05",
+        endDate: "2026-05-05",
+      })
     );
     expect(oneDay.ok).toBe(true);
-    expect(getEpisodeRow(profile.id, newId)!.end_date).toBe("2026-05-05");
-  });
+    expect(getEpisodeRow(profile.id, boundaryId)!.end_date).toBe("2026-05-05");
 
-  it("keeps an OPEN episode's end null (the toggle owns closing it)", async () => {
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Open Edit", login.id);
-    actAs(login, profile);
     const episodeId = makeSick(profile.id);
     await editEpisodeAction(
       fd({ episodeId, startDate: "2026-05-01", endDate: "2026-05-04" })
@@ -308,38 +299,33 @@ describe("editEpisodeAction (boundaries + annotations, item 1)", () => {
 });
 
 describe("createEpisodeAction + mergeEpisodesAction (retro + flap-merge, item 1)", () => {
-  it("retro-creates a closed episode", async () => {
+  it("retro-creates a closed episode, then merges a flap-split pair", async () => {
     const login = createLogin({ role: "admin" });
     const profile = createProfile("Retro", login.id);
     actAs(login, profile);
-    const res = await createEpisodeAction(
+    const created = await createEpisodeAction(
       fd({
         situation: "Illness",
         startDate: "2026-03-01",
         endDate: "2026-03-05",
       })
     );
-    expect(res.ok).toBe(true);
-    if (!res.ok) return;
-    const row = getEpisodeRow(profile.id, res.id)!;
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const row = getEpisodeRow(profile.id, created.id)!;
     expect(row.start_date).toBe("2026-03-01");
     expect(row.end_date).toBe("2026-03-05");
-  });
 
-  it("merges a flap-split pair into the union range, deleting the loser", async () => {
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Merge", login.id);
-    actAs(login, profile);
     const a = createEpisodeRowFor(profile.id, "2026-02-01", "2026-02-02");
     const b = createEpisodeRowFor(profile.id, "2026-02-02", "2026-02-06");
     await promoteEpisodeToConditionAction(fd({ episodeId: b }));
-    const res = await mergeEpisodesAction(fd({ keepId: a, dropId: b }));
-    expect(res.ok).toBe(true);
+    const merged = await mergeEpisodesAction(fd({ keepId: a, dropId: b }));
+    expect(merged.ok).toBe(true);
     const keeper = getEpisodeRow(profile.id, a)!;
     expect(keeper.start_date).toBe("2026-02-01");
     expect(keeper.end_date).toBe("2026-02-06");
     expect(getEpisodeRow(profile.id, b)).toBeNull();
-    expect(listEpisodeRows(profile.id).length).toBe(1);
+    expect(listEpisodeRows(profile.id).length).toBe(2);
     const condition = db
       .prepare(
         `SELECT onset_date, resolved_date, external_id
@@ -443,6 +429,32 @@ describe("episode event ledger actions", () => {
         )
         .run(doseId, itemId, date).lastInsertRowid
     );
+
+    expect(
+      (
+        await updateEpisodeTemperatureAction(
+          fd({
+            episodeId,
+            eventId: temperature.id,
+            date: "2020-01-01",
+            time: "08:00",
+            value: "99.8",
+          })
+        )
+      ).ok
+    ).toBe(false);
+    expect(
+      (
+        await updateEpisodeSymptomAction(
+          fd({
+            episodeId,
+            date: "2020-01-01",
+            symptom: "cough",
+            severity: 3,
+          })
+        )
+      ).ok
+    ).toBe(false);
 
     expect(
       await updateEpisodeTemperatureAction(
@@ -644,45 +656,6 @@ describe("episode event ledger actions", () => {
         )
         .get(String(itemId), profile.id)
     ).toMatchObject({ detail: firstDay });
-  });
-
-  it("rejects moving an event outside its episode", async () => {
-    const login = createLogin({ role: "admin" });
-    const profile = createProfile("Range Guard", login.id);
-    actAs(login, profile);
-    const episodeId = makeSick(profile.id);
-    const reading = logTemperatureCore(
-      profile.id,
-      99.8,
-      "F",
-      today(profile.id),
-      "page",
-      "08:00"
-    );
-    expect(reading.kind).toBe("logged");
-    if (reading.kind !== "logged") return;
-    const result = await updateEpisodeTemperatureAction(
-      fd({
-        episodeId,
-        eventId: reading.id,
-        date: "2020-01-01",
-        time: "08:00",
-        value: "99.8",
-      })
-    );
-    expect(result.ok).toBe(false);
-    expect(
-      (
-        await updateEpisodeSymptomAction(
-          fd({
-            episodeId,
-            date: "2020-01-01",
-            symptom: "cough",
-            severity: 3,
-          })
-        )
-      ).ok
-    ).toBe(false);
   });
 
   it("edits and deletes events for an explicitly targeted writable profile", async () => {
