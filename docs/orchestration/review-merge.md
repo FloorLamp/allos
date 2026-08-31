@@ -58,9 +58,10 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Applied migrations are keyed by name; numbered migrations 001–185 are closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
-- Merge order defines migration order. Resolve `versions/index.ts` conflicts by
-  keeping both entries and appending the later merge last; re-run the generator
-  for `manifest.json` conflicts rather than hand-resolving hash lines.
+- Merge order defines migration order. An APPEND-ONLY file — `versions/index.ts`,
+  or a barrel like `lib/queries.ts` — conflicts whenever two lanes append: keep
+  BOTH entries, later merge last, never pick a side. Re-run the generator for
+  `manifest.json` hash conflicts rather than hand-resolving them.
 - Recreate development databases containing abandoned, unknown migration names.
 
 ## Merge
