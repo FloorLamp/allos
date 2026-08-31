@@ -79,7 +79,6 @@ vi.mock("../Nav", () => ({ default: () => <nav data-testid="nav" /> }));
 vi.mock("../SidebarLogButton", () => ({
   default: () => <button type="button">+ Log</button>,
 }));
-vi.mock("../EventCalendar", () => ({ default: () => null }));
 vi.mock("../ThemeToggle", () => ({ default: () => null }));
 vi.mock("../WhatsNewLink", () => ({ default: () => null }));
 vi.mock("../ProfileIdentityBar", () => ({ default: () => null }));
@@ -124,12 +123,7 @@ class Boundary extends Component<
 function mountSidebar(onError: (err: unknown) => void = () => {}) {
   return render(
     <Boundary onError={onError}>
-      <SidebarContent
-        eventDates={[]}
-        active={ACTIVE}
-        username="sam"
-        profiles={[ACTIVE]}
-      />
+      <SidebarContent active={ACTIVE} username="sam" profiles={[ACTIVE]} />
     </Boundary>
   );
 }

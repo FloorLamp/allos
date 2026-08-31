@@ -99,10 +99,20 @@ A day grid is a way of reading a history; the chrome is a way of reaching a page
 Putting the grid in the chrome spent permanent vertical room on every screen to
 serve one page's question.
 
-This move is **not yet complete**: `/history` does not render the rail mount, so
-`components/EventCalendar.tsx` is still mounted in the sidebar and the drawer.
-Removing those mounts before the rail exists would strand the grid with no home,
-which is why it was deliberately not done in the same change.
+The move **completed in #4280**, as one change: `/history` grows the mount and
+the sidebar and drawer drop theirs in the same commit, because either half alone
+is worse than neither — removing the mounts first strands the grid with no home,
+and adding the page mount first renders it twice.
+
+`components/EventCalendar.tsx` opens from the record's own filter row, through
+the shared `AnchoredPanel` fork (popover from `md` up, bottom sheet below), so
+the page spends no vertical chrome on it — /history's ~140px budget above its
+first record measured 134px before the move and is unchanged by it. Two things
+follow the calendar out of the nav: `getTimelineDates` is read by `/history`
+alone instead of by the app shell on every page, and the drawer's width floor
+drops its `--week-grid-min` term (#4102's anti-drop census, owner 2026-08-29:
+"20rem preferred stands alone") — measured at 320px both before and after,
+because the term only ever won on a device with a left safe-area inset.
 
 ## There is one profile switcher
 
