@@ -336,6 +336,19 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     // #3970 rule 1: the origin explainer is a CONSTANT — every card in this list is
     // curated — so it states itself ONCE for the list, not once per card, and stays
     // touch- and keyboard-reachable there (#3375/#2378 bind the single mount too).
+    // Stated by NAME as well as by testid: AC 1 is about the LABEL, and a
+    // testid-only absence assertion binds to an artifact of the fix rather than to
+    // the property — it would pass against a regression that spelled the id
+    // differently or dropped it (measured on the clinical table, where the base's
+    // own mount carries no testid at all).
+    const CURATED_SENTENCE =
+      "From the curated, human-reviewed biomarker→supplement map — the same suggestion every time, with no AI involved.";
+    await expect(
+      curated.getByRole("button", { name: CURATED_SENTENCE, exact: true })
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: CURATED_SENTENCE, exact: true })
+    ).toHaveCount(1);
     await expect(curated.getByTestId("curated-origin-help")).toHaveCount(0);
     const curatedHelp = dialog.getByTestId("curated-origin-help");
     await expect(curatedHelp).toHaveCount(1);
@@ -355,6 +368,14 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(generated.getByTestId("suggestion-origin-badge")).toHaveText(
       "Generated"
     );
+    const GENERATED_SENTENCE =
+      "Written by AI from your data — not from the curated map. Review it before acting on it.";
+    await expect(
+      generated.getByRole("button", { name: GENERATED_SENTENCE, exact: true })
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: GENERATED_SENTENCE, exact: true })
+    ).toHaveCount(1);
     await expect(generated.getByTestId("generated-origin-help")).toHaveCount(0);
     const generatedHelp = dialog.getByTestId("generated-origin-help");
     await expect(generatedHelp).toHaveCount(1);

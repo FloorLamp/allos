@@ -37,6 +37,24 @@ const TOUCH_STALE = "Touch tooltip stale result (e2e #3375)";
 // shape the taxonomy cannot map (#1502). Low-entropy and this spec's own.
 const REPORTED_HEADING = "Bench Lab Panel 7";
 
+// THE SENTENCES, BECAUSE AC 1 IS ABOUT THE LABEL AND NOTHING AT E2E COUNTS LABELS
+// UNLESS YOU ASK BY ACCESSIBLE NAME. A testid-scoped absence assertion binds to an
+// artifact of the FIX — the id this change introduced — so it catches a regression
+// written the way this change would write one, and misses the regression that exists
+// in history: at the merge base `PanelCell`'s mount carries NO testid at all, and the
+// stale mount carries `clinical-age-help`. Measured 2026-08-31 — with both base mounts
+// restored verbatim, the testid-bound version of this file returned 8 passed, green
+// against the literal thing it exists to forbid. So every absence assertion below is
+// stated twice: once by name (the property) and once by testid (the shape).
+const STALE_SENTENCE = "Over a year old — consider retesting";
+// The base spelled the same fact a second way, on the Stale badge.
+const BASE_STALE_BADGE_SENTENCE =
+  "Latest result over a year old — consider retesting";
+const PANEL_COLUMN_SENTENCE =
+  "A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under";
+const BASE_PANEL_SENTENCE =
+  "Not mapped to a clinical panel — showing the heading it was reported under";
+
 // #2347: the band-less reading is dated off the RUN'S FROZEN CLOCK, far enough back
 // that the yearly retest clock has run out, so ONE reading carries all three halves of
 // the contradiction this spec now covers — a neutral value, a "Recheck" offer, and a
@@ -199,6 +217,18 @@ test("the stale vocabulary is explained once, on the column that carries it (#39
   await expect(row).toBeVisible();
   // Not "no row has one AND the header has one" as two independent reads: the SAME
   // locator, scoped two ways, so a stale sweep cannot pass by finding nothing.
+  // BY NAME first — the property the criterion is about, and the only form that sees
+  // a regression restored under the base's own ids.
+  await expect(
+    table.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(1);
+  await expect(
+    row.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  // The base's second spelling of the same fact, gone from the whole table.
+  await expect(
+    table.getByRole("button", { name: BASE_STALE_BADGE_SENTENCE, exact: true })
+  ).toHaveCount(0);
   const help = page.getByTestId("clinical-stale-help");
   await expect(help).toHaveCount(1);
   await expect(row.getByTestId("clinical-stale-help")).toHaveCount(0);
@@ -233,6 +263,17 @@ test("the unmapped-panel sentence is stated once, on the Panel column head (#397
   // document's heading, so it is exactly the row that used to carry the button.
   await expect(row).toContainText(REPORTED_HEADING);
 
+  // BY NAME first. The base's mount here carries no testid whatsoever, so a
+  // testid-only absence assertion is green against it.
+  await expect(
+    table.getByRole("button", { name: PANEL_COLUMN_SENTENCE, exact: true })
+  ).toHaveCount(1);
+  await expect(
+    row.getByRole("button", { name: PANEL_COLUMN_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  await expect(
+    table.getByRole("button", { name: BASE_PANEL_SENTENCE, exact: true })
+  ).toHaveCount(0);
   const help = page.getByTestId("clinical-panel-column-help");
   await expect(help).toHaveCount(1);
   await expect(row.getByTestId("clinical-panel-column-help")).toHaveCount(0);
@@ -268,6 +309,12 @@ test("a starred stale-result explanation is stated once and reachable by tap (#3
   // The tile still says "stale" in words; the sentence behind the word is the card's,
   // once, and no tile mounts a button for it (#3970 rule 1).
   await expect(tile).toContainText("stale");
+  await expect(
+    tile.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(0);
+  await expect(
+    card.getByRole("button", { name: STALE_SENTENCE, exact: true })
+  ).toHaveCount(1);
   await expect(tile.getByTestId("starred-stale-help")).toHaveCount(0);
   const help = card.getByTestId("starred-stale-help");
   await expect(help).toHaveCount(1);
