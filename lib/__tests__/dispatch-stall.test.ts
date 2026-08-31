@@ -324,40 +324,6 @@ describe("resumeState", () => {
 });
 
 describe("the dispatch-brief CLI", () => {
-  it("does not evaluate shell syntax while measuring a branch", () => {
-    const branch = "$(printf main)";
-    const ledger = ledgerIn(tempDir(), [
-      { at: iso(Date.now() - 2 * MINUTE), status: "active", branch },
-    ]);
-    const run = spawnSync(process.execPath, [SCRIPT, "list"], {
-      encoding: "utf8",
-      env: { ...process.env, ALLOS_DISPATCH_LEDGER: ledger },
-    });
-    expect(run.status).toBe(0);
-    expect(
-      run.stdout.split("\n").find((line) => line.includes(branch))
-    ).toContain("idle=(no trace)");
-  });
-
-  it("pins the fetched worktree base for any later history rewrite", () => {
-    const run = spawnSync(
-      process.execPath,
-      [SCRIPT, "new", "--branch", "x/pinned-base"],
-      {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          ALLOS_DISPATCH_LEDGER: ledgerIn(tempDir(), []),
-        },
-      }
-    );
-
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain("BASE_SHA=$(git rev-parse FETCH_HEAD)");
-    expect(run.stdout).toContain('echo "PINNED_BASE_SHA=$BASE_SHA"');
-    expect(run.stdout).toContain("reset or rewrite against the printed SHA");
-  });
-
   it("still answers every subcommand it is the only tooling for", () => {
     // A rename or a dropped branch in the dispatcher strands the orchestrator
     // and every agent at once, so the command surface is asserted rather than
@@ -387,9 +353,11 @@ describe("the dispatch-brief CLI", () => {
     // checkout, so both measure as no-trace and the ONLY thing separating them
     // is how long they have had to leave one.
     const now = Date.now();
+    const hostile = "$(printf main)";
     const ledger = ledgerIn(tempDir(), [
       { at: iso(now - 2 * MINUTE), status: "active", branch: "x/just-started" },
       { at: iso(now - 13 * HOUR), status: "active", branch: "x/never-started" },
+      { at: iso(now - 2 * MINUTE), status: "active", branch: hostile },
     ]);
     const run = spawnSync(process.execPath, [SCRIPT, "list"], {
       encoding: "utf8",
@@ -406,6 +374,9 @@ describe("the dispatch-brief CLI", () => {
 
     expect(never).toContain("age=13h00m");
     expect(never).toContain("NO WORKTREE AND NO BRANCH");
+    expect(lines.find((line) => line.includes(hostile))).toContain(
+      "idle=(no trace)"
+    );
   });
 
   it("persists candidate promotion and prints distinct candidate and banked briefs", () => {
@@ -431,6 +402,9 @@ describe("the dispatch-brief CLI", () => {
     expect(first.status).toBe(0);
     expect(first.stdout).toContain("LANDING STATE: CANDIDATE");
     expect(first.stdout).toContain("Open or refresh the PR READY");
+    expect(first.stdout).toContain("BASE_SHA=$(git rev-parse FETCH_HEAD)");
+    expect(first.stdout).toContain('echo "PINNED_BASE_SHA=$BASE_SHA"');
+    expect(first.stdout).toContain("reset or rewrite against the printed SHA");
 
     const second = run(
       "new",
