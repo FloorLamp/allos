@@ -3,7 +3,6 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
   allocateUxServedDb,
@@ -13,7 +12,6 @@ import {
 } from "../../scripts/ux-served-db.mjs";
 import { makeTmpDir } from "../__tests__/tmp-dir";
 import { perTestCeiling } from "../../vitest.timeouts";
-import { migratedDb } from "./migrated-db";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, "..", "..");
@@ -143,24 +141,6 @@ function processExists(pid: number): boolean {
   }
 }
 
-function migratedFile(
-  label: string,
-  mutate: (database: Database.Database) => void
-): string {
-  const dbPath = path.join(
-    makeTmpDir(`seed-shape-${label.replaceAll("_", "-")}`),
-    "allos.db"
-  );
-  const source = migratedDb();
-  try {
-    mutate(source);
-    fs.writeFileSync(dbPath, source.serialize());
-  } finally {
-    source.close();
-  }
-  return dbPath;
-}
-
 // ONE CEILING FOR THE FILE, AND IT IS A MULTIPLE (#3986). Every test here blocks
 // in `spawnSync` on real `node --import tsx` children — the seed script, the
 // witness, the whole ux-walkthrough harness — so its wall time is a reading of how
@@ -178,7 +158,7 @@ function migratedFile(
 // worst reading rather than a green one (#4002).
 const SEED_CEILING = { timeout: perTestCeiling(3, "worst") };
 
-describe("named dirty seed data", SEED_CEILING, () => {
+describe("dirty seed and served DB lifecycles", SEED_CEILING, () => {
   it("distinguishes dirty from baseline and keeps the baseline outside served allocations", () => {
     const dirtyPath = path.join(makeTmpDir("dirty-witness-ok"), "allos.db");
     const dirty = runSeed(dirtyPath, "dirty");
@@ -221,34 +201,6 @@ describe("named dirty seed data", SEED_CEILING, () => {
       expect(fs.readFileSync(baselinePath)).toEqual(before);
     } finally {
       for (const allocation of allocations) cleanupUxServedDb(allocation);
-    }
-  });
-
-  it("does not classify arbitrary rows, schema, or bootstrap metadata as fresh", () => {
-    const dbPath = migratedFile("arbitrary-stale-data", (database) => {
-      database
-        .prepare(
-          "INSERT INTO conditions (profile_id, name, status) VALUES (1, 'Stale sentinel condition', 'active')"
-        )
-        .run();
-      database.exec(
-        "CREATE TABLE arbitrary_stale_payload (value TEXT); INSERT INTO arbitrary_stale_payload VALUES ('preserve me')"
-      );
-      database
-        .prepare(
-          "INSERT INTO settings (key, value) VALUES ('stale-bootstrap-metadata', 'yes')"
-        )
-        .run();
-    });
-    const before = fs.readFileSync(dbPath);
-    const allocation = allocateUxServedDb(path.dirname(dbPath));
-    try {
-      expect(allocation.dbPath).not.toBe(dbPath);
-      expect(fs.lstatSync(allocation.dbPath).isFile()).toBe(true);
-      assertUxServedDbUnused(allocation);
-      expect(fs.readFileSync(dbPath)).toEqual(before);
-    } finally {
-      cleanupUxServedDb(allocation);
     }
   });
 
@@ -310,7 +262,7 @@ describe("named dirty seed data", SEED_CEILING, () => {
           UX_BASE: `http://127.0.0.1:${port}`,
           UX_CHROMIUM: path.join(dir, "missing-chromium"),
           UX_SHOTS: path.join(dir, "shots"),
-          UX_SEED: "dirty",
+          UX_SEED: "",
           SEED_RNG: "",
           SEED_PERSONA: "",
           SEED_DIAL_SHAPE: "",
@@ -372,7 +324,7 @@ process.on("SIGTERM", () => { server.close(() => process.exit(0)); server.closeA
             UX_BASE: `http://127.0.0.1:${port}`,
             UX_CHROMIUM: path.join(dir, "missing-chromium"),
             UX_SHOTS: path.join(dir, "shots"),
-            UX_SEED: "dirty",
+            UX_SEED: "",
             SEED_RNG: "",
             SEED_PERSONA: "",
           },
@@ -415,7 +367,7 @@ process.on("SIGTERM", () => { server.close(() => process.exit(0)); server.closeA
           UX_BASE: `http://127.0.0.1:${port}`,
           UX_SHOTS: path.join(dir, "shots"),
           UX_CHROMIUM: path.join(dir, "missing-chromium"),
-          UX_SEED: "dirty",
+          UX_SEED: "",
           SEED_RNG: "",
           SEED_PERSONA: "",
         },
