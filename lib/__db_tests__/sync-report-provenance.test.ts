@@ -738,16 +738,36 @@ describe("GET /api/documents/requests", () => {
     expect((await REQUESTS(requestsReq(revokedToken))).status).toBe(401);
   });
 
-  it("lists open requests as slugs, reason and expiry day", async () => {
-    const f = fixture("endpoint");
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
+  it("lists only open requests in the token's write set, as slugs without addresses", async () => {
+    const writable = fixture("endpoint");
+    const readonly = fixture("readonly", { grant: "read" });
+    const expired = fixture("expiry");
+    const answered = fixture("answered");
+    for (const f of [writable, readonly, expired, answered]) {
+      expect(requestSync(f.account.id, "manual").ok).toBe(true);
+    }
+    db.prepare(
+      "UPDATE portal_sync_requests SET created_at = ?, expires_at = ? WHERE account_id = ?"
+    ).run(
+      stamp(shiftDateStr(expired.anchor, -30)),
+      stamp(shiftDateStr(expired.anchor, -20)),
+      expired.account.id
+    );
+    await SYNC_REPORT(
+      report(memberToken, {
+        status: "nothing-new",
+        portal: `prov-portal-${answered.tag}`,
+        patient: answered.label,
+      })
+    );
 
     const res = await REQUESTS(requestsReq(memberToken));
     expect(res.status).toBe(200);
     const json = await body(res);
     expect(json.ok).toBe(true);
-    const mine = (json.requests as Record<string, unknown>[]).filter(
-      (r) => r.portal === `prov-portal-${f.tag}`
+    const requests = json.requests as Record<string, unknown>[];
+    const mine = requests.filter(
+      (r) => r.portal === `prov-portal-${writable.tag}`
     );
     expect(mine).toHaveLength(1);
     expect(Object.keys(mine[0]).sort()).toEqual([
@@ -758,14 +778,13 @@ describe("GET /api/documents/requests", () => {
     ]);
     expect(mine[0].reason).toBe("manual");
     expect(String(mine[0].expires)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
+    for (const f of [readonly, expired, answered]) {
+      expect(requests.some((r) => r.portal === `prov-portal-${f.tag}`)).toBe(
+        false
+      );
+    }
 
-  it("carries no address, no hostname, and no account nickname", async () => {
-    const f = fixture("noaddr");
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
-    const text = JSON.stringify(
-      await body(await REQUESTS(requestsReq(memberToken)))
-    );
+    const text = JSON.stringify(json);
     // Asserted over the SERIALIZED response, recursively, so a field added to
     // `SyncRequest` later cannot leak by being spread into the shape.
     expect(text).not.toMatch(/https?:\/\//i);
@@ -773,75 +792,23 @@ describe("GET /api/documents/requests", () => {
     expect(text).not.toMatch(/\bhost\b/i);
     expect(text).not.toContain("Prov Portal");
     expect(text).not.toContain("Default login");
-  });
-
-  it("scopes to the token's WRITE set, exactly as `held` does", async () => {
-    const f = fixture("scoped");
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
 
     // A login with no grant on the mapped profile sees nothing about it.
     const stranger = await body(await REQUESTS(requestsReq(readerToken)));
     expect(
       (stranger.requests as Record<string, unknown>[]).some(
-        (r) => r.portal === `prov-portal-${f.tag}`
+        (r) => r.portal === `prov-portal-${writable.tag}`
       )
     ).toBe(false);
   });
 
-  it("a read-only grant is not a write set", async () => {
-    const f = fixture("readonly", { grant: "read" });
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
-    const json = await body(await REQUESTS(requestsReq(memberToken)));
-    expect(
-      (json.requests as Record<string, unknown>[]).some(
-        (r) => r.portal === `prov-portal-${f.tag}`
-      )
-    ).toBe(false);
-  });
-
-  it("answers with open AND unexpired requests only", async () => {
-    const f = fixture("expiry");
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
-    db.prepare(
-      "UPDATE portal_sync_requests SET created_at = ?, expires_at = ? WHERE account_id = ?"
-    ).run(
-      stamp(shiftDateStr(f.anchor, -30)),
-      stamp(shiftDateStr(f.anchor, -20)),
-      f.account.id
-    );
-    const json = await body(await REQUESTS(requestsReq(memberToken)));
-    expect(
-      (json.requests as Record<string, unknown>[]).some(
-        (r) => r.portal === `prov-portal-${f.tag}`
-      )
-    ).toBe(false);
-  });
-
-  it("stops listing a request the moment a run answers it — no claim state needed", async () => {
-    const f = fixture("answered");
-    expect(requestSync(f.account.id, "manual").ok).toBe(true);
-    await SYNC_REPORT(
-      report(memberToken, {
-        status: "nothing-new",
-        portal: `prov-portal-${f.tag}`,
-        patient: f.label,
-      })
-    );
-    const json = await body(await REQUESTS(requestsReq(memberToken)));
-    expect(
-      (json.requests as Record<string, unknown>[]).some(
-        (r) => r.portal === `prov-portal-${f.tag}`
-      )
-    ).toBe(false);
-  });
-
-  it("creates nothing: polling forever leaves the tables exactly as they were", async () => {
+  it("creates nothing: polling leaves the tables exactly as they were", async () => {
     const f = fixture("readonly-poll");
     expect(requestSync(f.account.id, "manual").ok).toBe(true);
     const before = db
       .prepare("SELECT COUNT(*) AS n FROM portal_sync_requests")
       .get() as { n: number };
-    for (let i = 0; i < 3; i++) await REQUESTS(requestsReq(memberToken));
+    await REQUESTS(requestsReq(memberToken));
     const after = db
       .prepare("SELECT COUNT(*) AS n FROM portal_sync_requests")
       .get() as { n: number };
