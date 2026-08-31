@@ -65,6 +65,60 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
     expect(controls, "the tail hosts no write at all").toBeGreaterThan(0);
   });
 
+  // THE ROW'S CLOSED SHAPE (#4076): "at most two trailing controls". The ruling
+  // states it as an invariant and nothing was watching it, which is the shape this
+  // issue's whole arc is about — a rule with no element re-accretes.
+  //
+  // A CONTROL IS SOMETHING A PERSON CAN OPERATE, and getting that wrong is how this
+  // measurement first lied to me: counting every `input` in the slot reported 29 rows
+  // over the cap, because each write carries its `dedupe_key` as a HIDDEN input and
+  // the coaching row carries two forms' worth. Hidden payload is not an affordance.
+  // So the filter is part of the claim, not a convenience.
+  //
+  // The HEIGHT half of the invariant is deliberately not asserted here: the
+  // snooze/dismiss overflow trigger is `h-10` (40px) with `.tap-target` reaching the
+  // 44 effective floor, a shared primitive with 34 call sites that predates this
+  // ruling and sat beside a 34px control in the card too. Encoding an exception for
+  // it would be the allowlist this repo bans; it is reported instead.
+  test("no row hosts more than two operable controls", async ({ page }) => {
+    await page.goto("/");
+    await openDashboardAll(page);
+
+    const rows = await page
+      .getByTestId("dashboard-candidate")
+      .evaluateAll((nodes) =>
+        nodes.flatMap((node) => {
+          const slot = node.querySelector(
+            '[data-testid="dashboard-row-controls"]'
+          );
+          if (!slot) return [];
+          const operable = [
+            ...slot.querySelectorAll<HTMLElement>(
+              "button, a, input, select, textarea"
+            ),
+          ].filter(
+            (control) =>
+              !(
+                control instanceof HTMLInputElement && control.type === "hidden"
+              ) && control.getBoundingClientRect().height > 0
+          );
+          return [
+            {
+              id: node.getAttribute("data-candidate-id"),
+              controls: operable.length,
+            },
+          ];
+        })
+      );
+
+    // The control: rows DO host controls on this fixture, so the cap below is a
+    // claim about a populated set — an empty one satisfies any cap.
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => row.controls > 2)).toEqual([]);
+    // …and the cap is actually approached, or it is bounding nothing that exists.
+    expect(rows.some((row) => row.controls === 2)).toBe(true);
+  });
+
   // THE GUARD CAN SEE A CARD. An absence assertion is worth exactly what its
   // detector is worth, so the detector is shown a card built on purpose before it is
   // trusted saying there are none. Forged in the page, removed in the same
