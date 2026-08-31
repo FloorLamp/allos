@@ -31,7 +31,10 @@ import DashboardPlacementCanvas, {
   type DashboardPlacementCanvasProps,
 } from "@/components/dashboard/DashboardPlacementCanvas";
 import { STANDING_READING_ORDER } from "@/lib/dashboard-standing";
-import { everythingTail } from "@/lib/dashboard-relevance";
+import {
+  everythingTail,
+  type DashboardEverythingGroup,
+} from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
 
@@ -595,42 +598,93 @@ describe("actual atomic dashboard manifests", () => {
     expect(dropped.length).toBeGreaterThan(0);
   });
 
-  // EXACT-ONCE, THE OTHER HALF: everything the ranker gathered for the tail is either
-  // DRAWN or deliberately dropped onto a named page — never both, and never neither.
+  // AND THE CONVERSE, WHICH THE DROP LOOP ABOVE IS STRUCTURALLY UNABLE TO STATE
+  // (#3366). That loop walks the drops, so it stays green on a tree that drops far
+  // too MUCH: a builder that put `navDuplicateOf` on a whole group would hand every
+  // one of those candidates a named door, satisfy every clause up there, and empty
+  // the group out of the tail. `dropped.length > 0` cannot see it either — it only
+  // asks that SOMETHING dropped. The ruling's acceptance is that the tail stays
+  // exhaustive, so that is asserted here in the direction it is written: these facts
+  // are still DRAWN, and the drop reaches exactly one candidate and no further.
   //
-  // THE CONTROL IS ACROSS PERSONAS, NOT INSIDE ONE, and that is a measurement rather
-  // than a preference: `household.episode-history` (lib/dashboard-candidates/care.ts)
-  // is the ONLY `navDuplicateOf` in the tree, and only the household persona reaches
-  // it. A per-persona "this tail exercises a drop" control would therefore have been
-  // green on one persona and impossible on five — an assertion that cannot fail is
-  // not a control.
-  it("splits the tail into drawn and dropped with nothing in between", () => {
-    let dropsSeen = 0;
+  // The survivor list is short and hand-written on purpose, one per tail group. A
+  // list derived from the manifests would restate whatever the manifests happen to
+  // say and could never contradict them.
+  it("keeps drawing the tail it did not drop", () => {
+    const drawn = new Map(
+      [...manifests].map(([persona, placements]) => [
+        persona,
+        everythingTail(placements),
+      ])
+    );
+    const survivors: readonly {
+      persona: string;
+      group: DashboardEverythingGroup;
+      candidate: string;
+    }[] = [
+      {
+        persona: "biohacker",
+        group: "act",
+        candidate: "attention.fact:review",
+      },
+      { persona: "biohacker", group: "read", candidate: "protocol.adherence:" },
+      {
+        persona: "biohacker",
+        group: "active-states",
+        candidate: "protocol.state:",
+      },
+      {
+        persona: "household",
+        group: "understand",
+        candidate: "appointment.next",
+      },
+      {
+        persona: "marathon-runner",
+        group: "setup",
+        candidate: "attention.fact:screening:hiv_screening",
+      },
+    ];
+    for (const { persona, group, candidate } of survivors) {
+      expect(
+        drawn
+          .get(persona)!
+          .some(
+            (placement) =>
+              placement.everythingGroup === group &&
+              placement.candidate.candidateId.startsWith(candidate)
+          ),
+        `${persona}: ${candidate} is no longer drawn in ${group}`
+      ).toBe(true);
+    }
+    // Exactly one candidate in the whole seeded population is a link the nav already
+    // carries, which is what `care.ts` claims in prose. Widening the drop reddens
+    // here rather than quietly shortening the tail.
+    //
+    // SO A NEW CANDIDATE THAT LEGITIMATELY DECLARES `navDuplicateOf` REDDENS THIS
+    // LINE, AND THAT IS THE PIN WORKING, NOT A STALE FIXTURE. Add it to the list
+    // deliberately, having satisfied yourself the tail is meant to stop drawing it;
+    // the whole point of pinning the set rather than counting it is that widening
+    // the drop has to be a decision somebody wrote down.
+    expect(
+      [...manifests].flatMap(([persona, placements]) =>
+        placements.flatMap((placement) =>
+          placement.lane === "everything" && !placement.admitted
+            ? [`${persona}:${placement.candidate.candidateId}`]
+            : []
+        )
+      )
+    ).toEqual(["household:household.episode-history"]);
+    // Drawn against dropped against the lane, per persona: a member the split loses
+    // on its way to the canvas is neither, and no absence assertion can see that.
     for (const [persona, placements] of manifests) {
       const lane = placements.filter(
         (placement) => placement.lane === "everything"
       );
-      const drawn = everythingTail(placements);
-      const drawnIds = new Set(
-        drawn.map((placement) => placement.candidate.candidateId)
+      const dropped = lane.filter((placement) => !placement.admitted);
+      expect(drawn.get(persona)!.length, persona).toBe(
+        lane.length - dropped.length
       );
-      expect(drawnIds.size, persona).toBe(drawn.length);
-      // The control: this persona's tail is populated, so the partition below is a
-      // claim about real members and not about an empty lane.
-      expect(drawn.length, persona).toBeGreaterThan(0);
-      for (const placement of lane) {
-        const id = placement.candidate.candidateId;
-        const dropped = placement.candidate.navDuplicateOf != null;
-        if (dropped) dropsSeen += 1;
-        expect(
-          drawnIds.has(id) !== dropped,
-          `${persona}:${id} is neither drawn nor dropped onto a page`
-        ).toBe(true);
-      }
     }
-    // …and the other side of the partition is exercised SOMEWHERE, or the loop above
-    // is only ever saying "everything is drawn".
-    expect(dropsSeen).toBeGreaterThan(0);
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
