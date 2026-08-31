@@ -462,8 +462,8 @@ export default async function FoodTab({
   // Fiber × GI symptoms on one axis (#2788) — a read-together VIEW, never a
   // correlation claim. The vocabulary and boundaries live in lib/fiber-symptom-panel.
   const fiberSymptomPanel = getFiberSymptomPanel(profile.id);
-  // Direct protein-grams quick-add (#824): each offered day's manual total plus the
-  // last-used amount (the repeated scoop size). Protein powder's only home.
+  // Direct protein-grams quick-add (#824): each offered day's manual total + the last-used amount
+  // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
   const proteinLoggedGramsByDate = Object.fromEntries(
     mealDays.map((day) => [
       day.date,

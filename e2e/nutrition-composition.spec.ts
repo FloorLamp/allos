@@ -129,7 +129,7 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     await expect(selectedDay).toBeHidden();
     const historicalSnapshot = page.getByTestId("nutrition-mobile-snapshot");
     await expect(historicalSnapshot).toContainText(/g\+ yesterday/i);
-    await expect(quick.getByTestId("protein-quickadd")).toHaveCount(0);
+    await expect(quick.getByTestId("protein-quickadd")).toBeVisible();
     await nutrientDetailsSummary.click();
     await expect(nutrientDetailsSummary).toHaveAttribute(
       "aria-expanded",
