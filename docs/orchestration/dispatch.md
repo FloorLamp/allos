@@ -34,15 +34,13 @@ closed taxonomy, and `needs-human` handling.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
-- STAGGER starts. Durations cluster tightly (seven of the first ten inside
-  85±5 min), so simultaneous starts are simultaneous arrivals — and
-  simultaneous GATES: five at once drove load to 17.7 on 4 cores.
+- STAGGER starts: durations cluster tightly (85±5 min), so simultaneous
+  starts are simultaneous arrivals AND gates — five at once hit load 17.7.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
 - `dispatch-brief.mjs new` warns when a sibling started within 25 minutes and
   projects both arrivals; it never refuses, because a P0 preempts.
-- A refuted PR re-enters the review queue, so arrival is not one-shot. Count
-  rework when judging depth.
+- A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
 - Push meaningful checkpoints. A branch not next to land stays branch-only —
@@ -85,6 +83,8 @@ closed taxonomy, and `needs-human` handling.
 - `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
   its anchor is 4h stale, so it needs no remembering; `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
+- `queue-snapshot.mjs`: writes the dispatchable queue to `$SCRATCH/.queue`;
+  the check-in refreshes it 4-hourly. A "thin" claim answers it line by line.
 - `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
   shape, needs-human aging; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.

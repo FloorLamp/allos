@@ -26,6 +26,13 @@ describe("the refill directives", () => {
     expect(checkin).toContain("(e2e $e2e_lanes/2, other $other_lanes)");
     expect(checkin).toContain("NOT a thin queue");
     expect(checkin).toContain("back of the queue is still IN the queue");
+    // The queue is WRITTEN DOWN: the recorder refreshes $STATE_DIR/.queue on
+    // the 4h cadence and prints its count, so a candidate cannot be
+    // forgotten and a "thin" claim has a file to answer.
+    expect(checkin).toContain('QUEUE_FILE="$STATE_DIR/.queue"');
+    expect(checkin).toContain("queue-snapshot.mjs");
+    expect(checkin).toContain("QUEUE_DUE_SECS=$((4 * 3600))");
+    expect(checkin).toContain("answer $QUEUE_FILE line by line");
     // The honesty clause: emptiness must come with the why-not list.
     expect(checkin).toContain("blocked, owner-gated, or dependency-bound");
   });

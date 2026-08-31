@@ -643,6 +643,26 @@ for line in open(sys.argv[1]):
 print(sum(1 for e in state.values() if e.get("status")=="active" and e.get("e2e")))
 ' "$LEDGER" 2>/dev/null || echo "?")
 if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
+
+# THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a
+# time — a reconcile never looked for, small issues never paired, self-filed
+# items mentally reclassified as backlog — cannot be forgotten from a file.
+# queue-snapshot.mjs sweeps open issues into $STATE_DIR/.queue; the recorder
+# refreshes it on the 4h cadence, and prints its own header line below so
+# every check-in states the dispatchable count next to the lane count.
+QUEUE_FILE="$STATE_DIR/.queue"
+QUEUE_DUE_SECS=$((4 * 3600))
+queue_age_s=""
+if [ -f "$QUEUE_FILE" ]; then
+  queue_mtime=$(date -u -r "$QUEUE_FILE" +%s 2>/dev/null || stat -c %Y "$QUEUE_FILE" 2>/dev/null || echo "")
+  [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
+fi
+if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
+  node "$(dirname "$0")/orchestration/queue-snapshot.mjs" >/dev/null 2>&1 ||
+    echo "  *** queue snapshot FAILED (needs a read token) — $QUEUE_FILE may be stale ***"
+fi
+queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
+
 echo "--- lanes ---"
 if [ "$lanes" -eq 0 ]; then
   echo "  0 active — *** AN EMPTY ROSTER IS A DISPATCH ORDER, NOT A REPORT ***"
@@ -656,11 +676,12 @@ elif [ "$lanes" -lt 3 ]; then
   echo "      ~3 unreviewed PRs). Before calling the queue thin, check the candidate"
   echo "      classes that get skipped: PAIR small issues into one cluster, source"
   echo "      self-filed P3s (back of the queue is still IN the queue), and do the"
-  echo "      standing work (reconcile pass, release-notes batch). 'Thin' is only"
-  echo "      honest beside the per-issue list of why nothing remaining dispatches."
+  echo "      standing work (reconcile pass, release-notes batch). 'Thin' must"
+  echo "      answer $QUEUE_FILE line by line — the queue is written down."
 else
   echo "  $lanes active (e2e $e2e_lanes/2)"
 fi
+echo "  queue: ${queue_header%% —*} — full list in $QUEUE_FILE"
 echo
 
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
