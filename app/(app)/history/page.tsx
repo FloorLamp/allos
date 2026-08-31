@@ -11,6 +11,7 @@ import JumpRailScrubber, {
 } from "@/components/JumpRailScrubber";
 import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
+import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
 import HistoryAddDoor from "./HistoryAddDoor";
@@ -33,6 +34,7 @@ import {
   getSymptomSeveritiesOnDate,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
+import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
@@ -660,7 +662,7 @@ export default async function HistoryPage(props: {
           count sat outside the tap target and nothing said the header was a door. The
           chevron sits IN the cluster — nothing is right-floated, per the spec's own
           words. (Phase 2 renders the day view; the link is already the real one.) */}
-      <h2 className="sticky top-0 z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+      <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
             its geometry belong to the primitive (lib/__tests__/destination-link-primitive
             .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
@@ -795,25 +797,48 @@ export default async function HistoryPage(props: {
             ]}
           />
         </div>
+        {/* THE PINNED CLUSTER, behind one hairline: the controls that do not
+            scroll with the family pills. Photos is a cross-cutting FILTER;
+            Calendar is a DOOR — the month grid #4102 moved off the nav and onto
+            the page whose subject is which day a thing happened. Both ride the
+            control box the pills already spend, so this row is exactly as tall
+            with them as without, which is what lets the grid land on a page
+            whose chrome above its first record is bounded at ~140px. */}
+        <span
+          aria-hidden
+          className="h-5 w-px shrink-0 bg-black/10 dark:bg-white/10"
+        />
         {hasMedia || mediaApplied ? (
-          <>
-            <span
-              aria-hidden
-              className="h-5 w-px shrink-0 bg-black/10 dark:bg-white/10"
-            />
-            <span className="shrink-0">
-              <Chip
-                role="filter"
-                href={chipHref({ media: !mediaApplied })}
-                current={mediaApplied}
-                linkBehavior="timeline"
-                testId="history-chip-media"
-              >
-                Photos
-              </Chip>
-            </span>
-          </>
+          <span className="shrink-0">
+            <Chip
+              role="filter"
+              href={chipHref({ media: !mediaApplied })}
+              current={mediaApplied}
+              linkBehavior="timeline"
+              testId="history-chip-media"
+            >
+              Photos
+            </Chip>
+          </span>
         ) : null}
+        {/* EVERY DAY THE VIEWED MEMBERS HAVE AN EVENT ON, and this is the ONE
+            place the union is read now (#4280). It rode in the app shell while
+            the sidebar and the drawer both mounted the grid, which spent ~20
+            queries on every page in the app to mark days on two surfaces most
+            visits never opened.
+
+            THE MARKS FOLLOW THE FEED'S VIEW-SET, not the acting profile (#4393
+            ruling 3). `memberIds` is the SAME resolution the gather above runs
+            on — one member, or the household under `?view=everyone` — so the
+            calendar cannot answer "whose days are these" differently from the
+            feed it navigates. It carried the nav mount's acting-profile answer
+            until now, which read as one body's marks beside a merged record.
+            Under `?view=everyone` that is ~20 queries per viewed member on this
+            page; single view is unchanged. */}
+        <EventCalendar
+          eventDates={memberIds.flatMap((id) => getTimelineDates(id))}
+          everyone={everyone}
+        />
       </div>
 
       {/* THE KIND-SCOPED REFINEMENT ROW, PER FAMILY — "never in All" (#3958). It is a

@@ -3,7 +3,9 @@ import {
   buildUpcomingDigest,
   digestHighlights,
   summarizeBand,
+  upcomingRowQualifiers,
 } from "../notifications/upcoming-digest";
+import { formatMessageLine } from "../notifications/message-line";
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import type { Reason } from "../reasons";
 
@@ -406,6 +408,129 @@ describe("named-line domains merge their band entry into the named line (#1913)"
     expect(model.syncIssues.map((s) => s.dueText)).toEqual([
       null,
       "expires in 6 days",
+    ]);
+  });
+});
+
+// ---- The row states the why, from the digest's own fragments (#4319) -------
+//
+// The reported comparison: the digest said "Import a fresh Fitbit (Google Takeout)
+// export — weight, body fat, sleep score and readiness score are 35 days behind" and
+// "Run the portal tool for tbh — never checked · expires today", while Ahead showed
+// "35 days behind" and a bare title. The recorded defence was that Ahead states WHEN
+// and defers the why one tap to /upcoming; owner ruling: "it's one tap away to a page
+// that I never use."
+//
+// EVERY CASE HERE ASSERTS AGAINST THE DIGEST'S OWN RENDERED LINE, not against a
+// literal copy of it. A string the test writes out by hand can agree with the digest
+// today and drift tomorrow with nothing going red — which is the exact class of defect
+// "one computation, two surfaces" (#221) exists to make impossible, so proving it with
+// a hand-written string would prove the wrong thing.
+describe("an Ahead row's qualifiers, from the digest's producers (#4319)", () => {
+  const item = (
+    domain: UpcomingDomain,
+    over: Partial<UpcomingItem> = {}
+  ): UpcomingItem => ({ ...mk(domain), ...over });
+
+  // The digest's own rendering of one named line, reached the way the digest reaches
+  // it: through buildUpcomingDigest, then the same grammar lib/notifications/digest.ts
+  // formats it with.
+  const digestLine = (subject: UpcomingItem): string => {
+    const model = buildUpcomingDigest("Sam", [
+      { band: "today", label: "Today", items: [subject] },
+    ])!;
+    const named = model.syncIssues[0];
+    return formatMessageLine({
+      glyph: named.glyph,
+      head: named.title,
+      because: named.because,
+      deadline: named.dueText,
+    });
+  };
+
+  it("states a named line's cause and deadline exactly as the digest does", () => {
+    const portal = item("portal-sync", {
+      title: "Run the portal tool for tbh",
+      // The CARD's sentence, which re-contains the title. The row must not borrow it.
+      detail:
+        "tbh has never been checked — run the portal tool on your computer.",
+      because: "never checked",
+      dueText: "expires today",
+    });
+    expect(upcomingRowQualifiers(portal, "expires today")).toEqual([
+      "never checked",
+      "expires today",
+    ]);
+    // …and that IS the digest's line, minus its glyph and head: same fragments, same
+    // order, one computation.
+    expect(digestLine(portal)).toBe(
+      `🙋 ${portal.title} — ${upcomingRowQualifiers(portal, "expires today").join(" · ")}`
+    );
+  });
+
+  it("states the records-recency ask's stale measures, the digest's phrasing", () => {
+    const takeout = item("records-recency", {
+      title: "Import a fresh Fitbit (Google Takeout) export",
+      because:
+        "weight, body fat, sleep score and readiness score are 35 days behind",
+      dueText: "35 days behind",
+    });
+    // No deadline: nothing about a Takeout archive EXPIRES, so the domain declares
+    // none and the row does not invent one out of the drift figure.
+    expect(upcomingRowQualifiers(takeout, "35 days behind")).toEqual([
+      "weight, body fat, sleep score and readiness score are 35 days behind",
+    ]);
+    expect(digestLine(takeout)).toBe(
+      `🙋 ${takeout.title} — ${upcomingRowQualifiers(takeout, "35 days behind").join(" · ")}`
+    );
+  });
+
+  it.each([
+    {
+      case: "a structured reason is appended AFTER the due text",
+      subject: item("followup", {
+        title: "Follow-up DEXA whole body",
+        reasons: [
+          {
+            code: "followup-source" as const,
+            text: "for the DEXA Whole Body (2026-05)",
+          },
+        ],
+      }),
+      due: "May 13, 2027",
+      qualifiers: ["May 13, 2027", "for the DEXA Whole Body (2026-05)"],
+    },
+    {
+      case: "no reason, no change — the row is its due text and nothing else",
+      subject: item("appointment", { title: "Dermatology" }),
+      due: "in 6 days",
+      qualifiers: ["in 6 days"],
+    },
+    {
+      case: "a named-line item that states neither cause nor deadline keeps its schedule",
+      subject: item("integration", { title: "Withings sync needs attention" }),
+      due: "Reconnect",
+      qualifiers: ["Reconnect"],
+    },
+  ])("$case", ({ subject, due, qualifiers }) => {
+    expect(upcomingRowQualifiers(subject, due)).toEqual(qualifiers);
+  });
+
+  it("takes the SAME lead reason the digest highlights, never a second pick", () => {
+    const subject = item("biomarker", {
+      title: "Retest ferritin",
+      priority: 9,
+      reasons: [
+        { code: "risk-elevated", text: "family history of hemochromatosis" },
+        { code: "biomarker-flagged", text: "last result was high" },
+      ],
+    });
+    const [highlight] = digestHighlights([
+      { band: "today", label: "Today", items: [subject] },
+    ]);
+    expect(upcomingRowQualifiers(subject, "in 3 days")).toEqual([
+      "in 3 days",
+      highlight.reason,
     ]);
   });
 });

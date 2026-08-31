@@ -1,0 +1,678 @@
+// THE ONE LOGGING MANIFEST (issue #4425) — one domain-keyed declaration the TYPE
+// SYSTEM enforces, replacing the eight separately-keyed censuses that each answered
+// a corner of "what is domain X's logging story?" and each of which a new domain
+// could be forgotten in independently.
+//
+// The audit that filed #4425 found exactly what that predicts: symptoms had no date
+// bound at ALL while their four sibling domains each hand-declared one, and stool
+// SHAPE-CHECKED its stated time where body metrics JUDGE theirs. Both are fixed as
+// this file's first tenants.
+//
+// ── WINDOWS BIND OFFERS, NOT DOMAINS (owner ruling, 2026-08-31) ──────────────────
+//
+// Asked why domains bounded past writes at all, the answer was two reasons wearing
+// five costumes: STALE-TAP protection (a one-tap must not resolve against a day its
+// offer no longer describes — the dose ±2 IS Telegram pointer retention) and
+// TEMPLATE-write honesty (the usual's 6-day reach plus its evidence guard). Neither
+// is about the past itself, and the audited dose deep door already reached any day.
+//
+// So there is no per-domain window column here. There is ONE invariant every domain
+// core holds — `isPastWriteAccepted`: any real past day, never the future — and a
+// per-AFFORDANCE reach record for the taps and offers that genuinely are bounded. A
+// DATED surface (the #4424 domain form with date context, `/history`'s day view)
+// reaches any past day, audited where the domain audits; `logHistoricalDose` is the
+// model. Mood's ±2 and practice's 30 survive as the reach of their tap surfaces.
+//
+// ── WHY A RECORD AND NOT A SCAN (owner ruling, #4458: types over guards) ─────────
+//
+//   • `Record<LogDomain, LogDomainManifest>` — adding a domain fails `tsc` until
+//     every column is answered; adding a column fails `tsc` until every domain
+//     answers it. There is no "did the census cover X" test to forget, because
+//     there is no test.
+//   • Every argued absence is a DISCRIMINATED UNION carrying its reason and its
+//     issue, so `{ kind: "excluded" }` with nothing said does not compile. This is
+//     `lib/loggable-domains.ts`'s `arguedExclusion` brand applied at the type level
+//     rather than at the value level: the reason is required by the SHAPE, so a
+//     reader always finds an argument where a row is absent.
+//   • Nothing new joins the scan tier. `STATEFUL_WRITE_TABLES` keeps proving writes
+//     route through cores — a call-site fact no type can see — and stays as it is.
+//
+// PURE AND DEPENDENCY-FREE: every import here is `import type`, fully erased at
+// build, so a write core, a client component and the offline queue's pure core can
+// all read this module. Nothing in it reads a clock or a database.
+
+import type { LoggableDomain, ArguedExclusion } from "./loggable-domains";
+import { arguedExclusion } from "./loggable-domains";
+import { daysBetweenDateStr, isRealIsoDate } from "./date";
+import type { QuickLogId } from "./quick-log";
+import type { PaletteActionId } from "./palette-actions";
+import type { TelegramVerb } from "./notifications/telegram-commands";
+import type { HistoryLogKind } from "./history-format";
+import type { FlowKind } from "./offline/queue";
+import type { OneTapAffordance } from "./one-tap";
+// The usual offer's reach is a SHIPPED constant, imported rather than restated so the
+// declaration and the offer cannot drift. lib/food-regularity.ts is pure (date +
+// food-slot only), so this keeps the module dependency-free.
+import { USUAL_BACKFILL_WINDOW_DAYS } from "./food-regularity";
+
+// ── The axis ─────────────────────────────────────────────────────────────────
+//
+// A LOG DOMAIN is a domain with a dated WRITE CORE — the grain at which a backfill
+// window, a stated-time policy and a pair of client pieces are one answer. It is
+// deliberately COARSER than `LoggableDomain` (lib/loggable-domains.ts), whose grain
+// is "wherever a quick SURFACE distinguishes one": weight, vitals and temperature
+// are three rows there because Telegram covers exactly one of them, and one `body`
+// row here because they are one write contract with one window.
+export const LOG_DOMAINS = [
+  "food",
+  "dose",
+  "practice",
+  "mood",
+  "symptom",
+  "stool",
+  "substance",
+  "body",
+] as const;
+
+export type LogDomain = (typeof LOG_DOMAINS)[number];
+
+// The bridge between the two axes, so they cannot drift. Without it "adding a
+// domain fails typecheck" would be true only of `LogDomain`, and a new
+// `LoggableDomain` — the list a new quick surface actually gets added to — could
+// still ship with no manifest entry, which is the gap class this issue exists to
+// close. Three loggable domains are argued OFF this axis rather than missing.
+export const LOG_DOMAIN_OF_LOGGABLE = {
+  food: "food",
+  dose: "dose",
+  practice: "practice",
+  mood: "mood",
+  symptom: "symptom",
+  stool: "stool",
+  substance: "substance",
+  weight: "body",
+  vitals: "body",
+  temperature: "body",
+  activity: arguedExclusion(
+    "A workout is a SESSION with a lifecycle and an editor (the #1428 decision rule), not a dated one-shot fact: it has a create-then-update persistence model, set arrays, and a live mode no log domain has. `ActivityForm` is already the shape #4424 rules for, so it needs no convergence leg and no window."
+  ),
+  period: arguedExclusion(
+    "A cycle lifecycle transition, not a dated fact somebody logs (#1892): the affordance is ONE offer rendered from server state and its write core answers with typed refusals, so 'which days may this be written for' is a question about the open cycle rather than about a backfill window."
+  ),
+  document: arguedExclusion(
+    "A file ingest. Its row is dated by the DOCUMENT — the day the lab drew the blood — not by the day anybody logged it (`LOG_DAY_SOURCES` argues the same point for the habit measure), so a backfill window around the profile's today would bound the wrong quantity."
+  ),
+} as const satisfies Record<LoggableDomain, LogDomain | ArguedExclusion>;
+
+// ── The vocabulary every column shares ───────────────────────────────────────
+
+// A tracker reference, as a template-literal type: `ref: "see the issue"` does not
+// compile, so an argument always carries somewhere to read the rest of it.
+export type IssueRef = `#${number}`;
+
+// "Covered, and here is by what" / "absent, and here is the argument". The generic
+// is the EVIDENCE — a real id union wherever one exists, so a row naming a retired
+// sheet entry, palette action, Telegram verb, history kind or offline flow fails
+// `tsc` exactly as the censuses this replaces did.
+export type Declared<Via> =
+  | { readonly kind: "covered"; readonly via: Via }
+  | {
+      readonly kind: "excluded";
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
+
+// How far a TAP or an OFFER reaches. Not a domain property — the same domain is
+// reachable from a bounded tap and from a dated form, and only the tap is bounded.
+//
+//   today   — the affordance states no day at all; its action stamps the profile's
+//             today, so there is no reach to bound.
+//   dated   — the surface carries a date and the tap writes to it. Any real past day,
+//             bounded only by the shared core invariant below.
+//   bounded — a real window, with the argument for its size required by the type.
+//             This is where the five hand-declared "domain windows" actually lived.
+export type TapReach =
+  | { readonly kind: "today" }
+  | { readonly kind: "dated" }
+  | {
+      readonly kind: "bounded";
+      readonly back: number;
+      readonly forward: number;
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
+
+// What the domain does with a time somebody STATES ("Happened earlier?", a
+// backfilled reading's clock). `judged` runs the one acceptance gate
+// (`judgeStatedAt`, lib/stated-time.ts) and reports its refusal; `none` means the
+// row has no instant column to state into, argued so the absence is a decision.
+export type StatedTimePolicy =
+  | { readonly kind: "judged"; readonly seam: "judgeStatedAt" | "dose-guards" }
+  | {
+      readonly kind: "none";
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
+
+// #4424 ruling 7: exactly two shared client pieces per domain — one FORM (add and
+// full-statement edit) and one ROW CONTROL (taps and micro-corrections). Naming
+// them here is what makes each domain leg's definition of done a COMPILE ERROR
+// rather than a reviewer's judgement: the leg flips `unconverged` to `shared`.
+export type ClientPiece =
+  | { readonly kind: "shared"; readonly component: string }
+  | {
+      readonly kind: "unconverged";
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
+
+// #3275 closed by absorption (2026-08-31): its offline-story column landed here and
+// its failure-channel + commit-verb CONVENTIONS landed on #3276, which owns them
+// verbatim — inline `role="alert"` plus toast for anything with fields, "Mark taken" /
+// "Log now" for action rows, "Save" for forms. The clause that came HERE is the last
+// one: a domain that DIVERGES argues it in its manifest entry. So this column carries
+// divergences only; `convention` means none is recorded, never that #3276's audit ran.
+export type WriteConventions =
+  | { readonly kind: "convention" }
+  | {
+      readonly kind: "diverges";
+      readonly what: string;
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
+
+export interface LogDomainManifest {
+  readonly statedTime: StatedTimePolicy;
+  // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
+  // names the others a domain rides, so `lib/offline/queue.ts` can derive its
+  // domain-grain rows from here instead of restating them.
+  readonly offline:
+    | {
+        readonly kind: "covered";
+        readonly flow: FlowKind;
+        readonly alsoFlows?: readonly FlowKind[];
+      }
+    | {
+        readonly kind: "excluded";
+        readonly reason: string;
+        readonly ref: IssueRef;
+      };
+  // The four surfaces a person can reach the domain through. The sheet SEGMENT is
+  // deliberately not a fifth column — it is `LOG_SEGMENT_CENSUS[sheet.via]`, so
+  // there is one grouping in the tree and this cannot disagree with it.
+  readonly surfaces: {
+    readonly sheet: Declared<QuickLogId>;
+    readonly palette: Declared<readonly PaletteActionId[]>;
+    readonly telegram: Declared<readonly TelegramVerb[]>;
+    readonly history: Declared<HistoryLogKind>;
+  };
+  readonly pieces: {
+    readonly form: ClientPiece;
+    readonly rowControl: ClientPiece;
+  };
+  readonly writeConventions: WriteConventions;
+  // The dated write cores this domain's every surface must post through — the list
+  // the `STATEFUL_WRITE_TABLES` scan's call-site rule is about.
+  //
+  // THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review). `body` named
+  // `recordReading`/`recordReadings`, which no Server Action, component or Telegram
+  // handler calls — they sit under `insertVitals`. The row therefore did not name the
+  // five cores a body submission actually posts through, and this branch gated two of
+  // them and missed three, which shipped as a partial sitting nobody could see from
+  // here. The test for a name in this list is that a SURFACE calls it; the seven other
+  // rows were audited against that and all seven hold.
+  readonly cores: readonly [string, ...string[]];
+}
+
+// ── THE MANIFEST ─────────────────────────────────────────────────────────────
+
+export const LOG_MANIFEST = {
+  food: {
+    statedTime: { kind: "judged", seam: "judgeStatedAt" },
+    offline: { kind: "covered", flow: "food" },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-food" },
+      palette: { kind: "covered", via: ["log-food"] },
+      telegram: { kind: "covered", via: ["food"] },
+      history: { kind: "covered", via: "food" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "`FoodLogBar` is the sheet's form and the `/history` door re-spells its own; #3987 is rebuilding the nutrition page into Day | Manage and DEFINES what food's form and rows are, so this row flips on that leg rather than forking a copy mid-rebuild.",
+        ref: "#3987",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "The Day ledger's row writes and the `/history` food rows are two spellings; #4316's shared row shape is the extraction both compose, and it sits in nutrition's path.",
+        ref: "#3987",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: ["logFoodServingCore", "undoFoodServingCore"],
+  },
+
+  dose: {
+    statedTime: { kind: "judged", seam: "dose-guards" },
+    offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-dose" },
+      palette: { kind: "covered", via: ["log-dose"] },
+      telegram: { kind: "covered", via: ["dose"] },
+      history: { kind: "covered", via: "dose" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "`HistoricalDoseForm` already carries the ruled add/edit dual mode — it is the log-side PROOF of #4424 ruling 1 — but the `/history` door still routes doses to the legacy `DoseBackfillLauncher`, so the domain does not yet have ONE form every surface mounts.",
+        ref: "#4424",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "`DoseConfirmButton`/`DoseStatusControl` are the shape, and the Day ledger still picks between two controls per row by `isToday` while `QuickDoseList` straddles `markTaken`/`resolveDayDoses`; #4316's shared dose-row shape absorbs both.",
+        ref: "#4316",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: ["markDoseTaken", "markDoseSkipped", "logHistoricalDose"],
+  },
+
+  practice: {
+    statedTime: {
+      kind: "none",
+      reason:
+        "A session is a DAY's fact plus a duration: `practice_logs` carries no event instant, and the duration answers 'how long', never 'at what minute'. A time field here would collect a statement with nowhere to be stored — the `/history` door makes the same call for substance rows.",
+      ref: "#2908",
+    },
+    offline: { kind: "covered", flow: "practice" },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-practice" },
+      palette: { kind: "covered", via: ["wellness-practices"] },
+      telegram: { kind: "covered", via: ["practice"] },
+      history: { kind: "covered", via: "practice" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "`LogPracticeButton` carries three incompatible field sets across four mounts, and `app/(app)/upcoming/PracticeLogButton.tsx` fronts a SECOND write core (`logUpcomingPractice`) with no duration and no confirm. #4424 ruling 7 deletes the parallel core; this row flips with it.",
+        ref: "#4424",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "`PracticeSessionHistory` spells its own correction form and the compact `LogPracticeButton` is not yet the one row control every surface mounts.",
+        ref: "#4424",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: ["logPracticeSession", "logPracticeSessionForDay"],
+  },
+
+  mood: {
+    // Ordinary: the same two days as a dose, past-only, and nothing about it needs
+    // arguing beyond the past-only shape the type already states.
+    statedTime: {
+      kind: "none",
+      reason:
+        "A check-in is a DAY's answer (#992/#2312, answered rather than left to inference): `MoodPayload` carries no instant, the queue's captured date is the whole of its time model, and a replay at dinner still lands on the day the user tapped.",
+      ref: "#992",
+    },
+    offline: { kind: "covered", flow: "mood" },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-mood" },
+      palette: { kind: "covered", via: ["log-mood"] },
+      telegram: { kind: "covered", via: ["mood"] },
+      history: {
+        kind: "excluded",
+        reason:
+          "`HISTORY_LOG_KINDS` has no mood row: the check-in store is store-private under the #992 sensitivity contract, and giving the record a mood kind is a decision about that contract rather than about the kind registry.",
+        ref: "#4427",
+      },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "`QuickMoodCheckin` is a declared HALF-form — the expand fields exist on one mount and not the others — so mood has no single form serving add and full-statement edit.",
+        ref: "#4427",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "The readings table's value cell is the row-control-grade edit and the dashboard card's faces are the tap; neither is a shared control any surface can mount.",
+        ref: "#4427",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: ["upsertMoodLog"],
+  },
+
+  symptom: {
+    // THE FIRST TENANT (#4425). Until this entry symptoms had no date bound at all:
+    // `parseDate` in app/(app)/symptom-actions.ts regex-matched `\d{4}-\d{2}-\d{2}`
+    // without `isRealIsoDate` — so `2026-13-45` reached the core as a literal string
+    // — and `logSymptomCore` bounded nothing. Matching mood is the ruling, and mood
+    // is the honest sibling: a subjective daily self-report, backfilled a day or two
+    // late, correctable afterwards from the row rather than re-logged.
+    statedTime: {
+      kind: "none",
+      reason:
+        "A symptom-day is ONE row, UNIQUE(profile_id, date, symptom), keeping the day's WORST severity: the table has no instant column and a second tap settles onto the same row rather than becoming a second observation. The temperature reading the bar can also take is the `body` domain's, and it states its own time there.",
+      ref: "#799",
+    },
+    offline: {
+      kind: "excluded",
+      reason:
+        "Deferred to #1860, which owns the symptom quick-log's offline story. Deciding it here would preempt that issue's scope, and the affordance census (`OFFLINE_QUEUE_COVERAGE`) has excluded `symptom-severity` by name on this reasoning since #2130.",
+      ref: "#1860",
+    },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-symptom" },
+      palette: { kind: "covered", via: ["log-symptom"] },
+      telegram: { kind: "covered", via: ["symptom"] },
+      history: { kind: "covered", via: "symptom" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "`SymptomLogBar` takes 21 props and hand-rolls its own temperature entry (a raw time input on the allowlist) instead of composing the vitals field; the `/history` row correction is a second spelling and posts the subject under a second name.",
+        ref: "#4424",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "The severity-lower confirm is row-control-grade and lives inside the bar; `/history` symptom rows carry a correction form and no shared control.",
+        ref: "#4424",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: [
+      "logSymptomCore",
+      "setSymptomSeverityCore",
+      "lowerSymptomSeverityCore",
+    ],
+  },
+
+  stool: {
+    // THE SECOND TENANT (#4425). Until this entry `logBristolStool` ran only
+    // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
+    // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
+    // whose natural key IS its instant.
+    statedTime: { kind: "judged", seam: "judgeStatedAt" },
+    offline: { kind: "covered", flow: "stool" },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-stool" },
+      palette: {
+        kind: "excluded",
+        reason:
+          "The palette is a keyboard surface for a desk; a stool log is a phone-in-hand moment and its whole affordance is the seven icons over the published scale, which a text-matched command row cannot carry. Nothing in the palette would be faster than the sheet row.",
+        ref: "#2785",
+      },
+      telegram: {
+        kind: "excluded",
+        reason:
+          "Sensitive by DELIVERY rather than by content: a chat message naming a bowel movement can surface on a lock screen or a shared device — the same reach-policy argument that keeps substance off this vocabulary — and a one-line `/stool 6` would drop the descriptions people actually pick against.",
+        ref: "#2785",
+      },
+      history: {
+        kind: "excluded",
+        reason:
+          "`HISTORY_LOG_KINDS` has no stool row, so a logged movement is visible on Trends and nowhere correctable. This is the missing-leg class rather than a decision against.",
+        ref: "#4433",
+      },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "The seven-button picker in the quick-entry overlay is the only write mount; there is no form to open in edit mode because there is no correction path at all.",
+        ref: "#4433",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "No surface renders a stool ROW with an action — the Trends dot strip is a read — so the row control has nowhere to mount yet.",
+        ref: "#4433",
+      },
+    },
+    writeConventions: {
+      kind: "diverges",
+      what: "Failure is TOAST-ONLY on a surface that has a field: the picker's \"Happened earlier?\" fold collects a stated time, and #3276's convention is that anything with fields answers inline as well.",
+      reason:
+        "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
+      ref: "#3276",
+    },
+    cores: ["logBristolStool"],
+  },
+
+  substance: {
+    statedTime: {
+      kind: "none",
+      reason:
+        "`substance_daily_totals` is a DAY TOTAL. It has a `recorded_at` — when the use was filed — and no event instant at all, which is why the record renders these rows date-only and sinks them below the day's timed ones.",
+      ref: "#3327",
+    },
+    offline: {
+      kind: "excluded",
+      reason:
+        "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. NARROWED, NOT OVERTURNED (#3279) — the argument presumes a cap EXISTS, and a profile with no reduction cap has no verdict to understate — but the exclusion stays absolute until that split is built.",
+      ref: "#3279",
+    },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-substance" },
+      palette: {
+        kind: "excluded",
+        reason:
+          "A deliberate-access medical surface whose tap must render beside its #998 cap verdict; off general-purpose quick surfaces by reach policy, the same call the Telegram vocabulary makes.",
+        ref: "#3279",
+      },
+      telegram: {
+        kind: "excluded",
+        reason:
+          "Deliberate-access, sensitive domain: chat delivery can surface on lock screens and shared devices, and the tap must stand beside its cap verdict. Off the chat vocabulary by reach policy.",
+        ref: "#998",
+      },
+      history: { kind: "covered", via: "substance" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "The `/history` add door spells its own substance form with an unlabeled amount; the sheet's overlay is a third spelling beside the Medical page's.",
+        ref: "#4424",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "The unit tap and the record's row correction share no control, and the cap-progress line rides only the former.",
+        ref: "#4424",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    cores: [
+      "logSubstanceUnitCore",
+      "undoSubstanceUnitCore",
+      "addSubstanceDailyTotalCore",
+    ],
+  },
+
+  body: {
+    statedTime: { kind: "judged", seam: "judgeStatedAt" },
+    offline: {
+      kind: "covered",
+      flow: "body-metric",
+      alsoFlows: ["vitals"],
+    },
+    surfaces: {
+      sheet: { kind: "covered", via: "log-measurements" },
+      palette: { kind: "covered", via: ["log-weight", "log-vitals"] },
+      // Weight and temperature have verbs; the vitals SITTING does not, and the
+      // finer-grained argument for that lives where the grain does
+      // (`TELEGRAM_DOMAIN_CENSUS`: a BP pair is a form, not a one-line capture).
+      telegram: { kind: "covered", via: ["weight", "temp"] },
+      history: { kind: "covered", via: "body" },
+    },
+    pieces: {
+      form: {
+        kind: "unconverged",
+        reason:
+          "THREE shapes with three field sets — a 13-field form, a 3-field door, a 1-field row edit — plus `PediatricWeightUpdate` as a fourth weight form and a palette path posting raw `insertBodyMetric` instead of the measurements action.",
+        ref: "#4424",
+      },
+      rowControl: {
+        kind: "unconverged",
+        reason:
+          "The readings-table value cell is the row-control-grade inline edit and is not a shared component; the dashboard Now rows carry no body control at all.",
+        ref: "#4424",
+      },
+    },
+    writeConventions: { kind: "convention" },
+    // The five "Log measurements" cores plus the symptom bar's temperature door. One
+    // submission fans out across the five by which fields it carries, so they are one
+    // contract and all five hold `isPastWriteAccepted`; `recordReading` is the store
+    // under `insertVitals` and is not a door.
+    cores: [
+      "insertBodyMetric",
+      "insertVitals",
+      "insertGrowth",
+      "insertWaistCirc",
+      "insertComposition",
+      "logTemperatureCore",
+    ],
+  },
+} as const satisfies Record<LogDomain, LogDomainManifest>;
+
+// ── The shared invariant every domain core holds ─────────────────────────────
+
+// Is `date` a day a domain core may write? ANY REAL PAST DAY, NEVER THE FUTURE —
+// the whole rule, for every domain, per the owner ruling above. Pure: `todayStr` is
+// the caller's already-resolved profile today, so this stays clock-free and the
+// profile-local day is the caller's to establish.
+//
+// `isRealIsoDate` FIRST, and it is load-bearing rather than defensive: `Date.parse`
+// silently ROLLS `2026-02-30` forward to March 2, so a day-difference comparison
+// answers for a day the calendar does not have. Two shipped predicates
+// (`isDoseDateAccepted`, `isMoodDateAccepted`) accepted exactly that until this
+// change; only the practice one had noticed. The ruling opens the PAST half and
+// leaves that class dead, deliberately.
+//
+// The comparison is a string compare, which is the shipped idiom for this question
+// (`logFoodServingCore`'s `date > today(profileId)`) and is exact on zero-padded
+// ISO days once `isRealIsoDate` has established the shape.
+export function isPastWriteAccepted(todayStr: string, date: string): boolean {
+  return isRealIsoDate(date) && date <= todayStr;
+}
+
+// ── What the bounded taps and offers actually reach ──────────────────────────
+//
+// Keyed on `OneTapAffordance`, which is the axis these bounds were always on — the
+// same axis finding that keeps `OFFLINE_QUEUE_COVERAGE`'s rows local: a domain is
+// reachable from a bounded tap AND from a dated form, so a domain-grain column
+// cannot hold this without saying something false about one of them.
+//
+// A new affordance fails `tsc` here until someone says how far it reaches, and a
+// `bounded` reach cannot be declared without the argument for its size.
+export const TAP_REACH = {
+  // The nutrition bar and the `/history` door both stand on a day and post it.
+  "food-serving": { kind: "dated" },
+  "protein-grams": { kind: "dated" },
+  "food-usual": {
+    kind: "bounded",
+    back: USUAL_BACKFILL_WINDOW_DAYS,
+    forward: 0,
+    reason:
+      "TEMPLATE-WRITE HONESTY, not a backfill limit (#4118). The offer is the habitual set MINUS what the window already holds, re-derived by the write core, and it is only offered for a day whose evidence still supports it — so the reach is how far back the habit claim stays true, and the evidence guard is the other half of the same bound.",
+    ref: "#4118",
+  },
+  "routine-usual": {
+    kind: "bounded",
+    back: USUAL_BACKFILL_WINDOW_DAYS,
+    forward: 0,
+    reason:
+      "The composed bundle rides `food-usual`'s reach and adds its dose half, which confirms doses and moves an on-hand supply ledger — so an expired replay would be stock arithmetic against a total that moved, not a capture.",
+    ref: "#2458",
+  },
+  // The one-tap dose resolutions. THE ±2 IS TELEGRAM POINTER RETENTION, which is
+  // what the ruling means by an offer bound: since #2018 a dose keyboard stays live
+  // for exactly this window and the reconcile sweep can only close it while its
+  // pointer still exists, so raising this past retention would strand live keyboards
+  // with nothing left to close them. The two move together, window < retention.
+  "dose-status": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "Coupled to `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts, currently 3): a Telegram dose keyboard stays live for exactly this window, so the tap must stay resolvable for as long as the message it sits on can be tapped. Symmetric because a late after-midnight tap must still land on the reminder's own day.",
+    ref: "#614",
+  },
+  "dose-day": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "The day switcher's single dated tap rides the SAME scheduled cores as the tri-state (#3936), so it inherits the pointer-retention bound rather than declaring one: `doseLogDays` offers exactly the past half of this reach, off this constant.",
+    ref: "#3936",
+  },
+  "dose-day-stack": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "The same switcher's per-bucket bulk row (#3936) writing through the same scheduled cores, so the same bound; its own online-only argument is about supply arithmetic and lives in `OFFLINE_QUEUE_COVERAGE`.",
+    ref: "#3936",
+  },
+  // The audited deep door, and the ruling's named model for what a DATED surface is.
+  "dose-backfill": { kind: "dated" },
+  "mood-valence": {
+    kind: "bounded",
+    back: 2,
+    forward: 0,
+    reason:
+      "The reach of the day CHIPS — Today, Yesterday, and the day before (#2128) — which is all this tap can state. Past-only because a check-in cannot be pre-logged. The core takes any past day like every other; a dated mood form (#4427) would reach further without touching this.",
+    ref: "#2128",
+  },
+  "practice-session": {
+    kind: "bounded",
+    back: 30,
+    forward: 0,
+    reason:
+      "The reach of the wellness page's log launcher, whose `minDate` is this many days back: a reader reconciling a month of sittings is the ordinary case. Past-only at the offer even though the retired core bound was symmetric — the launcher never offered a future day.",
+    ref: "#2908",
+  },
+  // The symptom bar is mounted on dated surfaces — `/history`'s day view passes the
+  // day being read — so its taps are dated writes. This row is the ruling's answer
+  // to this lane's blocker, declared rather than left implicit.
+  "symptom-severity": { kind: "dated" },
+  // Taps whose action stamps the profile's today and offer no day to state.
+  "substance-unit": { kind: "today" },
+  "prn-dose": { kind: "today" },
+  "mobility-move": { kind: "today" },
+  "period-lifecycle": { kind: "today" },
+  "stool-form": { kind: "today" },
+  "medication-refill": { kind: "today" },
+} as const satisfies Record<OneTapAffordance, TapReach>;
+
+// Is `date` inside `id`'s declared reach, given the profile's already-resolved today?
+// The offer-side twin of `isPastWriteAccepted`, and the ONE realization of every tap
+// bound: `isDoseDateAccepted` and `isMoodDateAccepted` are this function wearing their
+// names, and the practice queue consults it to decide that a capture has aged out.
+//
+// A `today` tap accepts only today; a `dated` surface accepts what any core would.
+export function isWithinTapReach(
+  id: OneTapAffordance,
+  todayStr: string,
+  date: string
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const reach = TAP_REACH[id];
+  if (reach.kind === "dated") return isPastWriteAccepted(todayStr, date);
+  if (reach.kind === "today") return date === todayStr;
+  const diff = daysBetweenDateStr(todayStr, date);
+  if (diff == null) return false;
+  return diff <= reach.forward && -diff <= reach.back;
+}

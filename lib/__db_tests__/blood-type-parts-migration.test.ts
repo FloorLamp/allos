@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — migration 052 splits the legacy single `blood_type`
 // profile setting into its `blood_type_abo` / `blood_type_rh` halves.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { migration as m052 } from "@/lib/migrations/versions/052-blood-type-parts";
@@ -27,19 +27,23 @@ function seedLegacy(name: string, bloodType: string): number {
   return id;
 }
 
-beforeEach(() => {
-  db = new Database(":memory:");
-  db.pragma("foreign_keys = OFF");
-  // Build the schema through everything BEFORE 052, so this test drives up() itself
-  // and observes the legacy→split convergence.
-  for (const m of NUMBERED_MIGRATIONS) if (m.id < m052.id!) m.up(db); // 052 is numbered-era: its id is frozen in the shipped file
-  db.pragma("foreign_keys = ON");
-});
-
 describe("migration 052 — blood_type → abo/rh parts", () => {
-  it("splits every legacy value and drops the old key", () => {
+  it("splits valid values, preserves adopted halves and junk, and replays as a no-op", () => {
+    db = new Database(":memory:");
+    NUMBERED_MIGRATIONS[0].up(db); // profiles + profile_settings are the only owners
+
     const a = seedLegacy("legacy-o-pos", "O+");
     const b = seedLegacy("legacy-ab-neg", "AB-");
+    const replay = seedLegacy("legacy-replay", "A-");
+    const junk = seedLegacy("legacy-junk", "unknown");
+    const empty = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('no-bt')").run()
+        .lastInsertRowid
+    );
+    const partial = seedLegacy("legacy-partial", "B+");
+    db.prepare(
+      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'blood_type_abo', 'O')"
+    ).run(partial);
 
     m052.up(db);
 
@@ -51,45 +55,16 @@ describe("migration 052 — blood_type → abo/rh parts", () => {
       { key: "blood_type_abo", value: "AB" },
       { key: "blood_type_rh", value: "-" },
     ]);
-  });
-
-  it("replaying up() on an already-converged DB is a no-op", () => {
-    const p = seedLegacy("legacy-replay", "A-");
-    m052.up(db);
-    const after = parts(p);
-    m052.up(db);
-    expect(parts(p)).toEqual(after);
-  });
-
-  it("leaves an unparseable legacy value alone rather than guessing", () => {
-    const p = seedLegacy("legacy-junk", "unknown");
-    m052.up(db);
-    // Nothing invented, and the row is kept so nothing is lost.
-    expect(parts(p)).toEqual([{ key: "blood_type", value: "unknown" }]);
-  });
-
-  it("is a no-op on a DB with no blood types stored", () => {
-    const id = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES ('no-bt')").run()
-        .lastInsertRowid
-    );
-    expect(() => m052.up(db)).not.toThrow();
-    expect(parts(id)).toEqual([]);
-  });
-
-  it("never clobbers a half already present", () => {
-    const p = seedLegacy("legacy-partial", "B+");
-    // An adopted group is already on file, disagreeing with the legacy value.
-    db.prepare(
-      "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'blood_type_abo', 'O')"
-    ).run(p);
-
-    m052.up(db);
-
-    // The existing half stands (INSERT OR IGNORE); only the missing one is written.
-    expect(parts(p)).toEqual([
+    expect(parts(junk)).toEqual([{ key: "blood_type", value: "unknown" }]);
+    expect(parts(empty)).toEqual([]);
+    expect(parts(partial)).toEqual([
       { key: "blood_type_abo", value: "O" },
       { key: "blood_type_rh", value: "+" },
     ]);
+
+    const afterReplay = parts(replay);
+    m052.up(db);
+    expect(parts(replay)).toEqual(afterReplay);
+    db.close();
   });
 });

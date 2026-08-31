@@ -1,11 +1,10 @@
 import { test, expect } from "./fixtures";
-import { followLink } from "./helpers";
+import { followLink, openDashboardAll } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_EMPTY_TRAINING,
 } from "./fixture-logins";
-import { openStandingTail } from "./dashboard-candidate";
 
 // The Longevity page (#1042 phase 4): the expanded formatter over the SAME
 // healthspan-pillar model the dashboard Standing cluster compact-renders.
@@ -116,17 +115,18 @@ test("the Standing strength fact lands on the panel for the lift it names", asyn
   page,
 }) => {
   await page.goto("/");
-  // A quiet pillar folds into Standing's tail (#3548) — present, reachable, off the
-  // open page. Its own claim, and its link, are unchanged inside it.
-  await openStandingTail(page);
+  // A quiet pillar is not claimed by Standing at all since #4232 — it is present and
+  // reachable in the page's ONE fold, under the pillars' own moment header. Its claim
+  // and its link are unchanged inside it.
+  await openDashboardAll(page);
   const fact = page
-    .getByRole("main")
-    .locator('[data-standing-family="healthspan-pillars"]')
+    .getByTestId("dashboard-everything-read")
+    .locator('[data-moment-key="healthspan.pillars"]')
     .locator(
       '[data-testid="dashboard-candidate"][data-candidate-id="healthspan.pillar:strength"]'
     );
   await expect(fact).toBeVisible();
-  await expect(fact).toHaveAttribute("data-lane", "standing");
+  await expect(fact).toHaveAttribute("data-lane", "everything");
   // The claim: a level, for a named lift. Both come off one computation.
   await expect(fact).toContainText("Intermediate");
   await expect(fact).toContainText("Deadlift");

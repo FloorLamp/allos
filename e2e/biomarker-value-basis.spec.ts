@@ -280,12 +280,11 @@ test("the unmapped-panel sentence is stated once, on the Panel column head (#397
   await expect(
     table.locator("thead").getByTestId("clinical-panel-column-help")
   ).toHaveCount(1);
-  // The head's mount keeps its OWN id. `clinical-reported-panel-help` belongs to the
-  // date cell's per-row "Reported under …" disclosure, a different fact with a
-  // different label, and one id over two labels is a trap for the next selector.
-  await expect(
-    table.locator("thead").getByTestId("clinical-reported-panel-help")
-  ).toHaveCount(0);
+  // The date cell's per-row "Reported under …" disclosure — which this pair of lines
+  // used to hold apart from the head's mount — is gone entirely (#4419 ruling 3): that
+  // fact is a "Reported under" column on the reading's detail page now, so an
+  // assertion about its id here could no longer fail and has been dropped rather than
+  // left standing as a green that means nothing.
   await help.click();
   await expect(page.getByRole("tooltip")).toHaveText(
     "A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under"

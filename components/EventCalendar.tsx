@@ -5,93 +5,103 @@ import { useRef, useState } from "react";
 import { IconCalendar } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import MonthCalendar from "@/components/MonthCalendar";
-import { useCompactViewport } from "@/components/useCompactViewport";
-import { historyDayHref } from "@/lib/hrefs";
+import { historyHref } from "@/lib/hrefs";
 
-// THE SIDEBAR'S EVENT CALENDAR — a month grid whose marked days are a door into
-// the Timeline (#3079's usage review), one row at rest (#3154).
+// THE RECORD'S EVENT CALENDAR — a month grid whose marked days are a door into
+// the day view, opened from /history's own control row (#4280, completing
+// #4102).
 //
-// IT IS NOT A TRAINING CALENDAR AND HAS NOT BEEN FOR A LONG TIME. It was named
-// `TrainingLogCalendar` with an `activeDates` prop, and the app layout fed it
-// `getTimelineDates` — the union of EVERY event store: body metrics, doses,
-// symptoms, practices, immunizations, encounters, milestones, protocols, with
-// training as one optional member. The name outlived the data, and the
-// `trainingRelevant` gate that came with it took the calendar away from exactly
-// the profiles whose events it marks best — a child's immunizations, milestones
-// and symptoms. Both are gone; the union itself (lib/timeline.ts) is untouched.
+// IT LIVED IN THE NAV UNTIL NOW, and that is the whole subject of this file's
+// history. It was `TrainingLogCalendar` with an `activeDates` prop while the app
+// layout fed it `getTimelineDates` — the union of EVERY event store: body
+// metrics, doses, symptoms, practices, immunizations, encounters, milestones,
+// protocols, with training as one optional member. The name outlived the data
+// and its `trainingRelevant` gate took the calendar away from exactly the
+// profiles whose events it marks best. Both went in #3154. What went in #4102 is
+// the PLACEMENT: a day grid is a way of reading a history, and the chrome is a
+// way of reaching a page, so it costs the sidebar and the phone drawer nothing
+// now and lives on the page whose subject is which day a thing happened.
 //
-// TWO HOSTS, ONE GRID, the fork components/overlay/AnchoredPanel.tsx already
-// makes for every other anchored panel in the app:
+// ONE HOST, AND IT IS THE SHARED FORK. `components/overlay/AnchoredPanel.tsx`
+// already answers "what does an anchored panel open as, at this width": a
+// portaled popover from `md` up, a bottom action sheet below it. The two hand-cut
+// hosts this file used to carry — the sidebar's popover and the drawer's inline
+// full-bleed band — collapse into that one primitive, so the phone gets the
+// #1428 sheet every other anchored panel opens instead of a band unique to the
+// drawer.
 //
-//   * FROM `md` UP — one ~40px "Calendar" row that opens the grid in an anchored
-//     popover, over the same primitive the sidebar's "+ Log" panel uses. The
-//     resting cost was ~230px of permanent single-column chrome, which is what
-//     pushed Data, Settings and the whole footer below the fold; the popover is
-//     portaled and `fixed`, so opening it shifts neither the nav nor the footer,
-//     and the grid is no longer confined to the column's width.
-//   * BELOW `md` — the phone drawer's full-bleed band, unchanged. The drawer
-//     scrolls, so it never had the fold problem the row solves, and its 44px
-//     columns are a tap-floor claim (#3377/#3452/#3536) that a popover would
-//     drop on the floor.
+// THE PAGE IT SITS ON SPENDS NOTHING FOR IT. /history's chrome above its first
+// record is bounded at ~140px (#3958, e2e/history.spec.ts) and measured 134 on
+// the seeded admin at 390x844 — six pixels of room. A trigger inside the filter
+// row that already exists is the only mount that fits: it adds no band, and the
+// grid itself is not in the document until someone asks for it.
 //
-// No badge, no count, no dot on the row: the dock's never-campaigns doctrine
-// (#2651) applies to permanent chrome wherever it sits.
+// No badge, no count, no dot on the trigger: the dock's never-campaigns doctrine
+// (#2651) is about permanent chrome, and this is permanent chrome.
 
 // THE GRID ITSELF IS components/MonthCalendar.tsx (#3744) — the same one
-// DateField's picker renders. What is left here is the two HOSTS and the binding:
-// a marked day is a door into the record's day view, an unmarked one is inert, and
+// DateField's picker renders. What is left here is the HOST and the binding: a
+// marked day is a door into the record's day view, an unmarked one is inert, and
 // the set of doors is the only thing this file tells the calendar.
 
 // `w-72`, told to the positioner so the panel's first paint is already clamped
 // inside the viewport rather than measured into place afterwards.
 const PANEL_WIDTH_PX = 288;
 
-// Where a marked day goes: the record's day view. Through the SHARED helper — this
-// hand-built its own `/timeline?from=…&to=…#…` string, which is exactly why no sweep
-// over `timelineDayHref` could see it when the route was retired.
-const href = (day: string): Route => historyDayHref(day);
-
-// The phone drawer's band, CLAIMED rather than assumed (#3377/#3452). Its
-// `min-w-(--week-grid-min)` is what seven 44px columns cost, stated once in
-// app/globals.css and read here and by the drawer's own width class (#3536) —
-// slack at every width the drawer offers, which is the point: a host narrower
-// than a week overflows visibly instead of quietly redistributing the columns
-// back under the tap floor, the failure #3377 found and no DOM assertion would
-// have caught. The band gives up the drawer's right gutter and the part of its
-// left gutter outside the safe-area inset, so its left edge lands exactly on
-// `env(safe-area-inset-left)` and never behind it; the side borders and corner
-// radius go with it, so it reads as a band rather than a card jammed against the
-// drawer's edges.
-const PHONE_BAND =
-  "-mr-4 ml-[calc(env(safe-area-inset-left)_-_max(1rem,env(safe-area-inset-left)))] min-w-(--week-grid-min) border-y border-black/10 py-3 dark:border-white/10";
+// THE GRID TAKES ITS HOST'S WIDTH AND DOES NOT REACH PAST IT (#4280). The sheet
+// pads its own content by 16px a side and CLIPS what overflows — it declares
+// `overflow-x: hidden` so a coarse pointer's trailing hit-slop cannot be nudged
+// into a scroll (components/BottomSheet.tsx says so on the element itself). A
+// full-bleed band like the one the phone drawer used to draw is therefore not a
+// band here, and this was MEASURED rather than reasoned about: pulled out to the
+// screen edges, the grid's first and last columns were clipped 16px each at both
+// 320 and 390, and focusing the Next-month arrow scrolled the clipped panel 16px
+// left — leaving the Previous-month arrow half off the panel with no
+// user-reachable way back, because a hidden overflow is not scrollable by hand.
+//
+// WHAT THAT COSTS, STATED: the week is the sheet's content width divided by
+// seven, so a 390px viewport gives 51px columns and clears the 44px inline floor
+// (#3514), and a 320px one gives 41px and does not. `--week-grid-min` was the
+// token that used to buy the difference, by widening the phone nav drawer around
+// the band; a padded sheet cannot spend it — seven 44px columns are 308px and a
+// 320px viewport leaves 288 — so the token retired with the drawer's claim on it
+// rather than becoming a min-width that could only clip.
+// e2e/mobile-ui-polish.spec.ts measures the columns at both widths and the floor
+// at the width that can pay it.
+const GRID_HOST = "md:p-3";
 
 export default function EventCalendar({
   eventDates,
+  everyone = false,
 }: {
+  /** Every day the VIEWED members have an event on — the page's union (#4393). */
   eventDates: string[];
+  /** The feed's mode, so a marked day opens inside the view it was marked from. */
+  everyone?: boolean;
 }) {
-  const compact = useCompactViewport();
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
 
-  if (compact)
-    return (
-      <div className={PHONE_BAND}>
-        <MonthCalendar binding={{ kind: "linked", dates: eventDates, href }} />
-      </div>
-    );
+  // Where a marked day goes: the record's day view, in the SAME view the grid was
+  // read in. Through the SHARED helper — this hand-built its own
+  // `/timeline?from=…&to=…#…` string, which is exactly why no sweep over
+  // `timelineDayHref` could see it when the route was retired. `everyone` rides
+  // across because every other href on /history carries it (chipHref, dayNavHref,
+  // foldHref): once the marks union, a door that dropped the mode would open a
+  // household day on the acting profile alone — a lit day leading to an empty one.
+  const href = (day: string): Route => historyHref({ day, everyone });
 
   return (
     <>
       <button
         ref={anchorRef}
         type="button"
-        data-testid="sidebar-calendar"
+        data-testid="history-calendar"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-controls="sidebar-calendar-panel"
+        aria-controls="history-calendar-panel"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+        className="btn-ghost btn-sm shrink-0"
       >
         <IconCalendar className="h-4 w-4 shrink-0" stroke={1.75} />
         Calendar
@@ -105,16 +115,17 @@ export default function EventCalendar({
         // true: the role, the name, and focus moving in (#3905). Not `aria-modal`
         // — nothing here locks the page behind it.
         role="dialog"
-        panelId="sidebar-calendar-panel"
-        testId="sidebar-calendar-panel"
+        panelId="history-calendar-panel"
+        testId="history-calendar-panel"
+        sheetTestId="history-calendar-sheet"
         fallbackWidth={PANEL_WIDTH_PX}
         panelClassName="w-72"
       >
-        {/* `open` lives in a layout App Router does not remount, so without this
-            the grid stays floating over the record day it just opened (#3905).
-            The primitive cannot know a Link inside it ends the interaction. */}
+        {/* A Link inside the panel ends the interaction, and the primitive cannot
+            know that: without this the grid stays floating over the record day it
+            just opened (#3905). */}
         {() => (
-          <div className="p-3">
+          <div className={GRID_HOST}>
             <MonthCalendar
               binding={{
                 kind: "linked",

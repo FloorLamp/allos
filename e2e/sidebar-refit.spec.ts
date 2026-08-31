@@ -12,6 +12,16 @@ import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // opening the same kind of panel, Frequent went drawer-only, and the commit hash
 // left the footer for the page that already renders it.
 //
+// THE CALENDAR HALF OF THIS FILE IS ON /history NOW (#4280, completing #4102).
+// The row left the column — a day grid is a way of reading a history, and the
+// chrome is a way of reaching a page — but what it left BEHIND is the reason the
+// cases stay here: the refit's anchored-panel contract has exactly two dialog
+// consumers, the sidebar's "+ Log" and the record's Calendar, and #3905's
+// browser-side invariant (a promised popup the keyboard can reach) is a claim
+// about the PRIMITIVE that only means something asserted on both. Every case
+// below therefore runs on /history, where the desktop sidebar renders exactly as
+// it does everywhere else and the calendar's trigger is on the page.
+//
 // 1366x768 IS THE ACCEPTANCE VIEWPORT, not the project's 1280x900: it is the
 // shortest desktop height the refit was ruled against, so every test here runs
 // at it and the fold assertion is measured rather than reasoned about.
@@ -89,24 +99,36 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     await expect(page).toHaveURL(/\/nutrition$/);
   });
 
-  test("the Calendar row opens the month grid, shifts nothing, and a marked day opens that timeline day", async ({
+  test("the record's Calendar trigger opens the month grid, shifts nothing, and a marked day opens that day", async ({
     page,
   }) => {
-    await page.goto("/");
-    const row = page.locator("aside").getByTestId("sidebar-calendar");
+    await page.goto("/history");
+    // IN THE FILTER ROW THAT ALREADY EXISTS, which is the placement claim: the
+    // record's chrome above its first row is bounded at ~140px (#3958) and had
+    // 6px of room, so the grid could only arrive as a control inside a band the
+    // page already draws — never as a band of its own.
+    const row = page
+      .getByTestId("history-filters")
+      .getByTestId("history-calendar");
     await expect(row).toBeVisible();
     // No badge, no count, no dot: permanent chrome never campaigns (#2651). The
-    // row's whole text content is its label.
+    // trigger's whole text content is its label.
     await expect(row).toHaveText("Calendar");
 
-    const panel = page.getByTestId("sidebar-calendar-panel");
+    const panel = page.getByTestId("history-calendar-panel");
     await expect(panel).toHaveCount(0);
-    const navBefore = await navTopPx(page);
+    // WHAT MUST NOT MOVE IS THE PAGE, not the nav: measured on the first record
+    // row, which is the thing the ~140px budget is measured to.
+    const firstRow = page.getByTestId("history-row").first(); // first-ok: the claim is that opening a portaled panel moves the feed by nothing, true of whichever record leads
+    await expect(firstRow).toBeVisible();
+    const rowTop = async () =>
+      firstRow.evaluate((el) => el.getBoundingClientRect().top);
+    const feedBefore = await rowTop();
     await hydratedClick(page, row);
     await expect(panel).toBeVisible();
-    // Portaled and `fixed`: opening it moves neither the nav nor the footer, which
-    // is the whole reason the grid left the column.
-    expect(await navTopPx(page)).toBeCloseTo(navBefore, 0);
+    // Portaled and `fixed`: opening it moves neither the filter row nor the feed,
+    // which is the whole reason the grid opens rather than unfolding.
+    expect(await rowTop()).toBeCloseTo(feedBefore, 0);
 
     // A marked day is a door into the Timeline (#3079's usage review). Walk back
     // through the grid's own bounded month navigation until a month holds one —
@@ -187,11 +209,15 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     );
   }
 
+  // WHERE THE TRIGGER LIVES is now part of the table: the log panel's opens from
+  // the desktop sidebar and the calendar's from /history's filter row (#4280).
+  // Both pages render the sidebar, so one route serves the whole table.
   const KEYBOARD_PANELS = [
     {
       what: "Calendar",
-      trigger: "sidebar-calendar",
-      panel: "sidebar-calendar-panel",
+      inSidebar: false,
+      trigger: "history-calendar",
+      panel: "history-calendar-panel",
       // The panel's first control BY NAME, because the browser's answer to "what
       // is focusable in here" is the part jsdom cannot give. Both cases now pin
       // the first focusable structurally (see FOCUSABLE above); this adds WHICH
@@ -202,18 +228,27 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     },
     {
       what: "Log",
+      inSidebar: true,
       trigger: "sidebar-log",
       panel: "sidebar-log-panel",
       firstControl: null,
     },
   ] as const;
 
-  for (const { what, trigger, panel, firstControl } of KEYBOARD_PANELS) {
+  for (const {
+    what,
+    inSidebar,
+    trigger,
+    panel,
+    firstControl,
+  } of KEYBOARD_PANELS) {
     test(`the ${what} panel opens from the keyboard, is the dialog its trigger promises, and hands focus back`, async ({
       page,
     }) => {
-      await page.goto("/");
-      const button = page.locator("aside").getByTestId(trigger);
+      await page.goto("/history");
+      const button = (inSidebar ? page.locator("aside") : page).getByTestId(
+        trigger
+      );
       await awaitHydrated(button);
       await button.focus();
       await expect(button).toBeFocused();
@@ -277,12 +312,9 @@ test.describe("the desktop sidebar refit (#3154)", () => {
   test("both panels close on Escape and on an outside click", async ({
     page,
   }) => {
-    await page.goto("/");
-    const calendar = page.getByTestId("sidebar-calendar-panel");
-    await hydratedClick(
-      page,
-      page.locator("aside").getByTestId("sidebar-calendar")
-    );
+    await page.goto("/history");
+    const calendar = page.getByTestId("history-calendar-panel");
+    await hydratedClick(page, page.getByTestId("history-calendar"));
     await expect(calendar).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(calendar).toHaveCount(0);
@@ -317,10 +349,10 @@ test.describe("the desktop sidebar refit (#3154)", () => {
       { viewport: DESKTOP }
     );
     try {
-      await child.goto("/");
+      await child.goto("/history");
       const aside = child.locator("aside");
       await expect(aside.getByTestId("sidebar-log")).toBeVisible();
-      await expect(aside.getByTestId("sidebar-calendar")).toBeVisible();
+      await expect(child.getByTestId("history-calendar")).toBeVisible();
       // …and it really is that profile: the workout product stands down.
       await expect(aside.locator('nav a[href="/training"]')).toHaveCount(0);
 
@@ -344,8 +376,11 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     // nav has not rendered fits any height.
     await expect(page.locator("aside nav > :first-child")).toBeVisible();
     await expect(page.getByTestId("sidebar-log")).toBeVisible();
-    await expect(aside.getByTestId("sidebar-calendar")).toBeVisible();
-
+    // THE COLUMN IS 302px SHORTER SINCE #4280 — measured in the drawer, which
+    // renders the same <SidebarContent> — so this ceiling has more headroom than
+    // the refit left it, not less. Recorded because a bound that got easier to
+    // clear is a bound that stopped saying what it used to say: what it still
+    // catches is a NEW block of chrome above the nav, which is what it was for.
     const box = await aside.evaluate((el) => ({
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
@@ -392,20 +427,27 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     const aside = page.locator("aside");
     const log = aside.getByTestId("sidebar-log");
     await expect(log).toBeVisible();
-    await expect(aside.getByTestId("sidebar-calendar")).toBeVisible();
+    // THE NEIGHBOUR IS A NAV ROW NOW (#4280). It was the Calendar row, which has
+    // left the column; the claim is unchanged and so is its shape — one control
+    // is filled and the rows around it are not — so it is asserted against a row
+    // that is still there. Settings, because it is never the active row on
+    // /history and an active row paints its own soft fill.
+    const neighbour = aside.getByRole("link", { name: "Settings" });
+    await expect(neighbour).toBeVisible();
 
     const fills = await aside.evaluate((el) => {
-      const read = (testId: string) =>
-        getComputedStyle(
-          el.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!
-        ).backgroundColor;
-      return { log: read("sidebar-log"), calendar: read("sidebar-calendar") };
+      const read = (sel: string) =>
+        getComputedStyle(el.querySelector<HTMLElement>(sel)!).backgroundColor;
+      return {
+        log: read('[data-testid="sidebar-log"]'),
+        neighbour: read('nav a[href="/settings"]'),
+      };
     });
     // rgba(…, 0) / "transparent" is what an unpainted control reports.
-    expect(fills.calendar, "the Calendar row is unfilled").toMatch(
+    expect(fills.neighbour, "an ordinary nav row is unfilled").toMatch(
       /^(transparent|rgba\(.*,\s*0\))$/
     );
-    expect(fills.log, "+ Log paints a fill").not.toBe(fills.calendar);
+    expect(fills.log, "+ Log paints a fill").not.toBe(fills.neighbour);
     expect(fills.log).not.toMatch(/^(transparent|rgba\(.*,\s*0\))$/);
 
     // THE ADMISSION RULE, on the surface the owner named: primary marks the action

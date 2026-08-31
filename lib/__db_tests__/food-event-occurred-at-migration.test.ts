@@ -38,10 +38,12 @@ import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/183-food-event-occurred-at";
 import { eventInstant, recordInstant } from "@/lib/row-instants";
 
-// The chain is still the source of the fixture; each case gets independent bytes.
+// Frozen owners of every table and column migration 183 reads.
+const FIXTURE_MIGRATION_IDS = new Set([1, 56, 116, 135, 154, 170]);
 const seededDb = historicalDbFixture((mem) => {
   mem.pragma("foreign_keys = OFF");
-  for (const m of NUMBERED_MIGRATIONS) if (m.id <= 182) m.up(mem);
+  for (const m of NUMBERED_MIGRATIONS)
+    if (FIXTURE_MIGRATION_IDS.has(m.id)) m.up(mem);
   seed(mem);
 });
 

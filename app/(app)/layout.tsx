@@ -64,7 +64,6 @@ import {
   getNavRelevance,
 } from "@/lib/queries";
 import { getSegmentLogDays } from "@/lib/queries/log-sheet";
-import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
 import { excludedRegions } from "@/lib/injury-model";
@@ -140,7 +139,6 @@ export default async function AppLayout({
   const trainingRelevant = isTrainingRelevant(profileAge);
   const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const suggestions = getActivitySuggestions(profile.id);
-  const timelineDates = getTimelineDates(profile.id);
   // One extra session per exercise: the editor filters out the activity being
   // logged (which auto-save inserts into its own history) and still shows 3.
   const exerciseHistory = getRecentExerciseHistory(profile.id, 4);
@@ -347,7 +345,6 @@ export default async function AppLayout({
                         <div className="flex min-h-screen">
                           <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) p-4 md:flex print:hidden dark:border-white/5">
                             <SidebarContent
-                              eventDates={timelineDates}
                               active={session.profile}
                               username={login.username}
                               // The scope's DISAMBIGUATED set (#534) — two accessible
@@ -374,14 +371,15 @@ export default async function AppLayout({
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                          {/* THE NOTCH INSET LIVES HERE NOW (#4102). It used to ride the phone
-            top bar's own `pt-[env(safe-area-inset-top)]`, and that bar has
-            retired — so without this the first line of every page would print
-            under the status bar on a device with a notch, which is what
-            `viewportFit: cover` means. On a device without one the inset is 0px
-            and content starts at the true viewport top, which is the ruling.
+                          {/* FIRST-PAINT CLEARANCE ONLY (#4102, #4282). Without this the first line
+            of every page would print under the status bar, which is what
+            `viewportFit: cover` means. It is PADDING, so it positions and paints
+            nothing: content scrolls under the notch, and #4282 ruled that IS
+            edge-to-edge. A sticky strip therefore cannot lean on it and carries
+            `top-edge-safe` (app/globals.css) itself; the token rather than a
+            second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
-                          <main className="min-w-0 flex-1 overflow-x-clip pt-[env(safe-area-inset-top)] md:pt-0">
+                          <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
                             {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
                     IT (#4102). It was built for the phone top bar's hide-on-scroll
                     (issue #1416), and that bar has retired: the dock is the phone's
@@ -433,7 +431,6 @@ export default async function AppLayout({
                       inside <ShellChrome>, which exists to hide a sticky bar that
                       no longer exists. */}
                         <MobileNav
-                          eventDates={timelineDates}
                           active={session.profile}
                           username={login.username}
                           profiles={scope.profiles}

@@ -170,18 +170,23 @@ function seed(): Seeded {
   }
 }
 
-// Taken rows for one dose ON ONE DAY. Scoped to the day deliberately: a schedule row
-// is not an occurrence (#3936), so a daily supplement carries a taken row for every
-// day it was taken, and counting them all would answer a question nobody asked.
-function takenCount(doseId: number, date: string): number {
+// Rows of one status for one dose ON ONE DAY. Scoped to the day deliberately: a
+// schedule row is not an occurrence (#3936), so a daily supplement carries one row
+// for every day it was answered, and counting them all would answer a different
+// question.
+function statusCount(
+  doseId: number,
+  date: string,
+  status: "taken" | "skipped"
+): number {
   const db = openDb();
   try {
     return (
       db
         .prepare(
-          "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ? AND status = 'taken'"
+          "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ? AND status = ?"
         )
-        .get(doseId, date) as { n: number }
+        .get(doseId, date, status) as { n: number }
     ).n;
   } finally {
     db.close();
@@ -296,7 +301,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       db.close();
     }
     const day = todayLocal();
-    expect(takenCount(stale, day)).toBe(1);
+    expect(statusCount(stale, day, "taken")).toBe(1);
 
     // THE ROW'S PROMISE IS THE SERVER'S PENDING SET, not a client copy of it. A
     // reload after the out-of-band write must drop the stale dose from the names AND
@@ -318,10 +323,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // ids with the day's freshly-derived pending set, AND `markDoseTaken` is
     // idempotent per (dose, date). Measured by mutation: removing the intersection
     // leaves this line green, which is what the reload assertions above are for.
-    expect(takenCount(stale, day)).toBe(1);
+    expect(statusCount(stale, day, "taken")).toBe(1);
     // And the rest of the named set did land.
     for (const doseId of named.slice(1))
-      expect(takenCount(doseId, day)).toBe(1);
+      expect(statusCount(doseId, day, "taken")).toBe(1);
   });
 
   test("past-day dose interactivity flips at the write window, from both sides", async ({
@@ -375,6 +380,87 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .first(); // first-ok: any named dose row — order-agnostic
     await expect(outsideDose).toContainText("Not recorded");
     await expect(outsideDose.getByRole("button")).toHaveCount(0);
+  });
+
+  test("a past-day dose captured offline leaves the ledger, then replays onto that day", async ({
+    page,
+  }) => {
+    const day = shiftDateStr(todayLocal(), -1);
+    const doseId = seeded.doseIds[0]!;
+    const todayBefore = statusCount(doseId, todayLocal(), "taken");
+
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+    const group = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(group).toHaveAttribute(
+      "data-doses",
+      new RegExp(`(^|,)${doseId}(,|$)`)
+    );
+    await hydratedClick(page, group);
+
+    const row = page.getByTestId(`ledger-due-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await page.context().setOffline(true);
+    // A plain click: the queue, rather than a Server Action response, settles this tap.
+    await row.getByTestId(`ledger-take-${doseId}`).click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+    // A kept capture resolves this occurrence now, before replay owns the durable write.
+    await expect(row).toHaveCount(0);
+
+    await page.context().setOffline(false);
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // Replay lands once on the day the ledger named, without disturbing today's row.
+    expect(statusCount(doseId, day, "taken")).toBe(1);
+    expect(statusCount(doseId, todayLocal(), "taken")).toBe(todayBefore);
+  });
+
+  test("a past-day dose skipped offline leaves the ledger, then replays onto that day", async ({
+    page,
+  }) => {
+    const day = shiftDateStr(todayLocal(), -1);
+    const doseId = seeded.doseIds[1]!;
+    const todayBefore = statusCount(doseId, todayLocal(), "taken");
+
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+    const group = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(group).toHaveAttribute(
+      "data-doses",
+      new RegExp(`(^|,)${doseId}(,|$)`)
+    );
+    await hydratedClick(page, group);
+
+    const row = page.getByTestId(`ledger-due-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await page.context().setOffline(true);
+    await row.getByTestId(`ledger-skip-${doseId}`).click();
+    await expect(
+      page.getByText("Skip saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+    // The missing row also removes the only second-tap control before replay.
+    await expect(row).toHaveCount(0);
+
+    await page.context().setOffline(false);
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    expect(statusCount(doseId, day, "skipped")).toBe(1);
+    expect(statusCount(doseId, day, "taken")).toBe(0);
+    expect(statusCount(doseId, todayLocal(), "taken")).toBe(todayBefore);
   });
 });
 

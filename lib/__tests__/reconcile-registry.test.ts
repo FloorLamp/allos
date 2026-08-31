@@ -774,14 +774,22 @@ describe("owningFamily / inertTokens", () => {
   });
 
   it("an unknown prefix is NOT treated as inert — an unreasoned button fails safe", () => {
-    expect(inertTokens(["mystery:1:2"], tokenPrefix).size).toBe(0);
+    expect(inertTokens(["mystery:1:2"], tokenPrefix, false).size).toBe(0);
     expect(owningFamily(["mystery:1:2"], tokenPrefix)).toBeNull();
   });
 
-  it("inert tokens are picked out by their registry declaration", () => {
-    expect([
-      ...inertTokens([`tune:7:${DATE}`, `take:7:1:1:${DATE}`], tokenPrefix),
-    ]).toEqual([`tune:7:${DATE}`]);
+  it("claim views expire with their claims; standalone controls do not", () => {
+    const tokens = [
+      `foodmore:7:Morning:${DATE}`,
+      `tune:7:${DATE}`,
+      `take:7:1:1:${DATE}`,
+    ];
+    expect([...inertTokens(tokens, tokenPrefix, false)]).toEqual(
+      tokens.slice(0, 2)
+    );
+    expect([...inertTokens(tokens, tokenPrefix, true)]).toEqual([
+      `tune:7:${DATE}`,
+    ]);
   });
 });
 

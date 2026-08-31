@@ -11,7 +11,6 @@ import {
   touchSwipe,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
-import { openStandingTail } from "./dashboard-candidate";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -291,11 +290,12 @@ test.describe("mobile clipping batch (#2614)", () => {
     // milder one, because seating is flagged-first and the values carrying a
     // severity word are exactly the seated ones.
     await page.goto("/");
-    // The family folds into Standing's quiet tail when nothing is claiming
-    // attention (#3548); its rows keep the same anatomy inside the fold, which is
-    // exactly what this measures.
-    await openStandingTail(page);
-    const family = page.locator('[data-standing-family="clinical-results"]');
+    // On this fixture the seated draws are inside the ruled 30-day collection window
+    // (#4232), so they are FRESH and claim Standing's attention tier — the same rows,
+    // the same anatomy, the band above the fold instead of the one behind it.
+    const family = page.locator(
+      '[data-standing-band="attention"] [data-standing-family="clinical-results"]'
+    );
     await expect(family).toBeVisible();
     const rows = family.getByTestId("dashboard-candidate");
     await expect(rows.first()).toBeVisible(); // first-ok: presence proves the family rendered; the assertions below are over ALL of them

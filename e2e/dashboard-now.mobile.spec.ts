@@ -346,6 +346,56 @@ test("a behind target tells its pace in Standing and takes no Now slot", async (
   }
 });
 
+test("Attention keeps a full-band cue and readable header in both themes", async ({
+  browser,
+}) => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    const page = await openDashboard(
+      browser,
+      { username: E2E_LOGIN_PACEBEHIND },
+      { ...DESKTOP, colorScheme }
+    );
+    try {
+      const tier = page.locator('[data-standing-band="attention"]');
+      await expect(tier).toBeVisible();
+      const paint = await tier.evaluate((node) => {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", { willReadFrequently: true })!;
+        const luminance = (color: string) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          const channels = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
+          const [red, green, blue] = Array.from(channels, (channel) => {
+            const value = channel / 255;
+            return value <= 0.03928
+              ? value / 12.92
+              : ((value + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        };
+        const style = getComputedStyle(node);
+        const header = getComputedStyle(node.querySelector("h3")!);
+        const foreground = luminance(header.color);
+        const background = luminance(style.backgroundColor);
+        return {
+          background: style.backgroundColor,
+          surrounding: getComputedStyle(node.parentElement!).backgroundColor,
+          edge: Number.parseFloat(style.borderInlineStartWidth),
+          contrast:
+            (Math.max(foreground, background) + 0.05) /
+            (Math.min(foreground, background) + 0.05),
+        };
+      });
+      expect(paint.background).not.toBe(paint.surrounding);
+      expect(paint.edge).toBeGreaterThanOrEqual(4);
+      expect(paint.contrast).toBeGreaterThanOrEqual(4.5);
+    } finally {
+      await page.context().close();
+    }
+  }
+});
+
 // The negative control, and the reason the day-1 fixture stayed pinned: an on-pace
 // target's reading is the quiet count it always was, in the stable rest.
 test("an on-pace target states no pace and stays out of the tier", async ({
@@ -396,11 +446,13 @@ test("a cold-start profile's tier is the getting-started list", async ({
         .getByRole("heading", { level: 2, name: "Right now", exact: true })
     ).toBeVisible();
     await expect(page.getByTestId("now-strip-date")).toBeVisible();
-    // Past the cap the remaining CTAs are folded, not dropped.
+    // Past the cap the remaining CTAs are folded, not dropped — and since #4232 the
+    // fold is the page's one bottom fold, in the Setup group the partition routes a
+    // never-recorded candidate to.
     await expect(
-      page.locator(
-        '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
-      )
+      page
+        .getByTestId("dashboard-everything-setup")
+        .locator('[data-testid="dashboard-candidate"][data-presence="never"]')
     ).not.toHaveCount(0);
   } finally {
     await page.context().close();
@@ -440,11 +492,11 @@ test("the first log retires the getting-started list to the fold", async ({
       ).toBeVisible();
       await expect(tierCtas(after)).toHaveCount(0);
       // Retired, not dropped: every one of them is still in the document, in the
-      // tail, reachable behind the fold.
+      // page's one fold, reachable (#4232).
       await expect(
-        after.locator(
-          '[data-standing-band="tail"] [data-testid="dashboard-candidate"][data-presence="never"]'
-        )
+        after
+          .getByTestId("dashboard-everything-setup")
+          .locator('[data-testid="dashboard-candidate"][data-presence="never"]')
       ).not.toHaveCount(0);
     } finally {
       await after.context().close();

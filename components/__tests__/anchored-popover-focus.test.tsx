@@ -11,7 +11,8 @@ import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 import MobileChromeProvider from "@/components/MobileChromeProvider";
 
 // WHAT THE TRIGGER PROMISED, KEPT (#3905). The #3889 refit moved the sidebar's
-// calendar and log menu into `AnchoredPanel`, which portals them to <body> —
+// log menu and the event calendar (on /history since #4280) into `AnchoredPanel`,
+// which portals them to <body> —
 // under triggers declaring `aria-haspopup="dialog"`, over panels that declared no
 // role, carried no name and never took focus. A keyboard user reached five to
 // thirty controls only by tabbing past the whole page.
@@ -101,12 +102,12 @@ function ControlledOverflowMenu() {
 // name → what the trigger promises, and what the panel must therefore be.
 const PANELS = [
   {
-    what: "the sidebar calendar",
+    what: "the record's calendar",
     // Dated well before today so the grid's own month bound leaves the first
     // control — the Previous-month arrow — enabled whenever this runs.
     node: <EventCalendar eventDates={["2020-01-05"]} />,
-    trigger: "sidebar-calendar",
-    panel: "sidebar-calendar-panel",
+    trigger: "history-calendar",
+    panel: "history-calendar-panel",
     role: "dialog",
     accessibleName: "Calendar",
     firstControl: '[aria-label="Previous month"]',

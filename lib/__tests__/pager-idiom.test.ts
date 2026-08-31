@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -90,6 +91,24 @@ function walk(dir: string): string[] {
   return out;
 }
 
+function repoTsxFiles(): string[] {
+  return execFileSync(
+    "git",
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      "*.tsx",
+    ],
+    { cwd: REPO, encoding: "utf8" }
+  )
+    .split("\0")
+    .filter((rel) => rel && fs.existsSync(path.join(REPO, rel)));
+}
+
 const FILES = SCAN_DIRS.flatMap((dir) =>
   walk(path.join(REPO, dir)).map((full) => ({
     rel: path.relative(REPO, full).split(path.sep).join("/"),
@@ -150,24 +169,12 @@ describe("one pager idiom (#3378)", () => {
   });
 
   it("scans the whole app: no .tsx renders outside SCAN_DIRS", () => {
-    // The scope claim above, as a measurement. Walks from the REPO ROOT — the one
-    // place in this file that does — and skips only what is not source: installed
-    // packages, build output, and the dot-directories that hold tooling state.
-    const skip = new Set(["node_modules", "test-results", "playwright-report"]);
-    const outside: string[] = [];
-    const sweep = (dir: string, relDir: string) => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".") || skip.has(entry.name)) continue;
-        const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          if (SCAN_DIRS.includes(rel)) continue; // already swept, by definition
-          sweep(path.join(dir, entry.name), rel);
-        } else if (entry.name.endsWith(".tsx")) {
-          outside.push(rel);
-        }
-      }
-    };
-    sweep(REPO, "");
+    // The scope claim above, as a measurement. Git names tracked plus non-ignored
+    // untracked source, so runtime uploads, build output and installed packages are
+    // excluded by the same boundary that decides what can ship.
+    const outside = repoTsxFiles().filter(
+      (rel) => !SCAN_DIRS.some((dir) => rel.startsWith(`${dir}/`))
+    );
     expect(
       outside,
       "A .tsx outside `app/` and `components/` means the pager census above no " +

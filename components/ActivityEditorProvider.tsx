@@ -819,6 +819,8 @@ export default function ActivityEditorProvider({
             hidden={minimized}
             onMinimize={live ? minimizeLive : undefined}
             onLiveFinished={() => {
+              const id = liveOwnedRowIdRef.current ?? editData?.id;
+              if (id != null) setDismissedPresenceId(id);
               setLive(false);
               setLiveStartEpoch(null);
             }}

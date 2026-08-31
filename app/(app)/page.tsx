@@ -101,7 +101,11 @@ import {
   daysRemainingLabel,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
-import { RECENT_LAB_STALE_LABEL, recentLabHighlights } from "@/lib/recent-labs";
+import {
+  clinicalResultClaimsFreshness,
+  RECENT_LAB_STALE_LABEL,
+  recentLabHighlights,
+} from "@/lib/recent-labs";
 import {
   DORMANCY_DOMAINS,
   WEIGHT_TREND_WINDOW_DAYS,
@@ -114,6 +118,7 @@ import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
 import { getRecapCard } from "@/lib/notifications/recap-data";
+import { upcomingRowQualifiers } from "@/lib/notifications/upcoming-digest";
 import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
 import { recapScaleEntry } from "@/lib/recap-scale";
 import {
@@ -825,7 +830,14 @@ async function renderDashboard(
   let labRows: RecentLabRow[] = [];
   const labPromotions = new Map<
     string,
-    { changed: boolean; sharedFactKey?: string }
+    {
+      changed: boolean;
+      fresh: boolean;
+      // The signal key this row's OWN acknowledge control posts, or absent when it
+      // needs none (#4232). See the mount below for why it is decided here.
+      acknowledgeKey?: string;
+      sharedFactKey?: string;
+    }
   >();
   {
     const observations = getDashboardClinicalObservations(profile.id);
@@ -850,8 +862,29 @@ async function renderDashboard(
             ? undefined
             : observation.previous_flag
         );
+      // FRESH RESULTS ARE RELEVANT (#4232). A result collected inside the window
+      // claims Standing's attention tier whether or not it is notable, and the claim
+      // ends on acknowledgment or when the window lapses, whichever is first — the
+      // acknowledge lifecycle #3225 already runs, read through the same suppression
+      // bus above. The date is the COLLECTION date the record carries, so a
+      // backfilled import of old results claims nothing.
+      const fresh = clinicalResultClaimsFreshness(
+        observation.date,
+        on,
+        labAcknowledged(name)
+      );
       labPromotions.set(name, {
         changed,
+        fresh,
+        // GROWING THE ACKNOWLEDGE MOUNT, AND ONLY WHERE IT IS MISSING (#4232). The
+        // acknowledgment is the flag dismissal (#3225), and its only mount is the
+        // attention row's snooze/dismiss menu — which a non-flagged result never
+        // has. So a fresh result whose key carries no attention item hosts the menu
+        // on its own row; one whose key DOES already renders it there, and a second
+        // menu posting the same signal would be two controls for one state.
+        ...(fresh && !activeAttentionKeys.has(findingKey)
+          ? { acknowledgeKey: findingKey }
+          : {}),
         ...(changed
           ? {
               sharedFactKey: `upcoming.${findingKey}`,
@@ -1196,12 +1229,28 @@ async function renderDashboard(
       (entry) =>
         dashboardAttentionCandidateId(entry.key) === candidate.candidateId
     )!;
-    // AHEAD SAYS WHEN (#4076). A schedule's sentence is its due text; the row below
-    // says WHAT, because outside Ahead the item's own detail is the content a person
-    // came to read — the biomarker retest sentence, "Vitamin D3 · 2000 IU".
+    // AHEAD SAYS WHEN, AND NOW ALSO WHY (#4076, #4319). A schedule's sentence is its
+    // due text; the row below says WHAT, because outside Ahead the item's own detail
+    // is the content a person came to read — the biomarker retest sentence, "Vitamin
+    // D3 · 2000 IU". What the due text no longer does is defer the WHY one tap to
+    // /upcoming: the item's reason fragments come from the producer the digest reads,
+    // so the push and the page cannot word one fact two ways.
+    //
+    // THE DUE TEXT IS `attentionAheadDetail` AND NOT `upcomingDueText` (#4468), which
+    // is the whole of that fix: a dose scheduled for a later slot says "from 11:00"
+    // so the row states WHY it is here rather than now. It is passed IN as the due
+    // text rather than wrapping the result, because the two are not interchangeable
+    // and taking either alone silently drops the other's behaviour. Safe because a
+    // dose is not a named-line domain, so its due text flows through this producer
+    // instead of being replaced by a cause fragment. Pinned on a real dose item in
+    // lib/__db_tests__/upcoming-aggregate.test.ts — neither issue's own tests can see
+    // the nesting.
     aheadPresentations.set(candidate.candidateId, {
       label: item.title,
-      detail: attentionAheadDetail(item, on, formatPrefs),
+      detail: upcomingRowQualifiers(
+        item,
+        attentionAheadDetail(item, on, formatPrefs)
+      ).join(" · "),
       href: item.href,
     });
     // The write follows the control to the row (#4076). A non-actionable attention
@@ -1967,6 +2016,7 @@ async function renderDashboard(
           .join(" · "),
         disclosure: proteinTodayExplanation(proteinToday),
         href: "/nutrition",
+        moment: { title: "Nutrition today", href: "/nutrition" },
         presence: "current",
       }
     );
@@ -2254,6 +2304,7 @@ async function renderDashboard(
     );
 
   labRows.forEach((row, index) => {
+    const acknowledgeKey = labPromotions.get(row.name)?.acknowledgeKey;
     const age = glanceAgeToken({
       date: row.date,
       today: on,
@@ -2288,7 +2339,17 @@ async function renderDashboard(
         ),
         href: row.href,
         disclosure: age.title ?? undefined,
+        moment: { title: "Recent clinical results", href: "/results" },
         presence: "current",
+        control:
+          canWrite && acknowledgeKey ? (
+            <SnoozeDismissMenu
+              itemName={row.name}
+              signalKey={acknowledgeKey}
+              snoozeAction={snoozeAttention}
+              dismissAction={dismissAttention}
+            />
+          ) : undefined,
       }
     );
   });
@@ -2615,6 +2676,7 @@ async function renderDashboard(
           </span>
         ),
         href: pillar.href,
+        moment: { title: "Healthspan pillars", href: "/longevity" },
         presence: "current",
       }
     )

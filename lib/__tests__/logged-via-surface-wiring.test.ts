@@ -24,11 +24,13 @@ import { UNMOUNTED_ROOTS } from "./unmounted-roots";
 // files that import that action — and fails when any of those clients has no way to
 // say where it is. Add a read site with no declaring mounting and this goes red.
 //
-// A CLIENT DECLARES in one of two ways, and both are the same mechanism: it stamps a
-// FormData through `useLoggedViaStamp()` / `LOGGED_VIA_FIELD`, or it renders
-// `<LoggedViaField />` inside a plain `<form action={…}>`. A file that is itself a
-// REGION ROOT (`<LoggedViaSurface value=…>`) counts too: declaring the region is what
-// the controls inside it read.
+// A CLIENT DECLARES in one of three ways, and all three are the same mechanism: it
+// stamps a FormData through `useLoggedViaStamp()` / `LOGGED_VIA_FIELD`, it renders
+// `<LoggedViaField />` inside a plain `<form action={…}>`, or it runs the write through
+// `useWritePipeline` (#3276), which builds the FormData and stamps it so the caller
+// never holds one to forget. A file that is itself a REGION ROOT
+// (`<LoggedViaSurface value=…>`) counts too: declaring the region is what the controls
+// inside it read.
 //
 // READS BYTES rather than shelling out to a grep, for the #3206 reason the sibling
 // census states: a source file carrying a deliberate NUL separator is BINARY to grep
@@ -42,9 +44,9 @@ const DIRECT_READ_RE = /parseWebOrigin\s*\(/g;
 /** `export async function name(` / `export function name(` — the action boundary. */
 const EXPORT_RE = /^export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/gm;
 
-/** The spellings of "this file declares a surface". */
+/** The code shapes that declare a surface; imports and name prefixes do not. */
 const DECLARES_RE =
-  /useLoggedViaStamp|LoggedViaField|LoggedViaSurface|LOGGED_VIA_FIELD/;
+  /\buseLoggedViaStamp\s*\(|<LoggedViaField\b|<LoggedViaSurface\b|\.set\s*\(\s*LOGGED_VIA_FIELD\b|\buseWritePipeline\s*\(/;
 
 function dirents(dir: string): fs.Dirent[] {
   try {
@@ -523,8 +525,14 @@ export function unjustifiedLiterals(root: string): string[] {
 // file-local constant rather than from the context, so nothing under it reads the
 // region. Reachability above is what holds that one.
 
-/** A control that posts whatever region it is mounted in. */
-const STAMPS_RE = /useLoggedViaStamp\s*\(|<LoggedViaField/;
+/**
+ * A control that posts whatever region it is mounted in — including through the shared
+ * write pipeline, which stamps on its behalf (#3276). Matching that spelling is what
+ * keeps this walk over the SAME controls after a surface adopts the pipeline; without
+ * it, adopting would quietly remove a control from the region-survival check.
+ */
+const STAMPS_RE =
+  /useLoggedViaStamp\s*\(|<LoggedViaField|useWritePipeline\s*\(/;
 
 function resolveSpec(
   root: string,
@@ -668,6 +676,12 @@ export function mountGraph(root: string): MountGraph {
       const target = via ? defining(via, j[1]) : undefined;
       if (target && target !== rel) mountedBy.get(target)!.add(rel);
     }
+    // A custom hook executes from its caller just as a component renders from JSX.
+    for (const h of src.matchAll(/\b(use[A-Z][A-Za-z0-9_]*)\s*\(/g)) {
+      const via = local.get(h[1]);
+      const target = via ? defining(via, h[1]) : undefined;
+      if (target && target !== rel) mountedBy.get(target)!.add(rel);
+    }
   }
   const graph = { files, mountedBy };
   if (root === REPO) repositoryMountGraph = graph;
@@ -691,7 +705,13 @@ export function stampersOutsideEveryRegion(root: string): string[] {
   const byRel = new Map(files.map((f) => [f.rel, f]));
   const out: string[] = [];
   for (const { rel, src } of files) {
-    if (rel === "components/LoggedViaSurface.tsx") continue;
+    // The two shared bindings' own definitions are not controls: they are what a
+    // control stamps THROUGH, and neither is mounted anywhere.
+    if (
+      rel === "components/LoggedViaSurface.tsx" ||
+      rel === "components/useWritePipeline.ts"
+    )
+      continue;
     if (!STAMPS_RE.test(src)) continue;
     const stack: [string, string[]][] = [[rel, [rel]]];
     const seen = new Set<string>();
@@ -892,6 +912,22 @@ export async function logThing(formData: FormData) {
     ]);
   });
 
+  it("rejects declaration prefixes and import paths without a declaration", () => {
+    const root = corpus({
+      "app/(app)/x/actions.ts": ACTION,
+      "components/PrefixOnly.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        "const useLoggedViaStampX = () => undefined;\n",
+      "components/ImportOnly.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        'import "@/components/LoggedViaSurface";\n',
+    });
+    expect(unwiredPosters(root)).toEqual([
+      "components/ImportOnly.tsx posts logThing (app/(app)/x/actions.ts)",
+      "components/PrefixOnly.tsx posts logThing (app/(app)/x/actions.ts)",
+    ]);
+  });
+
   it("attributes a read to the RIGHT action when a file exports several", () => {
     // The failure this rules out is an off-by-one that blames a neighbour: a file
     // with a plain action above and a reading action below must name the second.
@@ -916,13 +952,22 @@ export async function logThing(formData: FormData) {
       // Compliant three ways.
       "components/Stamped.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { useLoggedViaStamp } from '@/components/LoggedViaSurface';\n",
+        "import { useLoggedViaStamp } from '@/components/LoggedViaSurface';\n" +
+        "export default function Stamped() { useLoggedViaStamp(); return null; }\n",
       "components/Fielded.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { LoggedViaField } from '@/components/LoggedViaSurface';\n",
+        "import { LoggedViaField } from '@/components/LoggedViaSurface';\n" +
+        "export default function Fielded() { return <LoggedViaField />; }\n",
       "components/Region.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
-        "import { LoggedViaSurface } from '@/components/LoggedViaSurface';\n",
+        "import { LoggedViaSurface } from '@/components/LoggedViaSurface';\n" +
+        'export default function Region() { return <LoggedViaSurface value="quick-log" />; }\n',
+      // …and the fourth: the caller never builds the FormData at all (#3276). Like the
+      // three above, the CALL is what declares — an import of the hook is not enough.
+      "components/Piped.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        "import { useWritePipeline } from '@/components/useWritePipeline';\n" +
+        "export default function Piped() { useWritePipeline(); return null; }\n",
       // A SERVER component: it posts through an inline server action on the page it
       // IS, which is what `page` means. Not a mounting that can declare anything.
       "app/(app)/x/page.tsx":
@@ -1055,9 +1100,12 @@ export async function logThing(formData: FormData) {
     // The acceptance test in miniature: one sheet mounted from a LAYOUT, one control
     // inside it that stamps. With the wrapper the walk stops at the region; without
     // it the chain runs to the router and the control posts `page` from a sheet.
-    const control =
+    const shared =
       '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
-      "export default function Bar() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n";
+      "export function useShared() { return useLoggedViaStamp(); }\n";
+    const control =
+      '"use client";\nimport { useShared } from "@/components/Shared";\n' +
+      "export default function Bar() { useShared(); return null; }\n";
     const layout =
       'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n';
     const wrapped =
@@ -1072,10 +1120,11 @@ export async function logThing(formData: FormData) {
           "app/(app)/layout.tsx": layout,
           "components/Sheet.tsx": bare,
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([
-      "components/Bar.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+      "components/Shared.ts <- components/Bar.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
     ]);
     expect(
       stampersOutsideEveryRegion(
@@ -1083,6 +1132,7 @@ export async function logThing(formData: FormData) {
           "app/(app)/layout.tsx": layout,
           "components/Sheet.tsx": wrapped,
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([]);
@@ -1095,6 +1145,7 @@ export async function logThing(formData: FormData) {
           "app/(app)/x/page.tsx":
             'import Bar from "@/components/Bar";\nexport default () => <Bar />;\n',
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([]);

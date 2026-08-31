@@ -41,7 +41,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  merge-gate:
+  merge-gate-job:
     if: github.repository == 'FloorLamp/allos'
     runs-on: ubuntu-latest
     steps:
@@ -79,7 +79,7 @@ jobs:
 
           set +e
           gate_output=$(node scripts/orchestration/merge-gate.mjs "$pr" \
-            --repo "${{ github.repository }}" --ignore-check merge-gate)
+            --repo "${{ github.repository }}" --ignore-check merge-gate-job)
           rc=$?
           set -e
           printf '%s\n' "$gate_output"

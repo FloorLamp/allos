@@ -6,10 +6,8 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migrate } from "@/lib/db";
 import { seedInstallMarker } from "@/lib/migrations/boot-tasks";
-
-process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
+import { MIGRATIONS } from "@/lib/migrations/versions";
 
 function newDb(): Database.Database {
   const db = new Database(":memory:");
@@ -28,7 +26,8 @@ function marker(db: Database.Database): string | undefined {
 describe("seedInstallMarker (#464)", () => {
   it("stamps the first boot once and preserves it on later boots", () => {
     const db = newDb();
-    migrate(db);
+    MIGRATIONS[0].up(db); // baseline owns the settings table
+    seedInstallMarker(db);
     const at = marker(db);
     expect(at).toBeTruthy();
     expect(Number.isNaN(Date.parse(at as string))).toBe(false);

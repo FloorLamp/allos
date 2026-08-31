@@ -1,19 +1,12 @@
 "use client";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
-import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { useWritePipeline } from "@/components/useWritePipeline";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { microMotionPlan } from "@/lib/micro-motion";
-import {
-  localDate,
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
+import { localDate } from "@/lib/offline/queue";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -89,17 +82,18 @@ export default function DoseStatusControl({
   const [optimistic, setOptimistic] = useState<
     "taken" | "skipped" | "clear" | null
   >(null);
-  const ledger = useOptimisticLedger("dose-status");
+  // The shared client write pipeline (#3276): it stamps the surface, decides online vs
+  // capture, says the sentence, and settles the one-tap ledger. This control declares
+  // what a dose resolution means; it hand-wires none of that choreography.
+  const pipeline = useWritePipeline("dose-status");
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
-    ledger.pending(`${state}->taken`) ||
-    ledger.pending(`${state}->skipped`) ||
-    ledger.pending(`${state}->clear`);
+    pipeline.pending(`${state}->taken`) ||
+    pipeline.pending(`${state}->skipped`) ||
+    pipeline.pending(`${state}->clear`);
   const isTaken = state === "taken";
   const isSkipped = state === "skipped";
-  const toast = useToast();
-  const { enqueue } = useOfflineQueue();
 
   // THE CONFIRM SETTLE (#2654, motion 1). A dose check-off is the app's most
   // tap-shaped confirm, and the control BECOMING its done state is the receipt —
@@ -119,9 +113,6 @@ export default function DoseStatusControl({
   // `data-reduced-motion` on the root so the browser suite can prove the branch.
   const reduced = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reduced);
-  // Which surface this dose control is on (#3087): the Supplements page's row, the
-  // medications board, or a dashboard panel that renders the same control.
-  const stampLoggedVia = useLoggedViaStamp();
   const [settling, setSettling] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -142,171 +133,78 @@ export default function DoseStatusControl({
     }, settlePlan.ms);
   }
 
-  // `tappedAt` is the moment the user actually pressed the control — captured by the
-  // caller BEFORE the online attempt, so a confirm that falls back to the queue after
-  // a slow failing request still records when the dose was taken, not when we gave up
-  // (#1427). The server validates it; a skip records no intake time, so it carries none.
-  async function queue(
-    kind: "dose" | "skip-dose",
-    next: "taken" | "skipped",
-    tappedAt: Date
-  ): Promise<boolean> {
-    setOptimistic(next);
-    const kept =
-      (await enqueue(kind, localDate(tappedAt), {
-        doseId,
-        ...(kind === "dose" ? { clientTakenAt: tappedAt.toISOString() } : {}),
-      })) === "kept";
-    // READ THE ANSWER. The queue can refuse — this device is logged out, or has no
-    // IndexedDB to queue into — and the toast below promises the tap will sync. Claiming
-    // a save that did not happen is worse than the missing save, because nothing later
-    // contradicts it: there is no badge, no dead-letter entry and no replay. The answer
-    // is returned so the caller settles the ledger the same way (#3038): a refused
-    // capture must stay immediately retryable, not sit in a post-"success" cooldown.
-    if (!kept) {
-      setOptimistic(null);
-      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-      return false;
-    }
-    toast(
-      next === "taken"
-        ? "Dose saved offline — will sync when you reconnect."
-        : "Skip saved offline — will sync when you reconnect."
-    );
-    return true;
-  }
-
-  // The online write (used by both the acting path and every cross-profile write).
-  //
-  // "refused" is the write core answering honestly (#2039): the dose was retired by a
-  // schedule edit, or its item is paused, so NOTHING was written. That is not a network
-  // failure — retrying or queueing it would keep failing — so it is reported in the
-  // server's own words instead of "try again".
-  async function submit(
-    target: "taken" | "skipped" | "clear"
-  ): Promise<"ok" | "refused" | "failed"> {
-    const fd = stampLoggedVia(new FormData());
-    fd.set("dose_id", String(doseId));
-    fd.set("status", target);
-    // #858/#1373: target the row's own profile so a caregiver confirms a household
-    // member's dose from its board; absent on the acting board (byte-identical).
-    if (profileId != null) fd.set("profileId", String(profileId));
-    try {
-      const result = await setDoseStatus(fd);
-      if (!result.ok) {
-        toast(result.error, { tone: "error" });
-        return "refused";
-      }
-      setOptimistic(null);
-      return "ok";
-    } catch {
-      return "failed";
-    }
-  }
-
-  // What one tap ended up doing — modeled so the ledger sees exactly one settlement.
-  // "nothing" covers every arm that wrote nothing (a refusal, an offline change to an
-  // already-resolved dose, a failure): those stay immediately retryable, with no
-  // cooldown standing between the user and a second attempt.
-  type DoseTap = "wrote" | "nothing";
-
-  function transitionKey(target: "taken" | "skipped" | "clear"): string {
-    return `${state}->${target}`;
-  }
-
   async function apply(target: "taken" | "skipped" | "clear") {
-    const key = transitionKey(target);
-    // The double-tap gate (see the header note on why the transition is the key).
-    if (ledger.blocked(key)) return;
-    // Stamp the tap moment up front: everything below (the online round-trip, its
-    // failure, the queue write) happens after the dose was actually taken.
-    const tappedAt = new Date();
-    await ledger.tap<DoseTap>({
-      key,
-      write: () => runTap(target, tappedAt),
-      settle: (outcome) => {
-        // The one place that knows a tap both aimed at `taken` AND landed.
-        if (outcome === "wrote" && target === "taken") settleConfirm();
-        return outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" };
+    const result = await pipeline.run({
+      // The double-tap gate is keyed by the TRANSITION, not by the button (see the
+      // header note): the second tap of a fat-finger double re-sends `clear → taken`
+      // and is absorbed, while every deliberate correction is a different transition.
+      key: `${state}->${target}`,
+      fields: {
+        dose_id: String(doseId),
+        status: target,
+        // #858/#1373: target the row's own profile so a caregiver confirms a household
+        // member's dose from its board; absent on the acting board (byte-identical).
+        ...(profileId != null ? { profileId: String(profileId) } : {}),
       },
-      onError: () => {
-        toast("Couldn't update this dose. Try again.", { tone: "error" });
-        return { kind: "rollback" };
+      action: setDoseStatus,
+      // "refused" is the write core answering honestly (#2039): the dose was retired by
+      // a schedule edit, or its item is paused, so NOTHING was written. That is not a
+      // network failure, so it is reported in the server's own words.
+      //
+      // A landed transition says nothing: the control BECOMING its done state is the
+      // receipt (#2654), and there is no toast to hang an Undo on.
+      settle: (outcome) =>
+        outcome.ok
+          ? { wrote: true, announce: "silent" as const }
+          : {
+              wrote: false,
+              announce: {
+                message: outcome.error,
+                tone: "error" as const,
+                undo: null,
+              },
+            },
+      failureMessage: "Couldn't update this dose. Try again.",
+      offline: (tappedAt) => {
+        // Cross-profile writes (#1373) are never queued — the offline replay route
+        // carries no target profileId, so a capture would replay against the acting
+        // profile. Go online; a dropped link surfaces the retry sentence.
+        if (profileId != null) return { kind: "attempt" };
+        // Only a fresh take/skip from a CLEAR dose is queueable. Anything that changes
+        // an already-resolved dose (including clearing it) needs a live connection —
+        // the queue models resolutions, not un-resolving.
+        if (state !== "clear" || target === "clear")
+          return {
+            kind: "refuse",
+            message: "You're offline — reconnect to change a logged dose.",
+          };
+        const flow = target === "taken" ? "dose" : "skip-dose";
+        return {
+          kind: "capture",
+          flow,
+          date: localDate(tappedAt),
+          // The server validates the stamp; a skip records no intake time, so it
+          // carries none.
+          payload: {
+            doseId,
+            ...(flow === "dose"
+              ? { clientTakenAt: tappedAt.toISOString() }
+              : {}),
+          },
+          keptMessage:
+            target === "taken"
+              ? "Dose saved offline — will sync when you reconnect."
+              : "Skip saved offline — will sync when you reconnect.",
+        };
       },
     });
-  }
-
-  async function runTap(
-    target: "taken" | "skipped" | "clear",
-    tappedAt: Date
-  ): Promise<DoseTap> {
-    // Cross-profile writes (#1373) are never queued — the offline replay route carries
-    // no target profileId, so it would replay against the acting profile. Go straight
-    // online; if the network drops, surface a retry toast rather than mis-target.
-    if (profileId != null) {
-      const outcome = await submit(target);
-      // A refusal already said what happened, in the server's words.
-      if (outcome === "failed")
-        toast("Couldn't update this dose. Try again.", { tone: "error" });
-      return outcome === "ok" ? "wrote" : "nothing";
-    }
-    const online =
-      typeof navigator === "undefined" || navigator.onLine !== false;
-
-    if (!online) {
-      // Offline: only a fresh take/skip from a clear dose is queueable. Anything
-      // that changes an already-resolved dose (including clearing) needs a live
-      // connection.
-      if (state !== "clear" || target === "clear") {
-        toast("You're offline — reconnect to change a logged dose.", {
-          tone: "error",
-        });
-        return "nothing";
-      }
-      return (await queue(
-        target === "taken" ? "dose" : "skip-dose",
-        target,
-        tappedAt
-      ))
-        ? "wrote"
-        : "nothing";
-    }
-
-    const fd = stampLoggedVia(new FormData());
-    fd.set("dose_id", String(doseId));
-    fd.set("status", target);
-    try {
-      const result = await setDoseStatus(fd);
-      // The write core refused (retired dose / paused item, #2039). Nothing was
-      // written, so say so rather than clearing the optimistic state as if it had been.
-      if (!result.ok) {
-        toast(result.error, { tone: "error" });
-        return "nothing";
-      }
-      setOptimistic(null);
-      return "wrote";
-    } catch (err) {
-      const stillOnline = navigator.onLine !== false;
-      // A dropped connection mid-submit: queue a fresh take/skip; otherwise
-      // surface a retry.
-      if (
-        state === "clear" &&
-        target !== "clear" &&
-        shouldQueueOffline(stillOnline, err)
-      ) {
-        return (await queue(
-          target === "taken" ? "dose" : "skip-dose",
-          target,
-          tappedAt
-        ))
-          ? "wrote"
-          : "nothing";
-      }
-      toast("Couldn't update this dose. Try again.", {
-        tone: "error",
-      });
-      return "nothing";
-    }
+    if (result === "nothing") return;
+    // A server write is authoritative, so the optimistic override is dropped and the
+    // props take over; a capture has no revalidate behind it, so the override stands in
+    // for the queued write until replay.
+    setOptimistic(result === "wrote" ? null : (target as "taken" | "skipped"));
+    // The one place that knows a tap both aimed at `taken` AND landed.
+    if (target === "taken") settleConfirm();
   }
 
   const takeClass =

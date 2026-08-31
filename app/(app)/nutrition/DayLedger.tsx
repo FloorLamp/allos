@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { IconChevronDown, IconPill } from "@tabler/icons-react";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import LoggedEventRow, {
   LOGGED_EVENT_LIST,
   LOGGED_EVENT_ROW,
@@ -17,13 +16,7 @@ import Button from "@/components/Button";
 import DoseStatusControl from "@/components/DoseStatusControl";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import {
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
-import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
+import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
@@ -44,7 +37,6 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import {
   deleteLedgerSelection,
   moveLedgerSelectionToDay,
-  resolveDayDoses,
   setLedgerSelectionTime,
   type LedgerSelectionEditResult,
 } from "./intake-actions";
@@ -145,12 +137,6 @@ export default function DayLedger({
   removingServingId,
 }: DayLedgerProps) {
   const toast = useToast();
-  const stampLoggedVia = useLoggedViaStamp();
-  const { enqueue } = useOfflineQueue();
-  // Two affordances, two ledgers (#2041): a bulk tap and the single taps beneath it are
-  // different writes and neither may be absorbed by the other's cooldown.
-  const single = useOptimisticLedger("dose-day");
-  const bulk = useOptimisticLedger("dose-day-stack");
   const [resolved, setResolved] = useState<Set<string>>(() => new Set());
   // The last outcome per occurrence that did NOT resolve it — shown inline, so the
   // reason a row is still there is legible without hunting for the toast.
@@ -181,116 +167,14 @@ export default function DayLedger({
     setNotes((prev) => ({ ...prev, [occurrenceKey(date, doseId)]: text }));
   }
 
-  // Post one dated resolution. The named ids are an UPPER BOUND: the action re-derives
-  // the day's still-unresolved set and writes only the intersection, so this can never
-  // ask for more than the label promised and never get more than the day still owes.
-  async function post(
-    doseIds: readonly number[],
-    status: "taken" | "skipped"
-  ): Promise<"wrote" | "nothing"> {
-    const fd = stampLoggedVia(new FormData());
-    fd.set("date", date);
-    fd.set("status", status);
-    fd.set("dose_ids", doseIds.join(","));
-    const result = await resolveDayDoses(fd);
-    if (!result.ok) {
-      toast(result.error, { tone: "error" });
-      return "nothing";
-    }
-    // Answered from the typed outcomes, never from the ask. A dose the day no longer
-    // owes is simply absent from `result.doses`; one that refused is named where it
-    // stands.
-    for (const dose of result.doses) {
-      if (!doseResolved(dose.outcome))
-        note(dose.doseId, doseConfirmMessage(dose.outcome).text);
-    }
-    const landed = result.doses.filter((d) => doseResolved(d.outcome));
-    if (landed.length === 0) {
-      toast(
-        result.doses.length === 0
-          ? "Nothing left to log for that day."
-          : doseConfirmMessage(result.doses[0]!.outcome).text,
-        { tone: "error" }
-      );
-      return "nothing";
-    }
-    toast(
-      landed.length === 1
-        ? doseConfirmMessage(landed[0]!.outcome).text
-        : `${landed.length} doses ${status === "taken" ? "logged" : "skipped"}.`
-    );
-    markResolved(landed.map((d) => d.doseId));
-    return "wrote";
-  }
-
-  // A single dated tap may be CAPTURED offline: the queued intent carries its own day
-  // and the replay re-checks the window with the predicate the core uses.
-  async function queue(
-    doseId: number,
-    status: "taken" | "skipped"
-  ): Promise<"wrote" | "nothing"> {
-    const kept =
-      (await enqueue(status === "taken" ? "dose" : "skip-dose", date, {
-        doseId,
-      })) === "kept";
-    // READ THE ANSWER: the queue can refuse (logged out, no IndexedDB), and claiming a
-    // save that did not happen is worse than the missing save (#3038).
-    if (!kept) {
-      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-      return "nothing";
-    }
-    toast(
-      status === "taken"
-        ? "Dose saved offline — will sync when you reconnect."
-        : "Skip saved offline — will sync when you reconnect."
-    );
-    markResolved([doseId]);
-    return "wrote";
-  }
-
-  function resolveOne(doseId: number, status: "taken" | "skipped") {
-    void single.tap<"wrote" | "nothing">({
-      key: `${doseId}->${status}`,
-      write: async () => {
-        const online =
-          typeof navigator === "undefined" || navigator.onLine !== false;
-        if (!online) return queue(doseId, status);
-        try {
-          return await post([doseId], status);
-        } catch (err) {
-          if (shouldQueueOffline(navigator.onLine !== false, err))
-            return queue(doseId, status);
-          toast("Couldn't update this dose. Try again.", { tone: "error" });
-          return "nothing";
-        }
-      },
-      settle: (outcome) =>
-        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
-      onError: () => {
-        toast("Couldn't update this dose. Try again.", { tone: "error" });
-        return { kind: "rollback" };
-      },
+  const { resolveOne, resolveAll, singleBlocked, bulkBlocked } =
+    useDoseDayResolution({
+      date,
+      bulkFailureMessage:
+        "Something went wrong — reload to see what was logged.",
+      note,
+      resolved: markResolved,
     });
-  }
-
-  function resolveAll(doseIds: readonly number[]) {
-    void bulk.tap<"wrote" | "nothing">({
-      key: doseIds.join(","),
-      write: () => post(doseIds, "taken"),
-      settle: (outcome) =>
-        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
-      onError: () => {
-        // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its
-        // OWN transaction, so a failure on the third of five leaves the first two
-        // committed WITH their supply decrements. We do not know what landed, so we say
-        // that and point at the record rather than claiming either outcome.
-        toast("Something went wrong — reload to see what was logged.", {
-          tone: "error",
-        });
-        return { kind: "rollback" };
-      },
-    });
-  }
 
   // ── SELECTION MODE (#4118) ──────────────────────────────────────────────────
   //
@@ -470,15 +354,15 @@ export default function DayLedger({
           <span className="flex shrink-0 items-center gap-3">
             <Button
               data-testid={`ledger-take-${dose.doseId}`}
-              disabled={single.blocked(`${dose.doseId}->taken`)}
-              onClick={() => resolveOne(dose.doseId, "taken")}
+              disabled={singleBlocked(dose.doseId, "taken")}
+              onClick={() => void resolveOne(dose.doseId, "taken")}
             >
               Take
             </Button>
             <Button
               data-testid={`ledger-skip-${dose.doseId}`}
-              disabled={single.blocked(`${dose.doseId}->skipped`)}
-              onClick={() => resolveOne(dose.doseId, "skipped")}
+              disabled={singleBlocked(dose.doseId, "skipped")}
+              onClick={() => void resolveOne(dose.doseId, "skipped")}
             >
               Skip
             </Button>
@@ -643,7 +527,7 @@ export default function DayLedger({
             <Button
               data-testid={`ledger-takeall-${row.bucket}`}
               aria-label={`Take all ${doses.length}: ${dosesPhrase(doses)}`}
-              disabled={bulk.blocked(ids.join(","))}
+              disabled={bulkBlocked(ids)}
               onClick={() => resolveAll(ids)}
             >
               Take all {doses.length}

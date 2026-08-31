@@ -7,10 +7,12 @@
 // can hand-roll a tap without ever touching the shared helpers. So this scan
 // pins the two directions the types leave open:
 //
-//   1. Every `useOptimisticLedger("<id>")` call site names a registry key as a
-//      LITERAL. The parameter type already forces membership for literals; the
-//      scan additionally refuses a non-literal first argument (a variable or a
-//      cast), because an id the scan cannot read is an id nobody can census.
+//   1. Every `useOptimisticLedger("<id>")` — or `useWritePipeline("<id>")`, the
+//      #3276 pipeline that runs the ledger for its callers — call site names a
+//      registry key as a LITERAL. The parameter type already forces membership
+//      for literals; the scan additionally refuses a non-literal first argument
+//      (a variable or a cast), because an id the scan cannot read is an id
+//      nobody can census.
 //   2. Every registry entry is WIRED — some component actually runs the shared
 //      machinery under that id. This is the #2130 tooth that caught the audit's
 //      two one-tap gaps: `mood-valence` (the former dashboard mood card
@@ -55,8 +57,13 @@ function tapSurfaceFiles(): string[] {
     const rel = relPath(f);
     if (!f.endsWith(".ts") && !f.endsWith(".tsx")) return false;
     if (rel.includes("__tests__") || f.endsWith(".test.ts")) return false;
-    // The hook's own definition is not a call site.
-    return rel !== "components/useOptimisticLedger.ts";
+    // A shared binding's own definition is not a call site: the pipeline passes
+    // its caller's affordance straight through, so reading its variable here
+    // would report an id nobody wrote.
+    return (
+      rel !== "components/useOptimisticLedger.ts" &&
+      rel !== "components/useWritePipeline.ts"
+    );
   });
 }
 
@@ -65,14 +72,17 @@ interface CallSite {
   id: string | null; // null: first argument is not a string literal
 }
 
-// Every `useOptimisticLedger(...)` CALL in `src` (imports and prose don't
-// match: the name must be followed — after an optional generic argument — by an
-// opening paren). Exported shape kept simple so the fixture test below can prove
-// the scan can fail (#1893).
+// Every `useOptimisticLedger(...)` / `useWritePipeline(...)` CALL in `src`
+// (imports and prose don't match: the name must be followed — after an optional
+// generic argument — by an opening paren). Both spellings declare one affordance
+// and both run the same machine, so counting only the first would report a
+// converted surface as unwired. Exported shape kept simple so the fixture test
+// below can prove the scan can fail (#1893).
 export function ledgerCallSites(src: string, file: string): CallSite[] {
   const sites: CallSite[] = [];
   const code = stripComments(src);
-  const re = /useOptimisticLedger\s*(<[^(]*)?\(\s*(["']([^"']+)["'])?/g;
+  const re =
+    /use(?:OptimisticLedger|WritePipeline)\s*(<[^(]*)?\(\s*(["']([^"']+)["'])?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(code))) {
     sites.push({ file, id: m[3] ?? null });
@@ -106,7 +116,7 @@ describe("every one-tap surface runs the shared machinery under a declared id (#
       .map(
         (k) =>
           `${k}: declared in ONE_TAP_AFFORDANCES but no component calls ` +
-          `useOptimisticLedger("${k}")`
+          `useOptimisticLedger("${k}") or useWritePipeline("${k}")`
       );
     expect(orphans, `\n${orphans.join("\n")}\n`).toEqual([]);
   });
@@ -122,6 +132,10 @@ describe("every one-tap surface runs the shared machinery under a declared id (#
         "f.tsx"
       )
     ).toEqual([{ file: "f.tsx", id: "mobility-move" }]);
+    // The pipeline spelling declares the same thing and is read the same way.
+    expect(
+      ledgerCallSites(`const p = useWritePipeline("dose-status");`, "f.tsx")
+    ).toEqual([{ file: "f.tsx", id: "dose-status" }]);
     // Imports and prose are not call sites.
     expect(
       ledgerCallSites(

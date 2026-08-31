@@ -168,7 +168,8 @@ symptom backfill without requiring an illness episode.
 Symptoms are a standalone day-by-day record, not merely an illness feature.
 Choose from the curated vocabulary or add a custom symptom, then record severity
 from 1–4. Repeating a tap preserves the day's worst severity; lowering it is an
-explicit edit.
+explicit edit. A symptom can be logged for any past day — the record's day view
+logs against the day you are reading — and never for a future one.
 
 ### Quick entry and context
 
@@ -943,7 +944,8 @@ and wellbeing. **Today** can switch dense sensor series to a 1-day intraday
 view, while longer ranges show the appropriate aggregate. Mood and other
 self-reported wellbeing values appear as observations and are never
 range-flagged. The shared **Log measurements** action writes to the same stores
-used by integrations.
+used by integrations. A sitting can be dated any past day and not a future one; a
+future date is refused on the form rather than saved in part.
 
 **Four measures that could only arrive from a device can now be typed** (#1851).
 Water, lean mass, bone mass and respiratory rate join the same **Log measurements**
@@ -1299,7 +1301,12 @@ used to draw the same facts as meal cards, a logged-today list, and a separate
 schedule on the Supplements tab. Doses written by one composed tap collapse to a
 single expandable row; a partly-answered routine says "4 of 6" rather than a bare
 tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
-every dose it will write and writes only the ones the day still owes. A **skip**
+every dose it will write and writes only the ones the day still owes. That due
+row **leads** its group (#4315): the ledger is opened to act, so the one
+actionable row reads first and the record keeps its stated order unchanged
+below it — the rule for any surface rendering due-and-done together, and a
+surface with no single aggregated due row is outside it (the Medications Today
+panel's slots stay in dose-day order, #2652). A **skip**
 shows with the reason you gave it. A row with no stated time says which clock it is
 showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
 actions to **correct** it — the food group, the day, or the meal it belongs to — or
@@ -2856,6 +2863,9 @@ uploads/deletes, and admin/family changes), reviewable with filters under
 **Settings → Logs & audit → Audit** (admin only); identifiers only, never medical content,
 retained for a configurable window (default **24 months**, set under **Settings
 → Server → Audit-log retention**; the hourly notify tick prunes older events).
+A backfill tapped from Telegram is attributed to the login that chat belongs to —
+the same binding that already decides which profile a tap may write to, used here
+only to name the actor.
 
 ## Data hub
 

@@ -4,6 +4,8 @@ import {
   HISTORY_FAMILY_KINDS,
   HISTORY_KINDS,
   HISTORY_ROLLUP_KINDS,
+  detailSegment,
+  historyClock,
   historyKindFamily,
   historyRollupNoun,
   layoutHistoryDay,
@@ -11,6 +13,9 @@ import {
   type HistoryKind,
   type HistoryRow,
 } from "@/lib/history-format";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
+
+const H12: DisplayFormatPrefs = { timeFormat: "12h", dateFormat: "mdy" };
 
 // THE DENSITY ANSWER (#3958 phase 2), at the tier that can actually see it: the rollup
 // is a pure decision over one day's already-merged rows, so every claim below is a
@@ -29,11 +34,11 @@ function row(
     tz: "UTC",
     date: "2026-08-28",
     sortTime: "08:00",
-    clock: "8:00am",
+    clock: historyClock("08:00", "stated", H12),
     clockKind: "stated",
     title: kind,
     href: null,
-    detail: "",
+    detail: detailSegment([]),
     media: 0,
     edit: null,
     profileId,

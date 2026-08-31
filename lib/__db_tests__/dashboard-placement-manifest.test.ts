@@ -414,6 +414,17 @@ describe("actual atomic dashboard manifests", () => {
     });
   }
 
+  it("names the protein reading's tail moment without duplicating its Standing label", () => {
+    const protein = [...rowPresentations.values()]
+      .flatMap((presentations) => [...presentations.entries()])
+      .find(([candidateId]) => candidateId.startsWith("nutrition.protein:"));
+    expect(protein?.[1].moment).toEqual({
+      title: "Nutrition today",
+      href: "/nutrition",
+    });
+    expect(protein?.[1].label).toBeUndefined();
+  });
+
   it("exercises both manual and external engagement evidence", () => {
     const engagement = [...manifests.values()]
       .flat()
@@ -441,11 +452,12 @@ describe("actual atomic dashboard manifests", () => {
         ),
         `${persona}:Standing presentation`
       ).toBe(true);
-      // #3548 SUPERSEDES #3103's fully-fixed order exactly this far: the registry's
-      // order survives INSIDE each band, and the bands themselves run
-      // attention → rest → tail. So the sortedness claim is now per band, and the
+      // #3548 SUPERSEDED #3103's fully-fixed order exactly this far and #4232
+      // narrowed it again: the registry's order survives INSIDE each band, and the
+      // bands themselves run attention → rest. There is no third band — a quiet
+      // member is not claimed at all — so the sortedness claim is per band, and the
       // band sequence is the claim that replaces the global one.
-      const bandOrder = ["attention", "rest", "tail"] as const;
+      const bandOrder = ["attention", "rest"] as const;
       const bands = standing.map((placement) => placement.standingBand!);
       expect(
         bands.map((band) => bandOrder.indexOf(band)),
@@ -726,26 +738,128 @@ describe("actual atomic dashboard manifests", () => {
     }
   );
 
-  it("keeps sleep regularity only in its healthspan family", () => {
-    for (const placements of manifests.values()) {
+  // Re-pointed by #4232: a quiet pillar is not a Standing member any more, so the
+  // family key it used to be asserted through is gone with the band. What replaces it
+  // is the MOMENT the tail folds the pillars into — the same claim (this reading
+  // belongs to the healthspan family and nowhere else) read off the surface that now
+  // carries it. Counted, so a re-point onto something the personas never produce
+  // cannot go green by matching nothing.
+  it("keeps sleep regularity only in its healthspan moment", () => {
+    let seen = 0;
+    for (const [persona, placements] of manifests) {
       expect(
         placements.some(({ candidate }) =>
           candidate.candidateId.startsWith("sleep.regularity:")
         )
       ).toBe(false);
-      for (const placement of placements.filter(
-        (
-          placement
-        ): placement is Extract<
-          DashboardPlacementCanvasProps["placements"][number],
-          { lane: "standing" }
-        > =>
-          placement.lane === "standing" &&
-          placement.candidate.candidateId.includes("sleep-regularity")
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.includes("sleep-regularity")
       )) {
-        expect(placement.standingFamilyKey).toBe("healthspan-pillars");
+        seen += 1;
+        expect(
+          [placement.lane, placement.candidate.groupKey],
+          `${persona}:${placement.candidate.candidateId}`
+        ).toEqual(["everything", "healthspan.pillars"]);
       }
     }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  // WHERE THE FORMER QUIET POPULATION WENT (#4232), against the real personas.
+  //
+  // Standing shrank to its attention tier and its stable rest, so the members the
+  // registry calls quiet stopped being claimed and the exact-once partition routes
+  // them on their own model. The ruling names the destinations, so they are asserted
+  // as destinations rather than as "not in Standing" — an absence that would pass on
+  // a tree where the rows vanished with the band.
+  //
+  // EACH ROW CARRIES ITS OWN REACH COUNT, because a prefix no persona produces makes
+  // its clause vacuous while looking exactly like a clause that held. Measured on this
+  // fixture: pillars 12, out-ranked cold-start CTAs 16, quiet results 5, results
+  // claiming the freshness window 28. The dormant replacements (`weight.dormant`,
+  // `sleep.dormant`) are NOT here — no persona seeds a dormant domain, so a clause for
+  // them would have been the vacuum this comment exists to prevent; e2e's
+  // DORMANT_DOMAINS_PROFILE is where that route is asserted.
+  it("routes every former quiet member into the fold's correct group, exactly once", () => {
+    const expected: readonly [string, DashboardEverythingGroup][] = [
+      ["healthspan.pillar:", "read"],
+      ["activity.steps-bootstrap", "setup"],
+      ["nutrition.bootstrap", "setup"],
+      ["sleep.bootstrap", "setup"],
+    ];
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const ids = placements.map(({ candidate }) => candidate.candidateId);
+      for (const [prefix, group] of expected) {
+        for (const placement of placements.filter((entry) =>
+          entry.candidate.candidateId.startsWith(prefix)
+        )) {
+          reach.set(prefix, (reach.get(prefix) ?? 0) + 1);
+          expect(
+            [
+              placement.lane,
+              placement.lane === "everything"
+                ? placement.everythingGroup
+                : placement.lane,
+            ],
+            `${persona}:${placement.candidate.candidateId}`
+          ).toEqual(["everything", group]);
+          // EXACTLY once — the lane is the exact-once remainder, and a member that
+          // left Standing must not have left a copy behind.
+          expect(
+            ids.filter((id) => id === placement.candidate.candidateId).length,
+            `${persona}:${placement.candidate.candidateId}`
+          ).toBe(1);
+        }
+      }
+      // A quiet clinical result reads; one inside the freshness window claims the
+      // tier instead (#4232 ruling 3). Both are asserted, so neither branch can be
+      // the only one this fixture ever meets.
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const fresh = placement.candidate.rankReasons.owed;
+        reach.set(
+          fresh ? "labs.latest:fresh" : "labs.latest:quiet",
+          (reach.get(fresh ? "labs.latest:fresh" : "labs.latest:quiet") ?? 0) +
+            1
+        );
+        expect(
+          [
+            placement.lane,
+            placement.lane === "standing"
+              ? placement.standingBand
+              : placement.lane === "everything"
+                ? placement.everythingGroup
+                : placement.lane,
+          ],
+          `${persona}:${placement.candidate.candidateId}`
+        ).toEqual(fresh ? ["standing", "attention"] : ["everything", "read"]);
+      }
+      // …and the converse the routing loop cannot state: Standing still DRAWS, and
+      // it draws no band but the two.
+      const standing = placements.filter(
+        (placement) => placement.lane === "standing"
+      );
+      expect(standing.length, persona).toBeGreaterThan(0);
+      expect(
+        [
+          ...new Set(standing.map((placement) => placement.standingBand)),
+        ].sort(),
+        persona
+      ).not.toContain("tail");
+    }
+    for (const key of [
+      "healthspan.pillar:",
+      "activity.steps-bootstrap",
+      "nutrition.bootstrap",
+      "sleep.bootstrap",
+      "labs.latest:fresh",
+      "labs.latest:quiet",
+    ])
+      expect(reach.get(key) ?? 0, `${key} was never produced`).toBeGreaterThan(
+        0
+      );
   });
 
   it("orders real safety, three illness groups, then the live workout", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import { upsertPracticeLogs } from "@/lib/integrations/normalize";
 import {
   deletePracticeSession,
@@ -222,7 +223,12 @@ describe("imported wellness practices", () => {
     ).toEqual({ practice: "Mindfulness" });
   });
 
-  it("allows a bounded correction to a historical imported session", () => {
+  // #4425 owner ruling: the bound this test was named for is gone. A dated correction
+  // surface reaches any real past day, so a 2018 import is correctable to any 2018 day
+  // — what was "bounded" is now simply "past". The FUTURE half is what still refuses,
+  // and it is a tightening: the retired predicate accepted a date within thirty days of
+  // the row being corrected, which for an old imported session meant a future one.
+  it("corrects a historical imported session to any past day, never a future one", () => {
     const profileId = Number(
       db
         .prepare("INSERT INTO profiles (name) VALUES ('PRACTICE HISTORY')")
@@ -258,6 +264,12 @@ describe("imported wellness practices", () => {
     expect(
       updatePracticeSession(profileId, id, {
         date: "2019-05-29",
+        durationMin: 20,
+      })
+    ).toMatchObject({ kind: "updated", session: { date: "2019-05-29" } });
+    expect(
+      updatePracticeSession(profileId, id, {
+        date: shiftDateStr(today(profileId), 1),
         durationMin: 20,
       })
     ).toEqual({ kind: "invalid-date" });

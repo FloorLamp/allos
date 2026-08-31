@@ -234,3 +234,8 @@ export const HXEVERY_SELF_DOSE = "Record Self Vitamin";
 export const HXEVERY_RO_DOSE = "Record RO Vitamin";
 export const HXEVERY_MEMBER_DOSE = "Record Member Vitamin";
 export const HXEVERY_DAY = "2026-06-11";
+// A day only RO has an event on (#4393 ruling 3). The shared day above cannot tell a
+// unioned calendar from an acting-profile one — both mark it — so the marks guard
+// needs a day that is present in the household's union and absent from SELF's own
+// record. Same month as HXEVERY_DAY so one grid render holds both.
+export const HXEVERY_RO_ONLY_DAY = "2026-06-12";

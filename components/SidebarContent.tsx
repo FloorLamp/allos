@@ -21,7 +21,6 @@ import {
   LOGOUT_PENDING_ATTR,
 } from "@/lib/logout-tap";
 import SidebarLogButton from "@/components/SidebarLogButton";
-import EventCalendar from "@/components/EventCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
 import WhatsNewLink from "@/components/WhatsNewLink";
 import type { SessionProfile } from "@/lib/auth";
@@ -115,7 +114,6 @@ function raiseLogoutFailure(err: unknown): void {
 // control that ends the login — because login identity belongs with logout, not
 // in a profile switcher.
 export default function SidebarContent({
-  eventDates,
   active,
   username,
   profiles,
@@ -137,9 +135,6 @@ export default function SidebarContent({
   onNavigate,
   onClose,
 }: {
-  // Every day this profile has ANY event on (`getTimelineDates`, lib/timeline.ts)
-  // — the union across every store, not one domain's. Marks the calendar's days.
-  eventDates: string[];
   active: SessionProfile;
   // The signed-in login's username — shown as "Signed in as <username>" in the
   // profile-menu overlay (issue #1013), answering "which login am I?" without
@@ -558,10 +553,11 @@ export default function SidebarContent({
         relevance={relevance}
         reviewCount={reviewCount}
       />
-      {/* One row at rest, below the nav it used to push off the fold — the month
-      grid opens in an anchored popover above `md` and stays the drawer's inline
-      band below it. Ungated: the dates are every store's, not training's. */}
-      <EventCalendar eventDates={eventDates} />
+      {/* THE CALENDAR ROW IS GONE, from here and from the drawer (#4102/#4280).
+      A day grid is a way of reading a history and the chrome is a way of reaching
+      a page, so the grid opens from /history's own control row now — which is
+      also why this component no longer takes an `eventDates` prop, and why
+      `getTimelineDates` is no longer run for every page in the app shell. */}
       {/* The LOGIN block above the bordered box holding the theme toggle.
       "Signed in as <username>" (#1013) sits with logout because it names the
       thing logout ends — it was never a fact about the acting PROFILE, which is

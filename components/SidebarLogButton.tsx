@@ -32,9 +32,10 @@ const PANEL_WIDTH_PX = 384;
 // ONE BUTTON, TWO HOSTS, ONE MENU. Which host is the only decision this file
 // makes, and it is the same fork components/overlay/AnchoredPanel.tsx documents:
 //
-//   * FROM `md` UP — an anchored panel through that primitive, the same one the
-//     Calendar row opens (components/EventCalendar.tsx). It stays open across
-//     logs; Esc and an outside click close it.
+//   * FROM `md` UP — an anchored panel through that primitive, the same one
+//     /history's Calendar trigger opens (components/EventCalendar.tsx, which left
+//     this column in #4280). It stays open across logs; Esc and an outside click
+//     close it.
 //   * BELOW `md` — the log sheet the dock puck already opens, through the shared
 //     `logSheetOpen` state. NOT a second sheet of its own: the phone must have
 //     exactly one, and routing here is what stops the drawer carrying an

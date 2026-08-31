@@ -10,7 +10,6 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import BottomSheet from "./BottomSheet";
-import { BOTTOM_EDGE_NOTICE_CLEARANCE } from "./overlay/tokens";
 import { LoggedViaSurface } from "./LoggedViaSurface";
 import QuickDoseList from "./quick-entry/QuickDoseList";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
@@ -313,61 +312,37 @@ function QuickEntryBody({
       // logs however many servings they mean to and dismisses the sheet. (Its
       // taps already refresh the page behind, so "stay put" still holds.)
       return (
-        // CLEARANCE FOR THE TOAST THIS LIST RAISES (#4334 owns the real fix).
-        //
-        // The failure it buys margin against is a swallowed write, not a cosmetic
-        // one: three quick taps on a serving row, the second lands on the toast the
-        // first raised, and the person logs two servings while a confirmation on
-        // screen says three. Measured at 390x844 — the add control at y 677-709
-        // against a toast band at 693-771, and `elementFromPoint` at the control's
-        // centre returning the toast.
-        //
-        // WHY PADDING AND NOT `scroll-margin`, which I tried first and measured
-        // failing: nothing scrolls. The row is already in view, so a scroll-into-view
-        // hint never fires. This panel is BOTTOM-ANCHORED, so its content height is
-        // what sets where the rows come to rest — taller content grows the panel
-        // upward and lifts the rows clear. #3987 densified this list by ~88px, which
-        // is what lowered them into the band.
-        //
-        // AND IT IS CLEARANCE, NOT A CONTRACT. `main` cleared the same band by 4px,
-        // which nothing owned and nothing asserted; this list was always one content
-        // change away and mine was the change that arrived. A padding number is the
-        // same luck with a wider margin. The invariant — a bottom-anchored surface
-        // CLAIMS the edge so notices move out of its way — is #4334, along with the
-        // guard that cannot currently see this surface at all. Do not read this as
-        // the fix.
-        <div className={BOTTOM_EDGE_NOTICE_CLEARANCE}>
-          <FoodSelectedDateProvider today={data.today} days={data.days}>
-            <FoodLogBar
-              today={data.today}
-              days={data.days}
-              groupsBySlot={data.groupsBySlot}
-              proteinRankBySlot={data.proteinRankBySlot}
-              excludedGroups={data.excludedGroups}
-              slot={data.slot}
-              slotBoundaries={data.slotBoundaries}
-              initialFoodGroup={prefill?.foodGroup}
-              proteinQuickAdd={
-                // Ranked in for a protein-tracking profile (#1980), rendered at the
-                // position the one ranking put it in. A profile with no scoop size to
-                // re-offer gets no control here — the Food tab remains the complete
-                // surface where direct grams are first entered.
-                data.proteinPreset != null
-                  ? {
-                      initialGramsByDate: { [data.today]: data.proteinToday },
-                      lastPreset: data.proteinPreset,
-                    }
-                  : undefined
-              }
-            />
-          </FoodSelectedDateProvider>
-        </div>
+        <FoodSelectedDateProvider today={data.today} days={data.days}>
+          <FoodLogBar
+            today={data.today}
+            days={data.days}
+            groupsBySlot={data.groupsBySlot}
+            proteinRankBySlot={data.proteinRankBySlot}
+            excludedGroups={data.excludedGroups}
+            slot={data.slot}
+            slotBoundaries={data.slotBoundaries}
+            initialFoodGroup={prefill?.foodGroup}
+            proteinQuickAdd={
+              // Ranked in for a protein-tracking profile (#1980), rendered at the
+              // position the one ranking put it in. A profile with no scoop size to
+              // re-offer gets no control here — the Food tab remains the complete
+              // surface where direct grams are first entered.
+              data.proteinPreset != null
+                ? {
+                    initialGramsByDate: { [data.today]: data.proteinToday },
+                    lastPreset: data.proteinPreset,
+                  }
+                : undefined
+            }
+          />
+        </FoodSelectedDateProvider>
       );
     case "dose":
       return (
         <QuickDoseList
           today={data.today}
           doses={data.doses}
+          prn={data.prn}
           pastDays={data.pastDays}
           onDone={onDone}
         />

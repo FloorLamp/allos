@@ -428,7 +428,24 @@ test("the correction sheet names the time it shows: eating time when stated, log
 
   // 1. A serving with NO eating-time statement: the honest default (#2019) — the row
   //    has only its tap instant.
-  await page.getByTestId("log-nuts_seeds").click();
+  //
+  // hydratedClick, not a bare click. HARDENING ON A SIGNATURE MATCH, AND NOT A
+  // DIAGNOSED FIX — the distinction is the point, so the next reader does not inherit
+  // a cause nobody established.
+  //
+  // What is known: this is the FIRST write-tap after a fresh /nutrition load (the
+  // route compiles here — see `test.slow()`), it was the ONE write in this file not
+  // going through hydratedClick/settledClick, and CI failed on the next line on
+  // 2026-08-31 with `expected 7, received 6` — the signature a swallowed
+  // pre-hydration tap produces, since actionability checks pass on an element that is
+  // genuinely there and the loss only surfaces as a count that never moved.
+  //
+  // What is NOT known: that hydration is what bit. A slow write reads identically. The
+  // shard was reproduced locally at its exact CI composition (byte-identical to main's
+  // plan) and ran 139/139 green, and a CDP CPU throttle at 20x across the navigation
+  // did not reach the window in 3 runs either way — so the failure is UNREPRODUCED
+  // here and this change may not be what stops it recurring.
+  await hydratedClick(page, page.getByTestId("log-nuts_seeds"));
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const unstatedId = await newRowId(page, idsBefore);
   const idsWithFirst = await loggedIds(page);
