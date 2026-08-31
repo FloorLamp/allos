@@ -395,7 +395,7 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
   function seedStaleMessageProfile(tag: string, chat: string, hole: number) {
     const sp = makeProfile(tag);
     setTimezone(sp.profileId, "UTC");
-    seedLoginTelegram(sp.profileId, chat);
+    const loginId = seedLoginTelegram(sp.profileId, chat);
     setProfileSetting(sp.profileId, "food_telegram_enabled", "1");
     const anchor = today(sp.profileId);
     for (let d = 1; d <= 22; d++) {
@@ -404,7 +404,7 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
       for (const g of ["fermented", "berries"])
         tap(sp.profileId, g, date, "08:00:00");
     }
-    return { profileId: sp.profileId, anchor };
+    return { profileId: sp.profileId, anchor, loginId };
   }
 
   function servingsOn(profileId: number, date: string, group: string): number {
@@ -447,6 +447,107 @@ describe("the stored offer is an upper bound, never an instruction (#2460)", () 
       if (!expected) expect(lastAnswerText()).toContain("out of date");
     }
   );
+
+  // ── THE CHAT BACKFILL NAMES ITS ACTOR (#4306) ────────────────────────────
+  //
+  // The same backfill, from a nudge instead of a page, must leave the same trail: the
+  // dated-write trail may not have a hole on the most-used logging surface. The ACTOR is
+  // resolved from the chat binding — which is already what decided that this tap may
+  // write to this profile at all — for attribution only.
+  function backfillAudits(profileId: number) {
+    return db
+      .prepare(
+        `SELECT login_id, action, target, detail FROM audit_events
+          WHERE active_profile_id = ? AND action = 'usual-routine.backfill'
+          ORDER BY id`
+      )
+      .all(profileId);
+  }
+
+  it("a dated tap from a chat writes the web path's audit row, naming the login", async () => {
+    const chat = "5552480";
+    const { profileId, anchor, loginId } = seedStaleMessageProfile(
+      "TG4306-audit",
+      chat,
+      1
+    );
+    const target = shiftDateStr(anchor, -1);
+    const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, target, {
+      window: "Morning",
+      groups: ["fermented", "berries"],
+      doseIds: [],
+    });
+    await handleCallbackQuery(
+      cq(offerCallback("usual", profileId, offerId), chat)
+    );
+    expect(backfillAudits(profileId)).toEqual([
+      {
+        login_id: loginId,
+        action: "usual-routine.backfill",
+        target: "Morning",
+        detail: target,
+      },
+    ]);
+  });
+
+  it("a CONTEMPORANEOUS tap from the same chat is not audited", async () => {
+    // The converse, on the same surface — without it, "the chat audits its backfills"
+    // would pass just as well on a handler that audited every tap it ever handled, which
+    // is the poll-spam shape lib/audit-actions.ts exists to keep out of this log.
+    const chat = "5552481";
+    const { profileId, anchor } = seedStaleMessageProfile(
+      "TG4306-today",
+      chat,
+      1
+    );
+    const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, anchor, {
+      window: "Morning",
+      groups: ["fermented", "berries"],
+      doseIds: [],
+    });
+    await handleCallbackQuery(
+      cq(offerCallback("usual", profileId, offerId), chat)
+    );
+    // The tap WROTE — otherwise the silence would be about nothing having happened.
+    expect(servingsOn(profileId, anchor, "fermented")).toBe(1);
+    expect(backfillAudits(profileId)).toEqual([]);
+  });
+
+  it("a shared family chat names the login that can actually act for the profile", async () => {
+    // A chat several logins point at is the case the identity step has to answer. The
+    // tie-break is "first login owns the chat" (the lowest id, the same rule the tune
+    // toggle and the outbound dedup use) — but only among logins that manage THIS
+    // profile: a housemate on the same chat who cannot reach it is not the actor, and a
+    // lowest-id-overall rule would name them.
+    const chat = "5552482";
+    const outsider = makeProfile("TG4306-outsider");
+    const outsiderLogin = seedLoginTelegram(outsider.profileId, chat);
+    const { profileId, anchor, loginId } = seedStaleMessageProfile(
+      "TG4306-shared",
+      chat,
+      1
+    );
+    // The fixture order is the point: the login that CANNOT act for this profile has the
+    // lower id, so a bare lowest-id rule would answer with it.
+    expect(outsiderLogin).toBeLessThan(loginId);
+    const target = shiftDateStr(anchor, -1);
+    const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, target, {
+      window: "Morning",
+      groups: ["fermented", "berries"],
+      doseIds: [],
+    });
+    await handleCallbackQuery(
+      cq(offerCallback("usual", profileId, offerId), chat)
+    );
+    expect(backfillAudits(profileId)).toEqual([
+      {
+        login_id: loginId,
+        action: "usual-routine.backfill",
+        target: "Morning",
+        detail: target,
+      },
+    ]);
+  });
 
   it("stamps the backfilled bundle so the evidence guard can see it", async () => {
     // The provenance the whole self-evidence argument rests on: a bundle written onto a

@@ -18,6 +18,7 @@ import {
   USUAL_BACKFILL_WINDOW_DAYS,
 } from "@/lib/food-regularity";
 import { logUsualFoodCore } from "@/lib/food-usual-write";
+import { logUsualRoutineCore } from "@/lib/usual-routine-write";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { USUAL_BACKFILL, type LoggedVia } from "@/lib/logged-via";
 import {
@@ -642,31 +643,39 @@ describe("usualRoutineDayOffers", () => {
   });
 
   it.each([
-    ["inside the dose window", -2, true],
-    ["one day past the dose window", -3, false],
-    ["the last day in food reach", -USUAL_BACKFILL_WINDOW_DAYS, false],
+    ["inside the dose window", -2],
+    ["one day past the dose window", -3],
+    ["the last day in food reach", -USUAL_BACKFILL_WINDOW_DAYS],
   ] as const)(
-    "%s: the offer names doses = %s, so the button cannot promise a refusal",
-    (_why, delta, named) => {
-      // THE TWO HALVES REACH DIFFERENT DISTANCES. Past `isDoseDateAccepted`'s window
-      // every named dose comes back `stale-dose` having written nothing, so an offer
-      // that still listed them would put a count and a name on a button for writes the
-      // core refuses. Both sides of the edge, because "no doses past day 2" would pass
-      // on an offer that never names a dose at all.
+    "%s: the offer names the dose, because the write core now reaches it",
+    (_why, delta) => {
+      // BOTH HALVES REACH THE SAME DAY (#4305). Past `isDoseDateAccepted`'s window the
+      // core files each dose through the audited historical writer instead of answering
+      // `stale-dose`, so the offer no longer goes food-only there — and this asserts it
+      // against the CORE's own verdict below rather than against the constant, so a
+      // re-narrowing on either side reds here.
       const { profileId, anchor, dose } = seedWithDose(
         `door-dose${delta}`,
         -delta
       );
-      const offers = usualRoutineDayOffers(
-        profileId,
-        shiftDateStr(anchor, delta)
-      );
+      const target = shiftDateStr(anchor, delta);
+      const offers = usualRoutineDayOffers(profileId, target);
       expect(offers.length).toBeGreaterThan(0);
       const morning = offers.find((o) => o.window === "Morning")!;
-      // The FOOD half is unaffected either way — this bound narrows the rider, never
-      // the offer itself.
       expect(morning.food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
-      expect(morning.doses.map((d) => d.id)).toEqual(named ? [dose] : []);
+      expect(morning.doses.map((d) => d.id)).toEqual([dose]);
+      // The button may not promise a refusal: what the offer names, the core writes.
+      const write = logUsualRoutineCore(
+        profileId,
+        "Morning",
+        target,
+        ["berries", "fermented"],
+        [dose],
+        "page"
+      );
+      expect(write.kind === "logged" && write.doses).toEqual([
+        { doseId: dose, name: "Creatine", outcome: "logged" },
+      ]);
     }
   );
 

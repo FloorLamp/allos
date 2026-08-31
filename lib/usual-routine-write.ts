@@ -257,13 +257,20 @@ export function logUsualRoutineCore(
         ? datedDoseWrite(profileId, tz, date, offered, via)
         : // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or
           // a paused item on its own terms. Its answer is carried, never assumed.
+          //
+          // A PAST-DAY TAP STATES NO INTAKE TIME (#4428) — explicit null, exactly as the
+          // recent-past day switcher passes and as the FOOD half of this same bundle
+          // records a null eating instant. `undefined` here means "stamp now", which on
+          // a dated bundle wrote an administration instant sitting on a different day
+          // from the row it was filed under; the pair rule the rest of the model turns
+          // on says an instant outside its own row's day is corruption, not precision.
           markDoseTaken(
             profileId,
             doseId,
             offered.itemId,
             date,
             via,
-            undefined,
+            date === t ? undefined : null,
             notifyMessageId
           ),
     });

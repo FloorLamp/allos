@@ -17,6 +17,7 @@ import { logUsualRoutine } from "@/app/(app)/actions";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
+import { USUAL_BACKFILL_WINDOW_DAYS } from "@/lib/food-regularity";
 
 const revalidate = vi.mocked(revalidatePath);
 
@@ -27,6 +28,33 @@ function servings(profileId: number, date: string) {
         WHERE profile_id = ? AND date = ? ORDER BY group_key`
     )
     .all(profileId, date) as { group_key: string; servings: number }[];
+}
+
+// The dose row's provenance, its supply crossing, and whether its stated administration
+// instant CONTRADICTS the day the row is filed under — the pair rule (`judgeStatedAt`):
+// an instant outside its own row's day is corruption, and "not stated" is a real answer
+// that satisfies it. Asserted as the PROPERTY rather than as a per-writer expected
+// value, so neither writer can satisfy it by being enumerated. Every fixture here is
+// UTC, so `date()` is the profile-local day.
+function doseRow(profileId: number, doseId: number, date: string) {
+  return db
+    .prepare(
+      `SELECT l.logged_via, l.supply_adjusted,
+              (l.occurred_at IS NULL OR date(l.occurred_at) = l.date) AS instantOnItsOwnDay
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ? AND l.dose_id = ? AND l.date = ?`
+    )
+    .get(profileId, doseId, date);
+}
+
+function itemOf(doseId: number): number {
+  return (
+    db
+      .prepare(`SELECT item_id FROM intake_item_doses WHERE id = ?`)
+      .get(doseId) as { item_id: number }
+  ).item_id;
 }
 
 function doseLogs(profileId: number, date: string) {
@@ -406,13 +434,86 @@ describe("logUsualRoutine on a past day", () => {
     ).toEqual([{ logged_via: "dashboard-widget" }]);
   });
 
-  it("the dose half stops at ITS OWN window while the food half keeps going", async () => {
-    // The two bounds genuinely differ — food reaches six days back, a dose two — so on
-    // day four the bundle lands its servings and reports its dose as not logged. That
-    // is the composed answer's contract (#2458) doing what it was built for, and it is
-    // asserted rather than hidden because a person who taps expecting both must be told.
-    const { profile, anchor, creatine } = seedWithHole("routine-dose-edge", 4);
+  // ── THE WHOLE MORNING, THE WHOLE WAY BACK (#4305) ──────────────────────────
+  //
+  // Every day the FOOD half reaches, both halves reach. Days 1-2 are `markDoseTaken`'s;
+  // days 3-6 are `logHistoricalDose`'s. Asserted across the whole span rather than at
+  // one point, because the defect this closes lived on exactly one side of an edge that
+  // is invisible from either end — and day 6 is the last day in reach, so a regression
+  // that narrowed the food half too would red here as well.
+  it.each([1, 2, 3, 4, 5, USUAL_BACKFILL_WINDOW_DAYS] as const)(
+    "%i days back: one tap lands the servings AND the dose",
+    async (back) => {
+      const { profile, anchor, creatine } = seedWithHole(
+        `routine-span-${back}`,
+        back
+      );
+      const target = shiftDateStr(anchor, -back);
+      const res = await logUsualRoutine(
+        fd({
+          meal_slot: "Morning",
+          groups: "berries,fermented",
+          dose_ids: String(creatine),
+          date: target,
+        })
+      );
+      expect(res.ok).toBe(true);
+      expect(servings(profile.id, target)).toEqual([
+        { group_key: "berries", servings: 1 },
+        { group_key: "fermented", servings: 1 },
+      ]);
+      expect(doseLogs(profile.id, target)).toEqual([
+        { dose_id: creatine, status: "taken" },
+      ]);
+      expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["logged"]);
+      // WHICHEVER WRITER RAN, THE ROW SAYS THE SAME THINGS: stamped `usual-backfill` so
+      // the evidence guard can see it, supply moved, and its stated administration
+      // instant does not contradict the day it is filed under.
+      expect(doseRow(profile.id, creatine, target)).toEqual({
+        logged_via: "usual-backfill",
+        supply_adjusted: 1,
+        instantOnItsOwnDay: 1,
+      });
+    }
+  );
+
+  it("a dated bundle is audited on every day it reaches", async () => {
+    // The audit is the DAY's property, not the writer's: a caller must not be able to
+    // pick a day that writes rows and leaves no trail. Day 4 is the one the ±2 window
+    // never reached, so this is the case #4305 created.
+    const { profile, anchor, creatine } = seedWithHole("routine-audit-4", 4);
     const target = shiftDateStr(anchor, -4);
+    await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        dose_ids: String(creatine),
+        date: target,
+      })
+    );
+    expect(auditRows(profile.id)).toEqual([
+      { action: AUDIT_ACTIONS.usualBackfill, target: "Morning", detail: target },
+    ]);
+  });
+
+  it("a medication whose course does not cover the day says so, and writes nothing", async () => {
+    // The ONE refusal only the dated writer can produce. `logHistoricalDose` is bounded
+    // by the item's recorded courses, and `pendingDayDoses` — which decides what the
+    // bundle may name — does not consult them, so a medication stopped four days ago is
+    // genuinely offerable and genuinely unwritable on that day. It is reported as
+    // `outside-course` rather than folded into `stale-dose`, because "that dose doesn't
+    // exist" is a different and false thing to say. The FOOD half still lands: a dose
+    // refusal never unwinds breakfast (#2458).
+    const { profile, anchor, creatine } = seedWithHole("routine-course", 4);
+    const target = shiftDateStr(anchor, -4);
+    const stopped = shiftDateStr(anchor, -30);
+    db.prepare(`UPDATE intake_items SET kind = 'medication' WHERE id = ?`).run(
+      itemOf(creatine)
+    );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+       VALUES (?, ?, ?)`
+    ).run(itemOf(creatine), shiftDateStr(anchor, -60), stopped);
     const res = await logUsualRoutine(
       fd({
         meal_slot: "Morning",
@@ -421,13 +522,14 @@ describe("logUsualRoutine on a past day", () => {
         date: target,
       })
     );
-    expect(res.ok).toBe(true);
+    expect(res.ok && res.doses.map((d) => d.outcome)).toEqual([
+      "outside-course",
+    ]);
+    expect(doseLogs(profile.id, target)).toEqual([]);
     expect(servings(profile.id, target)).toEqual([
       { group_key: "berries", servings: 1 },
       { group_key: "fermented", servings: 1 },
     ]);
-    expect(doseLogs(profile.id, target)).toEqual([]);
-    expect(res.ok && res.doses.map((d) => d.outcome)).toEqual(["stale-dose"]);
   });
 
   it.each([
