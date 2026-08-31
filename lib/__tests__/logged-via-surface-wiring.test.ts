@@ -240,13 +240,12 @@ export function unwiredPosters(root: string): string[] {
   const out: string[] = [];
   for (const { rel, src } of clients) {
     const hook = /\/use[A-Z][^/]*\.ts$/.test(rel);
-    const code = stripComments(src);
     for (const [action, file] of actions) {
       if (!importsSymbol(src, action)) continue;
       const unstamped = hasUnstampedCall(src, action);
       if (
         (direct.has(action) || (counts.get(action) ?? 0) > 1) &&
-        ((!DECLARES_RE.test(code) && (!hook || unstamped)) || unstamped)
+        ((!DECLARES_RE.test(src) && (!hook || unstamped)) || unstamped)
       )
         out.push(`${rel} posts ${action} (${file})`);
     }
