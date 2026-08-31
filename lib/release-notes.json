@@ -44,6 +44,13 @@
           "kind": "fix",
           "category": "Training",
           "issues": [3244]
+        },
+        {
+          "pr": 4381,
+          "title": "A time you set near midnight stays on the day you logged it",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4353]
         }
       ]
     },
