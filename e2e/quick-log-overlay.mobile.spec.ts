@@ -735,6 +735,146 @@ test("the dose sheet logs a missed day, on the day it names", async ({
   }
 });
 
+// #3276. THE SHEET'S DOSE ROW NO LONGER OWNS ITS OFFLINE HALF — the shared client write
+// pipeline does, and the enrollment gate makes the branch impossible to omit rather than
+// merely present today (which is all #3272 could buy). Driven in airplane mode because
+// the type-level claim is worth nothing if the capture does not actually replay: the tap
+// queues, the row leaves the list because a kept capture IS a landing, and the reconnect
+// writes ONE taken row through the same core every other confirm path uses.
+//
+// The dead spot starts AFTER the sheet is open on purpose. Opening still rides
+// `loadQuickEntry`, a Server Action, for every body except measurements (#4091) — the
+// separate interim fix the #3276 amendment names — so an offline OPEN would be testing
+// that gap rather than this write.
+test("a dose confirmed from the sheet with no signal queues, then replays", async ({
+  browser,
+}) => {
+  const doseId = shellDoseId();
+  clearDoseLogs(doseId);
+  setDoseRetired(doseId, false);
+
+  const page = await signIn(browser);
+  const context = page.context();
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await context.setOffline(true);
+    // A plain click, not settledClick: this tap deliberately posts NOTHING, so there is
+    // no Server Action response to settle on.
+    await row.getByRole("button", { name: "Mark taken" }).click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+    // Kept, so the row is resolved for this session — the same thing an online confirm
+    // does, which is the parity the pipeline exists to hold.
+    await expect(row).toHaveCount(0);
+
+    await context.setOffline(false);
+    // The badge emptying is the flush's own signal, and the phone shell shows one toast
+    // at a time (#3611) — the offline sentence above is still holding the slot when the
+    // sync lands — so this waits on the queue rather than on a snackbar, exactly as the
+    // measurements offline test in this file does.
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // DURABLE, from the ledger rather than from any toast: exactly one taken row, and
+    // no second one from a replay that ran twice.
+    expect(doseLogRows(doseId).map((r) => r.status)).toEqual(["taken"]);
+  } finally {
+    clearDoseLogs(doseId);
+    await page.context().close();
+  }
+});
+
+// #4453. THE PAST-DAY ROW'S OFFLINE HALF, which nothing in this suite has ever driven —
+// every offline dose test above taps TODAY's row. That gap is not academic: it is how the
+// #3276 conversion silently dropped this row's strike. A dose captured for yesterday
+// queued and toasted correctly and then SAT IN THE LIST as though nothing had happened,
+// inviting a second tap that queues the same dose again, while today's row — one function
+// away, same file — kept settling on the pipeline's `captured` answer. Two rows over one
+// choreography drifting apart is the whole defect #3276 exists to make unrepresentable,
+// so the past-day row gets the same airplane-mode drive today's has.
+//
+// The dead spot starts AFTER the day is switched to, for the reason the test above gives:
+// opening and switching still ride `loadQuickEntry`, so an offline switch would be testing
+// the #4091 gap rather than this write.
+test("a past day's dose captured with no signal leaves that day, then replays onto it", async ({
+  browser,
+}) => {
+  const doseId = shellDoseId();
+  clearDoseLogs(doseId);
+  setDoseRetired(doseId, false);
+
+  const page = await signIn(browser);
+  const context = page.context();
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    await overlay.getByTestId("quick-entry-dose-day-1").click();
+    // The day the sheet says it is writing, read off the sheet rather than computed here
+    // — the durable assertion at the bottom is that the replay agreed with this string.
+    const named = await overlay
+      .getByTestId("quick-entry-dose-day")
+      .getAttribute("data-date");
+    expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(named).not.toBe(frozenNow().toISOString().slice(0, 10));
+
+    // Scoped to the OVERLAY, not to the day container: the container unmounts when the
+    // day empties, and a locator that can no longer resolve anything would satisfy the
+    // absence check below for a reason that has nothing to do with the row.
+    const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await context.setOffline(true);
+    // A plain click, not settledClick: this tap deliberately posts NOTHING, so there is
+    // no Server Action response to settle on.
+    await row.getByTestId("dose-take").click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+
+    // THE ASSERTION THIS TEST EXISTS FOR, stated POSITIVELY first so a closed overlay
+    // cannot satisfy it: a kept capture IS a landing, so the day is empty and says so
+    // while still mounted, and the row is gone from the same locator that just tapped it.
+    await expect(
+      overlay.getByTestId("quick-entry-dose-day-empty")
+    ).toBeVisible();
+    await expect(row).toHaveCount(0);
+
+    await context.setOffline(false);
+    // The badge emptying is the flush's own signal — the offline sentence still holds the
+    // single toast slot (#3611) — so this waits on the queue rather than on a snackbar.
+    // It is also what frees the day toggle: the badge is a fixed bottom-left element and
+    // intercepts the pointer for the segment beneath it while it is up.
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // DURABLE, from the ledger: one taken row, on the day the sheet named.
+    expect(doseLogRows(doseId)).toEqual([{ date: named, status: "taken" }]);
+
+    // …so it struck the DAY, not the dose. One occurrence is one (day, dose) pair, and
+    // today is still owed. This is also this locator's POSITIVE CONTROL: the same object
+    // the absence above was asserted through finds a row before the tap, none after, and
+    // one again here — so that absence cannot have come from a locator that went blind.
+    await overlay.getByTestId("quick-entry-dose-day-0").click();
+    await expect(row).toBeVisible();
+  } finally {
+    clearDoseLogs(doseId);
+    await page.context().close();
+  }
+});
+
 test("the food and vitals overlays mount the same forms their pages carry", async ({
   browser,
 }) => {
