@@ -1043,7 +1043,6 @@ export function getMinutesSinceLastFoodLog(
 // rotation and a restart: whichever food keyboard is currently live renders the offers
 // the LEDGER still justifies. Chat correction bursts carry chat taps only (#4356):
 // page and offline rows keep their correction home on the surface that wrote them;
-// NULL preserves only pre-provenance rows already aging out of this fresh window.
 // Profile-scoped via the food_log_events filter.
 export function getRecentFoodTaps(
   profileId: number,

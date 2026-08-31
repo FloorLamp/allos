@@ -271,6 +271,9 @@ describe("substance content reaches Telegram only after this profile opts in (#3
         return;
       }
       case "eating-time picker on the drink": {
+        db.prepare(
+          "UPDATE food_log_events SET logged_via = 'telegram-nudge' WHERE id = ?"
+        ).run(alcoholFromId(profileId));
         await tickProfile(profileId, `p${profileId}`, 5, Date.now());
         const at = sendMock.mock.calls.findIndex(
           (c) => (c[1] as NotificationMessage).kind === "food"
