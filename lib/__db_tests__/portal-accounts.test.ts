@@ -616,6 +616,44 @@ describe("POST /api/documents — identity form", () => {
     expect(acquiredOf(mineProfile)).toEqual([portalId]);
   });
 
+  it("re-resolves an identity after its pending row is bound", async () => {
+    const pending = await UPLOAD(
+      uploadByIdentity(
+        memberToken,
+        "ochsner-mychart",
+        "Soon Mapped",
+        "pending-first"
+      )
+    );
+    expect(pending.status).toBe(404);
+    expect(((await pending.json()) as { error: string }).error).toBe(
+      "unmapped-identity"
+    );
+    expect(listPendingIdentities().map((row) => row.patientLabel)).toEqual([
+      "Soon Mapped",
+    ]);
+
+    expect(
+      bindPortalIdentity(defaultAccount, "Soon Mapped", mineProfile).ok
+    ).toBe(true);
+    expect(listPendingIdentities()).toHaveLength(0);
+
+    const landed = await UPLOAD(
+      uploadByIdentity(
+        memberToken,
+        "ochsner-mychart",
+        "Soon Mapped",
+        "bound-second"
+      )
+    );
+    expect(landed.status).toBe(200);
+    expect((await landed.json()) as { profile: number }).toMatchObject({
+      profile: mineProfile,
+    });
+    expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([portalId]);
+  });
+
   it("routes by LOGIN when two logins share a label", async () => {
     const mom = createPortalAccount(portalId, "Mom");
     const dad = createPortalAccount(portalId, "Dad");
