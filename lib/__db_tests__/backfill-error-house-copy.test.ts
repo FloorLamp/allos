@@ -56,7 +56,7 @@ function seeded(): Database.Database {
 }
 
 describe(MIGRATION, () => {
-  it("rewrites machine strings and leaves authored ones byte-identical", () => {
+  it("rewrites every machine string and leaves authored ones byte-identical", () => {
     const db = seeded();
     try {
       // Premise, asserted rather than assumed: the leak is on the row before.
@@ -80,24 +80,9 @@ describe(MIGRATION, () => {
       expect(after.map((r) => [r.kind, r.error])).toEqual(
         ROWS.map(([kind, , expected]) => [kind, expected])
       );
-    } finally {
-      db.close();
-    }
-  });
-
-  it("leaves no SQL vocabulary anywhere in the column", () => {
-    const db = seeded();
-    try {
-      runMigrations(db);
-      const errors = (
-        db
-          .prepare(
-            "SELECT error FROM integration_backfill_jobs WHERE error IS NOT NULL"
-          )
-          .all() as { error: string }[]
-      ).map((r) => r.error);
-      for (const error of errors) {
-        expect(error, error).not.toMatch(/constraint|SQLITE_|activity_/i);
+      for (const { error } of after) {
+        if (error)
+          expect(error, error).not.toMatch(/constraint|SQLITE_|activity_/i);
       }
     } finally {
       db.close();
