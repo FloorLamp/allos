@@ -305,6 +305,15 @@ export default async function SleepPage() {
         metricKey="sleep_min"
         className="section-seam mb-6"
         range={{ from: shiftDateStr(todayStr, -89), to: todayStr }}
+        emptyState={
+          <p
+            className="section-seam mb-6 text-sm text-slate-500 dark:text-slate-400"
+            data-testid="sleep-source-resolution"
+          >
+            Sleep sources are chosen separately for each night. Source controls
+            appear when two sources have data in the last 90 days.
+          </p>
+        }
       />
 
       {!hasAny && (
