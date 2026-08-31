@@ -4,6 +4,7 @@ import {
   comboboxRows,
   deleteActivityFromForm,
   expectNoClippedContent,
+  settledBoxes,
   settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -190,6 +191,115 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
   // the auto-saved row so the worker DB is left as it was found.
   await parts
     .nth(1) // nth-ok: the Running part this spec added
+    .getByRole("button", { name: "Remove activity" })
+    .click();
+  await expect(parts).toHaveCount(1);
+  await cleanUpDraft(page);
+});
+
+// Issue #4515 — the same two sticky rows, pinned against the phone's top edge.
+//
+// The workspace overlay is `fixed inset-0 … overflow-y-auto`, so it IS the scroll
+// container at the viewport: a child at `top: 0` pins UNDER the status bar, which
+// is #4282's page-strip defect one layer in. The panel's own top padding clears
+// the notch at REST and says nothing about where a pinned row stops.
+//
+// Headless Chromium reports a ZERO safe-area inset, so the defect is invisible to
+// every ordinary measurement here and would stay green forever. Overriding
+// `--top-edge-inset` (app/globals.css) on <html> is the same substitution a notched
+// device performs — the same forge e2e/trends-context-bar.mobile.spec.ts uses for
+// #4282 — so this exercises the arithmetic `top-edge-safe` actually does.
+test("pinned part header and set schema park BELOW a notch band (#4515)", async ({
+  page,
+}) => {
+  const NOTCH = 44; // an iPhone-class status-bar inset, in CSS px
+  const forge = (px: number) =>
+    page.evaluate(
+      (v) =>
+        document.documentElement.style.setProperty("--top-edge-inset", `${v}px`),
+      px
+    );
+
+  await page.goto("/training?tab=log");
+  const sheet = await openLogSheet(page);
+  await (await showLogRow(sheet, "log-activity")).click();
+
+  const firstName = page.getByPlaceholder(/What did you do/);
+  await pickActivity(page, firstName, "Barbell Bench Press");
+  const weight = page.getByTestId("set1-weight");
+  await weight.fill("60");
+  await expect(weight).toHaveValue("60");
+  await settledFill(page, page.getByTestId("set1-reps"), "5");
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  // A second part is what makes the defect REACHABLE: #4515 records it as
+  // unreachable today because a one-part form does not scroll far enough for
+  // anything to pin. The assertion below is what says so out loud.
+  await page.getByRole("button", { name: "+ Add another activity" }).click();
+  const parts = page.getByTestId("activity-part");
+  await expect(parts).toHaveCount(2);
+  await pickActivity(
+    page,
+    parts
+      .nth(1) // nth-ok: the part this spec just added, addressed by the order it created
+      .getByPlaceholder(/Add another activity/),
+    "Overhead Press"
+  );
+
+  const workspace = page.getByTestId("activity-workspace");
+  const first = parts.nth(0); // nth-ok: the lift this spec entered first
+  const header = first.getByTestId("part-header");
+  const schema = first.getByTestId("set-column-headings");
+
+  // Park the first part's header: scroll far enough into that part that its
+  // header is pinned while the part itself is still on screen. Re-derived after
+  // every forge — changing the token relays the panel.
+  const pin = async () => {
+    const depth = await workspace.evaluate((root) => {
+      const part = root.querySelector<HTMLElement>(
+        '[data-testid="activity-part"]'
+      )!;
+      const into =
+        part.getBoundingClientRect().top - root.getBoundingClientRect().top;
+      root.scrollTop += into + 160;
+      return root.scrollHeight - root.clientHeight;
+    });
+    // The overlay must actually be scrollable, or every reading below is taken on
+    // a row that never pinned and the whole test passes vacuously.
+    expect(
+      depth,
+      "the workspace overlay should scroll at 390x844 with two parts"
+    ).toBeGreaterThan(160);
+    await settledBoxes([header, schema]);
+  };
+
+  // The control runs through the SAME locators as the assertion: with no notch
+  // the header parks flush, so a 44 below cannot be anything else at that offset.
+  await pin();
+  const [flushHeader, flushSchema] = await settledBoxes([header, schema]);
+  expect(flushHeader.y).toBe(0);
+  // The schema row parks directly under the header — `--set-schema-top` — and that
+  // relationship is what must survive the inset, not the absolute number.
+  expect(Math.abs(flushSchema.y - flushHeader.height)).toBeLessThanOrEqual(2);
+
+  await forge(NOTCH);
+  await pin();
+  const [notchedHeader, notchedSchema] = await settledBoxes([header, schema]);
+  expect(
+    notchedHeader.y,
+    "the pinned exercise header sits under the status bar"
+  ).toBe(NOTCH);
+  expect(
+    Math.abs(notchedSchema.y - (NOTCH + notchedHeader.height))
+  ).toBeLessThanOrEqual(2);
+
+  await expectNoClippedContent(page);
+
+  await forge(0);
+  await parts
+    .nth(1) // nth-ok: the Overhead Press part this spec added
     .getByRole("button", { name: "Remove activity" })
     .click();
   await expect(parts).toHaveCount(1);

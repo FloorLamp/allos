@@ -916,7 +916,11 @@ export default function StrengthSets({
           editor context visible, so the row returns to normal flow there.
           `--set-schema-top` is published by the part container (ActivityPartsList),
           because the phone header is one row taller when it carries an action
-          toolbar (#1613) and this row has to clear it.
+          toolbar (#1613) and this row has to clear it. That height is exactly what
+          `--top-edge-offset` means — how much of the top edge the strip ABOVE has
+          already claimed — so it is handed to `top-edge-safe` (app/globals.css) as
+          that offset and the status-bar inset lands on top of it (#4515). The two
+          compose; neither restates the other's arithmetic.
 
           Below `sm` the row shows ONLY the value schema — `Weight (unit) × Reps`,
           aligned to the steppers under it (#1612). The `Set` / `Options` headings
@@ -925,7 +929,7 @@ export default function StrengthSets({
           band of headings. */}
           <div
             data-testid="set-column-headings"
-            className="sticky top-(--set-schema-top) z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
+            className="sticky top-edge-safe [--top-edge-offset:var(--set-schema-top)] z-9 -mx-1 mt-2 flex items-center gap-2 bg-surface/95 px-1 py-1 section-label backdrop-blur-sm md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:md:bg-transparent"
           >
             <span className="hidden w-12 shrink-0 sm:block">Set</span>
             {!timed && !isBodyweight(p.name) ? (
