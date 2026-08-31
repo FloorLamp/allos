@@ -46,7 +46,7 @@ export default function TrendsContextBar({
       data-expanded={open ? "true" : "false"}
       data-hidden={hidden ? "true" : "false"}
       data-ready={ready ? "true" : "false"}
-      className="sub-chrome sticky top-(--shell-chrome-h) z-20 -mx-4 -mt-4 mb-3 bg-(--nav) sm:static sm:z-auto sm:mx-0 sm:mt-0 sm:mb-6 sm:bg-transparent"
+      className="sub-chrome sticky top-edge-safe z-20 -mx-4 -mt-4 mb-3 bg-(--nav) sm:static sm:z-auto sm:mx-0 sm:mt-0 sm:mb-6 sm:bg-transparent"
     >
       <div className="grid grid-cols-[minmax(0,1fr)_auto] sm:flex sm:flex-col">
         <div className="min-w-0 sm:order-2 sm:**:[[role=tab]]:px-4 sm:**:[[role=tab]]:py-2 sm:**:[[role=tab]]:text-sm sm:**:[[role=tab]]:font-medium">

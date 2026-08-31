@@ -48,8 +48,8 @@ import type { AppRoute } from "@/lib/hrefs";
 // `sm`, and the filters scroll away behind their one-line summary.
 //
 // It rides the SAME machinery the Trends context bar does (#1485 F) rather than
-// forking it — `useShellChrome()` for the hide/reveal state, `--shell-chrome-h`
-// for the offset, `.sub-chrome` for the transform (app/globals.css). That is
+// forking it — `useShellChrome()` for the hide/reveal state, `top-edge-safe` for
+// the offset, `.sub-chrome` for the transform (app/globals.css). That is
 // also what the "#1416 interaction" note in #1517 asks for: the offset is the
 // shell's published height, never a hardcoded 3.5rem, so it stays correct when
 // the multi-profile view banner rides inside the chrome and makes it taller.
@@ -138,7 +138,7 @@ export default function TimelineDayNav({
       // Full-bleed on a phone so the sticky nav's background covers the content
       // gutters as the day's events scroll under it; from `sm` up it is an ordinary
       // block in the reading column, exactly as before.
-      className="sub-chrome sticky top-(--shell-chrome-h) z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-(--border) bg-(--nav) px-4 py-2 sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0"
+      className="sub-chrome sticky top-edge-safe z-20 -mx-4 mb-5 flex items-center justify-between gap-2 border-b border-(--border) bg-(--nav) px-4 py-2 sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0"
     >
       <PendingLink
         href={prevHref}

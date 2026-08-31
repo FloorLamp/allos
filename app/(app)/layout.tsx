@@ -371,14 +371,15 @@ export default async function AppLayout({
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                          {/* THE NOTCH INSET LIVES HERE NOW (#4102). It used to ride the phone
-            top bar's own `pt-[env(safe-area-inset-top)]`, and that bar has
-            retired — so without this the first line of every page would print
-            under the status bar on a device with a notch, which is what
-            `viewportFit: cover` means. On a device without one the inset is 0px
-            and content starts at the true viewport top, which is the ruling.
+                          {/* FIRST-PAINT CLEARANCE ONLY (#4102, #4282). Without this the first line
+            of every page would print under the status bar, which is what
+            `viewportFit: cover` means. It is PADDING, so it positions and paints
+            nothing: content scrolls under the notch, and #4282 ruled that IS
+            edge-to-edge. A sticky strip therefore cannot lean on it and carries
+            `top-edge-safe` (app/globals.css) itself; the token rather than a
+            second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
-                          <main className="min-w-0 flex-1 overflow-x-clip pt-[env(safe-area-inset-top)] md:pt-0">
+                          <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
                             {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
                     IT (#4102). It was built for the phone top bar's hide-on-scroll
                     (issue #1416), and that bar has retired: the dock is the phone's
