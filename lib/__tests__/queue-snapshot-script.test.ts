@@ -4,10 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
-import {
-  buildSnapshot,
-  laneIssues,
-} from "../../scripts/orchestration/queue-snapshot.mjs";
+import { buildSnapshot } from "../../scripts/orchestration/queue-snapshot.mjs";
 import { WATERMARK_ISSUE_TITLE } from "../../scripts/orchestration/reconcile-tracker-core";
 
 // THE WRITTEN-DOWN QUEUE (owner, 2026-08-31). A live session with open
@@ -117,80 +114,18 @@ describe("queue-snapshot.mjs, driven as a script", () => {
   });
 });
 
-// THE LEDGER CROSS-REFERENCE (#4451), AND WHY THE FIXTURE IS A REAL LEDGER.
-//
-// The sweep listed issues under active dispatch as available capacity — 4 of
-// the 5 issues in active ledger entries appeared in the 10:22Z file. What
-// makes this testable rather than restated is the fixture: every row kind
-// below is one the live `allos-dispatch-ledger.jsonl` holds, in its own
-// spelling, and each is a way a plausible parse REACHES NOTHING. The issue
-// numbers are STRINGS there and numbers on the GitHub issue — so a parse that
-// compares them raw marks zero rows while looking entirely correct.
-const ledgerLine = (entry: Record<string, unknown>) => JSON.stringify(entry);
-const LEDGER = [
-  ledgerLine({
-    at: "2026-08-31T09:16Z",
-    status: "active",
-    branch: "write-3276",
-    issues: ["3276"],
-  }),
-  ledgerLine({
-    at: "2026-08-31T09:43Z",
-    status: "active",
-    branch: "nut-4118",
-    issues: ["4118", "3987"],
-  }),
-  // an `update` carries a branch and NO issues: it must not erase the lane
-  ledgerLine({
-    at: "2026-08-31T09:50Z",
-    status: "update",
-    branch: "nut-4118",
-    priority: "P1",
-  }),
-  // a `promotion` carries no branch at all
-  ledgerLine({
-    at: "2026-08-31T09:55Z",
-    status: "promotion",
-    target: "write-3276",
-    displaced: null,
-  }),
-  ledgerLine({
-    at: "2026-08-31T10:00Z",
-    status: "active",
-    branch: "rail-4280",
-    issues: ["4280"],
-  }),
-  ledgerLine({ at: "2026-08-31T10:24Z", status: "done", branch: "rail-4280" }),
-  "{ this line is a torn append",
-  "",
-].join("\n");
-
-describe("laneIssues, over a ledger in the shape the live one has", () => {
-  const lanes = laneIssues(LEDGER);
-
-  it.each([
-    [3276, "write-3276", "a plain active dispatch"],
-    [
-      4118,
-      "nut-4118",
-      "an active dispatch a later `update` row re-prioritised",
-    ],
-    [3987, "nut-4118", "the second issue of a two-issue cluster"],
-    [4280, null, "closed by a `done` row — no longer a lane"],
-    [9999, null, "never dispatched"],
-  ])("#%s -> %s (%s)", (number, branch, _why) => {
-    expect(lanes.get(number as number) ?? null).toBe(branch);
-  });
-
-  it("reaches every dispatch the ledger still holds — the count is the point", () => {
-    // A reach count, not a pattern restatement: three issues across two live
-    // branches, and a parse that mishandles ANY row kind above returns fewer.
-    expect(lanes.size).toBe(3);
-  });
-});
+// THE LEDGER CROSS-REFERENCE (#4451). The sweep listed issues under active
+// dispatch as available capacity — 4 of the 5 issues in active ledger entries
+// appeared in the 10:22Z file. The ledger's own parse moved to ledger.mjs
+// with #4460 and is pinned in dispatch-ledger.test.ts; what is pinned HERE is
+// the half this file owns — a lane it is handed is MARKED, never dropped.
+const LANES = new Map([
+  [3276, "write-3276"],
+  [4118, "nut-4118"],
+  [3987, "nut-4118"],
+]);
 
 describe("issues under dispatch are MARKED, never dropped", () => {
-  const lanes = laneIssues(LEDGER);
   const swept = () =>
     buildSnapshot(
       [
@@ -201,7 +136,7 @@ describe("issues under dispatch are MARKED, never dropped", () => {
         issue(50, ["P2"]),
       ],
       NOW,
-      lanes
+      LANES
     );
 
   it("keeps the row in the file — a dropped row is a forgotten row", () => {
