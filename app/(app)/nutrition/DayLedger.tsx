@@ -17,7 +17,7 @@ import DoseStatusControl from "@/components/DoseStatusControl";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useWritePipeline } from "@/components/useWritePipeline";
-import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
+import { settleDayDoses } from "@/components/medications/dose-day-settlement";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
@@ -177,51 +177,9 @@ export default function DayLedger({
     setNotes((prev) => ({ ...prev, [occurrenceKey(date, doseId)]: text }));
   }
 
-  // Answered from the typed outcomes, never from the ask. The named ids are an UPPER
-  // BOUND: the action re-derives the day's still-unresolved set and writes only the
-  // intersection, so this can never ask for more than the label promised and never get
-  // more than the day still owes.
-  function settlePost(
-    result: Awaited<ReturnType<typeof resolveDayDoses>>,
-    status: "taken" | "skipped"
-  ) {
-    if (!result.ok)
-      return {
-        wrote: false,
-        announce: { message: result.error, tone: "error" as const, undo: null },
-      };
-    for (const dose of result.doses) {
-      if (!doseResolved(dose.outcome))
-        note(dose.doseId, doseConfirmMessage(dose.outcome).text);
-    }
-    const landed = result.doses.filter((d) => doseResolved(d.outcome));
-    if (landed.length === 0)
-      return {
-        wrote: false,
-        announce: {
-          message:
-            result.doses.length === 0
-              ? "Nothing left to log for that day."
-              : doseConfirmMessage(result.doses[0]!.outcome).text,
-          tone: "error" as const,
-          undo: null,
-        },
-      };
-    markResolved(landed.map((d) => d.doseId));
-    return {
-      wrote: true,
-      announce: {
-        message:
-          landed.length === 1
-            ? doseConfirmMessage(landed[0]!.outcome).text
-            : `${landed.length} doses ${status === "taken" ? "logged" : "skipped"}.`,
-        // No undo, and on the bulk row it is load-bearing: the action resolves each dose
-        // in its own transaction, so an inverse would have to know which ones landed.
-        // That is not a complete local inverse (lib/undo-offer.ts).
-        undo: null,
-      },
-    };
-  }
+  // The two answers this surface gives a dated settlement: where an unresolved dose's
+  // reason is shown, and what leaves the list.
+  const row = { note, resolved: markResolved };
 
   // A single dated tap MAY be captured offline: the queued intent carries its own day
   // and the replay re-checks the window with the predicate the core uses. No
@@ -232,7 +190,7 @@ export default function DayLedger({
       key: `${doseId}->${status}`,
       fields: { date, status, dose_ids: String(doseId) },
       action: resolveDayDoses,
-      settle: (result) => settlePost(result, status),
+      settle: (result) => settleDayDoses(result, status, row),
       failureMessage: "Couldn't update this dose. Try again.",
       offline: () => ({
         kind: "capture",
@@ -257,7 +215,7 @@ export default function DayLedger({
       key: doseIds.join(","),
       fields: { date, status: "taken", dose_ids: doseIds.join(",") },
       action: resolveDayDoses,
-      settle: (result) => settlePost(result, "taken"),
+      settle: (result) => settleDayDoses(result, "taken", row),
       // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its OWN
       // transaction, so a failure on the third of five leaves the first two committed
       // WITH their supply decrements. We do not know what landed, so we say that and

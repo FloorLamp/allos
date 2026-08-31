@@ -5,6 +5,7 @@ import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useWritePipeline } from "@/components/useWritePipeline";
+import { settleDayDoses } from "@/components/medications/dose-day-settlement";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -309,52 +310,9 @@ function PastDayDoses({
   // stack is online-only by declaration rather than by omission.
   const single = useWritePipeline("dose-day");
   const stack = useWritePipeline("dose-day-stack");
-
-  // Answered from the typed outcomes, never from the ask. The named ids are an UPPER
-  // BOUND: the action re-derives the day's still-unresolved set and writes only the
-  // intersection, so a dose the day no longer owes is simply absent from `result.doses`
-  // and one that refused is named where it stands.
-  function settlePost(
-    result: Awaited<ReturnType<typeof resolveDayDoses>>,
-    status: "taken" | "skipped"
-  ) {
-    if (!result.ok)
-      return {
-        wrote: false,
-        announce: { message: result.error, tone: "error" as const, undo: null },
-      };
-    for (const dose of result.doses) {
-      if (!doseResolved(dose.outcome))
-        onNote(dose.doseId, doseConfirmMessage(dose.outcome).text);
-    }
-    const landed = result.doses.filter((d) => doseResolved(d.outcome));
-    if (landed.length === 0)
-      return {
-        wrote: false,
-        announce: {
-          message:
-            result.doses.length === 0
-              ? "Nothing left to log for that day."
-              : doseConfirmMessage(result.doses[0]!.outcome).text,
-          tone: "error" as const,
-          undo: null,
-        },
-      };
-    onResolved(landed.map((d) => d.doseId));
-    return {
-      wrote: true,
-      announce: {
-        message:
-          landed.length === 1
-            ? doseConfirmMessage(landed[0]!.outcome).text
-            : `${landed.length} doses ${status === "taken" ? "logged" : "skipped"}.`,
-        // No undo here either, and for the stack it is load-bearing: the action resolves
-        // each dose in its own transaction, so an inverse would have to know which ones
-        // landed. That is not a complete local inverse (lib/undo-offer.ts).
-        undo: null,
-      },
-    };
-  }
+  // The two answers this surface gives a dated settlement, which is the only thing that
+  // ever differed between it and the ledger's copy of the same choreography.
+  const row = { note: onNote, resolved: onResolved };
 
   // A single dated tap MAY be captured offline: the queued intent already carries its
   // own day and the replay re-checks the window with the same predicate the core does
@@ -374,7 +332,7 @@ function PastDayDoses({
       key: `${doseId}->${status}`,
       fields: { date, status, dose_ids: String(doseId) },
       action: resolveDayDoses,
-      settle: (result) => settlePost(result, status),
+      settle: (result) => settleDayDoses(result, status, row),
       failureMessage: "Couldn't update this dose. Try again.",
       offline: () => ({
         kind: "capture",
@@ -398,7 +356,7 @@ function PastDayDoses({
       key: doseIds.join(","),
       fields: { date, status: "taken", dose_ids: doseIds.join(",") },
       action: resolveDayDoses,
-      settle: (result) => settlePost(result, "taken"),
+      settle: (result) => settleDayDoses(result, "taken", row),
       // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its OWN
       // transaction, so a failure on the third of five leaves the first two committed
       // WITH their supply decrements — and "Couldn't log that stack" would be the one

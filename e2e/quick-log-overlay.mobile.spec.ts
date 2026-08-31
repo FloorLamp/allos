@@ -743,6 +743,88 @@ test("a dose confirmed from the sheet with no signal queues, then replays", asyn
   }
 });
 
+// #4453. THE PAST-DAY ROW'S OFFLINE HALF, which nothing in this suite has ever driven —
+// every offline dose test above taps TODAY's row. That gap is not academic: it is how the
+// #3276 conversion silently dropped this row's strike. A dose captured for yesterday
+// queued and toasted correctly and then SAT IN THE LIST as though nothing had happened,
+// inviting a second tap that queues the same dose again, while today's row — one function
+// away, same file — kept settling on the pipeline's `captured` answer. Two rows over one
+// choreography drifting apart is the whole defect #3276 exists to make unrepresentable,
+// so the past-day row gets the same airplane-mode drive today's has.
+//
+// The dead spot starts AFTER the day is switched to, for the reason the test above gives:
+// opening and switching still ride `loadQuickEntry`, so an offline switch would be testing
+// the #4091 gap rather than this write.
+test("a past day's dose captured with no signal leaves that day, then replays onto it", async ({
+  browser,
+}) => {
+  const doseId = shellDoseId();
+  clearDoseLogs(doseId);
+  setDoseRetired(doseId, false);
+
+  const page = await signIn(browser);
+  const context = page.context();
+  try {
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    await overlay.getByTestId("quick-entry-dose-day-1").click();
+    // The day the sheet says it is writing, read off the sheet rather than computed here
+    // — the durable assertion at the bottom is that the replay agreed with this string.
+    const named = await overlay
+      .getByTestId("quick-entry-dose-day")
+      .getAttribute("data-date");
+    expect(named).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(named).not.toBe(frozenNow().toISOString().slice(0, 10));
+
+    // Scoped to the OVERLAY, not to the day container: the container unmounts when the
+    // day empties, and a locator that can no longer resolve anything would satisfy the
+    // absence check below for a reason that has nothing to do with the row.
+    const row = overlay.getByTestId(`quick-entry-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await context.setOffline(true);
+    // A plain click, not settledClick: this tap deliberately posts NOTHING, so there is
+    // no Server Action response to settle on.
+    await row.getByTestId("dose-take").click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+
+    // THE ASSERTION THIS TEST EXISTS FOR, stated POSITIVELY first so a closed overlay
+    // cannot satisfy it: a kept capture IS a landing, so the day is empty and says so
+    // while still mounted, and the row is gone from the same locator that just tapped it.
+    await expect(
+      overlay.getByTestId("quick-entry-dose-day-empty")
+    ).toBeVisible();
+    await expect(row).toHaveCount(0);
+
+    await context.setOffline(false);
+    // The badge emptying is the flush's own signal — the offline sentence still holds the
+    // single toast slot (#3611) — so this waits on the queue rather than on a snackbar.
+    // It is also what frees the day toggle: the badge is a fixed bottom-left element and
+    // intercepts the pointer for the segment beneath it while it is up.
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // DURABLE, from the ledger: one taken row, on the day the sheet named.
+    expect(doseLogRows(doseId)).toEqual([{ date: named, status: "taken" }]);
+
+    // …so it struck the DAY, not the dose. One occurrence is one (day, dose) pair, and
+    // today is still owed. This is also this locator's POSITIVE CONTROL: the same object
+    // the absence above was asserted through finds a row before the tap, none after, and
+    // one again here — so that absence cannot have come from a locator that went blind.
+    await overlay.getByTestId("quick-entry-dose-day-0").click();
+    await expect(row).toBeVisible();
+  } finally {
+    clearDoseLogs(doseId);
+    await page.context().close();
+  }
+});
+
 test("the food and vitals overlays mount the same forms their pages carry", async ({
   browser,
 }) => {
