@@ -15,7 +15,15 @@
 //     pairing is the whole risk of the relocation — "the entry surface moved,
 //     storage did not" has to be a test, not a claim.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  vi,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
@@ -74,6 +82,25 @@ function sampleValue(profileId: number, metric: string): number | undefined {
       .get(profileId, metric) as { value: number } | undefined
   )?.value;
 }
+
+// THE CLOCK IS PINNED so this file's dated fixtures stay in the PAST, and so the
+// FUTURE-statement case below is deterministic. #4425's owner ruling gave every domain
+// write core the same date invariant — any real past day, never the future — so the
+// refused-statement fixture can no longer reach for a far-future DATE to make the
+// `future` reason deterministic; it states a later hour of the pinned DAY instead,
+// which is the shape a real fast device clock produces anyway.
+const PINNED_NOW = "2026-05-20T09:00:00.000Z";
+let priorNow: string | undefined;
+
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
 
 describe("addMeasurements — one form, three stores", () => {
   it("writes body composition, vitals and growth from a single submission", async () => {
@@ -301,7 +328,10 @@ describe("addMeasurements — one form, three stores", () => {
 
     // A device clock past the five-minute tolerance — the reproduction the issue
     // names. The tolerance does not move; the silence does.
-    const ahead = "2099-06-01";
+    // A later hour of the pinned DAY rather than a far-future date: the row's own day
+    // must be past for the core to take it at all (#4425), and a fast device clock
+    // produces exactly this — today's row, an instant beyond the tolerance.
+    const ahead = "2026-05-20";
     expect(
       await addMeasurements(
         fd({

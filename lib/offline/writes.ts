@@ -208,8 +208,12 @@ export function insertBodyMetric(
   w: BodyMetricWrite
 ): BodyMetricWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
-  // refusal to report: nothing was written and nothing was judged.
-  if (!isRealIsoDate(w.date)) return { wrote: false };
+  // refusal to report: nothing was written and nothing was judged. The weigh-in's own
+  // writers do not go through `recordReading`, so this door was not silently dropping
+  // anything — it takes the shared invariant so the BODY domain answers one way at
+  // both of its doors, rather than a queued sitting dead-lettering while a queued
+  // weigh-in on the same tomorrow lands.
+  if (!isPastWriteAccepted(today(profileId), w.date)) return { wrote: false };
   const weightRaw = String(w.weight ?? "").trim();
   const weight = weightRaw === "" ? null : Number(weightRaw);
   if (weight != null && !Number.isFinite(weight)) return { wrote: false };
@@ -516,7 +520,20 @@ export function insertVitals(
 ): VitalsWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
   // refusal to report: nothing was written and nothing was judged.
-  if (!isRealIsoDate(date)) return { wrote: false };
+  //
+  // THE DAY IS JUDGED HERE, AT THE DOOR, and that placement is the fix for a silent
+  // loss #4425 introduced. `recordReading` gained the shared not-future invariant, and
+  // the two loops below IGNORE its outcome — under the old gate its only refusal was a
+  // blank date, a programming error, so ignoring it cost nothing. The moment the
+  // refusal set included a REACHABLE case, this function reported `wrote: true` while
+  // writing no rows at all.
+  //
+  // And the case is reachable: the queue stamps `localDate()` off the BROWSER clock
+  // while every core resolves the day through `today(profileId)`, the PROFILE's zone,
+  // so a device east of that zone captures TOMORROW. Asking here gives the refusal the
+  // channel it needs — the replay dead-letters with a reason and the online actions
+  // report failure — instead of two loops each learning to handle an outcome.
+  if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
   if ("error" in normalized) return { wrote: false };
   const { medical, samples, readings } = normalized;

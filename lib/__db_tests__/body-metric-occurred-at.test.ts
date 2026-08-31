@@ -25,7 +25,7 @@
 // All fixtures SYNTHETIC; dates sit in the past so the acceptance gate's future
 // check (real clock — the db tier does not freeze time) can never fire.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import {
   insertBodyMetric,
@@ -99,6 +99,25 @@ function submit(
 
 beforeAll(() => {
   profileId = newProfile("BM-OCCURRED-AT");
+});
+
+// THE CLOCK IS PINNED so this file's dated fixtures stay in the PAST, and so the
+// FUTURE-statement case below is deterministic. #4425's owner ruling gave every domain
+// write core the same date invariant — any real past day, never the future — so the
+// refused-statement fixture can no longer reach for a far-future DATE to make the
+// `future` reason deterministic; it states a later hour of the pinned DAY instead,
+// which is the shape a real fast device clock produces anyway.
+const PINNED_NOW = "2026-05-20T09:00:00.000Z";
+let priorNow: string | undefined;
+
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
 describe("the manual submission core (insertBodyMetric)", () => {
@@ -191,16 +210,19 @@ describe("the manual submission core (insertBodyMetric)", () => {
   // five-minute tolerance kept its weigh-in and quietly lost the "when".
   it("REPORTS a refused statement while keeping the reading (#2311)", () => {
     const before = manualRowCount();
-    const outcome = submit("2099-06-01", {
+    // A LATER HOUR OF THE PINNED DAY, not a far-future date: the row's own day is
+    // past (so the core accepts it) and the stated instant is hours beyond the pinned
+    // "now", which is exactly what a fast device clock produces. The old fixture used
+    // 2099-06-01 for determinism; #4425 refuses a future DATE outright, which would
+    // have destroyed this test's subject rather than exercising it.
+    const outcome = submit("2026-05-20", {
       weight: "77.5",
-      // Beyond STATED_FUTURE_SKEW_MS by decades — the `future` rule, which the gate
-      // checks first, so the reason is deterministic against the db tier's real clock.
-      occurredAt: "2099-06-01T12:00:00Z",
+      occurredAt: "2026-05-20T23:00:00Z",
     });
     // A NOTICE, not a validation failure: the write succeeded AND says what it lost.
     expect(outcome).toEqual({ wrote: true, statedTimeRefused: "future" });
 
-    const rows = manualRows("2099-06-01");
+    const rows = manualRows("2026-05-20");
     expect(rows).toHaveLength(1);
     expect(rows[0].weight_kg).toBeCloseTo(77.5, 6);
     // Honest absence, never a partially-kept instant and never a re-dated row.
@@ -212,7 +234,7 @@ describe("the manual submission core (insertBodyMetric)", () => {
     const stored = db
       .prepare(
         `SELECT source, edited FROM body_metrics
-          WHERE profile_id = ? AND date = '2099-06-01'`
+          WHERE profile_id = ? AND date = '2026-05-20'`
       )
       .all(profileId) as { source: string | null; edited: number | null }[];
     expect(stored).toEqual([{ source: null, edited: 0 }]);
