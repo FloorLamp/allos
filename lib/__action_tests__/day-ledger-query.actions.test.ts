@@ -11,7 +11,7 @@
 // names, because where a case came from is part of what it teaches. They are the
 // reproductions of what they broke, unchanged except in ATTACK #5, whose quoted `FoodTab`
 // expression had to be updated to the fixed one — the claim it makes is the same.
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -423,12 +423,20 @@ describe("FoodTab's bounded day-ledger gather (#4412)", () => {
 
     const expected = getDayDoseLedger(profile.id, date);
     expect(expected[0]?.bucket).toBe("Morning");
-    const read = vi.spyOn(scheduleQueries, "getIntakeDosesForHistory");
-    const schedules = scheduleQueries.getIntakeDosesForHistory(profile.id);
-    for (let i = 0; i < 7; i += 1)
-      expect(getDayDoseLedger(profile.id, date, schedules)).toEqual(expected);
-
-    expect(read).toHaveBeenCalledTimes(1);
-    read.mockRestore();
+    const prepare = db.prepare;
+    let scheduleReads = 0;
+    db.prepare = ((sql: string) => {
+      if (sql.includes("SELECT d.* FROM intake_item_doses d"))
+        scheduleReads += 1;
+      return prepare.call(db, sql);
+    }) as typeof db.prepare;
+    try {
+      const schedules = scheduleQueries.getIntakeDosesForHistory(profile.id);
+      for (let i = 0; i < 7; i += 1)
+        expect(getDayDoseLedger(profile.id, date, schedules)).toEqual(expected);
+      expect(scheduleReads).toBe(1);
+    } finally {
+      db.prepare = prepare;
+    }
   });
 });
