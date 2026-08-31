@@ -82,14 +82,14 @@ test("dismissing a coaching observation from the dashboard removes it (#449)", a
   // everywhere" writes to the shared store, so dismissing Skullcrusher here would
   // also hide it on Training → Overview and fail that later spec. Other domains'
   // rows legitimately remain after this dismiss.
-  const row = rollup
-    .getByTestId("coaching-observations-item")
-    .filter({ hasText: "E2E Dismiss Press" });
-  await expect(row).toBeVisible();
+  // The rollup IS the row since #4076 — one observation, one candidate, one row in
+  // the folded "Coaching observations" block — and its dismiss is the shared
+  // finding dismiss, hosted in the row's trailing control slot.
+  await expect(rollup).toContainText("E2E Dismiss Press");
 
   // Settled (#868): a bare click here can land in the pre-hydration window and be
   // swallowed, which shows up as "the row never left" under a loaded suite run.
-  await settledClick(page, row.getByTestId("coaching-observations-dismiss"));
+  await settledClick(page, rollup.getByTestId("finding-dismiss"));
 
   // Dismiss writes to the shared suppression store, so THIS finding is gone from
   // the rollup after the re-render.

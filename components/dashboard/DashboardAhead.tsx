@@ -1,22 +1,17 @@
 "use client";
 
 import { useId, useState } from "react";
-import Link from "next/link";
 import Button from "@/components/Button";
 import type { AppRoute } from "@/lib/hrefs";
-import type { DashboardCandidateKind } from "@/lib/dashboard-relevance";
-import CandidateKindGlyph from "./CandidateKindGlyph";
+import type { DashboardPlacement } from "@/lib/dashboard-relevance";
+import {
+  DashboardFactRow,
+  type DashboardStandingPresentation,
+} from "./DashboardStandingCluster";
 
 export interface DashboardAheadMember {
-  candidateId: string;
-  factKey: string;
-  // The candidate's kind, for its glyph (#3253 decision 3). Ahead members are cards
-  // in the same sense Now's are — they act, they do not report a reading — so each
-  // carries exactly one.
-  kind: DashboardCandidateKind;
-  label: string;
-  detail?: string;
-  href?: AppRoute;
+  candidate: DashboardPlacement["candidate"];
+  presentation: DashboardStandingPresentation;
 }
 
 export interface DashboardAheadBucket {
@@ -26,47 +21,26 @@ export interface DashboardAheadBucket {
   members: readonly DashboardAheadMember[];
 }
 
+// ONE ROW RENDERER, AHEAD INCLUDED (#4076). Ahead used to draw its own member row
+// with its own kind glyph; both are gone. What is left that is Ahead's own is the
+// BUCKET: a lead fact, the rest behind a "+N more", and the bucket's door on the
+// lead. Read-only by construction — Ahead never mounts a write.
 function Member({
   member,
-  href = member.href,
+  href,
 }: {
   member: DashboardAheadMember;
   href?: AppRoute;
 }) {
-  const content = (
-    <>
-      <span className="flex min-w-0 items-center gap-1.5">
-        <CandidateKindGlyph
-          kind={member.kind}
-          className="mt-0 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-        />
-        <span className="truncate font-medium text-slate-800 dark:text-slate-100">
-          {member.label}
-        </span>
-      </span>
-      {member.detail && (
-        <span className="text-sm text-slate-500 dark:text-slate-400">
-          {member.detail}
-        </span>
-      )}
-    </>
-  );
   return (
-    <div
-      data-testid="dashboard-candidate"
-      data-candidate-id={member.candidateId}
-      data-fact-key={member.factKey}
-      data-lane="ahead"
-      className="min-w-0"
-    >
-      {href ? (
-        <Link href={href} className="flex min-w-0 flex-col gap-0.5">
-          {content}
-        </Link>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-0.5">{content}</div>
-      )}
-    </div>
+    <DashboardFactRow
+      candidate={member.candidate}
+      presentation={
+        href ? { ...member.presentation, href } : member.presentation
+      }
+      lane="ahead"
+      className="relative min-w-0"
+    />
   );
 }
 
@@ -88,7 +62,12 @@ function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
         {bucket.label}
       </h3>
       <div className="flex items-start justify-between gap-3">
-        <Member member={first} href={bucket.primaryHref ?? first.href} />
+        <ul className="min-w-0 flex-1">
+          <Member
+            member={first}
+            href={bucket.primaryHref ?? first.presentation.href}
+          />
+        </ul>
         {rest.length > 0 && (
           <Button
             aria-label={`+${rest.length} more in ${bucket.label}`}
@@ -107,9 +86,7 @@ function Bucket({ bucket }: { bucket: DashboardAheadBucket }) {
           className="mt-3 space-y-3 border-t border-(--divider) pt-3"
         >
           {rest.map((member) => (
-            <li key={member.candidateId}>
-              <Member member={member} />
-            </li>
+            <Member key={member.candidate.candidateId} member={member} />
           ))}
         </ul>
       )}
