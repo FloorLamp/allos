@@ -1,16 +1,15 @@
 // DB INTEGRATION TIER (issue #133).
 //
 // Migration 002 (edit-lock flags + body_metrics uniqueness) against real in-memory
-// SQLite handles: a fresh DB and a DB stamped at v1 both end up with the `edited`
-// columns and the UNIQUE(profile_id, date, source) index, existing rows default to
-// unlocked, and the pre-existing-collision dedup keeps the lowest id while leaving
-// NULL-source rows alone. Mirrors runner.test.ts patterns; :memory: only.
+// SQLite handles: a DB stamped at v1 gains the `edited` columns and the
+// UNIQUE(profile_id, date, source) index, existing rows default to unlocked, and the
+// pre-existing-collision dedup keeps the lowest id while leaving NULL-source rows
+// alone. The central runner suite owns fresh/current-schema application.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { runMigrations, readVersion } from "@/lib/migrations/runner";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 
 function newDb(): Database.Database {
@@ -46,19 +45,7 @@ function v1Db(): Database.Database {
 }
 
 describe("002 edit-lock flags — schema shape", () => {
-  it("a fresh DB gains the edited columns and the body_metrics unique index", () => {
-    const db = newDb();
-    runMigrations(db);
-    expect(readVersion(db)).toBe(MIGRATIONS.length);
-    expect(columnNames(db, "body_metrics").has("edited")).toBe(true);
-    expect(columnNames(db, "medical_records").has("edited")).toBe(true);
-    expect(indexNames(db, "body_metrics").has("idx_body_metrics_source")).toBe(
-      true
-    );
-    db.close();
-  });
-
-  it("upgrades v1 rows with unlocked defaults, deduplication, and the current schema", () => {
+  it("upgrades v1 rows with unlocked defaults, deduplication, columns, and index", () => {
     const db = v1Db();
     expect(columnNames(db, "body_metrics").has("edited")).toBe(false);
     expect(columnNames(db, "medical_records").has("edited")).toBe(false);
@@ -84,11 +71,8 @@ describe("002 edit-lock flags — schema shape", () => {
     ins.run(pid, "2024-02-01", 70, null);
     ins.run(pid, "2024-02-01", 71, null);
 
-    runMigrations(db);
+    MIGRATIONS[1].up(db); // 002-edit-lock-flags
 
-    // runMigrations applies every migration after v1 (002 onward), stamping the DB
-    // to the latest known version.
-    expect(readVersion(db)).toBe(MIGRATIONS.length);
     expect(columnNames(db, "body_metrics").has("edited")).toBe(true);
     expect(columnNames(db, "medical_records").has("edited")).toBe(true);
     expect(indexNames(db, "body_metrics").has("idx_body_metrics_source")).toBe(

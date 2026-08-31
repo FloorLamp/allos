@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { recentLabHighlights, RECENT_LAB_STALE_DAYS } from "@/lib/recent-labs";
+import {
+  CLINICAL_RESULT_FRESH_DAYS,
+  clinicalResultClaimsFreshness,
+  recentLabHighlights,
+  RECENT_LAB_STALE_DAYS,
+} from "@/lib/recent-labs";
 import { shiftDateStr } from "@/lib/date";
 import type { ClinicalObservation } from "@/lib/types";
 
@@ -212,5 +217,65 @@ describe("recentLabHighlights acknowledgment order (#3225)", () => {
 
   it("no predicate is the pre-#3225 order, byte for byte — the digest and recap are out of scope", () => {
     expect(recentLabHighlights(rows, 6).map((r) => r.name)).toEqual(seat([]));
+  });
+});
+
+// FRESH RESULTS ARE RELEVANT (owner ruling #4232, 2026-08-30). The claim ends at
+// whichever comes first: the acknowledgment, or the window measured from the
+// COLLECTION date. Keying on collection is what makes a backfilled import of old
+// records claim nothing, and it is the half the boundary table below exists to pin —
+// the row a plain "is it recent" check would get wrong is the one that landed today
+// and was drawn years ago.
+describe("clinicalResultClaimsFreshness (#4232)", () => {
+  const today = "2026-08-31";
+  const daysAgo = (n: number) => shiftDateStr(today, -n);
+
+  it.each([
+    { case: "collected today", collected: today, acked: false, claims: true },
+    {
+      case: "collected inside the window",
+      collected: daysAgo(CLINICAL_RESULT_FRESH_DAYS - 1),
+      acked: false,
+      claims: true,
+    },
+    {
+      case: "collected exactly one window ago (the boundary is inclusive)",
+      collected: daysAgo(CLINICAL_RESULT_FRESH_DAYS),
+      acked: false,
+      claims: true,
+    },
+    {
+      case: "collected one day past the window",
+      collected: daysAgo(CLINICAL_RESULT_FRESH_DAYS + 1),
+      acked: false,
+      claims: false,
+    },
+    {
+      case: "a backfilled import of an old draw",
+      collected: "2019-03-04",
+      acked: false,
+      claims: false,
+    },
+    {
+      case: "acknowledged inside the window",
+      collected: today,
+      acked: true,
+      claims: false,
+    },
+    {
+      case: "an undatable reading claims nothing either way",
+      collected: null,
+      acked: false,
+      claims: false,
+    },
+  ])("$case", ({ collected, acked, claims }) => {
+    expect(clinicalResultClaimsFreshness(collected, today, acked)).toBe(claims);
+  });
+
+  // The window is a RULED threshold (#3934 declined to guess it so the owner could
+  // set it), so it is pinned rather than merely used — a silent widening would make
+  // every row above pass while the page claimed for a different length of time.
+  it("keys the window on the ruled 30 days", () => {
+    expect(CLINICAL_RESULT_FRESH_DAYS).toBe(30);
   });
 });
