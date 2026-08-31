@@ -264,7 +264,7 @@
         },
         {
           "pr": 4309,
-          "title": "A dashboard row's info button sits beside its value again",
+          "title": "A dashboard row's info button sits next to its value, not far right",
           "kind": "fix",
           "category": "Interface",
           "issues": [4301]
