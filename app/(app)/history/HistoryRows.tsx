@@ -149,6 +149,26 @@ const practiceWhenFor = (
 // disclosure button's tap area to the row's whole leftover width.
 const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
 
+// HOW MUCH OF THE LINE ONE CELL MAY CLAIM (#4394). The subject stays out of the shrink
+// negotiation above — `shrink-0`, because the subject is WHICH RECORD the row is, and
+// an ellipsized subject is unreadable in a way a truncated title is not. That rule
+// needs a bound of a different KIND, and it cannot be spelled as a shrink factor at
+// all: a factor below 1 caps the whole line's shrink rather than deprioritising the
+// item, and 0 means never, with nothing in between.
+//
+// WHAT IT GUARANTEES: the title always keeps the rest of the cluster — 34% of it less
+// the row's gap — so a row can never lose its name to a long subject. Measured at 320px
+// over member names from 15 to 71 characters: uncapped, a 38-character name drove the
+// title to 0px PAINTED and the row rendered with no name at all; capped, the title
+// holds at 65.6px however long the name gets. It is also why the bound is not tighter —
+// household names that already fit (94px of a 163px cluster) must stay whole, and a 55%
+// cap starts ellipsizing them, which is the same defect pointing the other way.
+//
+// BOTH SUBJECT SITES TAKE IT — the row's and the rollup line's. The rollup's label is
+// `flex-1 truncate`, so an unbounded subject eats it exactly as it ate the row's title:
+// at 320px the same 71-character name paints the rollup's label at 0px without this.
+const SUBJECT_CAP = "max-w-[66%] truncate";
+
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
 // symbols still knows the record's. Total means a new kind cannot ship without one.
@@ -884,7 +904,7 @@ export default function HistoryRows({
                 )}
                 {subject ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subject}
@@ -1128,7 +1148,7 @@ export default function HistoryRows({
                 <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
                 {subjectNames[rollup.profileId] ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subjectNames[rollup.profileId]}

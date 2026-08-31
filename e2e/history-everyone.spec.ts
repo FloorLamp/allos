@@ -49,6 +49,16 @@ import {
 // persistent write, so the logs are reset before each test rather than assumed fresh —
 // a retry must find the same tree the first run did.
 
+// #4394's case. Long enough that it cannot fit the subject's ceiling at any phone
+// width — measured at 320px it is 421px of text in a 139px box — so the row genuinely
+// reaches the state the assertions forbid instead of passing because everything fitted.
+const LONG_MEMBER_NAME =
+  "Record Read Only Household Member With A Very Long Display Name 2 (e2e)";
+
+// The narrowest CSS viewport a phone still reports, and the width #4394 was measured
+// at: where the row has the least room and a cell that cannot give way shows.
+const SMALLEST_PHONE_PX = 320;
+
 function resetFixture(): { selfId: number; roId: number; memberId: number } {
   const db = new Database(workerDbPath());
   db.pragma("busy_timeout = 5000");
@@ -403,5 +413,150 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
       "href",
       "/history?day=2026-06-12&view=everyone"
     );
+  });
+
+  // #4394. THE CELL THAT NEVER YIELDS IS THE CELL THAT NEEDS A CEILING.
+  //
+  // The subject is `shrink-0` on purpose — it says WHOSE line this is, and an
+  // ellipsized subject is unreadable in a way a truncated title is not — so it takes no
+  // part in the line's shrink negotiation. That cannot be expressed as a shrink factor:
+  // below 1 a factor caps the whole line's shrink instead of deprioritising the item,
+  // and 0 means never, with nothing in between. So the subject carries a max-width, and
+  // this is what that bound is FOR.
+  //
+  // BOTH MOUNTS, because the merged record draws the subject twice: on a ROW (any kind
+  // filter) and on the ROLLUP LINE (Everything, where a log kind collapses to a count).
+  // Measured at 320px with the ceiling removed, the rollup's label goes to 0px painted
+  // exactly as the row's title does, so the second mount is not decoration.
+  //
+  // MEASURED IN PAINTED PIXELS, NOT BOUNDING BOXES, and that distinction is the whole
+  // test. `expectNoClippedContent` walks `getBoundingClientRect` and never intersects a
+  // box with the ancestors that clip it, so it PASSED the tree this case was written
+  // against — a line whose title had been squeezed to zero width and rendered with no
+  // name at all, while the box arithmetic looked fine. A future reader will find this
+  // redundant with the no-clip sweep. It is not: the sweep cannot see this defect.
+  //
+  // BOUNDS, NOT VALUES: that the title keeps SOMETHING and that the subject SAYS it was
+  // cut. Pinning "the title is 65.6px" would pin the font.
+  test("a long member name never costs a line its own title", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { roId } = resetFixture();
+    const db = new Database(workerDbPath());
+    db.pragma("busy_timeout = 5000");
+    db.prepare("UPDATE profiles SET name = ? WHERE id = ?").run(
+      LONG_MEMBER_NAME,
+      roId
+    );
+    db.close();
+    try {
+      const page = await loginAs(browser, {
+        username: E2E_LOGIN_HXEVERY,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      await addToView(page, roId);
+      await page.setViewportSize({ width: SMALLEST_PHONE_PX, height: 844 });
+
+      for (const view of [
+        "/history?kind=dose&view=everyone",
+        "/history?view=everyone",
+      ]) {
+        await page.goto(view);
+        await expect(
+          page.getByTestId("history-row-subject").first() // first-ok: waited on so the read below is not of an empty list
+        ).toBeVisible();
+
+        const lines = await page.evaluate(() => {
+          const vw = document.documentElement.clientWidth;
+          // WHAT A READER SEES: the box, intersected with the viewport AND with every
+          // ancestor that clips horizontally. The nearest one is the line's own
+          // truncating cluster, 163–211px wide at this viewport, so a viewport-only
+          // reading reports content as visible that was painted over.
+          const painted = (el: Element): number => {
+            const r = el.getBoundingClientRect();
+            let lo = r.left;
+            let hi = r.right;
+            for (let a = el.parentElement; a; a = a.parentElement) {
+              const o = getComputedStyle(a).overflowX;
+              if (o === "hidden" || o === "clip") {
+                const ar = a.getBoundingClientRect();
+                lo = Math.max(lo, ar.left);
+                hi = Math.min(hi, ar.right);
+              }
+            }
+            return Math.max(0, Math.min(hi, vw) - Math.max(lo, 0));
+          };
+          // THE TITLE IS THE SUBJECT'S PRECEDING SIBLING at both mounts — the row's
+          // title element and the rollup's label span — which is the one way to name
+          // it that does not couple this test to either mount's markup.
+          return Array.from(
+            document.querySelectorAll<HTMLElement>(
+              '[data-testid="history-row-subject"]'
+            )
+          ).map((subject) => {
+            const title = subject.previousElementSibling;
+            return {
+              subjectText: (subject.textContent ?? "").trim(),
+              titlePainted: title ? painted(title) : null,
+              subjectPainted: painted(subject),
+              subjectBox: subject.getBoundingClientRect().width,
+              subjectNatural: subject.scrollWidth,
+              subjectEllipsized: subject.scrollWidth > subject.clientWidth + 1,
+            };
+          });
+        });
+
+        const long = lines.find((l) => l.subjectText === LONG_MEMBER_NAME);
+        const ordinary = lines.find(
+          (l) => l.subjectText === HXEVERY_SELF_PROFILE
+        );
+        expect(
+          { long: !!long, ordinary: !!ordinary },
+          `${view}: both the long-named member's line and the acting profile's must render`
+        ).toEqual({ long: true, ordinary: true });
+
+        // THE FIXTURE REACHES THE STATE. A name that fits under the ceiling would
+        // satisfy every assertion below while proving none of them.
+        expect(
+          long!.subjectNatural,
+          `${view}: the seeded name is ${long!.subjectNatural}px of text in a ${Math.round(
+            long!.subjectBox
+          )}px box — it must not fit, or this proves nothing`
+        ).toBeGreaterThan(long!.subjectBox);
+
+        // THE CLAIM, as a relationship and not a pixel count: every line keeps its own
+        // name, and a subject that was cut says so.
+        expect(
+          lines.filter((l) => !l.titlePainted).map((l) => l.subjectText),
+          `${view}: a subject squeezed these lines' titles to nothing`
+        ).toEqual([]);
+        expect(
+          long!.subjectEllipsized,
+          `${view}: the subject was cut without saying so`
+        ).toBe(true);
+
+        // AND THE ORDINARY LINE DOES NOT PAY FOR IT. Its subject fits the ceiling, so
+        // it must be painted whole — this is BROKEN ON MAIN, where the row's cluster
+        // paints 33px of a 94px subject inside a viewport it fits comfortably.
+        expect(
+          ordinary!.subjectPainted,
+          `${view}: an ordinary member name is painted ${Math.round(
+            ordinary!.subjectPainted
+          )}px of ${Math.round(ordinary!.subjectBox)}px`
+        ).toBeGreaterThanOrEqual(ordinary!.subjectBox - 1);
+        expect(
+          ordinary!.subjectEllipsized,
+          `${view}: an ordinary member name should not be ellipsized at all`
+        ).toBe(false);
+      }
+    } finally {
+      const restore = new Database(workerDbPath());
+      restore.pragma("busy_timeout = 5000");
+      restore
+        .prepare("UPDATE profiles SET name = ? WHERE id = ?")
+        .run(HXEVERY_RO_PROFILE, roId);
+      restore.close();
+    }
   });
 });
