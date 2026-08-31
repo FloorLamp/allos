@@ -813,25 +813,51 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   // The retired glyph, by its own marker, across every zone.
   expect(await main.locator("[data-kind-glyph]").count()).toBe(0);
 
-  // …and no OTHER icon took its place. Scoped to the row's own text cells rather
-  // than the whole row: a trailing CONTROL may legitimately draw a glyph inside a
-  // button (the snooze menu's clock), and a control is not the row.
-  const iconsInText = await rows.evaluateAll((nodes) =>
-    nodes.flatMap((node) =>
-      [...node.querySelectorAll("svg")]
-        .filter(
-          (svg) =>
-            !svg.closest(
-              "button, a[role='button'], form, [data-icon-button], [data-testid='dashboard-row-controls']"
-            )
-        )
-        .map(
-          (svg) =>
-            `${node.getAttribute("data-candidate-id")}: ${svg.getAttribute("class")}`
-        )
-    )
-  );
-  expect(iconsInText).toEqual([]);
+  // …AND NO DOMAIN ICON TOOK ITS PLACE, which is the half of the ruling a bare
+  // "[data-kind-glyph] is gone" cannot state: deleting one component and adding
+  // another satisfies it exactly.
+  //
+  // THE ELEMENT IS THE ROW'S IDENTITY CELL, and that scope is a finding rather than
+  // a convenience. Three marks the tree already ships render INSIDE a row's value or
+  // detail and are not identity glyphs: `TrendArrow` and `PillarToneBadge` on a
+  // healthspan pillar, and `MedicalValue`'s flag caret, which is the NON-COLOUR
+  // channel for a flagged result (#1220/#2315) — asserting them away would take an
+  // accessibility channel with them. The ruling's element is the glyph that named
+  // what KIND of thing a row is, and its cell is the label. So: nothing decorative
+  // beside the words that identify the row.
+  const iconsInLabel = await rows
+    .locator('[data-testid="standing-label"]')
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.querySelector("svg"))
+        .map((node) => node.textContent ?? "")
+    );
+  expect(iconsInLabel).toEqual([]);
+
+  // AND THE SWEEP CAN SEE ONE. The assertion above is an absence over a tree that
+  // has none, so it is worth exactly what its detector is worth — shown a glyph put
+  // into a label on purpose, and returned to the shipped tree in the same
+  // evaluation.
+  expect(
+    await page.evaluate(() => {
+      const label = document.querySelector(
+        '[data-testid="dashboard-candidate"] [data-testid="standing-label"]'
+      )!;
+      const forged = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg"
+      );
+      forged.dataset.forged = "FORGED BY A SPEC on purpose — not a shipped glyph";
+      label.prepend(forged);
+      const seen = [
+        ...document.querySelectorAll(
+          '[data-testid="dashboard-candidate"] [data-testid="standing-label"]'
+        ),
+      ].filter((node) => node.querySelector("svg")).length;
+      forged.remove();
+      return seen;
+    })
+  ).toBe(1);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({

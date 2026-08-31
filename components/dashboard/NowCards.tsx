@@ -122,12 +122,18 @@ export default function NowCards({
           animating ? plan.className : ""
         }`;
         if (!row.candidate || !row.presentation)
+          // NO ROW GUTTER for the cockpit: it is not a fact with a label and a facts
+          // column, it is a whole interactive surface, and it spends its own gutter.
+          // Giving it the row's as well would step its text 16px off the rag every
+          // other entry on the page sits on.
           return (
             <li
               key={row.id}
               data-testid="dashboard-illness-group"
               data-motion={animating ? "promote" : undefined}
-              className={rowClass}
+              className={`relative border-t border-(--divider) first:border-t-0 ${
+                animating ? plan.className : ""
+              }`}
             >
               {row.node}
             </li>

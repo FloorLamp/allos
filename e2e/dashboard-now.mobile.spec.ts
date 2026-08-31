@@ -545,18 +545,20 @@ const ATOM_VIEWPORTS = [
   { label: "desktop", size: { width: 1280, height: 900 }, oneLine: false },
 ] as const;
 
-// ONE GUTTER, ONE ROW, AT EVERY WIDTH (#3460, restated for #4076). The atom this
-// used to measure — a card with its own frame, its own inset row and a glyph in a
-// desktop gutter beside it — is gone: Now renders the shared row like every other
-// zone. What the ruling was actually about survives and is what is measured here:
-// the row's first mark sits on the page's own left rag with no second inset, its
-// label and its detail share the line, and no glyph rides beside it.
+// ONE GUTTER, ONE ROW, AT EVERY WIDTH (#3460/#3920, restated for #4076). The atom
+// this used to measure — a card with its own frame, its own inset row and a glyph in
+// a desktop gutter beside it — is gone: Now renders the shared row like every other
+// zone. What the ruling was actually about survives and is what is measured here.
 //
-// It measures the mark against the STRIP, not against the viewport, because those
-// are different questions and only one of them is the thing that looked broken: a
-// fill inset by the page gutter with its text flush to its own edge satisfies a
-// viewport reading exactly (#3920).
-test("a Now row puts its label and detail on one line against the page rag", async ({
+// THE CLAIM IS A RELATIONSHIP FIRST AND AN ABSOLUTE SECOND, which is #3920's lesson
+// stated on this surface: "the label is at 16px" is satisfied exactly by the broken
+// tree where the fill is inset and the text is flush against its own edge. So the
+// first assertion is text-to-ITS-OWN-FILL — the label sits one row gutter inside the
+// band, at every width — and the page-rag absolute is asserted only below `sm`,
+// where the band bleeds and the two answers coincide. Above `sm` the band keeps its
+// frame, so the label sits a border plus a gutter inside it and the absolute would
+// be a different, wrong claim.
+test("a Now row puts its label and detail on one line, one gutter inside its own band", async ({
   page,
 }) => {
   for (const viewport of ATOM_VIEWPORTS) {
@@ -576,41 +578,51 @@ test("a Now row puts its label and detail on one line against the page rag", asy
       const strip = document
         .querySelector('[data-testid="now-strip"]')!
         .getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
       const label = node
         .querySelector('[data-testid="standing-label"]')!
         .getBoundingClientRect();
       const detail = node
         .querySelector('[data-testid="attention-item-detail"]')!
         .getBoundingClientRect();
-      const style = getComputedStyle(node);
       return {
         stripLeft: strip.left,
-        rowLeft: node.getBoundingClientRect().left,
-        rowPaddingLeft: Number.parseFloat(style.paddingLeft),
+        rowContentLeft:
+          box.left +
+          Number.parseFloat(style.borderLeftWidth) +
+          Number.parseFloat(style.paddingLeft),
+        rowGutter: Number.parseFloat(style.paddingLeft),
         labelLeft: label.left,
         labelTop: label.top,
         detailLeft: detail.left,
         detailTop: detail.top,
         icons: node.querySelectorAll(
-          "svg:not(button svg):not(form svg):not([data-icon-button] svg)"
+          '[data-testid="standing-label"] svg'
         ).length,
       };
     });
 
-    // The label starts on the page's own left rag — the row's gutter is the only
-    // inset, and the band cancels the page gutter outward and re-spends it inward.
+    // THE RELATIONSHIP: the label starts exactly at the row's content edge — never
+    // flush against the fill it is printed on, and never a second inset in from it.
     expect(
-      geometry.labelLeft - geometry.stripLeft,
-      `label sits ${geometry.labelLeft - geometry.stripLeft}px from the strip edge`
-    ).toBeCloseTo(0, 0);
-    expect(geometry.rowLeft + geometry.rowPaddingLeft).toBeCloseTo(
       geometry.labelLeft,
-      0
-    );
+      `label at ${geometry.labelLeft}, row content edge at ${geometry.rowContentLeft}`
+    ).toBeCloseTo(geometry.rowContentLeft, 0);
+    expect(geometry.rowGutter).toBeGreaterThan(0);
+
+    // THE ABSOLUTE, below `sm` only: the band bleeds the page gutter outward and the
+    // row re-spends it inward, so the label lands on the page's own left rag.
+    if (viewport.oneLine)
+      expect(
+        geometry.labelLeft - geometry.stripLeft,
+        `label sits ${geometry.labelLeft - geometry.stripLeft}px from the page rag`
+      ).toBeCloseTo(0, 0);
+
     // Label and detail share the line, at every width: the row IS the one-line form.
     expect(geometry.detailLeft).toBeGreaterThan(geometry.labelLeft);
     expect(Math.abs(geometry.detailTop - geometry.labelTop)).toBeLessThan(8);
-    // And no icon rides beside either of them (#4076: "too many icons").
+    // And no glyph rides beside the words that identify the row (#4076).
     expect(geometry.icons).toBe(0);
   }
 });
@@ -627,9 +639,10 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
     const name = (el: Element) =>
       `${el.tagName.toLowerCase()}[${el.getAttribute("data-testid") ?? (el.textContent ?? "").trim().slice(0, 20)}]`;
     for (const card of Array.from(
-      document.querySelectorAll(
-        '[data-testid="dashboard-candidate"][data-lane="now"]'
-      )
+      // EVERY row in the strip, the illness cockpit's included: the cockpit is the
+      // one entry that is not a fact, and its toggle is exactly the control this
+      // audit exists for.
+      document.querySelectorAll('[data-testid="now-strip"] > ul > li')
     )) {
       for (const el of Array.from(
         card.querySelectorAll("a, button, [role='button']")
