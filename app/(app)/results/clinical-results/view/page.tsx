@@ -1166,14 +1166,12 @@ export default async function ClinicalResultDetailPage(props: {
                     >
                       {r.name}
                     </Td>
-                    {/* The heading the document filed this reading under — the lab's
-                        own free text, usually its name ("Quest Diagnostics"), which the
-                        index's Panel column replaces with the normalized panel (#1502).
-                        It is a PER-ROW fact, so this is its home (#4419 ruling 3): it
-                        used to mount a 34px disclosure button on every mapped row of
-                        every group, eleven of them in one expanded panel. Beside
-                        "Reported as" because they are the same question — what the
-                        document called this — asked of the analyte and of its panel. */}
+                    {/* The heading the document filed this reading under — free text
+                        the index's Panel column replaces with the normalized panel
+                        (#1502). A PER-ROW fact, so this is its home (#4419 ruling 3);
+                        it used to be a disclosure button on every mapped row, eleven
+                        of them in one expanded panel. Beside "Reported as" because
+                        they are one question asked of the analyte and of its panel. */}
                     <Td
                       slot="meta"
                       label="Reported under"

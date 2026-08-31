@@ -113,9 +113,8 @@ function staleBadge() {
 // The badge is the WORD; the FORMULA is a per-row fact and lives at the row's detail
 // home (#4419 ruling 3), which every derived row links to — a derived record always
 // carries a canonical_name (lib/queries/derived.ts sets it from the index's own name),
-// so `nameCell` below always renders the link. That page states the derivation as a
-// sentence and prints each reading's formula in its Source column; this row also still
-// prints the formula in its own Formula cell.
+// so `nameCell` below always renders the link. The row still prints the formula in its
+// own Formula cell either way.
 function derivedBadge() {
   return (
     <span
