@@ -220,6 +220,12 @@ test("pinned part header and set schema park BELOW a notch band (#4515)", async 
   // past ~300 the part runs out and sticky pushes that row back up. Measured at
   // 390×844 on this two-part fixture; the stationarity check below is what turns
   // a drift out of that window into a red instead of a silent vacuous pass.
+  //
+  // A CONSTANT ON PURPOSE, NOT A SEARCH. Scanning for a depth at which both rows
+  // hold still would make this spec self-healing, and a self-healing spec cannot
+  // fail: it would hunt until some depth passed and report green while the layout
+  // had drifted out from under it. The constant is what makes the drift visible;
+  // the proof below is what stops the constant going quietly wrong.
   const INTO_PART = 260;
   const forge = (px: number) =>
     page.evaluate(
@@ -310,7 +316,11 @@ test("pinned part header and set schema park BELOW a notch band (#4515)", async 
     const [flushHeader, flushSchema] = await pinned();
     expect(
       flushHeader.y,
-      "with no inset nothing above claims this edge, so the header parks flush"
+      "the overlay panel claims NONE of the top edge, so with no inset its first " +
+        "pinned row parks flush against it. If a strip inside this overlay has " +
+        "deliberately taken part of that edge, the claim changed and THIS is the " +
+        "line to update — exact on purpose, because 'at or below the inset' would " +
+        "also pass for the zero-claim the fix exists to install."
     ).toBe(0);
     expect(
       Math.abs(flushSchema.y - (flushHeader.y + flushHeader.height))
