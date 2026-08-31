@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { IconCheck, IconClock, IconMinus, IconPlus } from "@tabler/icons-react";
+import { useState } from "react";
+import {
+  IconCheck,
+  IconClock,
+  IconMinus,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconPlus,
+} from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import DateField from "@/components/DateField";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
-import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm } from "@/lib/stated-time";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import {
@@ -27,8 +32,12 @@ import {
   DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
-import type { PracticeLogOutcome } from "@/lib/types";
-import { logPractice } from "@/app/(app)/wellness/actions";
+import type { LivePracticeSession, PracticeLogOutcome } from "@/lib/types";
+import {
+  endPracticeLive,
+  logPractice,
+  startPracticeLive,
+} from "@/app/(app)/wellness/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 // Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
@@ -54,6 +63,7 @@ export default function LogPracticeButton({
   atCeiling = false,
   today,
   defaultDurationMin = null,
+  liveSession = null,
   showDetails = false,
   inlineDuration = false,
   inlineWhen = false,
@@ -76,6 +86,7 @@ export default function LogPracticeButton({
   // The duration the controls START at — `practiceDurationPrefill` server-side, never
   // re-derived here. Null means blank, and blank is a real answer.
   defaultDurationMin?: number | null;
+  liveSession?: LivePracticeSession | null;
   showDetails?: boolean;
   // Render the INLINE duration stepper beside the tap (#2204). On for the quick-log
   // sheet — whose whole reason for existing is that opening the expanded form is the
@@ -128,7 +139,6 @@ export default function LogPracticeButton({
   // mode this column exists to avoid. Posted as a form field and re-checked
   // server-side against the web subset.
   const stampLoggedVia = useLoggedViaStamp();
-  const tz = useTimezone();
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
@@ -136,6 +146,12 @@ export default function LogPracticeButton({
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
+  const [currentLive, setCurrentLive] = useState(liveSession);
+  const [serverLive, setServerLive] = useState(liveSession);
+  if (serverLive?.id !== liveSession?.id) {
+    setServerLive(liveSession);
+    setCurrentLive(liveSession);
+  }
   // The time the confirm names, dropped once this mount logs its own session: the
   // action answers with the day's count, not with a local clock reading, and a stale
   // time on a fresh session would be the informational half telling a small lie.
@@ -244,7 +260,7 @@ export default function LogPracticeButton({
     toast("Saved offline — it'll sync when you're back online.");
   }
 
-  async function onClick() {
+  async function onFinished() {
     // Inside the post-success window this tap is the second half of a double-tap:
     // absorbed silently, and — checked here rather than inside `tap` — never
     // escalated into a dialog the user did not ask for.
@@ -281,6 +297,7 @@ export default function LogPracticeButton({
         const fd = new FormData();
         stampLoggedVia(fd);
         fd.set("practice", practice);
+        fd.set("intent", "finished");
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
         // No `start_time` field is set on any path here — its absence is what tells
@@ -291,8 +308,6 @@ export default function LogPracticeButton({
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
-        const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
-        if (at) fd.set("start_time", at);
         return logPractice(fd);
       },
       settle: (outcome) => {
@@ -331,21 +346,49 @@ export default function LogPracticeButton({
     });
   }
 
-  async function onDetailedSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
+  async function onStart() {
+    if (pending || currentLive) return;
     setPending(true);
-    const fd = new FormData(form);
+    const fd = new FormData();
     stampLoggedVia(fd);
     fd.set("practice", practice);
     try {
-      const outcome = await logPractice(fd);
-      report(outcome);
-      if (outcome.kind === "logged") {
-        setDetailsOpen(false);
+      const outcome = await startPracticeLive(fd);
+      if (outcome.kind === "started" || outcome.kind === "already-live") {
+        setCurrentLive(outcome.session);
+        toast(
+          outcome.kind === "started"
+            ? "Session started"
+            : "Session is already running"
+        );
+      } else {
+        toast("Couldn't start that session.");
       }
     } catch {
-      toast("Couldn't log that session. Try again.");
+      toast("Couldn't start that session. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onEnd() {
+    if (pending || !currentLive) return;
+    setPending(true);
+    const fd = new FormData();
+    fd.set("id", String(currentLive.id));
+    try {
+      const outcome = await endPracticeLive(fd);
+      if (outcome.kind === "ended") {
+        setCurrentLive(null);
+        setCount(outcome.count);
+        setLastTime(null);
+        toast("Session finished");
+      } else {
+        setCurrentLive(null);
+        toast("That session is no longer running.");
+      }
+    } catch {
+      toast("Couldn't end that session. Try again.");
     } finally {
       setPending(false);
     }
@@ -440,27 +483,60 @@ export default function LogPracticeButton({
             </button>
           </div>
         )}
-        <button
-          type="button"
-          disabled={pending || ledger.blocked()}
-          onClick={onClick}
-          data-testid="practice-log-button"
-          // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
-          // second tap of a day is visibly a SECOND one before it is taken. The
-          // count itself is on the line beside it; the accessible name composes the
-          // whole sentence while the visible label stays short enough for a phone.
-          aria-label={
-            count === 0
-              ? `Log now — log a ${practice} session for today`
-              : `Log another ${practice} session — ${count} already logged today`
-          }
-          className={`${DOSE_ACTION_LABEL} ${
-            primaryTone === "neutral" ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
-          }`}
-        >
-          <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-          {count === 0 ? "Log now" : "Log another"}
-        </button>
+        {currentLive ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onEnd}
+            data-testid="practice-end-button"
+            aria-label={`End the running ${practice} session`}
+            className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
+          >
+            <IconPlayerStop className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+            End session
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onStart}
+              data-testid="practice-start-button"
+              aria-label={`Start a ${practice} session now`}
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+            >
+              <IconPlayerPlay
+                className="h-3.5 w-3.5"
+                stroke={2.5}
+                aria-hidden
+              />
+              Start now
+            </button>
+            <button
+              type="button"
+              disabled={pending || ledger.blocked()}
+              onClick={onFinished}
+              data-testid="practice-log-button"
+              // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
+              // second tap of a day is visibly a SECOND one before it is taken. The
+              // count itself is on the line beside it; the accessible name composes the
+              // whole sentence while the visible label stays short enough for a phone.
+              aria-label={
+                count === 0
+                  ? `Just finished a ${practice} session`
+                  : `Just finished another ${practice} session — ${count} already logged today`
+              }
+              className={`${DOSE_ACTION_LABEL} ${
+                primaryTone === "neutral"
+                  ? DOSE_ACTION_NEUTRAL
+                  : DOSE_ACTION_BRAND
+              }`}
+            >
+              <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+              Just finished
+            </button>
+          </>
+        )}
         {showDetails && (
           <button
             type="button"
@@ -515,66 +591,18 @@ export default function LogPracticeButton({
           onClose={() => setDetailsOpen(false)}
           size="sm"
         >
-          <form
-            onSubmit={onDetailedSubmit}
-            className="grid gap-3 sm:grid-cols-2"
-            data-testid="practice-log-details"
-          >
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Date
-              <DateField
-                name="date"
-                defaultValue={initialDetailsDate ?? today}
-                min={detailsMinDate}
-                max={detailsMaxDate}
-                inputClassName="mt-1 w-full"
-                required
-              />
-            </label>
-            {/* START AND END (#3142, owner decision). Both optional: the pair is
-                what lets a stated session draw a block on the day view's chart, and
-                a start alone still draws a tick. */}
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Start
-              <input
-                type="time"
-                name="start_time"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              End
-              <input
-                type="time"
-                name="end_time"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min="1"
-                step="1"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200 sm:col-span-2">
-              Notes
-              <textarea name="notes" rows={2} className="input mt-1 w-full" />
-            </label>
-            <button
-              type="submit"
-              disabled={pending}
-              className="btn w-fit disabled:opacity-50 sm:col-span-2"
-              data-testid="practice-log-detailed-submit"
-            >
-              {pending ? "Logging…" : "Log session"}
-            </button>
-          </form>
+          <PracticeSessionForm
+            practice={practice}
+            today={today}
+            defaultDurationMin={durationValue()}
+            initialDate={initialDetailsDate}
+            minDate={detailsMinDate}
+            maxDate={detailsMaxDate}
+            onLogged={(outcome) => {
+              report(outcome);
+              setDetailsOpen(false);
+            }}
+          />
         </ModalShell>
       )}
     </div>

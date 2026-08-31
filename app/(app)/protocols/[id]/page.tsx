@@ -32,6 +32,7 @@ import {
 } from "@/lib/protocol-practice";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
 import { practiceDurationPrefill } from "@/lib/practice";
+import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
 import PracticeWeeklyProgress from "@/components/practices/PracticeWeeklyProgress";
@@ -77,6 +78,7 @@ export default async function ProtocolDetailPage(props: {
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
+  closeAbandonedPracticeSessions(profile.id, todayStr);
   const { comparison, options } = getProtocolOutcomePickerData(
     profile.id,
     protocol,
@@ -156,11 +158,17 @@ export default async function ProtocolDetailPage(props: {
           getPracticeSessions(
             profile.id,
             practice.value,
-            1,
+            50,
             undefined,
             practiceSpellings
           )
         )
+      : null;
+  const liveSession =
+    practice?.scopeKind === "practice"
+      ? (protocolPracticeSessions.find(
+          (session) => session.live === 1 && session.date === todayStr
+        ) ?? null)
       : null;
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
   const ongoing = protocol.end_date == null;
@@ -313,6 +321,15 @@ export default async function ProtocolDetailPage(props: {
                   atCeiling={adherence?.atCeiling ?? false}
                   today={todayStr}
                   defaultDurationMin={previousDurationMin}
+                  liveSession={
+                    liveSession
+                      ? {
+                          id: liveSession.id,
+                          date: liveSession.date,
+                          startTime: liveSession.start_time ?? "",
+                        }
+                      : null
+                  }
                   usualSessionDay={practiceUsuallyToday}
                   inlineDuration
                   showDetails
