@@ -357,18 +357,25 @@ test("household episodes stay ordered and a writable accordion logs without swit
       "Sick Kid A (e2e)",
       "Sick Kid B (e2e)",
     ]);
-    const nowCardIds = await page
+    // Now is a BAND OF ROWS since #4076, and the illness group stands in it where
+    // its first episode placed — so the reading order is read off the band's own
+    // children rather than off a grid of cards.
+    const nowIds = await page
       .getByTestId("now-strip")
-      .locator(':scope > div.grid > [data-testid^="now-strip-card-"]')
-      .evaluateAll((cards) =>
-        cards.map((card) => card.getAttribute("data-testid")!)
+      .locator(":scope > ul > li")
+      .evaluateAll((rows) =>
+        rows.map(
+          (row) =>
+            row.getAttribute("data-candidate-id") ??
+            row.getAttribute("data-testid")!
+        )
       );
-    const safetyIndex = nowCardIds.findIndex((id) =>
-      id.startsWith("now-strip-card-attention.fact:mental-health:crisis:")
+    const safetyIndex = nowIds.findIndex((id) =>
+      id.startsWith("attention.fact:mental-health:crisis:")
     );
-    const illnessIndex = nowCardIds.indexOf("now-strip-card-illness-group");
-    const workoutIndex = nowCardIds.findIndex((id) =>
-      id.startsWith("now-strip-card-workout.live:")
+    const illnessIndex = nowIds.indexOf("dashboard-illness-group");
+    const workoutIndex = nowIds.findIndex((id) =>
+      id.startsWith("workout.live:")
     );
     expect(safetyIndex).toBeGreaterThanOrEqual(0);
     expect(safetyIndex).toBeLessThan(illnessIndex);

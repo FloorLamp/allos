@@ -126,20 +126,6 @@ export function dosesPhrase(
 // lives HERE so no surface can compress differently. The answer text
 // (`usualRoutineAnswerText`) is untouched: what was actually written is still
 // reported dose by dose, partial truths included.
-// WHOSE MORNING THIS IS (#1013). A caregiver logging a household member's usual
-// breakfast must never read the first-person form, so the subject's name replaces it
-// — resolved server-side through writeSubjectName. Kept here rather than at either
-// mount because the dashboard row states the heading and the control's aria-label
-// repeats it: two spellings of one promise is exactly what drifts.
-export function usualRoutineHeading(
-  window: string,
-  subjectName: string | null
-): string {
-  return subjectName
-    ? `${subjectName}'s usual ${window}`
-    : `Your usual ${window}`;
-}
-
 export function usualRoutinePhrase(
   foodNames: readonly string[],
   doses: readonly Pick<UsualRoutineDose, "name" | "stack">[]

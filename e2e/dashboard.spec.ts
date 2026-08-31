@@ -121,23 +121,40 @@ test("the dashboard renders the fixed four-zone instrument cluster", async ({
   ).toBeVisible();
 });
 
-test("attention facts use write-capable atoms outside read-only Ahead", async ({
+// #3215's invariant, following the controls to the row (#4076). An attention fact is
+// write-capable everywhere except Ahead, which is read-only by construction — what
+// changed is that the write now sits in the row's own trailing slot instead of in a
+// card only that atom could draw. Both directions are asserted, because "no controls
+// in Ahead" alone is satisfied by a page where the controls vanished everywhere.
+test("attention facts carry their write outside read-only Ahead", async ({
   page,
 }) => {
   await page.goto("/");
+  await openDashboardAll(page);
   const facts = page.locator(
     '[data-testid="dashboard-candidate"][data-candidate-id^="attention.fact:"]'
   );
   const count = await facts.count();
 
   expect(count).toBeGreaterThan(1);
+  let writeCapable = 0;
+  let inAhead = 0;
   for (let index = 0; index < count; index += 1) {
     const fact = facts.nth(index);
     const lane = await fact.getAttribute("data-lane");
-    await expect(fact.getByTestId("dashboard-attention-atom")).toHaveCount(
-      lane === "ahead" ? 0 : 1
-    );
+    const controls = await fact
+      .getByTestId("dashboard-row-controls")
+      .locator("button")
+      .count();
+    if (lane === "ahead") {
+      inAhead += 1;
+      expect(controls, "Ahead is read-only").toBe(0);
+    } else if (controls > 0) writeCapable += 1;
   }
+  // Both halves of the split are exercised on this fixture, so neither claim above
+  // passed by never meeting a case.
+  expect(writeCapable).toBeGreaterThan(0);
+  expect(inAhead).toBeGreaterThan(0);
 });
 
 test("clinical results render as dense individual facts", async ({ page }) => {
@@ -242,8 +259,12 @@ test("Show everything remembers its open state on this device", async ({
       )
       .toBe(true);
 
+    // The offer's decline posts from the ROW's control slot now (#4076) — the card
+    // that used to host it left `/` with every other card.
     await settledClick(page, page.getByTestId("stream-offer-decline-onboard"));
-    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+    await expect(
+      page.getByTestId("stream-offer-decline-onboard")
+    ).toHaveCount(0);
   } finally {
     resetDashboardAllOffer();
     await page.context().close();
@@ -774,38 +795,43 @@ test("the Standing link covers its phone label and desktop plot without covering
   }
 });
 
-test("cards carry exactly one kind glyph and reading lines carry none", async ({
-  page,
-}) => {
+// NO ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076). The kind glyph existed because
+// "a line that earned a glyph would be halfway to a card"; with no cards left the
+// rule has no element, and the owner ruled that NO domain icon replaces it ("too many
+// icons"). Identity is carried by the label column and the block header instead.
+//
+// The absence is asserted with its POSITIVE CONTROL in the same test: a page whose
+// rows never rendered would satisfy "no icons in rows" on an empty screen, which is
+// the failure this shape exists to catch.
+test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   await page.goto("/");
+  await openDashboardAll(page);
   const main = page.getByRole("main");
-  const cards = main.locator("[data-testid^='now-strip-card-']");
-  const cardCount = await cards.count();
-  expect(cardCount).toBeGreaterThan(0);
-  for (let index = 0; index < cardCount; index += 1) {
-    const glyph = cards.nth(index).locator("[data-kind-glyph]").first(); // first-ok: the nth card's own glyph; its count is asserted on the next line
-    await expect(glyph).toBeAttached();
-    // ONE glyph for the card itself. A nested candidate's own markup carries none,
-    // so this count is the card's own.
-    expect(await cards.nth(index).locator("[data-kind-glyph]").count()).toBe(1);
-  }
-  const ahead = main.getByTestId("dashboard-ahead");
-  if ((await ahead.count()) > 0) {
-    const members = ahead.getByTestId("dashboard-candidate");
-    const memberCount = await members.count();
-    for (let index = 0; index < memberCount; index += 1) {
-      expect(
-        await members.nth(index).locator("[data-kind-glyph]").count()
-      ).toBe(1);
-    }
-  }
-  // And the boundary the glyphs exist to draw: a reading LINE never earns one.
-  expect(
-    await main
-      .locator('[data-testid="dashboard-candidate"][data-lane="standing"]')
-      .locator("[data-kind-glyph]")
-      .count()
-  ).toBe(0);
+  const rows = main.getByTestId("dashboard-candidate");
+  expect(await rows.count()).toBeGreaterThan(0);
+
+  // The retired glyph, by its own marker, across every zone.
+  expect(await main.locator("[data-kind-glyph]").count()).toBe(0);
+
+  // …and no OTHER icon took its place. Scoped to the row's own text cells rather
+  // than the whole row: a trailing CONTROL may legitimately draw a glyph inside a
+  // button (the snooze menu's clock), and a control is not the row.
+  const iconsInText = await rows.evaluateAll((nodes) =>
+    nodes.flatMap((node) =>
+      [...node.querySelectorAll("svg")]
+        .filter(
+          (svg) =>
+            !svg.closest(
+              "button, a[role='button'], form, [data-icon-button], [data-testid='dashboard-row-controls']"
+            )
+        )
+        .map(
+          (svg) =>
+            `${node.getAttribute("data-candidate-id")}: ${svg.getAttribute("class")}`
+        )
+    )
+  );
+  expect(iconsInText).toEqual([]);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({

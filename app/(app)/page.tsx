@@ -218,7 +218,6 @@ import {
   sleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
-import { usualRoutineHeading, usualRoutinePhrase } from "@/lib/usual-routine";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
@@ -305,15 +304,26 @@ function attentionRowDetail(
 // Every sentence the coaching card printed, in the row's facts column. `also` is the
 // #1148 rule: concurrent under-recovery signals are shown BEFORE a snooze can suppress
 // them, so a dismissal is informed and cannot silently bury a signal never seen.
-function coachingRowDetail(rec: Recommendation): string {
-  return [
-    rec.detail,
-    rec.also?.length ? `Also: ${rec.also.join("; ")}.` : null,
+function coachingRowDetail(rec: Recommendation) {
+  const rest = [
     rec.target ? `Suggested set: ${rec.target}` : null,
     ...(rec.notes ?? []),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  ].filter(Boolean);
+  return (
+    <>
+      {rec.detail}
+      {rec.also?.length ? (
+        <>
+          {" · "}
+          <span data-testid="coaching-also">
+            <span className="font-medium">Also:</span>{" "}
+            {rec.also.join("; ")}.
+          </span>
+        </>
+      ) : null}
+      {rest.length > 0 ? ` · ${rest.join(" · ")}` : null}
+    </>
+  );
 }
 
 // A FINDING AS A ROW, WITHOUT LOSING WHAT IT SAYS (#4076). The card carried title,
@@ -1985,22 +1995,14 @@ async function renderDashboard(
         routineTiming
       ),
       {
-        label: usualRoutineHeading(
-          routineControl.window,
-          routineControl.subjectName
-        ),
-        // The offer NAMES every serving and every dose the tap will write (#2458) —
-        // a label is a promise — so the phrase stays on the row rather than inside
-        // the button, where the facts column is what a reader scans.
-        detail: (
-          <span data-testid="routine-usual-names">
-            {usualRoutinePhrase(
-              routineControl.food.map((f) => f.name),
-              routineControl.doses
-            )}
-          </span>
-        ),
-        href: "/nutrition",
+        // A CONTROL-ONLY ROW, and the one on the page. The composed-morning offer's
+        // control IS its own label: it names EVERY serving and EVERY dose the tap
+        // will write, because a label is a promise the write core re-derives and
+        // intersects (#2458) — and #3736 already ruled that a control naming doses
+        // cannot compress into a pill. Giving the row its own label as well would
+        // print the same promise twice, which is the defect this grammar replaced.
+        // The control is unchanged from the quick-log sheet's mount, whose reserved
+        // height pins it (LOG_SHEET_CONTEXT_RESERVE_PX).
         control: <UsualRoutineControl {...routineControl} />,
       }
     );
@@ -2418,7 +2420,18 @@ async function renderDashboard(
       ),
       {
         label: "Sleep",
-        value: sleepWaiting.headline,
+        // The SAME headline /sleep prints, marked the same way: one decision, three
+        // surfaces (#2097). The row replaces the figures rather than sitting above
+        // them — the state exists precisely because the only number available is a
+        // different night's.
+        value: (
+          <span
+            data-testid="sleep-waiting-headline"
+            data-kind={sleepWaiting.kind}
+          >
+            {sleepWaiting.headline}
+          </span>
+        ),
         detail: [
           sleepWaitingDetail(sleepWaiting, {
             clock: (min) => formatClockMinutes(formatPrefs.timeFormat, min),

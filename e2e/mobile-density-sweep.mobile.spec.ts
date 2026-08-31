@@ -1154,18 +1154,17 @@ test("#3673 object-ness is the affordance: two rows in one band differ only by t
   // …and the two kinds are visually indistinguishable. No frame, no fill step.
   expect([...new Set([...split.acting, ...split.reporting])]).toHaveLength(1);
 
-  // The Now zone's own cards draw no frame either, which is the same ruling on the
-  // zone the acceptance criterion names: nothing there but the affordance.
+  // The Now zone draws no card frame either, which is the same ruling on the zone the
+  // acceptance criterion names: nothing there but the affordance. Since #4076 Now is
+  // a BAND of rows, so what is read is the row's own corner — a band's rows share one
+  // frame and round nothing of their own.
   const nowShapes = await page
-    .locator("[data-testid^='now-strip-card-']")
+    .locator('[data-testid="dashboard-candidate"][data-lane="now"]')
     .evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const style = getComputedStyle(node);
-        return `${style.borderTopWidth}|${style.borderTopLeftRadius}`;
-      })
+      nodes.map((node) => getComputedStyle(node).borderTopLeftRadius)
     );
   expect(nowShapes.length).toBeGreaterThan(0);
-  expect([...new Set(nowShapes)]).toEqual(["0px|0px"]);
+  expect([...new Set(nowShapes)]).toEqual(["0px"]);
 });
 
 test.describe("dark", () => {

@@ -58,17 +58,18 @@ test("eligible closed episodes emit independent reopen actions", async ({
     ).toHaveAttribute("data-kind", "action");
 
     // The household-history fact is a link to a page the nav already carries, so the
-    // tail draws the PAGE as a door instead of a card of its own (#3366) — the fact
-    // still places, which is what keeps the exact-once contract true.
+    // tail DROPS it (#3366) — and since #4076 draws no door row in its place either
+    // (owner: the Elsewhere list is "utterly useless"; the nav already names that
+    // page). The fact still places, which is what keeps the exact-once contract
+    // true, and that half is asserted where it can go red: the placement manifest
+    // (lib/__db_tests__/dashboard-placement-manifest.test.ts).
     await expect(
       dashboardCandidatePrefix(page, "household.episode-history")
     ).toHaveCount(0);
-    const door = page.locator(
-      '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
-    );
-    await expect(door).toHaveCount(1);
-    await expect(door).toHaveAttribute("href", "/medical/episodes");
-    await expect(door).toHaveText("Illness episodes");
+    await expect(page.getByTestId("dashboard-all-door")).toHaveCount(0);
+    await expect(
+      page.getByTestId("dashboard-all-contents").getByText("Elsewhere")
+    ).toHaveCount(0);
   } finally {
     await page.context().close();
   }
@@ -88,11 +89,12 @@ test("the household-history action follows its existing 14-day window", async ({
     await expect(dashboardCandidatePrefix(tail, "illness.reopen:")).toHaveCount(
       0
     );
-    await expect(
-      tail.locator(
-        '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
-      )
-    ).toHaveCount(1);
+    // The control: the tail rendered and holds entries, so the door's absence below
+    // is about a populated tail and not an empty selector.
+    expect(
+      await tail.getByTestId("dashboard-all-contents").getByTestId("dashboard-candidate").count()
+    ).toBeGreaterThan(0);
+    await expect(tail.getByTestId("dashboard-all-door")).toHaveCount(0);
   } finally {
     await tail.context().close();
   }
@@ -108,11 +110,9 @@ test("the household-history action follows its existing 14-day window", async ({
     await expect(
       dashboardCandidatePrefix(recovered, "illness.reopen:")
     ).toHaveCount(0);
-    // Past the window the fact is not gathered at all, so neither a card nor a door.
+    // Past the window the fact is not gathered at all, so nothing places for it.
     await expect(
-      recovered.locator(
-        '[data-testid="dashboard-all-door"][data-door-href="/medical/episodes"]'
-      )
+      dashboardCandidatePrefix(recovered, "household.episode-history")
     ).toHaveCount(0);
   } finally {
     await recovered.context().close();

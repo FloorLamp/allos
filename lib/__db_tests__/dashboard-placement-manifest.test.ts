@@ -595,9 +595,17 @@ describe("actual atomic dashboard manifests", () => {
     expect(dropped.length).toBeGreaterThan(0);
   });
 
-  // EXACT-ONCE, THE OTHER HALF: everything the ranker gathered is either drawn in the
-  // tail or deliberately dropped onto a named page — never both, and never neither.
+  // EXACT-ONCE, THE OTHER HALF: everything the ranker gathered for the tail is either
+  // DRAWN or deliberately dropped onto a named page — never both, and never neither.
+  //
+  // THE CONTROL IS ACROSS PERSONAS, NOT INSIDE ONE, and that is a measurement rather
+  // than a preference: `household.episode-history` (lib/dashboard-candidates/care.ts)
+  // is the ONLY `navDuplicateOf` in the tree, and only the household persona reaches
+  // it. A per-persona "this tail exercises a drop" control would therefore have been
+  // green on one persona and impossible on five — an assertion that cannot fail is
+  // not a control.
   it("splits the tail into drawn and dropped with nothing in between", () => {
+    let dropsSeen = 0;
     for (const [persona, placements] of manifests) {
       const lane = placements.filter(
         (placement) => placement.lane === "everything"
@@ -607,18 +615,22 @@ describe("actual atomic dashboard manifests", () => {
         drawn.map((placement) => placement.candidate.candidateId)
       );
       expect(drawnIds.size, persona).toBe(drawn.length);
-      // The control: this persona's tail is populated on BOTH sides, so neither
-      // claim below is about an empty set.
+      // The control: this persona's tail is populated, so the partition below is a
+      // claim about real members and not about an empty lane.
       expect(drawn.length, persona).toBeGreaterThan(0);
-      expect(lane.length, persona).toBeGreaterThan(drawn.length);
       for (const placement of lane) {
         const id = placement.candidate.candidateId;
+        const dropped = placement.candidate.navDuplicateOf != null;
+        if (dropped) dropsSeen += 1;
         expect(
-          drawnIds.has(id) !== (placement.candidate.navDuplicateOf != null),
+          drawnIds.has(id) !== dropped,
           `${persona}:${id} is neither drawn nor dropped onto a page`
         ).toBe(true);
       }
     }
+    // …and the other side of the partition is exercised SOMEWHERE, or the loop above
+    // is only ever saying "everything is drawn".
+    expect(dropsSeen).toBeGreaterThan(0);
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
@@ -756,13 +768,17 @@ describe("actual atomic dashboard manifests", () => {
   // #1851 makes the sleep read per-night, which DELETES the profile-wide source
   // election and the DISTINCT source scan that fed it — one statement back for every
   // persona, household included, since every dashboard reaches a sleep session.
+  // −1 on every persona EXCEPT household (#4076): retiring the PRN dose candidates
+  // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
+  // unchanged because that read was already skipped there — it is gated on a WELL day
+  // and the household fixture carries an open illness.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 227,
-    "marathon-runner": 226,
+    bodybuilder: 226,
+    "marathon-runner": 225,
     household: 269,
-    pregnant: 223,
-    "diabetic-cgm": 234,
-    biohacker: 240,
+    pregnant: 222,
+    "diabetic-cgm": 233,
+    biohacker: 239,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

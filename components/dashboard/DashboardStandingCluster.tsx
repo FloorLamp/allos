@@ -95,9 +95,15 @@ export function DashboardFactRow({
     candidate.relevance.kind === "profile-data"
       ? candidate.relevance.engagement
       : undefined;
-  // The label carries the row's destination when the row itself cannot (see the
-  // link-wrap suppression below): identity is what a door's words should name.
-  const labelLink = presentation.control != null ? presentation.href : undefined;
+  // WHERE THE DOOR GOES WHEN THE ROW CANNOT BE ONE (see the link-wrap suppression
+  // below). EXACTLY ONE element carries the href: the row's own CTA words if it has
+  // any — "Fix it", "Log", "Continue" — because those name the destination better
+  // than anything else on the row; otherwise the label, which is its identity. Two
+  // links to one page on one row is a second tab stop saying the same thing.
+  const unwrapped = presentation.control != null && presentation.href != null;
+  const labelLink =
+    unwrapped && !presentation.actionLabel ? presentation.href : undefined;
+  const actionLink = unwrapped && presentation.actionLabel;
   const content = (
     <>
       {presentation.label && (
@@ -134,11 +140,19 @@ export function DashboardFactRow({
           {presentation.detail}
         </span>
       )}
-      {presentation.actionLabel && (
-        <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
-          {presentation.actionLabel}
-        </span>
-      )}
+      {presentation.actionLabel &&
+        (actionLink ? (
+          <Link
+            href={presentation.href!}
+            className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            {presentation.actionLabel}
+          </Link>
+        ) : (
+          <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
+            {presentation.actionLabel}
+          </span>
+        ))}
     </>
   );
   const rowClass =

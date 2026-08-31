@@ -61,7 +61,7 @@ test("the integrations page offers the bedtime reminder when a stream first deli
   }
 });
 
-test("the dashboard card is dismissible, enables nothing, and stays dismissed (#2162)", async ({
+test("the dashboard row is dismissible, enables nothing, and stays dismissed (#2162)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -71,18 +71,21 @@ test("the dashboard card is dismissible, enables nothing, and stays dismissed (#
   try {
     await page.goto("/");
     await openDashboardAll(page);
-    const card = page.getByTestId("stream-lifecycle-offers");
-    await expect(card).toBeVisible();
-    await expect(
-      page.getByTestId("stream-offer-onboard-health-connect")
-    ).toBeVisible();
+    // The offer is a ROW on the dashboard since #4076 — its question in the facts
+    // column, its two answers in the row's trailing control slot. The integrations
+    // surface still draws the fuller card; both post the same actions.
+    const row = page.locator('[data-candidate-id^="stream.offer:"]');
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Health Connect started sending");
 
     await settledClick(page, page.getByTestId("stream-offer-decline-onboard"));
-    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+    await expect(row).toHaveCount(0);
 
     // Dismissed stays dismissed — the suppression bus, not a client flag.
     await page.reload();
-    await expect(page.getByTestId("stream-lifecycle-offers")).toHaveCount(0);
+    await expect(
+      page.locator('[data-candidate-id^="stream.offer:"]')
+    ).toHaveCount(0);
 
     // And declining turned NOTHING off: there was nothing on to turn off.
     await page.goto("/settings/notifications");
