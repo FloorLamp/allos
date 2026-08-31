@@ -1,17 +1,24 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "@/lib/migrations/runner";
-import { MIGRATIONS, migrationsBefore } from "@/lib/migrations/versions";
-import { up } from "@/lib/migrations/versions/20260814-mobility-activity-type";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { up as backfillFitbitComponents } from "@/lib/migrations/versions/117-fitbit-activity-components";
+import { up as renameMobility } from "@/lib/migrations/versions/20260814-mobility-activity-type";
+
+// The migrations that own the activity columns and CHECK consumed by the rename.
+// The central runner suite owns full-chain ordering and application.
+const ACTIVITY_SCHEMA_IDS = new Set([1, 9, 19, 58, 107, 172]);
 
 function beforeMobilityRename(): Database.Database {
   const mem = new Database(":memory:");
-  runMigrations(mem, migrationsBefore("20260814-mobility-activity-type"));
+  mem.pragma("foreign_keys = OFF");
+  for (const migration of NUMBERED_MIGRATIONS) {
+    if (ACTIVITY_SCHEMA_IDS.has(migration.id)) migration.up(mem);
+  }
   return mem;
 }
 
 describe("20260814 mobility activity type", () => {
-  it("renames stored activity and component tokens without disturbing the row graph", () => {
+  it("renames stored and historical Fitbit tokens without disturbing the row graph", () => {
     const mem = beforeMobilityRename();
     mem.exec(`
       INSERT INTO profiles (id, name) VALUES (1, 'Alex');
@@ -41,11 +48,15 @@ describe("20260814 mobility activity type", () => {
          NULL, NULL, NULL, '{not-json', '2026-08-14 11:00:00', 'manual', NULL,
          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
          NULL, NULL, 0, NULL, NULL, NULL, NULL);
+      INSERT INTO activities
+        (id, profile_id, date, type, title, duration_min, source, edited)
+      VALUES (43, 1, '2026-08-10', 'sport', 'Yoga', 35, 'fitbit-takeout', 0);
       INSERT INTO exercise_sets
         (id, activity_id, exercise, set_number, duration_sec)
       VALUES (70, 40, 'Hip flow', 1, 1500);
       UPDATE sqlite_sequence SET seq = 99 WHERE name = 'activities';
     `);
+    backfillFitbitComponents(mem);
 
     const before = mem
       .prepare("SELECT * FROM activities WHERE id = 40")
@@ -53,7 +64,7 @@ describe("20260814 mobility activity type", () => {
 
     // The production runner disables FK enforcement around parent-table rebuilds.
     mem.pragma("foreign_keys = OFF");
-    up(mem);
+    renameMobility(mem);
     mem.pragma("foreign_keys = ON");
 
     const after = mem
@@ -84,6 +95,18 @@ describe("20260814 mobility activity type", () => {
     expect(
       mem.prepare("SELECT type, components FROM activities WHERE id = 42").get()
     ).toEqual({ type: "mobility", components: "{not-json" });
+    const fitbit = mem
+      .prepare("SELECT type, components FROM activities WHERE id = 43")
+      .get() as { type: string; components: string };
+    expect(fitbit.type).toBe("mobility");
+    expect(JSON.parse(fitbit.components)).toEqual([
+      {
+        name: "Yoga",
+        type: "mobility",
+        distance_km: null,
+        duration_min: 35,
+      },
+    ]);
     expect(
       mem
         .prepare("SELECT activity_id FROM exercise_sets WHERE id = 70")
@@ -126,38 +149,10 @@ describe("20260814 mobility activity type", () => {
     ).toThrow();
 
     const rows = mem.prepare("SELECT * FROM activities ORDER BY id").all();
-    up(mem);
+    renameMobility(mem);
     expect(mem.prepare("SELECT * FROM activities ORDER BY id").all()).toEqual(
       rows
     );
-    mem.close();
-  });
-
-  it("converges migration 117's historical Fitbit recovery output to mobility", () => {
-    const mem = new Database(":memory:");
-    runMigrations(mem, migrationsBefore("117-fitbit-activity-components"));
-    mem.exec(`
-      INSERT INTO profiles (id, name) VALUES (1, 'Alex');
-      INSERT INTO activities
-        (id, profile_id, date, type, title, duration_min, source, edited)
-      VALUES
-        (1, 1, '2026-08-10', 'sport', 'Yoga', 35, 'fitbit-takeout', 0);
-    `);
-
-    runMigrations(mem, MIGRATIONS);
-
-    const row = mem
-      .prepare("SELECT type, components FROM activities WHERE id = 1")
-      .get() as { type: string; components: string };
-    expect(row.type).toBe("mobility");
-    expect(JSON.parse(row.components)).toEqual([
-      {
-        name: "Yoga",
-        type: "mobility",
-        distance_km: null,
-        duration_min: 35,
-      },
-    ]);
     mem.close();
   });
 });

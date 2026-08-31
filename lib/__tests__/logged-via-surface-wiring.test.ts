@@ -24,11 +24,13 @@ import { UNMOUNTED_ROOTS } from "./unmounted-roots";
 // files that import that action — and fails when any of those clients has no way to
 // say where it is. Add a read site with no declaring mounting and this goes red.
 //
-// A CLIENT DECLARES in one of two ways, and both are the same mechanism: it stamps a
-// FormData through `useLoggedViaStamp()` / `LOGGED_VIA_FIELD`, or it renders
-// `<LoggedViaField />` inside a plain `<form action={…}>`. A file that is itself a
-// REGION ROOT (`<LoggedViaSurface value=…>`) counts too: declaring the region is what
-// the controls inside it read.
+// A CLIENT DECLARES in one of three ways, and all three are the same mechanism: it
+// stamps a FormData through `useLoggedViaStamp()` / `LOGGED_VIA_FIELD`, it renders
+// `<LoggedViaField />` inside a plain `<form action={…}>`, or it runs the write through
+// `useWritePipeline` (#3276), which builds the FormData and stamps it so the caller
+// never holds one to forget. A file that is itself a REGION ROOT
+// (`<LoggedViaSurface value=…>`) counts too: declaring the region is what the controls
+// inside it read.
 //
 // READS BYTES rather than shelling out to a grep, for the #3206 reason the sibling
 // census states: a source file carrying a deliberate NUL separator is BINARY to grep
@@ -44,7 +46,7 @@ const EXPORT_RE = /^export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/gm;
 
 /** The code shapes that declare a surface; imports and name prefixes do not. */
 const DECLARES_RE =
-  /\buseLoggedViaStamp\s*\(|<LoggedViaField\b|<LoggedViaSurface\b|\.set\s*\(\s*LOGGED_VIA_FIELD\b/;
+  /\buseLoggedViaStamp\s*\(|<LoggedViaField\b|<LoggedViaSurface\b|\.set\s*\(\s*LOGGED_VIA_FIELD\b|\buseWritePipeline\s*\(/;
 
 function dirents(dir: string): fs.Dirent[] {
   try {
@@ -523,8 +525,14 @@ export function unjustifiedLiterals(root: string): string[] {
 // file-local constant rather than from the context, so nothing under it reads the
 // region. Reachability above is what holds that one.
 
-/** A control that posts whatever region it is mounted in. */
-const STAMPS_RE = /useLoggedViaStamp\s*\(|<LoggedViaField/;
+/**
+ * A control that posts whatever region it is mounted in — including through the shared
+ * write pipeline, which stamps on its behalf (#3276). Matching that spelling is what
+ * keeps this walk over the SAME controls after a surface adopts the pipeline; without
+ * it, adopting would quietly remove a control from the region-survival check.
+ */
+const STAMPS_RE =
+  /useLoggedViaStamp\s*\(|<LoggedViaField|useWritePipeline\s*\(/;
 
 function resolveSpec(
   root: string,
@@ -691,7 +699,13 @@ export function stampersOutsideEveryRegion(root: string): string[] {
   const byRel = new Map(files.map((f) => [f.rel, f]));
   const out: string[] = [];
   for (const { rel, src } of files) {
-    if (rel === "components/LoggedViaSurface.tsx") continue;
+    // The two shared bindings' own definitions are not controls: they are what a
+    // control stamps THROUGH, and neither is mounted anywhere.
+    if (
+      rel === "components/LoggedViaSurface.tsx" ||
+      rel === "components/useWritePipeline.ts"
+    )
+      continue;
     if (!STAMPS_RE.test(src)) continue;
     const stack: [string, string[]][] = [[rel, [rel]]];
     const seen = new Set<string>();
@@ -942,6 +956,12 @@ export async function logThing(formData: FormData) {
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
         "import { LoggedViaSurface } from '@/components/LoggedViaSurface';\n" +
         'export default function Region() { return <LoggedViaSurface value="quick-log" />; }\n',
+      // …and the fourth: the caller never builds the FormData at all (#3276). Like the
+      // three above, the CALL is what declares — an import of the hook is not enough.
+      "components/Piped.tsx":
+        '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
+        "import { useWritePipeline } from '@/components/useWritePipeline';\n" +
+        "export default function Piped() { useWritePipeline(); return null; }\n",
       // A SERVER component: it posts through an inline server action on the page it
       // IS, which is what `page` means. Not a mounting that can declare anything.
       "app/(app)/x/page.tsx":

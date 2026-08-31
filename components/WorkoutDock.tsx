@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconBarbell, IconChevronUp } from "@tabler/icons-react";
 import {
   BOTTOM_EDGE_ABOVE_NAV,
@@ -46,7 +46,8 @@ export default function WorkoutDock({
   // The dock is the BASE layer of the bottom edge (#1520): while it's mounted it
   // publishes its height, so the toast stack and the offline pill stack above it
   // instead of landing on top of it.
-  const edgeRef = useBottomEdgeClaim<HTMLDivElement>();
+  const edgeRef = useRef<HTMLDivElement>(null);
+  useBottomEdgeClaim(edgeRef);
   const [elapsedMin, setElapsedMin] = useState(() =>
     Math.max(0, Math.floor((Date.now() - startEpochMs) / 60_000))
   );
