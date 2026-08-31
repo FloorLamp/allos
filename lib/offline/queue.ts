@@ -111,18 +111,12 @@ export const FLOW_KINDS: readonly FlowKind[] = [
 // the full `OneTapAffordance` axis, which subsumes it; the compile-time check
 // below pins that the idempotent half stays a subset of what's declared here.
 //
-// AND THE DOMAIN-GRAIN ROWS ARE NOW DERIVATIONS (#4425, the fold-on-touch ruling).
-// Where an affordance's answer IS its domain's answer, the row reads the manifest
-// instead of restating it, so the two can no longer disagree — the manifest is where
-// #3275's offline-story column landed when that issue closed by absorption.
-//
-// THE OTHER EIGHT ROWS STAY LOCAL, and the reason is the axis rather than reluctance:
-// this record is keyed on AFFORDANCES and the manifest on DOMAINS, and the two grains
-// genuinely differ. Food has four affordances and two different answers; dose has five
-// and two. `food-usual`, `routine-usual`, `dose-backfill` and `dose-day-stack` are
-// excluded while their domains are covered — "only the shortcut needs a connection" is
-// an argument about ONE OFFER, and a domain-grain column cannot hold it without saying
-// something false about the single taps underneath. Those rows argue for themselves.
+// A ROW WHOSE ANSWER IS ITS DOMAIN'S NOW READS THE MANIFEST (#4425, fold-on-touch),
+// which is where #3275's offline-story column landed. The rest stay local because the
+// AXES differ: food has four affordances and two answers, dose five and two, and the
+// four `usual`/`backfill`/`stack` exclusions say "only the SHORTCUT needs a
+// connection" — an argument about one offer, false of the single taps underneath it,
+// so a domain-grain column cannot hold it.
 export const OFFLINE_QUEUE_COVERAGE = {
   "food-serving": LOG_MANIFEST.food.offline.flow,
   "protein-grams": LOG_MANIFEST.food.offline.flow,
