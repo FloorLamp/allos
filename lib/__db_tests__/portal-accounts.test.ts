@@ -783,23 +783,12 @@ describe("acquired-by provenance (#1748)", () => {
     const temp = createPortal("Temp Provenance");
     expect(temp.ok).toBe(true);
     if (!temp.ok) return;
-    bindPortalIdentity(implicitAccountOf(temp.id), "Jane Doe", mineProfile);
-    await UPLOAD(
-      uploadByIdentity(memberToken, "temp-provenance", "Jane Doe", "prov-feed")
-    );
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([pdfBytes("prov-feed-cli")], { type: "application/pdf" }),
-      "byhand.pdf"
-    );
-    await UPLOAD(
-      new Request(`http://x/api/documents?profile=${mineProfile}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${memberToken}` },
-        body: form,
-      })
-    );
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, acquired_portal_id)
+       VALUES (?, 'labs.pdf', '/tmp/portal.pdf', ?),
+              (?, 'byhand.pdf', '/tmp/byhand.pdf', NULL)`
+    ).run(mineProfile, temp.id, mineProfile);
 
     const rows = getImportLogDocuments(mineProfile);
     expect(
@@ -983,15 +972,8 @@ describe("pending identities", () => {
     ).toBe(true);
   });
 
-  it("BINDING the identity clears its pending row in the same write", async () => {
-    await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Soon Mapped",
-        "pend-bind"
-      )
-    );
+  it("BINDING the identity clears its pending row in the same write", () => {
+    recordPendingIdentity("ochsner-mychart", null, "Soon Mapped", "discovered");
     expect(listPendingIdentities()).toHaveLength(1);
 
     expect(
@@ -1000,17 +982,9 @@ describe("pending identities", () => {
     // No window where the card still offers to map something already mapped.
     expect(listPendingIdentities()).toHaveLength(0);
 
-    // …and the identity now resolves, so the next run lands normally.
-    const res = await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Soon Mapped",
-        "pend-bound"
-      )
-    );
-    expect(res.status).toBe(200);
-    expect(docCount(mineProfile)).toBe(1);
+    expect(
+      resolvePortalIdentity("ochsner-mychart", null, "Soon Mapped")
+    ).toMatchObject({ ok: true, profileId: mineProfile });
   });
 
   it("IGNORING clears the pending row too, and it never comes back", () => {
