@@ -145,6 +145,8 @@ const practiceWhenFor = (
 // A BIG FACTOR HERE, NOT A SMALL ONE ON THE TITLE, which is the non-obvious half: a
 // flex-shrink below 1 does not deprioritise an item, it caps the whole line's
 // shrink, so a `shrink-[0.01]` title moved 4px of a 438px deficit and stayed clipped.
+// `flex-1` here does the same job and was rejected: measured, it widens the
+// disclosure button's tap area to the row's whole leftover width.
 const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
 
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
