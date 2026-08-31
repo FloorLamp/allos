@@ -21,9 +21,10 @@ import Button from "@/components/Button";
 // already in the right place. Matches `min-w-44`.
 const MENU_WIDTH = 176;
 
-// One present-only chart anchor. Declared here because this menu is the only
-// thing that renders them now: the sticky chip row it replaced was deleted in
-// #4515 after two years of rendering nowhere.
+// One present-only chart anchor. It used to be declared by the sticky chip row
+// this menu replaced; that row was deleted in #4515, its last two importers
+// having been `import type` lines for exactly this interface, so it lives with
+// the only component that renders a chart anchor.
 export interface ChartChip {
   id: string;
   label: string;
