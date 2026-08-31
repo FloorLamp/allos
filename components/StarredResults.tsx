@@ -144,12 +144,8 @@ export default async function StarredResults({
         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           {relative}
           {stale && (
-            <span className="ml-1.5 inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400">
-              <span>· ⏳ stale</span>
-              <InfoTooltipIcon
-                label="Over a year old — consider retesting"
-                data-testid="starred-stale-help"
-              />
+            <span className="ml-1.5 text-amber-600 dark:text-amber-400">
+              · ⏳ stale
             </span>
           )}
         </div>
@@ -160,6 +156,15 @@ export default async function StarredResults({
   // The phone split. `folded` is empty when the reader has few enough stars that the
   // card was never the problem — PhoneFold then draws no toggle.
   const { shown, folded } = splitAtPhoneCap(starred, PHONE_STARRED_TILE_CAP);
+
+  // #3970 rule 1. "Over a year old — consider retesting" is a CONSTANT explainer of
+  // the ⏳ stale vocabulary, and it used to mount an `h-8 w-8` button on every stale
+  // tile. It states itself once, in the card's own heading, beside a sample of the
+  // token it explains. Computed over the whole starred set rather than over `shown`,
+  // because the folded half is the same card and PhoneFold reveals it in place.
+  const anyStale = starred.some((b) =>
+    isBiomarkerStale(b.latest_date, b.latest_category, today(pid))
+  );
 
   return (
     <div
@@ -179,6 +184,15 @@ export default async function StarredResults({
         <span className="font-normal text-slate-500 dark:text-slate-400">
           ({starred.length})
         </span>
+        {anyStale ? (
+          <span className="ml-2 inline-flex items-center gap-0.5 align-middle text-xs font-normal text-amber-600 dark:text-amber-400">
+            ⏳ stale
+            <InfoTooltipIcon
+              label="Over a year old — consider retesting"
+              data-testid="starred-stale-help"
+            />
+          </span>
+        ) : null}
       </h2>
       <PhoneFold
         testId={

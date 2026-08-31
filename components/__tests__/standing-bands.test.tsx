@@ -1,20 +1,22 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import DashboardStandingCluster, {
+  DashboardFactRow,
   type DashboardStandingPresentation,
 } from "@/components/dashboard/DashboardStandingCluster";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import type {
-  StandingBandKey,
   StandingFamilyKey,
+  StandingRenderedBand,
   StandingSectionKey,
 } from "@/lib/dashboard-standing";
 
-// Standing's rendered anatomy after #3548: the tier at the top, the stable rest in
-// its fixed sections, and the quiet tail behind ONE disclosure that hides rather
-// than unmounts. The ranker decides membership (pinned in
-// lib/__tests__/dashboard-standing.test.ts); what this tier can see is what the
-// three bands look like once they are on a page.
+// Standing's rendered anatomy after #4232, which narrows #3548: the tier at the top
+// and the stable rest in its fixed sections — TWO bands, both always open, because
+// Standing is purely the glance surface now and everything static lives in the page's
+// one bottom fold. The ranker decides membership (pinned in
+// lib/__tests__/dashboard-standing.test.ts); what this tier can see is what the bands
+// look like once they are on a page.
 
 type StandingPlacement = Extract<DashboardPlacement, { lane: "standing" }>;
 
@@ -22,7 +24,7 @@ function placement(
   candidateId: string,
   family: StandingFamilyKey,
   section: StandingSectionKey,
-  band: StandingBandKey,
+  band: StandingRenderedBand,
   laneOrder: number
 ): StandingPlacement {
   return {
@@ -64,18 +66,18 @@ const BEHIND = placement(
   0
 );
 const STEPS = placement("activity.steps:d", "steps-today", "today", "rest", 1);
-const DORMANT_BP = placement(
-  "vitals.blood-pressure:2019-01-01",
+const BP = placement(
+  "vitals.blood-pressure:2026-08-19",
   "blood-pressure",
   "body",
-  "tail",
+  "rest",
   2
 );
-const PILLAR = placement(
-  "healthspan.pillar:vo2",
-  "healthspan-pillars",
-  "longer-view",
-  "tail",
+const RHR = placement(
+  "vitals.resting-heart-rate:2026-08-19",
+  "resting-heart-rate",
+  "body",
+  "rest",
   3
 );
 
@@ -95,16 +97,8 @@ const PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
     },
   ],
   [STEPS.candidate.candidateId, { value: "8,000", presence: "current" }],
-  [
-    DORMANT_BP.candidate.candidateId,
-    {
-      detail: "No blood pressure since Mar 2019",
-      href: "/trends#body",
-      actionLabel: "Log one",
-      presence: "dormant",
-    },
-  ],
-  [PILLAR.candidate.candidateId, { label: "VO2 max", value: "Quiet" }],
+  [BP.candidate.candidateId, { value: "118/74", presence: "current" }],
+  [RHR.candidate.candidateId, { value: "54 bpm", presence: "current" }],
 ]);
 
 const cluster = (
@@ -118,13 +112,39 @@ const cluster = (
 );
 
 describe("Standing's rendered bands", () => {
-  it("leads with the tier, keeps the rest in place, and folds the tail", () => {
-    const { container } = render(cluster([BEHIND, STEPS, DORMANT_BP, PILLAR]));
+  it("gives a leading identity body weight without changing label/value rows", () => {
+    const { rerender } = render(
+      <DashboardFactRow
+        candidate={BEHIND.candidate}
+        lane="now"
+        presentation={{ label: "Omega-3 · 600 mg · Midday" }}
+      />
+    );
+    expect(screen.getByTestId("standing-label").className).toBe(
+      "text-sm text-slate-900 dark:text-slate-100"
+    );
+
+    rerender(
+      <DashboardFactRow
+        candidate={BEHIND.candidate}
+        lane="standing"
+        presentation={{ label: "Lower body", value: "0 of 2" }}
+      />
+    );
+    expect(screen.getByTestId("standing-label").className).toBe(
+      "text-xs text-slate-500 dark:text-slate-400"
+    );
+  });
+
+  it("leads with the tier, keeps the rest in place, and draws no fold", () => {
+    const { container } = render(cluster([BEHIND, STEPS, BP, RHR]));
     expect(
       [...container.querySelectorAll("[data-standing-band]")].map((node) =>
         node.getAttribute("data-standing-band")
       )
-    ).toEqual(["attention", "rest", "tail"]);
+      // One `rest` section per registry SECTION that has members — Today for the
+      // steps row, Body for the two vitals — and the tier above them.
+    ).toEqual(["attention", "rest", "rest"]);
 
     // The tier does the telling: the behind word is present, exactly once, and it
     // is inside the tier rather than anywhere else on the surface.
@@ -135,49 +155,49 @@ describe("Standing's rendered bands", () => {
     ).not.toBeNull();
     expect(screen.getByTestId("standing-pace").textContent).toBe("Behind");
 
-    // The tail is a labelled disclosure that HIDES rather than unmounts: the
-    // dormant line and its log affordance are both still in the document.
-    const tail = screen.getByTestId("dashboard-standing-tail");
-    expect(tail.tagName).toBe("DETAILS");
-    expect((tail as HTMLDetailsElement).open).toBe(false);
-    expect(
-      screen.getByTestId("dashboard-standing-tail-summary").textContent
-    ).toBe("Quiet (2)");
-    expect(
-      tail.querySelector(
-        '[data-candidate-id="vitals.blood-pressure:2019-01-01"]'
-      )
-    ).not.toBeNull();
-    expect(tail.textContent).toContain("Log one");
+    // ONE FOLD ON THE PAGE (#4232): Standing itself has none. No disclosure, no
+    // summary, no quiet band.
+    expect(screen.queryByTestId("dashboard-standing-tail")).toBeNull();
+    expect(container.querySelector("details")).toBeNull();
+    expect(container.textContent).not.toContain("Quiet");
   });
 
-  // The converse of the removal above, and the reason it is written: a guard that
-  // only asserts the dormant line has left the open page passes just as happily on
-  // a tree where the whole family vanished. These are the surfaces that must STAY.
-  it("keeps the open page's own rows out of the fold", () => {
-    const { container } = render(cluster([BEHIND, STEPS, DORMANT_BP, PILLAR]));
-    const tail = screen.getByTestId("dashboard-standing-tail");
+  // THE CONVERSE OF THE REMOVAL ABOVE, AND THE REASON IT IS WRITTEN (#3934,
+  // re-targeted by #4232): a guard that only asserts the fold is gone passes just as
+  // happily on a tree where Standing collapsed entirely and took its rows with it.
+  // These are the rows that must STILL be drawn, counted THROUGH THE SAME per-band
+  // query the removal assertion runs through, so the pair cannot disagree about what
+  // it is looking at.
+  //
+  // The other half of the pair — the former quiet rows arriving in their Show
+  // everything groups — is asserted where both zones are on one page, in
+  // lib/__tests__/dashboard-placement-canvas.test.ts; this tier is only handed
+  // Standing and could never see it.
+  it("keeps every claimed row on the open page", () => {
+    const { container } = render(cluster([BEHIND, STEPS, BP, RHR]));
     const open = container.querySelectorAll(
       '[data-standing-band="attention"] [data-candidate-id], [data-standing-band="rest"] [data-candidate-id]'
     );
     expect(
       [...open].map((node) => node.getAttribute("data-candidate-id"))
-    ).toEqual(["target.weekly-progress:9", "activity.steps:d"]);
-    expect(
-      tail.contains(
-        container.querySelector('[data-candidate-id="activity.steps:d"]')
-      )
-    ).toBe(false);
+    ).toEqual([
+      "target.weekly-progress:9",
+      "activity.steps:d",
+      "vitals.blood-pressure:2026-08-19",
+      "vitals.resting-heart-rate:2026-08-19",
+    ]);
+    // …and each one is VISIBLE rather than merely mounted: nothing on this surface
+    // hides behind anything.
+    for (const node of open) expect(node.closest("[hidden]")).toBeNull();
   });
 
-  // No empty-band chrome: a surface with only a stable rest renders neither a tier
-  // header nor a fold control (#3548's sparse-profile reading).
-  it("renders no chrome for an empty tier or an empty tail", () => {
+  // No empty-band chrome: a surface with only a stable rest renders no tier header
+  // (#3548's sparse-profile reading).
+  it("renders no chrome for an empty tier", () => {
     const { container } = render(cluster([STEPS]));
     expect(
       container.querySelector('[data-standing-band="attention"]')
     ).toBeNull();
-    expect(screen.queryByTestId("dashboard-standing-tail")).toBeNull();
     expect(
       [...container.querySelectorAll("[data-standing-band]")].map((node) =>
         node.getAttribute("data-standing-band")

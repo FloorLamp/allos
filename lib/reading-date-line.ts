@@ -37,8 +37,10 @@ import { isBiomarkerStale } from "./reference-range";
 // test name the same string instead of two copies that can drift apart.
 export const DATE_AGE_SEPARATOR = " · ";
 
-// The hover text on a stale age token — the same sentence the cell carried before
-// the two lines became one.
+// The stale vocabulary's ONE explanation. It used to be the hover text on every
+// stale age token; since #3970 rule 1 the table states it once, on its Date column
+// header, and this constant is what that header renders. Still exported from here
+// because staleness is this module's judgement, not the header's.
 export const STALE_AGE_TITLE = "Over a year old — consider retesting";
 
 const AGE_CLASS_CURRENT = "text-slate-500 dark:text-slate-400";
@@ -49,10 +51,8 @@ export interface ReadingDateLine {
   date: string;
   /** The compact age beside it, or null when this row shows no age. */
   age: string | null;
-  /** Past its retest window — the amber treatment and title belong on `age`. */
+  /** Past its retest window — the amber treatment belongs on `age`. */
   stale: boolean;
-  /** Hover text for the age token; null unless stale. */
-  ageTitle: string | null;
   /** The class the age token wears. Amber only when the age is the stale one. */
   ageClassName: string;
 }
@@ -72,7 +72,6 @@ export function readingDateLine(
       date: day,
       age: null,
       stale: false,
-      ageTitle: null,
       ageClassName: AGE_CLASS_CURRENT,
     };
   const stale = isBiomarkerStale(reading.date, reading.category, today);
@@ -80,7 +79,6 @@ export function readingDateLine(
     date: day,
     age: formatCompactAge(reading.date, today),
     stale,
-    ageTitle: stale ? STALE_AGE_TITLE : null,
     ageClassName: stale ? AGE_CLASS_STALE : AGE_CLASS_CURRENT,
   };
 }

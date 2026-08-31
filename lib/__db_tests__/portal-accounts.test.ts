@@ -107,6 +107,16 @@ function docCount(profileId: number): number {
   ).n;
 }
 
+function acquiredOf(profileId: number): (number | null)[] {
+  return (
+    db
+      .prepare(
+        "SELECT acquired_portal_id AS p FROM medical_documents WHERE profile_id = ? ORDER BY id"
+      )
+      .all(profileId) as { p: number | null }[]
+  ).map((r) => r.p);
+}
+
 function makeLogin(username: string, role: "admin" | "member"): number {
   return Number(
     db
@@ -603,6 +613,45 @@ describe("POST /api/documents — identity form", () => {
     expect(body.profile).toBe(mineProfile);
     expect(body.documents[0].outcome).toBe("stored");
     expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([portalId]);
+  });
+
+  it("re-resolves an identity after its pending row is bound", async () => {
+    const pending = await UPLOAD(
+      uploadByIdentity(
+        memberToken,
+        "ochsner-mychart",
+        "Soon Mapped",
+        "pending-first"
+      )
+    );
+    expect(pending.status).toBe(404);
+    expect(((await pending.json()) as { error: string }).error).toBe(
+      "unmapped-identity"
+    );
+    expect(listPendingIdentities().map((row) => row.patientLabel)).toEqual([
+      "Soon Mapped",
+    ]);
+
+    expect(
+      bindPortalIdentity(defaultAccount, "Soon Mapped", mineProfile).ok
+    ).toBe(true);
+    expect(listPendingIdentities()).toHaveLength(0);
+
+    const landed = await UPLOAD(
+      uploadByIdentity(
+        memberToken,
+        "ochsner-mychart",
+        "Soon Mapped",
+        "bound-second"
+      )
+    );
+    expect(landed.status).toBe(200);
+    expect((await landed.json()) as { profile: number }).toMatchObject({
+      profile: mineProfile,
+    });
+    expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([portalId]);
   });
 
   it("routes by LOGIN when two logins share a label", async () => {
@@ -763,95 +812,35 @@ describe("POST /api/documents — identity form", () => {
     );
     expect(res.status).toBe(200);
     expect(docCount(mineProfile)).toBe(1);
+    expect(acquiredOf(mineProfile)).toEqual([null]);
   });
 });
 
 describe("acquired-by provenance (#1748)", () => {
-  function acquiredOf(profileId: number): (number | null)[] {
-    return (
-      db
-        .prepare(
-          "SELECT acquired_portal_id AS p FROM medical_documents WHERE profile_id = ? ORDER BY id"
-        )
-        .all(profileId) as { p: number | null }[]
-    ).map((r) => r.p);
-  }
-
-  it("stamps the resolved portal on a document pushed through the identity form", async () => {
-    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
-    const res = await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Jane Doe",
-        "prov-stored"
-      )
-    );
-    expect(res.status).toBe(200);
-    expect(acquiredOf(mineProfile)).toEqual([portalId]);
-  });
-
-  it("leaves it NULL on the plain profile form — the human CLI path", async () => {
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([pdfBytes("prov-cli")], { type: "application/pdf" }),
-      "labs.pdf"
-    );
-    const res = await UPLOAD(
-      new Request(`http://x/api/documents?profile=${mineProfile}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${memberToken}` },
-        body: form,
-      })
-    );
-    expect(res.status).toBe(200);
-    expect(acquiredOf(mineProfile)).toEqual([null]);
-  });
-
-  it("surfaces the portal's display NAME in the Review feed, and nothing for a hand upload", async () => {
-    bindPortalIdentity(defaultAccount, "Jane Doe", mineProfile);
-    await UPLOAD(
-      uploadByIdentity(memberToken, "ochsner-mychart", "Jane Doe", "prov-feed")
-    );
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([pdfBytes("prov-feed-cli")], { type: "application/pdf" }),
-      "byhand.pdf"
-    );
-    await UPLOAD(
-      new Request(`http://x/api/documents?profile=${mineProfile}`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${memberToken}` },
-        body: form,
-      })
-    );
+  it("surfaces the portal name, then loses only that label when the portal is deleted", async () => {
+    const temp = createPortal("Temp Provenance");
+    expect(temp.ok).toBe(true);
+    if (!temp.ok) return;
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, acquired_portal_id)
+       VALUES (?, 'labs.pdf', '/tmp/portal.pdf', ?),
+              (?, 'byhand.pdf', '/tmp/byhand.pdf', NULL)`
+    ).run(mineProfile, temp.id, mineProfile);
 
     const rows = getImportLogDocuments(mineProfile);
     expect(
       rows.find((r) => r.filename === "labs.pdf")?.acquired_portal_name
-    ).toBe("Ochsner MyChart");
+    ).toBe("Temp Provenance");
     expect(
       rows.find((r) => r.filename === "byhand.pdf")?.acquired_portal_name ??
         null
     ).toBeNull();
-  });
-
-  it("loses the label — and only the label — when the portal leaves the registry", async () => {
-    const temp = createPortal("Temp Provenance");
-    expect(temp.ok).toBe(true);
-    if (!temp.ok) return;
-    bindPortalIdentity(implicitAccountOf(temp.id), "Jane Doe", mineProfile);
-    await UPLOAD(
-      uploadByIdentity(memberToken, "temp-provenance", "Jane Doe", "prov-drop")
-    );
-    expect(acquiredOf(mineProfile)).toEqual([temp.id]);
 
     expect(deletePortal(temp.id)).toBe(true);
-    // The DOCUMENT survives; only the name of how it arrived goes.
-    expect(docCount(mineProfile)).toBe(1);
-    expect(acquiredOf(mineProfile)).toEqual([null]);
+    // Both documents survive; only the portal-backed label disappears.
+    expect(docCount(mineProfile)).toBe(2);
+    expect(acquiredOf(mineProfile)).toEqual([null, null]);
   });
 });
 
@@ -1021,15 +1010,8 @@ describe("pending identities", () => {
     ).toBe(true);
   });
 
-  it("BINDING the identity clears its pending row in the same write", async () => {
-    await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Soon Mapped",
-        "pend-bind"
-      )
-    );
+  it("BINDING the identity clears its pending row in the same write", () => {
+    recordPendingIdentity("ochsner-mychart", null, "Soon Mapped", "discovered");
     expect(listPendingIdentities()).toHaveLength(1);
 
     expect(
@@ -1038,17 +1020,9 @@ describe("pending identities", () => {
     // No window where the card still offers to map something already mapped.
     expect(listPendingIdentities()).toHaveLength(0);
 
-    // …and the identity now resolves, so the next run lands normally.
-    const res = await UPLOAD(
-      uploadByIdentity(
-        memberToken,
-        "ochsner-mychart",
-        "Soon Mapped",
-        "pend-bound"
-      )
-    );
-    expect(res.status).toBe(200);
-    expect(docCount(mineProfile)).toBe(1);
+    expect(
+      resolvePortalIdentity("ochsner-mychart", null, "Soon Mapped")
+    ).toMatchObject({ ok: true, profileId: mineProfile });
   });
 
   it("IGNORING clears the pending row too, and it never comes back", () => {

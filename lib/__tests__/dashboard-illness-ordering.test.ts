@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createElement, type ReactNode } from "react";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import DashboardPlacementCanvas from "../../components/dashboard/DashboardPlacementCanvas";
 import {
@@ -239,22 +239,15 @@ describe("dashboard illness ordering", () => {
       state,
       unrelatedSafety,
     ]);
-    const nodes = new Map<string, ReactNode>([
-      [
-        unrelatedSafety.candidateId,
-        createElement("div", { "data-testid": "unrelated-safety" }, "First"),
-      ],
-      [
-        state.candidateId,
-        createElement("div", { "data-testid": "episode-safety" }, "Second"),
-      ],
+    const rows = new Map([
+      [unrelatedSafety.candidateId, { label: "unrelated-safety" }],
+      [state.candidateId, { label: "episode-safety" }],
     ]);
     const html = renderToStaticMarkup(
       createElement(DashboardPlacementCanvas, {
         dateLabel: "August 19, 2026",
         placements,
-        candidateNodes: nodes,
-        standingPresentations: new Map(),
+        presentations: rows,
         aheadPresentations: new Map(),
         attentionBadgeCount: 0,
         illnessGroupNode: createElement(

@@ -39,6 +39,7 @@ import {
   isPredictedWorkoutDay,
 } from "@/lib/queries";
 import { getIntakeDoses } from "@/lib/queries/intake/schedule";
+import { getDayDoseLedger } from "@/lib/queries/day-ledger";
 import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -242,6 +243,18 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     // The day the tap happened on stays untouched: a backdated write is about the day
     // it names and no other.
     expect(logsOn(profile.id, localToday)).toEqual([]);
+    expect(
+      db
+        .prepare(
+          "SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doses.creatine, day)
+    ).toEqual({ occurred_at: null });
+    expect(
+      getDayDoseLedger(profile.id, day).find(
+        (row) => row.doseId === doses.creatine
+      )?.clockKind
+    ).toBe("logged");
 
     const skippedDay = shiftDateStr(localToday, -2);
     const skipped = await resolve(skippedDay, "skipped", [doses.melatonin]);
@@ -249,6 +262,17 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     expect(logsOn(profile.id, skippedDay)).toEqual([
       { dose_id: doses.melatonin, status: "skipped" },
     ]);
+  });
+
+  it("keeps today's one-tap administration stamp", async () => {
+    const { doses } = seedProfile(`today-stamp-${tz}`, tz);
+    await resolve(localToday, "taken", [doses.creatine]);
+    const row = db
+      .prepare(
+        "SELECT occurred_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+      )
+      .get(doses.creatine, localToday) as { occurred_at: string | null };
+    expect(row.occurred_at).not.toBeNull();
   });
 
   it("refuses a day past the window, and the CORE would refuse it too", async () => {

@@ -162,8 +162,11 @@ describe("the three readings from the issue's table", () => {
     // (male 4–5.5), which is a second thing the printed string could never say.
     expect(row?.referenceCell?.text).toBe("ref 3.5–7.2 · optimal 4–5.5");
     expect(row?.referenceCell?.label).toBe("Reference");
-    // The lab's own string does not disappear — it becomes provenance.
-    expect(row?.referenceCell?.title).toBe("Lab reference: 3.4-8.5");
+    // The lab's own string does not disappear — it is still on the row as
+    // `reference_range` (asserted above) and the reading detail page prints it under
+    // its own "Lab reference" column. Since #3970 rule 2 the CELL no longer carries a
+    // second copy of it, so a judged cell must not contain the printed digits.
+    expect(row?.referenceCell?.text).not.toContain("3.4-8.5");
   });
 
   it("ApoB 77 printed <90 — both bands, because the amber/red split is which one you crossed", () => {
@@ -205,7 +208,7 @@ describe("a pediatric row names the band that actually applied (the #150 half)",
     const row = rowsFor(profileId).get("Alkaline Phosphatase");
     expect(row?.flag).toBeNull();
     expect(row?.referenceCell?.text).toBe("ref 140–420 · age 1–10");
-    expect(row?.referenceCell?.title).toBe("Lab reference: 40-129");
+    expect(row?.reference_range).toBe("40-129");
   });
 
   it("is judged by the age ON the draw date, not the age today", () => {
@@ -247,7 +250,5 @@ describe("no canonical entry — the printed string IS the deciding range", () =
     // Prefixed, so the cell says which case it is in without leaning on a column
     // header the desktop table shares with every other row (#2344).
     expect(row?.referenceCell?.text).toBe("lab 2-6");
-    // Nothing to hover: the content already IS the lab's string.
-    expect(row?.referenceCell?.title).toBeNull();
   });
 });

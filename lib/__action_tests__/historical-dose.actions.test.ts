@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { formatGivenAtClock } from "@/lib/administration-format";
+import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
 import { getTimezone } from "@/lib/settings";
 import {
   deleteAdministration,
@@ -40,6 +41,37 @@ function seedMedication(
 }
 
 describe("logHistoricalDose", () => {
+  it("stores the posting web surface and demotes a forged provenance", async () => {
+    const { profile } = seedActor();
+    const date = shiftDateStr(today(profile.id), -2);
+    const cases: [WebLoggedVia | "telegram-command", WebLoggedVia][] = [
+      ["page", "page"],
+      ["quick-log", "quick-log"],
+      ["dashboard-widget", "dashboard-widget"],
+      ["telegram-command", "page"],
+    ];
+
+    for (const [claim, expected] of cases) {
+      const { itemId, doseId } = seedMedication(profile.id, {
+        startedOn: shiftDateStr(date, -5),
+      });
+      const form = fd({ id: itemId, dose_id: doseId, date, time: "08:30" });
+      form.set(LOGGED_VIA_FIELD, claim);
+      expect(await logHistoricalDose(form)).toEqual({ ok: true });
+      expect(
+        (
+          db
+            .prepare(
+              `SELECT l.logged_via FROM intake_item_logs l
+                 JOIN intake_items i ON i.id = l.item_id
+                WHERE i.profile_id = ? AND l.dose_id = ? AND l.date = ?`
+            )
+            .get(profile.id, doseId, date) as { logged_via: string }
+        ).logged_via
+      ).toBe(expected);
+    }
+  });
+
   it("logs a scheduled dose older than 30 days within its medication course", async () => {
     const { profile } = seedActor();
     const date = shiftDateStr(today(profile.id), -45);

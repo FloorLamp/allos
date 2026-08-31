@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  DATE_AGE_SEPARATOR,
-  STALE_AGE_TITLE,
-  readingDateLine,
-} from "@/lib/reading-date-line";
+import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 
 // What a clinical result spends its card lines on (issue #2316).
@@ -53,10 +49,14 @@ function tagsLabelled(label: string): CellTag[] {
   return cellTags().filter((t) => t.label === label);
 }
 
-// A `<th>` whose only content is this column's name.
+// A `<th>` that LEADS with this column's name. It used to require the name to be the
+// header's only content; since #3970 rule 1 a column header is where a constant
+// explainer of its own cells' vocabulary lives, so one `<span>` wrapper and one
+// trailing info button are admitted. What is still asserted — and what #2316 needed —
+// is that the column exists and is named.
 function hasHeader(label: string): boolean {
   const src = fs.readFileSync(TABLE, "utf8");
-  return new RegExp(`<th[^>]*>\\s*${label}\\s*</th>`).test(src);
+  return new RegExp(`<th[^>]*>\\s*(?:<span[^>]*>\\s*)?${label}\\s*<`).test(src);
 }
 
 describe("Panel and Category are desktop-only detail (#2316)", () => {
@@ -112,7 +112,6 @@ describe("readingDateLine (#2316)", () => {
       "Jun 3, 2026 · 2mo"
     );
     expect(line.stale).toBe(false);
-    expect(line.ageTitle).toBeNull();
   });
 
   it("renders the day in the login's chosen date format, not one fixed shape", () => {
@@ -130,7 +129,7 @@ describe("readingDateLine (#2316)", () => {
     expect(of("iso")).toBe("2026-06-03");
   });
 
-  it("puts the amber treatment and its title on the AGE token when stale", () => {
+  it("puts the amber treatment on the AGE token when stale", () => {
     const line = readingDateLine(
       { date: "2024-01-05", category: "lab" },
       TODAY,
@@ -139,7 +138,6 @@ describe("readingDateLine (#2316)", () => {
     expect(line.stale).toBe(true);
     expect(line.age).toBe("3y");
     expect(line.ageClassName).toContain("amber");
-    expect(line.ageTitle).toBe(STALE_AGE_TITLE);
   });
 
   it("a current reading's age is not amber", () => {
@@ -149,7 +147,6 @@ describe("readingDateLine (#2316)", () => {
       true
     );
     expect(line.ageClassName).not.toContain("amber");
-    expect(line.ageTitle).toBeNull();
   });
 
   it("a category with no retest clock never goes amber, however old", () => {
@@ -172,7 +169,6 @@ describe("readingDateLine (#2316)", () => {
     );
     expect(line.age).toBeNull();
     expect(line.stale).toBe(false);
-    expect(line.ageTitle).toBeNull();
   });
 });
 

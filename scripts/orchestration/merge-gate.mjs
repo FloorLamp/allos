@@ -171,6 +171,12 @@ const fail = (label) => {
   failures.push(label);
   console.log(`FAIL: ${label}`);
 };
+const closedStatusDescription = (failure) => {
+  const description = `gate CLOSED — ${failure.replace(/\s+/g, " ").trim()}`;
+  return description.length <= 140
+    ? description
+    : `${description.slice(0, 137)}...`;
+};
 
 console.log(`PR #${prNumber} head ${head.slice(0, 8)} (${pr.state})`);
 
@@ -318,6 +324,9 @@ if (failures.length) {
   console.log(
     `GATE CLOSED — ${failures.length} failure(s) on ${head.slice(0, 8)}.`
   );
+  // Machine-readable for the workflow wrapper. The first failure is the first
+  // clause the evaluator found, and the description stays inside GitHub's limit.
+  console.log(`STATUS: ${closedStatusDescription(failures[0])}`);
   process.exit(1);
 }
 console.log(

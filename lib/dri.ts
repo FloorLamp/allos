@@ -1031,6 +1031,9 @@ function amountWords(raw: string): string[] {
 //
 // A fractional label ("1/2 tablet") reads as 1, not 0.5 or 2 — the fraction is not
 // parsed, and one serving is the cautious reading of a half dose for a risk total.
+// An explicit decimal count (#3828) is read as written: "0.5 tablet" and
+// "0.5 x 500 mg capsule" both state the same half-unit dose. Rounding either up
+// would replace the person's stated count; slash fractions remain cautiously unread.
 //
 // THE TWO WIDENINGS (#3162) RUN ONLY WHERE THE DIGIT-ADJACENT RULE FOUND NOTHING, and
 // that ordering is the safety argument, not a style choice: every string this file

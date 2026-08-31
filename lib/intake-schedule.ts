@@ -38,6 +38,14 @@ export const TIME_BUCKET_LABELS: Record<TimeBucket, string> = {
   Anytime: "Anytime",
 };
 
+export const TIME_BUCKET_OPENS_AT: Record<TimeBucket, number> = {
+  Morning: 0,
+  Midday: 11 * 60,
+  Evening: 15 * 60,
+  "Before sleep": 21 * 60,
+  Anytime: 0,
+};
+
 // Normalize a free-text time_of_day into one of the buckets. Existing free-text
 // values ("with dinner", "post-workout", "am") map at render time, so no data
 // migration is needed.
@@ -60,9 +68,9 @@ export function timeBucket(timeOfDay: string | null): TimeBucket {
 export function currentTimeBucket(hhmm: string): TimeBucket {
   const [h, m] = hhmm.split(":");
   const mins = (Number(h) || 0) * 60 + (Number(m) || 0);
-  if (mins < 11 * 60) return "Morning";
-  if (mins < 15 * 60) return "Midday";
-  if (mins < 21 * 60) return "Evening";
+  if (mins < TIME_BUCKET_OPENS_AT.Midday) return "Morning";
+  if (mins < TIME_BUCKET_OPENS_AT.Evening) return "Midday";
+  if (mins < TIME_BUCKET_OPENS_AT["Before sleep"]) return "Evening";
   return "Before sleep";
 }
 

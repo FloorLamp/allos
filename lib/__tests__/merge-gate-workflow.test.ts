@@ -25,4 +25,20 @@ describe("the merge-gate workflow trigger contract", () => {
       "workflow_dispatch",
     ]);
   });
+
+  it("publishes the evaluator's exact failing clause, not a generic log pointer", () => {
+    const source = fs.readFileSync(WORKFLOW, "utf8");
+    expect(source).toContain(
+      "gate_output=$(node scripts/orchestration/merge-gate.mjs"
+    );
+    expect(source).toContain("s/^STATUS: //p");
+    expect(source).toContain(
+      'payload=$(jq -cn --arg state "$state" --arg desc "$desc"'
+    );
+    expect(source).toContain('-d "$payload"');
+    expect(source).not.toContain(
+      'desc="gate CLOSED — see the run log for each failure"'
+    );
+    expect(source).not.toContain('-d "{\\"state\\"');
+  });
 });

@@ -10,13 +10,18 @@ import {
 } from "./shared";
 
 export const progressCandidates = {
+  // THE FAMILY'S OWN groupKey (#4076 part 2). Statement families passed `null` here,
+  // so the moment-block fold had nothing to fold on and N findings printed N blocks
+  // headed with the same words. It stayed inert until the row grammar landed —
+  // a family that renders cards never reaches the fold — so it lands with it.
   statement(
     ctx: DomainCandidateContext,
     family: string,
     id: string | number,
-    factKey: string
+    factKey: string,
+    groupKey: string | null = null
   ) {
-    return statement(ctx, `${family}:${id}`, factKey, null);
+    return statement(ctx, `${family}:${id}`, factKey, groupKey);
   },
   goal(ctx: DomainCandidateContext, id: number, promoted = false) {
     return reading(
@@ -199,11 +204,15 @@ export const progressCandidates = {
     );
   },
   healthspan(ctx: DomainCandidateContext, key: string) {
+    // ONE MOMENT, NOT N ATOMS (#4232). The pillars stopped claiming a Standing seat,
+    // so the family label that used to head them is gone with the band — the shared
+    // `groupKey` is what folds them back into one block under one header in the tail,
+    // exactly as #3365's grammar already does for same-origin atoms.
     return reading(
       ctx,
       `healthspan.pillar:${key}`,
       `healthspan.pillar:${key}`,
-      null
+      "healthspan.pillars"
     );
   },
   recap(ctx: DomainCandidateContext, key: string, start: string, end: string) {

@@ -243,12 +243,9 @@ interface DoseResolveOptions {
   // the write (#613/#614) — the write always uses the dose row's own item_id — but a
   // token whose item contradicts the dose's real one is forged/stale and is refused.
   itemId?: number | null;
-  // An OPTIONAL captured intake instant (#1427), supplied only by the offline write
-  // queue's replay: the tap happened when the user actually took the dose, possibly
-  // hours before the connection came back. Validated (never trusted) by the pure
-  // resolveQueuedTakenAt and silently falling back to the server's own now when
-  // unusable — a skewed phone clock must cost the precise minute, never the dose log.
-  takenAt?: Date;
+  // A captured intake instant (#1427), or explicit null when a past-day one-tap states
+  // no instant (#4428). Undefined keeps the ordinary live-tap behavior: stamp now.
+  takenAt?: Date | null;
   // Which MESSAGE'S tap this confirm is (#2264): the `notify_messages` row id the
   // Telegram handler resolved from its (chat, message), or absent/null everywhere
   // else. Attribution for the dose-time correction ride-along only — the burst this
@@ -353,6 +350,7 @@ function applyDoseStatusCore(
       // instant; an unusable value costs only that precision and falls back to the app
       // clock. A skip records the action but asserts no administration.
       const capturedAt = clockNow();
+      const explicitlyUntimed = opts.takenAt === null;
       const stamp = opts.takenAt
         ? resolveQueuedTakenAt(
             opts.takenAt,
@@ -384,7 +382,9 @@ function applyDoseStatusCore(
         amount,
         target,
         utcInstant(capturedAt),
-        target === "taken" ? utcInstant(stamp ?? capturedAt) : null,
+        target === "taken" && !explicitlyUntimed
+          ? utcInstant(stamp ?? capturedAt)
+          : null,
         opts.notifyMessageId ?? null,
         loggedVia
       );
@@ -449,7 +449,7 @@ export function markDoseTaken(
   // optional tail, so omitting it is a compile error rather than an undefined that
   // reads as "unknown surface".
   loggedVia: LoggedVia,
-  takenAt?: Date,
+  takenAt?: Date | null,
   // Which message's tap this is (#2264) — Telegram reminder handlers only; see
   // DoseResolveOptions.notifyMessageId.
   notifyMessageId?: number | null
@@ -2257,7 +2257,7 @@ export interface DoseTapRow {
   tapAt: string;
   statedAt: string | null;
   // Which message's tap wrote this row (#2264) — the burst's attribution; null for a
-  // web/offline confirm or a pruned message row.
+  // web/offline confirm in the broad read or a pruned chat message row.
   messageRef: number | null;
   label: string;
   doseId: number;
@@ -2270,10 +2270,12 @@ export interface DoseTapRow {
 //
 // SCHEDULED CONFIRMS ONLY IS NOT THE RULE — a PRN administration is exactly the case
 // #2020 is about, so both are here. What IS excluded is a row with no `occurred_at`:
-// there is no stated administration instant to correct.
+// there is no stated administration instant to correct. `chatOnly` narrows the
+// chat-facing gather to chat provenance (#4356); the broad read remains the write core's.
 export function getRecentDoseTaps(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  chatOnly = false
 ): DoseTapRow[] {
   const since = utcInstant(
     new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
@@ -2288,10 +2290,12 @@ export function getRecentDoseTaps(
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.status = 'taken'
           AND l.occurred_at IS NOT NULL AND l.recorded_at >= ?
+          AND (? = 0 OR l.logged_via IS NULL
+            OR l.logged_via IN ('telegram-nudge', 'telegram-command'))
         ORDER BY l.recorded_at, l.id
         LIMIT 100`
     )
-    .all(profileId, since) as {
+    .all(profileId, since, chatOnly ? 1 : 0) as {
     id: number;
     doseId: number;
     date: string;
@@ -2329,7 +2333,8 @@ export function getDoseCorrectionBursts(
   now: Date = clockNow(),
   binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentDoseTaps(profileId, now), now, binding);
+  const taps = getRecentDoseTaps(profileId, now, binding !== undefined);
+  return correctionBursts(taps, now, binding);
 }
 
 // The typed result of a dose-time correction:

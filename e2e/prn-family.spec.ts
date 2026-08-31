@@ -8,6 +8,7 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { openDashboardAll } from "./helpers";
+import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // Cross-item PRN safety counters (issue #1027). The dedicated fixture profile tracks
 // OTC "Ibuprofen" (confirmed 6h interval / max 4) alongside "Ibuprofen 800 mg", whose
@@ -84,7 +85,9 @@ test("the therapeutic-duplication note surfaces on the dashboard coaching rollup
   });
   await page.goto("/");
   await openDashboardAll(page);
-  const rollup = page.getByTestId("coaching-observations");
+  // The rollup is a folded BLOCK of rows since #4076 — one observation, one row,
+  // all of them under one "Coaching observations" header.
+  const rollup = page.locator('[data-moment-key="coaching.observation"]');
   await expect(rollup).toBeVisible();
   await expect(rollup).toContainText(
     "Ibuprofen appears in 2 active medications"
@@ -94,4 +97,54 @@ test("the therapeutic-duplication note surfaces on the dashboard coaching rollup
   await expect(rollup).toContainText("count together");
 
   await page.context().close();
+});
+
+// PRN DOSE CONTROLS LEFT THE TAIL FOR THE QUICK LOGGER (#4076 ruling 4, the #4083
+// pattern verbatim). The dashboard used to render one `intake.prn:<id>` card per
+// active PRN item, each hosting the full dose logger; the Consume segment's
+// "Log a dose" already owned that capability, so the tail's copies retired.
+//
+// THIS LOGIN IS WHERE THE CLAIM MEANS ANYTHING, and that is a measurement rather
+// than a preference. The six seeded manifest personas produce NO `intake.prn:`
+// candidate at all — the branch needs active PRN items on a WELL day, and none of
+// them has both — so a manifest-tier absence assertion for it would be vacuous.
+// This fixture rendered TWO of those cards before the change (measured against the
+// merge base), which is what makes the absence below a real removal.
+//
+// THE REMOVAL AND THE OFFER, TOGETHER: asserting only the first would pass just as
+// happily on a tree where dose logging vanished instead of moving.
+//
+// The sheet is reached from the dock puck, which is phone-only chrome — hence the
+// explicit phone context; a raw `loginAs` context does not inherit the mobile
+// project's viewport.
+test("PRN dose logging left the dashboard tail for the quick logger (#4076)", async ({
+  browser,
+}) => {
+  const page = await loginAs(
+    browser,
+    { username: E2E_LOGIN_PRN_FAMILY, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+
+    // The control: this profile's tail rendered and holds entries, so the absence
+    // below is about a populated tail rather than a selector that found nothing.
+    expect(
+      await page
+        .getByTestId("dashboard-all-contents")
+        .getByTestId("dashboard-candidate")
+        .count()
+    ).toBeGreaterThan(0);
+    await expect(
+      page.locator('[data-candidate-id^="intake.prn:"]')
+    ).toHaveCount(0);
+
+    // …and the capability is one tap away on the surface that owns it.
+    const sheet = await openLogSheet(page);
+    await expect(await showLogRow(sheet, "log-dose")).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
 });

@@ -52,7 +52,9 @@ export default function DoseBackfillLauncher({
         aria-expanded={adding}
         data-testid="dose-ledger-add"
       >
-        {adding ? "Cancel" : "Log past dose"}
+        {/* ONE identity (#3911). Dismissal belongs to the form this opens, whose
+            Cancel button closes the whole panel through onDone. */}
+        Log past dose
       </button>
       {adding && picked ? (
         <div data-testid="dose-ledger-add-panel">

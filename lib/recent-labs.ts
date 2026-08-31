@@ -18,6 +18,21 @@ import {
 // on a glance dashboard is the dishonesty this closes.
 export const RECENT_LAB_STALE_DAYS = 365;
 
+// FRESH ENOUGH TO CLAIM THE GLANCE (owner ruling #4232, 2026-08-30). A clinical
+// result COLLECTED within this many days is relevant whether or not it is notable —
+// "the main goal of this page is to show what's relevant; if clinical results are
+// fresh, they are relevant" — and its claim ends on acknowledgment or when the window
+// lapses, whichever comes first.
+//
+// KEYED ON THE COLLECTION DATE, not on when the record landed, which is the whole
+// reason a window works here: a backfilled import of old results claims nothing,
+// because the person has already handled those results. The window is what stops a
+// never-acknowledged result claiming forever.
+//
+// 30 is a RULED number, not an inferred one: #3934 flagged this gap and deliberately
+// declined to guess it so the owner could set it.
+export const CLINICAL_RESULT_FRESH_DAYS = 30;
+
 // That interval said in words, for the hover sentence the glance cards share
 // (lib/glance-age). Kept beside the number so the copy and the floor it explains
 // cannot drift — the same pairing VITAL_PRESENTATION_FLOORS makes on the other card.
@@ -29,6 +44,28 @@ export const RECENT_LAB_STALE_LABEL = "a year";
 // list.
 export const LAB_CATEGORIES: ReadonlySet<MedicalCategory> =
   new Set<MedicalCategory>(["lab"]);
+
+// FRESH ENOUGH TO CLAIM, as ONE decision (#4232). The ruling composes two halves —
+// the collection-date window above and the acknowledge lifecycle #3225 already runs —
+// and says the claim ends at "whichever is first". Split across two call sites that is
+// a rule nobody can state; here it is one function with one table behind it.
+//
+// `collectedOn` is the reading's own COLLECTION date. An undatable reading is not
+// fresh: `freshnessState` answers "not-applicable" for it, which is honestly neither
+// current nor lapsed, and a claim needs a positive answer.
+export function clinicalResultClaimsFreshness(
+  collectedOn: string | null | undefined,
+  today: string,
+  acknowledged: boolean
+): boolean {
+  if (acknowledged) return false;
+  return (
+    freshnessState(
+      freshnessAgeDays(collectedOn, today),
+      CLINICAL_RESULT_FRESH_DAYS
+    ) === "current"
+  );
+}
 
 // One latest lab reading, flattened for display by a surface.
 export interface RecentLabRow {

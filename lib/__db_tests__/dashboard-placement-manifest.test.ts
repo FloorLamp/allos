@@ -283,9 +283,9 @@ const manifests = new Map<
   string,
   DashboardPlacementCanvasProps["placements"]
 >();
-const standingPresentations = new Map<
+const rowPresentations = new Map<
   string,
-  DashboardPlacementCanvasProps["standingPresentations"]
+  DashboardPlacementCanvasProps["presentations"]
 >();
 const aheadPresentations = new Map<
   string,
@@ -368,10 +368,7 @@ describe("actual atomic dashboard manifests", () => {
       const element = await renderDashboard();
       expect(element.type).toBe(DashboardPlacementCanvas);
       manifests.set(persona.name, element.props.placements);
-      standingPresentations.set(
-        persona.name,
-        element.props.standingPresentations
-      );
+      rowPresentations.set(persona.name, element.props.presentations);
       aheadPresentations.set(persona.name, element.props.aheadPresentations);
       queryCounts.set(persona.name, trace.count());
       personaProfileIds.set(persona.name, profileId);
@@ -434,7 +431,7 @@ describe("actual atomic dashboard manifests", () => {
     let externalStanding = 0;
     for (const [persona, placements] of manifests) {
       const profileId = personaProfileIds.get(persona)!;
-      const presentations = standingPresentations.get(persona)!;
+      const presentations = rowPresentations.get(persona)!;
       const standing = placements.filter(
         (placement) => placement.lane === "standing"
       );
@@ -444,11 +441,12 @@ describe("actual atomic dashboard manifests", () => {
         ),
         `${persona}:Standing presentation`
       ).toBe(true);
-      // #3548 SUPERSEDES #3103's fully-fixed order exactly this far: the registry's
-      // order survives INSIDE each band, and the bands themselves run
-      // attention → rest → tail. So the sortedness claim is now per band, and the
+      // #3548 SUPERSEDED #3103's fully-fixed order exactly this far and #4232
+      // narrowed it again: the registry's order survives INSIDE each band, and the
+      // bands themselves run attention → rest. There is no third band — a quiet
+      // member is not claimed at all — so the sortedness claim is per band, and the
       // band sequence is the claim that replaces the global one.
-      const bandOrder = ["attention", "rest", "tail"] as const;
+      const bandOrder = ["attention", "rest"] as const;
       const bands = standing.map((placement) => placement.standingBand!);
       expect(
         bands.map((band) => bandOrder.indexOf(band)),
@@ -572,30 +570,29 @@ describe("actual atomic dashboard manifests", () => {
     expect(seen).toEqual(new Set(order));
   });
 
-  // THE #3077 COMPLETENESS CONTRACT, NOW A MANIFEST ASSERTION (#3366).
+  // THE #3077 COMPLETENESS CONTRACT, NOW THE ONLY TIER THAT CARRIES IT (#3366/#4076).
   //
   // Show everything no longer renders every placement, so "nothing the ranker gathers
-  // can go missing" stopped being something a reader could verify by scrolling. It is
-  // verified here instead, against the REAL manifests and by ITERATING THE DROPS:
-  // each non-admitted placement names a page, that page is one of the doors the tail
-  // draws, and the app has a name for it — which is exactly what the canvas needs to
-  // draw the row (it throws otherwise). A candidate builder that starts dropping
-  // without a named page fails here, on the day the guarantee would have quietly
-  // stopped holding rather than the day someone noticed.
-  it("keeps every dropped Show everything fact one named door away", () => {
+  // can go missing" stopped being something a reader could verify by scrolling. #3366
+  // moved half of it here and left the other half as a rendered "Elsewhere" list of
+  // page names; #4076 retired that list (owner: "utterly useless"), so this is now
+  // the whole of the guarantee. It is asserted against the REAL manifests and by
+  // ITERATING THE DROPS: each non-admitted placement names a page, and the app has a
+  // name for that page. A candidate builder that starts dropping without a named page
+  // fails here, on the day the guarantee would have quietly stopped holding rather
+  // than the day someone noticed.
+  it("keeps every dropped Show everything fact on a page the app can name", () => {
     const dropped: string[] = [];
     for (const [persona, placements] of manifests) {
-      const { doors } = everythingTail(placements);
       for (const placement of placements) {
         if (placement.lane !== "everything" || placement.admitted) continue;
         const page = placement.candidate.navDuplicateOf;
         dropped.push(`${persona}:${placement.candidate.candidateId}`);
         expect(
-          page && doors.includes(page) && trackedPageFor(page)?.label,
-          `${persona}:${placement.candidate.candidateId} has no named door`
+          page && trackedPageFor(page)?.label,
+          `${persona}:${placement.candidate.candidateId} has no named page`
         ).toBeTruthy();
       }
-      expect(new Set(doors).size, persona).toBe(doors.length);
     }
     // The loop above is satisfiable by admitting everything, so the seeded profiles
     // must actually exercise a drop for it to have asserted anything.
@@ -618,7 +615,7 @@ describe("actual atomic dashboard manifests", () => {
     const drawn = new Map(
       [...manifests].map(([persona, placements]) => [
         persona,
-        everythingTail(placements).members,
+        everythingTail(placements),
       ])
     );
     const survivors: readonly {
@@ -730,26 +727,128 @@ describe("actual atomic dashboard manifests", () => {
     }
   );
 
-  it("keeps sleep regularity only in its healthspan family", () => {
-    for (const placements of manifests.values()) {
+  // Re-pointed by #4232: a quiet pillar is not a Standing member any more, so the
+  // family key it used to be asserted through is gone with the band. What replaces it
+  // is the MOMENT the tail folds the pillars into — the same claim (this reading
+  // belongs to the healthspan family and nowhere else) read off the surface that now
+  // carries it. Counted, so a re-point onto something the personas never produce
+  // cannot go green by matching nothing.
+  it("keeps sleep regularity only in its healthspan moment", () => {
+    let seen = 0;
+    for (const [persona, placements] of manifests) {
       expect(
         placements.some(({ candidate }) =>
           candidate.candidateId.startsWith("sleep.regularity:")
         )
       ).toBe(false);
-      for (const placement of placements.filter(
-        (
-          placement
-        ): placement is Extract<
-          DashboardPlacementCanvasProps["placements"][number],
-          { lane: "standing" }
-        > =>
-          placement.lane === "standing" &&
-          placement.candidate.candidateId.includes("sleep-regularity")
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.includes("sleep-regularity")
       )) {
-        expect(placement.standingFamilyKey).toBe("healthspan-pillars");
+        seen += 1;
+        expect(
+          [placement.lane, placement.candidate.groupKey],
+          `${persona}:${placement.candidate.candidateId}`
+        ).toEqual(["everything", "healthspan.pillars"]);
       }
     }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  // WHERE THE FORMER QUIET POPULATION WENT (#4232), against the real personas.
+  //
+  // Standing shrank to its attention tier and its stable rest, so the members the
+  // registry calls quiet stopped being claimed and the exact-once partition routes
+  // them on their own model. The ruling names the destinations, so they are asserted
+  // as destinations rather than as "not in Standing" — an absence that would pass on
+  // a tree where the rows vanished with the band.
+  //
+  // EACH ROW CARRIES ITS OWN REACH COUNT, because a prefix no persona produces makes
+  // its clause vacuous while looking exactly like a clause that held. Measured on this
+  // fixture: pillars 12, out-ranked cold-start CTAs 16, quiet results 5, results
+  // claiming the freshness window 28. The dormant replacements (`weight.dormant`,
+  // `sleep.dormant`) are NOT here — no persona seeds a dormant domain, so a clause for
+  // them would have been the vacuum this comment exists to prevent; e2e's
+  // DORMANT_DOMAINS_PROFILE is where that route is asserted.
+  it("routes every former quiet member into the fold's correct group, exactly once", () => {
+    const expected: readonly [string, DashboardEverythingGroup][] = [
+      ["healthspan.pillar:", "read"],
+      ["activity.steps-bootstrap", "setup"],
+      ["nutrition.bootstrap", "setup"],
+      ["sleep.bootstrap", "setup"],
+    ];
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const ids = placements.map(({ candidate }) => candidate.candidateId);
+      for (const [prefix, group] of expected) {
+        for (const placement of placements.filter((entry) =>
+          entry.candidate.candidateId.startsWith(prefix)
+        )) {
+          reach.set(prefix, (reach.get(prefix) ?? 0) + 1);
+          expect(
+            [
+              placement.lane,
+              placement.lane === "everything"
+                ? placement.everythingGroup
+                : placement.lane,
+            ],
+            `${persona}:${placement.candidate.candidateId}`
+          ).toEqual(["everything", group]);
+          // EXACTLY once — the lane is the exact-once remainder, and a member that
+          // left Standing must not have left a copy behind.
+          expect(
+            ids.filter((id) => id === placement.candidate.candidateId).length,
+            `${persona}:${placement.candidate.candidateId}`
+          ).toBe(1);
+        }
+      }
+      // A quiet clinical result reads; one inside the freshness window claims the
+      // tier instead (#4232 ruling 3). Both are asserted, so neither branch can be
+      // the only one this fixture ever meets.
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const fresh = placement.candidate.rankReasons.owed;
+        reach.set(
+          fresh ? "labs.latest:fresh" : "labs.latest:quiet",
+          (reach.get(fresh ? "labs.latest:fresh" : "labs.latest:quiet") ?? 0) +
+            1
+        );
+        expect(
+          [
+            placement.lane,
+            placement.lane === "standing"
+              ? placement.standingBand
+              : placement.lane === "everything"
+                ? placement.everythingGroup
+                : placement.lane,
+          ],
+          `${persona}:${placement.candidate.candidateId}`
+        ).toEqual(fresh ? ["standing", "attention"] : ["everything", "read"]);
+      }
+      // …and the converse the routing loop cannot state: Standing still DRAWS, and
+      // it draws no band but the two.
+      const standing = placements.filter(
+        (placement) => placement.lane === "standing"
+      );
+      expect(standing.length, persona).toBeGreaterThan(0);
+      expect(
+        [
+          ...new Set(standing.map((placement) => placement.standingBand)),
+        ].sort(),
+        persona
+      ).not.toContain("tail");
+    }
+    for (const key of [
+      "healthspan.pillar:",
+      "activity.steps-bootstrap",
+      "nutrition.bootstrap",
+      "sleep.bootstrap",
+      "labs.latest:fresh",
+      "labs.latest:quiet",
+    ])
+      expect(reach.get(key) ?? 0, `${key} was never produced`).toBeGreaterThan(
+        0
+      );
   });
 
   it("orders real safety, three illness groups, then the live workout", () => {
@@ -826,13 +925,17 @@ describe("actual atomic dashboard manifests", () => {
   // #1851 makes the sleep read per-night, which DELETES the profile-wide source
   // election and the DISTINCT source scan that fed it — one statement back for every
   // persona, household included, since every dashboard reaches a sleep session.
+  // −1 on every persona EXCEPT household (#4076): retiring the PRN dose candidates
+  // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
+  // unchanged because that read was already skipped there — it is gated on a WELL day
+  // and the household fixture carries an open illness.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 227,
-    "marathon-runner": 226,
+    bodybuilder: 226,
+    "marathon-runner": 225,
     household: 269,
-    pregnant: 223,
-    "diabetic-cgm": 234,
-    biohacker: 240,
+    pregnant: 222,
+    "diabetic-cgm": 233,
+    biohacker: 239,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

@@ -1,5 +1,4 @@
 import DoseStatusControl from "@/components/DoseStatusControl";
-import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // Scheduled-dose metadata and actions share one presentation on the Medications
 // Today panel and the medication detail page. The amount/time describe the dose;
@@ -56,9 +55,11 @@ export default function ScheduledDoseAction({
           </span>
         ) : null}
         {pastDue ? (
-          <span className="inline-flex items-center text-xs font-medium text-amber-700 dark:text-amber-300">
+          // #3970 rule 1: "Past due — earlier today" was a constant explainer
+          // mounted once per scheduled dose, and its two extra words add nothing the
+          // visible label lacks — the row already sits under today's date.
+          <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
             Past due
-            <InfoTooltipIcon label="Past due — earlier today" />
           </span>
         ) : null}
       </div>

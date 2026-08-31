@@ -1042,8 +1042,8 @@ export interface PracticeTapRow extends TapEvent {
 //
 // THREE THINGS DIFFER FROM ITS SIBLINGS, and each is visible right here.
 //
-// 1. THE STORED VALUE IS NOT AN INSTANT. Food stores `occurred_at` and dose stores
-//    `given_at`, both full instants; a practice stores `date` (a profile-local day)
+// 1. THE STORED VALUE IS NOT AN INSTANT. Food and dose store `occurred_at`, a full
+//    instant; a practice stores `date` (a profile-local day)
 //    plus `start_time` (a profile-local "HH:MM"). The substrate works on ISO instants, so
 //    the two are COMPOSED in the profile's timezone — server-side (#450), never from
 //    a device clock — and the composition is `eventInstant`, the declared reader for
@@ -1072,7 +1072,11 @@ export interface PracticeTapRow extends TapEvent {
 //    `restampPracticeLogsCore`'s re-read, so the burst the renderer bounds and the
 //    burst the write re-derives are the same set.
 //
-// 3. AN IMPORTED SESSION IS NOT A TAP. `external_id` is how an import reaches this
+// 3. A CHAT CORRECTION CARRIES A CHAT TAP ONLY (#4356). With `chatOnly`, immutable
+//    `logged_via` provenance keeps page and offline sessions on their own surfaces;
+//    the broad read remains available to the write core.
+//
+// 4. AN IMPORTED SESSION IS NOT A TAP. `external_id` is how an import reaches this
 //    table (it has no `document_id` — see the #2364 note in the reading model), so an
 //    imported row is excluded: its `created_at` is when the SYNC ran, which would make
 //    a freshly-imported history look like a burst somebody just tapped.
@@ -1083,7 +1087,8 @@ export interface PracticeTapRow extends TapEvent {
 // they survive a rebuild, a pointer rotation and a restart. Profile-scoped.
 export function getRecentPracticeTaps(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  chatOnly = false
 ): PracticeTapRow[] {
   const since = utcSqlString(
     new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
@@ -1097,10 +1102,12 @@ export function getRecentPracticeTaps(
           AND start_time IS NOT NULL
           AND end_time IS NULL
           AND external_id IS NULL
+          AND (? = 0 OR logged_via IS NULL
+            OR logged_via IN ('telegram-nudge', 'telegram-command'))
         ORDER BY created_at, id
         LIMIT 100`
     )
-    .all(profileId, since) as {
+    .all(profileId, since, chatOnly ? 1 : 0) as {
     id: number;
     practice: string;
     date: string;
@@ -1146,5 +1153,6 @@ export function getPracticeCorrectionBursts(
   now: Date = clockNow(),
   binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentPracticeTaps(profileId, now), now, binding);
+  const taps = getRecentPracticeTaps(profileId, now, binding !== undefined);
+  return correctionBursts(taps, now, binding);
 }

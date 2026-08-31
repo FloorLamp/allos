@@ -11,6 +11,7 @@ import {
 } from "@/app/(app)/nutrition/intake-actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useToast } from "@/components/Toast";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   formatClockValue,
@@ -129,6 +130,7 @@ export default function DoseHistoryPanel({
   const [backfill, setBackfill] = useState<BackfillView | null>(null);
   const formatPrefs = useFormatPrefs();
   const toast = useToast();
+  const stampLoggedVia = useLoggedViaStamp();
   const ledger = useOptimisticLedger("dose-backfill");
 
   const doseOptions = doses.map((dose) => ({
@@ -194,7 +196,7 @@ export default function DoseHistoryPanel({
         // `offerHhmm` — because this row's words are the only thing standing for it.
         fd.set("time", offerHhmm ?? defaultTime);
         if (soleDose.amount) fd.set("amount", soleDose.amount);
-        return logHistoricalDose(fd);
+        return logHistoricalDose(stampLoggedVia(fd));
       },
       settle: (result) => {
         if (!result.ok) {

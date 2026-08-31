@@ -58,7 +58,7 @@ function keysFor(db: Database.Database, profileId: number): string[] {
 }
 
 describe("migration 142 — trend_views cleanup (#1869)", () => {
-  it("deletes trend_views and trend_pins rows for every profile, nothing else", () => {
+  it("deletes retired keys for every profile, preserves neighbors, and replays cleanly", () => {
     const db = preCleanupDb();
     const a = newProfile(db, "Sweep A");
     const b = newProfile(db, "Sweep B");
@@ -73,19 +73,9 @@ describe("migration 142 — trend_views cleanup (#1869)", () => {
 
     expect(keysFor(db, a)).toEqual(["timezone"]);
     expect(keysFor(db, b)).toEqual(["free_days"]);
-    db.close();
-  });
-
-  it("is idempotent (a replay deletes zero rows and keeps neighbors)", () => {
-    const db = preCleanupDb();
-    const p = newProfile(db, "Sweep Replay");
-    setKV(db, p, "trend_views", "[]");
-    setKV(db, p, "birthdate", "1990-01-01");
-
     up142(db);
-    up142(db);
-
-    expect(keysFor(db, p)).toEqual(["birthdate"]);
+    expect(keysFor(db, a)).toEqual(["timezone"]);
+    expect(keysFor(db, b)).toEqual(["free_days"]);
     db.close();
   });
 });

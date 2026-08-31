@@ -8,13 +8,12 @@ import StandingSparkline, {
 } from "./StandingSparkline";
 import {
   STANDING_READING_ORDER,
-  type StandingBandKey,
+  type StandingRenderedBand,
   type StandingReadingFamily,
   type StandingSectionKey,
 } from "@/lib/dashboard-standing";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
-import Disclosure from "@/components/Disclosure";
 
 export interface DashboardStandingPresentation {
   label?: string;
@@ -39,6 +38,17 @@ export interface DashboardStandingPresentation {
    * group declares the same moment; the canvas reads the first that has one.
    */
   moment?: { title: string; href?: AppRoute };
+  /**
+   * THE CONTROL SLOT (#4076). The trailing cell of the one row grammar, holding at
+   * most TWO controls at the one 34px `--control-box` height — the snooze/dismiss
+   * menu, a "Mark taken", a finding's Dismiss. Cards left `/` entirely, and this is
+   * where their writes landed: the ruling sanctions this slot as part of THE one
+   * shape rather than as a second shape of the row (#3365 declined it as the
+   * latter). A row with a control is NOT link-wrapped — see below — because a
+   * `<form>` inside an `<a>` is invalid markup, which is the reason the writes had
+   * to stay in cards until now.
+   */
+  control?: ReactNode;
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -50,10 +60,13 @@ function doorLabel(href: AppRoute): string | null {
   return trackedPageFor(href)?.label ?? null;
 }
 
-// THE ROW. One renderer for every label/value fact the dashboard reports, in Standing
-// and in the Show-everything tail alike (#3365) — the tail is an index of the same
-// grammar, not a second spelling of it. The caller supplies only what its lane owns:
-// Standing's door rail and stacking classes, the tail's nothing.
+// THE ROW. ONE renderer for every fact the dashboard reports, in EVERY zone — Now,
+// Standing, Ahead and the Show-everything tail (#4076). Cards-act/lines-report
+// (#3077) is dead as a rendering rule: there is no second grammar left for a zone to
+// choose, so identity comes from the label column and the block header rather than
+// from a glyph or a frame, and what a row EARNS goes in the trailing slot (a control,
+// a sparkline, a door). The caller supplies only what its lane owns: Standing's door
+// rail and stacking classes, every other lane's nothing.
 export function DashboardFactRow({
   candidate,
   presentation,
@@ -61,18 +74,35 @@ export function DashboardFactRow({
   surfaceClass = "",
   linkClass = "",
   className,
+  "data-motion": dataMotion,
 }: {
   candidate: DashboardPlacement["candidate"];
   presentation: DashboardStandingPresentation;
-  lane: "standing" | "everything";
+  lane: DashboardPlacement["lane"];
   surfaceClass?: string;
   linkClass?: string;
   className?: string;
+  /**
+   * Now's witnessed-arrival mark (#3253 decision 4), which only the client can
+   * decide. It mirrors the motion class exactly, so a reduced-motion viewer gets
+   * neither — "nothing animated" stays one assertion rather than a guess about
+   * computed styles.
+   */
+  "data-motion"?: "promote";
 }) {
   const engagement =
     candidate.relevance.kind === "profile-data"
       ? candidate.relevance.engagement
       : undefined;
+  // WHERE THE DOOR GOES WHEN THE ROW CANNOT BE ONE (see the link-wrap suppression
+  // below). EXACTLY ONE element carries the href: the row's own CTA words if it has
+  // any — "Fix it", "Log", "Continue" — because those name the destination better
+  // than anything else on the row; otherwise the label, which is its identity. Two
+  // links to one page on one row is a second tab stop saying the same thing.
+  const unwrapped = presentation.control != null && presentation.href != null;
+  const labelLink =
+    unwrapped && !presentation.actionLabel ? presentation.href : undefined;
+  const actionLink = unwrapped && presentation.actionLabel;
   const content = (
     <>
       {presentation.label && (
@@ -82,9 +112,22 @@ export function DashboardFactRow({
         // rather than about any one family.
         <span
           data-testid="standing-label"
-          className="text-xs text-slate-500 dark:text-slate-400"
+          className={
+            presentation.value == null
+              ? "text-sm text-slate-900 dark:text-slate-100"
+              : "text-xs text-slate-500 dark:text-slate-400"
+          }
         >
-          {presentation.label}
+          {labelLink ? (
+            <Link
+              href={labelLink}
+              className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
+            >
+              {presentation.label}
+            </Link>
+          ) : (
+            presentation.label
+          )}
         </span>
       )}
       {presentation.value != null && (
@@ -100,11 +143,19 @@ export function DashboardFactRow({
           {presentation.detail}
         </span>
       )}
-      {presentation.actionLabel && (
-        <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
-          {presentation.actionLabel}
-        </span>
-      )}
+      {presentation.actionLabel &&
+        (actionLink ? (
+          <Link
+            href={presentation.href!}
+            className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+          >
+            {presentation.actionLabel}
+          </Link>
+        ) : (
+          <span className="text-xs font-medium text-brand-700 dark:text-brand-400">
+            {presentation.actionLabel}
+          </span>
+        ))}
     </>
   );
   const rowClass =
@@ -114,24 +165,46 @@ export function DashboardFactRow({
   // the destination — an untracked href is the honest silence.
   const door = presentation.href ? doorLabel(presentation.href) : null;
   const rowDisclosure = presentation.disclosure;
-  const linked = presentation.href ? (
-    door ? (
-      <StandingDestinationLink
-        href={presentation.href}
-        className={`${surfaceClass}standing-row ${rowClass} ${rowDisclosure ? "" : linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
-        destinationLabel={door}
-      >
-        {content}
-      </StandingDestinationLink>
+  // LINK-WRAP SUPPRESSION (#4076). A row that hosts a control cannot be an anchor
+  // around its own contents — the control is a `<form>`/`<button>`, and nesting
+  // either inside an `<a>` is invalid markup that browsers reparent. The row's
+  // destination is not lost: the label carries it as an ordinary link, which is also
+  // the only element on the row whose words name where it goes.
+  const control = presentation.control;
+  const linked =
+    control == null && presentation.href ? (
+      door ? (
+        <StandingDestinationLink
+          href={presentation.href}
+          className={`${surfaceClass}standing-row ${rowClass} ${rowDisclosure ? "" : linkClass} hover:text-brand-700 dark:hover:text-brand-400`}
+          destinationLabel={door}
+        >
+          {content}
+        </StandingDestinationLink>
+      ) : (
+        <Link
+          href={presentation.href}
+          className={`${surfaceClass}standing-row ${rowClass} hover:text-brand-700 dark:hover:text-brand-400`}
+        >
+          {content}
+        </Link>
+      )
+    ) : null;
+  const body = linked ? (
+    rowDisclosure ? (
+      <div className={`flex min-w-0 items-center ${linkClass}`}>
+        {linked}
+        <InfoTooltipIcon label={rowDisclosure} />
+      </div>
     ) : (
-      <Link
-        href={presentation.href}
-        className={`${surfaceClass}standing-row ${rowClass} hover:text-brand-700 dark:hover:text-brand-400`}
-      >
-        {content}
-      </Link>
+      linked
     )
-  ) : null;
+  ) : (
+    <div className={rowClass}>
+      {content}
+      {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
+    </div>
+  );
   return (
     <li
       className={className}
@@ -142,20 +215,21 @@ export function DashboardFactRow({
       data-kind={candidate.kind}
       data-engagement={engagement}
       data-presence={presentation.presence}
+      data-motion={dataMotion}
     >
-      {linked ? (
-        rowDisclosure ? (
-          <div className={`flex min-w-0 items-center ${linkClass}`}>
-            {linked}
-            <InfoTooltipIcon label={rowDisclosure} />
-          </div>
-        ) : (
-          linked
-        )
+      {control == null ? (
+        body
       ) : (
-        <div className={rowClass}>
-          {content}
-          {rowDisclosure ? <InfoTooltipIcon label={rowDisclosure} /> : null}
+        // The trailing cell. `items-center` and not `items-baseline`: a control is a
+        // box, and aligning a 34px box on the text baseline hangs it below the row.
+        <div className="flex min-w-0 items-center gap-2">
+          {body}
+          <div
+            data-testid="dashboard-row-controls"
+            className="ml-auto flex shrink-0 items-center gap-1"
+          >
+            {control}
+          </div>
         </div>
       )}
     </li>
@@ -326,11 +400,10 @@ export default function DashboardStandingCluster({
   placements: readonly StandingPlacement[];
   presentations: ReadonlyMap<string, DashboardStandingPresentation>;
 }) {
-  const inBand = (band: StandingBandKey) =>
+  const inBand = (band: StandingRenderedBand) =>
     placements.filter((placement) => placement.standingBand === band);
   const attention = inBand("attention");
   const rest = inBand("rest");
-  const tail = inBand("tail");
   return (
     <section
       className="section-seam-lg mb-8"
@@ -355,11 +428,11 @@ export default function DashboardStandingCluster({
           <section
             aria-labelledby="dashboard-standing-attention"
             data-standing-band="attention"
-            className="border-b border-(--divider) last:border-b-0"
+            className="border-b border-l-4 border-(--divider) border-l-amber-500 bg-amber-50 last:border-b-0 dark:border-l-amber-400 dark:bg-amber-950"
           >
             <h3
               id="dashboard-standing-attention"
-              className="band bg-amber-50 px-4 py-2 text-xs font-semibold tracking-wide text-amber-800 uppercase dark:bg-amber-950/40 dark:text-amber-300"
+              className="band px-4 py-2 text-xs font-semibold tracking-wide text-amber-800 uppercase dark:text-amber-200"
             >
               Attention
             </h3>
@@ -389,27 +462,12 @@ export default function DashboardStandingCluster({
             </section>
           );
         })}
-        {/* THE QUIET TAIL (#3548). Everything static — a source that went dormant,
-          a months-old result, a quiet pillar, a connect-a-source CTA past the
-          cold-start cap — stays PRESENT and reachable, and stops occupying the
-          open page. Native <details>, so the rows are hidden and not unmounted,
-          in-page find still opens it, and the summary carries the expanded state
-          without an aria attribute of our own. Nothing is remembered: the fold is
-          computed from claims, never configured. */}
-        {tail.length > 0 && (
-          <Disclosure
-            data-standing-band="tail"
-            data-testid="dashboard-standing-tail"
-          >
-            <summary
-              data-testid="dashboard-standing-tail-summary"
-              className="band flex min-h-11 cursor-pointer list-none items-center bg-(--ghost) px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase marker:content-none dark:text-slate-400"
-            >
-              Quiet ({tail.length})
-            </summary>
-            <BandRows placements={tail} presentations={presentations} />
-          </Disclosure>
-        )}
+        {/* NO THIRD BAND (#4232, narrowing #3548). Everything static — a source that
+          went dormant, a months-old result, a quiet pillar, a connect-a-source CTA
+          past the cold-start cap — is not claimed by Standing at all now, so it
+          stays PRESENT and reachable in the page's ONE bottom fold instead of behind
+          a second drawer of its own. Standing is the glance surface: attention and
+          rest, always open. */}
       </div>
     </section>
   );

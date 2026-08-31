@@ -78,20 +78,26 @@ jobs:
             "$API/pulls/$pr" | jq -r .head.sha)
 
           set +e
-          node scripts/orchestration/merge-gate.mjs "$pr" \
-            --repo "${{ github.repository }}" --ignore-check merge-gate
+          gate_output=$(node scripts/orchestration/merge-gate.mjs "$pr" \
+            --repo "${{ github.repository }}" --ignore-check merge-gate)
           rc=$?
           set -e
+          printf '%s\n' "$gate_output"
 
           case "$rc" in
             0) state=success; desc="gate OPEN — receipt, green head, no unresolved threads" ;;
-            1) state=failure; desc="gate CLOSED — see the run log for each failure" ;;
+            1)
+              state=failure
+              desc=$(printf '%s\n' "$gate_output" | sed -n 's/^STATUS: //p' | tail -n 1)
+              desc=${desc:-"gate CLOSED — evaluator returned no failure clause"} ;;
             2) state=pending; desc="CI incomplete — re-evaluated when CI completes" ;;
             *) state=error;   desc="gate could not evaluate (exit $rc)" ;;
           esac
           echo "PR #$pr head ${head:0:8}: $state ($desc)"
+          payload=$(jq -cn --arg state "$state" --arg desc "$desc" \
+            '{state: $state, context: "merge-gate", description: $desc}')
           curl -sS -o /dev/null -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            -d "{\"state\":\"$state\",\"context\":\"merge-gate\",\"description\":\"$desc\"}" \
+            -d "$payload" \
             "$API/statuses/$head"

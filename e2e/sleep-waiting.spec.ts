@@ -41,11 +41,12 @@ test("inside the arrival window, the sleep surfaces NAME the wait instead of sho
     await expect(page.getByTestId("sleep-stale")).toHaveCount(0);
     await expectNoClippedContent(page);
 
-    // The dashboard sleep atom says the same thing — one decision, three surfaces.
+    // The dashboard sleep row says the same thing — one decision, three surfaces.
+    // It is a row since #4076, so it is found by the candidate it always was.
     await page.goto("/");
-    const atom = page.getByTestId("sleep-waiting-atom");
-    await expect(atom).toBeVisible();
-    await expect(atom.getByTestId("sleep-waiting-headline")).toHaveText(
+    const row = page.locator('[data-candidate-id^="sleep.waiting"]');
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId("sleep-waiting-headline")).toHaveText(
       "Waiting for last night's sleep"
     );
     await expect(page.getByTestId("sleep-last-night-duration")).toHaveCount(0);

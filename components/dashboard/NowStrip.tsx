@@ -1,30 +1,32 @@
-import NowCards, { type NowStripCard } from "./NowCards";
+import NowCards, { type NowStripRow } from "./NowCards";
 
-export type { NowStripCard };
+export type { NowStripRow };
 
-// The dashboard "Now" strip (issue #1413, section A) — the cards the moment makes
-// most relevant, moved above the user's own grid. Ordinary relevance is capped at
-// two; safety surfaces are deliberately uncapped.
+// The dashboard "Now" strip (issue #1413, section A) — the facts the moment makes
+// most relevant, above the user's own grid. Ordinary relevance is capped at two;
+// safety surfaces are deliberately uncapped.
 //
-// This component is a PLACER, not a renderer. Each entry's `node` is the SAME
-// server-rendered candidate node the page would have used; the strip never builds a
-// bespoke "compact" variant of a card, because a second rendering of the same
-// fact is exactly the drift the one-question-one-computation rule forbids one
-// level down. What the strip owns is position and the band's layout — nothing
-// about what a card SAYS.
+// This component is a PLACER, not a renderer. What it owns is position and the
+// band's layout — nothing about what a row SAYS.
 //
-// Atomic placement has one reading order at every viewport, so Now is one column
-// just like Standing, Ahead, and Show everything.
+// SINCE #4076 IT PLACES ROWS, not cards: every zone renders the one columnar row
+// grammar, so Now is a band of rows exactly like Standing and the tail, and the
+// per-card kind glyph that used to ride in a desktop gutter beside them is gone with
+// the cards it named (owner: "too many icons").
 //
-// Empty remains a real landmark: a quiet sentence, never a filler card or a
-// synthetic candidate. The mobile date stays here because the PageHeader is hidden.
+// The illness cockpit is the one node here that is not a fact but a running
+// SITUATION with its own controls, and it keeps its own group rendering above the
+// rows — its episodes' facts still place, so completeness is unchanged.
+//
+// Empty remains a real landmark: a quiet sentence, never a filler row or a synthetic
+// candidate. The mobile date stays here because the PageHeader is hidden.
 
 export default function NowStrip({
-  cards,
+  rows,
   dateLabel,
   bootstrapClaim,
 }: {
-  cards: readonly NowStripCard[];
+  rows: readonly NowStripRow[];
   /** Passed straight through — see NowCards. */
   bootstrapClaim?: boolean;
   // The date, shown only below `md` — the desktop PageHeader still carries it, and
@@ -35,7 +37,7 @@ export default function NowStrip({
   return (
     <section
       data-testid="now-strip"
-      data-count={cards.length}
+      data-count={rows.length}
       aria-labelledby="dashboard-now-title"
       // Tighter under the strip on a phone (#3460): the strip is the tallest block
       // on the page there, and every unit it keeps pushes the first reading further
@@ -43,7 +45,7 @@ export default function NowStrip({
       className="mb-4 sm:mb-6"
     >
       {/* Now was the ONLY zone without a visible label (#3238): Standing and Ahead
-          both render an h2, so the strip's cards read as orphaned fragments floating
+          both render an h2, so the strip's rows read as orphaned fragments floating
           between the page header and "Standing". Same scale as its siblings, and the
           section's accessible name still says "Right now" — it now comes from the
           heading rather than from an aria-label repeating it. */}
@@ -61,12 +63,11 @@ export default function NowStrip({
           {dateLabel}
         </div>
       )}
-      {/* The cards (and the empty sentence) move one level down into a CLIENT
-          component: whether a card's arrival was witnessed is a question only the
-          client can answer (#3253 decision 4), and the kind glyph rides in the same
-          wrapper. Both stay DIRECT children of this section — the grid and the
+      {/* The rows move one level down into a CLIENT component: whether a row's
+          arrival was witnessed is a question only the client can answer (#3253
+          decision 4). It stays a DIRECT child of this section — the band and the
           sentence are addressed positionally by specs. */}
-      <NowCards cards={cards} bootstrapClaim={bootstrapClaim} />
+      <NowCards rows={rows} bootstrapClaim={bootstrapClaim} />
     </section>
   );
 }

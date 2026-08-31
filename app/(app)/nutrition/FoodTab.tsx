@@ -48,7 +48,6 @@ import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import LedgerDoorLink from "@/components/LedgerDoorLink";
 import { historyHref } from "@/lib/hrefs";
-import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
 import FoodSuggestions from "@/components/FoodSuggestions";
@@ -71,10 +70,12 @@ import {
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 import {
   buildDayLedger,
+  LEDGER_DAY_SPAN,
   type LedgerGroup,
   type LedgerServing,
 } from "@/lib/day-ledger";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
+import { getIntakeDosesForHistory } from "@/lib/queries/intake/schedule";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { doseLogDays } from "@/lib/dose-log-window";
 import {
@@ -303,11 +304,13 @@ export default async function FoodTab({
             : [],
         }
       : null;
-  // A deliberately bounded recent-meal picker: today plus the previous six days.
-  // This is enough to recover a missed meal without turning the one-tap habit log into
-  // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
-  // arrive together, so changing day/meal is instant on the client.
-  const recentDates = Array.from({ length: 7 }, (_, i) =>
+  // A deliberately bounded recent-meal picker: today plus the previous six days
+  // (`LEDGER_DAY_SPAN`, shared with the selection edit's server-side move bound so the
+  // two cannot disagree about which days this surface is about). This is enough to
+  // recover a missed meal without turning the one-tap habit log into an unrestricted
+  // historical editor. Each day's daily counters and meal-slot ledger arrive together, so
+  // changing day/meal is instant on the client.
+  const recentDates = Array.from({ length: LEDGER_DAY_SPAN }, (_, i) =>
     shiftDateStr(date, -i)
   );
   const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(
@@ -366,6 +369,7 @@ export default async function FoodTab({
       ),
     ])
   );
+  const doseSchedules = getIntakeDosesForHistory(profile.id);
   const ledgerByDate: Record<string, LedgerGroup[]> = Object.fromEntries(
     mealDays.map((day) => [
       day.date,
@@ -383,7 +387,7 @@ export default async function FoodTab({
           hhmm: event.eatenAt ?? event.loggedTime,
           clockKind: event.eatenAt ? "stated" : "logged",
         })),
-        doses: getDayDoseLedger(profile.id, day.date),
+        doses: getDayDoseLedger(profile.id, day.date, doseSchedules),
         pending: pendingByDate.get(day.date) ?? [],
       }),
     ])
@@ -461,9 +465,14 @@ export default async function FoodTab({
   // Fiber × GI symptoms on one axis (#2788) — a read-together VIEW, never a
   // correlation claim. The vocabulary and boundaries live in lib/fiber-symptom-panel.
   const fiberSymptomPanel = getFiberSymptomPanel(profile.id);
-  // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
+  // Direct protein-grams quick-add (#824): each offered day's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
-  const proteinLoggedGrams = getProteinDailyGrams(profile.id, date);
+  const proteinLoggedGramsByDate = Object.fromEntries(
+    mealDays.map((day) => [
+      day.date,
+      getProteinDailyGrams(profile.id, day.date),
+    ])
+  );
   const proteinPreset = getProteinQuickAddPreset(profile.id);
   // Current food slot (#950): the profile's wall-clock window (Morning/Midday/Evening)
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
@@ -640,14 +649,10 @@ export default async function FoodTab({
                 keepApart,
                 dayContext: ledgerDayContext,
               }}
-              proteinQuickAdd={
-                <ProteinQuickAdd
-                  key="protein-quickadd"
-                  today={date}
-                  initialGrams={proteinLoggedGrams}
-                  lastPreset={proteinPreset}
-                />
-              }
+              proteinQuickAdd={{
+                initialGramsByDate: proteinLoggedGramsByDate,
+                lastPreset: proteinPreset,
+              }}
             />
           </div>
         }

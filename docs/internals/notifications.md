@@ -834,9 +834,10 @@ through the same `judgeEatenAt` gate, which is `resolveQueuedTakenAt`'s untruste
 clock posture applied to eating time. A refused instant costs the statement and never the
 serving — and since #2296 never silently: the replay answers `done` with a `timeNotice`,
 and the reconnect confirmation says the minute was lost and why
-(`docs/internals/time-model.md`). On the dose side there is no
-schema at all: `intake_item_logs.recorded_at` has carried the administration instant
-since migration 041, and the PRN redose window already arms off it.
+(`docs/internals/time-model.md`). On the dose side, `intake_item_logs.recorded_at` is
+the immutable capture stamp and `occurred_at` is the administration instant (#2876).
+The PRN redose window reads the administration instant first and falls back to capture
+only when nobody stated one.
 
 #### The third domain: `practime` (#2875)
 
@@ -857,7 +858,7 @@ that turned out to be wrong rather than general — see the fourth bullet. Four 
 genuinely differ:
 
 - **The stored value is not an instant.** Food stores `occurred_at` and dose stores
-  `given_at`; a practice stores `date` (a profile-local day) plus `time` (a
+  `occurred_at`; a practice stores `date` (a profile-local day) plus `time` (a
   profile-local `HH:MM`). The tap reader COMPOSES them through the profile's zone and
   the write core DECOMPOSES the answer back — both through the declared readers
   (`eventInstant` / `recordInstant`, `lib/row-instants.ts`) rather than a second
@@ -1033,7 +1034,7 @@ re-date falls out of the same computation.
 **The two domains differ in exactly one place.** A serving's day is a fact about the
 serving, so a food correction crossing midnight moves the event's `date` AND the
 `food_daily_totals` counter row with it, in one `writeTx`. A dose's day is **schedule-owned**
-(#614), so `dosetime` moves `recorded_at` and nothing else, and the toast says so. The
+(#614), so `dosetime` moves `occurred_at` and nothing else, and the toast says so. The
 dose correction also never re-runs the phantom-dose proximity guard (it runs at
 INSERT time and a correction may legitimately move two administrations together) and
 never re-arms an escalation (#1933) — it is a correction of history. It can only
