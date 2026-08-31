@@ -134,24 +134,17 @@ const practiceWhenFor = (
 // profile this login cannot write is refused at the action, which is the half a
 // missing button could never prove.
 
-// WHICH CELL GIVES WAY, AND IN WHICH ORDER (#4394). The title used to be `shrink-0`
-// with nothing to truncate in: a long one overflowed the cluster and was cut —
-// silently, no ellipsis — by `<main>`'s `overflow-x-clip`. Measured at 320px before
-// the fix, the illness row's title laid out 525px wide inside a 236px cluster, right
-// edge at 565 against a 320px viewport.
+// WHICH CELL GIVES WAY, AND IN WHICH ORDER (#4394). The title was `shrink-0` with
+// nothing to truncate in, so a long one overflowed its cluster and was cut — no
+// ellipsis, no scroll — by `<main>`'s `overflow-x-clip`: 525px of title in a 236px
+// cluster at 320px, right edge at 565. Letting it truncate is half the answer. The
+// other half is that flex shrink is PROPORTIONAL, so a shrinking title takes its
+// share of the deficit beside the detail — while the grammar above says the DETAIL
+// is what gives way first. This weight keeps that order.
 //
-// Letting the title truncate is half the answer; the other half is that flex shrink
-// is PROPORTIONAL, so a plain shrinking title takes its share of the deficit
-// alongside the detail — ~185px of title beside a useless ~45px stub of detail on
-// that row — while the grammar above says the DETAIL is what truncates first. This
-// weight restores that order: the detail is starved to nothing, freezes there, and
-// only then does the title spend what is left and end in an ellipsis.
-//
-// IT HAS TO BE A BIG NUMBER RATHER THAN A SMALL ONE ON THE TITLE, which is the
-// non-obvious half. A flex-shrink BELOW 1 does not merely deprioritise an item, it
-// caps the whole line's shrink: when the unfrozen factors sum to less than 1, the
-// spec scales the free space by that sum, so a `shrink-[0.01]` title moved 4px of a
-// 438px deficit and stayed clipped. Measured, on this row, at 320px.
+// A BIG FACTOR HERE, NOT A SMALL ONE ON THE TITLE, which is the non-obvious half: a
+// flex-shrink below 1 does not deprioritise an item, it caps the whole line's
+// shrink, so a `shrink-[0.01]` title moved 4px of a 438px deficit and stayed clipped.
 const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
 
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
