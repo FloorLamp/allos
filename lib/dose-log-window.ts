@@ -4,27 +4,27 @@
 // user-suppliable intake time).
 
 import { daysBetweenDateStr, dateStrInTz, shiftDateStr } from "./date";
+import { TAP_REACH, isWithinTapReach } from "./log-manifest";
 
 // A late/retro dose-log DATE is accepted only within a small window of the profile's
-// today (#614): a forged/far-off date can't land a misdated row, but a legitimate
-// late/after-midnight tap within the window still logs to the reminder's own day.
-//
-// COUPLED TO `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts,
-// currently 3). Since #2018 a Telegram dose keyboard stays live for exactly this window,
-// and the reconcile sweep can only close it while its pointer still exists. Raising this
-// past retention would strand live keyboards permanently — nothing left to close them
-// with — so the two move together, window < retention.
-export const DOSE_LOG_DATE_WINDOW_DAYS = 2;
+// today (#614) — and since the 2026-08-31 ruling this is filed as what it always was:
+// the reach of the TAP, not a property of the dose domain. The dose deep door
+// (`logHistoricalDose`) reaches any past day and always did. The size and the
+// pointer-retention coupling that fixes it are declared in `TAP_REACH` (#4425).
+export const DOSE_LOG_DATE_WINDOW_DAYS = TAP_REACH["dose-status"].back;
 
-// Is `date` (YYYY-MM-DD) inside the accepted window around the profile's today? The
-// ONE realization of that rule (#1427): the scheduled write cores (markDoseTaken /
-// markDoseSkipped) gate on it, and the offline replay consults the SAME predicate to
-// tell an out-of-window entry apart from a deleted dose when it explains the refusal
-// — one computation, never a second copy that could drift. Pure: `todayStr` is the
-// caller's already-resolved profile today.
+// Is `date` inside the accepted window around the profile's today? The ONE realization
+// of that rule (#1427): the scheduled write cores (markDoseTaken / markDoseSkipped)
+// gate on it, and the offline replay consults the SAME predicate to tell an
+// out-of-window entry apart from a deleted dose when it explains the refusal — one
+// computation, never a second copy that could drift. Pure: `todayStr` is the caller's
+// already-resolved profile today.
+//
+// `isRealIsoDate` first (inside `isWithinTapReach`), because `daysBetweenDateStr` runs
+// `Date.parse`, which rolls `2026-02-30` forward to March 2 and answers a difference for
+// a day that does not exist. This predicate accepted exactly that until #4425.
 export function isDoseDateAccepted(todayStr: string, date: string): boolean {
-  const diff = daysBetweenDateStr(todayStr, date);
-  return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+  return isWithinTapReach("dose-status", todayStr, date);
 }
 
 // The profile-local days a recent-past logging surface may OFFER, today first

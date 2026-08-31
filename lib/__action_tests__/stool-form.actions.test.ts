@@ -58,7 +58,7 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
     });
     // …and the call the action made before #3273 added the parameter, on a second
     // profile at the same frozen instant.
-    expect(logBristolStool(control.id, date, 4)).toBe(true);
+    expect(logBristolStool(control.id, date, 4)).toEqual({ wrote: true });
 
     const [tapped] = rows(profile.id);
     const [before] = rows(control.id);
