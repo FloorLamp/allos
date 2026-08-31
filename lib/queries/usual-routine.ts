@@ -32,11 +32,11 @@ import { profileDayZone, travelExcusalResolver } from "../travel-excusal";
 import { situationsActiveOn } from "../trend-annotations";
 import { db, today } from "../db";
 import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
+import { doseScheduleAsOf } from "../intake-cadence";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
 import { foodGroupBySlug } from "../food-groups";
 import { isUsualBackfillDateAccepted } from "../food-regularity";
-import { isDoseDateAccepted } from "../dose-log-window";
 import {
   usualRoutineOffer,
   type UsualRoutineDose,
@@ -73,7 +73,7 @@ export function getPendingRoutineDoses(
   profileId: number,
   window: FoodSlot,
   date: string
-): UsualRoutineDose[] {
+): PendingDayDose[] {
   return pendingDayDoses(profileId, date).filter((d) => d.bucket === window);
 }
 
@@ -88,6 +88,13 @@ export function getPendingRoutineDoses(
 // (#3098) broken by the surface that quotes it.
 export interface PendingDayDose extends UsualRoutineDose {
   bucket: TimeBucket;
+  // The dose's declared `time_of_day` AS OF `date`, off the same schedule version the
+  // bucket above is read from. Free text, as often a bucket word ("Morning") as a clock
+  // — `parseClockHhmm` is what decides — and it exists here for ONE reader: the dated
+  // write core, which must state an administration instant when it files a day the ±2
+  // window no longer reaches (#4305) and takes the profile's own declared hour over the
+  // hour the tap happened to land on.
+  timeOfDay: string | null;
 }
 
 // ── WHAT THIS FUNCTION CONSULTS, AND HOW EACH INPUT TREATS `date` ────────────
@@ -285,6 +292,7 @@ export function pendingDayDoses(
     if (isExcused(dose.time_of_day ?? null, date)) continue;
     out.push({
       bucket: doseBucketOn(dose, date),
+      timeOfDay: doseScheduleAsOf(dose, date).time_of_day ?? null,
       doseId: dose.id,
       itemId: item.id,
       name: item.name,
@@ -359,17 +367,11 @@ export function usualRoutineDayOffers(
 ): UsualRoutineDayOffer[] {
   const t = today(profileId);
   if (!isUsualBackfillDateAccepted(t, date)) return [];
-  // THE TWO HALVES DO NOT REACH EQUALLY FAR, so the offer must not promise as if they
-  // did (#4118). The food half reaches `USUAL_BACKFILL_WINDOW_DAYS` back; the dose half
-  // is `markDoseTaken`'s own `isDoseDateAccepted` window (±2, coupled to Telegram
-  // pointer retention), and beyond it every named dose comes back `stale-dose` having
-  // written nothing. Rendering those doses would put a count and a name on a button for
-  // writes the core will refuse — the label-is-a-promise rule broken by the surface that
-  // quotes it — so past the dose window the offer is honestly FOOD-ONLY.
-  //
-  // Asked through the dose predicate rather than through a second constant, so if #4305
-  // widens the dose reach this corrects itself instead of going quietly stale.
-  const dosesReachable = isDoseDateAccepted(t, date);
+  // BOTH HALVES NOW REACH THE SAME DAY (#4305). The offer used to go food-only past
+  // `isDoseDateAccepted`'s ±2, because every named dose came back `stale-dose` there and
+  // a button may not promise a refusal. The composed write core files those days through
+  // the audited historical core instead, so the whole bundle stands wherever the food
+  // half stands and there is no second bound for this read to carry.
   const offers: UsualRoutineDayOffer[] = [];
   for (const window of FOOD_SLOTS) {
     const offer = getUsualRoutineOffer(profileId, window, date);
@@ -380,13 +382,11 @@ export function usualRoutineDayOffers(
         slug,
         name: foodGroupBySlug(slug)?.name ?? slug,
       })),
-      doses: dosesReachable
-        ? offer.doses.map((d) => ({
-            id: d.doseId,
-            name: d.name,
-            stack: d.stack ?? null,
-          }))
-        : [],
+      doses: offer.doses.map((d) => ({
+        id: d.doseId,
+        name: d.name,
+        stack: d.stack ?? null,
+      })),
     });
   }
   return offers;

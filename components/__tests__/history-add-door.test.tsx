@@ -482,14 +482,13 @@ describe("the composed usual on the add door", () => {
 
   // ── THE ANSWER NAMES WHAT WAS WRITTEN (#232, #4118) ────────────────────────
   //
-  // `ok: true` means the bundle wrote SOMETHING, not that every half landed. The food
-  // half reaches six days back and the dose half two (its own `isDoseDateAccepted`
-  // window, coupled to Telegram pointer retention), so on four of the seven days this
-  // door offers, the servings commit and every dose comes back `stale-dose`. The core
-  // reports each dose separately and refuses to assume any away; the door must not
-  // flatten that into a confirm it did not earn — and this door is the ONLY surface
-  // that can reach those days, since the dashboard has no date field and the Telegram
-  // tap is gated to the dose window.
+  // `ok: true` means the bundle wrote SOMETHING, not that every half landed. Both halves
+  // now reach the same seven days (#4305), but a dose can still refuse on any of them —
+  // an item paused between render and tap, a dose retired, a medication whose recorded
+  // courses do not cover that day. The core reports each dose separately and refuses to
+  // assume any away; the door must not flatten that into a confirm it did not earn, and
+  // this door is the ONLY surface that can reach past yesterday's message, since the
+  // dashboard has no date field and the Telegram tap is gated to the pointer window.
   //
   // BOTH DIRECTIONS ON ONE SHAPE. A test that only asserted the refusal would pass on a
   // door that reported every tap as a failure.

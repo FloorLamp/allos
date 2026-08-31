@@ -1,7 +1,13 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "@/lib/migrations/runner";
-import { migrationsBefore } from "@/lib/migrations/versions";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { up as renameSourceId } from "@/lib/migrations/versions/20260814-integration-source-id";
+
+// The real schema owners for every table and column this migration rebuilds.
+// Full-chain ordering and fresh application belong to the central runner suite.
+const SOURCE_SCHEMA_IDS = new Set([
+  1, 22, 23, 33, 35, 83, 110, 128, 131, 160, 163, 179,
+]);
 
 function tableColumns(db: Database.Database, table: string): string[] {
   return (
@@ -17,7 +23,10 @@ function indexColumns(db: Database.Database, index: string): string[] {
 
 function seedUpgradeDb(): Database.Database {
   const db = new Database(":memory:");
-  runMigrations(db, migrationsBefore("20260814-integration-source-id"));
+  db.pragma("foreign_keys = OFF");
+  for (const migration of NUMBERED_MIGRATIONS) {
+    if (SOURCE_SCHEMA_IDS.has(migration.id)) migration.up(db);
+  }
   db.prepare(
     "INSERT INTO profiles(id, name) VALUES (1, 'Source rename')"
   ).run();
@@ -73,7 +82,7 @@ describe("migration 20260814-integration-source-id", () => {
   it("renames persisted source identity without changing rows or links", () => {
     const db = seedUpgradeDb();
 
-    runMigrations(db);
+    renameSourceId(db);
 
     for (const table of [
       "integration_connections",
@@ -147,35 +156,23 @@ describe("migration 20260814-integration-source-id", () => {
       { name: "integration_sync_events", seq: 110 },
       { name: "stream_frontiers", seq: 114 },
     ]);
-    expect(() => runMigrations(db)).not.toThrow();
-    db.close();
-  });
-
-  it("fresh schema keys and sequences use source_id", () => {
-    const db = new Database(":memory:");
-    runMigrations(db);
-    db.prepare(
-      "INSERT INTO profiles(id, name) VALUES (1, 'Fresh source')"
-    ).run();
-    db.prepare(
-      "INSERT INTO integration_connections(profile_id, source_id, status) VALUES (1, 'oura', 'connected')"
-    ).run();
     expect(() =>
       db
         .prepare(
-          "INSERT INTO integration_connections(profile_id, source_id, status) VALUES (1, 'oura', 'connected')"
+          "INSERT INTO integration_connections(profile_id, source_id, status) VALUES (1, 'strava', 'connected')"
         )
         .run()
     ).toThrow();
-    const eventId = Number(
-      db
-        .prepare(
-          "INSERT INTO integration_sync_events(profile_id, source_id, at, ok) VALUES (1, 'oura', '2026-08-01T00:00:00Z', 1)"
-        )
-        .run().lastInsertRowid
-    );
-    expect(eventId).toBe(1);
-    expect(db.pragma("foreign_key_check")).toEqual([]);
+    expect(
+      Number(
+        db
+          .prepare(
+            "INSERT INTO integration_sync_events(profile_id, source_id, at, ok) VALUES (1, 'strava', '2026-08-02T00:00:00Z', 1)"
+          )
+          .run().lastInsertRowid
+      )
+    ).toBe(111);
+    expect(() => renameSourceId(db)).not.toThrow();
     db.close();
   });
 });
