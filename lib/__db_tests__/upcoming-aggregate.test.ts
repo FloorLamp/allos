@@ -13,10 +13,18 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import {
+  collectAttentionDashboardData,
   collectDueDosesNow,
+  collectHouseholdRollup,
   doseDayProgress,
   collectMultiProfileDoseProgress,
 } from "@/lib/queries";
+import {
+  attentionAheadDetail,
+  attentionCandidates,
+} from "@/lib/dashboard-candidates";
+import { rankDashboardCandidates } from "@/lib/dashboard-relevance";
+import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { doseItems } from "@/lib/queries/upcoming/intake-safety";
 import { goalItems } from "@/lib/queries/upcoming/plans";
 import { collectUpcoming } from "@/lib/queries";
@@ -180,6 +188,47 @@ describe("doseDayProgress (#1504)", () => {
 });
 
 describe("collectDueDosesNow (#2744)", () => {
+  it("keeps a future dose in Dashboard Ahead until its bucket arrives", () => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    mkTimedDose(mkItem(profileId, "Unresolved Morning"), "Morning");
+    mkTimedDose(mkItem(profileId, "Scheduled Midday"), "Midday");
+
+    const upcoming = collectUpcoming(profileId, day);
+    const attention = collectAttentionDashboardData(profileId, day).attention;
+    const candidates = attentionCandidates(
+      { scope: "profile", profileId },
+      attention,
+      day
+    );
+    const placeAt = (minutesOfDay: number) =>
+      rankDashboardCandidates(candidates, {
+        activeProfileId: profileId,
+        minutesOfDay,
+        today: day,
+        upcoming,
+      });
+    const item = (title: string) =>
+      attention.find((entry) => entry.title === title)!;
+    const laneAt = (minute: number, title: string) =>
+      placeAt(minute).find(({ candidate }) =>
+        candidate.candidateId.endsWith(item(title).key)
+      );
+
+    expect(laneAt(6 * 60, "Scheduled Midday")).toMatchObject({
+      lane: "ahead",
+      aheadBucket: "later-today",
+      opensAt: 11 * 60,
+    });
+    expect(
+      attentionAheadDetail(item("Scheduled Midday"), day, DEFAULT_FORMAT_PREFS)
+    ).toBe("Midday · from 11:00");
+    expect(laneAt(11 * 60, "Scheduled Midday")?.lane).toBe("now");
+    expect(laneAt(14 * 60, "Unresolved Morning")?.lane).toBe("now");
+    expect(upcoming.filter((item) => item.domain === "dose")).toHaveLength(2);
+    expect(collectHouseholdRollup(profileId, day).dueDoses).toHaveLength(2);
+  });
+
   it("withholds future slots without changing the whole-day due set", () => {
     const profileId = mkProfile();
     const day = today(profileId);
