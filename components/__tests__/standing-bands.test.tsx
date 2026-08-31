@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import DashboardStandingCluster, {
+  DashboardFactRow,
   type DashboardStandingPresentation,
 } from "@/components/dashboard/DashboardStandingCluster";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
@@ -111,6 +112,30 @@ const cluster = (
 );
 
 describe("Standing's rendered bands", () => {
+  it("gives a leading identity body weight without changing label/value rows", () => {
+    const { rerender } = render(
+      <DashboardFactRow
+        candidate={BEHIND.candidate}
+        lane="now"
+        presentation={{ label: "Omega-3 · 600 mg · Midday" }}
+      />
+    );
+    expect(screen.getByTestId("standing-label").className).toBe(
+      "text-sm text-slate-900 dark:text-slate-100"
+    );
+
+    rerender(
+      <DashboardFactRow
+        candidate={BEHIND.candidate}
+        lane="standing"
+        presentation={{ label: "Lower body", value: "0 of 2" }}
+      />
+    );
+    expect(screen.getByTestId("standing-label").className).toBe(
+      "text-xs text-slate-500 dark:text-slate-400"
+    );
+  });
+
   it("leads with the tier, keeps the rest in place, and draws no fold", () => {
     const { container } = render(cluster([BEHIND, STEPS, BP, RHR]));
     expect(

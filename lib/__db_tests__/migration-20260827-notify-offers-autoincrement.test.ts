@@ -10,15 +10,17 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { historicalDbFixture } from "./historical-db-fixture";
-import { runMigrations } from "@/lib/migrations/runner";
-import { migrationsBefore } from "@/lib/migrations/versions";
-import { migration } from "@/lib/migrations/versions/20260827-notify-offers-autoincrement";
+import { MIGRATIONS } from "@/lib/migrations/versions";
+import { migration as createOffers } from "@/lib/migrations/versions/20260819-notify-offers";
+import { migration as addAutoincrement } from "@/lib/migrations/versions/20260827-notify-offers-autoincrement";
 
 const MIGRATION = "20260827-notify-offers-autoincrement";
 
-// The chain is still the source of the schema; each case gets independent bytes.
+// Only the two schema owners this migration consumes; each case gets independent
+// bytes. The central runner suite owns full-chain ordering and application.
 const preMigrationDb = historicalDbFixture((db) => {
-  runMigrations(db, migrationsBefore(MIGRATION));
+  MIGRATIONS[0].up(db); // profiles
+  createOffers.up(db);
 });
 
 function seeded(count: number): Database.Database {
@@ -62,7 +64,7 @@ describe(`${MIGRATION} — an offer id is never reissued`, () => {
     if (surviving === 0) db.exec(`DELETE FROM notify_offers`);
     else db.exec(`DELETE FROM notify_offers WHERE id > ${surviving}`);
 
-    runMigrations(db);
+    addAutoincrement.up(db);
 
     expect(spent).toHaveLength(3);
     expect(spent).not.toContain(mint(db));
@@ -71,7 +73,7 @@ describe(`${MIGRATION} — an offer id is never reissued`, () => {
 
   it("preserves the surviving rows, their ids and the profile index", () => {
     const db = seeded(2);
-    runMigrations(db);
+    addAutoincrement.up(db);
     expect(
       db.prepare(`SELECT id, family FROM notify_offers ORDER BY id`).all()
     ).toEqual([
@@ -101,11 +103,11 @@ describe(`${MIGRATION} — an offer id is never reissued`, () => {
   // the second run and prove nothing.
   it("is a no-op when up() is replayed on a converged DB", () => {
     const db = seeded(2);
-    runMigrations(db);
+    addAutoincrement.up(db);
     const after = db.prepare(`SELECT id FROM notify_offers ORDER BY id`).all();
     const next = mint(db);
-    migration.up(db);
-    migration.up(db);
+    addAutoincrement.up(db);
+    addAutoincrement.up(db);
     expect(
       db.prepare(`SELECT id FROM notify_offers ORDER BY id`).all()
     ).toEqual([...after, { id: next }]);
