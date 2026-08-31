@@ -3,7 +3,7 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { expectNoClippedContent, followLink, hydratedClick } from "./helpers";
-import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { MONTHS_SHORT, shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 
 // `/history` — THE APP'S RECORD (#3958 phase 1).
 //
@@ -24,11 +24,37 @@ const PROFILE = 1;
 // Comfortably inside the 14-day recent band at any run date. The shared profile's
 // pinned timezone guarantees its local date equals the frozen instant's UTC date.
 const DAY = shiftDateStr(frozenNow().toISOString().slice(0, 10), -7);
+// The month-and-day a row must NOT print, derived from DAY and built from the app's
+// own month table rather than an implicit-locale `toLocaleDateString` (#1020).
+//
+// #4367 DERIVED THE DAY AND LEFT THE ASSERTION BELOW AS THE LITERAL "Aug 17", which
+// made that guard VACUOUS: the fixture no longer seeds 2026-08-17, so the absence it
+// states is true of every tree — including one that HAS started printing a per-row
+// date cell, which is the single regression it exists to catch. An absence assertion
+// whose subject can no longer occur passes for the wrong reason and reports nothing.
+// Derived, it names whatever day the fixture is actually on.
+//
+// Five days back is e2e/logged-event-row.mobile.spec.ts's day for `berries` on this
+// same profile, so seven keeps the two apart. Measured, not assumed: they actually
+// SURVIVE a shared day — each deletes by (profile, day, group) before every test and
+// both delete `berries`, so they clean up after each other. Distinct days are
+// insurance against that accident ending, not a repair of a live defect.
+const DAY_LABEL = `${MONTHS_SHORT[Number(DAY.slice(5, 7)) - 1]} ${Number(
+  DAY.slice(8, 10)
+)}`;
 // A day in an EARLIER CALENDAR MONTH, so the fold spine this spec's rail scrubs has at
 // least two stops whatever else the shared seed holds. The rail is not offered below
 // two periods — a permanent strip down the edge of a one-period page is chrome
 // charging rent — so without this the rail case would be conditional on a fixture
 // nothing here controls.
+//
+// LEFT ABSOLUTE ON PURPOSE, and checked rather than assumed (#4358 AC3): unlike DAY
+// above, this day must land OUTSIDE the recent band, which ageing only ever makes
+// more true. What it does depend on is the CALENDAR YEAR — `windowTimelineDays` gives
+// a top-level month fold only to months of the current year, and a closed year fold
+// renders no month cards at all — so a derived offset would not save it either. That
+// is a January problem for whatever day is chosen, not an ageing one; it is recorded
+// on #4358 rather than papered over here.
 const OLD_DAY = "2026-02-11";
 const PRACTICE = "E2e History Rowing";
 const FOOD_GROUP = "berries";
@@ -132,7 +158,7 @@ test.describe("the record (#3958)", () => {
     // NO PER-ROW DATE CELL EXISTS. Asserted as the row's own text rather than as the
     // absence of a testid: a row that started printing "Mon, Aug 17" would satisfy
     // every structural check and be exactly the regression.
-    await expect(serving).not.toContainText("Aug 17");
+    await expect(serving).not.toContainText(DAY_LABEL);
     await expect(serving).not.toContainText(DAY);
     // One clock grammar: bare and lower-case, or "logged" plus the same shape.
     const clock = (

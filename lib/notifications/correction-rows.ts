@@ -89,6 +89,14 @@ export interface CorrectionPrefixes {
   // refusals name it — the same phrase every time, per domain, so a dead end always ends
   // somewhere.
   appSurface: string;
+  // THE ONE SENTENCE THAT TEACHES THE CHIPS (#2874), or absent for a domain that has not
+  // been given one. Held here, beside the prefixes, so a chip surface cannot acquire
+  // buttons without also acquiring the words that explain them — the drift this replaced
+  // was one renderer owning the sentence, which is why food taught the behaviour at every
+  // eating window and dose taught it nowhere.
+  //
+  // Rendered ONLY through `correctionHintLine`, which is also where it retires.
+  hint?: string;
 }
 
 export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
@@ -99,6 +107,7 @@ export const FOOD_TIME_PREFIXES: CorrectionPrefixes = {
   // The food bar's correction sheet (#2227) edits any serving in the log's seven-day
   // recent range, day + hour.
   appSurface: "the food log on the Nutrition page",
+  hint: `${GLYPH.eventTime} Ate earlier? Each chip sets the time it shows — press again to go further.`,
 };
 
 export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
@@ -107,6 +116,7 @@ export const DOSE_TIME_PREFIXES: CorrectionPrefixes = {
   at: "dosetimeat",
   dayKeyed: false,
   appSurface: "the dose history in the app",
+  hint: `${GLYPH.eventTime} Took it earlier? Each chip sets the time it shows — press again to go further.`,
 };
 
 // The third domain (#2875). Practices were the third to gain one-tap logging and never
@@ -269,6 +279,34 @@ export function correctionPickerActions(
     row: "pickback",
   });
   return out;
+}
+
+// THE HINT THAT TEACHES THE CHIPS, AND RETIRES (#2874).
+//
+// Two chip surfaces compose a correction body, and until this existed exactly one of them
+// said what the chips do — hand-placed in `renderFoodNudge`, ~21 words at every eating
+// window, forever, while the dose nudge carried the identical keyboard and explained
+// nothing. Both halves of that were the same defect: the sentence belonged to a renderer
+// instead of to the substrate every chip surface already shares.
+//
+// WHAT IT KEEPS. Each chip already names the time it would set (#2206) and the row is
+// visibly a button, so the words go to the one thing nobody would guess: that a repeat
+// tap COMPOSES rather than being undefined. "or tap the row for an exact time" is
+// deliberately gone — the row still opens the drill-down, it is simply no longer
+// narrated.
+//
+// WHEN IT RETIRES, and this is a CROSS-DOMAIN question rather than a per-domain one: the
+// thing taught is ONE behaviour, so a profile that learned it on a dose knows it on food.
+// `hasCorrectedAnyTime` (lib/queries/correction-history.ts) is that single predicate;
+// this renderer stays pure and is told the answer. Nothing replaces the line — the chips
+// speak for themselves, which is the same retirement "Tap what you've eaten to log a
+// serving" takes once a tally exists (#1710).
+export function correctionHintLine(
+  prefixes: CorrectionPrefixes,
+  hasCorrectedAnyTime: boolean
+): string | null {
+  if (hasCorrectedAnyTime) return null;
+  return prefixes.hint ?? null;
 }
 
 // The BODY'S statement of record for a corrected burst (#2264 bug 1), for both domains.

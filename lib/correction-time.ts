@@ -125,7 +125,11 @@ export const CHIP_FLOOR_HOURS_BACK = PICKER_LAST_HOURS_BACK;
 // exists to say where the serving stands, the header would otherwise name a tap instant
 // nobody meant, and reading `time_source` here would make the marker a claim about who
 // wrote the value instead of about what the header says.
-const CORRECTED_MARK_MS = 60_000;
+// EXPORTED because the correction HINT's retirement gate reuses it (#2874): a hint that
+// teaches the chips retires once the profile has moved any stored instant away from its
+// own tap, and "moved" has to mean here exactly what it means on the marker below — a
+// second literal would let the two disagree about what counts as a correction.
+export const CORRECTED_MARK_MS = 60_000;
 
 // At most this many correction rows ride a keyboard. The rows are the ride-along, not
 // the message: a nudge whose own buttons have been pushed off the screen by corrections
