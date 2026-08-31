@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import {
   E2E_LOGIN_FOODSLOT,
   E2E_LOGIN_FOODUSUAL,
@@ -171,6 +171,67 @@ test("a regular window offers its usual set in one tap, and stops offering it on
     await settledClick(page, page.getByTestId("undo-fermented"));
     await expect(page.getByTestId("count-fermented")).toHaveText("0");
     await expect(page.getByTestId("food-usual-offer")).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
+});
+
+// The same shortcut, on a day that has already ended (#4118).
+//
+// It was TODAY-ONLY, on the reasoning that a bulk backfill would feed the regularity
+// evidence that derives the offer back into itself. #4312 answered that at its root — a
+// dated bundle is stamped `USUAL_BACKFILL` in the core and `getFoodRegularity` excludes
+// exactly that value — and left this surface's gate behind, which is the half of #4118's
+// first criterion that names the nutrition Day ledger beside `/history`'s door.
+//
+// THE FIXTURE'S POSITION RELATIVE TO WHAT THIS MOVES. The seed gives this profile 21
+// morning days of evidence; this spec re-writes ONE of them through the backfill path,
+// whose rows the evidence window excludes, so a spec running later in the same worker DB
+// sees 20. FOOD_REGULARITY_MIN_WINDOW_DAYS is 7, so the habit is nowhere near its gate
+// either side of that — stated because it is the number that would quietly decide
+// whether the offer still exists for the next reader.
+test("the usual shortcut fills a past day, and writes to THAT day (#4118)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FOODUSUAL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    test.slow();
+    await page.goto("/nutrition");
+
+    // Yesterday already holds the usual pair, so the offer is correctly SILENT there —
+    // the converse, and the thing that makes step two mean something.
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+    await page.getByTestId("food-slot-morning").click();
+    await expect(page.getByTestId("count-berries")).toHaveText("1");
+    await expect(page.getByTestId("count-fermented")).toHaveText("1");
+    await expect(page.getByTestId("food-usual-offer")).toHaveCount(0);
+
+    // Empty that morning through the product's own controls, and the offer appears on a
+    // day that has already ended. Before this change the gate was `activeDate === today`
+    // and nothing would render here however empty the day was.
+    await settledClick(page, page.getByTestId("undo-berries"));
+    await settledClick(page, page.getByTestId("undo-fermented"));
+    await expect(page.getByTestId("count-berries")).toHaveText("0");
+    const offer = page.getByTestId("food-usual-offer");
+    await expect(offer).toBeVisible();
+    await expect(offer).toHaveAttribute("data-groups", "berries,fermented");
+
+    // ONE TAP FILLS THE DAY BEING LOOKED AT. The counts beside the rows are yesterday's,
+    // because the picker is a historical editor and every number follows it.
+    await settledClick(page, offer);
+    await expect(page.getByTestId("count-berries")).toHaveText("1");
+    await expect(page.getByTestId("count-fermented")).toHaveText("1");
+
+    // AND NOT TODAY, which is the assertion the wiring turns on: the action falls back
+    // to today when no date is posted, so a control that forgot to post one would pass
+    // every line above and quietly write the servings onto the wrong day.
+    await hydratedClick(page, page.getByTestId("food-day-today"));
+    await page.getByTestId("food-slot-morning").click();
+    await expect(page.getByTestId("count-berries")).toHaveText("0");
+    await expect(page.getByTestId("count-fermented")).toHaveText("0");
   } finally {
     await page.context().close();
   }
