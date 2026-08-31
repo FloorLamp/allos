@@ -436,9 +436,12 @@ describe("overlay motion chokepoint", () => {
     const offenders = FILES.filter(
       (file) =>
         RETIRED_MOBILE_IDENTITY_LITERAL.test(file.text) ||
-        RETIRED_MOBILE_IDENTITY_TOLERANT.test(withoutComments(file.text))
+        (RETIRED_MOBILE_IDENTITY_TOLERANT.test(file.text) &&
+          RETIRED_MOBILE_IDENTITY_TOLERANT.test(withoutComments(file.text)))
     ).map((file) => file.rel);
-    const mounts = FILES.flatMap((file) => {
+    const mounts = FILES.filter((file) =>
+      /<ProfileIdentityBar\b/.test(file.text)
+    ).flatMap((file) => {
       const source = withoutComments(file.text);
       return [...source.matchAll(/<ProfileIdentityBar\b/g)].map((match) => ({
         rel: file.rel,
