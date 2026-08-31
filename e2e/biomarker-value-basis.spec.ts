@@ -33,6 +33,9 @@ const BARE = "Creatinine, Urine";
 const UNQUALIFIED_GLUCOSE = "Glucose";
 const FASTING_GLUCOSE = "Glucose, Fasting";
 const TOUCH_STALE = "Touch tooltip stale result (e2e #3375)";
+// The document heading the coined analyte was reported under — a lab VENDOR name, the
+// shape the taxonomy cannot map (#1502). Low-entropy and this spec's own.
+const REPORTED_HEADING = "Bench Lab Panel 7";
 
 // #2347: the band-less reading is dated off the RUN'S FROZEN CLOCK, far enough back
 // that the yearly retest clock has run out, so ONE reading carries all three halves of
@@ -166,6 +169,15 @@ test.beforeEach(() => {
         "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'clinical-result', ?)"
       )
       .run(pid, TOUCH_STALE);
+    // A stored `panel` heading on the coined analyte. The taxonomy cannot place a
+    // name it has never seen, so this row lands in the OTHER group and its Panel cell
+    // renders the document's own heading — the ONE state that used to mount a
+    // per-row explainer, and the state the panel-column test below needs to reach.
+    handle
+      .prepare(
+        "UPDATE medical_records SET panel = ? WHERE source = ? AND name = ?"
+      )
+      .run(REPORTED_HEADING, SOURCE, TOUCH_STALE);
   });
 });
 
@@ -201,6 +213,42 @@ test("the stale vocabulary is explained once, on the column that carries it (#39
   );
   // The row keeps the VERDICT in words and in colour; only the button left.
   await expect(row.getByTestId("clinical-result-age")).toContainText("⚠️");
+});
+
+// #3970 rule 1 for the other constant on this table: "not mapped to a clinical panel"
+// used to mount a button on EVERY row of an unmapped group. It is a property of the
+// COLUMN, so the column head states it, and the head carries the same
+// `hidden md:table-cell` visibility the cells did — nothing that could reach the old
+// mount loses the sentence, which is why this relocation has no phone half.
+test("the unmapped-panel sentence is stated once, on the Panel column head (#3970)", async ({
+  page,
+}) => {
+  await page.goto(
+    `/results/clinical-results?q=${encodeURIComponent(TOUCH_STALE)}`
+  );
+  const table = page.getByTestId("clinical-results-table");
+  const row = table.getByRole("row").filter({ hasText: TOUCH_STALE });
+  await expect(row).toBeVisible();
+  // The fixture REACHES the forbidden state: this row is unmapped and prints its
+  // document's heading, so it is exactly the row that used to carry the button.
+  await expect(row).toContainText(REPORTED_HEADING);
+
+  const help = page.getByTestId("clinical-panel-column-help");
+  await expect(help).toHaveCount(1);
+  await expect(row.getByTestId("clinical-panel-column-help")).toHaveCount(0);
+  await expect(
+    table.locator("thead").getByTestId("clinical-panel-column-help")
+  ).toHaveCount(1);
+  // The head's mount keeps its OWN id. `clinical-reported-panel-help` belongs to the
+  // date cell's per-row "Reported under …" disclosure, a different fact with a
+  // different label, and one id over two labels is a trap for the next selector.
+  await expect(
+    table.locator("thead").getByTestId("clinical-reported-panel-help")
+  ).toHaveCount(0);
+  await help.click();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under"
+  );
 });
 
 test("a starred stale-result explanation is stated once and reachable by tap (#3375/#3970)", async ({

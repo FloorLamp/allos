@@ -17,8 +17,11 @@ import type { TrainingLogCardData } from "@/lib/training-log-card";
 // they need opposite assertions:
 //
 //   1. A CONSTANT explainer states itself ONCE, however many rows are on screen. The
-//      honest test is a list with SEVERAL rows: a one-row fixture cannot tell "once"
-//      apart from "once per row", so it would pass against the defect.
+//      fixture carries SEVERAL rows so the count reports the MULTIPLICATION rather
+//      than merely its presence — measured, a one-card fixture does still fail this
+//      (2 vs 1, the legend supplying the second), so several rows is about what the
+//      failure TELLS you and about exercising the per-row path more than once, not
+//      about the assertion being able to fail at all.
 //   2. A RARE warning KEEPS its icon. That is the converse of half 1, and it is the
 //      half a removal sweep can never prove — an absence assertion is green both when
 //      the icon moved home and when it vanished from somewhere load-bearing. So the
@@ -60,8 +63,9 @@ describe("a constant explainer states itself once (#3970 rule 1)", () => {
         ]}
       />
     );
-    // THREE cards is the point: at one card "stated once" and "stated per row" are
-    // the same number, and the assertion could not fail.
+    // Three cards, so the forbidden per-card path is reached three times and a
+    // regression reports its size (4 = one legend + three cards) rather than just
+    // its existence. One card also fails (2 vs 1) — checked, not assumed.
     expect(screen.getAllByTestId("suggestion-origin-badge")).toHaveLength(3);
     expect(
       screen.getAllByRole("button", { name: CURATED_EXPLAINER })

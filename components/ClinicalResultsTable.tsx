@@ -1001,13 +1001,20 @@ export default function ClinicalResultsTable({
                   property of the COLUMN, not of a row, and it used to mount a button
                   on every row of an unmapped group. The header carries the same
                   `hidden md:table-cell` visibility the cells do, so nothing that
-                  could reach the old mount loses the sentence. */}
+                  could reach the old mount loses the sentence.
+
+                  ITS OWN TESTID, deliberately. `clinical-reported-panel-help` is
+                  taken, by the date cell's per-row "Reported under …" disclosure —
+                  a DIFFERENT fact with a different label. Two elements under one id
+                  read as one thing to whoever writes the next selector, and the
+                  existing readers of that id are group-scoped, so nothing would have
+                  gone red to tell them otherwise. */}
               <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
                 <span className="inline-flex items-center gap-1">
                   Panel
                   <InfoTooltipIcon
                     label="A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under"
-                    data-testid="clinical-reported-panel-help"
+                    data-testid="clinical-panel-column-help"
                   />
                 </span>
               </th>
