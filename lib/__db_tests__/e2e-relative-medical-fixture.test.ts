@@ -42,17 +42,23 @@ function membershipSignatures(
   ) => string
 ): Set<string> {
   const signatures = new Set<string>();
+  const clearDocuments = db.prepare(
+    "DELETE FROM medical_documents WHERE profile_id = ?"
+  );
+  const insertDocument = db.prepare(
+    `INSERT INTO medical_documents
+       (profile_id, filename, stored_path, extraction_status, uploaded_at)
+     VALUES (?, ?, '', 'done', ?)`
+  );
   for (const zone of zonesFor(runDay)) {
     setTimezone(profileId, zone);
-    db.prepare("DELETE FROM medical_documents WHERE profile_id = ?").run(
-      profileId
-    );
+    clearDocuments.run(profileId);
     for (const fixture of PROFILE_ONE_UNDATED_DOCUMENT_UPLOADS) {
-      db.prepare(
-        `INSERT INTO medical_documents
-           (profile_id, filename, stored_path, extraction_status, uploaded_at)
-         VALUES (?, ?, '', 'done', ?)`
-      ).run(profileId, fixture.filename, uploadedAt(fixture.filename, zone));
+      insertDocument.run(
+        profileId,
+        fixture.filename,
+        uploadedAt(fixture.filename, zone)
+      );
     }
     // situation_events stops on daysAgo(52), so the stored episode's inclusive end
     // is daysAgo(53), matching scripts/seed.ts's reconstruction.
