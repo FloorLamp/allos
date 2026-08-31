@@ -70,7 +70,6 @@ vi.mock("../Nav", () => ({ default: () => <nav data-testid="nav" /> }));
 vi.mock("../SidebarLogButton", () => ({
   default: () => <button type="button">+ Log</button>,
 }));
-vi.mock("../EventCalendar", () => ({ default: () => null }));
 vi.mock("../ThemeToggle", () => ({ default: () => null }));
 vi.mock("../WhatsNewLink", () => ({ default: () => null }));
 vi.mock("../ProfileIdentityBar", () => ({ default: () => null }));
@@ -98,7 +97,6 @@ const ACTIVE = { id: 1, name: "Sam", photo_path: null, photo_version: 0 };
 function mountSidebar() {
   return render(
     <SidebarContent
-      eventDates={[]}
       active={ACTIVE}
       username="sam"
       profiles={[ACTIVE]}

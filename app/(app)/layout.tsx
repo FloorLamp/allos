@@ -64,7 +64,6 @@ import {
   getNavRelevance,
 } from "@/lib/queries";
 import { getSegmentLogDays } from "@/lib/queries/log-sheet";
-import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
 import { getFormRecoveringContext } from "@/lib/injuries";
 import { excludedRegions } from "@/lib/injury-model";
@@ -140,7 +139,6 @@ export default async function AppLayout({
   const trainingRelevant = isTrainingRelevant(profileAge);
   const strengthTrainingAvailable = isStrengthTrainingRelevant(profileAge);
   const suggestions = getActivitySuggestions(profile.id);
-  const timelineDates = getTimelineDates(profile.id);
   // One extra session per exercise: the editor filters out the activity being
   // logged (which auto-save inserts into its own history) and still shows 3.
   const exerciseHistory = getRecentExerciseHistory(profile.id, 4);
@@ -347,7 +345,6 @@ export default async function AppLayout({
                         <div className="flex min-h-screen">
                           <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-(--nav) p-4 md:flex print:hidden dark:border-white/5">
                             <SidebarContent
-                              eventDates={timelineDates}
                               active={session.profile}
                               username={login.username}
                               // The scope's DISAMBIGUATED set (#534) — two accessible
@@ -433,7 +430,6 @@ export default async function AppLayout({
                       inside <ShellChrome>, which exists to hide a sticky bar that
                       no longer exists. */}
                         <MobileNav
-                          eventDates={timelineDates}
                           active={session.profile}
                           username={login.username}
                           profiles={scope.profiles}

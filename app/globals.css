@@ -2291,23 +2291,23 @@
 
    A weekday grid is seven columns and each one has to clear the app's tap floor
    — 44px EFFECTIVE, the one number ruled on #3514 — so the narrowest a week can
-   honestly be rendered at is 7 x 2.75rem. Two files need that quantity and they
-   need it for opposite reasons: components/EventCalendar.tsx renders the
-   columns, and components/MobileNav.tsx has to be WIDE ENOUGH TO PAY FOR THEM,
-   because the phone nav drawer is where that calendar becomes a touch surface at
-   all (#3377/#3536).
+   honestly be rendered at is 7 x 2.75rem.
 
-   Before this the drawer restated the arithmetic in its own width class — a
-   shared navigation shell carrying a Training child's implementation detail, and
-   two derivations of one number that could drift apart silently in either
-   direction (owner ruling on #3452, from the #3687 recent-merge audit). The
-   drawer now asks only "at least as wide as a week, plus my own right border and
-   the left safe-area inset"; what a week costs is answered here.
+   ONE CONSUMER NOW (#4280), and that is the resolution of a split this token was
+   created to manage. It used to be read by two files for opposite reasons:
+   components/EventCalendar.tsx rendered the columns, and components/MobileNav.tsx
+   had to be WIDE ENOUGH TO PAY FOR THEM, because the phone nav drawer was where
+   that calendar became a touch surface at all (#3377/#3536). #4102 moved the grid
+   off the nav and onto /history, so the drawer's width floor drops the term by
+   owner ruling and the grid's own host is the only thing left that asks. The
+   host claims it BELOW `md`, where the grid opens as a full-width bottom sheet;
+   from `md` up the popover is 288px wide and a fine pointer gets the control box
+   rather than the tap floor.
 
    `calc(7 * 2.75rem)` rather than `19.25rem` on purpose: the derivation IS the
    value, and a reader who wants to change the column floor should not have to
    reverse-engineer a decimal. The rendered phone geometry in
-   `e2e/mobile-ui-polish.spec.ts` proves both consumers still fit. */
+   `e2e/mobile-ui-polish.spec.ts` proves the consumer still fits. */
 :root {
   --week-grid-min: calc(7 * 2.75rem);
 }
