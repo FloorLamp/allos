@@ -623,8 +623,46 @@ echo
 # DISPATCH ORDER (the refill rule: dispatch continuously while viable work
 # exists, without asking), and "empty" is only an honest terminal state next to
 # the enumerated list of why each remaining issue cannot dispatch.
+# THE COUNT IS PER AXIS (owner, 2026-08-31), because a live session read "both
+# e2e slots full" as "the queue is thin" — a capacity limit substituted for a
+# queue fact — while roughly three non-e2e slots sat open. The caps are
+# separate: 2 e2e lanes, ~5 lanes total, ~3 unreviewed PRs, and only the axis
+# that is actually full is allowed to say so.
 lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
 lanes=${lanes:-0}
+e2e_lanes=$(python3 -c '
+import json,sys
+state={}
+for line in open(sys.argv[1]):
+    line=line.strip()
+    if not line: continue
+    try: e=json.loads(line)
+    except Exception: continue
+    b=e.get("branch")
+    if b: state[b]=e
+print(sum(1 for e in state.values() if e.get("status")=="active" and e.get("e2e")))
+' "$LEDGER" 2>/dev/null || echo "?")
+if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
+
+# THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a
+# time — a reconcile never looked for, small issues never paired, self-filed
+# items mentally reclassified as backlog — cannot be forgotten from a file.
+# queue-snapshot.mjs sweeps open issues into $STATE_DIR/.queue; the recorder
+# refreshes it on the 4h cadence, and prints its own header line below so
+# every check-in states the dispatchable count next to the lane count.
+QUEUE_FILE="$STATE_DIR/.queue"
+QUEUE_DUE_SECS=$((4 * 3600))
+queue_age_s=""
+if [ -f "$QUEUE_FILE" ]; then
+  queue_mtime=$(date -u -r "$QUEUE_FILE" +%s 2>/dev/null || stat -c %Y "$QUEUE_FILE" 2>/dev/null || echo "")
+  [ -n "$queue_mtime" ] && queue_age_s=$(($(date -u +%s) - queue_mtime))
+fi
+if [ -z "$queue_age_s" ] || [ "$queue_age_s" -ge "$QUEUE_DUE_SECS" ]; then
+  node "$(dirname "$0")/orchestration/queue-snapshot.mjs" >/dev/null 2>&1 ||
+    echo "  *** queue snapshot FAILED (needs a read token) — $QUEUE_FILE may be stale ***"
+fi
+queue_header=$(head -1 "$QUEUE_FILE" 2>/dev/null || echo "UNWRITTEN — run queue-snapshot.mjs")
+
 echo "--- lanes ---"
 if [ "$lanes" -eq 0 ]; then
   echo "  0 active — *** AN EMPTY ROSTER IS A DISPATCH ORDER, NOT A REPORT ***"
@@ -633,12 +671,17 @@ if [ "$lanes" -eq 0 ]; then
   echo "      is only honest beside the list of why every remaining issue is"
   echo "      blocked, owner-gated, or dependency-bound."
 elif [ "$lanes" -lt 3 ]; then
-  echo "  $lanes active — UNDER-SATURATED unless the queue is truly thin. Refill after"
-  echo "      every merge is the default, without asking; review depth (~3 unreviewed"
-  echo "      PRs) binds before lane count (~5) does (dispatch.md §Dispatch)."
+  echo "  $lanes active (e2e $e2e_lanes/2, other $other_lanes) — UNDER-SATURATED. A full e2e"
+  echo "      lane is NOT a thin queue: the caps are separate axes (2 e2e, ~5 lanes,"
+  echo "      ~3 unreviewed PRs). Before calling the queue thin, check the candidate"
+  echo "      classes that get skipped: PAIR small issues into one cluster, source"
+  echo "      self-filed P3s (back of the queue is still IN the queue), and do the"
+  echo "      standing work (reconcile pass, release-notes batch). 'Thin' must"
+  echo "      answer $QUEUE_FILE line by line — the queue is written down."
 else
-  echo "  $lanes active"
+  echo "  $lanes active (e2e $e2e_lanes/2)"
 fi
+echo "  queue: ${queue_header%% —*} — full list in $QUEUE_FILE"
 echo
 
 # 4. THE WAKE. Is anything scheduled to wake this session in the FUTURE?
