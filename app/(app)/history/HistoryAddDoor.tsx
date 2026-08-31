@@ -43,10 +43,8 @@ import type { WeightUnit } from "@/lib/settings";
 // one re-checks write access server-side, so the door is an affordance and never a gate.
 //
 // THE CONTROL KEEPS ONE IDENTITY while its form is open, and dismissal belongs to the
-// form. `DoseBackfillLauncher` swaps its label to "Cancel" — that is #3911's defect,
-// re-housed here with the launcher, and copying its shape into four more controls is
-// exactly the "never inherit the defect" #2816 warns about. The dose door's own repair
-// is #3911's to land.
+// form. `DoseBackfillLauncher` follows the same rule (#3911), so all five record doors
+// keep the identity that opened them instead of turning that control into Cancel.
 //
 // THE DATE OPENS ON THE DAY THE READER WAS LOOKING AT, not on today: the whole reason
 // to add from here is a gap you just found. Bounded by today at every kind, which is
