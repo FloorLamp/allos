@@ -449,3 +449,295 @@ test.describe("the day is stated once, and the chrome is measured", () => {
     expect(box!.y).toBeLessThan(520);
   });
 });
+
+// ── THE SELECTION EDIT, AND THE FORGED POST IT IS BOUNDED BY (#4118) ──────────
+//
+// Both halves of this block are about the same thing from opposite ends: what a
+// hand-built request can put in the food ledger, and what a legitimate batch can take
+// out of it. The web surface can only ever offer the bounded day picker, so the FORGED
+// case has to be forged — the request is rewritten in flight, which is exactly the
+// shape the criterion names.
+
+/**
+ * Check one dose row's selection box, opening the composed row when the dose is inside
+ * it. A member whose stated clock stops matching its tap-mates STEPS OUT of the collapse
+ * (`buildDayLedger`), so the same dose is behind the stack row before a Set time… and
+ * standing on its own after one — which is correct, and which a spec that always
+ * expanded would break on.
+ */
+async function pickDose(page: Page, logId: number): Promise<void> {
+  const box = page.getByTestId(`ledger-pick-dose-${logId}`);
+  if (!(await box.isVisible())) {
+    await hydratedClick(
+      page,
+      morning(page).locator('[data-testid^="ledger-stack-"]')
+    );
+  }
+  await hydratedClick(page, box);
+}
+
+/**
+ * Bring one add-list row on screen. The list densifies to the profile's own top groups
+ * and folds the rest behind "More groups" (#3987 phase 1), so which rows are VISIBLE
+ * depends on what this worker's DB has been logging — a spec that assumed a fixed row
+ * would pass or fail on its neighbours' history.
+ */
+async function revealFoodGroup(page: Page, slug: string): Promise<void> {
+  const row = page.getByTestId(`food-group-${slug}`);
+  if (!(await row.isVisible())) {
+    await page.getByTestId("food-more-groups-summary").click();
+    await expect(row).toBeVisible();
+  }
+}
+
+/** Food events for profile 1 on one day, by group. */
+function servingRows(day: string, slug: string): { id: number }[] {
+  const db = openDb();
+  try {
+    return db
+      .prepare(
+        "SELECT id FROM food_log_events WHERE profile_id = 1 AND date = ? AND group_key = ? ORDER BY id"
+      )
+      .all(day, slug) as { id: number }[];
+  } finally {
+    db.close();
+  }
+}
+
+function dropServings(ids: readonly number[]): void {
+  if (ids.length === 0) return;
+  const db = openDb();
+  try {
+    db.prepare(
+      `DELETE FROM food_log_events WHERE id IN (${ids.map(() => "?").join(", ")})`
+    ).run(...ids);
+    db.prepare(
+      "DELETE FROM food_daily_totals WHERE profile_id = 1 AND servings <= 0"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
+
+/** The stored instant of one ledger row, or null when nobody stated one. */
+function servingInstant(id: number): string | null {
+  const db = openDb();
+  try {
+    return (
+      (
+        db
+          .prepare("SELECT occurred_at AS at FROM food_log_events WHERE id = ?")
+          .get(id) as { at: string | null } | undefined
+      )?.at ?? null
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function doseLogRow(
+  doseId: number
+): { id: number; date: string; at: string | null } | undefined {
+  const db = openDb();
+  try {
+    return db
+      .prepare(
+        "SELECT id, date, occurred_at AS at FROM intake_item_logs WHERE dose_id = ? AND status = 'taken' ORDER BY id DESC LIMIT 1"
+      )
+      .get(doseId) as
+      { id: number; date: string; at: string | null } | undefined;
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("a forged POST cannot date a serving into the future", () => {
+  const SLUG = "berries";
+
+  test("the same tap writes today, and dies when its day is rewritten ahead", async ({
+    page,
+  }) => {
+    const day = todayLocal();
+    const future = shiftDateStr(day, 400);
+    const before = servingRows(day, SLUG).length;
+    const added: number[] = [];
+
+    // The control tap's own request, kept so the forged one can be built from it
+    // rather than from a guess about how Next encodes a Server Action call.
+    let captured: {
+      url: string;
+      headers: Record<string, string>;
+      body: string;
+    } | null = null;
+    page.on("request", (request) => {
+      const postBody = request.postData();
+      if (
+        captured === null &&
+        request.method() === "POST" &&
+        request.headers()["next-action"] != null &&
+        postBody != null
+      ) {
+        captured = {
+          url: request.url(),
+          headers: request.headers(),
+          body: postBody,
+        };
+      }
+    });
+
+    await page.goto("/nutrition");
+    await expect(page.getByTestId("food-log-bar")).toBeVisible();
+    await revealFoodGroup(page, SLUG);
+
+    // THE POSITIVE CONTROL FIRST, THROUGH THE SAME CONTROL AND THE SAME QUERY the
+    // forged case is judged by. Without it "no future row exists" is satisfied by a tap
+    // that never reached the server at all, which is the state a broken locator, a
+    // dead route handler and a genuine guard all produce alike.
+    await hydratedClick(page, page.getByTestId(`log-${SLUG}`));
+    await expect.poll(() => servingRows(day, SLUG).length).toBe(before + 1);
+    added.push(servingRows(day, SLUG).at(-1)!.id);
+
+    // NOW FORGE IT — and forge it OUTSIDE the page, which is what "a forged POST"
+    // means. The earlier shape of this test rewrote the body in flight through
+    // `page.route`, and that was intermittently a no-op: this app registers a service
+    // worker, and a request the worker fetches never reaches `page.route` at all (the
+    // mechanism e2e/stale-build-save.spec.ts documents). Measured 2 of 3 repeats with
+    // the interception never firing. Replaying the CAPTURED request through Playwright's
+    // own request context has no such gap — and it is also a stronger claim: the
+    // request never went near the app's own code.
+    expect(
+      captured,
+      "no server-action POST was captured from the control tap"
+    ).not.toBeNull();
+    const body = captured!.body;
+    // The day appears in the body exactly where the picker put it; a body that did not
+    // carry it would make the rewrite below a no-op that still "passed".
+    expect(body.includes(day)).toBe(true);
+    const headers = { ...captured!.headers };
+    delete headers["content-length"];
+    const forged = await page.request.fetch(captured!.url, {
+      method: "POST",
+      headers,
+      data: body.split(day).join(future),
+    });
+    expect(forged.status()).toBeLessThan(500);
+
+    // NOTHING LANDED — not on the forged day, and not on today either. A bound that
+    // silently fell back to today would satisfy the first assertion and quietly write
+    // the serving somewhere nobody asked for.
+    expect(servingRows(future, SLUG)).toEqual([]);
+    expect(servingRows(day, SLUG).length).toBe(before + 1);
+
+    dropServings(added);
+  });
+});
+
+test.describe("the Day ledger's selection edit", () => {
+  test.describe.configure({ mode: "serial" });
+
+  let seeded: Seeded;
+  test.beforeAll(() => {
+    cleanup();
+    seeded = seed();
+  });
+  test.afterAll(cleanup);
+
+  test("one selection of a serving and a dose is re-timed, re-dated, then removed", async ({
+    page,
+  }) => {
+    const day = todayLocal();
+    const yesterday = shiftDateStr(day, -1);
+    // A serving of our own to select, written through the page's own add control.
+    const before = servingRows(day, "berries").length;
+    await page.goto("/nutrition");
+    await revealFoodGroup(page, "berries");
+    await hydratedClick(page, page.getByTestId("log-berries"));
+    await expect
+      .poll(() => servingRows(day, "berries").length)
+      .toBe(before + 1);
+    const servingId = servingRows(day, "berries").at(-1)!.id;
+    const doseLog = doseLogRow(seeded.doseIds[0])!;
+    expect(doseLog.date).toBe(day);
+
+    // ── Set time… over a MIXED selection ─────────────────────────────────────
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("ledger-select-toggle"));
+    await hydratedClick(
+      page,
+      page.getByTestId(`ledger-pick-serving-${servingId}`)
+    );
+    // The dose lives inside the collapsed composed row; open it to reach the member.
+    await pickDose(page, doseLog.id);
+    await expect(page.getByTestId("ledger-selection-count")).toHaveText(
+      "2 selected"
+    );
+
+    await hydratedClick(page, page.getByTestId("ledger-selection-set-time"));
+    // 08:15, deliberately BEFORE the run's pinned 13:mm local time: a stated instant
+    // later than now is refused by the same gate every other occurred_at write passes,
+    // so a batch that asked for the evening would be testing the refusal instead.
+    await page.getByTestId("ledger-selection-time-input").fill("08:15");
+    await hydratedClick(page, page.getByTestId("ledger-selection-time-apply"));
+
+    const stated = stampAt(day, "08:15");
+    await expect.poll(() => servingInstant(servingId)).not.toBeNull();
+    // BOTH TABLES. A batch that quietly covered only food would satisfy every
+    // serving assertion here.
+    expect(new Date(servingInstant(servingId)!).getTime()).toBe(
+      new Date(`${stated.replace(" ", "T")}Z`).getTime()
+    );
+    await expect.poll(() => doseLogRow(seeded.doseIds[0])!.at).not.toBeNull();
+    expect(new Date(doseLogRow(seeded.doseIds[0])!.at!).getTime()).toBe(
+      new Date(`${stated.replace(" ", "T")}Z`).getTime()
+    );
+
+    // ── Move to day… carries each row's own wall clock ───────────────────────
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("ledger-select-toggle"));
+    await hydratedClick(
+      page,
+      page.getByTestId(`ledger-pick-serving-${servingId}`)
+    );
+    await pickDose(page, doseLog.id);
+    await hydratedClick(page, page.getByTestId("ledger-selection-move-day"));
+    await page
+      .getByTestId("ledger-selection-day-select")
+      .selectOption({ label: "Yesterday" });
+    await hydratedClick(page, page.getByTestId("ledger-selection-day-apply"));
+
+    await expect
+      .poll(() => servingRows(yesterday, "berries").map((r) => r.id))
+      .toContain(servingId);
+    await expect
+      .poll(() => doseLogRow(seeded.doseIds[0])!.date)
+      .toBe(yesterday);
+    // The clock came WITH the day. A re-date that left 08:15 on the day before would
+    // put a stated instant on a row it no longer belongs to.
+    const movedTo = stampAt(yesterday, "08:15");
+    expect(new Date(servingInstant(servingId)!).getTime()).toBe(
+      new Date(`${movedTo.replace(" ", "T")}Z`).getTime()
+    );
+
+    // ── Delete asks once, for the batch ──────────────────────────────────────
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+    await hydratedClick(page, page.getByTestId("ledger-select-toggle"));
+    await hydratedClick(
+      page,
+      page.getByTestId(`ledger-pick-serving-${servingId}`)
+    );
+    await pickDose(page, doseLog.id);
+    await hydratedClick(page, page.getByTestId("ledger-selection-delete"));
+    const dialog = page.getByTestId("confirm-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Remove 2 rows?");
+    await dialog.getByRole("button", { name: "Remove" }).click();
+    // ONE question for the batch: the dialog is gone and no second one takes its place.
+    await expect(dialog).toHaveCount(0);
+
+    await expect
+      .poll(() => servingRows(yesterday, "berries").map((r) => r.id))
+      .not.toContain(servingId);
+    await expect.poll(() => doseLogRow(seeded.doseIds[0])).toBeUndefined();
+  });
+});
