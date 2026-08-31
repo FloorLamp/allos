@@ -198,7 +198,14 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // count would hide whose logs they were"): two members' doses on one day must be
     // TWO lines each naming its own subject, never one line counting both.
     await page.goto("/history?view=everyone");
-    const rollups = page.getByTestId("history-rollup");
+    // SCOPED TO THE DAY THE CLAIM IS ABOUT — "two members' doses ON ONE DAY must be
+    // two lines". Read page-wide it was also a claim about how many DAYS each member
+    // has anything on, which is the fixture's business and not this rule's: the marks
+    // guard below needs a day RO has and SELF does not, and that row alone moved the
+    // page-wide count to 2 while the per-day rule it stands for never changed.
+    const rollups = page
+      .locator(`#timeline-day-${HXEVERY_DAY}`)
+      .getByTestId("history-rollup");
     await expect(rollups.filter({ hasText: HXEVERY_SELF_PROFILE })).toHaveCount(
       1
     );
@@ -241,9 +248,12 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // and no dose neighbour. This is the exact deep link whose earlier unscoped menu
     // probe mistook for an ignored filter (#4237).
     await page.goto("/history?kind=symptom&view=everyone");
-    const symptomRows = page.locator(
-      '[data-testid="history-row"][data-history-kind="symptom"]'
-    );
+    // ON THE FIXTURE DAY, for the same reason the rollup counts above are: "one row
+    // per member, each naming its own subject" is a per-day claim, and RO also owns
+    // the neighbouring day the marks guard below needs.
+    const symptomRows = page
+      .locator(`#timeline-day-${HXEVERY_DAY}`)
+      .locator('[data-testid="history-row"][data-history-kind="symptom"]');
     await expect(symptomRows).toHaveCount(2);
     await expect(
       symptomRows
@@ -368,8 +378,9 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     const openOnFixtureMonth = async () => {
       await hydratedClick(page, page.getByTestId("history-calendar"));
       await expect(panel).toBeVisible();
-      await panel.getByLabel("Year").selectOption("2026");
-      await panel.getByLabel("Month").selectOption({ label: "Jun" });
+      // `exact`, because "Previous month" and "Next month" are labels too.
+      await panel.getByLabel("Year", { exact: true }).selectOption("2026");
+      await panel.getByLabel("Month", { exact: true }).selectOption({ label: "Jun" });
       await expect(markedDay("June 11, 2026")).toHaveCount(1);
     };
 
