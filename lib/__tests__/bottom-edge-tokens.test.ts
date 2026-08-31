@@ -25,7 +25,7 @@ import { stripComments } from "./strip-comments";
 // layers claim now, and the lift that clears the nav dock is a token rather than a
 // number a second surface could get subtly different.
 //
-// Four rules:
+// Five rules:
 //   1. Every bottom-edge surface consumes the shared tokens.
 //   2. Both base layers claim the edge.
 //   3. NOBODY outside components/overlay hand-writes the bottom-edge inset literal,
@@ -43,6 +43,13 @@ import { stripComments } from "./strip-comments";
 // was green throughout. Rule 5 is DERIVED — it needs nobody to remember a
 // filename — and it carries no allowlist: a surface it flags answers by claiming
 // or by composing a token, never by being written down as an exception.
+//
+// IT EXTENDS THE SCAN RULES 3 AND 4 ALREADY RUN; it does not add one. Those two
+// already walk every file under app/, components/ and lib/ — rule 5 widens what
+// that same walk is looking FOR, from two exact literals to the anchoring the
+// repository actually writes. The alternative considered and rejected was keeping
+// the map below as the only membership test, which is a filename somebody has to
+// remember, and a list of who is exempt is the shape this rule exists to retire.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components", "lib"];
