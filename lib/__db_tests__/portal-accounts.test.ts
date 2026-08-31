@@ -17,7 +17,7 @@ import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { POST as UPLOAD } from "@/app/api/documents/route";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
-import { createApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import { getImportLogDocuments } from "@/lib/queries";
 import {
   accountsForPortal,
@@ -133,7 +133,7 @@ function implicitAccountOf(portalId: number): number {
   return accountsForPortal(portalId).find((a) => a.implicit)!.id;
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   mineProfile = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('Portal Mine')").run()
       .lastInsertRowid
@@ -159,10 +159,11 @@ beforeAll(async () => {
     "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
   ).run(strangerLogin, strangersProfile);
 
-  memberToken = (await createApiToken(memberLogin, "tool", "upload:documents"))
-    .token;
-  strangerToken = (
-    await createApiToken(strangerLogin, "tool", "upload:documents")
+  memberToken = routeTestToken(memberLogin, "tool", "upload:documents").token;
+  strangerToken = routeTestToken(
+    strangerLogin,
+    "tool",
+    "upload:documents"
   ).token;
 
   const made = createPortal("Ochsner MyChart", "mychart");

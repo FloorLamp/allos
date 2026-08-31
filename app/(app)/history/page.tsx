@@ -662,7 +662,7 @@ export default async function HistoryPage(props: {
           count sat outside the tap target and nothing said the header was a door. The
           chevron sits IN the cluster — nothing is right-floated, per the spec's own
           words. (Phase 2 renders the day view; the link is already the real one.) */}
-      <h2 className="sticky top-0 z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+      <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
         {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
             its geometry belong to the primitive (lib/__tests__/destination-link-primitive
             .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here

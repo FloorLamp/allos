@@ -414,6 +414,17 @@ describe("actual atomic dashboard manifests", () => {
     });
   }
 
+  it("names the protein reading's tail moment without duplicating its Standing label", () => {
+    const protein = [...rowPresentations.values()]
+      .flatMap((presentations) => [...presentations.entries()])
+      .find(([candidateId]) => candidateId.startsWith("nutrition.protein:"));
+    expect(protein?.[1].moment).toEqual({
+      title: "Nutrition today",
+      href: "/nutrition",
+    });
+    expect(protein?.[1].label).toBeUndefined();
+  });
+
   it("exercises both manual and external engagement evidence", () => {
     const engagement = [...manifests.values()]
       .flat()

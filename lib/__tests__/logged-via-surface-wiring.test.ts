@@ -676,6 +676,12 @@ export function mountGraph(root: string): MountGraph {
       const target = via ? defining(via, j[1]) : undefined;
       if (target && target !== rel) mountedBy.get(target)!.add(rel);
     }
+    // A custom hook executes from its caller just as a component renders from JSX.
+    for (const h of src.matchAll(/\b(use[A-Z][A-Za-z0-9_]*)\s*\(/g)) {
+      const via = local.get(h[1]);
+      const target = via ? defining(via, h[1]) : undefined;
+      if (target && target !== rel) mountedBy.get(target)!.add(rel);
+    }
   }
   const graph = { files, mountedBy };
   if (root === REPO) repositoryMountGraph = graph;
@@ -1094,9 +1100,12 @@ export async function logThing(formData: FormData) {
     // The acceptance test in miniature: one sheet mounted from a LAYOUT, one control
     // inside it that stamps. With the wrapper the walk stops at the region; without
     // it the chain runs to the router and the control posts `page` from a sheet.
-    const control =
+    const shared =
       '"use client";\nimport { useLoggedViaStamp } from "@/components/LoggedViaSurface";\n' +
-      "export default function Bar() {\n  const s = useLoggedViaStamp();\n  return null;\n}\n";
+      "export function useShared() { return useLoggedViaStamp(); }\n";
+    const control =
+      '"use client";\nimport { useShared } from "@/components/Shared";\n' +
+      "export default function Bar() { useShared(); return null; }\n";
     const layout =
       'import Sheet from "@/components/Sheet";\nexport default () => <Sheet />;\n';
     const wrapped =
@@ -1111,10 +1120,11 @@ export async function logThing(formData: FormData) {
           "app/(app)/layout.tsx": layout,
           "components/Sheet.tsx": bare,
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([
-      "components/Bar.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
+      "components/Shared.ts <- components/Bar.tsx <- components/Sheet.tsx <- app/(app)/layout.tsx",
     ]);
     expect(
       stampersOutsideEveryRegion(
@@ -1122,6 +1132,7 @@ export async function logThing(formData: FormData) {
           "app/(app)/layout.tsx": layout,
           "components/Sheet.tsx": wrapped,
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([]);
@@ -1134,6 +1145,7 @@ export async function logThing(formData: FormData) {
           "app/(app)/x/page.tsx":
             'import Bar from "@/components/Bar";\nexport default () => <Bar />;\n',
           "components/Bar.tsx": control,
+          "components/Shared.ts": shared,
         })
       )
     ).toEqual([]);
