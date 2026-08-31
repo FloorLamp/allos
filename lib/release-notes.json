@@ -47,7 +47,7 @@
         },
         {
           "pr": 4381,
-          "title": "A time you set near midnight stays on the day you logged it",
+          "title": "An eating time set just before midnight is kept, not dropped",
           "kind": "fix",
           "category": "Nutrition",
           "issues": [4353]
@@ -353,7 +353,7 @@
         },
         {
           "pr": 4323,
-          "title": "Take all logs the doses a time of day still owes, and names each one",
+          "title": "Take all logs every dose a time of day still owes, in one tap",
           "kind": "feature",
           "category": "Nutrition",
           "issues": [3987]
