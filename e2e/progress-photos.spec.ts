@@ -744,6 +744,43 @@ test.describe("the ways into the add-media dialog (#3286)", () => {
   });
 });
 
+test("a phone with unreadable camera permission opens the chooser first", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_PHOTOS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      sessionStorage.setItem("camera-attempts", "0");
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: { query: async () => Promise.reject(new Error("unreadable")) },
+      });
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {
+          getUserMedia: () => {
+            sessionStorage.setItem("camera-attempts", "1");
+            return Promise.reject(new Error("camera must not lead"));
+          },
+        },
+      });
+    });
+    await page.goto("/progress");
+    await page.getByTestId("photo-capture-open").click();
+    await expect(page.getByTestId("media-input-choose")).toBeVisible();
+    await expect(page.getByTestId("media-input-camera")).toBeVisible();
+    expect(
+      await page.evaluate(() => sessionStorage.getItem("camera-attempts"))
+    ).toBe("0");
+  } finally {
+    await page.context().close();
+  }
+});
+
 // THE PHONE ORDERING (#3286 AC2). The camera still leads where a camera is the
 // plausible primary — that is the half the desktop fix must not have cost, and
 // it is asserted with a REAL granted camera rather than by reading a class.
