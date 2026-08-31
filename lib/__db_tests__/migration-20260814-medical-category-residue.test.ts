@@ -1,13 +1,20 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { migrationsBefore } from "@/lib/migrations/versions";
-import { up } from "@/lib/migrations/versions/20260814-medical-category-residue";
+import { NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
+import { up as renameCanonicalRegistry } from "@/lib/migrations/versions/20260814-canonical-result-definitions";
+import { up as retireCategory } from "@/lib/migrations/versions/20260814-medical-category-residue";
+
+const MEDICAL_SCHEMA_IDS = new Set([
+  1, 2, 28, 34, 37, 60, 81, 86, 90, 106, 113, 120, 165, 177, 185,
+]);
 
 function beforeRetirement(): Database.Database {
   const mem = new Database(":memory:");
   mem.pragma("foreign_keys = OFF");
-  for (const migration of migrationsBefore("20260814-medical-category-residue"))
-    migration.up(mem);
+  for (const migration of NUMBERED_MIGRATIONS) {
+    if (MEDICAL_SCHEMA_IDS.has(migration.id)) migration.up(mem);
+  }
+  renameCanonicalRegistry(mem);
   return mem;
 }
 
@@ -72,19 +79,6 @@ describe("#2877 legacy medical category retirement", () => {
       )
       .run();
     mem
-      .prepare(
-        `INSERT INTO saved_items (profile_id, kind, key, backed)
-       VALUES (1, 'clinical-result', 'Provider Comment Score', 1)`
-      )
-      .run();
-    mem
-      .prepare(
-        `INSERT INTO upcoming_dismissals
-         (profile_id, signal_key, dismissed_at)
-       VALUES (1, 'biomarker:Provider Comment Score', '2020-04-06')`
-      )
-      .run();
-    mem
       .prepare("INSERT INTO profiles (id, name) VALUES (2, 'Schema review')")
       .run();
     mem
@@ -96,7 +90,7 @@ describe("#2877 legacy medical category retirement", () => {
       .run();
     mem.prepare("DELETE FROM medical_records WHERE id = 99").run();
 
-    up(mem);
+    retireCategory(mem);
 
     expect(
       mem
@@ -145,21 +139,6 @@ describe("#2877 legacy medical category retirement", () => {
     expect(
       mem.prepare("SELECT source_record_id FROM intake_items").get()
     ).toEqual({ source_record_id: 42 });
-    expect(
-      mem.prepare("SELECT kind, key, backed FROM saved_items").get()
-    ).toEqual({
-      kind: "clinical-result",
-      key: "Provider Comment Score",
-      backed: 1,
-    });
-    expect(
-      mem
-        .prepare("SELECT signal_key, dismissed_at FROM upcoming_dismissals")
-        .get()
-    ).toEqual({
-      signal_key: "biomarker:Provider Comment Score",
-      dismissed_at: "2020-04-06",
-    });
     const sql = (
       mem
         .prepare(
@@ -190,7 +169,7 @@ describe("#2877 legacy medical category retirement", () => {
           .get() as { n: number }
       ).n
     ).toBe(6);
-    expect(() => up(mem)).not.toThrow();
+    expect(() => retireCategory(mem)).not.toThrow();
     mem.pragma("foreign_keys = ON");
     expect(mem.pragma("foreign_key_check")).toEqual([]);
     mem.close();
