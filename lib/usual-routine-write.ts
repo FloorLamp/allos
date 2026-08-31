@@ -247,7 +247,7 @@ export function logUsualRoutineCore(
   // WHICH WRITER (#4305). One question, asked once for the whole bundle, because the
   // day is the same for every dose in it. Inside the stale-tap window nothing moves.
   const dated = !isDoseDateAccepted(t, date);
-  const tz = dated ? getTimezone(profileId) : "";
+  const tz = getTimezone(profileId);
   const doses: UsualRoutineDoseResult[] = [];
   for (const doseId of namedDoseIds) {
     const offered = pending.get(doseId);
