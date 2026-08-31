@@ -3,7 +3,7 @@
 // Migration 016 shrinks the goals.status CHECK to ('active','achieved'), dropping the
 // never-written 'archived' value (archiving is the independent goals.archived
 // boolean). This pins:
-//   1. after the full schema apply, 'active' and 'achieved' are accepted,
+//   1. after migration 016, 'active' and 'achieved' are accepted,
 //   2. 'archived' and any other status are rejected (the CHECK was tightened, not
 //      dropped),
 //   3. a pre-migration row carrying the legacy status='archived' is folded into
@@ -14,16 +14,8 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migratedDb } from "./migrated-db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
 import { up as up016 } from "@/lib/migrations/versions/016-goal-status-drop-archived";
-
-process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
-
-// The booted end state (incl. 016) without replaying the chain per test — see
-// ./migrated-db.ts (#3471). The legacy-fold test below still replays, because its
-// question IS the chain.
-const bootedDb = migratedDb;
 
 function goalsSql(db: Database.Database): string {
   return (
@@ -36,36 +28,7 @@ function goalsSql(db: Database.Database): string {
 }
 
 describe("goals.status CHECK — migration 016", () => {
-  it("accepts every valid status ('active', 'achieved')", () => {
-    const db = bootedDb();
-    for (const status of ["active", "achieved"]) {
-      expect(() =>
-        db
-          .prepare(
-            "INSERT INTO goals (profile_id, title, status) VALUES (1, ?, ?)"
-          )
-          .run(`goal-${status}`, status)
-      ).not.toThrow();
-    }
-    db.close();
-  });
-
-  it("rejects the dropped 'archived' status and any unknown value", () => {
-    const db = bootedDb();
-    expect(goalsSql(db)).not.toContain("'archived'");
-    for (const bad of ["archived", "paused", ""]) {
-      expect(() =>
-        db
-          .prepare(
-            "INSERT INTO goals (profile_id, title, status) VALUES (1, 'g', ?)"
-          )
-          .run(bad)
-      ).toThrow(/CHECK constraint failed/);
-    }
-    db.close();
-  });
-
-  it("folds a legacy status='archived' row into (active, archived=1)", () => {
+  it("tightens the enum, folds legacy rows, and replays as a no-op", () => {
     // Simulate a pre-016 DB: baseline schema (old CHECK still admits 'archived'),
     // seed a legacy row, then apply ONLY migration 016's up().
     const db = new Database(":memory:");
@@ -91,15 +54,30 @@ describe("goals.status CHECK — migration 016", () => {
       .prepare("SELECT status, archived FROM goals WHERE id = 8")
       .get() as { status: string; archived: number };
     expect(untouched).toEqual({ status: "active", archived: 0 });
-    db.close();
-  });
 
-  it("replays as a pure no-op on an already-converged DB", () => {
-    const db = bootedDb();
-    const before = goalsSql(db);
+    for (const status of ["active", "achieved"]) {
+      expect(() =>
+        db
+          .prepare(
+            "INSERT INTO goals (profile_id, title, status) VALUES (1, ?, ?)"
+          )
+          .run(`goal-${status}`, status)
+      ).not.toThrow();
+    }
+    for (const bad of ["archived", "paused", ""]) {
+      expect(() =>
+        db
+          .prepare(
+            "INSERT INTO goals (profile_id, title, status) VALUES (1, 'g', ?)"
+          )
+          .run(bad)
+      ).toThrow(/CHECK constraint failed/);
+    }
+
     db.prepare(
       "INSERT INTO goals (id, profile_id, title, status) VALUES (42, 1, 'keep', 'achieved')"
     ).run();
+    const before = goalsSql(db);
 
     expect(() => up016(db)).not.toThrow(); // sentinel: CHECK no longer lists 'archived'
 

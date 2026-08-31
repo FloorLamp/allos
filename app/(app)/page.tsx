@@ -140,6 +140,7 @@ import {
 } from "@/lib/dashboard-standing";
 import {
   attentionCandidates,
+  attentionAheadDetail,
   careCandidates,
   dailyCandidates,
   engagementFromSource,
@@ -1234,11 +1235,21 @@ async function renderDashboard(
     // D3 · 2000 IU". What the due text no longer does is defer the WHY one tap to
     // /upcoming: the item's reason fragments come from the producer the digest reads,
     // so the push and the page cannot word one fact two ways.
+    //
+    // THE DUE TEXT IS `attentionAheadDetail` AND NOT `upcomingDueText` (#4468), which
+    // is the whole of that fix: a dose scheduled for a later slot says "from 11:00"
+    // so the row states WHY it is here rather than now. It is passed IN as the due
+    // text rather than wrapping the result, because the two are not interchangeable
+    // and taking either alone silently drops the other's behaviour. Safe because a
+    // dose is not a named-line domain, so its due text flows through this producer
+    // instead of being replaced by a cause fragment. Pinned on a real dose item in
+    // lib/__db_tests__/upcoming-aggregate.test.ts — neither issue's own tests can see
+    // the nesting.
     aheadPresentations.set(candidate.candidateId, {
       label: item.title,
       detail: upcomingRowQualifiers(
         item,
-        upcomingDueText(item, on, formatPrefs)
+        attentionAheadDetail(item, on, formatPrefs)
       ).join(" · "),
       href: item.href,
     });

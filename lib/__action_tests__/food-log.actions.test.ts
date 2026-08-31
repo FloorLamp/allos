@@ -920,4 +920,62 @@ describe("a forged day", () => {
     );
     expect(res.ok).toBe(true);
   });
+
+  // ── AND THROUGH THE CORRECTION DOOR (#4463) ─────────────────────────────────
+  //
+  // #4118 bounded the door that WRITES a serving and left open the one that REPAIRS
+  // it, which reaches the same table and the same rollups. The eating-time case above
+  // (#2227's describe) does post tomorrow and is refused — but by `judgeEatenAt`, on
+  // the TIME it also posts. Drop the time and there was nothing left: the action
+  // shape-checks `\d{4}-\d{2}-\d{2}` and the core checked only that the day was a real
+  // calendar date, so a day-only correction walked a serving into the next century.
+  //
+  // The bound is on the day the caller ASKS for, never on the row's own — see the core.
+  // A row already dated ahead must stay correctable back into range, and these two
+  // assert both directions of that.
+  it.each([
+    ["tomorrow", 1],
+    ["next year", 400],
+  ] as const)(
+    "refuses a day-only correction onto %s, and the row does not move",
+    async (why, ahead) => {
+      const profile = seed(`forged-correct-${ahead}`);
+      const day = shiftDateStr(today(profile.id), -1);
+      const eventId = addedEventId(
+        await logFoodServing(fd({ group_key: "berries", date: day }))
+      );
+      const res = await updateFoodLogEvent(
+        fd({
+          event_id: eventId,
+          date: shiftDateStr(today(profile.id), ahead),
+        })
+      );
+      expect(res, why).toEqual({ ok: false, error: "Enter a valid date." });
+      // BOTH SHAPES of the one fact: the event ledger row and the day counter it
+      // rides with. A bound that refused the action but had already moved the counter
+      // would satisfy the first assertion alone.
+      expect(
+        db
+          .prepare("SELECT date FROM food_log_events WHERE id = ?")
+          .get(eventId) as { date: string }
+      ).toEqual({ date: day });
+      expect(rows(profile.id)).toEqual([
+        { date: day, group_key: "berries", servings: 1 },
+      ]);
+    }
+  );
+
+  it("still corrects onto an arbitrary PAST day", async () => {
+    const profile = seed("forged-correct-past");
+    const day = shiftDateStr(today(profile.id), -1);
+    const eventId = addedEventId(
+      await logFoodServing(fd({ group_key: "berries", date: day }))
+    );
+    const old = shiftDateStr(today(profile.id), -400);
+    const res = await updateFoodLogEvent(fd({ event_id: eventId, date: old }));
+    expect(res.ok).toBe(true);
+    expect(rows(profile.id)).toEqual([
+      { date: old, group_key: "berries", servings: 1 },
+    ]);
+  });
 });

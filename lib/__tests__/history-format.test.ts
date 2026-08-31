@@ -12,6 +12,7 @@ import {
   resolveHistoryKind,
   BODY_METRIC_SLUGS,
   type HistoryRow,
+  type HistoryRowEdit,
 } from "@/lib/history-format";
 import { historyHref } from "@/lib/hrefs";
 import { BODY_METRIC_MEASURE_SLUG } from "@/lib/body-metric-measures";
@@ -69,6 +70,41 @@ describe("historyClock", () => {
       expect(out).not.toMatch(/AM|PM/);
       expect(out).not.toMatch(/\b(Ate|recorded|Logged)\b/);
     }
+  });
+});
+
+describe("the two grammars are types, not conventions (#4452)", () => {
+  // The COMPILE-TIME half, in the `canonical-unit-brands` tradition: each directive
+  // asserts in both directions — the line must error, and tsc reports an unused
+  // `@ts-expect-error` if the field ever widens back to a plain string. This is what
+  // makes "page-wide" checkable; before it, a gather that hand-wrote the right-looking
+  // value shipped green and no tier could see it.
+  it("refuses a hand-rolled clock and a hand-joined detail on a row", () => {
+    const rolled: Pick<HistoryRow, "clock" | "detail"> = {
+      // @ts-expect-error the drift this retires, written straight onto a row. Only
+      // `historyClock` produces a `HistoryClock`, and it has no upper-case meridiem.
+      clock: "2:03 PM",
+      // @ts-expect-error `detailSegment` owns the "·" and is the only door to a
+      // `HistoryDetail`, so a second separator cannot reach a row either.
+      detail: "3 g — Brand X",
+    };
+    expect(rolled.clock).toBe("2:03 PM");
+  });
+
+  it("leaves the correction form's raw HH:MM a plain string", () => {
+    // NO directive here ON PURPOSE — the converse, and the half that keeps the brand
+    // honest. `edit.clock` is the STORED wall clock the food form seeds and posts back
+    // to a write core, never a rendered value. Branding it would converge two things
+    // that are genuinely different and push a display string into the database.
+    const edit: Extract<HistoryRowEdit, { kind: "food" }> = {
+      kind: "food",
+      eventId: 1,
+      groupKey: "berries",
+      mealSlot: "Morning",
+      clock: "08:46",
+      clockKind: "stated",
+    };
+    expect(edit.clock).toBe("08:46");
   });
 });
 
@@ -200,11 +236,11 @@ function row(id: string, sortTime: string | null): HistoryRow {
     tz: "UTC",
     date: DAY,
     sortTime,
-    clock: sortTime,
+    clock: historyClock(sortTime, "stated", H24),
     clockKind: "stated",
     title: id,
     href: null,
-    detail: "",
+    detail: detailSegment([]),
     media: 0,
     edit: null,
   };

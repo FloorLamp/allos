@@ -413,7 +413,8 @@ export interface FoodEventPlacement {
 //   not-found      — no such event for this profile (a forged/stale id, or another
 //                    profile's row — the statement is id + profile_id scoped).
 //   unknown-group  — the requested group isn't in the catalog; nothing written.
-//   invalid-date   — the requested date isn't a real calendar date; nothing written.
+//   invalid-date   — the requested date isn't a real calendar date, or is in the
+//                    FUTURE (#4463); nothing written.
 //   invalid-eaten-at — the requested eating instant fails the judgeEatenAt rule against
 //                    the FINAL date of the patch (off the row's own day, or meaningfully
 //                    future); nothing written. Enforced HERE, at the auth-blind boundary,
@@ -516,7 +517,28 @@ export function updateFoodLogEventCore(
         : canonicalFoodGroup(patch.groupKey);
     if (nextGroup === null) return { kind: "unknown-group" as const };
     const nextDate = patch.date ?? row.date;
-    if (!isRealIsoDate(nextDate)) return { kind: "invalid-date" as const };
+    // THE CORRECTION PATH GETS THE LOG PATH'S NOT-FUTURE BOUND (#4463). #4118 closed
+    // this hole on `logFoodServingCore` and left its twin open one function down: the
+    // correction sheet's day bounds are markup (`FoodLogBar`), the action shape-checks
+    // `\d{4}-\d{2}-\d{2}` and nothing else, so a forged POST could move an existing
+    // serving into the next century — the same row, in the same table, in every rollup
+    // for ever, reached through the door that repairs history instead of the one that
+    // writes it. Measured on the #4118 branch: with the selection edit's own move bound
+    // removed, a batch move to TOMORROW applied the serving and was refused only for the
+    // dose, whose core already carried the rule.
+    //
+    // IT BOUNDS THE REQUESTED DAY, NOT THE FINAL ONE, and that is the load-bearing half.
+    // `nextDate` falls back to the row's stored date, so bounding it would make a row
+    // that is ALREADY dated ahead — a legacy row from before #4118, a restored capture —
+    // uncorrectable in every direction including back into range. A bound that traps the
+    // very rows it exists to prevent is worse than the hole. What the log core is asked
+    // to write is its `date`; what this one is asked to write is `patch.date`; bounding
+    // each caller's own ask is the same rule, spelled for what each is given.
+    if (
+      !isRealIsoDate(nextDate) ||
+      (patch.date !== undefined && patch.date > today(profileId))
+    )
+      return { kind: "invalid-date" as const };
     const nextSlot = patch.mealSlot ?? row.meal_slot;
 
     // A STATED instant must satisfy the same judgeEatenAt rule every other occurred_at

@@ -319,6 +319,24 @@ function clearDoseLogs(doseId: number): void {
   }
 }
 
+function setShellDoseAsNeeded(asNeeded: boolean): void {
+  const db = openDb();
+  try {
+    db.prepare(
+      "UPDATE intake_items SET kind = ?, obligation = ? WHERE id = (SELECT item_id FROM intake_item_doses WHERE id = ?)"
+    ).run(
+      asNeeded ? "medication" : "supplement",
+      asNeeded ? "may" : "should",
+      shellDoseId()
+    );
+    db.prepare(
+      "DELETE FROM intake_item_logs WHERE item_id = (SELECT item_id FROM intake_item_doses WHERE id = ?)"
+    ).run(shellDoseId());
+  } finally {
+    db.close();
+  }
+}
+
 // Flip the seeded dose's `retired` flag behind the app's back — "the schedule was
 // edited on another device while your sheet was open". Deliberately chosen over
 // writing an intake_item_logs row for a computed date: the suite runs on a FROZEN
@@ -610,6 +628,38 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     clearDoseLogs(doseId);
     setDoseRetired(doseId, false);
     await page.context().close();
+  }
+});
+
+test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
+  browser,
+}) => {
+  const page = await signIn(browser);
+  try {
+    setShellDoseAsNeeded(true);
+    await page.goto("/");
+    const overlay = await openQuickEntry(page, "log-dose");
+    const prn = overlay.getByTestId("quick-log-prn-item");
+    await expect(prn).toContainText(SHELL_DOSE_ITEM);
+    await expect(overlay.getByTestId("quick-entry-dose-list")).toHaveCount(0);
+    await expect(overlay.getByTestId("quick-entry-dose-empty")).toHaveCount(0);
+
+    await settledClick(page, prn.getByTestId("prn-log-now"));
+    const db = openDb();
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM intake_item_logs WHERE item_id = (SELECT item_id FROM intake_item_doses WHERE id = ?) AND status = 'taken'"
+          )
+          .get(shellDoseId())
+      ).toEqual({ count: 1 });
+    } finally {
+      db.close();
+    }
+  } finally {
+    await page.context().close();
+    setShellDoseAsNeeded(false);
   }
 });
 

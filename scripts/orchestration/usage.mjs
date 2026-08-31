@@ -14,11 +14,22 @@
 // shell scripts carry an equivalent inline sed guard.
 
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** On -h/--help: print the calling script's leading comment block, exit 0. */
+// AND ONLY FOR THE SCRIPT THAT WAS RUN (#4460). This read `argv` alone, so an
+// IMPORTED module answered its importer's `--help` — the first module-scope
+// guard to run printed ITS header and exited 0. That is why the dispatch
+// ledger grew a third parser instead of an import.
+
+/** True when `selfUrl`'s module is the script the caller actually ran. */
+export const isMain = (argv, selfUrl) =>
+  Boolean(argv[1]) && path.resolve(argv[1]) === fileURLToPath(selfUrl);
+
+/** On -h/--help for THIS script: print its leading comment block, exit 0. */
 export function helpGuard(argv, selfUrl) {
   if (!argv.includes("--help") && !argv.includes("-h")) return;
+  if (!isMain(argv, selfUrl)) return;
   const lines = fs.readFileSync(fileURLToPath(selfUrl), "utf8").split("\n");
   const out = [];
   for (const line of lines) {

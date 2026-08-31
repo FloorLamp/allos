@@ -591,18 +591,7 @@ if [ -s "$ROSTER" ]; then sed 's/^/  /' "$ROSTER"; else echo "  (empty)"; fi
 LEDGER="$STATE_DIR/allos-dispatch-ledger.jsonl"
 if [ -s "$ROSTER" ] && [ -s "$LEDGER" ]; then
   roster_live=$(grep -E '^Cluster ' "$ROSTER" 2>/dev/null | awk '{print $3}' | sort -u)
-  ledger_live=$(python3 -c '
-import json,sys
-state={}
-for line in open(sys.argv[1]):
-    line=line.strip()
-    if not line: continue
-    try: e=json.loads(line)
-    except Exception: continue
-    b=e.get("branch")
-    if b: state[b]=e.get("status")
-print("\n".join(sorted(b for b,st in state.items() if st=="active")))
-' "$LEDGER" 2>/dev/null)
+  ledger_live=$(node "$(dirname "$0")/orchestration/ledger.mjs" branches "$LEDGER" 2>/dev/null)
   only_roster=$(comm -23 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
   only_ledger=$(comm -13 <(echo "$roster_live") <(echo "$ledger_live") | grep -v '^$' || true)
   if [ -n "$only_roster" ] || [ -n "$only_ledger" ]; then
@@ -630,18 +619,7 @@ echo
 # that is actually full is allowed to say so.
 lanes=$(grep -cE '^Cluster ' "$ROSTER" 2>/dev/null || true)
 lanes=${lanes:-0}
-e2e_lanes=$(python3 -c '
-import json,sys
-state={}
-for line in open(sys.argv[1]):
-    line=line.strip()
-    if not line: continue
-    try: e=json.loads(line)
-    except Exception: continue
-    b=e.get("branch")
-    if b: state[b]=e
-print(sum(1 for e in state.values() if e.get("status")=="active" and e.get("e2e")))
-' "$LEDGER" 2>/dev/null || echo "?")
+e2e_lanes=$(node "$(dirname "$0")/orchestration/ledger.mjs" e2e-count "$LEDGER" 2>/dev/null || echo "?")
 if [ "$e2e_lanes" = "?" ]; then other_lanes="?"; else other_lanes=$((lanes - e2e_lanes)); fi
 
 # THE QUEUE IS WRITTEN DOWN (owner, 2026-08-31): candidates forgotten one at a

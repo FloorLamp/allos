@@ -46,6 +46,12 @@ export function doseSortKey(entry: DoseDayEntry): string {
   return `${bucket}${obligation}${SEP}${stack}${SEP}${entry.name}`;
 }
 
+export function doseBucketFromSortHint(
+  sortHint: string | undefined
+): (typeof TIME_BUCKETS)[number] | null {
+  return TIME_BUCKETS[Number(sortHint?.[0])] ?? null;
+}
+
 // Plain code-unit string compare (NOT localeCompare, which treats the 0x1F
 // separator as ignorable and would collapse the field boundaries). Shared by the
 // Upcoming/attention tiebreaks so their sortHint ordering matches doseSortKey.
