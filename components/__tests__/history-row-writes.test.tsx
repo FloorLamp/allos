@@ -247,7 +247,7 @@ it("renders a feed subject home as a link and a nav-only title as plain text", (
     }),
     row({ id: "feed:injury:1", kind: "injury", title: "Sore ankle" }),
   ]);
-  expect(screen.getByText("Run").tagName).toBe("A");
+  expect(screen.getByText("Run").closest("a")).not.toBeNull();
   expect(screen.getByText("Sore ankle").tagName).toBe("SPAN");
 });
 
