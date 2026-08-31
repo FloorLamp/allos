@@ -296,11 +296,17 @@ node -e '
       .filter(i=>!held.has(i.number)&&!inflight.has(i.number))
       .filter(i=>!i.labels.some(l=>heldLabels.has(l.name)))
       .sort((a,b)=>rank(a)-rank(b)||b.number-a.number);
+    // THE BANNER GOES ABOVE THE LIST, not in the `(excluded: …)` line below it.
+    // The reader skimming NEXT UP for something to dispatch is the only reader
+    // this warning is for, and is exactly the one who does not read the footer.
+    // Unreadable roster means running lanes are listed as pickable, and the
+    // consequence is one issue dispatched twice into two worktrees.
+    if(!inflightKnown)
+      console.log("\n  !! IN FLIGHT UNKNOWN — the ledger could not be read, so the list below MAY NAME WORK ALREADY IN FLIGHT.\n     This is not a clear queue. Resolve the ledger before dispatching anything below.");
     console.log(`\n  NEXT UP (${Math.min(15,pickable.length)} of ${pickable.length} pickable) — dispatch order: P0, P1, P2 bugs, P2 rest, P3`);
     for(const i of pickable.slice(0,15)) console.log(line(i));
     const why=[];
-    if(!inflightKnown) why.push("IN FLIGHT UNKNOWN: ledger unreadable, running lanes are NOT excluded below");
-    else if(inflight.size) why.push(`${inflight.size} in flight`);
+    if(inflightKnown && inflight.size) why.push(`${inflight.size} in flight`);
     if(held.size) why.push(`${held.size} owner-held`);
     if(heldLabels.size) why.push(`held domains: ${[...heldLabels].join(", ")}`);
     if(why.length) console.log(`  (excluded: ${why.join(", ")}, plus needs-human and parked)`);

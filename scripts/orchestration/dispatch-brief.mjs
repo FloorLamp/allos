@@ -594,6 +594,22 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- A NUMBER IN PROSE MUST COME FROM A COMMAND YOU RAN, AND THE COMMAND GOES BESIDE
+  IT. A figure recalled from your own reasoning looks EXACTLY like one that came off
+  a shell, and prose carries no test — so a specific number in a comment, a commit
+  message or a PR body reads as though something checked it. Nothing did. Measured
+  2026-08-31, two lanes, both already pushed: a comment read "deleted in #4515 after
+  two years of rendering nowhere" — THIS CLONE IS SHALLOW, history begins two days
+  ago (\`git rev-parse --is-shallow-repository\` is true, 488 commits), so no command
+  in this container could produce "two years"; and a spec comment AND a PR body both
+  justified measuring painted pixels rather than boxes with "the nearest clipping
+  ancestor is 147px narrower than the screen", a figure the lane could not reproduce
+  in any configuration — the real values are 93 and 141, and 147 looks like a garbled
+  141. Both were plausible, both were durable, and one was already load-bearing for a
+  design argument. "Two years" is the worst shape of all, because it sounds like
+  institutional memory rather than a measurement. So: print the command next to the
+  figure, and if you cannot name one, WRITE NO NUMBER — a reader has no way to tell
+  the two kinds apart, and the next lane will quote yours as established fact.
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
   container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
   \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
@@ -840,6 +856,16 @@ ${MIGRATION_LINES}
   So: scope every content check to the files you changed, and expect a deliberate
   quotation of the thing you removed. Both directions of this failure are the same
   bug — a check whose scope is wider or narrower than the question being asked.
+  AND A WIDE RESULT LOOKS LIKE A FINDING, which is why this one survives review.
+  Measured 2026-08-31, twice in one session: a lane hunting stale references ran
+  \`git grep -i "chips"\` over e2e/, got ~200 hits and learned NOTHING, because
+  "chips" is ubiquitous AND CORRECT here — fact chips, filter chips, subject chips,
+  range chips; the narrow \`git grep -niE "chart[- ]jump[- ]+chip"\` answered it in
+  one line. The same hour, another lane checked its gate logs for a sibling's output
+  with a \`gates3-*.log\` glob, got five foreign worktree names back, and had found
+  nothing at all — those were five OTHER lanes' correctly-named logs, and its own two
+  files were clean. Both wide results were alarming and both were empty. When a check
+  comes back loud, RE-ASK IT NARROWLY before you believe it or act on it.
   AND NEVER TRUST A BARE \`grep -c\`. A count is a claim stripped of its context, and
   two more ways it lies were measured on #3391 within one verification pass:
   a CASE mismatch (the phrase was there in screaming caps; the grep was lowercase, so

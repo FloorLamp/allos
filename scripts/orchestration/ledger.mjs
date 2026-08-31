@@ -22,6 +22,13 @@
 // by `dispatch-brief.mjs update`, and never yet fired. The `issues` mode below
 // exists so that caller can ask instead of re-implementing (#4473).
 //
+// `issues` answers WHICH issues are in flight, not WHO holds one, because no
+// caller has needed the second yet. When one does: that question is the
+// issue-shaped twin of `dispatch-brief.mjs claims <path>`, and laneIssues()
+// already returns the number -> branch map it needs. Follow that vocabulary
+// rather than inventing a third — a mode designed by the thing that needs it
+// beats a general one designed by nobody.
+//
 // Usage:
 //   node scripts/orchestration/ledger.mjs branches [file]   # active branches
 //   node scripts/orchestration/ledger.mjs e2e-count [file]  # active e2e lanes

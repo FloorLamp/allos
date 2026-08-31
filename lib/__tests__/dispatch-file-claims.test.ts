@@ -242,6 +242,16 @@ describe("the brief a lane receives", () => {
     ["WENT STALE THE MOMENT IT WAS WRITTEN", "the list is not to be trusted"],
     ["dispatch-brief.mjs claims <path>", "and here is what to run instead"],
     ["CANNOT TELL, not clear", "with the answer that is not an answer named"],
+    // A NUMBER IN PROSE, same reason this file exists: a rule that reaches lanes
+    // only because someone pasted it into a brief by hand is not a control. Four
+    // such bullets were in the brief this lane was handed and in NO template —
+    // found by diffing the handed brief against `dispatch-brief.mjs brief`.
+    ["A NUMBER IN PROSE MUST COME FROM A COMMAND YOU RAN", "the rule"],
+    [
+      "THIS CLONE IS SHALLOW",
+      "with the receipt that cannot be recalled instead",
+    ],
+    ["RE-ASK IT NARROWLY", "and the same lesson pointed at greps"],
   ])("says %s (%s)", (fragment, _why) => {
     expect(printed).toContain(fragment);
   });
