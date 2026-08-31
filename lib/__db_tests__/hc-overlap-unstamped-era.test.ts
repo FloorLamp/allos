@@ -197,7 +197,7 @@ describe("metric_samples.id is monotonic, which is what makes the id half exact"
     return mem;
   }
 
-  it("declares INTEGER PRIMARY KEY AUTOINCREMENT and keeps a sqlite_sequence row", () => {
+  it("declares AUTOINCREMENT, keeps its sequence, and never reuses deleted ids", () => {
     const mem = migrated();
     try {
       const ddl = (
@@ -213,14 +213,13 @@ describe("metric_samples.id is monotonic, which is what makes the id half exact"
         "id INTEGER PRIMARY KEY AUTOINCREMENT"
       );
       mem.prepare("INSERT INTO profiles (name) VALUES ('SEQ')").run();
-      mem
-        .prepare(
-          `INSERT INTO metric_samples
-             (profile_id, source, metric, date, started_at, ended_at, value)
-           VALUES (1, 'health-connect', 'steps', '2026-08-20',
-                   '2026-08-20T04:00:00Z', '2026-08-20T20:00:00Z', 1)`
-        )
-        .run();
+      const ins = mem.prepare(
+        `INSERT INTO metric_samples
+           (profile_id, source, metric, date, started_at, ended_at, value)
+         VALUES (1, 'health-connect', 'steps', '2026-08-20',
+                 '2026-08-20T04:00:00Z', '2026-08-20T20:00:00Z', ?)`
+      );
+      const first = Number(ins.run(1).lastInsertRowid);
       // AUTOINCREMENT is what puts the table in sqlite_sequence at all.
       expect(
         mem
@@ -229,24 +228,8 @@ describe("metric_samples.id is monotonic, which is what makes the id half exact"
           )
           .get()
       ).toBeTruthy();
-    } finally {
-      mem.close();
-    }
-  });
-
-  it("never re-uses the id of the highest row after it is deleted", () => {
-    // The property, asserted as behaviour rather than as spelling. Without
-    // AUTOINCREMENT the second insert lands back on the id the first one had.
-    const mem = migrated();
-    try {
-      mem.prepare("INSERT INTO profiles (name) VALUES ('SEQ')").run();
-      const ins = mem.prepare(
-        `INSERT INTO metric_samples
-           (profile_id, source, metric, date, started_at, ended_at, value)
-         VALUES (1, 'health-connect', 'steps', '2026-08-20',
-                 '2026-08-20T04:00:00Z', '2026-08-20T20:00:00Z', ?)`
-      );
-      const first = Number(ins.run(1).lastInsertRowid);
+      // The property, asserted as behaviour rather than as spelling. Without
+      // AUTOINCREMENT the second insert lands back on the id the first one had.
       mem.prepare("DELETE FROM metric_samples WHERE id = ?").run(first);
       expect(Number(ins.run(2).lastInsertRowid)).toBeGreaterThan(first);
       // And after emptying the table entirely — the case that would otherwise reset the
