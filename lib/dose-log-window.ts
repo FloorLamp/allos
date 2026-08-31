@@ -4,23 +4,27 @@
 // user-suppliable intake time).
 
 import { daysBetweenDateStr, dateStrInTz, shiftDateStr } from "./date";
-import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
+import { TAP_REACH, isWithinTapReach } from "./log-manifest";
 
 // A late/retro dose-log DATE is accepted only within a small window of the profile's
-// today (#614). The size and the reason it is that size — the coupling to
-// `MESSAGE_POINTER_RETENTION_DAYS`, which is why raising it would strand live Telegram
-// keyboards — are DECLARED in the one logging manifest (#4425) and read from it here,
-// so the window can no longer be enforced at one number and offered at another.
-export const DOSE_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.dose.window.back;
+// today (#614) — and since the 2026-08-31 ruling this is filed as what it always was:
+// the reach of the TAP, not a property of the dose domain. The dose deep door
+// (`logHistoricalDose`) reaches any past day and always did. The size and the
+// pointer-retention coupling that fixes it are declared in `TAP_REACH` (#4425).
+export const DOSE_LOG_DATE_WINDOW_DAYS = TAP_REACH["dose-status"].back;
 
-// Is `date` (YYYY-MM-DD) inside the accepted window around the profile's today? The
-// ONE realization of that rule (#1427): the scheduled write cores (markDoseTaken /
-// markDoseSkipped) gate on it, and the offline replay consults the SAME predicate to
-// tell an out-of-window entry apart from a deleted dose when it explains the refusal
-// — one computation, never a second copy that could drift. Pure: `todayStr` is the
-// caller's already-resolved profile today.
+// Is `date` inside the accepted window around the profile's today? The ONE realization
+// of that rule (#1427): the scheduled write cores (markDoseTaken / markDoseSkipped)
+// gate on it, and the offline replay consults the SAME predicate to tell an
+// out-of-window entry apart from a deleted dose when it explains the refusal — one
+// computation, never a second copy that could drift. Pure: `todayStr` is the caller's
+// already-resolved profile today.
+//
+// `isRealIsoDate` first (inside `isWithinTapReach`), because `daysBetweenDateStr` runs
+// `Date.parse`, which rolls `2026-02-30` forward to March 2 and answers a difference for
+// a day that does not exist. This predicate accepted exactly that until #4425.
 export function isDoseDateAccepted(todayStr: string, date: string): boolean {
-  return isLogDateAccepted("dose", todayStr, date);
+  return isWithinTapReach("dose-status", todayStr, date);
 }
 
 // The profile-local days a recent-past logging surface may OFFER, today first

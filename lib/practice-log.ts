@@ -8,8 +8,8 @@
 import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
-import { daysBetweenDateStr, isRealIsoDate, zonedDateParts } from "./date";
-import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
+import { zonedDateParts } from "./date";
+import { TAP_REACH, isPastWriteAccepted } from "./log-manifest";
 import { sqlNow } from "./clock";
 import {
   burstFrom,
@@ -31,29 +31,21 @@ import {
   getPracticeSpellings,
 } from "./queries/wellness";
 
-// A far-off (forged) date can't land a misdated session row (the #614 dose-log posture);
-// a legitimate late correction within the window still logs to its own day. The size
-// and the argument for a window fifteen times the dose one are DECLARED in the logging
-// manifest (#4425) and read from it here.
-export const PRACTICE_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.practice.window.back;
+// THE LAUNCHER'S REACH, not the domain's (owner ruling 2026-08-31). This was a ±30
+// bound inside the write cores; it is now what the wellness page's log launcher
+// OFFERS — its `minDate` — while the cores below take any real past day like every
+// other domain's. Declared in `TAP_REACH` (#4425) and read from it here, so the offer
+// and the number can never disagree.
+export const PRACTICE_LOG_DATE_WINDOW_DAYS = TAP_REACH["practice-session"].back;
 
+// The shared invariant, wearing the practice name: any real past day, never the
+// future. It replaces BOTH the old ±30 log bound and the edit bound that accepted a
+// date near the row being corrected — and that second one is why this is a tightening
+// as well as an opening: "within 30 days of the current row" admitted a date up to
+// thirty days in the FUTURE for an old imported session, which "never the future" now
+// refuses. An imported session stays correctable in place, because its own day is past.
 function isPracticeDateAccepted(profileId: number, date: string): boolean {
-  return isLogDateAccepted("practice", today(profileId), date);
-}
-
-// An imported historical session may be far outside the new-log window but still
-// needs ordinary correction. Accept a date near that existing row as well as the
-// normal today-relative window; this keeps forged edits bounded without making an
-// old session impossible to save even when its date is unchanged.
-function isPracticeEditDateAccepted(
-  profileId: number,
-  currentDate: string,
-  nextDate: string
-): boolean {
-  if (!isRealIsoDate(nextDate)) return false;
-  if (isPracticeDateAccepted(profileId, nextDate)) return true;
-  const diff = daysBetweenDateStr(currentDate, nextDate);
-  return diff != null && Math.abs(diff) <= PRACTICE_LOG_DATE_WINDOW_DAYS;
+  return isPastWriteAccepted(today(profileId), date);
 }
 
 function inClause(values: readonly string[]): string {
@@ -232,7 +224,7 @@ export function updatePracticeSession(
 ): PracticeSessionMutationOutcome {
   const current = getPracticeSession(profileId, id);
   if (!current) return { kind: "not-found" };
-  if (!isPracticeEditDateAccepted(profileId, current.date, input.date))
+  if (!isPracticeDateAccepted(profileId, input.date))
     return { kind: "invalid-date" };
   const startTime =
     input.startTime && /^\d{2}:\d{2}$/.test(input.startTime)

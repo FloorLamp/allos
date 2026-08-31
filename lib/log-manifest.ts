@@ -8,6 +8,21 @@
 // SHAPE-CHECKED its stated time where body metrics JUDGE theirs. Both are fixed as
 // this file's first tenants.
 //
+// ── WINDOWS BIND OFFERS, NOT DOMAINS (owner ruling, 2026-08-31) ──────────────────
+//
+// Asked why domains bounded past writes at all, the answer was two reasons wearing
+// five costumes: STALE-TAP protection (a one-tap must not resolve against a day its
+// offer no longer describes — the dose ±2 IS Telegram pointer retention) and
+// TEMPLATE-write honesty (the usual's 6-day reach plus its evidence guard). Neither
+// is about the past itself, and the audited dose deep door already reached any day.
+//
+// So there is no per-domain window column here. There is ONE invariant every domain
+// core holds — `isPastWriteAccepted`: any real past day, never the future — and a
+// per-AFFORDANCE reach record for the taps and offers that genuinely are bounded. A
+// DATED surface (the #4424 domain form with date context, `/history`'s day view)
+// reaches any past day, audited where the domain audits; `logHistoricalDose` is the
+// model. Mood's ±2 and practice's 30 survive as the reach of their tap surfaces.
+//
 // ── WHY A RECORD AND NOT A SCAN (owner ruling, #4458: types over guards) ─────────
 //
 //   • `Record<LogDomain, LogDomainManifest>` — adding a domain fails `tsc` until
@@ -34,6 +49,11 @@ import type { PaletteActionId } from "./palette-actions";
 import type { TelegramVerb } from "./notifications/telegram-commands";
 import type { HistoryLogKind } from "./history-format";
 import type { FlowKind } from "./offline/queue";
+import type { OneTapAffordance } from "./one-tap";
+// The usual offer's reach is a SHIPPED constant, imported rather than restated so the
+// declaration and the offer cannot drift. lib/food-regularity.ts is pure (date +
+// food-slot only), so this keeps the module dependency-free.
+import { USUAL_BACKFILL_WINDOW_DAYS } from "./food-regularity";
 
 // ── The axis ─────────────────────────────────────────────────────────────────
 //
@@ -101,24 +121,25 @@ export type Declared<Via> =
       readonly ref: IssueRef;
     };
 
-// How far a domain's dated write core reaches, in profile-LOCAL days either side of
-// the profile's today. `"unbounded"` is a real answer, not a gap — the `/history`
-// door's arbitrary past is deliberate for the ledger domains — and it is spelled
-// out so a reader can tell it from a domain nobody bounded.
-export type DayReach = number | "unbounded";
-
-// The window, with the oddity arm carrying its argument. `ordinary` means the size
-// speaks for itself; anything a reader would ask "why that number?" about takes
-// `argued` and answers in place. Doses' ±2 is the reason this arm exists: it is
-// COUPLED to `MESSAGE_POINTER_RETENTION_DAYS`, and flattening it to a bare 2 would
-// lose the constraint that keeps the two moving together.
-export type BackfillWindow = {
-  readonly back: DayReach;
-  readonly forward: DayReach;
-} & (
-  | { readonly kind: "ordinary" }
-  | { readonly kind: "argued"; readonly reason: string; readonly ref: IssueRef }
-);
+// How far a TAP or an OFFER reaches. Not a domain property — the same domain is
+// reachable from a bounded tap and from a dated form, and only the tap is bounded.
+//
+//   today   — the affordance states no day at all; its action stamps the profile's
+//             today, so there is no reach to bound.
+//   dated   — the surface carries a date and the tap writes to it. Any real past day,
+//             bounded only by the shared core invariant below.
+//   bounded — a real window, with the argument for its size required by the type.
+//             This is where the five hand-declared "domain windows" actually lived.
+export type TapReach =
+  | { readonly kind: "today" }
+  | { readonly kind: "dated" }
+  | {
+      readonly kind: "bounded";
+      readonly back: number;
+      readonly forward: number;
+      readonly reason: string;
+      readonly ref: IssueRef;
+    };
 
 // What the domain does with a time somebody STATES ("Happened earlier?", a
 // backfilled reading's clock). `judged` runs the one acceptance gate
@@ -160,7 +181,6 @@ export type WriteConventions =
     };
 
 export interface LogDomainManifest {
-  readonly window: BackfillWindow;
   readonly statedTime: StatedTimePolicy;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
@@ -199,14 +219,6 @@ export interface LogDomainManifest {
 
 export const LOG_MANIFEST = {
   food: {
-    window: {
-      kind: "argued",
-      back: "unbounded",
-      forward: 0,
-      reason:
-        "NOT-FUTURE IS THE WHOLE RULE (#4118). The `/history` door's arbitrary past is deliberate — a ledger day is correctable however old — so the past half is genuinely unbounded, and the forward half is what `logFoodServingCore` orders into the core because markup was the only thing between a forged POST and a serving filed in the next century.",
-      ref: "#4118",
-    },
     statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: { kind: "covered", flow: "food" },
     surfaces: {
@@ -234,14 +246,6 @@ export const LOG_MANIFEST = {
   },
 
   dose: {
-    window: {
-      kind: "argued",
-      back: 2,
-      forward: 2,
-      reason:
-        "COUPLED TO `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts, currently 3) and stated rather than flattened: since #2018 a Telegram dose keyboard stays live for exactly this window and the reconcile sweep can only close it while its pointer still exists, so raising this past retention would strand live keyboards permanently. The two move together, window < retention. The band is symmetric because a late after-midnight tap must still land on the reminder's own day.",
-      ref: "#614",
-    },
     statedTime: { kind: "judged", seam: "dose-guards" },
     offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
     surfaces: {
@@ -269,14 +273,6 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
-    window: {
-      kind: "argued",
-      back: 30,
-      forward: 30,
-      reason:
-        "Fifteen times the dose window and symmetric, so it does not pass for a typo. A practice is logged in arrears far more often than a dose — a reader reconciling a month of sittings is the ordinary case — and there is no live keyboard to strand, so the #614 posture (a far-off forged date cannot land a misdated row) is kept at a size the domain actually uses. `isPracticeEditDateAccepted` additionally admits a date near an IMPORTED session's own, so an old row stays correctable.",
-      ref: "#2908",
-    },
     statedTime: {
       kind: "none",
       reason:
@@ -311,7 +307,6 @@ export const LOG_MANIFEST = {
   mood: {
     // Ordinary: the same two days as a dose, past-only, and nothing about it needs
     // arguing beyond the past-only shape the type already states.
-    window: { kind: "ordinary", back: 2, forward: 0 },
     statedTime: {
       kind: "none",
       reason:
@@ -355,7 +350,6 @@ export const LOG_MANIFEST = {
     // — and `logSymptomCore` bounded nothing. Matching mood is the ruling, and mood
     // is the honest sibling: a subjective daily self-report, backfilled a day or two
     // late, correctable afterwards from the row rather than re-logged.
-    window: { kind: "ordinary", back: 2, forward: 0 },
     statedTime: {
       kind: "none",
       reason:
@@ -397,14 +391,6 @@ export const LOG_MANIFEST = {
   },
 
   stool: {
-    window: {
-      kind: "argued",
-      back: 0,
-      forward: 0,
-      reason:
-        "TODAY-ONLY, and by construction rather than by a guard: `logStoolForm` stamps `today(profile.id)` and the form has no date field at all, so there is no day for a window to bound. The domain has one write mount and no correction anywhere — #4433 owns the backfill and correction legs, and widening the reach is that issue's decision, not this manifest's.",
-      ref: "#4433",
-    },
     // THE SECOND TENANT (#4425). Until this entry `logBristolStool` ran only
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
@@ -457,14 +443,6 @@ export const LOG_MANIFEST = {
   },
 
   substance: {
-    window: {
-      kind: "argued",
-      back: "unbounded",
-      forward: 0,
-      reason:
-        "The food ledger's sibling shape, spelled the same way in the same words (`addSubstanceDailyTotalCore` is where `logFoodServingCore` copied its bound from): an arbitrary past day is correctable, the future is not. STATED HONESTLY: only the HISTORY core carries it — `logSubstanceUnitCore`, the one-tap counter, re-checks no date and takes whatever its action resolved, which is a gap this manifest names rather than closes.",
-      ref: "#4118",
-    },
     statedTime: {
       kind: "none",
       reason:
@@ -516,14 +494,6 @@ export const LOG_MANIFEST = {
   },
 
   body: {
-    window: {
-      kind: "argued",
-      back: "unbounded",
-      forward: "unbounded",
-      reason:
-        "STATED AS IT IS, not as it ought to be: the body-metric cores bound the DATE with `isRealIsoDate` and nothing else, so a reading may be filed on any real day in either direction. What is judged is the stated INSTANT, which cannot be future and must fall on the row's own day — so a forward date is reachable only by a POST, never by the door, whose `maxDate` is today. Whether the core should carry the door's bound is a decision about the body write contract and belongs to #4424's body leg.",
-      ref: "#4424",
-    },
     statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: {
       kind: "covered",
@@ -558,29 +528,132 @@ export const LOG_MANIFEST = {
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
 
-// ── The one window predicate ─────────────────────────────────────────────────
+// ── The shared invariant every domain core holds ─────────────────────────────
 
-// Is `date` inside `domain`'s declared backfill window, given the profile's already-
-// resolved `todayStr`? THE one realization of every domain's window rule — the dose,
-// mood and practice predicates are this function wearing their names, so a window
-// can no longer be enforced one way in a core and offered another way in a picker.
+// Is `date` a day a domain core may write? ANY REAL PAST DAY, NEVER THE FUTURE —
+// the whole rule, for every domain, per the owner ruling above. Pure: `todayStr` is
+// the caller's already-resolved profile today, so this stays clock-free and the
+// profile-local day is the caller's to establish.
 //
-// Pure: both arguments are YYYY-MM-DD and the caller owns the clock.
+// `isRealIsoDate` FIRST, and it is load-bearing rather than defensive: `Date.parse`
+// silently ROLLS `2026-02-30` forward to March 2, so a day-difference comparison
+// answers for a day the calendar does not have. Two shipped predicates
+// (`isDoseDateAccepted`, `isMoodDateAccepted`) accepted exactly that until this
+// change; only the practice one had noticed. The ruling opens the PAST half and
+// leaves that class dead, deliberately.
 //
-// `isRealIsoDate` FIRST, and it is load-bearing rather than defensive:
-// `daysBetweenDateStr` runs `Date.parse`, which silently ROLLS `2026-02-30` forward
-// to March 2 and answers a diff for it. Every predicate that folded into this one
-// therefore accepted a day that does not exist; the practice window was the only one
-// that had already noticed.
-export function isLogDateAccepted(
-  domain: LogDomain,
+// The comparison is a string compare, which is the shipped idiom for this question
+// (`logFoodServingCore`'s `date > today(profileId)`) and is exact on zero-padded
+// ISO days once `isRealIsoDate` has established the shape.
+export function isPastWriteAccepted(todayStr: string, date: string): boolean {
+  return isRealIsoDate(date) && date <= todayStr;
+}
+
+// ── What the bounded taps and offers actually reach ──────────────────────────
+//
+// Keyed on `OneTapAffordance`, which is the axis these bounds were always on — the
+// same axis finding that keeps `OFFLINE_QUEUE_COVERAGE`'s rows local: a domain is
+// reachable from a bounded tap AND from a dated form, so a domain-grain column
+// cannot hold this without saying something false about one of them.
+//
+// A new affordance fails `tsc` here until someone says how far it reaches, and a
+// `bounded` reach cannot be declared without the argument for its size.
+export const TAP_REACH = {
+  // The nutrition bar and the `/history` door both stand on a day and post it.
+  "food-serving": { kind: "dated" },
+  "protein-grams": { kind: "dated" },
+  "food-usual": {
+    kind: "bounded",
+    back: USUAL_BACKFILL_WINDOW_DAYS,
+    forward: 0,
+    reason:
+      "TEMPLATE-WRITE HONESTY, not a backfill limit (#4118). The offer is the habitual set MINUS what the window already holds, re-derived by the write core, and it is only offered for a day whose evidence still supports it — so the reach is how far back the habit claim stays true, and the evidence guard is the other half of the same bound.",
+    ref: "#4118",
+  },
+  "routine-usual": {
+    kind: "bounded",
+    back: USUAL_BACKFILL_WINDOW_DAYS,
+    forward: 0,
+    reason:
+      "The composed bundle rides `food-usual`'s reach and adds its dose half, which confirms doses and moves an on-hand supply ledger — so an expired replay would be stock arithmetic against a total that moved, not a capture.",
+    ref: "#2458",
+  },
+  // The one-tap dose resolutions. THE ±2 IS TELEGRAM POINTER RETENTION, which is
+  // what the ruling means by an offer bound: since #2018 a dose keyboard stays live
+  // for exactly this window and the reconcile sweep can only close it while its
+  // pointer still exists, so raising this past retention would strand live keyboards
+  // with nothing left to close them. The two move together, window < retention.
+  "dose-status": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "Coupled to `MESSAGE_POINTER_RETENTION_DAYS` (lib/notifications/message-pointers.ts, currently 3): a Telegram dose keyboard stays live for exactly this window, so the tap must stay resolvable for as long as the message it sits on can be tapped. Symmetric because a late after-midnight tap must still land on the reminder's own day.",
+    ref: "#614",
+  },
+  "dose-day": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "The day switcher's single dated tap rides the SAME scheduled cores as the tri-state (#3936), so it inherits the pointer-retention bound rather than declaring one: `doseLogDays` offers exactly the past half of this reach, off this constant.",
+    ref: "#3936",
+  },
+  "dose-day-stack": {
+    kind: "bounded",
+    back: 2,
+    forward: 2,
+    reason:
+      "The same switcher's per-bucket bulk row (#3936) writing through the same scheduled cores, so the same bound; its own online-only argument is about supply arithmetic and lives in `OFFLINE_QUEUE_COVERAGE`.",
+    ref: "#3936",
+  },
+  // The audited deep door, and the ruling's named model for what a DATED surface is.
+  "dose-backfill": { kind: "dated" },
+  "mood-valence": {
+    kind: "bounded",
+    back: 2,
+    forward: 0,
+    reason:
+      "The reach of the day CHIPS — Today, Yesterday, and the day before (#2128) — which is all this tap can state. Past-only because a check-in cannot be pre-logged. The core takes any past day like every other; a dated mood form (#4427) would reach further without touching this.",
+    ref: "#2128",
+  },
+  "practice-session": {
+    kind: "bounded",
+    back: 30,
+    forward: 0,
+    reason:
+      "The reach of the wellness page's log launcher, whose `minDate` is this many days back: a reader reconciling a month of sittings is the ordinary case. Past-only at the offer even though the retired core bound was symmetric — the launcher never offered a future day.",
+    ref: "#2908",
+  },
+  // The symptom bar is mounted on dated surfaces — `/history`'s day view passes the
+  // day being read — so its taps are dated writes. This row is the ruling's answer
+  // to this lane's blocker, declared rather than left implicit.
+  "symptom-severity": { kind: "dated" },
+  // Taps whose action stamps the profile's today and offer no day to state.
+  "substance-unit": { kind: "today" },
+  "prn-dose": { kind: "today" },
+  "mobility-move": { kind: "today" },
+  "period-lifecycle": { kind: "today" },
+  "stool-form": { kind: "today" },
+  "medication-refill": { kind: "today" },
+} as const satisfies Record<OneTapAffordance, TapReach>;
+
+// Is `date` inside `id`'s declared reach, given the profile's already-resolved today?
+// The offer-side twin of `isPastWriteAccepted`, and the ONE realization of every tap
+// bound: `isDoseDateAccepted` and `isMoodDateAccepted` are this function wearing their
+// names, and the practice queue consults it to decide that a capture has aged out.
+//
+// A `today` tap accepts only today; a `dated` surface accepts what any core would.
+export function isWithinTapReach(
+  id: OneTapAffordance,
   todayStr: string,
   date: string
 ): boolean {
   if (!isRealIsoDate(date)) return false;
-  const { back, forward } = LOG_MANIFEST[domain].window;
+  const reach = TAP_REACH[id];
+  if (reach.kind === "dated") return isPastWriteAccepted(todayStr, date);
+  if (reach.kind === "today") return date === todayStr;
   const diff = daysBetweenDateStr(todayStr, date);
   if (diff == null) return false;
-  if (diff < 0) return back === "unbounded" || -diff <= back;
-  return forward === "unbounded" || diff <= forward;
+  return diff <= reach.forward && -diff <= reach.back;
 }

@@ -19,6 +19,7 @@
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
 import { db, readTx, today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
@@ -205,7 +206,7 @@ export function logFoodServingCore(
   // untouched — and it is spelled the way the food ledger's other dated core spells it
   // (`addSubstanceDailyTotalCore`), which is the shape of `isHistoricalDoseDateAccepted`
   // on the dose side.
-  if (!isRealIsoDate(date) || date > today(profileId))
+  if (!isPastWriteAccepted(today(profileId), date))
     return { kind: "invalid-date" };
   // A stated time wins at log time (#2269): the slot is not stored beside it, and the
   // outcome names the DERIVED window — the section the tallies will actually file the

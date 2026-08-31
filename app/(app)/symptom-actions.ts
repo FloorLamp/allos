@@ -11,9 +11,7 @@ import { logTemperatureCore } from "@/lib/temperature-log";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
-import { isLogDateAccepted } from "@/lib/log-manifest";
 import {
-  SYMPTOM_DATE_OUT_OF_WINDOW_ERROR,
   logSymptomCore,
   setSymptomSeverityCore,
   lowerSymptomSeverityCore,
@@ -125,18 +123,14 @@ export async function logSymptom(
   const episodeTarget = parseEpisodeTarget(formData);
   if (episodeTarget.kind === "invalid")
     return { ok: false, error: "That episode is no longer available." };
-  // THE BACKFILL WINDOW (#4425), on the USER-DATED ENTRY PATH — the placement the
-  // ruling's "matching mood" names, because that is where mood puts it (`logMood`,
-  // not `upsertMoodLog`): the bound belongs to what a person may POST, while the
-  // auth-blind core stays reachable by the paths that legitimately carry an old day
-  // (an import, a fixture, a replay of a capture that was in-window when it was made).
-  // The core still refuses a day that does not exist at all; this refuses a real day
-  // out of reach. `/history`'s day-view edit is deliberately not here — it is
-  // `editSymptom`, a correction of a row that already stands.
+  // NO WINDOW HERE, and that is the ruling rather than an omission (2026-08-31):
+  // windows bind OFFERS, not domains. This one action serves a today-only tap on the
+  // dashboard AND `/history`'s day view, which mounts the same bar against the day
+  // being read — so a bound here would be a bound on the dated surface too, and the
+  // record's older days would go neither loggable nor correctable. `TAP_REACH`
+  // declares the symptom tap as `dated` for exactly this reason. The core keeps the
+  // half that is always true: a real day, never the future.
   const date = parseDate(formData, profileId);
-  if (!isLogDateAccepted("symptom", today(profileId), date)) {
-    return { ok: false, error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR };
-  }
   const outcome = logSymptomCore(
     profileId,
     symptom,

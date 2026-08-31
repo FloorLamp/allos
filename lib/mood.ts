@@ -13,7 +13,7 @@
 //   • Calm and optional — skipping is frictionless and never escalates; the only
 //     downstream signals are coaching-tier observations (lib/mood-observation.ts).
 
-import { LOG_MANIFEST, isLogDateAccepted } from "./log-manifest";
+import { TAP_REACH, isWithinTapReach } from "./log-manifest";
 
 export const MOOD_MIN = 1;
 export const MOOD_MAX = 5;
@@ -168,13 +168,17 @@ export function moodSeriesPoints(
 // replay deliberately keeps landing a queued check-in on its CAPTURED date
 // however long the queue sat, exactly as it always has — the capture was
 // in-window when it happened.
-export const MOOD_LOG_DATE_WINDOW_DAYS = LOG_MANIFEST.mood.window.back;
+// The reach of the day CHIPS, not a property of the mood domain (2026-08-31 ruling):
+// `upsertMoodLog` takes any real past day like every other core, and this bounds what
+// the TAP surface may state. Declared in `TAP_REACH` (#4425).
+export const MOOD_LOG_DATE_WINDOW_DAYS = TAP_REACH["mood-valence"].back;
 
-// Is `date` an acceptable check-in day, given the profile's `todayStr`? Pure —
-// both are YYYY-MM-DD, the caller resolves today. Past-only and two days back are
-// the manifest's declaration (#4425); this name is the mood-shaped door onto it.
+// Is `date` an acceptable check-in day for the CHIP tap, given the profile's
+// `todayStr`? Past-only: a check-in cannot be pre-logged. `isRealIsoDate` runs inside
+// the shared predicate for `daysBetweenDateStr`'s `Date.parse` roll (see
+// lib/dose-log-window.ts) — this accepted 2026-02-30 until #4425.
 export function isMoodDateAccepted(todayStr: string, date: string): boolean {
-  return isLogDateAccepted("mood", todayStr, date);
+  return isWithinTapReach("mood-valence", todayStr, date);
 }
 
 // The refusal `logMood` answers a well-formed but out-of-window date with.

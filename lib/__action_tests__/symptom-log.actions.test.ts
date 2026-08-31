@@ -9,7 +9,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { shiftDateStr } from "@/lib/date";
-import { LOG_MANIFEST } from "@/lib/log-manifest";
 import { db, today } from "@/lib/db";
 import {
   logSymptom,
@@ -22,7 +21,6 @@ import {
   activateIllnessForSymptoms,
 } from "@/app/(app)/symptom-actions";
 import { toggleSituationIllnessType } from "@/app/(app)/nutrition/intake-actions";
-import { SYMPTOM_DATE_OUT_OF_WINDOW_ERROR } from "@/lib/symptom-log-write";
 import {
   getSymptomsOnDate,
   getSymptomSeveritiesOnDate,
@@ -344,23 +342,25 @@ describe("profile scoping", () => {
   });
 });
 
-// THE BACKFILL WINDOW (#4425). Symptoms were the one logged domain with NO date bound
-// at all: the action shape-checked `\d{4}-\d{2}-\d{2}` (not `isRealIsoDate`) and the
-// core bounded nothing, so a post could file a symptom-day on any string that looked
-// like a date. The window is the manifest's, read from the declaration rather than
-// restated, so widening it moves this table with it.
-const BACK = LOG_MANIFEST.symptom.window.back;
-
-describe("logSymptom — the #4425 backfill window", () => {
+// THE DATE RULE (#4425, owner ruling 2026-08-31). Symptoms were the one logged domain
+// with NO date bound at all: the action shape-checked `\d{4}-\d{2}-\d{2}` (not
+// `isRealIsoDate`) and the core bounded nothing, so a post could file a symptom-day on
+// any string that looked like a date. The rule that replaced it is the one every domain
+// core now holds — ANY REAL PAST DAY, NEVER THE FUTURE — and it is deliberately open in
+// the past: `/history`'s day view mounts this same bar against the day being read, so
+// bounding the action would have made older days neither loggable nor correctable.
+describe("logSymptom — the #4425 date rule", () => {
   it.each([
     ["today", 0, true],
-    ["the oldest day the window reaches", BACK, true],
-    ["one day past the window", BACK + 1, false],
-    // Past-only, matching mood: a symptom cannot be pre-logged for tomorrow.
+    ["two days back", 2, true],
+    // The days a window would have refused, and the reason the ruling opened them:
+    // this is what the record's day view posts.
+    ["a month back", 31, true],
+    ["two years back", 730, true],
     ["tomorrow", -1, false],
   ])("%s: accepted=%s", async (_label, back, accepted) => {
     const login = createLogin();
-    const profile = createProfile(`window-${back}`, login.id);
+    const profile = createProfile(`reach-${back}`, login.id);
     actAs(login, profile);
 
     const day = shiftDateStr(today(profile.id), -back);
@@ -370,7 +370,7 @@ describe("logSymptom — the #4425 backfill window", () => {
     expect(res).toEqual(
       accepted
         ? { ok: true, symptom: "cough", severity: 2 }
-        : { ok: false, error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR }
+        : { ok: false, error: "Couldn't log that symptom." }
     );
     expect(getSymptomsOnDate(profile.id, day)).toHaveLength(accepted ? 1 : 0);
   });
@@ -387,25 +387,21 @@ describe("logSymptom — the #4425 backfill window", () => {
 
       expect(
         await logSymptom(fd({ symptom: "cough", severity: 2, date: day }))
-      ).toEqual({
-        ok: false,
-        error: SYMPTOM_DATE_OUT_OF_WINDOW_ERROR,
-      });
+      ).toEqual({ ok: false, error: "Couldn't log that symptom." });
       expect(rows(profile.id)).toEqual([]);
     }
   );
 
-  // The correction path is deliberately OUTSIDE the window (#4425 scope): the record's
-  // day view edits a row that already stands, however old it is.
-  it("editSymptom still reaches a day the log window refuses", async () => {
+  // The record's day view logs AND corrects an old day — the pair the ruling protects.
+  it("an old day is both loggable and correctable", async () => {
     const login = createLogin();
-    const profile = createProfile("old-correction", login.id);
+    const profile = createProfile("old-day", login.id);
     actAs(login, profile);
 
-    const old = shiftDateStr(today(profile.id), -(BACK + 30));
+    const old = shiftDateStr(today(profile.id), -400);
     expect(
       await logSymptom(fd({ symptom: "cough", severity: 2, date: old }))
-    ).toMatchObject({ ok: false });
+    ).toMatchObject({ ok: true });
     expect(
       await editSymptom(
         fd({ symptom: "cough", severity: 3, date: old, profile_id: profile.id })

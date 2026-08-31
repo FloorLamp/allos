@@ -22,7 +22,8 @@
 // nothing here restructures it. Phase 3 (the physical merge) is a separate, later
 // decision.
 
-import { db, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import {
   classifyUpsert,
@@ -384,7 +385,12 @@ export function recordReading<U extends string>(
   input: ReadingWriteInput<U>
 ): ReadingRecordOutcome {
   if (!Number.isFinite(input.value)) return { ok: false, error: "invalid" };
-  if (!input.date.trim()) return { ok: false, error: "invalid" };
+  // The shared date invariant (#4425). This core asked only that the string was
+  // non-blank, so a body reading could be filed on `2026-02-30` or on any day in the
+  // future — the row's `date` was never gated, and `occurred_at`'s judgement is about
+  // the stated INSTANT, not about the day the row is filed under.
+  if (!isPastWriteAccepted(today(profileId), input.date))
+    return { ok: false, error: "invalid" };
   const decision = placeReading({
     name: input.name,
     provenance: hasProvenance(input.provenance),

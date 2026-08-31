@@ -12,6 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
+import { isPastWriteAccepted, isWithinTapReach } from "@/lib/log-manifest";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -742,7 +743,10 @@ export function logBristolStool(
   at?: string | null,
   instant: Date = clockNow()
 ): { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal } {
-  if (!isRealIsoDate(date)) return { wrote: false };
+  // The shared date invariant (#4425): any real past day, never the future. The tap
+  // itself states no day — `logStoolForm` stamps today — so `TAP_REACH` files
+  // `stool-form` as `today`; the core is open for the dated surfaces #4433 will add.
+  if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const bristolType = parseBristolType(type);
   if (bristolType === null) return { wrote: false };
   // SECOND precision, not minute, and the resolution is load-bearing.
@@ -829,7 +833,11 @@ export function upsertMoodLog(
     note?: unknown;
   }
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  // The shared date invariant (#4425). The CHIP tap's ±2 reach lives in `TAP_REACH`
+  // where the offer is; the core takes any real past day, which is also what lets the
+  // offline replay keep landing a queued check-in on its captured date however long
+  // the queue sat.
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
   db.prepare(
@@ -1374,6 +1382,20 @@ export function applyIntent(
       const name = typeof p?.practice === "string" ? p.practice.trim() : "";
       if (!name) {
         outcome = { status: "rejected" };
+        return;
+      }
+      // THE TAP'S REACH, ASKED HERE (#4425 owner ruling 2026-08-31). A queued practice
+      // capture IS a tap, and a capture that sat until its day fell out of the tap's
+      // reach is dead-lettered rather than landed years late — the dose replay has
+      // always consulted `isDoseDateAccepted` for exactly this. The bound used to come
+      // from the write core, which now takes any real past day like every other core,
+      // so asking the core would silently land a stale capture on a closed day.
+      if (!isWithinTapReach("practice-session", today(profileId), intent.date)) {
+        outcome = {
+          status: "rejected",
+          reason:
+            "This practice entry is too old to log automatically. Re-enter it from the practice's history.",
+        };
         return;
       }
       const applied = logPracticeSessionForDay(
