@@ -253,7 +253,7 @@ afterEach(() => {
 });
 
 describe("Static — today's behavior, to the minute (the regression that must never land)", () => {
-  it("sends at its configured minute, sleep pending or not", async () => {
+  it("sends at its configured minute without dynamic state, complete or not", async () => {
     for (const arrival of [null, 7 * 60 + 26] as const) {
       const p = seedProfile("Static", "static");
       const fetchMock = stubFetch();
@@ -261,25 +261,16 @@ describe("Static — today's behavior, to the minute (the regression that must n
       expect(await runMorning(p, "Static", arrival)).toEqual([FLOOR]);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBe(FROZEN_DAY);
+      expect(getProfileSetting(p, DIGEST_ATTEMPT_KEY)).toBeUndefined();
+      if (arrival === null) {
+        // The digest is user-timed. Silently sliding someone's 07:00 to 08:10 would
+        // make their own setting untrue — the person who wants completeness picks
+        // Dynamic.
+        const body = sentBody(fetchMock);
+        expect(body).not.toContain("😴 <b>Last night:");
+        expect(body).toContain("Session");
+      }
     }
-  });
-
-  it("never writes an attempt record — its retry stays slot-anchored", async () => {
-    const p = seedProfile("StaticNoState", "static");
-    stubFetch();
-    await runMorning(p, "StaticNoState", null);
-    expect(getProfileSetting(p, DIGEST_ATTEMPT_KEY)).toBeUndefined();
-  });
-
-  it("ships without the Sleep section rather than waiting for it", async () => {
-    // The digest is user-timed. Silently sliding someone's 07:00 to 08:10 would make
-    // their own setting untrue — the person who wants completeness picks Dynamic.
-    const p = seedProfile("StaticIncomplete", "static");
-    const fetchMock = stubFetch();
-    await runMorning(p, "StaticIncomplete", null);
-    const body = sentBody(fetchMock);
-    expect(body).not.toContain("😴 <b>Last night:");
-    expect(body).toContain("Session");
   });
 });
 
@@ -293,6 +284,8 @@ describe("Dynamic — sends the moment last night lands", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(sentBody(fetchMock)).toContain("😴 <b>Last night:");
     expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBe(FROZEN_DAY);
+    vi.setSystemTime(at("11:00"));
+    expect(await tickDigest(p, "Dynamic")).toBe("already-sent");
   });
 
   it("sends at the floor when last night is already in hand", async () => {
@@ -319,6 +312,9 @@ describe("Dynamic — sends the moment last night lands", () => {
     const body = sentBody(fetchMock);
     expect(body).not.toContain("😴 <b>Last night:");
     expect(body).toContain("Session");
+    vi.setSystemTime(at("11:00"));
+    expect(await tickDigest(p, "DynamicDeadline")).toBe("already-sent");
+    expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBe(FROZEN_DAY);
   });
 
   it("sends at the deadline for a night that lands after it, with no Sleep section", async () => {
@@ -328,20 +324,6 @@ describe("Dynamic — sends the moment last night lands", () => {
       DEADLINE_TICK,
     ]);
     expect(sentBody(fetchMock)).not.toContain("😴 <b>Last night:");
-  });
-
-  it("admits exactly ONE send either way, however often the tick runs", async () => {
-    for (const arrival of [7 * 60 + 26, null] as const) {
-      const p = seedProfile("DynamicOnce", "dynamic");
-      const fetchMock = stubFetch();
-      const sent = await runMorning(p, "DynamicOnce", arrival);
-      expect(sent).toHaveLength(1);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      // Every later tick is the per-day marker's job, exactly as before.
-      vi.setSystemTime(at("11:00"));
-      expect(await tickDigest(p, "DynamicOnce")).toBe("already-sent");
-      expect(getProfileSetting(p, DIGEST_MARKER_KEY)).toBe(FROZEN_DAY);
-    }
   });
 
   it("declines without writing anything — the decline is not an attempt", async () => {

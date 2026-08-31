@@ -1373,9 +1373,10 @@ export async function resolveDayDoses(
   const { profile } = await requireWriteAccess();
   const date = String(formData.get("date") ?? "");
   const status = String(formData.get("status") ?? "");
+  const localToday = today(profile.id);
   if (
     !isRealIsoDate(date) ||
-    !doseLogDays(today(profile.id)).includes(date) ||
+    !doseLogDays(localToday).includes(date) ||
     (status !== "taken" && status !== "skipped")
   ) {
     return { ok: false, error: "Couldn't log those doses." };
@@ -1396,7 +1397,14 @@ export async function resolveDayDoses(
       name: dose.name,
       outcome:
         status === "taken"
-          ? markDoseTaken(profile.id, dose.doseId, dose.itemId, date, loggedVia)
+          ? markDoseTaken(
+              profile.id,
+              dose.doseId,
+              dose.itemId,
+              date,
+              loggedVia,
+              date === localToday ? undefined : null
+            )
           : markDoseSkipped(
               profile.id,
               dose.doseId,

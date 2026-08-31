@@ -122,7 +122,11 @@ function applyDoseIntent(
           null,
           date,
           OFFLINE_REPLAY,
-          payload.clientTakenAt ? new Date(payload.clientTakenAt) : undefined
+          payload.clientTakenAt
+            ? new Date(payload.clientTakenAt)
+            : date === today(profileId)
+              ? undefined
+              : null
         )
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
   return classifyDoseReplay(flow, outcome);

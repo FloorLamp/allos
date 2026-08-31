@@ -56,7 +56,7 @@ closed taxonomy, and `needs-human` handling.
 
 ## Per-unit pipeline
 
-1. Read each issue whole via `issue-read.mjs`; skip ones already closed.
+1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
    Promote only the next landing candidate to a PR; keep later verified branches
@@ -83,8 +83,8 @@ closed taxonomy, and `needs-human` handling.
 - `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
   its anchor is 4h stale, so it needs no remembering; `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
-- `queue-snapshot.mjs`: writes the dispatchable queue to `$SCRATCH/.queue`;
-  the check-in refreshes it 4-hourly. A "thin" claim answers it line by line.
+- `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
+  4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
 - `session-metrics.mjs`: the trend pulse — throughput, review depth, queue
   shape, needs-human aging; denominators first. Argue caps from its numbers.
 - `release-notes-gather.mjs`: gather merged user-visible changes.
