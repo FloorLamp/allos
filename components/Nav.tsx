@@ -204,7 +204,8 @@ const PLAN_REVIEW: Group = {
     // the timeline and vacates its slot, History inherits it"). Everything the note
     // below said about Timeline is now true of it: used constantly, never from the
     // nav, and the target of every DayHistory heatmap cell, every mini-calendar day
-    // (EventCalendar, the Calendar row just BELOW this nav), the weekly recap
+    // (components/EventCalendar.tsx, opened from the record's own filter row since
+    // #4280), the weekly recap
     // widget, and several sleep and trends surfaces; it holds the same permanent
     // mobile dock slot (lib/mobile-dock.ts, the Q5 half of the same ruling). It is a
     // destination reached FROM CONTEXT — the unused thing was the row, not the page.

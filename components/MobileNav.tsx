@@ -69,7 +69,6 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // states, no travel.
 
 export default function MobileNav({
-  eventDates,
   active,
   username,
   profiles,
@@ -88,8 +87,6 @@ export default function MobileNav({
   substanceRelevant = false,
   logHabitDays = null,
 }: {
-  // Every day this profile has ANY event on; marks the drawer calendar's days.
-  eventDates: string[];
   // The active profile + accessible profiles feed the shared sidebar's profile
   // bar + switcher panel (#1801); resolved from the session on the server.
   active: SessionProfile;
@@ -245,19 +242,24 @@ export default function MobileNav({
               role="dialog"
               aria-modal="true"
               aria-label="Menu"
-              // AT LEAST AS WIDE AS A WEEK, plus this drawer's own 1px right
-              // border and the left safe-area inset. `--week-grid-min` is where
-              // seven tap-floor columns are costed (app/globals.css, #3452); the
-              // navigation shell no longer restates the calendar's arithmetic, it
-              // just pays the bill. 20rem is still the PREFERRED width — the token
-              // only raises it once a safe-area inset eats into the content box.
-              // At that width the drawer may fill a small viewport; the explicit
-              // close button and the swipe remain the dismissal paths (#3536).
-              // Desktop is unaffected.
-              className={`absolute inset-y-0 left-0 flex w-[max(20rem,calc(var(--week-grid-min)+1px+env(safe-area-inset-left)))] max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
+              // 20rem, AND NOTHING ELSE (#4102's anti-drop census, owner
+              // 2026-08-29: "its width floor drops the `--week-grid-min` term —
+              // #3452's calendar arithmetic leaves with the calendar; 20rem
+              // preferred stands alone"). The drawer was as wide as a week plus
+              // its own border and the left inset because the calendar band
+              // inside it had to render seven 44px columns; that band is on
+              // /history now, and this was its ONLY remaining claim on the width.
+              // MEASURED, because the term looked load-bearing and was not: at
+              // both a 320px and a 390px viewport the drawer rendered 320px
+              // before this change and 320px after — `max(20rem, 308px + 1px +
+              // 0)` was already 20rem wherever the safe-area inset is under 11px,
+              // which is every headless run and every un-notched device. What
+              // actually changes is the notched case, where the drawer stops
+              // widening past 20rem to buy columns it no longer draws.
+              // `max-w-full` still clamps it on a viewport narrower than that.
+              className={`absolute inset-y-0 left-0 flex w-80 max-w-full flex-col gap-4 overflow-y-auto overscroll-contain border-r border-black/10 bg-(--nav) pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 ${panelMotion}`}
             >
               <SidebarContent
-                eventDates={eventDates}
                 active={active}
                 username={username}
                 profiles={profiles}

@@ -422,11 +422,17 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Layer 1 — the fat-finger double. The second tap lands inside the post-success
   // cooldown and is absorbed: no dialog, and no second session.
-  await button.click();
-  await button.click();
+  await button.evaluate((element: HTMLButtonElement) => {
+    element.click();
+    element.click();
+  });
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(todayLine).toContainText("1 session logged");
   await expect(button).toHaveAccessibleName(/^Log another /);
+  // The existing cooldown is a rendered state, not a silent onClick return: a
+  // caller can await readiness without guessing the ledger's two-second window.
+  await expect(button).toBeDisabled();
+  await expect(button).toBeEnabled();
 
   // Layer 2 — the affordance now renders today's state, so the next tap is visibly
   // a SECOND one before it is taken.

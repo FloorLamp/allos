@@ -13,6 +13,7 @@ import {
   HXEVERY_RO_DOSE,
   HXEVERY_MEMBER_DOSE,
   HXEVERY_DAY,
+  HXEVERY_RO_ONLY_DAY,
 } from "./fixture-logins";
 
 // `/history?view=everyone` — THE MERGED RECORD (#4009 item 3, #3958, #2106).
@@ -94,6 +95,12 @@ function resetFixture(): { selfId: number; roId: number; memberId: number } {
     );
     insertSymptom.run(selfId, HXEVERY_DAY, "headache", 2);
     insertSymptom.run(roId, HXEVERY_DAY, "nausea", 3);
+    // RO ALONE, ON A DAY SELF HAS NOTHING ON (#4393 ruling 3). Everything else in
+    // this fixture sits on the day BOTH members share, and a shared day is marked
+    // whether the calendar unions the view-set or reads the acting profile only —
+    // it would pass either way. This row is the only one the marks guard can
+    // actually fail on.
+    insertSymptom.run(roId, HXEVERY_RO_ONLY_DAY, "nausea", 2);
     return { selfId, roId, memberId };
   } finally {
     db.close();
@@ -191,7 +198,14 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // count would hide whose logs they were"): two members' doses on one day must be
     // TWO lines each naming its own subject, never one line counting both.
     await page.goto("/history?view=everyone");
-    const rollups = page.getByTestId("history-rollup");
+    // SCOPED TO THE DAY THE CLAIM IS ABOUT — "two members' doses ON ONE DAY must be
+    // two lines". Read page-wide it was also a claim about how many DAYS each member
+    // has anything on, which is the fixture's business and not this rule's: the marks
+    // guard below needs a day RO has and SELF does not, and that row alone moved the
+    // page-wide count to 2 while the per-day rule it stands for never changed.
+    const rollups = page
+      .locator(`#timeline-day-${HXEVERY_DAY}`)
+      .getByTestId("history-rollup");
     await expect(rollups.filter({ hasText: HXEVERY_SELF_PROFILE })).toHaveCount(
       1
     );
@@ -234,9 +248,12 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     // and no dose neighbour. This is the exact deep link whose earlier unscoped menu
     // probe mistook for an ignored filter (#4237).
     await page.goto("/history?kind=symptom&view=everyone");
-    const symptomRows = page.locator(
-      '[data-testid="history-row"][data-history-kind="symptom"]'
-    );
+    // ON THE FIXTURE DAY, for the same reason the rollup counts above are: "one row
+    // per member, each naming its own subject" is a per-day claim, and RO also owns
+    // the neighbouring day the marks guard below needs.
+    const symptomRows = page
+      .locator(`#timeline-day-${HXEVERY_DAY}`)
+      .locator('[data-testid="history-row"][data-history-kind="symptom"]');
     await expect(symptomRows).toHaveCount(2);
     await expect(
       symptomRows
@@ -323,5 +340,68 @@ test.describe("the record's merged household view (#4009 item 3)", () => {
     } finally {
       db.close();
     }
+  });
+
+  // THE CALENDAR MARKS THE VIEW-SET, NOT THE ACTING PROFILE (#4393 ruling 3).
+  //
+  // The grid moved off the nav and onto this page in #4280 carrying the nav's
+  // answer to "whose days are these" — the acting profile's — which reads wrong
+  // beside a merged feed. The ruling is that it answers the same question the feed
+  // it navigates answers, so this asserts the marks as a DIFFERENCE between the two
+  // modes rather than as a count: the SAME day, the SAME locator, marked in
+  // Everyone and unmarked in single view. Either half alone is satisfiable by a
+  // grid that marks everything, or nothing.
+  //
+  // THE DAY IS RO's ALONE. Every other row in this fixture sits on HXEVERY_DAY,
+  // which both members have — a union and an acting-profile read mark it
+  // identically, so a guard written on it passes against the defect it names.
+  test("the month grid marks the whole view-set under ?view=everyone", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { roId } = resetFixture();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_HXEVERY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await addToView(page, roId);
+
+    const panel = page.getByTestId("history-calendar-panel");
+    // ONE locator shape for the claim and for its control, so the control cannot
+    // pass through a query the assertion never runs: a marked day is an anchor,
+    // an unmarked one is an inert div, and this asks the grid for the anchor.
+    const markedDay = (label: string) =>
+      panel.locator(`a[data-calendar-day][aria-label="${label}"]`);
+    // The grid opens on today and runs from its earliest destination; the fixture
+    // day is a fixed month in the past, so the month is chosen through the grid's
+    // own selects rather than by counting Previous-month taps off the run date.
+    const openOnFixtureMonth = async () => {
+      await hydratedClick(page, page.getByTestId("history-calendar"));
+      await expect(panel).toBeVisible();
+      // `exact`, because "Previous month" and "Next month" are labels too.
+      await panel.getByLabel("Year", { exact: true }).selectOption("2026");
+      await panel
+        .getByLabel("Month", { exact: true })
+        .selectOption({ label: "Jun" });
+      await expect(markedDay("June 11, 2026")).toHaveCount(1);
+    };
+
+    // SINGLE VIEW IS THE CONTROL, and its own positive control is the shared day:
+    // the locator finds a mark here, so the zero below is the mode's answer and
+    // not a selector that never matches.
+    await page.goto("/history");
+    await openOnFixtureMonth();
+    await expect(markedDay("June 12, 2026")).toHaveCount(0);
+
+    // MERGED: RO's day is now a door, and it opens INSIDE the view it was marked
+    // from — every other href on this page carries the mode, and a door that
+    // dropped it would open a household day on the acting profile alone.
+    await page.goto("/history?view=everyone");
+    await openOnFixtureMonth();
+    await expect(markedDay("June 12, 2026")).toHaveCount(1);
+    await expect(markedDay("June 12, 2026")).toHaveAttribute(
+      "href",
+      "/history?day=2026-06-12&view=everyone"
+    );
   });
 });

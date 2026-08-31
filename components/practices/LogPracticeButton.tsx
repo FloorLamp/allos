@@ -442,7 +442,7 @@ export default function LogPracticeButton({
         )}
         <button
           type="button"
-          disabled={pending || ledger.pending()}
+          disabled={pending || ledger.blocked()}
           onClick={onClick}
           data-testid="practice-log-button"
           // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
