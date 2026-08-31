@@ -20,12 +20,12 @@ import type { TabFirstPageConfig } from "./tab-first-pages";
 // `md:static` desktop opt-out are the shell's facts, not the strip's, and the
 // strip's own file already returns null for the pages it does not serve.
 //
-// Hide/reveal is transform-only: the element keeps its box (no layout thrash,
-// no reflow of the page under it) and slides up by its own height MINUS the
-// notch inset, so the safe-area strip under the status bar stays painted with
-// the chrome's background instead of flashing page content through the notch.
-// The transform lives on this ONE element (`.shell-chrome` in app/globals.css),
-// which is the seam #1425's drag gesture will drive.
+// Hide/reveal is transform-only: the element keeps its box (no layout thrash, no
+// reflow of the page under it) and slides up by its own height PLUS the notch
+// inset, clearing the viewport. The shell paints no status-bar band to preserve
+// (#4282) — this strip parks below the notch by carrying `top-edge-safe` itself,
+// and the transform takes that offset back. Both live on this ONE element
+// (`.shell-chrome` in app/globals.css), the seam #1425's drag gesture will drive.
 //
 // Desktop is deliberately untouched: the strip is `md:hidden`, and the wrapper
 // drops to `static` at `md`, so nothing sticks there.
@@ -64,7 +64,7 @@ export default function ShellChrome({
       // is simply always revealed (the safe state). Surfaced so a browser test
       // can wait for the real behavior rather than race it.
       data-ready={ready ? "true" : "false"}
-      className="shell-chrome sticky top-0 z-30 md:static print:hidden"
+      className="shell-chrome sticky top-edge-safe z-30 md:static print:hidden"
     >
       <ShellTabStrip disabledPageIds={disabledTabFirstPageIds} />
     </div>

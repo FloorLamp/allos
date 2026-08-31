@@ -341,6 +341,68 @@ test.describe("the bar rides the shell chrome (F + #1416)", () => {
       .toBeGreaterThanOrEqual(0);
     await expect(page.getByTestId("trends-context-label")).toBeInViewport();
   });
+
+  test("parks BELOW a notch band rather than under it (#4282)", async ({
+    page,
+  }) => {
+    // Headless Chromium reports a ZERO safe-area inset, so the defect #4282 rules
+    // on — a page-owned sticky strip pinning UNDER the status bar — is invisible to
+    // every ordinary measurement here and would stay green forever. Routing the
+    // inset through `--top-edge-inset` (app/globals.css) is what makes it forgeable:
+    // overriding that token on <html> is the same substitution a notched device
+    // performs, so this exercises the arithmetic `top-edge-safe` actually does.
+    const NOTCH = 44; // an iPhone-class status-bar inset, in CSS px
+    const forge = (name: string, px: number) =>
+      page.evaluate(
+        ([n, v]) =>
+          document.documentElement.style.setProperty(n as string, `${v}px`),
+        [name, px] as const
+      );
+
+    await page.goto("/trends");
+    const bar = await barReady(page);
+    // PINNED, and re-pinned after every forge. Two reasons, both measured: the
+    // bar's NATURAL offset under a forged notch is the same number as its parked
+    // one (`<main>`'s padding moves both), so a reading at the top of the page
+    // cannot tell "parks below the band" from "has not moved"; and changing the
+    // token relays the page, which can put the chrome into its hidden state — a
+    // translated bar reads as a large negative y rather than as the offset.
+    const pin = async () => {
+      // Settle at the top FIRST — the machine always reveals inside its top zone
+      // (lib/shell-chrome), so this cannot settle on a hidden bar — and then walk
+      // the hide/reveal ONE STATE AT A TIME. The listener is rAF-coalesced
+      // (components/useShellChrome), so a down-scroll and an up-scroll issued
+      // inside one frame are read as a single downward move and the bar ends
+      // HIDDEN, which prints as a large negative y long after the pin looked
+      // established. Waiting for `true` in between forces the frame boundary.
+      await scrollTo(page, 0);
+      await settledBoxes([bar]);
+      const deep = await scrollTo(page, 600);
+      expect(deep, "Trends should be scrollable at phone width").toBeGreaterThan(
+        200
+      );
+      await expect(bar).toHaveAttribute("data-hidden", "true");
+      await scrollTo(page, deep - 300);
+      await expect(bar).toHaveAttribute("data-hidden", "false");
+    };
+    // The control runs through the SAME read as the assertion: with no notch the
+    // strip parks flush, so a 44 below cannot be something else at that offset.
+    const parkedY = async () => (await bar.boundingBox())?.y ?? -1;
+    await pin();
+    await expect.poll(parkedY).toBe(0);
+
+    await forge("--top-edge-inset", NOTCH);
+    await pin();
+    await expect.poll(parkedY).toBe(NOTCH);
+
+    // …and the offset above it COMPOSES with the inset rather than replacing it —
+    // the whole reason this is one utility and not one per depth. `.sub-chrome`
+    // declares the shell chrome's measured height as its claim; /trends registers
+    // no tab strip, so that height is 0 here and has to be forged too.
+    await forge("--shell-chrome-h", 20);
+    await pin();
+    await expect.poll(parkedY).toBe(NOTCH + 20);
+  });
 });
 
 test.describe("the heading band is given up below sm (F)", () => {
