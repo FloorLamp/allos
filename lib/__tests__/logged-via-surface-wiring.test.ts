@@ -37,7 +37,8 @@ import { UNMOUNTED_ROOTS } from "./unmounted-roots";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 /** A `parseWebOrigin(` read, wherever it sits. */
-const READ_RE = /parseWebOrigin\s*\(/g;
+const READ_RE = /(?:parseWebOrigin|webOrigin)\s*\(/g;
+const DIRECT_READ_RE = /parseWebOrigin\s*\(/g;
 /** `export async function name(` / `export function name(` — the action boundary. */
 const EXPORT_RE = /^export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/gm;
 
@@ -113,7 +114,8 @@ function codeOf(file: SourceFile): string {
 }
 
 /** Every exported action in `app/` that READS a posted surface. */
-export function readingActions(root: string): Map<string, string> {
+// prettier-ignore
+export function readingActions(root: string, read = READ_RE): Map<string, string> {
   const out = new Map<string, string>();
   for (const { rel, src } of sources(root, "app")) {
     // Where each exported function starts, so a read can be attributed to the last
@@ -121,7 +123,7 @@ export function readingActions(root: string): Map<string, string> {
     const bounds: { name: string; at: number }[] = [];
     for (const m of src.matchAll(EXPORT_RE))
       bounds.push({ name: m[1], at: m.index ?? 0 });
-    for (const m of src.matchAll(READ_RE)) {
+    for (const m of src.matchAll(read)) {
       const at = m.index ?? 0;
       let owner: string | null = null;
       for (const b of bounds) if (b.at < at) owner = b.name;
@@ -133,16 +135,54 @@ export function readingActions(root: string): Map<string, string> {
   return out;
 }
 
-/** Every "use client" file, with the source that decides whether it declares. */
+/** Every client module or extracted client hook that can post a surface. */
 function clientFiles(root: string): { rel: string; src: string }[] {
   const out: { rel: string; src: string }[] = [];
   for (const sub of ["app", "components"]) {
     for (const { rel, src } of sources(root, sub)) {
-      if (!/^\s*["']use client["']/.test(src)) continue;
+      const canPost =
+        /^\s*["']use client["']/.test(src) || /\/use[A-Z][^/]*\.ts$/.test(rel);
+      if (!canPost) continue;
       out.push({ rel, src });
     }
   }
   return out;
+}
+
+function hasUnstampedCall(src: string, name: string): boolean {
+  const code = stripComments(src);
+  for (const call of code.matchAll(new RegExp(`\\b${name}\\s*\\(`, "g"))) {
+    const before = code.slice(0, call.index);
+    const snippet = code
+      .slice((call.index ?? 0) + call[0].length)
+      .split("\n", 1)[0];
+    if (snippet.trimStart().startsWith("stampLoggedVia(")) continue;
+    if (snippet.includes("stampLoggedVia") && snippet.includes("new FormData("))
+      continue;
+    if (/new FormData\s*\(/.test(snippet)) return true;
+    const helper = /^\s*([A-Za-z_$][\w$]*)\s*\(/.exec(snippet)?.[1];
+    if (
+      helper &&
+      new RegExp(
+        `(?:function|const)\\s+${helper}\\b[\\s\\S]{0,500}stampLoggedVia`
+      ).test(code)
+    )
+      continue;
+    for (const arg of snippet.matchAll(/\b([A-Za-z_$][\w$]*)\b/g)) {
+      const declarations = Array.from(
+        before.matchAll(
+          new RegExp(`(?:const|let)\\s+${arg[1]}\\s*=([^;\\n]+)`, "g")
+        )
+      );
+      const declaration = declarations.at(-1);
+      if (!declaration?.[1].includes("new FormData")) continue;
+      if (before.length - (declaration.index ?? 0) > 500) continue;
+      const since = before.slice(declaration.index);
+      if (!/stampLoggedVia\s*\(|\.set\s*\(\s*LOGGED_VIA_FIELD/.test(since))
+        return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -189,12 +229,24 @@ function importsSymbol(src: string, name: string): boolean {
 /** Every (client file, action) pair where a poster declares no surface. */
 export function unwiredPosters(root: string): string[] {
   const actions = readingActions(root);
+  const direct = readingActions(root, DIRECT_READ_RE);
   const clients = clientFiles(root);
+  const counts = new Map(
+    [...actions.keys()].map((action) => [
+      action,
+      clients.filter((client) => importsSymbol(client.src, action)).length,
+    ])
+  );
   const out: string[] = [];
   for (const { rel, src } of clients) {
-    if (DECLARES_RE.test(src)) continue;
+    const hook = /\/use[A-Z][^/]*\.ts$/.test(rel);
     for (const [action, file] of actions) {
-      if (importsSymbol(src, action))
+      const unstamped = hasUnstampedCall(src, action);
+      if (
+        importsSymbol(src, action) &&
+        (direct.has(action) || (counts.get(action) ?? 0) > 1) &&
+        ((!DECLARES_RE.test(src) && (!hook || unstamped)) || unstamped)
+      )
         out.push(`${rel} posts ${action} (${file})`);
     }
   }
@@ -204,10 +256,7 @@ export function unwiredPosters(root: string): string[] {
 // ── THE REACH `unwiredPosters` DOES NOT HAVE, NAMED SO ITS SILENCE IS NOT READ AS
 // COVERAGE (#3567 item 6) ──
 //
-// It inspects `"use client"` files, because only a client can stamp a FormData. That is
-// the right subject, and it means a whole class of file reaches a surface-reading action
-// without ever being looked at: a HOOK (components/activity-form/useActivityAutosave.ts
-// posts the FormData its PARENT builds), a SERVER COMPONENT handing an action to a
+// It inspects client modules and extracted `use*` hooks. A SERVER COMPONENT handing an action to a
 // generic client control (app/(app)/upcoming/page.tsx, whose row control builds the
 // FormData and whose `page` fallback is the correct answer for that mounting), and a
 // SERVER ACTION module calling another action directly (app/(app)/palette-actions.ts,
@@ -815,15 +864,20 @@ export async function logThing(formData: FormData) {
 }
 `;
 
-  it("sees a client that posts a reading action and declares nothing", () => {
+  it("sees each unstamped client post, including inside an extracted hook", () => {
     const root = corpus({
       "app/(app)/x/actions.ts": ACTION,
       "components/ThingBar.tsx":
         '"use client";\nimport { logThing } from "@/app/(app)/x/actions";\n' +
         "export default function ThingBar() {\n  return logThing(new FormData());\n}\n",
+      "components/useMixed.ts":
+        'import { logThing } from "@/app/(app)/x/actions";\n' +
+        "import { useLoggedViaStamp } from '@/components/LoggedViaSurface';\n" +
+        "export function useMixed() { const stampLoggedVia = useLoggedViaStamp(); logThing(stampLoggedVia(new FormData())); return () => logThing(new FormData()); }\n",
     });
     expect(unwiredPosters(root)).toEqual([
       "components/ThingBar.tsx posts logThing (app/(app)/x/actions.ts)",
+      "components/useMixed.ts posts logThing (app/(app)/x/actions.ts)",
     ]);
   });
 
