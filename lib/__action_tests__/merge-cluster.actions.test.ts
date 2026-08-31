@@ -128,10 +128,14 @@ describe("mergeActivityCluster — profile scoping (#1081)", () => {
       title: "mine dupe",
       source: "strava",
       external_id: "strava:1",
+      distance_km: 8,
       start_time: "08:01",
       end_time: "08:31",
     });
-    const dropOther = insertActivity(other.id, { title: "other-profile row" });
+    const dropOther = insertActivity(other.id, {
+      title: "other-profile row",
+      distance_km: 99,
+    });
 
     const sig = pairSignature(
       activityToken({ id: keep, external_id: null }),
@@ -142,6 +146,7 @@ describe("mergeActivityCluster — profile scoping (#1081)", () => {
         keep_id: keep,
         drop_ids: JSON.stringify([dropMine, dropOther]),
         pair_signatures: JSON.stringify([sig]),
+        overrides: JSON.stringify({ distance_km: dropOther }),
       })
     );
 
@@ -149,6 +154,8 @@ describe("mergeActivityCluster — profile scoping (#1081)", () => {
     expect(alive(keep)).toBe(true);
     expect(alive(dropMine)).toBe(false);
     expect(alive(dropOther)).toBe(true);
+    // A choice naming the skipped foreign row cannot enter the fold.
+    expect(activityRow(keep).distance_km).toBe(5);
     // The dropped Strava row is tombstoned; a merged decision is recorded.
     expect(
       db
@@ -210,52 +217,6 @@ describe("mergeActivityCluster — per-field member choice (#1431)", () => {
     expect(alive(d1)).toBe(false);
     expect(alive(d2)).toBe(false);
   });
-
-  it("ignores a choice naming a row outside the merge (forged member id)", async () => {
-    const login = createLogin();
-    const mine = createProfile("picker-forge", login.id);
-    const other = createProfile("picker-foreign", login.id);
-    actAs(login, mine);
-
-    const keep = insertActivity(mine.id, { title: "keeper", distance_km: 5 });
-    const d1 = insertActivity(mine.id, {
-      title: "d1",
-      source: "strava",
-      external_id: "strava:p2",
-      distance_km: 8,
-      start_time: "08:01",
-      end_time: "08:31",
-    });
-    // A row OUTSIDE the merge (another profile) the forged choice names.
-    const foreign = insertActivity(other.id, {
-      title: "foreign",
-      distance_km: 99,
-    });
-
-    const sig = pairSignature(
-      activityToken({ id: keep, external_id: null }),
-      activityToken({ id: d1, external_id: "strava:p2" })
-    );
-    await mergeActivityCluster(
-      fd({
-        keep_id: keep,
-        drop_ids: JSON.stringify([d1]),
-        pair_signatures: JSON.stringify([sig]),
-        overrides: JSON.stringify({ distance_km: foreign }),
-      })
-    );
-
-    // The forged id resolves to nothing: the keeper-wins fold stands and the
-    // foreign row is untouched — its value never entered the merge.
-    expect(
-      (
-        db
-          .prepare("SELECT distance_km d FROM activities WHERE id = ?")
-          .get(keep) as { d: number }
-      ).d
-    ).toBe(5);
-    expect(alive(foreign)).toBe(true);
-  });
 });
 
 describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
@@ -268,6 +229,7 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
     const card = insertActivity(profile.id, {
       title: "card",
       notes: "card-notes",
+      distance_km: 8,
     });
     insertSet(card, "card-set");
     const sib1 = insertActivity(profile.id, {
@@ -275,12 +237,14 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
       source: "strava",
       external_id: "strava:k",
       avg_hr: 150,
+      distance_km: 5,
       start_time: "08:01",
       end_time: "08:31",
     });
     insertSet(sib1, "sib1-set");
     const sib2 = insertActivity(profile.id, {
       title: "sib2",
+      distance_km: 12,
       start_time: "08:02",
       end_time: "08:32",
     });
@@ -288,7 +252,11 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
 
     // Keeper = sib1 (a sibling): the originating card is itself a drop.
     const { undoIds } = await mergeActivities(
-      fd({ keep_id: sib1, drop_ids: JSON.stringify([card, sib2]) })
+      fd({
+        keep_id: sib1,
+        drop_ids: JSON.stringify([card, sib2]),
+        overrides: JSON.stringify({ distance_km: sib2 }),
+      })
     );
     expect(undoIds).toHaveLength(2);
 
@@ -301,6 +269,7 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(sib1) as Record<string, unknown>;
     expect(keeper.notes).toBe("card-notes"); // gap-filled from a drop
+    expect(keeper.distance_km).toBe(12); // chosen from sib2, not keeper-default 5
     expect(keeper.edited).toBe(1);
 
     // Undo the whole N-way merge: every dropped row returns (new ids) with its own set,
@@ -312,6 +281,7 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(sib1) as Record<string, unknown>;
     expect(keeperAfter.notes).toBeNull(); // pre-fold restore
+    expect(keeperAfter.distance_km).toBe(5);
     // The originating card is back (restored under a new id, same title + set).
     const restoredCard = db
       .prepare(
@@ -320,75 +290,13 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
       .get(profile.id) as { id: number } | undefined;
     expect(restoredCard).toBeTruthy();
     expect(setCount(restoredCard!.id)).toBe(1);
+    expect(activityRow(restoredCard!.id).distance_km).toBe(8);
     const restoredSib2 = db
       .prepare(
-        "SELECT 1 FROM activities WHERE profile_id = ? AND title = 'sib2'"
+        "SELECT id, distance_km FROM activities WHERE profile_id = ? AND title = 'sib2'"
       )
-      .get(profile.id);
-    expect(restoredSib2).toBeTruthy();
-  });
-
-  it("a per-field member choice lands on the keeper, and undo restores the pre-merge value (#1431)", async () => {
-    const login = createLogin();
-    const profile = createProfile("training-log-pick", login.id);
-    actAs(login, profile);
-
-    // The keeper carries its own distance (5); the chosen member (sibB) carries 12.
-    const card = insertActivity(profile.id, { title: "card", distance_km: 5 });
-    const sibA = insertActivity(profile.id, {
-      title: "sibA",
-      distance_km: 8,
-      start_time: "08:01",
-      end_time: "08:31",
-    });
-    const sibB = insertActivity(profile.id, {
-      title: "sibB",
-      distance_km: 12,
-      start_time: "08:02",
-      end_time: "08:32",
-    });
-
-    const { undoIds } = await mergeActivities(
-      fd({
-        keep_id: card,
-        drop_ids: JSON.stringify([sibA, sibB]),
-        overrides: JSON.stringify({ distance_km: sibB }),
-      })
-    );
-    expect(undoIds).toHaveLength(2);
-
-    // The chosen (non-keeper) member's distance landed on the keeper.
-    expect(
-      (
-        db
-          .prepare("SELECT distance_km d FROM activities WHERE id = ?")
-          .get(card) as { d: number }
-      ).d
-    ).toBe(12);
-
-    // Undo restores the keeper's PRE-MERGE value — the inverse snapshot was taken
-    // before the fold, so it holds regardless of which member's value was chosen.
-    const { restored } = await undoDeletes(undoIds);
-    expect(restored).toBe(2);
-    expect(
-      (
-        db
-          .prepare("SELECT distance_km d FROM activities WHERE id = ?")
-          .get(card) as { d: number }
-      ).d
-    ).toBe(5);
-    // Both dropped rows are back with their own distances.
-    for (const [title, d] of [
-      ["sibA", 8],
-      ["sibB", 12],
-    ] as const) {
-      const row = db
-        .prepare(
-          "SELECT distance_km d FROM activities WHERE profile_id = ? AND title = ?"
-        )
-        .get(profile.id, title) as { d: number } | undefined;
-      expect(row?.d).toBe(d);
-    }
+      .get(profile.id) as { id: number; distance_km: number } | undefined;
+    expect(restoredSib2?.distance_km).toBe(12);
   });
 });
 
@@ -400,11 +308,15 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
 
     // A 3-way merge where each drop fills a DIFFERENT gap on the keeper, so the
     // keeper's columns say exactly which drops are still folded in.
-    const keep = insertActivity(profile.id, { title: "keeper" });
+    const keep = insertActivity(profile.id, {
+      title: "keeper",
+      distance_km: 5,
+    });
     insertSet(keep, "keeper-set");
     const dropA = insertActivity(profile.id, {
       title: "dropA",
       notes: "from-A",
+      distance_km: 8,
       start_time: "08:01",
       end_time: "08:31",
     });
@@ -412,6 +324,7 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
     const dropB = insertActivity(profile.id, {
       title: "dropB",
       avg_hr: 150,
+      distance_km: 12,
       start_time: "08:02",
       end_time: "08:32",
     });
@@ -425,7 +338,11 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
     insertSet(dropC, "c-set");
 
     const { undoIds } = await mergeActivities(
-      fd({ keep_id: keep, drop_ids: JSON.stringify([dropA, dropB, dropC]) })
+      fd({
+        keep_id: keep,
+        drop_ids: JSON.stringify([dropA, dropB, dropC]),
+        overrides: JSON.stringify({ distance_km: dropB }),
+      })
     );
     expect(undoIds).toHaveLength(3);
     const [tokenA, tokenB, tokenC] = undoIds;
@@ -436,6 +353,7 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
       150,
       180,
     ]);
+    expect(merged.distance_km).toBe(12);
     expect(setCount(keep)).toBe(4);
 
     // Poison the MIDDLE token so its restore throws mid-batch while A and C succeed.
@@ -453,6 +371,8 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
       150,
       null,
     ]);
+    // The chosen member is the one still folded, so its override still holds.
+    expect(partial.distance_km).toBe(12);
     expect(partial.edited).toBe(1); // still a merged result
 
     // (ii) B's re-parented set is still on the keeper — reachable, not orphaned —
@@ -489,6 +409,7 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
       null,
       null,
     ]);
+    expect(undone.distance_km).toBe(5);
     expect(undone.edited).toBe(0); // the keeper's own pre-merge lock is back
     expect(setCount(keep)).toBe(1);
     const restoredB = db
@@ -496,53 +417,5 @@ describe("mergeActivities — PARTIAL-batch undo (#1884)", () => {
       .get(profile.id, "dropB") as Record<string, unknown>;
     expect(restoredB.avg_hr).toBe(150);
     expect(setCount(restoredB.id as number)).toBe(1);
-  });
-
-  it("keeps a still-folded drop's per-field choice while dropping a restored drop's (#1431)", async () => {
-    const login = createLogin();
-    const profile = createProfile("partial-undo-pick", login.id);
-    actAs(login, profile);
-
-    // The keeper's own distance would win the fold; the picker hands the field to
-    // dropB instead. dropA carries a distance too, so the choice is what decides.
-    const keep = insertActivity(profile.id, {
-      title: "keeper",
-      distance_km: 5,
-    });
-    const dropA = insertActivity(profile.id, {
-      title: "dropA",
-      distance_km: 8,
-      notes: "from-A",
-      start_time: "08:01",
-      end_time: "08:31",
-    });
-    const dropB = insertActivity(profile.id, {
-      title: "dropB",
-      distance_km: 12,
-      start_time: "08:02",
-      end_time: "08:32",
-    });
-
-    const { undoIds } = await mergeActivities(
-      fd({
-        keep_id: keep,
-        drop_ids: JSON.stringify([dropA, dropB]),
-        overrides: JSON.stringify({ distance_km: dropB }),
-      })
-    );
-    expect(activityRow(keep).distance_km).toBe(12);
-
-    // Undo only dropA (dropB stays folded in): the choice named dropB, which is
-    // still a member, so its distance holds — only A's notes gap-fill is un-folded.
-    const [tokenA, tokenB] = undoIds;
-    expect((await undoDeletes([tokenA])).restored).toBe(1);
-    const partial = activityRow(keep);
-    expect(partial.distance_km).toBe(12);
-    expect(partial.notes).toBeNull();
-
-    // Undo dropB too: no member is left to honour the choice, so the keeper's own
-    // pre-merge distance comes back.
-    expect((await undoDeletes([tokenB])).restored).toBe(1);
-    expect(activityRow(keep).distance_km).toBe(5);
   });
 });
