@@ -161,15 +161,16 @@ export function dayCountsLabel(servings: number, doses: number): string {
 // #3958/#4016 argument: a collation that answers 0 for two distinct ids leaves the sort
 // unstable).
 //
-// A DUE ROW CLOSES ITS GROUP, and that position is PROVISIONAL (#3987, open with the
-// owner). The argument for last is that a due row is the least-timed thing on the
-// surface, so it belongs below even the untimed. The argument for first is that it is
-// the only ACTIONABLE row, and actionable is what a person scans for. The design
-// session's mock is the visual reference and settles it; until it does, `due` sorting
-// last is a choice this constant makes visible rather than a fact it asserts.
+// THE DUE ROW LEADS ITS GROUP (#4315, owner ruling 2026-08-31). The ledger is opened to
+// ACT, so the one actionable row reads first and the record follows it UNCHANGED: the
+// stated/filing-time order below it is the order it would have had with nothing owed.
+// That is why the ranks are a RELABELLING rather than a second comparator — one row is
+// lifted, nothing is re-sorted, and the relative order of every other pair is untouched
+// by construction. This is the rule for ANY surface rendering due-and-done together, so
+// the next one does not re-derive it.
 const KEY_SEP = "\u001f";
 
-const RANK = { stated: "0", logged: "1", due: "2" } as const;
+const RANK = { due: "0", stated: "1", logged: "2" } as const;
 
 function sortKey(row: LedgerRow): string {
   if (row.kind === "due") return RANK.due;
@@ -184,7 +185,7 @@ function compareRows(a: LedgerRow, b: LedgerRow): number {
 
 /**
  * BUILD THE DAY. Servings and doses interleave in one group system; composed writes
- * collapse; the bucket's remaining due doses close the group.
+ * collapse; the bucket's remaining due doses lead the group.
  *
  * `pending` is the day's unresolved doses as the schedule engine reports them; every
  * one of them lands on exactly one row — its stack's, when that stack has a composed
