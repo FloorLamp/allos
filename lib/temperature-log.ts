@@ -25,7 +25,8 @@
 // same date; with distinct values they coexist in the series (the dedup partition
 // keys on value+unit), giving the fever curve — keyed by real instants now.
 
-import { db, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
+import { isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import { round } from "./units";
 import { isRealIsoDate, utcInstant } from "./date";
@@ -89,7 +90,10 @@ export function logTemperatureCore(
   loggedVia: LoggedVia,
   time?: string | null
 ): TemperatureLogOutcome {
-  if (!isRealIsoDate(date))
+  // The shared date invariant (#4425): any real past day, never the future. A reading
+  // dated forward is a typo or a forgery, and `occurred_at`'s own gate never saw the
+  // row's `date`.
+  if (!isPastWriteAccepted(today(profileId), date))
     return { kind: "invalid", error: "Enter a valid date." };
   if (rawValue == null || !Number.isFinite(rawValue)) {
     return { kind: "invalid", error: "Enter a valid temperature." };

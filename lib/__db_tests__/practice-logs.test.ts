@@ -229,9 +229,13 @@ describe("practice_logs store + range progress (#1259)", () => {
 
   it("supports protocol-windowed and unbounded session history", () => {
     const pid = makeProfile("windowed-history");
+    // All three PAST of this block's faked clock (2026-06-17). The third used to be
+    // 2026-07-01 — two weeks in the FUTURE — which only landed because the practice
+    // window was symmetric ±30; #4425's ruling refuses a future-dated session, so the
+    // fixture states a real past day and the range filter below still excludes it.
+    logPracticeSession(pid, "Meditation", "2026-05-20", "page");
     logPracticeSession(pid, "Meditation", "2026-06-01", "page");
     logPracticeSession(pid, "Meditation", "2026-06-10", "page");
-    logPracticeSession(pid, "Meditation", "2026-07-01", "page");
     expect(
       getPracticeSessions(pid, "Meditation", 50, {
         start: "2026-06-05",

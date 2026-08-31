@@ -12,6 +12,7 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
+import { isPastWriteAccepted, isWithinTapReach } from "@/lib/log-manifest";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -34,7 +35,11 @@ import {
   type StatedSleepWindow,
   type VitalsRawInput,
 } from "@/lib/vitals-input";
-import { statedInstantOnDate } from "@/lib/stated-time";
+import {
+  judgeStatedAt,
+  statedInstantOnDate,
+  type StatedTimeRefusal,
+} from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import {
@@ -56,7 +61,6 @@ import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { judgeEatenAt } from "@/lib/food-eating-time";
-import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
@@ -204,8 +208,12 @@ export function insertBodyMetric(
   w: BodyMetricWrite
 ): BodyMetricWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
-  // refusal to report: nothing was written and nothing was judged.
-  if (!isRealIsoDate(w.date)) return { wrote: false };
+  // refusal to report: nothing was written and nothing was judged. The weigh-in's own
+  // writers do not go through `recordReading`, so this door was not silently dropping
+  // anything — it takes the shared invariant so the BODY domain answers one way at
+  // both of its doors, rather than a queued sitting dead-lettering while a queued
+  // weigh-in on the same tomorrow lands.
+  if (!isPastWriteAccepted(today(profileId), w.date)) return { wrote: false };
   const weightRaw = String(w.weight ?? "").trim();
   const weight = weightRaw === "" ? null : Number(weightRaw);
   if (weight != null && !Number.isFinite(weight)) return { wrote: false };
@@ -512,7 +520,20 @@ export function insertVitals(
 ): VitalsWriteOutcome {
   // A REJECTED submission never reaches the acceptance gate below, so it has no
   // refusal to report: nothing was written and nothing was judged.
-  if (!isRealIsoDate(date)) return { wrote: false };
+  //
+  // THE DAY IS JUDGED HERE, AT THE DOOR, and that placement is the fix for a silent
+  // loss #4425 introduced. `recordReading` gained the shared not-future invariant, and
+  // the two loops below IGNORE its outcome — under the old gate its only refusal was a
+  // blank date, a programming error, so ignoring it cost nothing. The moment the
+  // refusal set included a REACHABLE case, this function reported `wrote: true` while
+  // writing no rows at all.
+  //
+  // And the case is reachable: the queue stamps `localDate()` off the BROWSER clock
+  // while every core resolves the day through `today(profileId)`, the PROFILE's zone,
+  // so a device east of that zone captures TOMORROW. Asking here gives the refusal the
+  // channel it needs — the replay dead-letters with a reason and the online actions
+  // report failure — instead of two loops each learning to handle an outcome.
+  if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const normalized = normalizeVitalsInput(raw);
   if ("error" in normalized) return { wrote: false };
   const { medical, samples, readings } = normalized;
@@ -547,6 +568,18 @@ export function insertVitals(
         })()
       : undefined;
 
+  // WHY THE NEXT TWO LOOPS MAY DISCARD `recordReading`'S OUTCOME, stated here because
+  // it is a claim about THIS call site rather than about the core (#4425 review).
+  // `recordReading` refuses three ways, and none can produce a PARTIAL sitting:
+  //   • the date invariant — a pure function of (profileId, date), and the whole
+  //     sitting shares one date, already asked at this function's door above. Uniform
+  //     by construction: it cannot answer differently for row three than for row one.
+  //   • `edit-locked` — the #133 lock fires only for a SOURCE-OWNED row, and `source`
+  //     is 'manual' below, so `sourceOwned` is false and that branch is unreachable.
+  //   • `unplaceable` — `placeReading` refuses only a name with no reading identity,
+  //     and these are the `VITAL_CANONICAL` vocabulary.
+  // A tally here would be code defending against a state the shape already forbids. If
+  // any of those three premises stops holding, this is the comment that has to change.
   for (const m of medical) {
     // `source` is 'manual' and `external_id` stays NULL, so a same-window Health
     // Connect push never matches it. The core registers the canonical name and
@@ -637,7 +670,14 @@ export function insertGrowth(
   date: string,
   raw: GrowthInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  // The shared date invariant (#4425), and the SITTING is why it matters here rather
+  // than only on the two cores the review named. One "Log measurements" submission fans
+  // out across five cores; the moment two of them answered different questions about
+  // the day, a future-dated sitting wrote its tape reading and dropped its weigh-in,
+  // with the form saying "Measurements saved" either way. All five ask the same
+  // question, so the sitting is all-or-nothing. `insertWaistCirc` and
+  // `insertComposition` below take it for the same reason.
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeGrowthInput(raw);
   if ("error" in normalized) return false;
   if (normalized.samples.length === 0) return false;
@@ -669,7 +709,7 @@ export function insertWaistCirc(
   date: string,
   raw: WaistInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeWaistInput(raw);
   if ("error" in normalized) return false;
   writeTx(() => {
@@ -696,7 +736,7 @@ export function insertComposition(
   date: string,
   raw: CompositionInputRaw
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeCompositionInput(raw);
   if ("error" in normalized) return false;
   writeTx(() => {
@@ -726,8 +766,10 @@ export function insertComposition(
 // consult — that lock (#133) holds out a SOURCE-owned re-push, and nothing streams
 // Bristol; every row here is the user's own tap.
 //
-// Auth-blind + profileId-first like its neighbours. Returns false on a rejected input
-// (bad date, or a value the scale does not name), true on a written row.
+// Auth-blind + profileId-first like its neighbours. Answers in the house shape the
+// body-metric writers above use: `wrote: false` on a rejected input (bad date, or a
+// value the scale does not name), and on a written row the REFUSAL of a stated time
+// the gate would not take — a notice, never a failure (#4425).
 export function logBristolStool(
   profileId: number,
   date: string,
@@ -736,10 +778,13 @@ export function logBristolStool(
   // clock seam, which is what a one-tap log does: the moment IS now.
   at?: string | null,
   instant: Date = clockNow()
-): boolean {
-  if (!isRealIsoDate(date)) return false;
+): { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal } {
+  // The shared date invariant (#4425): any real past day, never the future. The tap
+  // itself states no day — `logStoolForm` stamps today — so `TAP_REACH` files
+  // `stool-form` as `today`; the core is open for the dated surfaces #4433 will add.
+  if (!isPastWriteAccepted(today(profileId), date)) return { wrote: false };
   const bristolType = parseBristolType(type);
-  if (bristolType === null) return false;
+  if (bristolType === null) return { wrote: false };
   // SECOND precision, not minute, and the resolution is load-bearing.
   //
   // The key is the instant, so two readings are two rows exactly when they fall on
@@ -758,8 +803,26 @@ export function logBristolStool(
   // clock path carries seconds, and it reads them off the instant in UTC: every IANA
   // zone in the modern era is a whole-minute offset, so the seconds are the same
   // number on any wall clock.
-  const stated = normalizeClockTime(at ?? null);
-  const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
+  // JUDGED, NOT SHAPE-CHECKED (#4425). This ran `normalizeClockTime` alone — a shape
+  // check — so "Happened earlier?" took 23:50 typed at 09:00 and filed a bowel movement
+  // fourteen hours in the future, on a row whose natural key IS that instant. It now
+  // runs the one acceptance gate every other stated instant runs (`judgeStatedAt`,
+  // #2236), against the clock seam, and reports what it would not take.
+  //
+  // The refusal COSTS the statement, never the observation — the body-metric contract:
+  // losing the stated minute is cosmetic, losing the log is not — so a refused time
+  // falls back to the clock exactly as an unstated one does. `other-day` cannot fire
+  // here because the instant is BUILT from `date`; a wall time that does not exist on
+  // that day (a DST gap) is `malformed`, which is the honest word for a time the
+  // calendar has no room for.
+  const tz = getTimezone(profileId);
+  const shaped = normalizeClockTime(at ?? null);
+  const verdict = shaped
+    ? judgeStatedAt(statedInstantOnDate(date, shaped, tz), tz, date, clockNow())
+    : ({ kind: "unstated" } as const);
+  const stated = verdict.kind === "accepted" ? shaped : null;
+  const refused = verdict.kind === "refused" ? verdict.reason : undefined;
+  const hhmm = stated ?? zonedDateParts(tz, instant).hhmm;
   const seconds = stated
     ? "00"
     : String(instant.getUTCSeconds()).padStart(2, "0");
@@ -772,7 +835,7 @@ export function logBristolStool(
          value = excluded.value, date = excluded.date`
     ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
   });
-  return true;
+  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
@@ -806,7 +869,11 @@ export function upsertMoodLog(
     note?: unknown;
   }
 ): boolean {
-  if (!isRealIsoDate(date)) return false;
+  // The shared date invariant (#4425). The CHIP tap's ±2 reach lives in `TAP_REACH`
+  // where the offer is; the core takes any real past day, which is also what lets the
+  // offline replay keep landing a queued check-in on its captured date however long
+  // the queue sat.
+  if (!isPastWriteAccepted(today(profileId), date)) return false;
   const normalized = normalizeMoodInput(raw);
   if ("error" in normalized) return false;
   db.prepare(
@@ -1270,13 +1337,18 @@ export function applyIntent(
       });
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
-      ok = logBristolStool(
+      const applied = logBristolStool(
         profileId,
         intent.date,
         p?.type,
         typeof p?.at === "string" ? p.at : null,
         new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
       );
+      ok = applied.wrote;
+      // A capture whose stated minute aged out of acceptance still lands its
+      // observation, and says so on the SAME `timeNotice` channel the food flow
+      // opened in #2296.
+      if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "set") {
       // The offline-logged workout replays through the shared activity core; its
       // typed outcome keeps the refusal's reason (#1596, the dose-flow pattern).
@@ -1346,6 +1418,22 @@ export function applyIntent(
       const name = typeof p?.practice === "string" ? p.practice.trim() : "";
       if (!name) {
         outcome = { status: "rejected" };
+        return;
+      }
+      // THE TAP'S REACH, ASKED HERE (#4425 owner ruling 2026-08-31). A queued practice
+      // capture IS a tap, and a capture that sat until its day fell out of the tap's
+      // reach is dead-lettered rather than landed years late — the dose replay has
+      // always consulted `isDoseDateAccepted` for exactly this. The bound used to come
+      // from the write core, which now takes any real past day like every other core,
+      // so asking the core would silently land a stale capture on a closed day.
+      if (
+        !isWithinTapReach("practice-session", today(profileId), intent.date)
+      ) {
+        outcome = {
+          status: "rejected",
+          reason:
+            "This practice entry is too old to log automatically. Re-enter it from the practice's history.",
+        };
         return;
       }
       const applied = logPracticeSessionForDay(
