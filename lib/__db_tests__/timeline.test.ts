@@ -218,6 +218,54 @@ describe("getTimelineEvents", () => {
     ).toBe(false);
   });
 
+  it("derives only schedule-backed immunization dose positions", () => {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('DOSE POSITION')").run()
+        .lastInsertRowid
+    );
+    const insert = db.prepare(
+      `INSERT INTO immunizations (profile_id, date, vaccine, dose_label)
+       VALUES (?, ?, ?, ?)`
+    );
+    const mmr1 = Number(
+      insert.run(profileId, "2000-01-01", "mmr", null).lastInsertRowid
+    );
+    const mmr2 = Number(
+      insert.run(profileId, "2001-01-01", "mmr", null).lastInsertRowid
+    );
+    const explicit = Number(
+      insert.run(profileId, "2000-03-01", "hepb", "Birth dose").lastInsertRowid
+    );
+    const tooClose = [
+      Number(
+        insert.run(profileId, "2000-04-01", "varicella", null).lastInsertRowid
+      ),
+      Number(
+        insert.run(profileId, "2000-04-10", "varicella", null).lastInsertRowid
+      ),
+    ];
+    const unknown = Number(
+      insert.run(profileId, "2000-05-01", "novel-jab", null).lastInsertRowid
+    );
+
+    const events = getTimelineEvents(profileId, { category: "immunization" });
+    const subtitle = (id: number) =>
+      events.find((event) => event.id === `immunization:${id}`)?.subtitle;
+    expect(subtitle(mmr1)).toBe("Dose 1 of 2");
+    expect(subtitle(mmr2)).toBe("Dose 2 of 2");
+    expect(subtitle(explicit)).toBe("Birth dose");
+    expect(tooClose.map(subtitle)).toEqual([null, null]);
+    expect(subtitle(unknown)).toBeNull();
+
+    // Position is assessed from the full record, not restarted at the page window.
+    expect(
+      getTimelineEvents(profileId, {
+        category: "immunization",
+        startDate: "2000-12-01",
+      })[0]?.subtitle
+    ).toBe("Dose 2 of 2");
+  });
+
   it("surfaces conditions, allergies, encounters and insights without cross-profile bleed", () => {
     const events = getTimelineEvents(imperial.profileId);
     const ids = new Set(events.map((e) => e.id));

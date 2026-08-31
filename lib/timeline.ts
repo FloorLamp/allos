@@ -9,7 +9,12 @@ import { medicationCourseEvents } from "./medication-history";
 import {
   biomarkerPanelKey,
   ENCOUNTER_REPRESENTATIVE_IDS,
+  getImmunizations,
 } from "./queries/medical";
+import {
+  assessSchedule,
+  resolveAssessedDoseLabels,
+} from "./immunization-status";
 import {
   CONDITION_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
@@ -861,6 +866,11 @@ function collectEvents(
   }
 
   const immunizationBounds = exact("date");
+  const assessedImmunizations = getImmunizations(profileId);
+  const immunizationDoseLabels = resolveAssessedDoseLabels(
+    assessedImmunizations,
+    assessSchedule(assessedImmunizations, null, null, today(profileId))
+  );
   const immunizations = db
     .prepare(
       `SELECT id, date, vaccine, dose_label, notes
@@ -884,7 +894,7 @@ function collectEvents(
         date: i.date,
         category: "immunization",
         title: vaccineDisplayName(i.vaccine),
-        subtitle: i.dose_label,
+        subtitle: i.dose_label ?? immunizationDoseLabels.get(i.id) ?? null,
         detail: i.notes,
         href: immunizationHref(i.vaccine),
         tone: "good",
