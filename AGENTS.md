@@ -37,6 +37,7 @@ proportion to the change.
   `app/`; shared UI in `components/`.
 - Reuse existing models and shared substrates. Do not create a parallel concept
   for the same question.
+- Simplify, extract, unify. Types over guards; adding complexity means rethink.
 - Canonical storage uses kilograms, kilometers, and documented time units.
   Convert at input and display boundaries.
 - Preserve the distinction between an instant and a profile-local day.
