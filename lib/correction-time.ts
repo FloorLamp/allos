@@ -524,12 +524,15 @@ export function pickerHourOptions(now: Date, tz: string): string[] {
 export function statedHourInstant(
   hhmm: string,
   now: Date,
-  tz: string
+  tz: string,
+  futureSkewMs = 0
 ): Date | null {
   const local = zonedDateParts(tz, now);
   const sameDay = zonedWallTimeToUtc(tz, local.date, hhmm);
   if (!sameDay) return null;
-  if (sameDay.getTime() <= now.getTime()) return sameDay;
+  // Clock tolerance changes whether this wall time is future; it must not change
+  // which profile-local day "today" names when the allowance crosses midnight.
+  if (sameDay.getTime() <= now.getTime() + futureSkewMs) return sameDay;
   return zonedWallTimeToUtc(tz, shiftDateStr(local.date, -1), hhmm);
 }
 
