@@ -8,6 +8,11 @@ import {
 } from "./shared";
 
 export const setupCandidates = {
+  vitalsBootstrap(ctx: DomainCandidateContext) {
+    return action(ctx, "vitals.bootstrap", "vitals.bootstrap", null, "may", {
+      relevance: { kind: "setup" },
+    });
+  },
   liveWorkout(ctx: DomainCandidateContext, activityId: number | null) {
     const key = activityId ?? "active";
     return state(ctx, `workout.live:${key}`, `workout.live:${key}`, null, {
