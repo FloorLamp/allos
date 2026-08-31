@@ -520,6 +520,7 @@ export function gatherHistoryLog(
             start_time: row.start_time,
             end_time: row.end_time,
             duration_min: row.duration_min,
+            live: row.live === 1,
           },
         });
     }

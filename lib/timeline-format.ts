@@ -97,6 +97,7 @@ export interface TimelineEvent {
     start_time: string | null;
     end_time: string | null;
     duration_min: number | null;
+    live?: boolean;
   };
 }
 

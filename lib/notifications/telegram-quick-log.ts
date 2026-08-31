@@ -403,7 +403,8 @@ export async function handlePracticeDoneTap(
     profileId,
     token.targetId,
     messageKindIsPracticeNudge(cq.data) ? "telegram-nudge" : "telegram-command",
-    notifyMessageId
+    notifyMessageId,
+    practiceUsualDurationForTarget(profileId, token.targetId)
   );
   await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
 
@@ -1375,6 +1376,7 @@ import {
   logAdministration,
   logRedoseWindowAdministration,
   logPracticeByTargetId,
+  practiceUsualDurationForTarget,
 } from "../queries";
 import { practiceLogOutcomeText } from "../practice";
 import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";

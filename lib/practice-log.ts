@@ -18,7 +18,7 @@ import {
 } from "./correction-time";
 import { eventInstant, recordInstant } from "./row-instants";
 import { getTimezone } from "./settings";
-import { normalizePracticeName } from "./practice";
+import { normalizePracticeName, practiceDurationPrefill } from "./practice";
 import type {
   PracticeLogOutcome,
   PracticeLiveEndOutcome,
@@ -31,6 +31,7 @@ import { captureDelete } from "./undo-delete-db";
 import {
   getPracticeDayCount,
   getPracticeSession,
+  getPracticeSessions,
   getPracticeSpellings,
 } from "./queries/wellness";
 
@@ -366,8 +367,8 @@ export function endLivePracticeSession(
       : null;
     const endMinute = clockMinute(endTime);
     const durationMin =
-      startMinute != null && endMinute != null && endMinute > startMinute
-        ? endMinute - startMinute
+      startMinute != null && endMinute != null && endMinute >= startMinute
+        ? Math.max(1, endMinute - startMinute)
         : null;
     const updated = updatePracticeSession(profileId, id, {
       date,
@@ -451,6 +452,25 @@ export function logPracticeByTargetId(
     loggedVia,
     durationMin ?? null,
     notifyMessageId ?? null
+  );
+}
+
+// Resolve the Telegram button's default at tap time without putting health data in
+// callback payloads. The target lookup and every duration row are profile-scoped;
+// a leaked target id from another profile therefore reveals nothing.
+export function practiceUsualDurationForTarget(
+  profileId: number,
+  targetId: number
+): number | null {
+  const row = db
+    .prepare(
+      `SELECT scope_value FROM frequency_targets
+        WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
+    )
+    .get(targetId, profileId) as { scope_value: string } | undefined;
+  if (!row) return null;
+  return practiceDurationPrefill(
+    getPracticeSessions(profileId, row.scope_value, 50)
   );
 }
 

@@ -132,6 +132,7 @@ export interface IntradayBlock {
   href: TimelineEvent["href"];
   clippedStart: boolean;
   clippedEnd: boolean;
+  running?: boolean;
 }
 
 export interface IntradayTick {
@@ -351,7 +352,23 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
     const win = event.clockWindow;
     if (!win) continue;
-    const w = activityWindow(win);
+    const liveStart = win.live ? clockMinute(win.start_time) : null;
+    const running =
+      liveStart != null &&
+      input.nowMinute != null &&
+      input.nowMinute >= liveStart;
+    const runningEnd = running
+      ? Math.min(MINUTES_IN_DAY, Math.max(input.nowMinute!, liveStart! + 1))
+      : null;
+    const w = running
+      ? {
+          start: `${input.date}T${win.start_time}`,
+          end:
+            runningEnd === MINUTES_IN_DAY
+              ? `${shiftDateStr(input.date, 1)}T00:00`
+              : `${input.date}T${String(Math.floor(runningEnd! / 60)).padStart(2, "0")}:${String(runningEnd! % 60).padStart(2, "0")}`,
+        }
+      : activityWindow(win);
     if (w) {
       const startMinute = localStampMinute(input.date, w.start);
       const endMinute = localStampMinute(input.date, w.end);
@@ -369,6 +386,7 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
         iconTitle: event.iconTitle ?? null,
         iconSportNames: event.iconSportNames ?? null,
         href: event.href ?? null,
+        running,
       });
       continue;
     }

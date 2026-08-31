@@ -16,6 +16,7 @@ import {
   startLivePracticeSession,
   endLivePracticeSession,
   closeAbandonedPracticeSessions,
+  practiceUsualDurationForTarget,
   inferPracticeSchedule,
   getPracticeDayCount,
   getPracticeSessions,
@@ -579,6 +580,22 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(12);
     logPracticeSession(mine, "Sauna", t, "page", { durationMin: 18 });
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(18);
+  });
+
+  it("resolves Telegram's usual duration under both target and profile scope", () => {
+    const mine = makeProfile("telegram-usual-mine");
+    const theirs = makeProfile("telegram-usual-theirs");
+    const mineTarget = practiceTarget(mine, "Sauna", 3, null);
+    const theirTarget = practiceTarget(theirs, "Sauna", 3, null);
+    const t = today(mine);
+    logPracticeSession(mine, "Sauna", t, "page", { durationMin: 20 });
+    logPracticeSession(mine, "sauna", t, "page", { durationMin: 20 });
+    logPracticeSession(mine, "Sauna", t, "page", { durationMin: 30 });
+    logPracticeSession(theirs, "Sauna", t, "page", { durationMin: 45 });
+
+    expect(practiceUsualDurationForTarget(mine, mineTarget)).toBe(20);
+    expect(practiceUsualDurationForTarget(theirs, theirTarget)).toBe(45);
+    expect(practiceUsualDurationForTarget(mine, theirTarget)).toBeNull();
   });
 
   it("leaves the Wellness card's own prefill reading the same value", () => {
