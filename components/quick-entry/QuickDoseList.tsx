@@ -1,13 +1,10 @@
 "use client";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useEffect, useMemo, useState } from "react";
 import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
 import Button from "@/components/Button";
 import SegmentedControl from "@/components/SegmentedControl";
-import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { useWritePipeline } from "@/components/useWritePipeline";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -16,11 +13,7 @@ import {
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
-import {
-  localDate,
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
+import { localDate } from "@/lib/offline/queue";
 import { markTaken } from "@/app/(app)/upcoming/actions";
 import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
 import type {
@@ -82,8 +75,9 @@ export default function QuickDoseList({
   // switcher, and the missed day behind it, away with it.
   onDone: () => void;
 }) {
-  const toast = useToast();
-  const { enqueue } = useOfflineQueue();
+  // The shared client write pipeline (#3276) — the same one DoseStatusControl runs, so
+  // today's row cannot drift from the tri-state control's contract again (#3272).
+  const pipeline = useWritePipeline("dose-status");
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
   // gather mid-list would reorder rows under the user's finger.
@@ -101,8 +95,6 @@ export default function QuickDoseList({
   // The last outcome per (day, dose) that did NOT resolve it — shown inline so the
   // reason the row is still there is legible without hunting for the toast.
   const [notes, setNotes] = useState<Record<string, string>>({});
-  // The surface this list is rendered in (#3087).
-  const stampLoggedVia = useLoggedViaStamp();
   const [day, setDay] = useState(today);
 
   const remaining = doses.filter(
@@ -161,60 +153,47 @@ export default function QuickDoseList({
   }, [resolved, doses, pastDays, today, onDone]);
 
   async function confirm(dose: QuickEntryDose) {
-    // Capture before the online attempt: a dead-spot fallback must retain the tap's
-    // actual instant, matching DoseStatusControl's queue contract.
-    const tappedAt = new Date();
-    const queue = async () => {
-      const kept =
-        (await enqueue("dose", localDate(tappedAt), {
-          doseId: dose.doseId,
-          clientTakenAt: tappedAt.toISOString(),
-        })) === "kept";
-      if (!kept) {
-        toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-        return;
-      }
-      toast("Dose saved offline — will sync when you reconnect.");
-      markResolved(today, [dose.doseId]);
-    };
-    const online =
-      typeof navigator === "undefined" || navigator.onLine !== false;
-    if (!online) {
-      await queue();
-      return;
-    }
-    // The quick-log sheet, not the Upcoming page — the two mountings post the SAME
-    // action, so the sheet declares itself (#3087). The value comes from the host
-    // region rather than being asserted here.
-    const fd = stampLoggedVia(new FormData());
-    fd.set("dose_id", String(dose.doseId));
-    let result;
-    try {
-      result = await markTaken(fd);
-    } catch (err) {
-      if (shouldQueueOffline(navigator.onLine !== false, err)) {
-        await queue();
-        return;
-      }
-      toast("Couldn't log that dose. Try again.", { tone: "error" });
-      return;
-    }
-    if (!result.ok) {
-      toast(result.error, { tone: "error" });
-      return;
-    }
-    const { text, tone } = doseConfirmMessage(result.outcome);
-    toast(text, { tone });
-    if (doseResolved(result.outcome)) {
-      markResolved(today, [dose.doseId]);
-    } else {
-      setNotes((prev) => ({
-        ...prev,
-        [occurrenceKey(today, dose.doseId)]: text,
-      }));
-    }
-    // Keep the page behind the overlay honest — the user stays put, so what they
-    // are looking at has to reflect the write.
+    const result = await pipeline.run({
+      key: occurrenceKey(today, dose.doseId),
+      fields: { dose_id: String(dose.doseId) },
+      action: markTaken,
+      // Never an unconditional confirm: `markTaken` returns markDoseTaken's typed
+      // outcome, and a dose retired, paused or already skipped logs NOTHING. The row
+      // only leaves the list when a taken log actually stands (#280).
+      settle: (result) => {
+        if (!result.ok)
+          return {
+            wrote: false,
+            announce: { message: result.error, tone: "error", undo: null },
+          };
+        const { text, tone } = doseConfirmMessage(result.outcome);
+        const resolvedNow = doseResolved(result.outcome);
+        if (resolvedNow) markResolved(today, [dose.doseId]);
+        else
+          setNotes((prev) => ({
+            ...prev,
+            [occurrenceKey(today, dose.doseId)]: text,
+          }));
+        return {
+          wrote: resolvedNow,
+          // NO UNDO, said out loud rather than left out: this row's inverse would have
+          // to un-resolve a dose the sheet has already dropped from the list, and
+          // whether that is a complete local inverse is the separate ruling in #2642.
+          announce: { message: text, tone, undo: null },
+        };
+      },
+      failureMessage: "Couldn't log that dose. Try again.",
+      offline: (tappedAt) => ({
+        kind: "capture",
+        flow: "dose",
+        date: localDate(tappedAt),
+        // The tap's own instant, captured before the online attempt, so a dead-spot
+        // confirm lands with the time the dose was taken (#1427).
+        payload: { doseId: dose.doseId, clientTakenAt: tappedAt.toISOString() },
+        keptMessage: "Dose saved offline — will sync when you reconnect.",
+      }),
+    });
+    if (result === "captured") markResolved(today, [dose.doseId]);
   }
 
   const days = [
@@ -322,143 +301,107 @@ function PastDayDoses({
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
 }) {
-  const toast = useToast();
-  const stampLoggedVia = useLoggedViaStamp();
-  const { enqueue } = useOfflineQueue();
-  // Two affordances, two ledgers (#2041): a stack tap and the single taps beneath it
-  // are different writes and neither may be absorbed by the other's cooldown.
-  const single = useOptimisticLedger("dose-day");
-  const stack = useOptimisticLedger("dose-day-stack");
+  // Two affordances, two pipelines (#2041): a stack tap and the single taps beneath it
+  // are different writes and neither may be absorbed by the other's cooldown. The
+  // difference the ENROLLMENT GATE makes visible is the offline half — `dose-day` is a
+  // covered flow, so its `offline` decision is required; `dose-day-stack` is an argued
+  // exclusion in OFFLINE_QUEUE_COVERAGE, so passing one here is a compile error and the
+  // stack is online-only by declaration rather than by omission.
+  const single = useWritePipeline("dose-day");
+  const stack = useWritePipeline("dose-day-stack");
 
-  // Post one dated resolution. The named ids are an UPPER BOUND: the action re-derives
-  // the day's still-unresolved set and writes only the intersection, so this can never
-  // ask for more than the label promised and never get more than the day still owes.
-  async function post(
-    doseIds: readonly number[],
+  // Answered from the typed outcomes, never from the ask. The named ids are an UPPER
+  // BOUND: the action re-derives the day's still-unresolved set and writes only the
+  // intersection, so a dose the day no longer owes is simply absent from `result.doses`
+  // and one that refused is named where it stands.
+  function settlePost(
+    result: Awaited<ReturnType<typeof resolveDayDoses>>,
     status: "taken" | "skipped"
-  ): Promise<"wrote" | "nothing"> {
-    const fd = stampLoggedVia(new FormData());
-    fd.set("date", date);
-    fd.set("status", status);
-    fd.set("dose_ids", doseIds.join(","));
-    const result = await resolveDayDoses(fd);
-    if (!result.ok) {
-      toast(result.error, { tone: "error" });
-      return "nothing";
-    }
-    // Answered from the typed outcomes, never from the ask. A dose the day no longer
-    // owes is simply absent from `result.doses`; one that refused is named where it
-    // stands, exactly as today's list names its own refusals.
+  ) {
+    if (!result.ok)
+      return {
+        wrote: false,
+        announce: { message: result.error, tone: "error" as const, undo: null },
+      };
     for (const dose of result.doses) {
       if (!doseResolved(dose.outcome))
         onNote(dose.doseId, doseConfirmMessage(dose.outcome).text);
     }
     const landed = result.doses.filter((d) => doseResolved(d.outcome));
-    if (landed.length === 0) {
-      toast(
-        result.doses.length === 0
-          ? "Nothing left to log for that day."
-          : doseConfirmMessage(result.doses[0]!.outcome).text,
-        { tone: "error" }
-      );
-      return "nothing";
-    }
-    toast(
-      landed.length === 1
-        ? doseConfirmMessage(landed[0]!.outcome).text
-        : `${landed.length} doses ${status === "taken" ? "logged" : "skipped"}.`
-    );
+    if (landed.length === 0)
+      return {
+        wrote: false,
+        announce: {
+          message:
+            result.doses.length === 0
+              ? "Nothing left to log for that day."
+              : doseConfirmMessage(result.doses[0]!.outcome).text,
+          tone: "error" as const,
+          undo: null,
+        },
+      };
     onResolved(landed.map((d) => d.doseId));
-    return "wrote";
+    return {
+      wrote: true,
+      announce: {
+        message:
+          landed.length === 1
+            ? doseConfirmMessage(landed[0]!.outcome).text
+            : `${landed.length} doses ${status === "taken" ? "logged" : "skipped"}.`,
+        // No undo here either, and for the stack it is load-bearing: the action resolves
+        // each dose in its own transaction, so an inverse would have to know which ones
+        // landed. That is not a complete local inverse (lib/undo-offer.ts).
+        undo: null,
+      },
+    };
   }
 
-  // A single dated tap may be CAPTURED offline: the queued intent already carries its
+  // A single dated tap MAY be captured offline: the queued intent already carries its
   // own day and the replay re-checks the window with the same predicate the core does
   // (lib/offline/writes.ts).
   //
-  // WHAT OFFLINE ALSO CHANGES, and an earlier version of this comment wrongly said it
-  // did not: the SLACK. `isDoseDateAccepted` is evaluated at REPLAY time, so a capture
-  // for today tolerates two days offline, yesterday one, and the oldest offered day
-  // NONE — reconnect the next morning and the replay refuses it. The refusal is
-  // reported rather than swallowed (the replay tells an out-of-window entry apart from
-  // a deleted dose precisely so it can explain itself), so this is a tolerance the user
-  // can be told about, not a silent loss — but it is a real difference from the
-  // same-day tap, and it is written here rather than left for someone to rediscover.
+  // WHAT OFFLINE ALSO CHANGES: the SLACK. `isDoseDateAccepted` is evaluated at REPLAY
+  // time, so a capture for today tolerates two days offline, yesterday one, and the
+  // oldest offered day NONE — reconnect the next morning and the replay refuses it. The
+  // refusal is reported rather than swallowed, so this is a tolerance the user can be
+  // told about, not a silent loss.
   //
   // No `clientTakenAt` — the tap instant belongs to TODAY, and `resolveQueuedTakenAt`
   // refuses a stamp whose local date is not the row's own day, so sending it would only
   // buy a discarded value.
-  async function queue(
-    doseId: number,
-    status: "taken" | "skipped"
-  ): Promise<"wrote" | "nothing"> {
-    const kept =
-      (await enqueue(status === "taken" ? "dose" : "skip-dose", date, {
-        doseId,
-      })) === "kept";
-    // READ THE ANSWER: the queue can refuse (logged out, no IndexedDB), and claiming
-    // a save that did not happen is worse than the missing save (#3038).
-    if (!kept) {
-      toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-      return "nothing";
-    }
-    toast(
-      status === "taken"
-        ? "Dose saved offline — will sync when you reconnect."
-        : "Skip saved offline — will sync when you reconnect."
-    );
-    onResolved([doseId]);
-    return "wrote";
-  }
-
   function resolveOne(doseId: number, status: "taken" | "skipped") {
-    void single.tap<"wrote" | "nothing">({
+    void single.run({
       key: `${doseId}->${status}`,
-      write: async () => {
-        const online =
-          typeof navigator === "undefined" || navigator.onLine !== false;
-        if (!online) return queue(doseId, status);
-        try {
-          return await post([doseId], status);
-        } catch (err) {
-          if (shouldQueueOffline(navigator.onLine !== false, err))
-            return queue(doseId, status);
-          toast("Couldn't update this dose. Try again.", { tone: "error" });
-          return "nothing";
-        }
-      },
-      settle: (outcome) =>
-        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
-      onError: () => {
-        toast("Couldn't update this dose. Try again.", { tone: "error" });
-        return { kind: "rollback" };
-      },
+      fields: { date, status, dose_ids: String(doseId) },
+      action: resolveDayDoses,
+      settle: (result) => settlePost(result, status),
+      failureMessage: "Couldn't update this dose. Try again.",
+      offline: () => ({
+        kind: "capture",
+        flow: status === "taken" ? "dose" : "skip-dose",
+        date,
+        payload: { doseId },
+        keptMessage:
+          status === "taken"
+            ? "Dose saved offline — will sync when you reconnect."
+            : "Skip saved offline — will sync when you reconnect.",
+      }),
     });
   }
 
   function resolveStack(doseIds: readonly number[]) {
-    void stack.tap<"wrote" | "nothing">({
+    void stack.run({
       key: doseIds.join(","),
-      write: () => post(doseIds, "taken"),
-      settle: (outcome) =>
-        outcome === "wrote" ? { kind: "keep" } : { kind: "rollback" },
-      onError: () => {
-        // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its
-        // OWN transaction, so a failure on the third of five leaves the first two
-        // committed WITH their supply decrements — and "Couldn't log that stack" would
-        // then be the one thing this file is otherwise careful never to do: report a
-        // write wrongly. We do not know what landed, so we say that and point at the
-        // record, rather than claiming either outcome. (Online-only by declaration in
-        // OFFLINE_QUEUE_COVERAGE: the shortcut needs a connection; the single taps
-        // beneath it queue.)
-        toast(
-          "Something went wrong — reopen this sheet to see what was logged.",
-          {
-            tone: "error",
-          }
-        );
-        return { kind: "rollback" };
-      },
+      fields: { date, status: "taken", dose_ids: doseIds.join(",") },
+      action: resolveDayDoses,
+      settle: (result) => settlePost(result, "taken"),
+      // A THROW HERE IS NOT "NOTHING HAPPENED". The action resolves each dose in its OWN
+      // transaction, so a failure on the third of five leaves the first two committed
+      // WITH their supply decrements — and "Couldn't log that stack" would be the one
+      // thing this file is otherwise careful never to do: report a write wrongly. We do
+      // not know what landed, so we say that and point at the record.
+      failureMessage:
+        "Something went wrong — reopen this sheet to see what was logged.",
     });
   }
 
