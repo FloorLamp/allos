@@ -7,6 +7,7 @@ import {
   deleteActivityFromForm,
   dismissToast,
   settledAfterAnimation,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -225,4 +226,143 @@ test("with no session at all, a toast still clears the nav dock (#2651)", async 
   } finally {
     cleanupMetric(NAV_TOAST_WEIGHT);
   }
+});
+
+// ── THE SHEET IS A BOTTOM-EDGE SURFACE TOO (#4334) ───────────────────────────
+//
+// The two tests above are about BARS. This one is about the surface a person is
+// looking AT when the notice arrives: an open bottom sheet is `fixed`,
+// bottom-anchored and base-layer exactly as the docks are, and until #4334 it did
+// not claim. So a toast raised BY a row inside the sheet came to rest ON that row
+// and the next tap went to the notice — three quick taps logging two servings,
+// with a confirmation on screen saying it worked.
+//
+// TWO CONTENT HEIGHTS, ONE SENTENCE. #4323 bought the same safety with padding
+// derived from the notice band; it held for the one list it was measured against
+// and nothing more, and its own comment says so. So the sequence runs over a SHORT
+// sheet and over one at its `85dvh` ceiling — a ~500px difference in where the
+// panel's top edge sits — and the assertion does not change. The `rows` parameter
+// on the gesture fixture exists for that (there is no product caller that lets a
+// spec choose a sheet's height).
+//
+// The tall case is also where the owner's ruling is visible: over a tall sheet the
+// notice lands near the TOP of the viewport. That is not a bug to tune away, it is
+// what "never over the surface it was tapped from" costs.
+const CLAIM_HEIGHTS = [
+  { rows: 2, why: "a short sheet, its top edge low in the viewport" },
+  {
+    rows: 40,
+    why: "a sheet at its 85dvh ceiling, its top edge near the status bar",
+  },
+];
+
+/** The published claim in px — 0 when nothing claims the edge. */
+function claimedOffset(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    parseFloat(
+      document.documentElement.style.getPropertyValue("--bottom-edge-offset") ||
+        "0"
+    )
+  );
+}
+
+/**
+ * What a tap at this control's centre would ACTUALLY hit — the issue's own probe,
+ * and the only one that answers the reported bug directly. "The notice's box misses
+ * the control's box" and "the control owns its own centre" are different claims,
+ * and a thumb only ever experiences the second.
+ */
+async function testIdAtCentre(control: Locator): Promise<string> {
+  const box = (await control.boundingBox())!;
+  return control.page().evaluate(
+    ([x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      return (
+        hit?.closest<HTMLElement>("[data-testid]")?.dataset.testid ??
+        hit?.tagName ??
+        "none"
+      );
+    },
+    [box.x + box.width / 2, box.y + box.height / 2]
+  );
+}
+
+for (const { rows, why } of CLAIM_HEIGHTS) {
+  test(`a notice raised inside an open sheet clears it — ${why} (#4334)`, async ({
+    page,
+  }) => {
+    await page.goto(`/e2e-fixtures/bottom-sheet?rows=${rows}`);
+    const panel = page
+      .getByTestId("gesture-contract-sheet")
+      .locator("[data-sheet-panel]");
+    await expect(panel).toBeVisible();
+    // The panel ARRIVES on a `translateY`, and a box read mid-flight is the edge it
+    // is leaving rather than the one it comes to rest on — the same reading error
+    // the claim itself had to be taught about.
+    await settledAfterAnimation(panel);
+
+    // THE CLAIM IS THE PANEL'S OWN TOP EDGE. Asserted as the relationship, not as a
+    // number: a constant here would pass on the tall sheet and the short one for
+    // two different wrong reasons.
+    const [panelBox] = await settledBoxes([panel]);
+    const viewport = page.viewportSize()!.height;
+    expect(await claimedOffset(page)).toBeCloseTo(viewport - panelBox.y, 0);
+
+    // A notice raised by a control INSIDE the sheet, sitting at the foot of its
+    // content — which is the band the notice used to land in.
+    const raise = page.getByTestId("fixture-raise-notice");
+    await raise.click();
+    const toast = page.getByTestId("toast");
+    await expect(toast).toBeVisible();
+    await expectStackedAbove(toast, panel);
+
+    // …so the control still owns its own centre, and three more taps all land.
+    // SEQUENTIAL, not a `Promise.all` burst: what makes a tap land is the HIT
+    // TEST, not the interval between taps, and Playwright refuses a click whose
+    // point another element intercepts — so a notice resting on this control fails
+    // here rather than being timed around.
+    expect(await testIdAtCentre(raise)).toBe("fixture-raise-notice");
+    await raise.click();
+    await raise.click();
+    await raise.click();
+    await expect(page.getByTestId("fixture-notice-count")).toHaveText("4");
+    expect(await testIdAtCentre(raise)).toBe("fixture-raise-notice");
+  });
+}
+
+test("the quick-log sheet claims while its body is still arriving, and releases on close (#4334)", async ({
+  page,
+}) => {
+  test.slow();
+  // The real surface the bug was reported on, and the window it lived in: the
+  // sheet's body loads behind a Server Action, so the panel is still growing after
+  // it opens and the rows sit lower while it does. A claim measured once on mount
+  // would be correct only after everything settled — which is not when the taps
+  // happen.
+  await page.goto("/nutrition");
+  const logSheet = await openLogSheet(page);
+  await settledClick(page, await showLogRow(logSheet, "log-food"));
+  const sheet = page.getByTestId("quick-entry-sheet");
+  const panel = sheet.locator("[data-sheet-panel]");
+  await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
+
+  const viewport = page.viewportSize()!.height;
+  // SETTLING: read before waiting for anything, while the body is still arriving.
+  const arriving = (await panel.boundingBox())!;
+  expect(await claimedOffset(page)).toBeGreaterThanOrEqual(
+    viewport - arriving.y - 1
+  );
+  // SETTLED: and now it is the panel's top edge exactly.
+  const [settled] = await settledBoxes([panel]);
+  expect(await claimedOffset(page)).toBeCloseTo(viewport - settled.y, 0);
+
+  // Closing RELEASES the claim down to the nav dock — the same shape the
+  // workout-dock test pins for a session ending, and the half that a claim which is
+  // never withdrawn would pass without.
+  // ESCAPE, not the scrim: at `85dvh` the panel covers the backdrop's own centre,
+  // so a scrim click is intercepted by the very surface it would dismiss.
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  const navBox = (await page.getByTestId("mobile-dock").boundingBox())!;
+  await expect.poll(() => claimedOffset(page)).toBeCloseTo(navBox.height, 0);
 });
