@@ -13,16 +13,34 @@
 // Usage:
 //   node scripts/orchestration/queue-snapshot.mjs        # sweep, write, print
 //
-// One line per candidate: `P2 #1234 [self] [deps:#99] title`. Excluded, with
-// reasons the runbook owns: PRs, `parked` (not queue state), `needs-human`
-// (owner-gated), and the reconcile watermark carrier (machine state). An
-// issue with NO priority slot stays IN, marked [no-slot] — hygiene drift is
-// not an excuse to forget the work. Sort: slot, owner-filed before
-// self-filed, oldest first. [deps:#N] is the raw Depends-on line, unresolved
-// — judging whether a dep still blocks is the reader's job, but the marker
-// means it cannot be overlooked. Read-only; exit 2 without a token (a
-// truncated sweep would write a shorter queue, which lies in the idle
-// direction).
+// One line per candidate: `P2 #1234 [lane:branch] [deps:#99] title`. Excluded,
+// with reasons the runbook owns: PRs, `parked` (not queue state),
+// `needs-human` (owner-gated), and the reconcile watermark carrier (machine
+// state). An issue with NO priority slot stays IN, marked [no-slot] — hygiene
+// drift is not an excuse to forget the work. Sort: slot, free before under
+// dispatch, oldest first. [deps:#N] is the raw Depends-on line, unresolved —
+// judging whether a dep still blocks is the reader's job, but the marker means
+// it cannot be overlooked. Read-only; exit 2 without a token (a truncated
+// sweep would write a shorter queue, which lies in the idle direction).
+//
+// AN ISSUE UNDER ACTIVE DISPATCH IS MARKED, NEVER DROPPED (#4451). The sweep
+// had no cross-reference to the dispatch ledger, so live lanes read as
+// available capacity: measured on the 2026-08-31 10:22Z file, 4 of the 5
+// issues in active ledger entries were listed as candidates. Dropping them
+// would trade one lie for another — a dropped row is a forgotten row, which
+// is the whole failure this file exists to stop — so they stay in, carry
+// `[lane:<branch>]`, sort to the back of their slot, and are counted apart in
+// the header the check-in prints.
+//
+// THERE IS NO PROVENANCE MARKER, AND THAT IS DELIBERATE (#4451). This file
+// used to publish `(N self-filed)` from `/found (while|by)/i` over the body.
+// That measures PHRASING. Against the only ground truth available — the 8
+// still-open issues the orchestrator filed in one session — it fired on 3 and
+// missed 5, all 8 written by the same GitHub author as owner-filed work, so
+// the author field cannot stand in either. A published number that is right
+// 3 times in 8 is worse than no number, because the next reader quotes it.
+// Provenance needs a marker written at FILING time; until one exists this
+// sweep says nothing about who filed what.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -38,8 +56,39 @@ helpGuard(process.argv, import.meta.url);
 const WATERMARK_TITLE = "Reconcile watermark (machine state)";
 const SLOTS = ["P0", "P1", "P2", "P3"];
 
+/**
+ * Issue number -> branch, for every dispatch the ledger still holds open.
+ *
+ * The same replay orchestrator-checkin.sh runs for the e2e axis: walk the
+ * append-only JSONL, last word per branch wins, `done` closes the branch. Two
+ * row kinds make a naive "last status per branch" read wrong, and the live
+ * ledger holds both — a `promotion` row carries NO branch, and an `update` row
+ * carries a branch with NO `issues`, so letting it win would erase the lane it
+ * was only re-prioritising. Only a row that carries issues may set them.
+ */
+export function laneIssues(ledgerText) {
+  const byBranch = new Map();
+  for (const line of ledgerText.split("\n")) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue; // a torn append is not a reason to write a shorter queue
+    }
+    if (!entry.branch) continue;
+    if (entry.status === "done") byBranch.delete(entry.branch);
+    else if (entry.issues) byBranch.set(entry.branch, entry.issues);
+  }
+  const lanes = new Map();
+  for (const [branch, issues] of byBranch) {
+    for (const number of issues) lanes.set(Number(number), branch);
+  }
+  return lanes;
+}
+
 /** Pure: one snapshot from raw open issues. Exported for the test drive. */
-export function buildSnapshot(raw, now = new Date()) {
+export function buildSnapshot(raw, now = new Date(), lanes = new Map()) {
   const rows = [];
   for (const i of raw) {
     if (i.pull_request) continue;
@@ -47,28 +96,28 @@ export function buildSnapshot(raw, now = new Date()) {
     const labels = (i.labels ?? []).map((l) => l.name);
     if (labels.includes("parked") || labels.includes("needs-human")) continue;
     const slot = SLOTS.find((s) => labels.includes(s)) ?? null;
-    const self = /found (while|by)/i.test(i.body ?? "");
+    const lane = lanes.get(i.number) ?? null;
     const deps = [...(i.body ?? "").matchAll(/^Depends-on:\s*#(\d+)/gim)].map(
       (m) => `#${m[1]}`
     );
-    rows.push({ number: i.number, title: i.title, slot, self, deps });
+    rows.push({ number: i.number, title: i.title, slot, lane, deps });
   }
   rows.sort(
     (a, b) =>
       (a.slot ? SLOTS.indexOf(a.slot) : SLOTS.length) -
         (b.slot ? SLOTS.indexOf(b.slot) : SLOTS.length) ||
-      Number(a.self) - Number(b.self) ||
+      Number(Boolean(a.lane)) - Number(Boolean(b.lane)) ||
       a.number - b.number
   );
-  const selfCount = rows.filter((r) => r.self).length;
+  const laneCount = rows.filter((r) => r.lane).length;
   const lines = [
     `${rows.length} candidates as of ${now.toISOString().slice(0, 16)}Z ` +
-      `(${selfCount} self-filed) — written by queue-snapshot.mjs; a 'thin' ` +
-      "claim answers every line here",
+      `(${laneCount} under dispatch) — written by queue-snapshot.mjs; a ` +
+      "'thin' claim answers every line here",
     ...rows.map(
       (r) =>
         `${r.slot ?? "[no-slot]"} #${r.number}` +
-        `${r.self ? " [self]" : ""}` +
+        `${r.lane ? ` [lane:${r.lane}]` : ""}` +
         `${r.deps.length ? ` [deps:${r.deps.join(",")}]` : ""} ${r.title}`
     ),
   ];
@@ -106,8 +155,16 @@ function main() {
     if (batch.length < 100) break;
   }
 
-  const snapshot = buildSnapshot(issues);
-  const file = path.join(resolveStateDir(), ".queue");
+  const stateDir = resolveStateDir();
+  const ledgerFile =
+    process.env.ALLOS_DISPATCH_LEDGER ??
+    path.join(stateDir, "allos-dispatch-ledger.jsonl");
+  const lanes = fs.existsSync(ledgerFile)
+    ? laneIssues(fs.readFileSync(ledgerFile, "utf8"))
+    : new Map();
+
+  const snapshot = buildSnapshot(issues, new Date(), lanes);
+  const file = path.join(stateDir, ".queue");
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, snapshot.text);
   process.stdout.write(snapshot.text);
