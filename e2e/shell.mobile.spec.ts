@@ -5,6 +5,7 @@ import {
   expectInView,
   expectPhoneTapTargets,
   openMobileDrawer,
+  settledBoxes,
   settledClick,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -139,6 +140,60 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     // And returning to the top leaves it showing.
     await scrollTo(page, 0);
     await expect(chrome).toHaveAttribute("data-hidden", "false");
+  });
+
+  test("the strip parks BELOW a notch band rather than under it (#4282)", async ({
+    page,
+  }) => {
+    // The shell paints no status-bar band any more (#4282: edge-to-edge, the dock
+    // is the phone's one chrome), so a strip that says `top: 0` pins UNDER the
+    // status bar. Headless Chromium reports a ZERO inset, so `--top-edge-inset`
+    // (app/globals.css) is the seam a notch can be forged through — an `env()`
+    // written inline at the call site could not be forged at all.
+    const NOTCH = 44; // an iPhone-class status-bar inset, in CSS px
+    await page.goto("/records/history");
+    const chrome = await chromeReady(page);
+    await expect(page.getByTestId("shell-tab-strip")).toBeVisible();
+
+    // PINNED, and re-pinned after the forge: at the top of the page the strip's
+    // natural offset under a forged notch is the same number as its parked one, so
+    // the reading has to be taken deep in the page — and changing the token relays
+    // the page, which can put the chrome into its hidden state, where a translated
+    // strip reads as a large negative y rather than as the offset.
+    const pin = async () => {
+      // Settle at the top FIRST — the machine always reveals inside its top zone
+      // (lib/shell-chrome), so this cannot settle on a hidden strip — and then walk
+      // the hide/reveal ONE STATE AT A TIME. The listener is rAF-coalesced
+      // (components/useShellChrome), so a down-scroll and an up-scroll issued
+      // inside one frame are read as a single downward move and the strip ends
+      // HIDDEN, which prints as a large negative y long after the pin looked
+      // established. Waiting for `true` in between forces the frame boundary.
+      await scrollTo(page, 0);
+      await settledBoxes([chrome]);
+      const deep = await scrollTo(page, 1400);
+      expect(
+        deep,
+        "the Timeline should be scrollable at phone width"
+      ).toBeGreaterThan(400);
+      await expect(chrome).toHaveAttribute("data-hidden", "true");
+      await scrollTo(page, deep - 300);
+      await expect(chrome).toHaveAttribute("data-hidden", "false");
+    };
+    // Control and assertion through the SAME read: flush with no notch, below the
+    // band with one.
+    const parkedY = async () => (await chrome.boundingBox())?.y ?? -1;
+    await pin();
+    await expect.poll(parkedY).toBe(0);
+    await page.evaluate(
+      (px) =>
+        document.documentElement.style.setProperty(
+          "--top-edge-inset",
+          `${px}px`
+        ),
+      NOTCH
+    );
+    await pin();
+    await expect.poll(parkedY).toBe(NOTCH);
   });
 
   test("keeps dock More reachable after a top-chrome hide/reveal cycle", async ({
