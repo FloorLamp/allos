@@ -88,9 +88,8 @@ export interface IntakeItemFormState {
   doses: IntakeDoseDraft[];
   pairs: IntakePairDraft[];
   ingredients: IntakeIngredientDraft[];
-  // Purpose links (#2857) — the structured "why". Supplement surface only, exactly like
-  // `ingredients` above and for the reason the issue names: medications already carry
-  // the #1052 indication link, and supplements are where the reason had nowhere to live.
+  // Purpose links (#2857) — the person's structured "why", for either kind. A
+  // medication's clinical indication is separate and may coexist with these rows.
   purposes: PurposeDraft[];
   notes: string;
   rxcui: string | null;
@@ -185,9 +184,12 @@ export function intakeItemFields(
     }
   } else {
     set("stack", state.stack.trim());
-    set("ingredients", JSON.stringify(state.ingredients));
-    set("purposes", JSON.stringify(state.purposes));
   }
+  // Both child sets survive a kind flip (#3649). Posting them for every kind is what
+  // makes the shared editors able to update or clear the rows instead of leaving an
+  // invisible, absent-means-unchanged value behind.
+  set("ingredients", JSON.stringify(state.ingredients));
+  set("purposes", JSON.stringify(state.purposes));
 
   set("doses", JSON.stringify(state.doses));
   set("pairs", JSON.stringify(state.pairs));
