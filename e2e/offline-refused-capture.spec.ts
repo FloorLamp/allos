@@ -334,6 +334,9 @@ test("a measurements save whose vitals half is refused says which half it kept",
 
   await context.setOffline(true);
   await form.getByLabel("Weight", { exact: true }).fill("81.4");
+  await form.getByLabel("Body Fat", { exact: true }).fill("22.5");
+  await form.getByLabel("Resting Heart Rate", { exact: true }).fill("61");
+  await form.getByLabel("Notes", { exact: true }).fill("after breakfast");
   await form.getByLabel("Systolic", { exact: true }).fill("118");
   await form.getByLabel("Diastolic", { exact: true }).fill("76");
   await form.getByRole("button", { name: "Save measurements" }).click();
@@ -352,6 +355,18 @@ test("a measurements save whose vitals half is refused says which half it kept",
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
+
+  // The form must agree with the partial sentence too: the body half is already
+  // durable in the queue, so retaining it would let a retry enqueue a second
+  // uuid-keyed weigh-in. Only the refused vitals remain for the next save.
+  await expect(form.getByLabel("Weight", { exact: true })).toHaveValue("");
+  await expect(form.getByLabel("Body Fat", { exact: true })).toHaveValue("");
+  await expect(
+    form.getByLabel("Resting Heart Rate", { exact: true })
+  ).toHaveValue("");
+  await expect(form.getByLabel("Notes", { exact: true })).toHaveValue("");
+  await expect(form.getByLabel("Systolic", { exact: true })).toHaveValue("118");
+  await expect(form.getByLabel("Diastolic", { exact: true })).toHaveValue("76");
 
   // RECONNECTING WITH THE REPLAY ROUTE SHUT, which is not fussiness in either
   // direction. Every other test here can go online freely because it refused BOTH

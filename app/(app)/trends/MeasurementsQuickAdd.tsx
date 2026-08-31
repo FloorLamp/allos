@@ -453,6 +453,19 @@ export default function MeasurementsQuickAdd({
       }
       form.reset();
     };
+    const clearQueuedBodyFields = (): void => {
+      const form = formRef.current;
+      if (!form) return;
+      for (const name of ["weight", "body_fat_pct", "resting_hr", "notes"]) {
+        const field = form.elements.namedItem(name);
+        if (
+          field instanceof HTMLInputElement ||
+          field instanceof HTMLTextAreaElement
+        ) {
+          field.value = "";
+        }
+      }
+    };
 
     // Offline: replay each half through its OWN queued intent — the queue's flow
     // kinds are the write cores, and this form is a composition of them, not a new
@@ -527,8 +540,18 @@ export default function MeasurementsQuickAdd({
           ...vitals,
           occurredAt: s("occurred_at"),
         });
-        if (kept !== "kept")
-          return keptBody && kept === "failed" ? "partial" : "refused";
+        if (kept !== "kept") {
+          if (keptBody && kept === "failed") {
+            // The body intent is durable but the vitals are not. Keep the refused
+            // half (and its shared date/time) ready for retry while removing every
+            // field another body intent would duplicate (#3830).
+            clearQueuedBodyFields();
+            rememberWritten();
+            refreshSummaries();
+            return "partial";
+          }
+          return "refused";
+        }
       }
       rememberWritten();
       toast("Saved offline — will sync when you reconnect.");
