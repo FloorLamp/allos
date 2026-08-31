@@ -30,10 +30,14 @@ import { historicalDbFixture } from "./historical-db-fixture";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import { up } from "@/lib/migrations/versions/173-intake-log-recorded-at";
 
-// The chain is still the source of the fixture; each case gets independent bytes.
+// Frozen owners of every table and column migration 173 reads.
+const FIXTURE_MIGRATION_IDS = new Set([
+  1, 5, 8, 11, 41, 56, 79, 80, 135, 156, 165, 170,
+]);
 const seededDb = historicalDbFixture((mem) => {
   mem.pragma("foreign_keys = OFF");
-  for (const m of NUMBERED_MIGRATIONS) if (m.id <= 172) m.up(mem);
+  for (const m of NUMBERED_MIGRATIONS)
+    if (FIXTURE_MIGRATION_IDS.has(m.id)) m.up(mem);
   seed(mem);
 });
 
@@ -62,8 +66,8 @@ function seed(mem: Database.Database): { doseId: number; itemId: number } {
     mem
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, product, active, kind, condition, obligation)
-         VALUES (1, 'Ibuprofen', 'Oral suspension', 1, 'medication', 'daily', 'may')`
+           (profile_id, name, product, active, kind, condition)
+         VALUES (1, 'Ibuprofen', 'Oral suspension', 1, 'medication', 'daily')`
       )
       .run().lastInsertRowid
   );
