@@ -134,6 +134,26 @@ const practiceWhenFor = (
 // profile this login cannot write is refused at the action, which is the half a
 // missing button could never prove.
 
+// WHICH CELL GIVES WAY, AND IN WHICH ORDER (#4394). The title used to be `shrink-0`
+// with nothing to truncate in: a long one overflowed the cluster and was cut —
+// silently, no ellipsis — by `<main>`'s `overflow-x-clip`. Measured at 320px before
+// the fix, the illness row's title laid out 525px wide inside a 236px cluster, right
+// edge at 565 against a 320px viewport.
+//
+// Letting the title truncate is half the answer; the other half is that flex shrink
+// is PROPORTIONAL, so a plain shrinking title takes its share of the deficit
+// alongside the detail — ~185px of title beside a useless ~45px stub of detail on
+// that row — while the grammar above says the DETAIL is what truncates first. This
+// weight restores that order: the detail is starved to nothing, freezes there, and
+// only then does the title spend what is left and end in an ellipsis.
+//
+// IT HAS TO BE A BIG NUMBER RATHER THAN A SMALL ONE ON THE TITLE, which is the
+// non-obvious half. A flex-shrink BELOW 1 does not merely deprioritise an item, it
+// caps the whole line's shrink: when the unfrozen factors sum to less than 1, the
+// spec scales the free space by that sum, so a `shrink-[0.01]` title moved 4px of a
+// 438px deficit and stayed clipped. Measured, on this row, at 320px.
+const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
+
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
 // symbols still knows the record's. Total means a new kind cannot ship without one.
@@ -843,21 +863,27 @@ export default function HistoryRows({
                      control and one cue, and a row can never show both verbs. */
                   <DestinationLink
                     href={row.href}
-                    className="inline-flex shrink-0 items-center text-link"
+                    className="inline-flex min-w-0 items-center text-link"
                     data-testid="history-row-title"
                   >
-                    {row.title}
+                    {/* The ellipsis needs a BLOCK to happen in, and this `<a>` is a
+                        flex container (the primitive's own chevron), so `truncate`
+                        on the link would style a box that holds no text. */}
+                    <span className="truncate">{row.title}</span>
                   </DestinationLink>
                 ) : row.href ? (
                   <Link
                     href={row.href}
-                    className="shrink-0 text-link"
+                    className="min-w-0 truncate text-link"
                     data-testid="history-row-title"
                   >
                     {row.title}
                   </Link>
                 ) : (
-                  <span className="shrink-0" data-testid="history-row-title">
+                  <span
+                    className="min-w-0 truncate"
+                    data-testid="history-row-title"
+                  >
                     {row.title}
                   </span>
                 )}
@@ -890,7 +916,7 @@ export default function HistoryRows({
                     onClick={() =>
                       setOpenPanelId(openPanelId === row.id ? null : row.id)
                     }
-                    className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    className={`flex items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 ${DETAIL_GIVES_WAY_FIRST}`}
                   >
                     <span
                       className="min-w-0 truncate"
@@ -908,7 +934,7 @@ export default function HistoryRows({
                   </button>
                 ) : row.detail ? (
                   <span
-                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`truncate text-xs font-normal text-slate-500 dark:text-slate-400 ${DETAIL_GIVES_WAY_FIRST}`}
                     data-testid="history-row-detail"
                   >
                     {row.detail}
