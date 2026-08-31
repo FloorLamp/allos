@@ -368,6 +368,7 @@ function QuickEntryBody({
         <QuickDoseList
           today={data.today}
           doses={data.doses}
+          prn={data.prn}
           pastDays={data.pastDays}
           onDone={onDone}
         />
