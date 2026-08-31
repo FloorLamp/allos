@@ -57,8 +57,31 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
 
     // NO CARD IN ANY ZONE, not only in the reporting groups — the acceptance line is
     // about `/`, so the sweep is the whole main region.
-    const main = page.getByRole("main");
-    expect(await main.locator("main .card, main .card-quiet").count()).toBe(0);
+    //
+    // THE SELECTOR IS PAGE-ROOTED ON PURPOSE. This read
+    // `page.getByRole("main").locator("main .card, …")`, and chained CSS is resolved
+    // RELATIVE TO THE ROOT the locator is scoped to — so it asked for a `<main>`
+    // inside a `<main>` and matched nothing, ever. The guard could not fail.
+    const cards = page.locator("main .card, main .card-quiet");
+    await expect(cards).toHaveCount(0);
+
+    // …AND THIS LOCATOR CAN SEE A CARD — asserted with the SAME locator object the
+    // claim above uses, which is the whole point and is what the previous control
+    // got wrong. That control forged a card and queried it back through
+    // `document.querySelectorAll`, a different selector path: it proved that *a*
+    // query can find a card, never that *this guard* can. A proof of falsifiability
+    // that exercises a different path from the assertion it vouches for is worth
+    // nothing, and it reads exactly like a rigorous one.
+    const forged = await page.evaluateHandle(() => {
+      const node = document.createElement("article");
+      node.className = "card";
+      node.textContent = "FORGED BY A SPEC on purpose — not a shipped card";
+      document.querySelector("main")!.append(node);
+      return node;
+    });
+    await expect(cards).toHaveCount(1);
+    await forged.evaluate((node) => (node as Element).remove());
+    await expect(cards).toHaveCount(0);
 
     // …AND THE WRITES SURVIVED THE CARDS. This is the converse the absence above
     // cannot state: the tail hosts real controls, on rows.
@@ -119,42 +142,6 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
     expect(rows.some((row) => row.controls === 2)).toBe(true);
   });
 
-  // THE GUARD CAN SEE A CARD. An absence assertion is worth exactly what its
-  // detector is worth, so the detector is shown a card built on purpose before it is
-  // trusted saying there are none. Forged in the page, removed in the same
-  // evaluation — the shipped tree is never left holding it.
-  test("the no-card sweep detects a card that is put in front of it", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    const seen = await page.evaluate(() => {
-      const main = document.querySelector("main")!;
-      const forged = document.createElement("article");
-      forged.className = "card";
-      forged.textContent = "FORGED BY A SPEC on purpose — not a shipped card";
-      main.append(forged);
-      const count = document.querySelectorAll(
-        "main .card, main .card-quiet"
-      ).length;
-      forged.remove();
-      return count;
-    });
-    expect(seen).toBe(1);
-  });
-
-  // #3365's third amendment: "No empty-state prose in the tail — absence is not
-  // content." One sentence outlived that ruling because its host had no way to
-  // suppress it: `SymptomLogBar`'s "No symptoms logged." rendered inside the tail's
-  // well-day card. #3366 retired that mount, so the sentence goes with it, and this
-  // is where that is checked rather than assumed. The bar itself is unchanged — it
-  // still says this in the illness cockpit and on the Cycles page, where a day with
-  // no symptoms logged is the reader's actual question.
-  //
-  // ON THE WELL-DAY LOGIN, WHICH IS THE ONLY PLACE THE CLAIM MEANS ANYTHING. The card
-  // was gated on a WELL day, so on the shared fixture — which carries an open illness
-  // — it never rendered and this test would have passed on the unfixed tree too.
-  // Measured: with the mount restored, the shared fixture stayed green and this login
-  // went red.
   test("no empty-state sentence renders inside the tail", async ({
     browser,
   }) => {

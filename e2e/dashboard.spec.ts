@@ -825,40 +825,33 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   // accessibility channel with them. The ruling's element is the glyph that named
   // what KIND of thing a row is, and its cell is the label. So: nothing decorative
   // beside the words that identify the row.
-  const iconsInLabel = await rows
-    .locator('[data-testid="standing-label"]')
-    .evaluateAll((nodes) =>
-      nodes
-        .filter((node) => node.querySelector("svg"))
-        .map((node) => node.textContent ?? "")
+  // ONE LOCATOR, USED BOTH WAYS. The claim and its control run through the SAME
+  // object below — `labels` — because a control that queries the forged element back
+  // through a different selector path proves only that *some* query can see it, not
+  // that this guard can. That is exactly how the sibling card sweep in
+  // dashboard-tail-grammar.spec.ts shipped blind: its assertion was scoped to `main`
+  // and then asked for `main .card`, matching a `<main>` inside a `<main>`, while its
+  // control queried the document and dutifully went red.
+  const labels = rows.locator('[data-testid="standing-label"]');
+  const withIcons = () =>
+    labels.evaluateAll(
+      (nodes) => nodes.filter((node) => node.querySelector("svg")).length
     );
-  expect(iconsInLabel).toEqual([]);
 
-  // AND THE SWEEP CAN SEE ONE. The assertion above is an absence over a tree that
-  // has none, so it is worth exactly what its detector is worth — shown a glyph put
-  // into a label on purpose, and returned to the shipped tree in the same
-  // evaluation.
-  expect(
-    await page.evaluate(() => {
-      const label = document.querySelector(
-        '[data-testid="dashboard-candidate"] [data-testid="standing-label"]'
-      )!;
-      const forged = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "svg"
-      );
-      forged.dataset.forged =
-        "FORGED BY A SPEC on purpose — not a shipped glyph";
-      label.prepend(forged);
-      const seen = [
-        ...document.querySelectorAll(
-          '[data-testid="dashboard-candidate"] [data-testid="standing-label"]'
-        ),
-      ].filter((node) => node.querySelector("svg")).length;
-      forged.remove();
-      return seen;
-    })
-  ).toBe(1);
+  expect(await withIcons()).toBe(0);
+
+  // …and this locator CAN see one: a glyph put into a label on purpose, counted back
+  // through `labels` itself, then returned to the shipped tree.
+  const anyLabel = labels.first(); // first-ok: the control plants a glyph in ONE label cell of the set the claim above counted in full
+  const forged = await anyLabel.evaluateHandle((label) => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.dataset.forged = "FORGED BY A SPEC on purpose — not a shipped glyph";
+    label.prepend(svg);
+    return svg;
+  });
+  expect(await withIcons()).toBe(1);
+  await forged.evaluate((node) => (node as Element).remove());
+  expect(await withIcons()).toBe(0);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({
