@@ -117,6 +117,16 @@ export const FLOW_KINDS: readonly FlowKind[] = [
 // four `usual`/`backfill`/`stack` exclusions say "only the SHORTCUT needs a
 // connection" — an argument about one offer, false of the single taps underneath it,
 // so a domain-grain column cannot hold it.
+//
+// ADDRESSED TO THE NEXT LANE, because it is a CONSTRAINT on #4425 ruling 4 rather
+// than an unfinished fold: "each census becomes a manifest column or a typed
+// derivation of one" holds only where the census axis and the domain axis agree.
+// Here they do not, and the same is true of the three `LoggableDomain`-keyed censuses
+// for a different reason — `body` collapses weight/vitals/temperature, which carry
+// three different palette answers and three different Telegram answers. A fold that
+// forced those onto one row would not converge them, it would make the manifest say
+// something untrue. Fold the rows whose grain matches; leave the rest arguing for
+// themselves, here, next to what they are about.
 export const OFFLINE_QUEUE_COVERAGE = {
   "food-serving": LOG_MANIFEST.food.offline.flow,
   "protein-grams": LOG_MANIFEST.food.offline.flow,

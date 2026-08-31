@@ -15,7 +15,9 @@
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 //
 // AND THE CLOCK IS PINNED HERE, by this file, because the db tier does not pin it —
-// a comment below used to say the tiers freeze it and that was simply not true. It
+// a comment below used to say the tiers freeze it and that was simply not true. No
+// tier config or setup file names ALLOS_TEST_NOW at all; 36 spec files set it
+// themselves, which is the convention this one now joins. It
 // matters now that the stated time is JUDGED rather than shape-checked (#4425): a
 // fixture stating 19:40 is in the past when the suite runs in the evening and in the
 // FUTURE when it runs at lunchtime, so an unpinned clock would make this file green
