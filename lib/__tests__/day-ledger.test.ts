@@ -64,6 +64,9 @@ function pending(
 ): PendingDayDose {
   return {
     bucket,
+    // The declared clock the dated write core states an administration time from
+    // (#4305); the ledger builder under test reads the bucket, never this.
+    timeOfDay: null,
     doseId,
     itemId: doseId,
     name: `Item ${doseId}`,
