@@ -331,6 +331,28 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     ).toBe(11);
   });
 
+  it("keeps a past-day confirm untimed when the queued tap states no instant", async () => {
+    const admin = createLogin();
+    const profile = createProfile(`Untimed ${uniqueKey()}`);
+    actAs(admin, profile);
+    const itemId = seedItem(profile.id);
+    const pastDose = seedDose(itemId);
+    const todayDose = seedDose(itemId);
+    const currentDay = today(profile.id);
+    const pastDay = shiftDateStr(currentDay, -1);
+
+    const { body } = await replay([
+      doseIntent(pastDose, profile.id, pastDay),
+      doseIntent(todayDose, profile.id, currentDay),
+    ]);
+    expect(body.results?.map((result) => result.status)).toEqual([
+      "done",
+      "done",
+    ]);
+    expect(logFor(pastDose, pastDay)?.occurred_at).toBeNull();
+    expect(logFor(todayDose, currentDay)?.occurred_at).not.toBeNull();
+  });
+
   // #2312: WHICH clock the captured stamp is judged against. The guard used to read
   // real time, on the reasoning that a client capture and the server are two
   // independent clocks — the same reasoning #2287 overturned for food. Freezing the

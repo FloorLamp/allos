@@ -36,7 +36,18 @@ import {
   type LedgerStack,
 } from "@/lib/day-ledger";
 import type { PendingDayDose } from "@/lib/queries/usual-routine";
-import { resolveDayDoses } from "./intake-actions";
+import CheckboxControl from "@/components/CheckboxControl";
+import WhenControl from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm, type WhenValue } from "@/lib/stated-time";
+import { useConfirm } from "@/components/ConfirmDialog";
+import {
+  deleteLedgerSelection,
+  moveLedgerSelectionToDay,
+  resolveDayDoses,
+  setLedgerSelectionTime,
+  type LedgerSelectionEditResult,
+} from "./intake-actions";
 
 // THE DAY LEDGER (#3987 phase 1).
 //
@@ -108,6 +119,13 @@ export interface DayLedgerProps {
   keepApart: { bucket: string; content: ReactNode }[];
   /** The workout/rest context this day carries, where training is tracked. */
   dayContext: string | null;
+  /**
+   * The days a SELECTION may be moved to — the page's own day picker, minus the day
+   * being rendered. Empty disables Move to day…, which is the honest rendering when
+   * there is nowhere to move to; the server bounds the same span independently
+   * (`LEDGER_DAY_SPAN`), so this list is the offer and never the gate.
+   */
+  moveDays: { date: string; label: string }[];
   onCorrectServing: (eventId: number) => void;
   onRemoveServing: (eventId: number) => void;
   removingServingId: number | null;
@@ -121,6 +139,7 @@ export default function DayLedger({
   prefs,
   keepApart,
   dayContext,
+  moveDays,
   onCorrectServing,
   onRemoveServing,
   removingServingId,
@@ -273,6 +292,126 @@ export default function DayLedger({
     });
   }
 
+  // ── SELECTION MODE (#4118) ──────────────────────────────────────────────────
+  //
+  // A day reconstructed late is wrong the SAME way on every row it holds — the reported
+  // case is a whole morning logged the next afternoon — so the repair is one gesture over
+  // many rows, not the ⋯ menu N times. What a selection can do is deliberately the three
+  // things the ⋯ menu can do to one row, and each one goes through the SAME correction
+  // core (lib/day-ledger-edit.ts): there is no bulk write path here, only a bulk caller of
+  // the per-row ones.
+  //
+  // SELECTABLE IS "already a record": servings and TAKEN doses, stack members included. A
+  // still-due dose has no row to correct, and a SKIPPED one is re-answered on its own row
+  // rather than amended — both cores that could act on a skip scope themselves to taken.
+  const confirm = useConfirm();
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<{ servings: number[]; doses: number[] }>(
+    () => ({ servings: [], doses: [] })
+  );
+  const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState<"time" | "day" | null>(null);
+  // THE ONE "WHEN" CONTROL (#2236/#3273), with its day FIXED to the ledger's own:
+  // min === max, so it renders the day as text and the pair rule holds trivially. The
+  // batch never re-dates through this control — Move to day… is the other verb, and
+  // giving Set time… a day picker too would be two answers to one question.
+  const tz = useTimezone();
+  const [batchWhen, setBatchWhen] = useState<WhenValue>(() => ({
+    date,
+    statedAt: null,
+  }));
+  const [batchDay, setBatchDay] = useState("");
+  const pickedCount = picked.servings.length + picked.doses.length;
+
+  function togglePick(kind: "servings" | "doses", id: number): void {
+    setPicked((prev) => {
+      const list = prev[kind];
+      return {
+        ...prev,
+        [kind]: list.includes(id)
+          ? list.filter((x) => x !== id)
+          : [...list, id],
+      };
+    });
+  }
+
+  function leaveSelection(): void {
+    setSelecting(false);
+    setSheet(null);
+    setPicked({ servings: [], doses: [] });
+    setBatchWhen({ date, statedAt: null });
+  }
+
+  /** The box a selectable row carries while selection mode is on, and nothing otherwise. */
+  function pickBox(kind: "servings" | "doses", id: number, label: string) {
+    if (!selecting) return null;
+    return (
+      <CheckboxControl
+        label={label}
+        checked={picked[kind].includes(id)}
+        onChange={() => togglePick(kind, id)}
+        data-testid={`ledger-pick-${kind === "servings" ? "serving" : "dose"}-${id}`}
+      />
+    );
+  }
+
+  // Post one batch and SAY WHAT LANDED. The action answers with the rows it wrote and
+  // every row it refused, each carrying the reason its own core gave — so a batch that
+  // half-lands says so rather than confirming all of it (#232's contract, at batch
+  // grain). The rows themselves come back from the server revalidation the action ran.
+  async function runBatch(
+    verb: "Updated" | "Removed",
+    action: (fd: FormData) => Promise<LedgerSelectionEditResult>,
+    extra: Record<string, string>
+  ): Promise<void> {
+    const fd = new FormData();
+    fd.set("date", date);
+    fd.set("serving_ids", picked.servings.join(","));
+    fd.set("dose_log_ids", picked.doses.join(","));
+    for (const [key, value] of Object.entries(extra)) fd.set(key, value);
+    setBusy(true);
+    try {
+      const result = await action(fd);
+      if (!result.ok) {
+        toast(result.error, { tone: "error" });
+        return;
+      }
+      if (result.applied === 0) {
+        toast(result.refused[0]?.reason ?? "Nothing changed.", {
+          tone: "error",
+        });
+        return;
+      }
+      toast(
+        result.refused.length === 0
+          ? `${verb} ${result.applied} ${result.applied === 1 ? "row" : "rows"}.`
+          : `${verb} ${result.applied} of ${result.applied + result.refused.length} — ${result.refused[0]!.reason}`,
+        result.refused.length === 0 ? undefined : { tone: "error" }
+      );
+      leaveSelection();
+    } catch {
+      toast("Something went wrong — reload to see what changed.", {
+        tone: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSelection(): Promise<void> {
+    // ONE confirmation for the batch (the ruling). The per-row ⋯ removal offers an Undo
+    // toast instead; a batch trades that for the question asked once, and the rows are
+    // still recoverable from the Trash, which is where both paths' captures land.
+    const ok = await confirm({
+      title: `Remove ${pickedCount} ${pickedCount === 1 ? "row" : "rows"}?`,
+      message: "They move to the Trash, where they can be restored.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
+    await runBatch("Removed", deleteLedgerSelection, {});
+  }
+
   const pending = (dose: PendingDayDose) =>
     !resolved.has(occurrenceKey(date, dose.doseId));
 
@@ -363,6 +502,7 @@ export default function DayLedger({
             removingServingId === row.eventId ? " opacity-50" : ""
           }`}
         >
+          {pickBox("servings", row.eventId, `Select the ${row.name} serving`)}
           <LoggedEventRow
             icon={
               <FoodGroupIcon
@@ -429,6 +569,11 @@ export default function DayLedger({
               : ""
           }`}
         >
+          {/* Only a TAKEN row: a skip is re-answered on its own control, and both cores
+              a batch could reach scope themselves to taken. */}
+          {row.status === "taken"
+            ? pickBox("doses", row.logId, `Select the ${row.name} dose`)
+            : null}
           <LoggedEventRow icon={<DoseGlyph />}>
             {row.name}
             <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
@@ -558,6 +703,9 @@ export default function DayLedger({
                 data-status={dose.status}
                 className={LOGGED_EVENT_ROW}
               >
+                {dose.status === "taken"
+                  ? pickBox("doses", dose.logId, `Select the ${dose.name} dose`)
+                  : null}
                 <LoggedEventRow icon={<DoseGlyph />}>
                   {dose.name}
                   <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
@@ -575,6 +723,22 @@ export default function DayLedger({
     );
   }
 
+  // Is there anything a selection could act on? A day of nothing but due doses offers no
+  // Select control at all — an affordance whose every target is absent is a lie the
+  // surface tells (the readOnlyDoseRow reasoning, applied to the header).
+  const selectableCount = groups.reduce(
+    (total, group) =>
+      total +
+      group.rows.reduce((n, row) => {
+        if (row.kind === "serving") return n + 1;
+        if (row.kind === "dose") return n + (row.status === "taken" ? 1 : 0);
+        if (row.kind === "stack")
+          return n + row.written.filter((d) => d.status === "taken").length;
+        return n;
+      }, 0),
+    0
+  );
+
   const totals = groups.reduce(
     (acc, group) => ({
       servings: acc.servings + group.servings,
@@ -588,14 +752,120 @@ export default function DayLedger({
     <section data-testid="day-ledger" className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="section-label">Ledger</h3>
-        <p
-          data-testid="day-ledger-census"
-          className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-        >
-          {census}
-          {dayContext ? ` · ${dayContext}` : ""}
-        </p>
+        <span className="flex items-center gap-3">
+          <p
+            data-testid="day-ledger-census"
+            className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
+          >
+            {census}
+            {dayContext ? ` · ${dayContext}` : ""}
+          </p>
+          {selectableCount > 0 && (
+            <Button
+              data-testid="ledger-select-toggle"
+              onClick={() =>
+                selecting ? leaveSelection() : setSelecting(true)
+              }
+            >
+              {selecting ? "Cancel" : "Select"}
+            </Button>
+          )}
+        </span>
       </div>
+      {selecting && (
+        <div
+          data-testid="ledger-selection-bar"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-(--divider) bg-slate-50 px-3 py-2 dark:bg-slate-900"
+        >
+          <span
+            data-testid="ledger-selection-count"
+            className="text-sm font-medium tabular-nums text-slate-700 dark:text-slate-200"
+          >
+            {pickedCount} selected
+          </span>
+          <Button
+            data-testid="ledger-selection-set-time"
+            disabled={pickedCount === 0 || busy}
+            onClick={() => setSheet(sheet === "time" ? null : "time")}
+          >
+            Set time…
+          </Button>
+          <Button
+            data-testid="ledger-selection-move-day"
+            disabled={pickedCount === 0 || busy || moveDays.length === 0}
+            onClick={() => setSheet(sheet === "day" ? null : "day")}
+          >
+            Move to day…
+          </Button>
+          <Button
+            data-testid="ledger-selection-delete"
+            disabled={pickedCount === 0 || busy}
+            onClick={() => void removeSelection()}
+          >
+            Delete
+          </Button>
+          {sheet === "time" && (
+            <span className="flex items-center gap-2">
+              {/* ONE time for the batch, in the app's one time vocabulary. The wall
+                  clock is what travels; the core re-anchors it on the day being
+                  rendered, so a time that has not happened yet is refused THERE by the
+                  same gate every other stated instant passes, rather than talked out
+                  of here. */}
+              <WhenControl
+                mode="state"
+                grain="minute"
+                timeRequired
+                value={batchWhen}
+                onChange={setBatchWhen}
+                minDate={date}
+                maxDate={date}
+                timeLabel="Time for the selected rows"
+                testId="ledger-selection-when"
+              />
+              <Button
+                data-testid="ledger-selection-time-apply"
+                disabled={busy || batchWhen.statedAt === null}
+                onClick={() =>
+                  void runBatch("Updated", setLedgerSelectionTime, {
+                    time: statedHhmm(batchWhen.statedAt, tz),
+                  })
+                }
+              >
+                Apply
+              </Button>
+            </span>
+          )}
+          {sheet === "day" && (
+            <span className="flex items-center gap-2">
+              <select
+                aria-label="Day to move the selected rows to"
+                data-testid="ledger-selection-day-select"
+                className="input"
+                value={batchDay}
+                onChange={(event) => setBatchDay(event.target.value)}
+              >
+                <option value="">Choose a day…</option>
+                {moveDays.map((day) => (
+                  <option key={day.date} value={day.date}>
+                    {day.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                data-testid="ledger-selection-day-apply"
+                disabled={busy || batchDay === ""}
+                onClick={() =>
+                  void runBatch("Updated", moveLedgerSelectionToDay, {
+                    to_date: batchDay,
+                  })
+                }
+              >
+                Apply
+              </Button>
+            </span>
+          )}
+        </div>
+      )}
       {groups.length === 0 ? (
         <EmptyState
           compact

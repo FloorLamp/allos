@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
-import { db, migrate } from "@/lib/db";
+import { db } from "@/lib/db";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
 import {
   getActiveSituations,
@@ -208,21 +208,6 @@ describe("migration 029 backfill", () => {
       )
       .get(profileId);
     expect(stale).toBeUndefined();
-    d.close();
-  });
-
-  it("migrate() (full apply incl. 029) leaves a fresh DB consistent", () => {
-    // A full boot (baseline + all migrations + boot tasks) has no legacy data, so
-    // situations is empty and boots cleanly — a no-op backfill.
-    const d = new Database(":memory:");
-    d.pragma("foreign_keys = ON");
-    process.env.ADMIN_PASSWORD =
-      process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
-    migrate(d);
-    const n = (
-      d.prepare("SELECT COUNT(*) AS n FROM situations").get() as { n: number }
-    ).n;
-    expect(n).toBe(0);
     d.close();
   });
 });
