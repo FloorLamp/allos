@@ -241,9 +241,9 @@ export function unwiredPosters(root: string): string[] {
   for (const { rel, src } of clients) {
     const hook = /\/use[A-Z][^/]*\.ts$/.test(rel);
     for (const [action, file] of actions) {
+      if (!importsSymbol(src, action)) continue;
       const unstamped = hasUnstampedCall(src, action);
       if (
-        importsSymbol(src, action) &&
         (direct.has(action) || (counts.get(action) ?? 0) > 1) &&
         ((!DECLARES_RE.test(src) && (!hook || unstamped)) || unstamped)
       )
