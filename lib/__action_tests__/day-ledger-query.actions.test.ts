@@ -422,6 +422,7 @@ describe("FoodTab's bounded day-ledger gather (#4412)", () => {
     markDoseTaken(profile.id, dose.doseId, dose.itemId, date, "page");
 
     const expected = getDayDoseLedger(profile.id, date);
+    expect(expected[0]?.bucket).toBe("Morning");
     const read = vi.spyOn(scheduleQueries, "getIntakeDosesForHistory");
     const schedules = scheduleQueries.getIntakeDosesForHistory(profile.id);
     for (let i = 0; i < 7; i += 1)
