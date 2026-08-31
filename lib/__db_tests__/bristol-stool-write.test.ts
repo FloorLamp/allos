@@ -13,8 +13,15 @@
 //   • a value the scale does not name never reaches the table at all, from any door.
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
+//
+// AND THE CLOCK IS PINNED HERE, by this file, because the db tier does not pin it —
+// a comment below used to say the tiers freeze it and that was simply not true. It
+// matters now that the stated time is JUDGED rather than shape-checked (#4425): a
+// fixture stating 19:40 is in the past when the suite runs in the evening and in the
+// FUTURE when it runs at lunchtime, so an unpinned clock would make this file green
+// for part of the day and red for the rest — the #3260 shape.
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { zonedWallIsoToUtc } from "@/lib/date";
@@ -25,6 +32,21 @@ import {
   getBristolReadings,
 } from "@/lib/queries/bristol-stool";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+
+// Late enough that every wall time these fixtures state has already happened on the
+// pinned day. Profiles here take the instance-default timezone, so profile-local is UTC.
+const PINNED_NOW = "2026-08-31T23:45:00.000Z";
+let priorNow: string | undefined;
+
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
 
 let profileId: number;
 
@@ -51,8 +73,8 @@ beforeEach(() => {
 describe("logBristolStool — instant grain", () => {
   it("keeps two movements on one day as two rows", () => {
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 2, "08:12")).toBe(true);
-    expect(logBristolStool(profileId, date, 6, "19:40")).toBe(true);
+    expect(logBristolStool(profileId, date, 2, "08:12")).toEqual({ wrote: true });
+    expect(logBristolStool(profileId, date, 6, "19:40")).toEqual({ wrote: true });
 
     const stored = rows();
     expect(stored).toHaveLength(2);
@@ -70,8 +92,8 @@ describe("logBristolStool — instant grain", () => {
     // A stated wall time is a claim about WHEN, so restating it corrects that
     // reading rather than inventing a second movement at the same minute.
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 5, "09:00")).toBe(true);
-    expect(logBristolStool(profileId, date, 4, "09:00")).toBe(true);
+    expect(logBristolStool(profileId, date, 5, "09:00")).toEqual({ wrote: true });
+    expect(logBristolStool(profileId, date, 4, "09:00")).toEqual({ wrote: true });
     expect(rows()).toEqual([
       { date, started_at: `${date}T09:00:00`, value: 4 },
     ]);
@@ -85,10 +107,10 @@ describe("logBristolStool — instant grain", () => {
     // resolution they would not line up, and a genuine second reading forty seconds
     // after the first would vanish with the surviving row looking perfectly normal.
     //
-    // Asserted through the stated-time door, because the clock seam is frozen in the
-    // test tiers (ALLOS_TEST_NOW) and cannot advance to demonstrate it.
+    // Asserted through the stated-time door, because this file pins the clock seam
+    // (ALLOS_TEST_NOW, above) and it cannot advance to demonstrate it.
     const date = today(profileId);
-    expect(logBristolStool(profileId, date, 3, "09:00")).toBe(true);
+    expect(logBristolStool(profileId, date, 3, "09:00")).toEqual({ wrote: true });
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
          VALUES (?, 'manual', ?, ?, ?, ?, 6)`
@@ -119,7 +141,7 @@ describe("logBristolStool — instant grain", () => {
     // could not see a mutant in it.
     const zone = getTimezone(profileId);
     const before = clockNow().getTime();
-    expect(logBristolStool(profileId, date, 3)).toBe(true);
+    expect(logBristolStool(profileId, date, 3)).toEqual({ wrote: true });
     const after = clockNow().getTime();
 
     const stored = rows();
@@ -139,14 +161,14 @@ describe("logBristolStool — the vocabulary reaches the table", () => {
   it("refuses every non-type and writes nothing", () => {
     const date = today(profileId);
     for (const bad of [0, 8, 3.5, -1, NaN, "four", null, undefined]) {
-      expect(logBristolStool(profileId, date, bad), String(bad)).toBe(false);
+      expect(logBristolStool(profileId, date, bad), String(bad)).toEqual({ wrote: false });
     }
     expect(rows()).toEqual([]);
   });
 
   it("refuses an impossible date", () => {
-    expect(logBristolStool(profileId, "2026-02-30", 4)).toBe(false);
-    expect(logBristolStool(profileId, "not-a-date", 4)).toBe(false);
+    expect(logBristolStool(profileId, "2026-02-30", 4)).toEqual({ wrote: false });
+    expect(logBristolStool(profileId, "not-a-date", 4)).toEqual({ wrote: false });
     expect(rows()).toEqual([]);
   });
 });
@@ -176,6 +198,47 @@ describe("the reader is profile-scoped and metric-scoped", () => {
     ).run(profileId, date, `${date}T07:00:00`, `${date}T07:00:00`);
     expect(getBristolReadings(profileId, date, date)).toEqual([
       { date, type: 4 },
+    ]);
+  });
+});
+
+
+// THE STATED TIME IS JUDGED, NOT SHAPE-CHECKED (#4425). This core ran
+// `normalizeClockTime` alone, so "Happened earlier?" took a wall time the day had not
+// reached and filed the movement there — on a row whose natural key IS that instant,
+// which means the forgery also decides what a later reading collides with.
+//
+// PARITY WITH BODY METRICS is the ruling and it is asserted as a comparison rather
+// than against a constant: `applyBodyMetricIntent` is the shipped shape (the row lands,
+// the statement is dropped, `statedTimeRefused` carries the reason), and this answers
+// with the same three properties.
+describe("logBristolStool — a stated time is judged (#4425)", () => {
+  const PINNED_HHMM = "23:45";
+
+  it.each([
+    // Before "now" on the pinned day — the ordinary backfill, kept as stated.
+    ["08:12", undefined, "08:12"],
+    // Ten minutes after it — past the five-minute skew `judgeStatedAt` tolerates.
+    // The filed defect is "23:50 typed at 09:00"; the clock sits at 23:45 here
+    // because the file's other fixtures state evening times on the same day.
+    ["23:55", "future", PINNED_HHMM],
+  ])("%s → refused=%s, filed at %s", (at, refusal, filedAt) => {
+    const date = today(profileId);
+    expect(logBristolStool(profileId, date, 4, at)).toEqual(
+      refusal ? { wrote: true, statedTimeRefused: refusal } : { wrote: true }
+    );
+    const stored = rows();
+    expect(stored).toHaveLength(1);
+    expect(stored[0].started_at.slice(0, 16)).toBe(`${date}T${filedAt}`);
+  });
+
+  // The refusal costs the STATEMENT, never the observation — the whole point of the
+  // body-metric contract. A future time must not behave like a bad Bristol type.
+  it("a refused time still files the movement", () => {
+    const date = today(profileId);
+    logBristolStool(profileId, date, 6, "23:55");
+    expect(getBristolReadings(profileId, date, date)).toEqual([
+      { date, type: 6 },
     ]);
   });
 });

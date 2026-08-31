@@ -34,7 +34,11 @@ import {
   type StatedSleepWindow,
   type VitalsRawInput,
 } from "@/lib/vitals-input";
-import { statedInstantOnDate } from "@/lib/stated-time";
+import {
+  judgeStatedAt,
+  statedInstantOnDate,
+  type StatedTimeRefusal,
+} from "@/lib/stated-time";
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import {
@@ -56,7 +60,6 @@ import { getTimezone, resetMoodCheckinIgnored } from "@/lib/settings";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { judgeEatenAt } from "@/lib/food-eating-time";
-import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { saveActivityCore } from "@/lib/activity-write";
 import { logMobilityMoveCore } from "@/lib/mobility-log-write";
@@ -726,8 +729,10 @@ export function insertComposition(
 // consult — that lock (#133) holds out a SOURCE-owned re-push, and nothing streams
 // Bristol; every row here is the user's own tap.
 //
-// Auth-blind + profileId-first like its neighbours. Returns false on a rejected input
-// (bad date, or a value the scale does not name), true on a written row.
+// Auth-blind + profileId-first like its neighbours. Answers in the house shape the
+// body-metric writers above use: `wrote: false` on a rejected input (bad date, or a
+// value the scale does not name), and on a written row the REFUSAL of a stated time
+// the gate would not take — a notice, never a failure (#4425).
 export function logBristolStool(
   profileId: number,
   date: string,
@@ -736,10 +741,10 @@ export function logBristolStool(
   // clock seam, which is what a one-tap log does: the moment IS now.
   at?: string | null,
   instant: Date = clockNow()
-): boolean {
-  if (!isRealIsoDate(date)) return false;
+): { wrote: false } | { wrote: true; statedTimeRefused?: StatedTimeRefusal } {
+  if (!isRealIsoDate(date)) return { wrote: false };
   const bristolType = parseBristolType(type);
-  if (bristolType === null) return false;
+  if (bristolType === null) return { wrote: false };
   // SECOND precision, not minute, and the resolution is load-bearing.
   //
   // The key is the instant, so two readings are two rows exactly when they fall on
@@ -758,8 +763,26 @@ export function logBristolStool(
   // clock path carries seconds, and it reads them off the instant in UTC: every IANA
   // zone in the modern era is a whole-minute offset, so the seconds are the same
   // number on any wall clock.
-  const stated = normalizeClockTime(at ?? null);
-  const hhmm = stated ?? zonedDateParts(getTimezone(profileId), instant).hhmm;
+  // JUDGED, NOT SHAPE-CHECKED (#4425). This ran `normalizeClockTime` alone — a shape
+  // check — so "Happened earlier?" took 23:50 typed at 09:00 and filed a bowel movement
+  // fourteen hours in the future, on a row whose natural key IS that instant. It now
+  // runs the one acceptance gate every other stated instant runs (`judgeStatedAt`,
+  // #2236), against the clock seam, and reports what it would not take.
+  //
+  // The refusal COSTS the statement, never the observation — the body-metric contract:
+  // losing the stated minute is cosmetic, losing the log is not — so a refused time
+  // falls back to the clock exactly as an unstated one does. `other-day` cannot fire
+  // here because the instant is BUILT from `date`; a wall time that does not exist on
+  // that day (a DST gap) is `malformed`, which is the honest word for a time the
+  // calendar has no room for.
+  const tz = getTimezone(profileId);
+  const shaped = normalizeClockTime(at ?? null);
+  const verdict = shaped
+    ? judgeStatedAt(statedInstantOnDate(date, shaped, tz), tz, date, clockNow())
+    : ({ kind: "unstated" } as const);
+  const stated = verdict.kind === "accepted" ? shaped : null;
+  const refused = verdict.kind === "refused" ? verdict.reason : undefined;
+  const hhmm = stated ?? zonedDateParts(tz, instant).hhmm;
   const seconds = stated
     ? "00"
     : String(instant.getUTCSeconds()).padStart(2, "0");
@@ -772,7 +795,7 @@ export function logBristolStool(
          value = excluded.value, date = excluded.date`
     ).run(profileId, BRISTOL_STOOL_METRIC, date, ts, ts, bristolType);
   });
-  return true;
+  return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
@@ -1270,13 +1293,18 @@ export function applyIntent(
       });
     } else if (intent.flow === "stool") {
       const p = intent.payload as StoolPayload;
-      ok = logBristolStool(
+      const applied = logBristolStool(
         profileId,
         intent.date,
         p?.type,
         typeof p?.at === "string" ? p.at : null,
         new Date(resolveCapturedInstant(intent.capturedAt, clockNow()))
       );
+      ok = applied.wrote;
+      // A capture whose stated minute aged out of acceptance still lands its
+      // observation, and says so on the SAME `timeNotice` channel the food flow
+      // opened in #2296.
+      if (applied.wrote) timeNotice = applied.statedTimeRefused;
     } else if (intent.flow === "set") {
       // The offline-logged workout replays through the shared activity core; its
       // typed outcome keeps the refusal's reason (#1596, the dose-flow pattern).

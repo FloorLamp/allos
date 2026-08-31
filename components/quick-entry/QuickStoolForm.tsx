@@ -135,10 +135,20 @@ export default function QuickStoolForm({
           return { kind: "rollback" };
         }
         settle(type);
+        // WHAT LANDED, INCLUDING WHAT DID NOT (#4425). The stated time is judged at
+        // the write boundary now, and a time it refuses costs the statement rather
+        // than the observation — so the toast has to say the reading is filed at the
+        // moment of the tap instead of the minute typed. The sentence is this
+        // surface's own: the user TYPED the time here, so the shared
+        // "your device's clock is ahead" phrasing would diagnose the wrong machine.
         toast(
-          stated
-            ? `Logged type ${res.type} at ${stated}`
-            : `Logged type ${res.type}`
+          res.statedTimeRefused === "future"
+            ? `Logged type ${res.type} now — ${stated} hasn't happened yet.`
+            : res.statedTimeRefused
+              ? `Logged type ${res.type} now — ${stated} isn't a time on this day.`
+              : stated
+                ? `Logged type ${res.type} at ${stated}`
+                : `Logged type ${res.type}`
         );
         // A STATEMENT IS SPENT BY THE TAP IT ANSWERS. The key is the instant, so a
         // second tap under a surviving statement would restate the same minute — and
