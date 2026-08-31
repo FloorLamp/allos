@@ -258,14 +258,40 @@ test.describe("dashboard daily loop (#1221)", () => {
     );
   });
 
-  test("the PRN medication action is its own atomic candidate", async () => {
+  // #1221's PRN branch FOLLOWS ITS CAPABILITY (#4076 ruling 4), the same move #3366
+  // made for the vitals log above and #4083 for the weigh-in. The tail used to render
+  // one `intake.prn:<id>` candidate per active PRN item, each embedding the full dose
+  // logger; the quick logger's Consume segment already owned doses, so the tail's
+  // copies retired rather than being restated as a row that cannot host them.
+  //
+  // BOTH HALVES, as that ruling's precedent requires: asserting only the removal
+  // would pass just as happily on a tree where dose logging vanished instead of
+  // moving. This fixture owns exactly one active PRN med and rendered its card before
+  // the change, which is what makes the absence a real removal rather than a
+  // selector that never matched.
+  test("PRN dose logging left the dashboard for the quick logger", async () => {
     await page.goto("/");
     await openDashboardAll(page);
-    const medication = dashboardCandidatePrefix(page, "intake.prn:");
-    await expect(medication).toBeVisible();
-    await expect(medication).toHaveAttribute("data-kind", "action");
-    await expect(medication.getByTestId("quick-log-prn")).toBeVisible();
-    // The fixture owns exactly one active PRN med, so the log control is unambiguous.
-    await expect(medication.getByTestId("prn-log-now")).toBeVisible();
+
+    // The control: this profile's tail rendered and holds entries, so the absence
+    // below is about a populated tail and not an empty selector.
+    expect(
+      await page
+        .getByTestId("dashboard-all-contents")
+        .getByTestId("dashboard-candidate")
+        .count()
+    ).toBeGreaterThan(0);
+    await expect(dashboardCandidatePrefix(page, "intake.prn:")).toHaveCount(0);
+    await expect(page.getByTestId("quick-log-prn")).toHaveCount(0);
+
+    // The puck is phone-only chrome, so the viewport moves for this one assertion
+    // and moves back — every other test in this file shares this page at 1280.
+    await page.setViewportSize({ width: 390, height: 844 });
+    try {
+      const sheet = await openLogSheet(page);
+      await expect(await showLogRow(sheet, "log-dose")).toBeVisible();
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
   });
 });
