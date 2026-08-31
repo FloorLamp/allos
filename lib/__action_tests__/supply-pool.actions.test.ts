@@ -94,50 +94,45 @@ describe("pool edits gate on membership (write to ≥1 linked profile)", () => {
     expect(itemQty(b)).toBe(null);
   });
 
-  it("refuses a member granted NONE of the linked profiles", async () => {
+  it("distinguishes inaccessible pools from read-only linked pools", async () => {
     const t = tag();
     const outsider = createLogin({ role: "member", username: `o_${t}` });
     const own = createProfile(`Ada Lovelace ${t}`, outsider.id);
     const stranger = createProfile(`Test Patient ${t}`);
+    const readOnly = createProfile(`Read Only ${t}`, outsider.id);
+    db.prepare(
+      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
+    ).run(outsider.id, readOnly.id);
     actAs(outsider, own);
 
-    const supplyId = newPool(`Foreign ${t}`, 40);
+    const foreignSupplyId = newPool(`Foreign ${t}`, 40);
     const foreign = item(stranger.id, `Med ${t}`, null);
     db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
-      supplyId,
+      foreignSupplyId,
       foreign
     );
 
     await expect(
-      updatePoolAction(fd({ id: supplyId, ...poolFields(`Hijacked ${t}`) }))
+      updatePoolAction(
+        fd({ id: foreignSupplyId, ...poolFields(`Hijacked ${t}`) })
+      )
     ).rejects.toThrow(/not accessible/);
-    await expect(deletePoolAction(fd({ id: supplyId }))).rejects.toThrow(
+    await expect(deletePoolAction(fd({ id: foreignSupplyId }))).rejects.toThrow(
       /not accessible/
     );
-    expect(getSharedSupply(supplyId)?.name).toBe(`Foreign ${t}`);
-  });
+    expect(getSharedSupply(foreignSupplyId)?.name).toBe(`Foreign ${t}`);
 
-  it("refuses a member with only READ on the single linked profile", async () => {
-    const t = tag();
-    const viewer = createLogin({ role: "member", username: `r_${t}` });
-    const own = createProfile(`Ada Lovelace ${t}`, viewer.id);
-    const readOnly = createProfile(`Test Patient ${t}`, viewer.id);
-    db.prepare(
-      "UPDATE login_profiles SET access = 'read' WHERE login_id = ? AND profile_id = ?"
-    ).run(viewer.id, readOnly.id);
-    actAs(viewer, own);
-
-    const supplyId = newPool(`ReadOnly ${t}`, 40);
+    const readOnlySupplyId = newPool(`ReadOnly ${t}`, 40);
     const theirs = item(readOnly.id, `Med ${t}`, null);
     db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
-      supplyId,
+      readOnlySupplyId,
       theirs
     );
 
     await expect(
-      updatePoolAction(fd({ id: supplyId, ...poolFields(`Nope ${t}`) }))
+      updatePoolAction(fd({ id: readOnlySupplyId, ...poolFields(`Nope ${t}`) }))
     ).rejects.toThrow(/read-only on target/);
-    expect(getSharedSupply(supplyId)?.name).toBe(`ReadOnly ${t}`);
+    expect(getSharedSupply(readOnlySupplyId)?.name).toBe(`ReadOnly ${t}`);
   });
 
   it("applies the pool-level #467 CAS through the action", async () => {
@@ -206,7 +201,7 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     expect(itemQty(a)).toBe(null);
   });
 
-  it("refuses linking an item on a profile the caller can't write", async () => {
+  it("refuses every pool mutation for an item the caller can't write", async () => {
     const t = tag();
     const member = createLogin({ role: "member", username: `l_${t}` });
     const mine = createProfile(`Ada Lovelace ${t}`, member.id);
@@ -214,6 +209,7 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     actAs(member, mine);
     const supplyId = newPool(`Target ${t}`, 10);
     const foreign = item(stranger.id, `Med ${t}`, 5);
+    dose(foreign, "500 mg");
 
     await expect(
       linkItemAction(fd({ item_id: foreign, supply_id: supplyId }))
@@ -221,42 +217,27 @@ describe("link / unlink gate on the ITEM's own profile", () => {
     await expect(unlinkItemAction(fd({ item_id: foreign }))).rejects.toThrow(
       /not accessible/
     );
+    await expect(createPoolAction(fd({ item_id: foreign }))).rejects.toThrow(
+      /not accessible/
+    );
     expect(supplyIdOf(foreign)).toBe(null);
     // …and the stranger's private count is untouched.
     expect(itemQty(foreign)).toBe(5);
   });
 
-  it("refuses a cross-profile create-from-item too", async () => {
-    const t = tag();
-    const member = createLogin({ role: "member", username: `x_${t}` });
-    const mine = createProfile(`Ada Lovelace ${t}`, member.id);
-    const stranger = createProfile(`Test Patient ${t}`);
-    actAs(member, mine);
-    const foreign = item(stranger.id, `Med ${t}`, 5);
-    await expect(
-      createPoolAction(fd({ item_id: foreign, name: `Sneaky ${t}` }))
-    ).rejects.toThrow(/not accessible/);
-    expect(supplyIdOf(foreign)).toBe(null);
-  });
-
-  it("reports a missing pool instead of linking to a forged id", async () => {
-    const t = tag();
-    const admin = createLogin({ role: "admin", username: `f_${t}` });
-    const p = createProfile(`Ada Lovelace ${t}`);
-    actAs(admin, p);
-    const a = item(p.id, `Med ${t}`, 5);
-    const res = await linkItemAction(fd({ item_id: a, supply_id: 999_999 }));
-    expect(res.ok).toBe(false);
-    expect(supplyIdOf(a)).toBe(null);
-  });
-
-  it("unlinks the caller's own item back to untracked supply", async () => {
+  it("rejects a forged pool, then links and unlinks the caller's item", async () => {
     const t = tag();
     const admin = createLogin({ role: "admin", username: `u_${t}` });
     const p = createProfile(`Ada Lovelace ${t}`);
     actAs(admin, p);
     const supplyId = newPool(`Unlink ${t}`, 25);
     const a = item(p.id, `Med ${t}`, 7);
+
+    const forged = await linkItemAction(fd({ item_id: a, supply_id: 999_999 }));
+    expect(forged.ok).toBe(false);
+    expect(supplyIdOf(a)).toBe(null);
+    expect(itemQty(a)).toBe(7);
+
     const linked = await linkItemAction(
       fd({ item_id: a, supply_id: supplyId })
     );
@@ -298,7 +279,7 @@ function dose(itemId: number, amount: string, sort = 0): void {
 }
 
 describe("a pool created from an item inherits its product identity", () => {
-  it("seeds name and strength from the item, alongside the count", async () => {
+  it("inherits item facts unless posted pool fields override them", async () => {
     const t = tag();
     const admin = createLogin({ role: "admin", username: `seed_${t}` });
     const p = createProfile(`Ada Lovelace ${t}`);
@@ -317,42 +298,25 @@ describe("a pool created from an item inherits its product identity", () => {
     expect(pool?.strength).toBe("5000 IU");
     expect(pool?.quantity_on_hand).toBe(60);
     expect(itemQty(a)).toBe(null);
-  });
 
-  it("lets a posted field win over the inherited one", async () => {
-    const t = tag();
-    const admin = createLogin({ role: "admin", username: `over_${t}` });
-    const p = createProfile(`Ada Lovelace ${t}`);
-    actAs(admin, p);
-    const a = item(p.id, `Cholecalciferol ${t}`, 60);
-    dose(a, "5000 IU");
+    const overriddenItem = item(p.id, `Ergocalciferol ${t}`, 30);
+    dose(overriddenItem, "5000 IU");
 
-    const res = await createPoolAction(
+    const overridden = await createPoolAction(
       fd({
-        item_id: a,
+        item_id: overriddenItem,
         name: `Household D3 ${t}`,
         strength: "2000 IU",
         form: "softgel",
       })
     );
-    expect(res.ok).toBe(true);
-    const pool = getSharedSupply(supplyIdOf(a) as number);
-    expect(pool?.name).toBe(`Household D3 ${t}`);
-    expect(pool?.strength).toBe("2000 IU");
-    expect(pool?.form).toBe("softgel");
-  });
-
-  it("does not read product facts across a profile boundary", async () => {
-    const t = tag();
-    const member = createLogin({ role: "member", username: `bnd_${t}` });
-    const mine = createProfile(`Ada Lovelace ${t}`, member.id);
-    const stranger = createProfile(`Test Patient ${t}`);
-    actAs(member, mine);
-    const foreign = item(stranger.id, `Med ${t}`, 5);
-    dose(foreign, "500 mg");
-    await expect(createPoolAction(fd({ item_id: foreign }))).rejects.toThrow(
-      /not accessible/
+    expect(overridden.ok).toBe(true);
+    const overriddenPool = getSharedSupply(
+      supplyIdOf(overriddenItem) as number
     );
+    expect(overriddenPool?.name).toBe(`Household D3 ${t}`);
+    expect(overriddenPool?.strength).toBe("2000 IU");
+    expect(overriddenPool?.form).toBe("softgel");
   });
 });
 
@@ -391,15 +355,15 @@ describe("an item created from a bottle links on save", () => {
     expect(getSharedSupply(supplyId)?.quantity_on_hand).toBe(120);
   });
 
-  it("refuses a bottle outside the caller's reach instead of linking it", async () => {
+  it("refuses hidden bottles while offering reachable and orphaned ones", async () => {
     const t = tag();
     // The bottle belongs to a household branch this member was never granted.
     const owner = createLogin({ role: "member", username: `own_${t}` });
     const theirs = createProfile(`Test Patient ${t}`, owner.id);
-    const supplyId = newPool(`Foreign ${t}`, 30);
+    const hidden = newPool(`Foreign ${t}`, 30);
     const theirItem = item(theirs.id, `Med ${t}`, null);
     db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
-      supplyId,
+      hidden,
       theirItem
     );
 
@@ -411,7 +375,7 @@ describe("an item created from a bottle links on save", () => {
       fd({
         name: `Sneaky ${t}`,
         kind: "supplement",
-        supply_id: supplyId,
+        supply_id: hidden,
         doses: JSON.stringify([{ amount: "1 tab" }]),
       })
     );
@@ -421,23 +385,8 @@ describe("an item created from a bottle links on save", () => {
         .prepare("SELECT COUNT(*) AS n FROM intake_items WHERE name = ?")
         .get(`Sneaky ${t}`)
     ).toEqual({ n: 0 });
-  });
 
-  it("offers only the bottles the caller's own people draw from, plus orphans", async () => {
-    const t = tag();
-    const owner = createLogin({ role: "member", username: `lo_${t}` });
-    const theirs = createProfile(`Test Patient ${t}`, owner.id);
-    const hidden = newPool(`Hidden ${t}`, 10);
-    const theirItem = item(theirs.id, `Med ${t}`, null);
-    db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
-      hidden,
-      theirItem
-    );
     const orphan = newPool(`Orphan ${t}`, 10);
-
-    const outsider = createLogin({ role: "member", username: `lx_${t}` });
-    const mine = createProfile(`Ada Lovelace ${t}`, outsider.id);
-    actAs(outsider, mine);
     const mineItem = item(mine.id, `Mine ${t}`, null);
     const ownPool = newPool(`Mine ${t}`, 10);
     db.prepare("UPDATE intake_items SET supply_id = ? WHERE id = ?").run(
