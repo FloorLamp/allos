@@ -1,6 +1,60 @@
 {
   "days": [
     {
+      "date": "2026-08-31",
+      "entries": [
+        {
+          "pr": 4354,
+          "title": "A dose reminder explains its time chips, as the food one already did",
+          "kind": "feature",
+          "category": "Reminders",
+          "issues": [2874]
+        },
+        {
+          "pr": 4354,
+          "title": "The chip explanation retires once you have corrected a time yourself",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [2874]
+        },
+        {
+          "pr": 4372,
+          "title": "A medicine shows its ingredients and why you take it, as a supplement does",
+          "kind": "feature",
+          "category": "Medications",
+          "issues": [3649]
+        },
+        {
+          "pr": 4372,
+          "title": "An item keeps its ingredients and purposes when you change its kind",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3649]
+        },
+        {
+          "pr": 4373,
+          "title": "A supplement splitting one compound over two label lines totals it as one",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3159]
+        },
+        {
+          "pr": 4377,
+          "title": "A niggle you logged eases the next set the logger suggests, and says why",
+          "kind": "fix",
+          "category": "Training",
+          "issues": [3244]
+        },
+        {
+          "pr": 4381,
+          "title": "An eating time set just before midnight is kept, not dropped",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4353]
+        }
+      ]
+    },
+    {
       "date": "2026-08-30",
       "entries": [
         {
@@ -247,6 +301,125 @@
           "kind": "fix",
           "category": "Security",
           "issues": [3604]
+        },
+        {
+          "pr": 4239,
+          "title": "The record offers Load more when a full page of symptom days has more",
+          "kind": "fix",
+          "category": "History",
+          "issues": [4082]
+        },
+        {
+          "pr": 4303,
+          "title": "A dashboard sleep or weight group moves as one block instead of splitting",
+          "kind": "fix",
+          "category": "Interface",
+          "issues": [4297]
+        },
+        {
+          "pr": 4309,
+          "title": "A dashboard row's info button sits next to its value, not far right",
+          "kind": "fix",
+          "category": "Interface",
+          "issues": [4301]
+        },
+        {
+          "pr": 4312,
+          "title": "Add your usual morning to a past day, from the record's add form",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [4118]
+        },
+        {
+          "pr": 4312,
+          "title": "Food buttons on a nudge keep working for two days, logging to its own day",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [4118]
+        },
+        {
+          "pr": 4312,
+          "title": "A nudge rebuilt for an earlier day shows that day's protein, not today's",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [4118]
+        },
+        {
+          "pr": 4323,
+          "title": "The Food tab states the day once: servings and supplement doses together",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [3987]
+        },
+        {
+          "pr": 4323,
+          "title": "Take all logs every dose a time of day still owes, in one tap",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [3987]
+        },
+        {
+          "pr": 4323,
+          "title": "The fasting card folds to one Start fast button until a fast is running",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [3672]
+        },
+        {
+          "pr": 4324,
+          "title": "Review names an imported dose whose amount can't be read as one number",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [3321]
+        },
+        {
+          "pr": 4325,
+          "title": "A patient portal login lists its recent runs and what each delivered",
+          "kind": "feature",
+          "category": "Connected apps",
+          "issues": [3035]
+        },
+        {
+          "pr": 4327,
+          "title": "The digest's flagged line comes from this week, not from months ahead",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [4318]
+        },
+        {
+          "pr": 4332,
+          "title": "A reminder rebuilt for a past day uses the dose times you had then",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [3990]
+        },
+        {
+          "pr": 4335,
+          "title": "The cycle page shows your recent periods and links to the full record",
+          "kind": "feature",
+          "category": "Medical",
+          "issues": [3959]
+        },
+        {
+          "pr": 4335,
+          "title": "Deleting a period asks first, and still offers Undo",
+          "kind": "fix",
+          "category": "Medical",
+          "issues": [3959]
+        },
+        {
+          "pr": 4336,
+          "title": "On a phone, text in a tinted panel lines up with the rest of the page",
+          "kind": "fix",
+          "category": "Interface",
+          "issues": [3932]
+        },
+        {
+          "pr": 4340,
+          "title": "Moving or removing an exercise no longer leaves you editing another one",
+          "kind": "fix",
+          "category": "Training",
+          "issues": [4185]
         }
       ]
     },
