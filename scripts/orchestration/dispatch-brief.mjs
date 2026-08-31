@@ -55,9 +55,7 @@
 // runner.ts), so the brief carries a fixed convention block instead of a
 // computed reservation.
 //
-// Ledger location: $ALLOS_DISPATCH_LEDGER, else $SCRATCH/allos-dispatch-ledger.jsonl,
-// else <STATE_DIR>/allos-dispatch-ledger.jsonl. The ledger is orchestration
-// state, never checked in.
+// Ledger location: resolved by ledger.mjs, which also owns the replay.
 //
 // The ledger and the roster MUST default to the same directory, and that
 // directory must be the durable one. `$SCRATCH` is UNSET in the live
@@ -71,8 +69,8 @@
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { helpGuard } from "./usage.mjs";
+import { fileURLToPath } from "node:url";
+import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
 import {
   activeDispatches,
@@ -2305,9 +2303,4 @@ function main(argv) {
 // to test one pure function would RUN `new` (the default command) against the
 // live ledger and the live roster, which is the 2026-08-15 roster-fork incident
 // arriving through the test harness.
-if (
-  process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
-) {
-  main(process.argv.slice(2));
-}
+if (isMain(process.argv, import.meta.url)) main(process.argv.slice(2));

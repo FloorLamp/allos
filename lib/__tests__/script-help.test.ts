@@ -79,21 +79,24 @@ describe("--help is always safe", () => {
 // below is a real import edge, asserted in both directions: the importer's own
 // first header line present, and the import's absent.
 describe("--help belongs to the invoked script, not to its imports", () => {
+  // The absent marker is a phrase from the IMPORT'S OWN HEADER, never its
+  // filename: a header may legitimately name the module it delegates to, and
+  // an absence assertion keyed on the filename then fails on correct prose.
   it.each([
     [
       "scripts/orchestration/queue-snapshot.mjs",
       "Queue snapshot —",
-      "ledger.mjs",
+      "folded in ONE place",
     ],
     [
       "scripts/orchestration/dispatch-brief.mjs",
       "Dispatch-brief generator",
-      "ledger.mjs",
+      "folded in ONE place",
     ],
     [
       "scripts/orchestration/ledger.mjs",
       "The dispatch ledger, folded",
-      "Host resolution",
+      "Host resolution for orchestration",
     ],
   ])("%s prints its OWN header", (rel, own, imported) => {
     const run = runHelp(rel);

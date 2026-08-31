@@ -129,10 +129,13 @@ describe("readLedger", () => {
 describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
   // Same bytes as the fixture above, on disk, through the same CLI the shell
   // calls — so what is asserted here is the check-in's actual answer.
-  const file = path.join(makeTmpDir("dispatch-ledger"), "ledger.jsonl");
+  const dir = makeTmpDir("dispatch-ledger");
+  const file = path.join(dir, "ledger.jsonl");
+  const empty = path.join(dir, "empty.jsonl");
   fs.writeFileSync(file, LEDGER + "\n");
-  const cli = (args: string[]) =>
-    spawnSync(process.execPath, [SCRIPT, ...args, file], {
+  fs.writeFileSync(empty, "");
+  const cli = (args: string[], at = file) =>
+    spawnSync(process.execPath, [SCRIPT, ...args, at], {
       cwd: REPO,
       encoding: "utf8",
     });
@@ -149,9 +152,37 @@ describe("ledger.mjs, driven the way orchestrator-checkin.sh drives it", () => {
     expect(run.stdout.trim()).toBe("1");
   });
 
-  it("refuses an unknown mode rather than printing a wrong-shaped answer", () => {
-    const run = cli(["branchez"]);
+  // AND `?` IS NOT 0 (owner, 2026-08-31). The shell prints `?` when this exits
+  // non-zero, and `?` sends the orchestrator to LOOK. A missing ledger printed
+  // as 0 reads "no lanes are running", and an empty roster is a dispatch order
+  // — so a wrong STATE_DIR or a restart would dispatch on top of live lanes
+  // nobody can see. Only a present-but-EMPTY ledger is genuinely zero. Each
+  // row asserts stdout too: a refusal that PRINTS would make the shell's
+  // `$(node … || echo "?")` yield the number AND the `?`.
+  it.each([
+    [["branchez"], file, "an unknown mode"],
+    [
+      ["e2e-count"],
+      path.join(dir, "gone.jsonl"),
+      "a MISSING ledger is UNKNOWN",
+    ],
+    [["branches"], path.join(dir, "gone.jsonl"), "same, for the branch list"],
+  ])("refuses %s (%s)", (args, at, _why) => {
+    const run = cli(args as string[], at as string);
     expect(run.status).toBe(2);
+    expect(run.stdout).toBe("");
     expect(run.stderr).toContain("see --help");
   });
+
+  it.each([
+    [["e2e-count"], "0"],
+    [["branches"], ""],
+  ])(
+    "answers %s over a present-but-EMPTY ledger — that IS zero",
+    (args, out) => {
+      const run = cli(args as string[], empty);
+      expect(run.status).toBe(0);
+      expect(run.stdout.trim()).toBe(out);
+    }
+  );
 });

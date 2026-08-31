@@ -19,8 +19,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { helpGuard } from "./usage.mjs";
+import { helpGuard, isMain } from "./usage.mjs";
 import { resolveStateDir } from "./host.mjs";
 helpGuard(process.argv, import.meta.url);
 
@@ -87,19 +86,25 @@ export function laneIssues(rows) {
   return lanes;
 }
 
-// CLI for orchestrator-checkin.sh, which cannot import a function.
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+// CLI for orchestrator-checkin.sh, which cannot import a function. It answers
+// or it EXITS; it never answers 0 for a question it could not ask. A MISSING
+// ledger is UNKNOWN, not zero — the check-in prints `?`, and `?` sends the
+// orchestrator to look. Printed as 0 it reads "no lanes are running", and an
+// empty roster is a DISPATCH ORDER, so a wrong STATE_DIR or a restart would
+// dispatch on top of live lanes nobody can see. A present-but-EMPTY ledger
+// really is zero and prints 0: the two `?` cases share unknown, not none.
+if (isMain(process.argv, import.meta.url)) {
   const [mode, file] = process.argv.slice(2);
-  const active = activeDispatches(readLedger(file || undefined));
-  const branches = active.map((d) => d.branch).sort();
-  if (mode === "branches") console.log(branches.join("\n"));
-  else if (mode === "e2e-count")
-    console.log(active.filter((d) => d.e2e).length);
-  else {
-    console.error("ledger.mjs: expected `branches` or `e2e-count`, see --help");
+  const from = file || ledgerPath();
+  const known = ["branches", "e2e-count"].includes(mode) && fs.existsSync(from);
+  if (!known) {
+    console.error(
+      `ledger.mjs: no answer for \`${mode}\` at ${from} — see --help`
+    );
     process.exit(2);
   }
+  const active = activeDispatches(readLedger(from));
+  const branches = active.map((d) => d.branch).sort();
+  if (mode === "branches") console.log(branches.join("\n"));
+  else console.log(active.filter((d) => d.e2e).length);
 }

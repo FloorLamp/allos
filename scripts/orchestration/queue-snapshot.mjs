@@ -45,8 +45,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { helpGuard } from "./usage.mjs";
+import { helpGuard, isMain } from "./usage.mjs";
 import { resolveReadToken, resolveStateDir } from "./host.mjs";
 import { laneIssues, readLedger } from "./ledger.mjs";
 helpGuard(process.argv, import.meta.url);
@@ -133,7 +132,4 @@ function main() {
   console.error(`written to ${file}`);
 }
 
-const invoked = process.argv[1]
-  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-  : false;
-if (invoked) main();
+if (isMain(process.argv, import.meta.url)) main();
