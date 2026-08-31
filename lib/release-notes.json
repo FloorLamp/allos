@@ -347,6 +347,13 @@
           "issues": [3959]
         },
         {
+          "pr": 4335,
+          "title": "Deleting a period asks first, and still offers Undo",
+          "kind": "fix",
+          "category": "Medical",
+          "issues": [3959]
+        },
+        {
           "pr": 4336,
           "title": "On a phone, text in a tinted panel lines up with the rest of the page",
           "kind": "fix",
