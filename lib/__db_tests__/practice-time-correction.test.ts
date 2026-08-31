@@ -427,13 +427,19 @@ describe("date + time compose through the profile's timezone", () => {
 });
 
 describe("a burst renders only on the message that produced it (#2264)", () => {
-  it("stamps the originating message on a nudge tap and binds the burst to it", async () => {
+  it("stamps the originating message on a nudge tap and binds the burst to it", () => {
     const pid = makeProfile("binding");
+    // Private to this profile instead of reusing a seeded chat/message coordinate.
+    // The shared DB project begins from a production-shaped template; colliding with
+    // one of its pointers would exercise ON CONFLICT replacement rather than the
+    // fresh delivered-message path this case is about.
+    const chatId = `5552875-${pid}`;
+    const messageId = 9_421_000;
     setTelegramBotConfig({
       telegramBotToken: "bot for tests 12",
       telegramMode: "poll",
     });
-    seedLoginTelegram(pid, "5552875");
+    seedLoginTelegram(pid, chatId);
     const targetId = practiceTarget(pid, "Sauna");
 
     // The write path carries the pointer through, which is what the binding reads.
@@ -453,16 +459,28 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     // recorded through the real store, so the id is the one production would stamp.
     recordMessagePointer({
       profileId: pid,
-      chatId: "5552875",
-      messageId: 4210,
+      chatId,
+      messageId,
       kind: "practice",
       date: today(pid),
       keyboard: [],
     });
-    const messageRow = messagePointerIdAt(pid, "5552875", 4210)!;
+    const messageRow = messagePointerIdAt(pid, chatId, messageId)!;
     expect(messageRow).toBeGreaterThan(0);
-    logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
+    expect(
+      logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow)
+    ).toMatchObject({ kind: "logged" });
     const attributed = lastLogId(pid);
+
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT notify_message_id AS m FROM practice_logs WHERE id = ?"
+          )
+          .get(attributed) as { m: number | null }
+      ).m
+    ).toBe(messageRow);
 
     const taps = getRecentPracticeTaps(pid, clockNow());
     const byId = new Map(taps.map((t) => [t.id, t]));
