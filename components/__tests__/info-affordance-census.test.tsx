@@ -5,10 +5,15 @@ import { ToastProvider } from "@/components/Toast";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import ImportFeed from "@/components/ImportFeed";
+import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import TrainingLogRow from "@/app/(app)/training/TrainingLogRow";
 import type { CuratedSupplementSuggestion } from "@/lib/supplement-suggest-curated";
 import type { FeedEntry } from "@/lib/import-feed";
 import type { TrainingLogCardData } from "@/lib/training-log-card";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatTimestampDisplay,
+} from "@/lib/format-date";
 
 // THE INFO-AFFORDANCE CENSUS, AT THE TIER THAT CAN COUNT MOUNTS (#3970).
 //
@@ -156,5 +161,53 @@ describe("a rare warning keeps its icon (#3970 rule 3)", () => {
         name: "Document names “Someone Else”, which doesn’t match this profile.",
       })
     ).toBeTruthy();
+  });
+});
+
+// THE SAME CENSUS, ON THE SYNC TIMESTAMP (#4419 rule 1). One placement rule decides
+// this, not a flag: the absolute stamp lives on the integration's status/detail
+// surface, so a row that sits on that surface — or links straight to it — states the
+// relative half and mounts nothing. The two halves need opposite assertions here for
+// the same reason they do above, and the converse cases are the two surfaces that
+// OWN a stamp: a day ledger's clock column (which shows no date, so its disclosure is
+// the only place its full stamp exists) and the patient-portals run history (the
+// terminal view for those runs, which now prints the stamp outright).
+const SYNCED_AT = "2026-08-30 10:00:00";
+const SYNCED_ABSOLUTE =
+  formatTimestampDisplay(SYNCED_AT, DEFAULT_FORMAT_PREFS)?.absolute ?? "";
+const SYNCED_ABSOLUTE_UTC =
+  formatTimestampDisplay(SYNCED_AT, DEFAULT_FORMAT_PREFS, {
+    timeZone: "UTC",
+  })?.absolute ?? "";
+
+describe("the absolute sync stamp lives on one surface (#4419 rule 1)", () => {
+  it("gives a three-row status list three timestamps and no buttons", () => {
+    // Three rows, so a regression reports its SIZE (3, one per row) rather than its
+    // existence — the mount that was removed here was per row, exactly like the
+    // curated-origin one above.
+    render(
+      <ul>
+        {[1, 2, 3].map((id) => (
+          <li key={id}>
+            <SyncTimestamp value={SYNCED_AT} relativeOnly />
+          </li>
+        ))}
+      </ul>
+    );
+    expect(screen.getAllByTestId("sync-timestamp-compact")).toHaveLength(3);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("keeps the day ledger's clock disclosure — that column has no date", () => {
+    render(<SyncTimestamp value={SYNCED_AT} clockOnly timeZone="UTC" />);
+    expect(
+      screen.getAllByRole("button", { name: SYNCED_ABSOLUTE_UTC })
+    ).toHaveLength(1);
+  });
+
+  it("prints the stamp outright where the row IS the detail surface", () => {
+    const { container } = render(<SyncTimestamp value={SYNCED_AT} />);
+    expect(container.textContent).toContain(SYNCED_ABSOLUTE);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 });
