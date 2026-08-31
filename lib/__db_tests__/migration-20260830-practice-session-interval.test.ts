@@ -141,7 +141,7 @@ function indexNames(db: Database.Database): string[] {
 }
 
 describe(`${MIGRATION}`, () => {
-  it("renames the column in place and leaves every stored clock byte-identical", () => {
+  it("preserves stored sessions, reader semantics, row identity, indexes, and replay safety", () => {
     const db = beforeRename();
     const before = indexNames(db);
     expect(before).toContain("idx_practice_logs_profile_date");
@@ -183,17 +183,12 @@ describe(`${MIGRATION}`, () => {
         .get()
     ).toEqual({ seq: 99 });
     expect(indexNames(db)).toEqual(before);
-  });
 
-  // THE COMPOSITION, not the column set. Each row's (date, start_time) pair must
-  // still resolve through the profile's timezone to the instant it denoted before —
-  // and the seeded UTC day is deliberately NOT the stored local day, so a reader
-  // that lost the registry entry and fell back to the day cannot pass by accident.
-  it.each(SEEDS.filter((row) => row.time != null))(
-    "keeps $practice's instant intact where its local day $date is not its UTC day $utcDay",
-    (row) => {
-      const db = beforeRename();
-      runMigrations(db);
+    // THE COMPOSITION, not the column set. Each row's (date, start_time) pair must
+    // still resolve through the profile's timezone to the instant it denoted before —
+    // and the seeded UTC day is deliberately NOT the stored local day, so a reader
+    // that lost the registry entry and fell back to the day cannot pass by accident.
+    for (const row of SEEDS.filter((seed) => seed.time != null)) {
       const stored = db
         .prepare("SELECT * FROM practice_logs WHERE id = ?")
         .get(row.id) as Record<string, unknown>;
@@ -216,11 +211,7 @@ describe(`${MIGRATION}`, () => {
         from: "stored",
       });
     }
-  );
 
-  it("states no start for the row that stated none, and replays as a no-op", () => {
-    const db = beforeRename();
-    runMigrations(db);
     const untimed = db
       .prepare("SELECT * FROM practice_logs WHERE id = 43")
       .get() as Record<string, unknown>;
