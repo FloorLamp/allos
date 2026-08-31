@@ -29,7 +29,11 @@ import {
 } from "@/lib/reading-reference-cell";
 import { groupContiguous } from "@/lib/table-sort";
 import { isBiomarkerStale } from "@/lib/reference-range";
-import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
+import {
+  DATE_AGE_SEPARATOR,
+  readingDateLine,
+  STALE_AGE_TITLE,
+} from "@/lib/reading-date-line";
 import { type DisplayFormatPrefs } from "@/lib/format-date";
 import { useFormatPrefs } from "./FormatPrefsProvider";
 import { RESULTS_CATALOG_CATEGORIES } from "@/lib/medical-categories";
@@ -91,16 +95,14 @@ function qs(params: Record<string, string | undefined>): AppRoute {
 
 // A small amber badge flagging an analyte whose latest result has gone stale
 // (over a year old — a yearly-retest heuristic).
+//
+// The badge is the WORD; the sentence behind it is a constant explainer of the same
+// vocabulary the amber age token uses, and #3970 rule 1 states it once — on the Date
+// column header — instead of mounting an `h-8 w-8` button on every stale analyte.
 function staleBadge() {
   return (
-    <span className="ml-2 inline-flex items-center gap-0.5 align-middle">
-      <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
-        Stale
-      </span>
-      <InfoTooltipIcon
-        label="Latest result over a year old — consider retesting"
-        data-testid="clinical-stale-help"
-      />
+    <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
+      Stale
     </span>
   );
 }
@@ -192,12 +194,6 @@ function dateCell(
               {line.stale && "⚠️ "}
               {line.age}
             </span>
-            {line.ageTitle && (
-              <InfoTooltipIcon
-                label={line.ageTitle}
-                data-testid="clinical-age-help"
-              />
-            )}
           </span>
         </>
       ) : null}
@@ -260,9 +256,8 @@ function PanelCell({
   return (
     <Td label="Panel" empty={!reported} className="hidden md:table-cell">
       {reported ? (
-        <span className="inline-flex items-center gap-0.5 text-xs text-slate-500 dark:text-slate-400">
-          <span>{reported}</span>
-          <InfoTooltipIcon label="Not mapped to a clinical panel — showing the heading it was reported under" />
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {reported}
         </span>
       ) : (
         <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -309,19 +304,16 @@ function ReferenceCellTd({
       empty={!resolved.text}
       className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
     >
-      <span className="inline-flex items-center gap-0.5">
-        <span
-          data-testid="clinical-result-reference"
-          data-judged={resolved.judged ? "true" : "false"}
-        >
-          {resolved.text ?? "—"}
-        </span>
-        {resolved.title && (
-          <InfoTooltipIcon
-            label={resolved.title}
-            data-testid="clinical-reference-help"
-          />
-        )}
+      {/* #3970 rule 2. The lab's own printed string is a PER-ROW fact with an
+          existing detail home: the reading detail page renders it in full under its
+          own "Lab reference" column (#2315, app/(app)/results/clinical-results/view).
+          The table keeps the verdict — the bands the flag actually came from — and
+          the detail keeps the derivation, so the row spends no control on it. */}
+      <span
+        data-testid="clinical-result-reference"
+        data-judged={resolved.judged ? "true" : "false"}
+      >
+        {resolved.text ?? "—"}
       </span>
     </Td>
   );
@@ -1006,7 +998,18 @@ export default function ClinicalResultsTable({
               clinical order, so a panel sort would reorder rows within groups that
               no ordering can move (#1581 section B). */}
               <th className="th sticky top-0 z-10 hidden bg-surface md:table-cell">
-                Panel
+                {/* #3970 rule 1. The "not mapped to a clinical panel" sentence is a
+                    property of the COLUMN, not of a row, and it used to mount a
+                    button on every row of an unmapped group. The header carries the
+                    same `hidden md:table-cell` visibility the cells do, so nothing
+                    that could reach the old mount loses the sentence. */}
+                <span className="inline-flex items-center gap-1">
+                  Panel
+                  <InfoTooltipIcon
+                    label="A panel shown as plain text is not mapped to a clinical panel — it is the heading the result was reported under"
+                    data-testid="clinical-reported-panel-help"
+                  />
+                </span>
               </th>
               <th className="th sticky top-0 z-10 bg-surface">Value</th>
               {/* Reference hides below `sm`: the value cell already flags
@@ -1025,7 +1028,16 @@ export default function ClinicalResultsTable({
                 label="Date"
                 defaultSort={DEFAULT_SORT}
                 defaultDir="desc"
-              />
+              >
+                {/* #3970 rule 1. ONE statement of the stale vocabulary for the whole
+                    table — the amber "⚠️ 1y" age token and the Stale badge on the
+                    name both mean this, and each used to carry its own 34px button on
+                    every stale row. */}
+                <InfoTooltipIcon
+                  label={STALE_AGE_TITLE}
+                  data-testid="clinical-stale-help"
+                />
+              </SortableHeader>
               <th className="th sticky top-0 z-10 bg-surface text-right">
                 <span className="sr-only">Actions</span>
               </th>

@@ -2533,9 +2533,13 @@ async function renderDashboard(
         {
           label: title,
           value,
-          // The band sits behind the two rows it is a band FOR. A duration has no
-          // usual bed-and-wake pair to be measured against, so it carries nothing.
-          disclosure: key === "duration" ? undefined : usualSleepBand,
+          // #3970 owner ruling (2026-08-30). The band used to be a DISCLOSURE on
+          // both the bed-time and the wake-time member — the same string, two 34px
+          // buttons, on one line. It inlines ONCE instead, as plain detail text after
+          // the wake time, so #3253's glance-context rider survives with no per-row
+          // control. Duration never carried it and still does not: a duration has no
+          // usual bed-and-wake pair to be measured against.
+          detail: key === "wake-time" ? usualSleepBand : undefined,
           href: "/sleep",
           presence: "current",
         }

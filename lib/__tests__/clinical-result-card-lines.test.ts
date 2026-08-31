@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  DATE_AGE_SEPARATOR,
-  STALE_AGE_TITLE,
-  readingDateLine,
-} from "@/lib/reading-date-line";
+import { DATE_AGE_SEPARATOR, readingDateLine } from "@/lib/reading-date-line";
 import { activeFacetCount, filterTriggerLabel } from "@/lib/record-facets";
 
 // What a clinical result spends its card lines on (issue #2316).
@@ -112,7 +108,6 @@ describe("readingDateLine (#2316)", () => {
       "Jun 3, 2026 · 2mo"
     );
     expect(line.stale).toBe(false);
-    expect(line.ageTitle).toBeNull();
   });
 
   it("renders the day in the login's chosen date format, not one fixed shape", () => {
@@ -130,7 +125,7 @@ describe("readingDateLine (#2316)", () => {
     expect(of("iso")).toBe("2026-06-03");
   });
 
-  it("puts the amber treatment and its title on the AGE token when stale", () => {
+  it("puts the amber treatment on the AGE token when stale", () => {
     const line = readingDateLine(
       { date: "2024-01-05", category: "lab" },
       TODAY,
@@ -139,7 +134,6 @@ describe("readingDateLine (#2316)", () => {
     expect(line.stale).toBe(true);
     expect(line.age).toBe("3y");
     expect(line.ageClassName).toContain("amber");
-    expect(line.ageTitle).toBe(STALE_AGE_TITLE);
   });
 
   it("a current reading's age is not amber", () => {
@@ -149,7 +143,6 @@ describe("readingDateLine (#2316)", () => {
       true
     );
     expect(line.ageClassName).not.toContain("amber");
-    expect(line.ageTitle).toBeNull();
   });
 
   it("a category with no retest clock never goes amber, however old", () => {
@@ -172,7 +165,6 @@ describe("readingDateLine (#2316)", () => {
     );
     expect(line.age).toBeNull();
     expect(line.stale).toBe(false);
-    expect(line.ageTitle).toBeNull();
   });
 });
 
