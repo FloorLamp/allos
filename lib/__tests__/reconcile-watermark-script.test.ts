@@ -124,9 +124,16 @@ describe("reconcile-watermark.ts", () => {
   });
 
   it("--apply stamps the carrier and verifies by re-read", () => {
+    const dir = makeTmpDir("reconcile-watermark-evidence");
+    const evidence = path.join(dir, "ev.json");
+    fs.writeFileSync(
+      evidence,
+      JSON.stringify({ watermark: { previous: OLD, current: NEW } })
+    );
     const run = runScript({ issues: [carrier(OLD)] }, [
       "stamp",
-      NEW,
+      "--evidence",
+      evidence,
       "--apply",
     ]);
     expect(run.status).toBe(0);
@@ -165,23 +172,6 @@ describe("reconcile-watermark.ts", () => {
     ]);
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("refusing to rewind");
-    expect(run.state.issues[0].body).toContain(NEW);
-  });
-
-  it("takes the stamp from a gather's evidence file", () => {
-    const dir = makeTmpDir("reconcile-watermark-evidence");
-    const evidence = path.join(dir, "ev.json");
-    fs.writeFileSync(
-      evidence,
-      JSON.stringify({ watermark: { previous: OLD, current: NEW } })
-    );
-    const run = runScript({ issues: [carrier(OLD)] }, [
-      "stamp",
-      "--evidence",
-      evidence,
-      "--apply",
-    ]);
-    expect(run.status).toBe(0);
     expect(run.state.issues[0].body).toContain(NEW);
   });
 

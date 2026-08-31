@@ -137,7 +137,7 @@ describe("getTimelineEvents", () => {
     });
   });
 
-  it("includes medical result values and intake dosages as expansion details", () => {
+  it("includes medical result values as expansion details", () => {
     db.prepare(
       "UPDATE medical_records SET flag = 'high' WHERE profile_id = ? AND name = 'Glucose'"
     ).run(imperial.profileId);
@@ -151,26 +151,10 @@ describe("getTimelineEvents", () => {
       unit: "mg/dL",
       flag: "high",
     });
-
-    const supplement = events.find(
-      (e) => e.id === `intake:supplement:${imperial.todayStr}`
-    );
-    expect(supplement?.detailItems).toContainEqual({
-      label: "TLINE Vitamin D",
-      value: "1 cap",
-    });
   });
 
-  // #2610: the confirmed-dose card names a row the app itself wrote, so it must
-  // name it the way the user does. The #2499 model rename swept the supplement
-  // branch's literal along with the type names and shipped "IntakeItem doses
-  // confirmed" to the feed; the unconditional `category: "medication"` badged it
-  // "Medication" on top of that. Both kinds are asserted, because a one-sided
-  // assertion is exactly what let one branch drift.
-  it("names dose events by kind, in the user's words, for BOTH kinds", () => {
+  it("does not duplicate first-class dose rows as day summaries", () => {
     const p = seedProfile("DOSEKIND");
-    // The shared fixture logs a supplement dose but no medication dose; this
-    // test owns the medication one it needs.
     const medDoseId = db
       .prepare(`SELECT id FROM intake_item_doses WHERE item_id = ?`)
       .get(p.medicationId) as { id: number };
@@ -179,30 +163,9 @@ describe("getTimelineEvents", () => {
     ).run(medDoseId.id, p.medicationId, p.todayStr);
 
     const events = getTimelineEvents(p.profileId);
-    const supplement = events.find(
-      (e) => e.id === `intake:supplement:${p.todayStr}`
+    expect(events.filter((event) => event.id.startsWith("intake:"))).toEqual(
+      []
     );
-    const medication = events.find(
-      (e) => e.id === `intake:medication:${p.todayStr}`
-    );
-
-    expect(supplement?.title).toBe("Supplement doses confirmed");
-    expect(supplement?.badgeLabel).toBe("Supplement");
-    expect(medication?.title).toBe("Medication doses confirmed");
-    expect(medication?.badgeLabel).toBe("Medication");
-
-    // Both still file under the one `medication` category: they share
-    // intake_items, the vocabulary has no supplement member, and splitting the
-    // filter pill was not what this bug asked for.
-    expect(supplement?.category).toBe("medication");
-    expect(medication?.category).toBe("medication");
-
-    // And the internal model name reaches no user-facing string on either card.
-    for (const e of [supplement, medication]) {
-      expect(
-        `${e?.title} ${e?.badgeLabel} ${e?.subtitle ?? ""} ${e?.detail ?? ""}`
-      ).not.toContain("IntakeItem");
-    }
   });
 
   it("scopes timeline events to the requested profile", () => {
@@ -439,7 +402,6 @@ describe("getTimelineEvents", () => {
     expect(events.some((e) => e.category === "goal")).toBe(false);
     expect(events.some((e) => e.category === "body")).toBe(true);
     expect(events.some((e) => e.category === "medical")).toBe(true);
-    expect(events.some((e) => e.category === "medication")).toBe(true);
   });
 
   it("returns timeline calendar dates with optional training exclusion", () => {

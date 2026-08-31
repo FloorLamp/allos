@@ -142,20 +142,20 @@ const UNREADABLE: [string, string, string][] = [
     ledger([...READABLE, "ghost-4400"]),
   ],
   [
-    "restart-4460",
-    "its directory is gone",
-    ledger([...READABLE, "restart-4460"]),
-  ],
-  [
     "half-cleaned-4470",
     "its directory is there and git cannot read it",
     ledger([...READABLE, "half-cleaned-4470"]),
   ],
 ];
+const GONE = ledger([...READABLE, "restart-4460"]);
 
 /** The two ways a lane holds a path, both invisible to the other one's check. */
 const HELD: [string, string, string][] = [
-  [CONTESTED, "write-pipeline-3276", "an uncommitted edit"],
+  [
+    path.dirname(CONTESTED),
+    "write-pipeline-3276",
+    "an uncommitted edit beneath the directory",
+  ],
   [COMMITTED, "day-rollup-4500", "a commit that is not in main"],
   [UNADDED, "write-pipeline-3276", "a new file it has not added yet"],
 ];
@@ -198,7 +198,7 @@ describe("dispatch-brief.mjs claims <path>", () => {
     // A claim outranks an unknown, and the unknown is still printed — an
     // answer that reported only one of the two would send the lane away
     // believing it had the whole picture.
-    const run = claims(CONTESTED, UNREADABLE[1][2]);
+    const run = claims(CONTESTED, GONE);
     expect(run.stdout).toContain("CLAIMED");
     expect(run.stdout).toContain("write-pipeline-3276");
     expect(run.stdout).toContain("CANNOT TELL");
@@ -211,14 +211,6 @@ describe("dispatch-brief.mjs claims <path>", () => {
     const run = claims(CONTESTED, LIVE, holding);
     expect(run.stdout).toContain("CLEAR");
     expect(run.status).toBe(0);
-  });
-
-  it("answers for a directory the way it answers for a file", () => {
-    // A lane asks about `app/(app)/nutrition` as readily as about one file, and
-    // an exact-match-only answer would call the contested directory clear.
-    const run = claims(path.dirname(CONTESTED), LIVE);
-    expect(run.stdout).toContain("CLAIMED");
-    expect(run.status).toBe(1);
   });
 });
 
