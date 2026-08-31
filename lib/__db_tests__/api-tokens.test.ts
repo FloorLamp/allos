@@ -11,8 +11,9 @@
 //   • the helper returns the login's CURRENT role/identity — authorization is
 //     derived per request, never frozen onto the token row
 //
-// Every token value in this file is produced at runtime by createApiToken; nothing
-// secret-shaped is written as a literal.
+// Every token value in this file is produced at runtime. Mint/hash cases use the
+// production cost; behavior whose subject is listing, scope, revocation, or login ties
+// uses routeTestToken and still traverses the real verification path.
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, writeTx } from "@/lib/db";
@@ -27,6 +28,7 @@ import {
   revokeApiToken,
 } from "@/lib/api-tokens";
 import { formatApiToken, parseApiToken } from "@/lib/api-token-format";
+import { routeTestToken } from "./route-test-api-token";
 
 let memberId: number;
 let adminId: number;
@@ -138,7 +140,7 @@ describe("mint and verify", () => {
 
 describe("scope", () => {
   it("refuses a missing capability with a distinct 403 and no use stamp", async () => {
-    const { id, token } = await createApiToken(
+    const { id, token } = routeTestToken(
       memberId,
       "laptop",
       "upload:documents"
@@ -162,7 +164,7 @@ describe("scope", () => {
 
 describe("last_used_at", () => {
   it("is null until the token is actually used, then stamped", async () => {
-    const { id, token } = await createApiToken(
+    const { id, token } = routeTestToken(
       memberId,
       "laptop",
       "upload:documents"
@@ -182,7 +184,7 @@ describe("last_used_at", () => {
 
 describe("revocation", () => {
   it("revokes once, stops authentication, and leaves only a tombstone", async () => {
-    const { id, token } = await createApiToken(
+    const { id, token } = routeTestToken(
       memberId,
       "laptop",
       "upload:documents"
@@ -212,11 +214,7 @@ describe("revocation", () => {
 
   it("a member cannot revoke another login's token", async () => {
     const otherId = makeLogin("token-other", "member");
-    const { id, token } = await createApiToken(
-      otherId,
-      "theirs",
-      "upload:documents"
-    );
+    const { id, token } = routeTestToken(otherId, "theirs", "upload:documents");
     expect(revokeApiToken(id, memberId, "member")).toBe(false);
     // …and the victim's token still works.
     expect(
@@ -224,20 +222,16 @@ describe("revocation", () => {
     ).toBe(true);
   });
 
-  it("an admin may revoke any login's token", async () => {
-    const { id } = await createApiToken(memberId, "theirs", "upload:documents");
+  it("an admin may revoke any login's token", () => {
+    const { id } = routeTestToken(memberId, "theirs", "upload:documents");
     expect(revokeApiToken(id, adminId, "admin")).toBe(true);
   });
 });
 
 describe("listing", () => {
-  it("a member sees only their own tokens; the admin view sees all", async () => {
-    const member = await createApiToken(
-      memberId,
-      "member token",
-      "upload:documents"
-    );
-    await createApiToken(adminId, "admin token", "upload:documents");
+  it("a member sees only their own tokens; the admin view sees all", () => {
+    const member = routeTestToken(memberId, "member token", "upload:documents");
+    routeTestToken(adminId, "admin token", "upload:documents");
 
     const mine = listApiTokensForLogin(memberId);
     expect(mine.map((t) => t.name)).toEqual(["member token"]);
@@ -258,11 +252,7 @@ describe("listing", () => {
 
 describe("the login tie", () => {
   it("reflects the login's CURRENT role, not the role at mint time", async () => {
-    const { token } = await createApiToken(
-      memberId,
-      "laptop",
-      "upload:documents"
-    );
+    const { token } = routeTestToken(memberId, "laptop", "upload:documents");
     db.prepare("UPDATE logins SET role = 'admin' WHERE id = ?").run(memberId);
     const auth = await authenticateApiToken(bearer(token), "upload:documents");
     expect(auth.ok).toBe(true);
@@ -273,11 +263,7 @@ describe("the login tie", () => {
   });
 
   it("deleting the login takes its tokens with it", async () => {
-    const { token } = await createApiToken(
-      memberId,
-      "laptop",
-      "upload:documents"
-    );
+    const { token } = routeTestToken(memberId, "laptop", "upload:documents");
     // The explicit sweep deleteLogin runs (the FK cascade would also fire, but the
     // teardown must hold with foreign_keys off).
     writeTx(() => {
@@ -289,8 +275,8 @@ describe("the login tie", () => {
     expect(countApiTokensForLogin(memberId)).toBe(0);
   });
 
-  it("the FK cascade alone also clears them", async () => {
-    const { id } = await createApiToken(memberId, "laptop", "upload:documents");
+  it("the FK cascade alone also clears them", () => {
+    const { id } = routeTestToken(memberId, "laptop", "upload:documents");
     db.pragma("foreign_keys = ON");
     db.prepare("DELETE FROM logins WHERE id = ?").run(memberId);
     const row = db.prepare("SELECT id FROM api_tokens WHERE id = ?").get(id);
@@ -303,13 +289,9 @@ describe("the login tie", () => {
 // a revoked token must stop counting the moment it is revoked — otherwise the page
 // would tell a household setup is done because of a credential nothing can present.
 describe("anyApiTokenWithScope", () => {
-  it("is true once any login holds one, and false again once it is revoked", async () => {
+  it("is true once any login holds one, and false again once it is revoked", () => {
     expect(anyApiTokenWithScope("upload:documents")).toBe(false);
-    const { id } = await createApiToken(
-      memberId,
-      "the laptop",
-      "upload:documents"
-    );
+    const { id } = routeTestToken(memberId, "the laptop", "upload:documents");
     expect(anyApiTokenWithScope("upload:documents")).toBe(true);
     expect(revokeApiToken(id, memberId, "member")).toBe(true);
     expect(anyApiTokenWithScope("upload:documents")).toBe(false);
