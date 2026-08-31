@@ -1735,6 +1735,24 @@ function worktreeForBranch(branch) {
 // to inspect. Reported as clear that is a confident lie, which is the exact
 // failure this command exists to remove; reported as "cannot tell" it sends the
 // lane to ask, which is what it would have done anyway.
+//
+// AN ANSWER IS TRUE AT THE MOMENT IT RAN AND NO LONGER. This reads mutable
+// state — dirty trees, unpushed commits, a roster other agents are appending
+// to — so a lane that asks, thinks for twenty minutes and then edits is holding
+// a stale answer for the SAME reason the sentence in its brief was stale. Ask
+// again immediately before you write. Measured while this was being built: a
+// worktree read as holding ONE uncommitted file was read again minutes later
+// with a clean tree, because its lane had committed in between.
+//
+// AND `origin/main` IN A LANE'S WORKTREE CAN BE BEHIND, so the third walk can
+// report a path as held when main has since absorbed that very change. That
+// OVER-reports, which is the safe direction and not a bug to diagnose.
+//
+// THE UNIT IS THE FILE, DELIBERATELY. Two lanes editing different functions in
+// one file are reported as a collision, because a merge conflict is a
+// file-level fact and two lanes in one file should be sequenced whether or not
+// their hunks have met yet. Reporting line ranges would be more machinery
+// answering a question nobody asked.
 
 /** Two repo-relative paths overlap when either contains the other. */
 export const pathOverlaps = (a, b) =>
@@ -1818,6 +1836,13 @@ function cmdClaims(argv) {
     console.error(`dispatch-brief.mjs claims: ${arg} is outside ${root}.`);
     process.exit(2);
   }
+  // A DETACHED worktree gets the literal "HEAD" here, which matches no branch,
+  // so nothing is excluded and the caller's own dispatch comes back as `unknown`
+  // (git lists no worktree for its branch). That is the ALARM direction, not the
+  // false-clear one, and no lane runs detached — so this is left alone on
+  // purpose. Do not "fix" it by dropping the filter or by matching on worktree
+  // path: both trade an alarm nobody sees for a CLEAR that would be wrong, which
+  // is the one answer this command must never give.
   const self = git(["rev-parse", "--abbrev-ref", "HEAD"], {
     cwd,
     allowFail: true,
