@@ -629,29 +629,22 @@ describe("a PRN administration spends its redose window", () => {
 });
 
 describe("idempotence — the rate-limit pin", () => {
-  it("an UNCHANGED delivery is not edited at all", async () => {
+  it("costs no calls before a change or after that change settles", async () => {
     const pid = newProfile("Quiet Quill");
-    seedDose(pid, "Quill D3");
+    const a = seedDose(pid, "Quill A");
+    seedDose(pid, "Quill B");
     seedLoginTelegram(pid, "5551786");
     await sendMorningReminder(pid);
 
-    const out = await reconcileProfileMessages(pid);
-    expect(out.examined).toBe(1);
-    expect(out.edited).toBe(0);
-    expect(out.closed).toBe(0);
+    const unchanged = await reconcileProfileMessages(pid);
+    expect(unchanged.examined).toBe(1);
+    expect(unchanged.edited).toBe(0);
+    expect(unchanged.closed).toBe(0);
     expect(editKeyboard).not.toHaveBeenCalled();
     expect(editText).not.toHaveBeenCalled();
-  });
-
-  it("a second sweep after a reconcile makes no further calls", async () => {
-    const pid = newProfile("Settled Sid");
-    const a = seedDose(pid, "Sid A");
-    seedDose(pid, "Sid B");
-    seedLoginTelegram(pid, "5551787");
-    await sendMorningReminder(pid);
 
     markDoseTaken(pid, a.doseId, a.itemId, today(pid), "page");
-    await reconcileProfileMessages(pid);
+    expect((await reconcileProfileMessages(pid)).edited).toBe(1);
     editKeyboard.mockClear();
     editText.mockClear();
 
@@ -861,7 +854,7 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     });
   }
 
-  it("a failed CLOSE is retried by the next pass, not forgotten", async () => {
+  it("rate limits and 5xx closes keep the same pointer retryable", async () => {
     const pid = newProfile("Blip Bella");
     const { itemId, doseId } = seedDose(pid, "Bella D3");
     seedLoginTelegram(pid, "5551885");
@@ -869,7 +862,17 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     markDoseTaken(pid, doseId, itemId, today(pid), "page");
     const before = liveMessagePointers(pid)[0];
 
-    editText.mockRejectedValueOnce(transientFailure());
+    editText
+      .mockRejectedValueOnce(
+        new TelegramApiError({
+          method: "editMessageText",
+          status: 429,
+          description: "Too Many Requests: retry after 30",
+          message:
+            "Telegram editMessageText failed: Too Many Requests: retry after 30",
+        })
+      )
+      .mockRejectedValueOnce(transientFailure());
     const first = await reconcileProfileMessages(pid);
 
     expect(first.deferred).toBe(1);
@@ -884,13 +887,13 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     expect(kept[0].version).toBe(before.version);
     expect(kept[0].sentAt).toBe(before.sentAt);
 
-    // The next tick, with Telegram answering again.
-    const second = await reconcileProfileMessages(pid);
-    expect(second.closed).toBe(1);
-    expect(second.deferred).toBe(0);
+    // A 5xx is classified the same way, then the next healthy tick closes it.
+    expect((await reconcileProfileMessages(pid)).deferred).toBe(1);
+    const third = await reconcileProfileMessages(pid);
+    expect(third.closed).toBe(1);
+    expect(third.deferred).toBe(0);
     expect(liveMessagePointers(pid)).toEqual([]);
-    // Two attempts at the same close — the failed one and the successful retry.
-    expect(editText).toHaveBeenCalledTimes(2);
+    expect(editText).toHaveBeenCalledTimes(3);
   });
 
   it("a failed STRIP leaves the pointer describing what the chat still shows", async () => {
@@ -920,48 +923,39 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
     ).toBe(false);
   });
 
-  it("a rate limit is transient, not a dead message", async () => {
-    const pid = newProfile("Limit Lina");
-    const { itemId, doseId } = seedDose(pid, "Lina D3");
-    seedLoginTelegram(pid, "5551887");
-    await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid), "page");
+  it("drops permanently dead blocked and missing messages", async () => {
+    const cases: [string, string, Error][] = [
+      [
+        "Blocked Bo",
+        "5551888",
+        new TelegramApiError({
+          method: "editMessageText",
+          status: 403,
+          description: "Forbidden: bot was blocked by the user",
+          message:
+            "Telegram editMessageText failed: Forbidden: bot was blocked by the user",
+        }),
+      ],
+      [
+        "Ghost Gil",
+        "5551789",
+        new Error("Telegram editMessageText failed: message to edit not found"),
+      ],
+    ];
 
-    editText.mockRejectedValueOnce(
-      new TelegramApiError({
-        method: "editMessageText",
-        status: 429,
-        description: "Too Many Requests: retry after 30",
-        message:
-          "Telegram editMessageText failed: Too Many Requests: retry after 30",
-      })
-    );
-    const out = await reconcileProfileMessages(pid);
-    expect(out.deferred).toBe(1);
-    expect(out.dropped).toBe(0);
-    expect(liveMessagePointers(pid)).toHaveLength(1);
-  });
+    for (const [name, chat, error] of cases) {
+      const pid = newProfile(name);
+      const { itemId, doseId } = seedDose(pid, `${name} D3`);
+      seedLoginTelegram(pid, chat);
+      await sendMorningReminder(pid);
+      markDoseTaken(pid, doseId, itemId, today(pid), "page");
 
-  it("a chat the bot was blocked from IS dead — the permanent path still drops", async () => {
-    const pid = newProfile("Blocked Bo");
-    const { itemId, doseId } = seedDose(pid, "Bo D3");
-    seedLoginTelegram(pid, "5551888");
-    await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid), "page");
-
-    editText.mockRejectedValueOnce(
-      new TelegramApiError({
-        method: "editMessageText",
-        status: 403,
-        description: "Forbidden: bot was blocked by the user",
-        message:
-          "Telegram editMessageText failed: Forbidden: bot was blocked by the user",
-      })
-    );
-    const out = await reconcileProfileMessages(pid);
-    expect(out.dropped).toBe(1);
-    expect(out.deferred).toBe(0);
-    expect(liveMessagePointers(pid)).toEqual([]);
+      editText.mockRejectedValueOnce(error);
+      const out = await reconcileProfileMessages(pid);
+      expect(out.dropped).toBe(1);
+      expect(out.deferred).toBe(0);
+      expect(liveMessagePointers(pid)).toEqual([]);
+    }
   });
 
   it("retries stay bounded by retention — a permanently failing pointer ages out", async () => {
@@ -987,46 +981,6 @@ describe("a TRANSIENT edit failure keeps the pointer retryable (#1885)", () => {
 });
 
 describe("dead pointers and retention", () => {
-  it("an edit that fails drops the pointer instead of retrying forever", async () => {
-    const pid = newProfile("Ghost Gil");
-    const { itemId, doseId } = seedDose(pid, "Gil D3");
-    seedLoginTelegram(pid, "5551789");
-    await sendMorningReminder(pid);
-    markDoseTaken(pid, doseId, itemId, today(pid), "page");
-
-    // Telegram's answer for a message that no longer exists.
-    editText.mockRejectedValueOnce(
-      new Error("Telegram editMessageText failed: message to edit not found")
-    );
-    const out = await reconcileProfileMessages(pid);
-    expect(out.dropped).toBe(1);
-    expect(liveMessagePointers(pid)).toEqual([]);
-  });
-
-  it("pointers past Telegram's edit horizon are pruned", async () => {
-    const pid = newProfile("Old Ozzy");
-    seedLoginTelegram(pid, "5551790");
-    recordMessagePointer({
-      profileId: pid,
-      chatId: "5551790",
-      messageId: 77,
-      kind: "dose",
-      date: today(pid),
-      keyboard: [
-        [{ text: "x", callback_data: `take:${pid}:1:1:${today(pid)}` }],
-      ],
-    });
-    db.prepare(
-      `UPDATE notify_messages
-          SET sent_at = datetime('now', ?)
-        WHERE profile_id = ?`
-    ).run(`-${MESSAGE_POINTER_RETENTION_DAYS + 1} days`, pid);
-
-    const out = await reconcileProfileMessages(pid);
-    expect(out.pruned).toBe(1);
-    expect(out.examined).toBe(0);
-  });
-
   it("a corrupt keyboard blob is skipped, never thrown on", async () => {
     const pid = newProfile("Corrupt Cass");
     seedLoginTelegram(pid, "5551791");
@@ -1361,23 +1315,13 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
     return p;
   }
 
-  it("the witness READ from the store is one the claim accepts", async () => {
+  it("the stored witness allows exactly one keyboard update", async () => {
     // The regression this pins: the witness is the stored blob VERBATIM, never a
     // re-serialization. A round-trip that reordered a key would produce a witness that
     // never matches — and the sweep would silently stop editing anything, forever.
     const pid = newProfile("Witness Wren");
     seedDose(pid, "Wren D3");
     seedLoginTelegram(pid, "5551805");
-    await sendMorningReminder(pid);
-
-    const p = onePointer(pid);
-    expect(claimMessagePointerKeyboard(pid, p.id, p.version, [])).toBe(true);
-  });
-
-  it("two passes holding the SAME witness — exactly one wins", async () => {
-    const pid = newProfile("Swap Sven");
-    seedDose(pid, "Sven D3");
-    seedLoginTelegram(pid, "5551806");
     await sendMorningReminder(pid);
 
     // Both processes read before either wrote: the cross-process shape, which no amount
@@ -1394,19 +1338,7 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
     expect(onePointer(pid).keyboard[0][0].text).toBe("a");
   });
 
-  it("closing is claimed the same way — a message cannot be closed twice", async () => {
-    const pid = newProfile("Close Coby");
-    seedDose(pid, "Coby D3");
-    seedLoginTelegram(pid, "5551807");
-    await sendMorningReminder(pid);
-
-    const p = onePointer(pid);
-    expect(claimMessagePointerClose(pid, p.id, p.version)).toBe(true);
-    expect(claimMessagePointerClose(pid, p.id, p.version)).toBe(false);
-    expect(liveMessagePointers(pid)).toEqual([]);
-  });
-
-  it("a claim never reaches another profile's pointer", async () => {
+  it("a close claim is profile-scoped and can win only once", async () => {
     const mine = newProfile("Mine Mabel");
     const theirs = newProfile("Theirs Tarek");
     seedDose(theirs, "Tarek D3");
@@ -1415,7 +1347,9 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
 
     const p = onePointer(theirs);
     expect(claimMessagePointerClose(mine, p.id, p.version)).toBe(false);
-    expect(liveMessagePointers(theirs)).toHaveLength(1);
+    expect(claimMessagePointerClose(theirs, p.id, p.version)).toBe(true);
+    expect(claimMessagePointerClose(theirs, p.id, p.version)).toBe(false);
+    expect(liveMessagePointers(theirs)).toEqual([]);
   });
 });
 
@@ -1437,31 +1371,7 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     return msg.title;
   }
 
-  it("closes with the attributed title, not a subjectless sentence", async () => {
-    const pid = newProfile("Norton");
-    const { itemId, doseId } = seedDose(pid, "Norton D3");
-    seedLoginTelegram(pid, "5551990");
-    const title = await sendAttributedReminder(pid);
-    // The instance has several profiles by now, so the send really is attributed.
-    expect(title).toContain("[Norton]");
-    // The pointer remembered it, which is what makes the close possible at all.
-    expect(liveMessagePointers(pid)[0]?.title).toBe(title);
-
-    expect(markDoseTaken(pid, doseId, itemId, today(pid), "page")).toBe(
-      "logged"
-    );
-    const out = await reconcileProfileMessages(pid);
-
-    expect(out.closed).toBe(1);
-    const closingText = editText.mock.calls.at(-1)![2];
-    // The outcome (#2170/#2274) rides the SAME attributed subject this issue put there.
-    expect(String(closingText)).toMatch(
-      /^\[Norton\] 💊 Morning supplements — Norton D3 taken \d\d:\d\d\.$/
-    );
-    expect(closingText).toContain("[Norton]");
-  });
-
-  it("keeps two members' closes distinguishable in one shared chat", async () => {
+  it("records attributed titles and keeps shared-chat closes distinguishable", async () => {
     const shared = "5551991";
     const a = newProfile("Ada");
     const b = newProfile("Ben");
@@ -1469,8 +1379,10 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     const bd = seedDose(b, "Ben D3");
     seedLoginTelegram(a, shared);
     seedLoginTelegram(b, shared);
-    await sendAttributedReminder(a);
-    await sendAttributedReminder(b);
+    const aTitle = await sendAttributedReminder(a);
+    const bTitle = await sendAttributedReminder(b);
+    expect(liveMessagePointers(a)[0]?.title).toBe(aTitle);
+    expect(liveMessagePointers(b)[0]?.title).toBe(bTitle);
 
     markDoseTaken(a, ad.doseId, ad.itemId, today(a), "page");
     markDoseTaken(b, bd.doseId, bd.itemId, today(b), "page");
@@ -1481,11 +1393,19 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
     const texts = editText.mock.calls.map((c) => String(c[2]));
     expect(texts).toHaveLength(2);
     expect(texts[0]).not.toBe(texts[1]);
-    expect(texts.some((t) => t.includes("[Ada]"))).toBe(true);
-    expect(texts.some((t) => t.includes("[Ben]"))).toBe(true);
+    expect(
+      texts.some((t) =>
+        /^\[Ada\] 💊 Morning supplements — Ada D3 taken \d\d:\d\d\.$/.test(t)
+      )
+    ).toBe(true);
+    expect(
+      texts.some((t) =>
+        /^\[Ben\] 💊 Morning supplements — Ben D3 taken \d\d:\d\d\.$/.test(t)
+      )
+    ).toBe(true);
   });
 
-  it("names the subject on a ROLLOVER close too", async () => {
+  it("names rollover subjects while legacy untitled pointers use the bare line", async () => {
     // THE VEHICLE CHANGED, NOT THE CLAIM. This used to ride a food keyboard, which
     // stopped producing a rollover close at #4118 when the food family moved onto the
     // dose window. `mood` is the exact-day family this is about now — a next-morning tap
@@ -1503,29 +1423,22 @@ describe("a closed message says what it closed (#1822 item 7)", () => {
       keyboard: [[{ text: "🙂", callback_data: `mood:${pid}:4:${yd}` }]],
       title: "[Rhea] 🙂 How was today?",
     });
-
-    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
-    expect(editText.mock.calls.at(-1)![2]).toBe(
-      "[Rhea] 🙂 How was today? — this was yesterday's message."
-    );
-  });
-
-  it("degrades to the bare line for a pointer with no recorded title", async () => {
     // A pointer written before migration 139 — nothing to name, so nothing is invented.
-    const pid = newProfile("Legacy Lou");
-    seedLoginTelegram(pid, "5551993");
-    const yd = shiftDateStr(today(pid), -1);
     recordMessagePointer({
       profileId: pid,
-      chatId: "5551993",
+      chatId: "5551992",
       messageId: 4444,
       kind: "mood",
       date: yd,
       keyboard: [[{ text: "🙂", callback_data: `mood:${pid}:4:${yd}` }]],
     });
 
-    expect((await reconcileProfileMessages(pid)).closed).toBe(1);
-    expect(editText.mock.calls.at(-1)![2]).toBe(RECONCILE_CLOSING.rollover);
+    expect((await reconcileProfileMessages(pid)).closed).toBe(2);
+    const texts = editText.mock.calls.map((c) => c[2]);
+    expect(texts).toContain(
+      "[Rhea] 🙂 How was today? — this was yesterday's message."
+    );
+    expect(texts).toContain(RECONCILE_CLOSING.rollover);
   });
 });
 
