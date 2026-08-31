@@ -239,110 +239,23 @@ describe("mergeActivities", () => {
     expect(activityRow(keepId)!.duration_min).toBe(42);
   });
 
-  it("undo restores the discarded row from the returned token", async () => {
-    const login = createLogin();
-    const profile = createProfile("merge-undo", login.id);
-    actAs(login, profile);
-
-    const keepId = insertActivity(profile.id, { title: "Keep" });
-    const dropId = insertActivity(profile.id, { title: "Drop" });
-
-    const { undoIds } = await mergeActivities(
-      fd({ keep_id: keepId, drop_id: dropId })
-    );
-    const undoId = undoIds[0] ?? null;
-    expect(activityRow(dropId)).toBeUndefined();
-
-    const { ok } = await undoDelete(undoId!);
-    expect(ok).toBe(true);
-    // The row comes back under a NEW id — the "Drop" title is present again.
-    const restored = db
-      .prepare(
-        "SELECT COUNT(*) c FROM activities WHERE profile_id = ? AND title = 'Drop'"
-      )
-      .get(profile.id) as { c: number };
-    expect(restored.c).toBe(1);
-  });
-
-  it("moves cycling artifacts to the keeper and returns them to the drop on undo", async () => {
-    const login = createLogin();
-    const profile = createProfile("merge-cycling-artifacts", login.id);
-    actAs(login, profile);
-
-    const keepId = insertActivity(profile.id, { title: "Manual ride" });
-    const dropId = insertActivity(profile.id, {
-      title: "Strava ride",
-      source: "strava",
-      external_id: "strava:cycling-artifacts",
-    });
-    insertCyclingArtifacts(profile.id, dropId);
-
-    const { undoIds } = await mergeActivities(
-      fd({ keep_id: keepId, drop_id: dropId })
-    );
-    expect(cyclingArtifactParents(profile.id)).toEqual({
-      telemetry: [keepId],
-      laps: [keepId],
-      segments: [keepId],
-    });
-
-    expect((await undoDelete(undoIds[0]!)).ok).toBe(true);
-    const restored = db
-      .prepare(
-        "SELECT id FROM activities WHERE profile_id = ? AND title = 'Strava ride'"
-      )
-      .get(profile.id) as { id: number };
-    expect(cyclingArtifactParents(profile.id)).toEqual({
-      telemetry: [restored.id],
-      laps: [restored.id],
-      segments: [restored.id],
-    });
-  });
-
-  // Issue #199: the discarded row's exercise_sets must survive the merge — they are
-  // RE-PARENTED onto the keeper, never deleted by the FK cascade. The trap this
-  // guards: a manual strength log (the row WITH sets) merged into an imported keeper
-  // (the default keeper) must not silently destroy the typed-in sets.
-  it("re-parents the discarded row's sets onto the keeper (#199)", async () => {
-    const login = createLogin();
-    const profile = createProfile("merge-sets", login.id);
-    actAs(login, profile);
-
-    // Keeper is the imported row (the default keeper) with its own set; the drop is
-    // the manual strength log carrying the typed-in sets.
-    const keepId = insertActivity(profile.id, {
-      type: "strength",
-      title: "Imported session",
-      source: "strava",
-      external_id: "strava:sets-1",
-    });
-    insertSet(keepId, "Bench Press");
-    const dropId = insertActivity(profile.id, {
-      type: "strength",
-      title: "Manual session",
-    });
-    insertSet(dropId, "Back Squat");
-    insertSet(dropId, "Deadlift");
-
-    await mergeActivities(fd({ keep_id: keepId, drop_id: dropId }));
-
-    // The discarded row is gone but ALL three sets now live on the keeper — none
-    // were lost to the cascade.
-    expect(activityRow(dropId)).toBeUndefined();
-    const keeperSets = setsFor(keepId).map((s) => s.exercise);
-    expect(keeperSets).toEqual(["Bench Press", "Back Squat", "Deadlift"]);
-  });
-
-  // Issue #200: undoing a merge fully inverts it — the recorded pair decision is
-  // CLEARED (so the un-merged pair re-detects), the keeper's gap-fills (chiefly a
-  // wholesale-inherited components array) are REVERTED (no double-count), and the
-  // re-parented sets move BACK onto the restored row.
-  it("undo fully inverts the merge: clears the decision, reverts keeper gap-fills, moves sets back (#200)", async () => {
+  // Issues #199/#200/#342: the drop's sets, cycling artifacts, components, distance,
+  // and equipment all move to the keeper, then undo restores the whole graph and
+  // clears the durable pair decision.
+  it("undo fully inverts the merged row and every re-parented artifact", async () => {
     const login = createLogin();
     const profile = createProfile("merge-invert", login.id);
     actAs(login, profile);
 
-    // Keeper carries NO components and no distance; the drop carries both plus a set.
+    const bikeId = Number(
+      db
+        .prepare(
+          `INSERT INTO equipment (profile_id, name, category)
+           VALUES (?, 'Drop Bike', 'Bike')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+
     const keepId = insertActivity(profile.id, {
       type: "strength",
       title: "Keeper",
@@ -352,10 +265,17 @@ describe("mergeActivities", () => {
       type: "strength",
       title: "Drop",
       distance_km: 5,
+      source: "strava",
+      external_id: "strava:merge-invert",
     });
-    const dropSetId = insertSet(dropId, "Back Squat");
-    db.prepare("UPDATE activities SET components = ? WHERE id = ?").run(
+    insertSet(dropId, "Back Squat");
+    insertSet(dropId, "Deadlift");
+    insertCyclingArtifacts(profile.id, dropId);
+    db.prepare(
+      "UPDATE activities SET components = ?, equipment_id = ? WHERE id = ?"
+    ).run(
       JSON.stringify([{ name: "Row", type: "cardio", distance_km: 2 }]),
+      bikeId,
       dropId
     );
 
@@ -364,11 +284,21 @@ describe("mergeActivities", () => {
     );
     const undoId = undoIds[0] ?? null;
 
-    // Post-merge: the keeper absorbed the drop's components + distance and both sets.
+    expect(activityRow(dropId)).toBeUndefined();
     const mergedKeep = activityRow(keepId)!;
     expect(mergedKeep.components).not.toBeNull();
     expect(mergedKeep.distance_km).toBe(5);
-    expect(setsFor(keepId)).toHaveLength(2);
+    expect(mergedKeep.equipment_id).toBe(bikeId);
+    expect(setsFor(keepId).map((set) => set.exercise)).toEqual([
+      "Bench Press",
+      "Back Squat",
+      "Deadlift",
+    ]);
+    expect(cyclingArtifactParents(profile.id)).toEqual({
+      telemetry: [keepId],
+      laps: [keepId],
+      segments: [keepId],
+    });
     expect(getPairDecisions(profile.id, ACTIVITY_DOMAIN).size).toBe(1);
 
     // Undo.
@@ -380,17 +310,23 @@ describe("mergeActivities", () => {
     const revertedKeep = activityRow(keepId)!;
     expect(revertedKeep.components).toBeNull();
     expect(revertedKeep.distance_km).toBeNull();
-    // The keeper keeps ONLY its own set; the drop's set moved back onto the restored
-    // row (re-inserted under a new id, carrying its original set).
+    expect(revertedKeep.equipment_id).toBeNull();
     expect(setsFor(keepId).map((s) => s.exercise)).toEqual(["Bench Press"]);
     const restored = db
       .prepare(
         "SELECT id FROM activities WHERE profile_id = ? AND title = 'Drop'"
       )
       .get(profile.id) as { id: number };
-    expect(setsFor(restored.id).map((s) => s.exercise)).toEqual(["Back Squat"]);
-    // The original drop set row was moved (not duplicated): exactly one Back Squat
-    // across this profile's activities.
+    expect(activityRow(restored.id)!.equipment_id).toBe(bikeId);
+    expect(setsFor(restored.id).map((s) => s.exercise)).toEqual([
+      "Back Squat",
+      "Deadlift",
+    ]);
+    expect(cyclingArtifactParents(profile.id)).toEqual({
+      telemetry: [restored.id],
+      laps: [restored.id],
+      segments: [restored.id],
+    });
     expect(
       (
         db
@@ -402,90 +338,35 @@ describe("mergeActivities", () => {
           .get(profile.id, "Back Squat") as { c: number }
       ).c
     ).toBe(1);
-    void dropSetId;
 
-    // The recorded 'merged' decision is gone, so the live duplicate pair resurfaces.
     expect(getPairDecisions(profile.id, ACTIVITY_DOMAIN).size).toBe(0);
   });
 
-  // Issue #342: the session-level equipment link folds keeper-wins and undo reverts
-  // it — a gap on the keeper is filled from the drop, and undo restores the keeper's
-  // pre-fold gear so nothing lingers on the wrong side.
-  it("folds equipment_id keeper-wins and undo reverts it (#342)", async () => {
+  it("refuses cross-day and cross-profile pairs without touching either row", async () => {
     const login = createLogin();
-    const profile = createProfile("merge-gear", login.id);
-    actAs(login, profile);
+    const profileA = createProfile("merge-refusal-a", login.id);
+    const profileB = createProfile("merge-refusal-b", login.id);
+    actAs(login, profileA);
 
-    const bikeId = Number(
-      db
-        .prepare(
-          `INSERT INTO equipment (profile_id, name, category) VALUES (?, 'Keeper Bike', 'Bike')`
-        )
-        .run(profile.id).lastInsertRowid
+    const crossDayKeep = insertActivity(profileA.id, { date: "2026-05-01" });
+    const crossDayDrop = insertActivity(profileA.id, { date: "2026-05-02" });
+
+    const crossDay = await mergeActivities(
+      fd({ keep_id: crossDayKeep, drop_id: crossDayDrop })
     );
-
-    // Keeper has NO gear; the drop supplies a bike. Same day so the merge proceeds.
-    const keepId = insertActivity(profile.id, { title: "Ride A" });
-    const dropId = insertActivity(profile.id, { title: "Ride B" });
-    db.prepare("UPDATE activities SET equipment_id = ? WHERE id = ?").run(
-      bikeId,
-      dropId
-    );
-
-    const { undoIds } = await mergeActivities(
-      fd({ keep_id: keepId, drop_id: dropId })
-    );
-    const undoId = undoIds[0] ?? null;
-    // The keeper's gap was filled from the drop.
-    expect(activityRow(keepId)!.equipment_id).toBe(bikeId);
-
-    // Undo restores the keeper's pre-fold state — the gear is off the keeper again,
-    // and the restored drop carries it.
-    const { ok } = await undoDelete(undoId!);
-    expect(ok).toBe(true);
-    expect(activityRow(keepId)!.equipment_id).toBeNull();
-    const restored = db
-      .prepare(
-        "SELECT equipment_id FROM activities WHERE profile_id = ? AND title = 'Ride B'"
-      )
-      .get(profile.id) as { equipment_id: number | null };
-    expect(restored.equipment_id).toBe(bikeId);
-  });
-
-  it("refuses a cross-day pair (no-op)", async () => {
-    const login = createLogin();
-    const profile = createProfile("merge-crossday", login.id);
-    actAs(login, profile);
-
-    const keepId = insertActivity(profile.id, { date: "2026-05-01" });
-    const dropId = insertActivity(profile.id, { date: "2026-05-02" });
-
-    const { undoIds } = await mergeActivities(
-      fd({ keep_id: keepId, drop_id: dropId })
-    );
-    const undoId = undoIds[0] ?? null;
-    expect(undoId).toBeNull();
-    expect(activityRow(keepId)).toBeDefined();
-    expect(activityRow(dropId)).toBeDefined(); // untouched
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
-  it("cannot merge across profiles (drop id belongs to another profile)", async () => {
-    const login = createLogin();
-    const profileA = createProfile("A", login.id);
-    const profileB = createProfile("B", login.id);
+    expect(crossDay.undoIds[0] ?? null).toBeNull();
+    expect(activityRow(crossDayKeep)).toBeDefined();
+    expect(activityRow(crossDayDrop)).toBeDefined();
 
     const keepId = insertActivity(profileA.id, { title: "A-keep" });
     const dropId = insertActivity(profileB.id, { title: "B-drop" });
 
-    actAs(login, profileA);
-    const { undoIds } = await mergeActivities(
+    const crossProfile = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
-    const undoId = undoIds[0] ?? null;
-
-    expect(undoId).toBeNull();
+    expect(crossProfile.undoIds[0] ?? null).toBeNull();
     expect(activityRow(keepId)).toBeDefined();
-    expect(activityRow(dropId)).toBeDefined(); // B's row untouched
+    expect(activityRow(dropId)).toBeDefined();
+    expect(revalidate).not.toHaveBeenCalled();
   });
 });
