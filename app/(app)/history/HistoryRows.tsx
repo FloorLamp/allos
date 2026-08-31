@@ -134,6 +134,65 @@ const practiceWhenFor = (
 // profile this login cannot write is refused at the action, which is the half a
 // missing button could never prove.
 
+// WHICH CELL GIVES WAY, AND IN WHICH ORDER (#4394). The title was `shrink-0` with
+// nothing to truncate in, so a long one overflowed its cluster and was cut — no
+// ellipsis, no scroll — by `<main>`'s `overflow-x-clip`: 525px of title in a 236px
+// cluster at 320px, right edge at 565. Letting it truncate is half the answer. The
+// other half is that flex shrink is PROPORTIONAL, so a shrinking title takes its
+// share of the deficit beside the detail — while the grammar above says the DETAIL
+// is what gives way first. This weight keeps that order.
+//
+// A BIG FACTOR HERE, NOT A SMALL ONE ON THE TITLE, which is the non-obvious half: a
+// flex-shrink below 1 does not deprioritise an item, it caps the whole line's
+// shrink, so a `shrink-[0.01]` title moved 4px of a 438px deficit and stayed clipped.
+// `flex-1` here does the same job and was rejected: measured, it widens the
+// disclosure button's tap area to the row's whole leftover width.
+const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
+
+// THE TITLE'S FLOOR, SPELLED WHERE IT IS TRUE (#4394). The subject stays out of the
+// shrink negotiation above — `shrink-0`, because it says WHOSE line this is, and an
+// ellipsized subject is unreadable in a way a truncated title is not. That rule needs a
+// bound of a different KIND, and it cannot be spelled as a shrink factor at all: a
+// factor below 1 caps the whole line's shrink rather than deprioritising the item, and
+// 0 means never, with nothing in between.
+//
+// SO THE BOUND IS THE TITLE'S FLOOR, NOT THE SUBJECT'S SHARE. A share cannot state a
+// floor: the same percentage is a different budget on every cluster, and the clusters
+// differ on one page — at 320px the acting profile's row carries a ⋯ and is 162.6px
+// wide against the read-only member's 210.6px. A floor plus each mount's own furniture
+// is one rule said twice, so both mounts guarantee the same number.
+//
+// Uncapped and measured at 320px, the subject runs 421px of text inside a 210.6px
+// cluster and leaves the title 0px PAINTED: the row renders with no name at all. (A
+// 38-character member name does it, but the character count is the fragile way to say
+// so — it turns on trailing whitespace. Text wider than box is the quantity.)
+//
+// THE FLOOR IS 52px, AND IT IS WHERE TWO MEASURED BOUNDS MEET:
+//   * FURNITURE, worst case 12px at a row. The All view's cluster has a THIRD child,
+//     the detail cell. Under pressure it starves to exactly 0 — DETAIL_GIVES_WAY_FIRST
+//     doing its job — but its two gaps survive and the subject's ceiling does not pay
+//     for them, so the floor there is N − 12, not the N − 6 a two-cell row suggests.
+//   * THE CEILING, N ≤ 68.6 at a row. The narrowest cluster is 162.6px and the longest
+//     household name in the fixture is 94px of text, so a larger N ellipsizes a name
+//     that would otherwise have fitted. Measured: whole at 69, ellipsized at 72.
+//
+// So 52 is the largest floor the tightest row can guarantee while leaving TODAY'S REAL
+// HOUSEHOLD NAMES whole, with a character of headroom. It is not a law, and the shape
+// of the compromise should be visible: the cap IS `cluster − N`, so a band of names
+// between `cluster − N` and `cluster` fits and is ellipsized anyway. 94px is only the
+// longest name we are choosing to keep out of that band. A longer real name tightens
+// this, and whoever meets that should find the tension described rather than find it.
+//
+// WHAT IT BUYS: 7.6px off one row's title (65.6 → 58 on a dose row) for a guarantee at
+// BOTH mounts and on a view that never had one — the All view's row, and the rollup
+// line, whose label main paints at 0px today. That last one is a defect that already
+// ships, not a regression this fix has to avoid.
+//
+// TWO LITERALS RATHER THAN ONE CONSTANT PLUS ARITHMETIC, because Tailwind scans source
+// TEXT for candidates: a class name assembled at runtime is never compiled at all.
+const ROW_SUBJECT_CAP = "max-w-[calc(100%-64px)] truncate"; // 52 floor + 12 furniture
+const ROLLUP_SUBJECT_CAP = "max-w-[calc(100%-84px)] truncate"; // 52 floor + 32 furniture
+
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
 // symbols still knows the record's. Total means a new kind cannot ship without one.
@@ -846,6 +905,9 @@ export default function HistoryRows({
                     className="inline-flex min-w-0 items-center text-link"
                     data-testid="history-row-title"
                   >
+                    {/* The ellipsis needs a BLOCK to happen in, and this `<a>` is a
+                        flex container (the primitive's own chevron), so `truncate`
+                        on the link would style a box that holds no text. */}
                     <span className="min-w-0 truncate">{row.title}</span>
                   </DestinationLink>
                 ) : row.href ? (
@@ -866,7 +928,7 @@ export default function HistoryRows({
                 )}
                 {subject ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROW_SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subject}
@@ -893,7 +955,7 @@ export default function HistoryRows({
                     onClick={() =>
                       setOpenPanelId(openPanelId === row.id ? null : row.id)
                     }
-                    className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    className={`flex items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 ${DETAIL_GIVES_WAY_FIRST}`}
                   >
                     <span
                       className="min-w-0 truncate"
@@ -911,7 +973,7 @@ export default function HistoryRows({
                   </button>
                 ) : row.detail ? (
                   <span
-                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`truncate text-xs font-normal text-slate-500 dark:text-slate-400 ${DETAIL_GIVES_WAY_FIRST}`}
                     data-testid="history-row-detail"
                   >
                     {row.detail}
@@ -1110,7 +1172,7 @@ export default function HistoryRows({
                 <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
                 {subjectNames[rollup.profileId] ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROLLUP_SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subjectNames[rollup.profileId]}

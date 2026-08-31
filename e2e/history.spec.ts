@@ -58,6 +58,14 @@ const DAY_LABEL = `${MONTHS_SHORT[Number(DAY.slice(5, 7)) - 1]} ${Number(
 const OLD_DAY = "2026-02-11";
 const HISTORY_WITH_OLD_YEAR = `/history?open=${OLD_DAY.slice(0, 4)}`;
 const PRACTICE = "E2e History Rowing";
+// A title no phone can fit, for the truncation case below. Measured at 320px: it lays
+// out 354px of text inside a 178px cluster — 1.99×, so the fixture is nowhere near the
+// bound it has to clear — and the row therefore reaches the state the assertion forbids
+// rather than passing because everything happened to fit. Both numbers are re-read at
+// run time and printed on failure; what this records is the MARGIN, which is the part a
+// failure message cannot tell you. (This row carries no subject — it is the single-
+// profile record — so the subject ceiling in HistoryRows plays no part in it.)
+const LONG_PRACTICE = "E2e History Long Title Rowing Session On Open Water 2";
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
 
@@ -80,6 +88,11 @@ const MONTH_FOLD = '[data-testid^="history-fold-"][data-fold-key*="-"]';
 // the page margin beside the reading column is wider than the rail's 44px hit strip, so
 // the rail sits in the margin and no card gives anything up; NARROW is inside it, where
 // the carve-out exists and must be spent at ONE depth so the two cards still line up.
+// The narrowest CSS viewport a phone still in use reports, and the width #4394 was
+// measured at. It is where the record row has the least room to spend, so it is where
+// a cell that cannot give way shows.
+const SMALLEST_PHONE_PX = 320;
+
 const WIDE_PX = 1440;
 const NARROW_DESKTOP_PX = 1024;
 
@@ -95,8 +108,22 @@ function clearFixture(db: Database.Database): void {
       WHERE profile_id = ? AND date IN (?, ?) AND group_key = ?`
   ).run(PROFILE, DAY, OLD_DAY, FOOD_GROUP);
   db.prepare(
-    "DELETE FROM practice_logs WHERE profile_id = ? AND practice = ?"
-  ).run(PROFILE, PRACTICE);
+    "DELETE FROM practice_logs WHERE profile_id = ? AND practice IN (?, ?)"
+  ).run(PROFILE, PRACTICE, LONG_PRACTICE);
+}
+
+// The long-title row, seeded only by the test that needs it — `clearFixture` above
+// takes it away again, so no other case has to know about it.
+function seedLongTitle(): void {
+  const db = openDb();
+  try {
+    db.prepare(
+      `INSERT INTO practice_logs (profile_id, practice, date, start_time, duration_min)
+       VALUES (?, ?, ?, '09:30', 30)`
+    ).run(PROFILE, LONG_PRACTICE, DAY);
+  } finally {
+    db.close();
+  }
 }
 
 function zoneOf(db: Database.Database): string {
@@ -206,6 +233,69 @@ test.describe("the record (#3958)", () => {
       expect(Math.round(row.right)).toBeLessThanOrEqual(geometry.viewport);
     }
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport + 1);
+    await expectNoClippedContent(page);
+  });
+
+  // #4394. THE SMALLEST PHONE, where the row has the least to give. `expectNoClippedContent`
+  // is the viewport half; the two reads either side of it are the ones that say the
+  // title TRUNCATED rather than merely stayed on screen — a title cut by an ancestor's
+  // `overflow-x-clip` says nothing, an ellipsis says "there is more here".
+  //
+  // BOUNDS, NOT VALUES, and deliberately: the exact pixel width of a run of text is the
+  // font's business and would pin nothing worth pinning. What is pinned is a
+  // RELATIONSHIP — the title ends inside the cluster that owns it, and its box is
+  // narrower than the text it holds. The first of those is satisfiable by a title that
+  // was never long enough to be at risk, which is why the fixture's own overflow is
+  // asserted first and in the same numbers.
+  test("truncates a long record title at 320px rather than letting it be clipped", async ({
+    page,
+  }) => {
+    seedDay();
+    seedLongTitle();
+    await page.setViewportSize({ width: SMALLEST_PHONE_PX, height: 844 });
+    await page.goto(`/history?day=${DAY}`);
+
+    const row = page
+      .getByTestId("history-row")
+      .filter({ hasText: LONG_PRACTICE });
+    await expect(row).toHaveCount(1);
+    const title = await row.evaluate((el) => {
+      const t = el.querySelector<HTMLElement>(
+        '[data-testid="history-row-title"]'
+      )!;
+      // The box the ellipsis happens in — the title itself, or the block inside it
+      // when the title is a link that draws its own destination chevron.
+      const ellipsis = [t, ...t.querySelectorAll<HTMLElement>("*")].find(
+        (el) => getComputedStyle(el).textOverflow === "ellipsis"
+      );
+      const cluster = t.parentElement!;
+      return {
+        right: t.getBoundingClientRect().right,
+        clusterRight: cluster.getBoundingClientRect().right,
+        clusterWidth: cluster.getBoundingClientRect().width,
+        text: ellipsis ? ellipsis.scrollWidth : null,
+        box: ellipsis ? ellipsis.clientWidth : null,
+      };
+    });
+
+    expect(
+      title.text,
+      "the title has no box that can ellipsize"
+    ).not.toBeNull();
+    expect(
+      title.text!,
+      `the fixture's title is ${title.text}px of text in a ${Math.round(
+        title.clusterWidth
+      )}px cluster — it must not fit, or this proves nothing`
+    ).toBeGreaterThan(title.clusterWidth);
+    expect(
+      title.box!,
+      `the title box is ${title.box}px against ${title.text}px of text`
+    ).toBeLessThan(title.text!);
+    expect(
+      Math.round(title.right),
+      "the title ends outside the cluster that owns it"
+    ).toBeLessThanOrEqual(Math.round(title.clusterRight) + 1);
     await expectNoClippedContent(page);
   });
 
