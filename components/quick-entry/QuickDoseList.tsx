@@ -369,8 +369,8 @@ function PastDayDoses({
   // No `clientTakenAt` — the tap instant belongs to TODAY, and `resolveQueuedTakenAt`
   // refuses a stamp whose local date is not the row's own day, so sending it would only
   // buy a discarded value.
-  function resolveOne(doseId: number, status: "taken" | "skipped") {
-    void single.run({
+  async function resolveOne(doseId: number, status: "taken" | "skipped") {
+    const outcome = await single.run({
       key: `${doseId}->${status}`,
       fields: { date, status, dose_ids: String(doseId) },
       action: resolveDayDoses,
@@ -387,6 +387,10 @@ function PastDayDoses({
             : "Skip saved offline — will sync when you reconnect.",
       }),
     });
+    // A kept capture IS a landing, so the row leaves the day's list the way an online
+    // resolution does. Today's row above already settles this way; the past-day row was
+    // doing it before the pipeline landed and must keep doing it.
+    if (outcome === "captured") onResolved([doseId]);
   }
 
   function resolveStack(doseIds: readonly number[]) {
@@ -487,7 +491,7 @@ function PastDayDoses({
                       data-testid="dose-take"
                       aria-label={`Mark ${dose.name} taken`}
                       disabled={single.blocked(`${dose.doseId}->taken`)}
-                      onClick={() => resolveOne(dose.doseId, "taken")}
+                      onClick={() => void resolveOne(dose.doseId, "taken")}
                       className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_BRAND}`}
                     >
                       <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
@@ -497,7 +501,7 @@ function PastDayDoses({
                       data-testid="dose-skip"
                       aria-label={`Skip ${dose.name}`}
                       disabled={single.blocked(`${dose.doseId}->skipped`)}
-                      onClick={() => resolveOne(dose.doseId, "skipped")}
+                      onClick={() => void resolveOne(dose.doseId, "skipped")}
                       className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
                     >
                       <IconPlayerTrackNext
