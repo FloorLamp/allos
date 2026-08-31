@@ -1,6 +1,74 @@
-import type { ResolveDayDosesResult } from "@/app/(app)/nutrition/intake-actions";
-import type { WriteSettlement } from "@/components/useWritePipeline";
+"use client";
+
+import {
+  resolveDayDoses,
+  type ResolveDayDosesResult,
+} from "@/app/(app)/nutrition/intake-actions";
+import {
+  useWritePipeline,
+  type WriteSettlement,
+} from "@/components/useWritePipeline";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
+
+type DoseStatus = "taken" | "skipped";
+type DoseRowSettlement = {
+  note: (doseId: number, text: string) => void;
+  resolved: (doseIds: readonly number[]) => void;
+};
+
+// ONE DATED-DOSE WRITE OWNER (#4316). The quick sheet and Day ledger compose
+// different row chrome around the same two writes; neither restates their pipeline,
+// offline admission, action, settlement, or captured-row behavior.
+export function useDoseDayResolution({
+  date,
+  bulkFailureMessage,
+  note,
+  resolved,
+}: { date: string; bulkFailureMessage: string } & DoseRowSettlement) {
+  const single = useWritePipeline("dose-day");
+  const bulk = useWritePipeline("dose-day-stack");
+  const row = { note, resolved };
+
+  async function resolveOne(doseId: number, status: DoseStatus) {
+    const outcome = await single.run({
+      key: `${doseId}->${status}`,
+      fields: { date, status, dose_ids: String(doseId) },
+      action: resolveDayDoses,
+      settle: (result) => settleDayDoses(result, status, row),
+      failureMessage: "Couldn't update this dose. Try again.",
+      offline: () => ({
+        kind: "capture",
+        flow: status === "taken" ? "dose" : "skip-dose",
+        date,
+        payload: { doseId },
+        keptMessage:
+          status === "taken"
+            ? "Dose saved offline — will sync when you reconnect."
+            : "Skip saved offline — will sync when you reconnect.",
+      }),
+    });
+    if (outcome === "captured") resolved([doseId]);
+  }
+
+  function resolveAll(doseIds: readonly number[]) {
+    void bulk.run({
+      key: doseIds.join(","),
+      fields: { date, status: "taken", dose_ids: doseIds.join(",") },
+      action: resolveDayDoses,
+      settle: (result) => settleDayDoses(result, "taken", row),
+      failureMessage: bulkFailureMessage,
+    });
+  }
+
+  return {
+    resolveOne,
+    resolveAll,
+    singleBlocked: (doseId: number, status: DoseStatus) =>
+      single.blocked(`${doseId}->${status}`),
+    bulkBlocked: (doseIds: readonly number[]) =>
+      bulk.blocked(doseIds.join(",")),
+  };
+}
 
 // HOW A DATED DOSE RESOLUTION SETTLES, in ONE place (#4453). Two surfaces post
 // `resolveDayDoses` — the quick-log sheet's past-day list and the day ledger — and each
@@ -15,15 +83,12 @@ import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 // NO UNDO, written rather than omitted — and on a whole-stack tap it is load-bearing:
 // the action resolves each dose in its own transaction, so an inverse would have to know
 // which ones landed, and that is not a complete local inverse (lib/undo-offer.ts).
-export function settleDayDoses(
+function settleDayDoses(
   result: ResolveDayDosesResult,
   status: "taken" | "skipped",
   // The surface's own two answers — where an unresolved dose's reason is shown, and what
   // leaves the list. This is the only thing that ever differed between the two copies.
-  row: {
-    note: (doseId: number, text: string) => void;
-    resolved: (doseIds: readonly number[]) => void;
-  }
+  row: DoseRowSettlement
 ): WriteSettlement {
   if (!result.ok)
     return {

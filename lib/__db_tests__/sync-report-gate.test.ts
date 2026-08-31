@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
-import { createApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import {
   accountsForPortal,
   bindPortalIdentity,
@@ -120,26 +120,26 @@ function portalFixture(opts: { bind?: boolean } = {}): {
   return { slug: `gate-portal-${tag}`, account };
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   victimLogin = makeLogin("gate-victim");
   victimProfile = makeProfile("Gate Victim");
   grant(victimLogin, victimProfile);
-  victimToken = (await createApiToken(victimLogin, "tool", "upload:documents"))
-    .token;
+  victimToken = routeTestToken(victimLogin, "tool", "upload:documents").token;
 
   outsiderLogin = makeLogin("gate-outsider");
   outsiderProfile = makeProfile("Gate Outsider");
   grant(outsiderLogin, outsiderProfile);
-  outsiderToken = (
-    await createApiToken(outsiderLogin, "tool", "upload:documents")
+  outsiderToken = routeTestToken(
+    outsiderLogin,
+    "tool",
+    "upload:documents"
   ).token;
 
   // A login whose ONLY grant on the victim profile is read: "can reach" is not the
   // gate — "can write" is.
   readerLogin = makeLogin("gate-reader");
   grant(readerLogin, victimProfile, "read");
-  readerToken = (await createApiToken(readerLogin, "tool", "upload:documents"))
-    .token;
+  readerToken = routeTestToken(readerLogin, "tool", "upload:documents").token;
 });
 
 describe("the portal-level failure branch (#2105)", () => {

@@ -26,7 +26,8 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { GET } from "@/app/api/documents/held/route";
-import { createApiToken, revokeApiToken } from "@/lib/api-tokens";
+import { revokeApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import {
   bindPortalIdentity,
   createPortal,
@@ -119,7 +120,7 @@ function insertKeyedDoc(
   );
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   heldProfile = Number(
     db.prepare("INSERT INTO profiles (name) VALUES ('Held Inventory')").run()
       .lastInsertRowid
@@ -148,13 +149,10 @@ beforeAll(async () => {
     "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
   ).run(readOnlyLogin, readProfile);
 
-  writerToken = (await createApiToken(writerLogin, "w", "upload:documents"))
-    .token;
-  otherToken = (await createApiToken(otherLogin, "o", "upload:documents"))
-    .token;
-  readOnlyToken = (await createApiToken(readOnlyLogin, "r", "upload:documents"))
-    .token;
-  const revoked = await createApiToken(writerLogin, "x", "upload:documents");
+  writerToken = routeTestToken(writerLogin, "w", "upload:documents").token;
+  otherToken = routeTestToken(otherLogin, "o", "upload:documents").token;
+  readOnlyToken = routeTestToken(readOnlyLogin, "r", "upload:documents").token;
+  const revoked = routeTestToken(writerLogin, "x", "upload:documents");
   revokedToken = revoked.token;
   revokeApiToken(revoked.id, writerLogin, "member");
 

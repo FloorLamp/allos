@@ -22,7 +22,8 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { POST as SYNC_REPORT } from "@/app/api/documents/sync-report/route";
 import { GET as REQUESTS } from "@/app/api/documents/requests/route";
-import { createApiToken, revokeApiToken } from "@/lib/api-tokens";
+import { revokeApiToken } from "@/lib/api-tokens";
+import { routeTestToken } from "./route-test-api-token";
 import {
   accountsForPortal,
   bindPortalIdentity,
@@ -142,14 +143,12 @@ function runReportRow(accountId: number): Record<string, unknown> {
     .get(accountId) as Record<string, unknown>;
 }
 
-beforeAll(async () => {
+beforeAll(() => {
   memberLogin = makeLogin("prov-member");
   readerLogin = makeLogin("prov-reader");
-  memberToken = (await createApiToken(memberLogin, "tool", "upload:documents"))
-    .token;
-  readerToken = (await createApiToken(readerLogin, "tool", "upload:documents"))
-    .token;
-  const revoked = await createApiToken(memberLogin, "old", "upload:documents");
+  memberToken = routeTestToken(memberLogin, "tool", "upload:documents").token;
+  readerToken = routeTestToken(readerLogin, "tool", "upload:documents").token;
+  const revoked = routeTestToken(memberLogin, "old", "upload:documents");
   revokedToken = revoked.token;
   revokeApiToken(revoked.id, memberLogin, "member");
 });
@@ -607,8 +606,10 @@ describe("declined — one login, three patients, three answers", () => {
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
     ).run(caregiverLogin, f.holder);
-    const caregiverToken = (
-      await createApiToken(caregiverLogin, "tool", "upload:documents")
+    const caregiverToken = routeTestToken(
+      caregiverLogin,
+      "tool",
+      "upload:documents"
     ).token;
     const res = await SYNC_REPORT(
       report(caregiverToken, {

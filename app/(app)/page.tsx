@@ -2016,6 +2016,7 @@ async function renderDashboard(
           .join(" · "),
         disclosure: proteinTodayExplanation(proteinToday),
         href: "/nutrition",
+        moment: { title: "Nutrition today", href: "/nutrition" },
         presence: "current",
       }
     );
