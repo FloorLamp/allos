@@ -237,6 +237,20 @@ function openRow(
   );
 }
 
+it("renders a feed subject home as a link and a nav-only title as plain text", () => {
+  openRow([
+    row({
+      id: "feed:activity:1",
+      kind: "activity",
+      title: "Run",
+      href: "/training/activity/1",
+    }),
+    row({ id: "feed:injury:1", kind: "injury", title: "Sore ankle" }),
+  ]);
+  expect(screen.getByText("Run").tagName).toBe("A");
+  expect(screen.getByText("Sore ankle").tagName).toBe("SPAN");
+});
+
 async function openEdit(
   rows: HistoryRow[],
   writableProfileIds?: number[]
