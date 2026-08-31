@@ -265,7 +265,7 @@ function plans(mem: Database.Database): PlanRow[] {
 }
 
 describe("migration 184 nulls the links migration 180 orphaned (#2444)", () => {
-  it("de-links a follow-up whose source reading is gone, source_kind and all", () => {
+  it("repairs dangling source and resolved-by links without erasing other facts", () => {
     const mem = repairDb();
     // id 9 is the reading migration 180 deleted out from under this follow-up.
     mem
@@ -273,6 +273,14 @@ describe("migration 184 nulls the links migration 180 orphaned (#2444)", () => {
         `INSERT INTO care_plan_items
            (id, profile_id, description, source_kind, source_medical_record_id)
          VALUES (1, 1, 'Recheck waist', 'labs', 9)`
+      )
+      .run();
+    mem
+      .prepare(
+        `INSERT INTO care_plan_items
+           (id, profile_id, description, source_kind, source_medical_record_id,
+            resolved_by_medical_record_id, resolution)
+         VALUES (2, 1, 'Recheck waist', 'labs', 7, 9, 'resolved')`
       )
       .run();
     up184(mem);
@@ -284,25 +292,8 @@ describe("migration 184 nulls the links migration 180 orphaned (#2444)", () => {
         resolved_by_medical_record_id: null,
         resolution: null,
       },
-    ]);
-  });
-
-  it("nulls a dangling resolved-by link without touching source_kind or the resolution", () => {
-    const mem = repairDb();
-    mem
-      .prepare(
-        `INSERT INTO care_plan_items
-           (id, profile_id, description, source_kind, source_medical_record_id,
-            resolved_by_medical_record_id, resolution)
-         VALUES (1, 1, 'Recheck waist', 'labs', 7, 9, 'resolved')`
-      )
-      .run();
-    up184(mem);
-    // The source reading (7) is still there, so the follow-up stays TRACKED; only the
-    // vanished resolving reading is de-linked, and the closure it recorded stands.
-    expect(plans(mem)).toEqual([
       {
-        id: 1,
+        id: 2,
         source_kind: "labs",
         source_medical_record_id: 7,
         resolved_by_medical_record_id: null,
@@ -311,7 +302,7 @@ describe("migration 184 nulls the links migration 180 orphaned (#2444)", () => {
     ]);
   });
 
-  it("leaves a live link completely alone, and is idempotent", () => {
+  it("leaves live and unlinked rows alone, and is idempotent", () => {
     const mem = repairDb();
     mem
       .prepare(
@@ -321,21 +312,14 @@ describe("migration 184 nulls the links migration 180 orphaned (#2444)", () => {
          VALUES (1, 1, 'Recheck waist', 'labs', 7, 7)`
       )
       .run();
-    const before = plans(mem);
-    up184(mem);
-    up184(mem);
-    expect(plans(mem)).toEqual(before);
-  });
-
-  it("leaves an unlinked care-plan item alone", () => {
-    const mem = repairDb();
     mem
       .prepare(
         `INSERT INTO care_plan_items (id, profile_id, description)
-         VALUES (1, 1, 'Generic plan item')`
+         VALUES (2, 1, 'Generic plan item')`
       )
       .run();
     const before = plans(mem);
+    up184(mem);
     up184(mem);
     expect(plans(mem)).toEqual(before);
   });
@@ -674,12 +658,24 @@ describe("migration 20260813-cascade-orphan-sweep clears what is already orphane
     return mem;
   }
 
-  it("deletes the orphan and its own orphaned child, to a fixed point", () => {
+  it("deletes to a fixed point and logs the per-link tally", () => {
     const mem = orphanedDb();
     expect(counts(mem)).toEqual({ records: 1, revisions: 2, notes: 2 });
-    upSweep(mem);
+    const lines = captureLog(() => upSweep(mem));
     expect(counts(mem)).toEqual({ records: 1, revisions: 1, notes: 1 });
     expect(fkViolations(mem)).toEqual([]);
+    expect(lines).toHaveLength(1);
+    const line = lines[0];
+    expect(line).toContain("removed 2 orphaned row(s)");
+    expect(line).toContain(
+      "medical_record_revisions.record_id → medical_records: 1"
+    );
+    expect(line).toContain(
+      "revision_notes.revision_id → medical_record_revisions: 1"
+    );
+    if (line.startsWith("{"))
+      expect(JSON.parse(line)).toMatchObject({ scope: "migrate" });
+    else expect(line).toContain("[migrate]");
   });
 
   it("reports what it removed", () => {
@@ -718,36 +714,16 @@ describe("migration 20260813-cascade-orphan-sweep clears what is already orphane
     return lines;
   }
 
-  it("logs the per-link tally of what it removed", () => {
-    const mem = orphanedDb();
-    const lines = captureLog(() => upSweep(mem));
-    expect(lines).toHaveLength(1);
-    const line = lines[0];
-    expect(line).toContain("removed 2 orphaned row(s)");
-    expect(line).toContain(
-      "medical_record_revisions.record_id → medical_records: 1"
-    );
-    expect(line).toContain(
-      "revision_notes.revision_id → medical_record_revisions: 1"
-    );
-    // The logger is JSON in production/test mode and human-readable in local
-    // development. Both formats must retain the migration scope.
-    if (line.startsWith("{"))
-      expect(JSON.parse(line)).toMatchObject({ scope: "migrate" });
-    else expect(line).toContain("[migrate]");
-  });
-
-  it("logs the empty run too — 'found nothing' is the other half of the trail", () => {
-    const lines = captureLog(() => upSweep(cascadeDb()));
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("no cascade orphans found");
-  });
-
-  it("is a no-op on a healthy database, and idempotent", () => {
+  it("logs a healthy no-op and remains idempotent", () => {
     const mem = cascadeDb();
-    upSweep(mem);
-    expect(counts(mem)).toEqual({ records: 2, revisions: 2, notes: 2 });
-    upSweep(mem);
+    const lines = captureLog(() => {
+      upSweep(mem);
+      upSweep(mem);
+    });
+    expect(lines).toHaveLength(2);
+    expect(
+      lines.every((line) => line.includes("no cascade orphans found"))
+    ).toBe(true);
     expect(counts(mem)).toEqual({ records: 2, revisions: 2, notes: 2 });
   });
 
