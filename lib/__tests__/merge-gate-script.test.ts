@@ -222,6 +222,26 @@ describe("merge-gate.mjs", () => {
     });
     expect(run.status).toBe(1);
     expect(run.stdout).toContain("no exact-head receipt");
+    expect(run.stdout).toContain("STATUS: gate CLOSED — no exact-head receipt");
+  });
+
+  it("keeps the published failure description inside GitHub's 140-character limit", () => {
+    const run = runGate({
+      checkRuns: [
+        green("lint"),
+        {
+          name: `test-${"very-long-check-name-".repeat(10)}`,
+          status: "completed",
+          conclusion: "failure",
+        },
+      ],
+    });
+    const status = run.stdout
+      .split("\n")
+      .find((line) => line.startsWith("STATUS: "));
+    expect(status).toBeDefined();
+    expect(status!.slice("STATUS: ".length).length).toBeLessThanOrEqual(140);
+    expect(status).toContain("gate CLOSED — red checks on this head");
   });
 
   it("closes on a red check and names it", () => {
