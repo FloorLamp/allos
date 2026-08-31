@@ -162,9 +162,9 @@ test("a mapped panel's reported heading lives on the reading, not on every row (
   // asserted `toHaveCount(11)` on exactly that id. So the zero below is measured
   // against eleven live chances to fail, not against an empty group.
   await expect(lipids.locator("tr")).toHaveCount(12); // 1 header + 11 results
-  await expect(
-    lipids.getByTestId("clinical-reported-panel-help")
-  ).toHaveCount(0);
+  await expect(lipids.getByTestId("clinical-reported-panel-help")).toHaveCount(
+    0
+  );
   // BY NAME as well as by id: the label is what a reader hears, and a mount that
   // came back without its testid would slip past an id-only sweep.
   await expect(
@@ -223,9 +223,9 @@ test("a continuation row carries no info affordance at 700 and 1280px", async ({
     // rather than about one id: a mount that came back under any other label fails it.
     const continuation = ldlRows.nth(1);
     await expect(continuation.getByRole("button")).toHaveCount(1);
-    await expect(
-      continuation.getByTestId("overflow-menu-trigger")
-    ).toHaveCount(1);
+    await expect(continuation.getByTestId("overflow-menu-trigger")).toHaveCount(
+      1
+    );
     // …and it still prints the date it always did, which is the half an absence
     // assertion cannot see on its own.
     const dateCell = continuation
