@@ -147,8 +147,18 @@ describe("addMeasurements — one form, three stores", () => {
     expect(revalidate).toHaveBeenCalledWith("/trends");
   });
 
-  it("writes only the half a partial submission carries", async () => {
+  it("ignores empty or invalid submissions, then writes only populated halves", async () => {
     const { profile } = seedActor();
+
+    await addMeasurements(fd({ date: DATE }));
+    expect(bodyRows(profile.id)).toEqual([]);
+    expect(revalidate).not.toHaveBeenCalled();
+
+    // A systolic without its diastolic is rejected by the shared pure guard.
+    await addMeasurements(fd({ date: DATE, systolic: "120" }));
+    expect(medRows(profile.id, "Blood Pressure Systolic")).toHaveLength(0);
+    expect(revalidate).not.toHaveBeenCalled();
+
     // Vitals only — no weight, so no body_metrics row is invented.
     await addMeasurements(fd({ date: DATE, systolic: "120", diastolic: "80" }));
     expect(bodyRows(profile.id)).toEqual([]);
@@ -160,7 +170,7 @@ describe("addMeasurements — one form, three stores", () => {
     expect(medRows(profile.id, "Oxygen Saturation")).toHaveLength(0);
   });
 
-  it("folds body fat and resting HR from metric detail forms onto ONE day row", async () => {
+  it("folds same-day body updates onto one row while preserving time semantics", async () => {
     // EDITED DELIBERATELY by #2235 (decision 6): this used to pin two stacked
     // manual rows, because the manual path was a plain INSERT the NULL-source
     // unique index could never dedupe. The manual core is find-then-write now —
@@ -171,23 +181,10 @@ describe("addMeasurements — one form, three stores", () => {
     await addMeasurements(fd({ date: DATE, body_fat_pct: "18.5" }));
     await addMeasurements(fd({ date: DATE, resting_hr: "54" }));
 
-    expect(bodyRows(profile.id)).toEqual([
-      {
-        date: DATE,
-        weight_kg: null,
-        body_fat_pct: 18.5,
-        resting_hr: 54,
-        notes: null,
-      },
-    ]);
-  });
-
-  it("carries the sitting's stated Time onto the day row — and clears it when emptied", async () => {
     // The #2235 trichotomy over the real wire format: the form always posts
     // `occurred_at`, so "" is the user's explicit no-time (clears), a value is a
     // statement (normalized to the canonical shape), and a POST with no field at
     // all — a stale pre-#2235 client — makes no statement.
-    const { profile } = seedActor();
     const occurredAt = () =>
       (
         db
@@ -218,8 +215,15 @@ describe("addMeasurements — one form, three stores", () => {
       fd({ date: DATE, weight: "70.4", weight_unit: "kg", occurred_at: "" })
     );
     expect(occurredAt()).toBeNull();
-    // One row per day throughout.
-    expect(bodyRows(profile.id)).toHaveLength(1);
+    expect(bodyRows(profile.id)).toEqual([
+      {
+        date: DATE,
+        weight_kg: 70.4,
+        body_fat_pct: 18.5,
+        resting_hr: 54,
+        notes: null,
+      },
+    ]);
   });
 
   it("carries the sitting's one Time onto every vitals observation (#2154)", async () => {
@@ -260,7 +264,7 @@ describe("addMeasurements — one form, three stores", () => {
   // #2311 — the online half of #2296's ruling, on the surface it had not reached.
   // The action ANSWERS the refusal so the form can say it; the measurements land
   // either way, because a refusal is a notice and not a validation failure.
-  it("answers a refused stated time while the reading lands (#2311)", async () => {
+  it("reports refused body and vitals times while keeping their readings (#2311, #2363)", async () => {
     const { profile } = seedActor();
     pinUtc(profile.id);
 
@@ -324,16 +328,9 @@ describe("addMeasurements — one form, three stores", () => {
     expect(await addMeasurements(fd({ date: DATE, resting_hr: "51" }))).toEqual(
       {}
     );
-  });
 
-  // #2363 — the survivor #2311's audit named. `insertVitals` answered a bare
-  // boolean, so a sitting carrying ONLY a blood pressure kept its reading, dropped
-  // the stated minute and said nothing, while the same sitting with a weight beside
-  // it DID report off the body half. The answer is the sitting's now.
-  it("answers a refused stated time for a VITALS-ONLY sitting (#2363)", async () => {
-    const { profile } = seedActor();
-    pinUtc(profile.id);
-
+    // #2363 — the survivor #2311's audit named. Nothing reaches the body half,
+    // so the action must carry the vitals half's refusal answer itself.
     // No weight, no body fat, no resting HR — nothing reaches insertBodyMetric, so
     // this is exactly the case that used to be silent.
     expect(
@@ -353,7 +350,6 @@ describe("addMeasurements — one form, three stores", () => {
     });
 
     // A device clock past the five-minute tolerance, vitals-only.
-    const ahead = "2099-06-01";
     expect(
       await addMeasurements(
         fd({ date: ahead, spo2: "97", occurred_at: `${ahead}T12:00:00.000Z` })
@@ -378,18 +374,6 @@ describe("addMeasurements — one form, three stores", () => {
     ).toEqual({});
   });
 
-  it("is a no-op (and does not revalidate) on an empty or invalid submission", async () => {
-    const { profile } = seedActor();
-    await addMeasurements(fd({ date: DATE }));
-    expect(bodyRows(profile.id)).toEqual([]);
-    expect(revalidate).not.toHaveBeenCalled();
-
-    // A systolic without its diastolic is rejected by the shared pure guard.
-    await addMeasurements(fd({ date: DATE, systolic: "120" }));
-    expect(medRows(profile.id, "Blood Pressure Systolic")).toHaveLength(0);
-    expect(revalidate).not.toHaveBeenCalled();
-  });
-
   it("refuses a read-only acting session", async () => {
     const login = createLogin();
     const profile = createProfile("Read only", login.id);
@@ -401,7 +385,7 @@ describe("addMeasurements — one form, three stores", () => {
 });
 
 describe("the cadence rule: functional-fitness markers moved, storage did not", () => {
-  it("ignores the retired marker fields on the daily measurements form", async () => {
+  it("ignores retired daily fields while preserving the assessment flow", async () => {
     const { profile } = seedActor();
     // The form no longer RENDERS these, and the action no longer reads them — a
     // hand-crafted post carrying them must not sneak an assessment-cadence value in
@@ -419,10 +403,7 @@ describe("the cadence rule: functional-fitness markers moved, storage did not", 
     expect(medRows(profile.id, "Grip Strength")).toHaveLength(0);
     expect(medRows(profile.id, "30-Second Chair Stand")).toHaveLength(0);
     expect(medRows(profile.id, "Single-Leg Balance")).toHaveLength(0);
-  });
 
-  it("still produces the same canonical rows from the training assessment flow", async () => {
-    const { profile } = seedActor();
     const set = db.prepare(
       "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?) ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value"
     );
@@ -470,7 +451,7 @@ describe("the cadence rule: functional-fitness markers moved, storage did not", 
 // was stored.
 
 describe("addMeasurements — the #1851 manual-entry gaps", () => {
-  it("stores water, lean mass and bone mass in canonical litres and kilograms", async () => {
+  it("stores the new fields canonically and corrects water instead of accumulating", async () => {
     const { profile } = seedActor();
     await addMeasurements(
       fd({
@@ -480,6 +461,7 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
         lean_mass_unit: "lb",
         bone_mass: "2.9",
         bone_mass_unit: "kg",
+        respiratory_rate: "22",
       })
     );
 
@@ -488,7 +470,26 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     // band all read. Storing 130 here would be the whole bug.
     expect(sampleValue(profile.id, "lean_mass_kg")).toBe(58.97);
     expect(sampleValue(profile.id, "bone_mass_kg")).toBe(2.9);
+    expect(medRows(profile.id, "Respiratory Rate")[0]).toMatchObject({
+      date: DATE,
+      category: "vitals",
+      value_num: 22,
+      unit: "breaths/min",
+      source: "manual",
+    });
     expect(revalidate).toHaveBeenCalled();
+
+    // Water is a daily total. Re-entry corrects the single point rather than
+    // accumulating another 0.7 litres onto the existing 2.4.
+    await addMeasurements(fd({ date: DATE, hydration: "0.7" }));
+    expect(sampleValue(profile.id, "hydration_l")).toBe(0.7);
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'hydration_l'"
+        )
+        .get(profile.id)
+    ).toEqual({ n: 1 });
   });
 
   it("moves the protein band onto the lean basis a hand-entered DEXA figure gives it", async () => {
@@ -517,39 +518,5 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     // Food tab shows are scaled by lean mass rather than by total bodyweight.
     expect(after!.target.gramsLow).toBeLessThan(before!.target.gramsLow);
     expect(after!.target.gramsHigh).toBeLessThan(before!.target.gramsHigh);
-  });
-
-  // Water is the one ADDITIVE metric on this form (lib/metric-buckets.ts), and the
-  // field files a single point row per day. Pinned because the two readings of the
-  // label disagree and only one matches the code: "Water today" corrects, "log a
-  // glass" would accumulate. Measured before pinning — 0.5 then 0.7 leaves 0.7.
-  it("treats water as the day's total, correcting on re-entry rather than accumulating", async () => {
-    const { profile } = seedActor();
-    await addMeasurements(fd({ date: DATE, hydration: "0.5" }));
-    expect(sampleValue(profile.id, "hydration_l")).toBe(0.5);
-
-    await addMeasurements(fd({ date: DATE, hydration: "0.7" }));
-    expect(sampleValue(profile.id, "hydration_l")).toBe(0.7);
-    // ONE row, so the day reads 0.7 rather than summing to 1.2.
-    expect(
-      db
-        .prepare(
-          "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'hydration_l'"
-        )
-        .get(profile.id)
-    ).toEqual({ n: 1 });
-  });
-
-  it("writes a counted respiratory rate onto the canonical vitals row", async () => {
-    const { profile } = seedActor();
-    await addMeasurements(fd({ date: DATE, respiratory_rate: "22" }));
-
-    expect(medRows(profile.id, "Respiratory Rate")[0]).toMatchObject({
-      date: DATE,
-      category: "vitals",
-      value_num: 22,
-      unit: "breaths/min",
-      source: "manual",
-    });
   });
 });
