@@ -59,8 +59,12 @@ const OLD_DAY = "2026-02-11";
 const HISTORY_WITH_OLD_YEAR = `/history?open=${OLD_DAY.slice(0, 4)}`;
 const PRACTICE = "E2e History Rowing";
 // A title no phone can fit, for the truncation case below. Measured at 320px: it lays
-// out 412px of text inside a 178px cluster, so the row genuinely reaches the state the
-// assertion forbids rather than passing because everything happened to fit.
+// out 354px of text inside a 178px cluster — 1.99×, so the fixture is nowhere near the
+// bound it has to clear — and the row therefore reaches the state the assertion forbids
+// rather than passing because everything happened to fit. Both numbers are re-read at
+// run time and printed on failure; what this records is the MARGIN, which is the part a
+// failure message cannot tell you. (This row carries no subject — it is the single-
+// profile record — so the subject ceiling in HistoryRows plays no part in it.)
 const LONG_PRACTICE = "E2e History Long Title Rowing Session On Open Water 2";
 const FOOD_GROUP = "berries";
 const FOOD_NAME = "Berries";
