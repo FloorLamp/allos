@@ -2267,6 +2267,23 @@ async function renderDashboard(
         presence: "current",
       }
     );
+  add(
+    setupCandidates.vitalsBootstrap({
+      subject: profileSubject,
+      applicable: canWrite,
+      sourceOrder: sourceOrder++,
+    }),
+    {
+      label: "Vitals",
+      control: (
+        <DashboardQuickEntryAction
+          form="measurements"
+          prefill={{ measurementGroup: "vitals" }}
+          actionLabel="Log a vital"
+        />
+      ),
+    }
+  );
   if (cycleModel)
     add(
       dailyCandidates.cyclePhase(
