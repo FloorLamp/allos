@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { BOTTOM_EDGE_OFFSET_VAR } from "./tokens";
 
 // Claim the bottom edge for a base-layer surface (issue #1520 part B, #2651).
 //
-// Attach the returned ref to a fixed, bottom-anchored element and it publishes
-// how far that element's TOP EDGE sits above the viewport bottom, into the
+// Hand it the ref of a fixed, bottom-anchored element and it publishes how far
+// that element's TOP EDGE sits above the viewport bottom, into the
 // `--bottom-edge-offset` custom property on `<html>`, for as long as it is
 // mounted. Every surface styled with BOTTOM_EDGE_NOTICE_BOTTOM then sits ABOVE
 // it instead of over it — and with no claimant the var is absent, so those
@@ -41,7 +41,9 @@ import { BOTTOM_EDGE_OFFSET_VAR } from "./tokens";
 //
 // A claimant that is not RENDERED — the nav dock is `md:hidden`, and a
 // `display: none` element's rect is all zeros, which would otherwise read as "the
-// whole viewport is claimed" — publishes nothing at all.
+// whole viewport is claimed" — publishes nothing at all. A claimant that is
+// bottom-anchored only at SOME widths says so with the `gateRef` argument below,
+// which is the same rule applied to a second element.
 
 // Module-scope, because the var is: it lives on `<html>` and there is exactly one
 // of it. Keyed on the element so a claimant that unmounts withdraws only its own
@@ -59,14 +61,51 @@ function publish(): void {
   }
 }
 
-export function useBottomEdgeClaim<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
+export function useBottomEdgeClaim<T extends HTMLElement>(
+  // The claimant's own element. Passed IN rather than returned, because a host
+  // that already holds its element's ref for other reasons — BottomSheet hands
+  // the same panel to the focus trap and the drag recognizer — must not have to
+  // merge two refs onto one node to claim as well.
+  ref: React.RefObject<T | null>,
+  {
+    gate,
+    mounted = true,
+  }: {
+    // AN ELEMENT WHOSE RENDERED BOX GATES THE CLAIM (#4334). A claimant whose
+    // bottom anchoring is RESPONSIVE cannot answer "am I on the bottom edge right
+    // now?" from its own box — BottomSheet's `dialog` presentation is a sheet
+    // below `md` and a centred card above it, and the panel has a real box either
+    // way. It already renders its DRAG HANDLE exactly when it is bottom-anchored
+    // (`md:hidden` on the responsive presentation, never drawn on a centred card),
+    // and it already treats that handle's rendered box as the DOM truth gating the
+    // drag. Reusing the same element here means the two facts cannot drift into
+    // two answers, and the breakpoint stays in the stylesheet — no JS width check,
+    // no resize-listener race, no wrong first paint (#2305).
+    //
+    // Passing a gate at all means "claim only while the gate is rendered", so a
+    // gate absent from the tree withdraws the claim rather than being ignored.
+    gate?: React.RefObject<HTMLElement | null>;
+    // Re-measure when the claimant's ELEMENT is replaced, not only when this hook
+    // mounts. The docks render their bar for as long as they are mounted, so the
+    // default is right for them; a sheet HOST mounts once and mounts/unmounts its
+    // panel on every open, and without this it would have measured the first panel,
+    // kept that panel's claim after it was gone, and never seen the next one.
+    mounted?: boolean;
+  } = {}
+) {
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !mounted) return;
     const measure = () => {
+      const gateEl = gate ? gate.current : el;
       // `display: none` (the nav dock above `md`) — no rendered box, no claim.
-      if (el.offsetHeight === 0) {
+      // Same rule applied to the gate, which is how a responsive claimant stops
+      // claiming at the width where it stops being bottom-anchored.
+      if (
+        el.offsetHeight === 0 ||
+        !gateEl ||
+        gateEl.getClientRects().length === 0
+      ) {
         claims.delete(el);
       } else {
         const top = el.getBoundingClientRect().top;
@@ -87,12 +126,20 @@ export function useBottomEdgeClaim<T extends HTMLElement>() {
         : new ResizeObserver(measure);
     ro?.observe(el);
     window.addEventListener("resize", measure);
+    // A surface that ARRIVES has a transform on it while it arrives, and
+    // `getBoundingClientRect` reads the transformed box — so a sheet measured on
+    // mount reports the edge it is sliding up FROM rather than the one it comes to
+    // rest on (#4334). The keyframe carries no `forwards` fill, so the element's
+    // own `animationend` is the moment the box becomes the settled one. Nothing
+    // else fires there: a transform changes no border box, so the ResizeObserver
+    // above never sees it.
+    el.addEventListener("animationend", measure);
     return () => {
       ro?.disconnect();
       window.removeEventListener("resize", measure);
+      el.removeEventListener("animationend", measure);
       claims.delete(el);
       publish();
     };
-  }, []);
-  return ref;
+  }, [ref, gate, mounted]);
 }
