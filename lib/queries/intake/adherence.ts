@@ -2257,7 +2257,7 @@ export interface DoseTapRow {
   tapAt: string;
   statedAt: string | null;
   // Which message's tap wrote this row (#2264) — the burst's attribution; null for a
-  // web/offline confirm or a pruned message row.
+  // web/offline confirm in the broad read or a pruned chat message row.
   messageRef: number | null;
   label: string;
   doseId: number;
@@ -2270,10 +2270,12 @@ export interface DoseTapRow {
 //
 // SCHEDULED CONFIRMS ONLY IS NOT THE RULE — a PRN administration is exactly the case
 // #2020 is about, so both are here. What IS excluded is a row with no `occurred_at`:
-// there is no stated administration instant to correct.
+// there is no stated administration instant to correct. `chatOnly` narrows the
+// chat-facing gather to chat provenance (#4356); the broad read remains the write core's.
 export function getRecentDoseTaps(
   profileId: number,
-  now: Date = clockNow()
+  now: Date = clockNow(),
+  chatOnly = false
 ): DoseTapRow[] {
   const since = utcInstant(
     new Date(now.getTime() - CORRECTION_FRESH_MIN * 60_000)
@@ -2288,10 +2290,12 @@ export function getRecentDoseTaps(
          JOIN intake_items s ON s.id = d.item_id
         WHERE s.profile_id = ? AND l.status = 'taken'
           AND l.occurred_at IS NOT NULL AND l.recorded_at >= ?
+          AND (? = 0 OR l.logged_via IS NULL
+            OR l.logged_via IN ('telegram-nudge', 'telegram-command'))
         ORDER BY l.recorded_at, l.id
         LIMIT 100`
     )
-    .all(profileId, since) as {
+    .all(profileId, since, chatOnly ? 1 : 0) as {
     id: number;
     doseId: number;
     date: string;
@@ -2329,7 +2333,8 @@ export function getDoseCorrectionBursts(
   now: Date = clockNow(),
   binding?: CorrectionMessageBinding
 ): CorrectionBurst[] {
-  return correctionBursts(getRecentDoseTaps(profileId, now), now, binding);
+  const taps = getRecentDoseTaps(profileId, now, binding !== undefined);
+  return correctionBursts(taps, now, binding);
 }
 
 // The typed result of a dose-time correction:

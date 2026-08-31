@@ -1041,7 +1041,9 @@ export function getMinutesSinceLastFoodLog(
 // THE ROW SET IS A QUERY, not a memory. Nothing records that some earlier keyboard
 // rendered a correction row, which is exactly why the rows survive a rebuild, a pointer
 // rotation and a restart: whichever food keyboard is currently live renders the offers
-// the LEDGER still justifies. Profile-scoped via the food_log_events filter.
+// the LEDGER still justifies. Chat correction bursts carry chat taps only (#4356):
+// page and offline rows keep their correction home on the surface that wrote them;
+// Profile-scoped via the food_log_events filter.
 export function getRecentFoodTaps(
   profileId: number,
   now: Date = clockNow()
@@ -1054,6 +1056,7 @@ export function getRecentFoodTaps(
       `SELECT id, group_key, recorded_at, occurred_at, notify_message_id
          FROM food_log_events
         WHERE profile_id = ? AND recorded_at >= ?
+          AND (logged_via IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
         ORDER BY recorded_at, id
         LIMIT 100`
     )
