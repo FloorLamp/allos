@@ -832,13 +832,19 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   // dashboard-tail-grammar.spec.ts shipped blind: its assertion was scoped to `main`
   // and then asked for `main .card`, matching a `<main>` inside a `<main>`, while its
   // control queried the document and dutifully went red.
+  // IT REPORTS THE LABELS, NOT A COUNT. `Expected: 0, Received: 133` says a guard
+  // fired; it does not say which rows to open. The offending label's own text is the
+  // shortest route from a red to the markup that caused it, so the sweep returns
+  // texts and the assertion compares against an empty list.
   const labels = rows.locator('[data-testid="standing-label"]');
-  const withIcons = () =>
-    labels.evaluateAll(
-      (nodes) => nodes.filter((node) => node.querySelector("svg")).length
+  const labelsWithIcons = () =>
+    labels.evaluateAll((nodes) =>
+      nodes
+        .filter((node) => node.querySelector("svg"))
+        .map((node) => (node.textContent ?? "").trim())
     );
 
-  expect(await withIcons()).toBe(0);
+  expect(await labelsWithIcons()).toEqual([]);
 
   // …and this locator CAN see one: a glyph put into a label on purpose, counted back
   // through `labels` itself, then returned to the shipped tree.
@@ -849,9 +855,9 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
     label.prepend(svg);
     return svg;
   });
-  expect(await withIcons()).toBe(1);
+  expect(await labelsWithIcons()).toHaveLength(1);
   await forged.evaluate((node) => (node as Element).remove());
-  expect(await withIcons()).toBe(0);
+  expect(await labelsWithIcons()).toEqual([]);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({

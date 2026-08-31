@@ -142,6 +142,19 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
     expect(rows.some((row) => row.controls === 2)).toBe(true);
   });
 
+  // #3365's third amendment: "No empty-state prose in the tail — absence is not
+  // content." One sentence outlived that ruling because its host had no way to
+  // suppress it: `SymptomLogBar`'s "No symptoms logged." rendered inside the tail's
+  // well-day card. #3366 retired that mount, so the sentence goes with it, and this
+  // is where that is checked rather than assumed. The bar itself is unchanged — it
+  // still says this in the illness cockpit and on the Cycles page, where a day with
+  // no symptoms logged is the reader's actual question.
+  //
+  // ON THE WELL-DAY LOGIN, WHICH IS THE ONLY PLACE THE CLAIM MEANS ANYTHING. The card
+  // was gated on a WELL day, so on the shared fixture — which carries an open illness
+  // — it never rendered and this test would have passed on the unfixed tree too.
+  // Measured: with the mount restored, the shared fixture stayed green and this login
+  // went red.
   test("no empty-state sentence renders inside the tail", async ({
     browser,
   }) => {
