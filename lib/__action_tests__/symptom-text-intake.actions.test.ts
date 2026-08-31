@@ -13,7 +13,7 @@ vi.mock("@/lib/ai-client", async (importActual) => {
   return { ...actual, createAiClient: vi.fn() };
 });
 
-import { db, today } from "@/lib/db";
+import { db } from "@/lib/db";
 import { createAiClient } from "@/lib/ai-client";
 import {
   suggestSymptomsFromText,
@@ -84,9 +84,7 @@ describe("suggestSymptomsFromText — suggest-only, then confirm via existing ac
     // Two profiles: one confirms from text, one taps manually — assert parity.
     const viaText = createProfile("via-text", login.id);
     const viaTap = createProfile("via-tap", login.id);
-    // #4425 bounds `logSymptom` to the symptom window, so the confirmed rows must
-    // land on a day the action will still accept.
-    const DATE = today(viaText.id);
+    const DATE = "2026-07-10";
 
     // --- Confirm-from-text path (mirrors the bar's confirmIntake loop) ---
     actAs(login, viaText);

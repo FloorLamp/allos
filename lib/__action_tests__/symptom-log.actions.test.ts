@@ -33,16 +33,8 @@ import {
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
-// Dates here are relative to the profile's own today, because #4425 bounded
-// `logSymptom` to `LOG_MANIFEST.symptom`'s backfill window — the same conversion
-// #2128 made to the mood action tests, for the same reason: a FIXED past date is now
-// refused. Every profile in this file takes the instance-default timezone (no test
-// sets one), so `today(0)` resolves the same day `today(profile.id)` will, and the
-// window's two-day slack absorbs a run that crosses local midnight between the two.
-const WINDOW_ANCHOR = 0;
-const dayBack = (back: number) => shiftDateStr(today(WINDOW_ANCHOR), -back);
-const DATE = dayBack(1);
-const DATE2 = dayBack(0);
+const DATE = "2026-07-08";
+const DATE2 = "2026-07-09";
 
 function rows(profileId: number) {
   return db

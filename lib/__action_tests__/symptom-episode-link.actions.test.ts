@@ -8,30 +8,14 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { shiftDateStr } from "@/lib/date";
-import { db, today } from "@/lib/db";
+import { db } from "@/lib/db";
 import { logSymptom, setSymptomEpisode } from "@/app/(app)/symptom-actions";
 import { getEpisodeSymptomLogs } from "@/lib/queries";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
-// Dates here are relative to the profile's own today, because #4425 bounded
-// `logSymptom` to `LOG_MANIFEST.symptom`'s backfill window — the same conversion
-// #2128 made to the mood action tests, for the same reason: a FIXED past date is now
-// refused. The episode start days keep their OFFSETS from the logged day, which is
-// what each case is actually about (an episode opened the day before, one opening
-// tomorrow, three opening on three different earlier days). Every profile here takes
-// the instance-default timezone, so `today(0)` resolves the day the actions will.
-const WINDOW_ANCHOR = 0;
-const dayBack = (back: number) => shiftDateStr(today(WINDOW_ANCHOR), -back);
-
-// The logged day, and the episode days around it.
-const DATE = dayBack(0);
-const D_MINUS_1 = dayBack(1);
-const D_MINUS_2 = dayBack(2);
-const D_MINUS_3 = dayBack(3);
-const D_PLUS_1 = dayBack(-1);
+const DATE = "2026-03-04";
 
 function episodeIdOf(profileId: number, symptom: string): number | null {
   return (
@@ -52,7 +36,7 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Sick Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", D_MINUS_1, null);
+    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
 
     const res = await logSymptom(
       fd({ symptom: "cough", severity: 3, date: DATE })
@@ -80,9 +64,9 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Plural Actor", login.id);
     actAs(login, profile);
-    const older = createEpisodeRow(profile.id, "Flu", D_MINUS_3, null);
-    const middle = createEpisodeRow(profile.id, "Migraine", D_MINUS_2, null);
-    createEpisodeRow(profile.id, "Stomach bug", D_MINUS_1, null);
+    const older = createEpisodeRow(profile.id, "Flu", "2026-03-01", null);
+    const middle = createEpisodeRow(profile.id, "Migraine", "2026-03-02", null);
+    createEpisodeRow(profile.id, "Stomach bug", "2026-03-03", null);
 
     expect(
       await logSymptom(
@@ -119,9 +103,9 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Future Actor", login.id);
     actAs(login, profile);
-    const future = createEpisodeRow(profile.id, "Illness", D_PLUS_1, null);
+    const future = createEpisodeRow(profile.id, "Illness", "2026-03-05", null);
     const other = createProfile("Other Subject", login.id);
-    const foreign = createEpisodeRow(other.id, "Illness", D_MINUS_1, null);
+    const foreign = createEpisodeRow(other.id, "Illness", "2026-03-03", null);
 
     const result = await logSymptom(
       fd({ symptom: "cough", severity: 2, date: DATE, episodeId: future })
@@ -148,10 +132,15 @@ describe("logSymptom — auto-associates to the open episode (#1093)", () => {
     const fallback = createEpisodeRow(
       profile.id,
       "Newest open",
-      D_MINUS_1,
+      "2026-03-03",
       null
     );
-    const closed = createEpisodeRow(profile.id, "Closed", D_MINUS_3, D_MINUS_1);
+    const closed = createEpisodeRow(
+      profile.id,
+      "Closed",
+      "2026-03-01",
+      "2026-03-03"
+    );
 
     for (const [symptom, episodeId] of [
       ["cough", "garbage"],
@@ -182,7 +171,7 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Detach Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", D_MINUS_1, null);
+    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
     expect(episodeIdOf(profile.id, "cough")).toBe(epId);
 
@@ -197,7 +186,7 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const login = createLogin();
     const profile = createProfile("Reattach Actor", login.id);
     actAs(login, profile);
-    const epId = createEpisodeRow(profile.id, "Illness", D_MINUS_1, null);
+    const epId = createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
     await setSymptomEpisode(fd({ symptom: "cough", date: DATE })); // detach
     expect(episodeIdOf(profile.id, "cough")).toBeNull();
@@ -214,9 +203,9 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     const profile = createProfile("Owner", admin.id);
     const other = createProfile("Stranger", admin.id);
     actAs(admin, profile);
-    createEpisodeRow(profile.id, "Illness", D_MINUS_1, null);
+    createEpisodeRow(profile.id, "Illness", "2026-03-03", null);
     await logSymptom(fd({ symptom: "cough", severity: 3, date: DATE }));
-    const foreignEp = createEpisodeRow(other.id, "Illness", D_MINUS_1, null);
+    const foreignEp = createEpisodeRow(other.id, "Illness", "2026-03-03", null);
 
     // Admin CAN write to `profile`, but the target episode belongs to `other`.
     const res = await setSymptomEpisode(
@@ -234,7 +223,12 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
     // A profile the member is NOT granted (created under a different admin login).
     const admin = createLogin({ role: "admin" });
     const foreign = createProfile("Ungranted", admin.id);
-    const foreignEp = createEpisodeRow(foreign.id, "Illness", D_MINUS_1, null);
+    const foreignEp = createEpisodeRow(
+      foreign.id,
+      "Illness",
+      "2026-03-03",
+      null
+    );
     actAs(member, own);
 
     // Posting an explicit cross-profile target the member can't reach must throw at the
