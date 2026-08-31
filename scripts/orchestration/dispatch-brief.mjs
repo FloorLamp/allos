@@ -55,9 +55,7 @@
 // runner.ts), so the brief carries a fixed convention block instead of a
 // computed reservation.
 //
-// Ledger location: $ALLOS_DISPATCH_LEDGER, else $SCRATCH/allos-dispatch-ledger.jsonl,
-// else <STATE_DIR>/allos-dispatch-ledger.jsonl. The ledger is orchestration
-// state, never checked in.
+// Ledger location: resolved by ledger.mjs, which also owns the replay.
 //
 // The ledger and the roster MUST default to the same directory, and that
 // directory must be the durable one. `$SCRATCH` is UNSET in the live
@@ -71,9 +69,14 @@
 import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { helpGuard } from "./usage.mjs";
+import { fileURLToPath } from "node:url";
+import { helpGuard, isMain } from "./usage.mjs";
 import { discoverNodeBin, resolveReadToken, resolveStateDir } from "./host.mjs";
+import {
+  activeDispatches,
+  ledgerPath as resolveLedgerPath,
+  readLedger,
+} from "./ledger.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const repoRoot = path.resolve(
@@ -106,18 +109,7 @@ function mainCheckout() {
 const STATE_DIR = resolveStateDir();
 fs.mkdirSync(STATE_DIR, { recursive: true });
 
-const ledgerPath =
-  process.env.ALLOS_DISPATCH_LEDGER ??
-  path.join(STATE_DIR, "allos-dispatch-ledger.jsonl");
-
-function readLedger() {
-  if (!fs.existsSync(ledgerPath)) return [];
-  return fs
-    .readFileSync(ledgerPath, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-}
+const ledgerPath = resolveLedgerPath();
 
 function appendLedger(entry) {
   fs.appendFileSync(ledgerPath, JSON.stringify(entry) + "\n");
@@ -173,73 +165,12 @@ function rosterClose(branch) {
   fs.writeFileSync(rosterPath, kept.filter(Boolean).join("\n") + "\n");
 }
 
-// Fold the append-only ledger into current state: a `done` row closes the
-// matching active dispatch.
-function activeDispatches(rows) {
-  const byBranch = new Map();
-  for (const row of rows) {
-    if (row.status === "active") byBranch.set(row.branch, row);
-    if (row.status === "update" && byBranch.has(row.branch)) {
-      const current = byBranch.get(row.branch);
-      byBranch.set(row.branch, {
-        ...current,
-        ...row,
-        at: current.at,
-        status: "active",
-        updatedAt: row.at,
-      });
-    }
-    if (row.status === "promotion") {
-      for (const [branch, current] of byBranch) {
-        byBranch.set(branch, {
-          ...current,
-          candidate: branch === row.target,
-          ...(branch === row.displaced ? { displacedBy: row.target } : {}),
-          ...(branch === row.target
-            ? { promotedFrom: row.displaced ?? null }
-            : {}),
-          updatedAt: row.at,
-        });
-      }
-    }
-    if (row.status === "done" && byBranch.has(row.branch)) {
-      byBranch.get(row.branch).doneAt = row.at;
-      byBranch.delete(row.branch);
-    }
-  }
-  return [...byBranch.values()];
-}
-
+// The same fold, for ONE branch and ignoring `done` — resuming an agent needs
+// the state a retired dispatch was left in, which is the only thing that made
+// this a separate walk (#4460).
 function latestDispatchState(rows, branch) {
-  let state = null;
-  for (const row of rows) {
-    if (row.status === "promotion") {
-      if (state) {
-        state = {
-          ...state,
-          candidate: row.target === branch,
-          ...(row.displaced === branch ? { displacedBy: row.target } : {}),
-          ...(row.target === branch
-            ? { promotedFrom: row.displaced ?? null }
-            : {}),
-          updatedAt: row.at,
-        };
-      }
-      continue;
-    }
-    if (row.branch !== branch) continue;
-    if (row.status === "active") state = row;
-    if (row.status === "update" && state) {
-      state = {
-        ...state,
-        ...row,
-        at: state.at,
-        status: "active",
-        updatedAt: row.at,
-      };
-    }
-  }
-  return state;
+  const kept = rows.filter((row) => row.status !== "done");
+  return activeDispatches(kept).find((d) => d.branch === branch) ?? null;
 }
 
 export function resumeState(rows, branch) {
@@ -1403,6 +1334,18 @@ export function closedIssueRefusal(states) {
   );
 }
 
+/** Warning text when GitHub could not answer for some issues, else null. */
+export function unreachableIssueWarning(states) {
+  const missed = states.filter((s) => s.state === "unknown");
+  if (!missed.length) return null;
+  return (
+    "*** GITHUB DID NOT ANSWER for " +
+    missed.map((s) => "#" + s.number + ": " + s.error).join("; ") +
+    " — dispatching anyway (#4460). A check that cannot run must not become " +
+    "a check that BLOCKS; only a closed answer refuses. ***"
+  );
+}
+
 /** Live {number, state, closedAt} per issue; null when no token can be found. */
 function issueStates(
   numbers,
@@ -1410,26 +1353,37 @@ function issueStates(
 ) {
   const token = resolveReadToken();
   if (!token) return null;
+  const headers = [
+    "-H",
+    "Authorization: Bearer " + token,
+    "-H",
+    "Accept: application/vnd.github+json",
+  ];
   return numbers.map((number) => {
-    const out = execFileSync(
-      "curl",
-      [
-        "-sS",
-        "--fail-with-body",
-        "-H",
-        "Authorization: Bearer " + token,
-        "-H",
-        "Accept: application/vnd.github+json",
-        "https://api.github.com/repos/" + repo + "/issues/" + number,
-      ],
-      { encoding: "utf8", timeout: 30_000 }
-    );
-    const issue = JSON.parse(out);
-    return {
-      number,
-      state: issue.state,
-      closedAt: issue.closed_at ?? null,
-    };
+    const url = "https://api.github.com/repos/" + repo + "/issues/" + number;
+    try {
+      const issue = JSON.parse(
+        execFileSync("curl", ["-sS", "--fail-with-body", ...headers, url], {
+          encoding: "utf8",
+          timeout: 30_000,
+        })
+      );
+      return { number, state: issue.state, closedAt: issue.closed_at ?? null };
+    } catch (err) {
+      // A 404, a rate limit or a proxy blip is GitHub NOT ANSWERING, which is
+      // the no-token case wearing a different error — same degradation. Quote
+      // the BODY, never err.message: execFileSync puts the whole command in
+      // it, Bearer token included, and that is what the crash path printed.
+      const body = String(err.stdout ?? "").trim();
+      return {
+        number,
+        state: "unknown",
+        closedAt: null,
+        error: /Not Found/.test(body)
+          ? "no such issue (404) — mistyped --issues?"
+          : body.slice(0, 200) || "curl exited " + err.status,
+      };
+    }
   });
 }
 
@@ -1538,6 +1492,8 @@ function cmdNew(argv) {
         "    A brief is only as fresh as the tracker read behind it."
     );
   } else {
+    const unreachable = unreachableIssueWarning(states);
+    if (unreachable) console.error(unreachable);
     const stale = closedIssueRefusal(states);
     if (stale) {
       console.error(stale);
@@ -2424,9 +2380,4 @@ function main(argv) {
 // to test one pure function would RUN `new` (the default command) against the
 // live ledger and the live roster, which is the 2026-08-15 roster-fork incident
 // arriving through the test harness.
-if (
-  process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
-) {
-  main(process.argv.slice(2));
-}
+if (isMain(process.argv, import.meta.url)) main(process.argv.slice(2));

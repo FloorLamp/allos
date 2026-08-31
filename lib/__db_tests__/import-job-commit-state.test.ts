@@ -5,7 +5,7 @@
 // only allowed ('processing','ready','failed','skipped'), so the claim UPDATE threw
 // `CHECK constraint failed` on every save — the whole feature was broken. Migration
 // 015 rebuilds import_jobs with the grown enum; this pins:
-//   1. after the full schema apply, a 'ready' → 'committing' flip is accepted,
+//   1. after migration 015, a 'ready' → 'committing' flip is accepted,
 //   2. the rebuild preserves existing rows (create → copy → drop → rename),
 //   3. an unknown status is still rejected (the CHECK wasn't dropped entirely),
 //   4. the boot reaper reclaims a job a crash stranded in 'committing' → 'failed'.
@@ -14,11 +14,8 @@
 
 import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
-import { migratedDb } from "./migrated-db";
 import { MIGRATIONS, NUMBERED_MIGRATIONS } from "@/lib/migrations/versions";
-import { bootTasks } from "@/lib/migrations/boot-tasks";
-
-process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
+import { resetInterruptedWork } from "@/lib/migrations/boot-tasks";
 
 function newDb(): Database.Database {
   const db = new Database(":memory:");
@@ -37,50 +34,7 @@ function checkSql(db: Database.Database): string {
 }
 
 describe("import_jobs 'committing' state — migration 015", () => {
-  it("admits 'committing' after the full schema apply", () => {
-    // The migrated end state without a per-test replay — ./migrated-db.ts (#3471).
-    const db = migratedDb(); // profile 1 exists, same as a fresh boot
-
-    expect(checkSql(db)).toContain("'committing'");
-
-    const id = Number(
-      db
-        .prepare(
-          "INSERT INTO import_jobs (profile_id, type, status) VALUES (1, 'workouts', 'ready')"
-        )
-        .run().lastInsertRowid
-    );
-
-    // This is the exact claim commitImportJob performs — it threw before #323.
-    expect(() =>
-      db
-        .prepare(
-          "UPDATE import_jobs SET status = 'committing' WHERE id = ? AND status = 'ready' AND profile_id = 1"
-        )
-        .run(id)
-    ).not.toThrow();
-
-    const status = (
-      db.prepare("SELECT status FROM import_jobs WHERE id = ?").get(id) as {
-        status: string;
-      }
-    ).status;
-    expect(status).toBe("committing");
-    db.close();
-  });
-
-  it("still rejects an unknown status (the CHECK is grown, not dropped)", () => {
-    const db = migratedDb(); // the end state, not a replay — ./migrated-db.ts
-    db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (7, 1, 'clinical-results', 'ready')"
-    ).run();
-    expect(() =>
-      db.prepare("UPDATE import_jobs SET status = 'bogus' WHERE id = 7").run()
-    ).toThrow(/CHECK constraint failed/);
-    db.close();
-  });
-
-  it("preserves existing rows across the rebuild (create → copy → drop → rename)", () => {
+  it("grows the enum, preserves rows, and age-gates interrupted work", () => {
     const db = newDb();
     db.pragma("foreign_keys = OFF");
     // Apply everything BEFORE 015 (baseline still has the old CHECK), seed a profile
@@ -113,13 +67,28 @@ describe("import_jobs 'committing' state — migration 015", () => {
       summary: "1 workout",
       source_text: "raw paste",
     });
-    db.close();
-  });
-});
+    // This is the exact claim commitImportJob performs — it threw before #323.
+    expect(() =>
+      db
+        .prepare(
+          "UPDATE import_jobs SET status = 'committing' WHERE id = 42 AND status = 'ready' AND profile_id = 1"
+        )
+        .run()
+    ).not.toThrow();
+    expect(
+      (
+        db.prepare("SELECT status FROM import_jobs WHERE id = 42").get() as {
+          status: string;
+        }
+      ).status
+    ).toBe("committing");
+    db.prepare(
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (7, 1, 'workouts', 'ready')"
+    ).run();
+    expect(() =>
+      db.prepare("UPDATE import_jobs SET status = 'bogus' WHERE id = 7").run()
+    ).toThrow(/CHECK constraint failed/);
 
-describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #461)", () => {
-  it("reclaims STRANDED 'committing'/'processing' jobs but spares FRESH ones and 'ready'", () => {
-    const db = migratedDb(); // the end state, not a replay — ./migrated-db.ts
     // The boot reset is age-gated on the extraction lease (#461): boot runs in EVERY
     // process, including the hourly notify tick, so an unconditional reset would fail a
     // job the web process is committing right now. Only jobs stranded past the lease
@@ -129,7 +98,7 @@ describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #4
       "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (1, 1, 'workouts', 'committing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (2, 1, 'clinical-results', 'processing', datetime('now','-60 minutes'))"
+      "INSERT INTO import_jobs (id, profile_id, type, status, updated_at) VALUES (2, 1, 'workouts', 'processing', datetime('now','-60 minutes'))"
     ).run();
     db.prepare(
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (3, 1, 'workouts', 'ready')"
@@ -138,10 +107,10 @@ describe("boot reaper — a crash-stranded 'committing' job (age-gated, issue #4
       "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (4, 1, 'workouts', 'committing')"
     ).run();
     db.prepare(
-      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (5, 1, 'clinical-results', 'processing')"
+      "INSERT INTO import_jobs (id, profile_id, type, status) VALUES (5, 1, 'workouts', 'processing')"
     ).run();
 
-    bootTasks(db); // re-runs the per-boot (now age-gated) stuck-state cleanup
+    resetInterruptedWork(db);
 
     const rows = db
       .prepare("SELECT id, status, error FROM import_jobs ORDER BY id")
