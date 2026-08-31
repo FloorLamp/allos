@@ -905,10 +905,10 @@ export default function HistoryRows({
                     className="inline-flex min-w-0 items-center text-link"
                     data-testid="history-row-title"
                   >
-                    {/* The ellipsis needs a BLOCK to happen in, and this `<a>` is a
+{/* The ellipsis needs a BLOCK to happen in, and this `<a>` is a
                         flex container (the primitive's own chevron), so `truncate`
                         on the link would style a box that holds no text. */}
-                    <span className="truncate">{row.title}</span>
+                    <span className="min-w-0 truncate">{row.title}</span>
                   </DestinationLink>
                 ) : row.href ? (
                   <Link

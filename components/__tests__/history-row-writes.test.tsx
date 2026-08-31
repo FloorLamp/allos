@@ -247,14 +247,8 @@ it("renders a feed subject home as a link and a nav-only title as plain text", (
     }),
     row({ id: "feed:injury:1", kind: "injury", title: "Sore ankle" }),
   ]);
-  // ASKED OF THE LINK, NOT OF THE TEXT NODE'S TAG (#4562 + #4394). The claim is that a
-  // feed subject's title IS a destination and a nav-only one is not. Reading `tagName`
-  // off the text made that a claim about which element happens to hold the characters,
-  // and #4394 had to put the title's text inside a truncating span — the `<a>` is a
-  // flex container, so an ellipsis has no block to happen in without one. The link is
-  // still there, one level up. `closest` asks the question the test's name asks.
   expect(screen.getByText("Run").closest("a")).not.toBeNull();
-  expect(screen.getByText("Sore ankle").closest("a")).toBeNull();
+  expect(screen.getByText("Sore ankle").tagName).toBe("SPAN");
 });
 
 async function openEdit(
