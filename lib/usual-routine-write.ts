@@ -90,10 +90,7 @@ import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
-import {
-  logHistoricalDose,
-  markDoseTaken,
-} from "./queries/intake/adherence";
+import { logHistoricalDose, markDoseTaken } from "./queries/intake/adherence";
 import {
   getPendingRoutineDoses,
   type PendingDayDose,
@@ -166,7 +163,15 @@ function datedDoseWrite(
   return datedDoseOutcome(
     // amountOverride null keeps the dose row's own amount, and supply moves exactly as
     // the ±2 writer moves it — one tap is one tap, whichever writer it reaches.
-    logHistoricalDose(profileId, dose.itemId, dose.doseId, at, null, true, loggedVia)
+    logHistoricalDose(
+      profileId,
+      dose.itemId,
+      dose.doseId,
+      at,
+      null,
+      true,
+      loggedVia
+    )
   );
 }
 

@@ -492,7 +492,11 @@ describe("logUsualRoutine on a past day", () => {
       })
     );
     expect(auditRows(profile.id)).toEqual([
-      { action: AUDIT_ACTIONS.usualBackfill, target: "Morning", detail: target },
+      {
+        action: AUDIT_ACTIONS.usualBackfill,
+        target: "Morning",
+        detail: target,
+      },
     ]);
   });
 

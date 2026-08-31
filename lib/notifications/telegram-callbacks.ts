@@ -1492,7 +1492,8 @@ async function handleUsualRoutineTap(
 ): Promise<TapWrote> {
   // Narrowed to a string ONCE: the rebuilds below and the audit's binding lookup are
   // the same chat, and `String(...)` at each site is how they drift apart.
-  const chatId = cq.message?.chat?.id == null ? null : String(cq.message.chat.id);
+  const chatId =
+    cq.message?.chat?.id == null ? null : String(cq.message.chat.id);
   const profileId =
     chatId != null
       ? resolveTapProfile(token, getProfilesByTelegramChatId(chatId))
