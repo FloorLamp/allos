@@ -855,6 +855,14 @@ ${MIGRATION_LINES}
   \`it()\` blocks, one fixture reused over three near-copies, an assertion that names the
   property over five that enumerate it — before you consider dropping coverage. Do not
   buy a smaller diff by proving less; say in your report what the diff cost and why.
+- SIMPLIFY, EXTRACT, UNIFY — OWNER RULING 2026-08-31, the line budget's positive half.
+  Most work (product, design, refactoring) should leave the code SMALLER or straighter
+  than it found it. Enforce invariants with TYPES, not guards: a wrong state the type
+  system cannot represent needs no runtime check, no registry, and no test to police
+  it — narrow the parameter, close the union, make the constructor the only door. The
+  moment your approach is ADDING complexity (a new layer, a parallel concept, a guard
+  where a type could be), STOP and re-ask: what is the REAL GOAL, and can it be reached
+  with less code? If you proceed anyway, your report states that answer.
 - A GUARD'S PATTERN COMES FROM HOW THE REPO WRITES THE CONSTRUCT, NOT FROM HOW THE
   ISSUE DESCRIBES IT. An issue names the defect in the shape its author had in mind.
   If you encode THAT shape, your guard is green against a tree that never used it, and

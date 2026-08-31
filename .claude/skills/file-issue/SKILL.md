@@ -141,6 +141,10 @@ Two closing elements every issue carries:
 **Decisions baked.** Step-4 choices appear as decisions, not open questions.
 Rejected alternatives worth recording go under "Out of scope" with reasons.
 
+**Simplest shape (owner, 2026-08-31).** Propose to simplify, extract, unify —
+say what the change DELETES or straightens. Enforce invariants with TYPES over
+guards/registries; a layer-adding proposal states why less code can't, or waits.
+
 **Provenance.** If the issue came out of other work, open with one line:
 "Found while implementing #N; filed so the reasoning is not lost."
 

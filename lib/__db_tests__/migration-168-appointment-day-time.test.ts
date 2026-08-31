@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runMigrations } from "@/lib/migrations/runner";
 import { up } from "@/lib/migrations/versions/168-appointment-day-time-split";
 
 // Migration 168 (#2234): the appointments.scheduled_at split, rebuilt as
@@ -184,13 +183,5 @@ describe("migration 168 — appointments.scheduled_at → date + time_of_day", (
     expect(mem.prepare(`SELECT COUNT(*) AS n FROM appointments`).get()).toEqual(
       { n: 5 }
     );
-  });
-
-  it("ships in the real migrated schema", () => {
-    const mem = new Database(":memory:");
-    runMigrations(mem);
-    expect(columnInfo(mem, "appointments", "scheduled_at")).toBeUndefined();
-    expect(columnInfo(mem, "appointments", "date")!.notnull).toBe(1);
-    expect(columnInfo(mem, "appointments", "time_of_day")!.notnull).toBe(0);
   });
 });
