@@ -569,6 +569,7 @@ describe("substance consumption history actions (#2009)", () => {
         date: past,
         amount: "2",
         notes: "Dinner with friends",
+        logged_via: "quick-log",
       })
     );
     expect(added.kind).toBe("added");
@@ -582,7 +583,6 @@ describe("substance consumption history actions (#2009)", () => {
         notes: "Dinner with friends",
       },
     ]);
-
     const updated = await updateSubstanceDailyTotalAction(
       fd({
         id: String(added.id),
@@ -590,17 +590,19 @@ describe("substance consumption history actions (#2009)", () => {
         date: td,
         amount: "3",
         notes: "Corrected amount",
+        logged_via: "dashboard-widget",
       })
     );
     expect(updated).toEqual({ kind: "updated", id: added.id });
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
     const eventCount = db
       .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events
+        `SELECT COUNT(*) AS n, GROUP_CONCAT(DISTINCT logged_via) AS via FROM food_log_events
          WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
       )
-      .get(profile.id, td) as { n: number };
+      .get(profile.id, td) as { n: number; via: string };
     expect(eventCount.n).toBe(3);
+    expect(eventCount.via).toBe("quick-log,dashboard-widget");
 
     const deleted = await deleteSubstanceDailyTotalAction(
       fd({ id: String(added.id), substance: "alcohol" })
