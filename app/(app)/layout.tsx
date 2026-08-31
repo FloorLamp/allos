@@ -372,13 +372,12 @@ export default async function AppLayout({
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
                           {/* FIRST-PAINT CLEARANCE ONLY (#4102, #4282). Without this the first line
-            of every page would print under the status bar on a device with a
-            notch, which is what `viewportFit: cover` means. It is PADDING on a
-            scrolling element, so it positions and paints nothing: content scrolls
-            under the notch, and #4282 ruled that is what edge-to-edge looks like.
-            A sticky strip therefore cannot rely on this — it carries
-            `top-edge-safe` (app/globals.css) itself. `--top-edge-inset` rather
-            than a second `env()` for the same reason the page gutter is a token.
+            of every page would print under the status bar, which is what
+            `viewportFit: cover` means. It is PADDING, so it positions and paints
+            nothing: content scrolls under the notch, and #4282 ruled that IS
+            edge-to-edge. A sticky strip therefore cannot lean on it and carries
+            `top-edge-safe` (app/globals.css) itself; the token rather than a
+            second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
                           <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
                             {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN

@@ -339,24 +339,18 @@
 }
 
 /* THE STATUS-BAR BAND, WRITTEN ONCE (#4282) — the top-edge twin of the gutter
-   above, and the same reason: one expression, not a copy per surface.
+   above. The shell paints no band under the notch any more: #4272 left the inset
+   as PADDING on `<main>`, which positions content and paints nothing, so content
+   scrolls under the status bar and a strip that says `top: 0` PINS under it. Every
+   sticky strip parking against the phone's top edge carries the inset itself.
 
-   #4102 retired the phone top bar and #4272 moved its inset onto `<main>` as
-   padding. Padding on a scrolling element only POSITIONS content — it paints
-   nothing — so the shell no longer repaints a status-bar band and content scrolls
-   under the notch, which is what edge-to-edge means. The consequence a page has to
-   answer for: a strip that says `top: 0` pins UNDER the status bar, so every
-   sticky strip that parks against the phone's top edge carries the inset itself,
-   through `top-edge-safe` below.
+   `--top-edge-offset` is how much of that edge a strip ABOVE has already claimed —
+   the mirror of `--bottom-edge-offset` in components/overlay/tokens.ts, and the
+   only reason this is ONE utility rather than one per depth. `.sub-chrome` sets it
+   to the shell chrome's measured height; everything else leaves it 0.
 
-   `--top-edge-offset` is how much of the top edge a strip ABOVE has already
-   claimed — the mirror of `--bottom-edge-offset` in components/overlay/tokens.ts,
-   and the only reason this is one utility rather than one per depth. `.sub-chrome`
-   sets it to the shell chrome's measured height; everything else leaves it 0.
-
-   Headless Chromium reports a zero inset, so `--top-edge-inset` is also the seam a
-   browser test forges a notch through (e2e/trends-context-bar.mobile.spec.ts) — an
-   `env()` written inline at each call site could not be forged at all. */
+   Headless Chromium reports a zero inset, so this token is also the seam a browser
+   test forges a notch through — an inline `env()` could not be forged at all. */
 :root {
   --top-edge-inset: env(safe-area-inset-top, 0px);
 }
@@ -2306,8 +2300,7 @@
   --shell-chrome-h: 3.5rem;
 }
 .sub-chrome {
-  /* The claim above it, declared rather than restated: `top-edge-safe` adds the
-     notch inset to this and the travel below subtracts the pair. */
+  /* Declared, not restated: `top-edge-safe` adds the inset, the travel subtracts both. */
   --top-edge-offset: var(--shell-chrome-h);
   transition: transform 180ms ease-out;
 }
