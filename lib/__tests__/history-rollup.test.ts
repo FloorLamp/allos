@@ -14,6 +14,7 @@ import {
   type HistoryRow,
 } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
+import DestinationLink from "@/components/DestinationLink";
 
 const H12: DisplayFormatPrefs = { timeFormat: "12h", dateFormat: "mdy" };
 
@@ -74,6 +75,15 @@ describe("the closed kind registry", () => {
 });
 
 describe("layoutHistoryDay", () => {
+  it("leaves one eligible row visible instead of hiding it behind a rollup", () => {
+    const only = row("dose", { id: "only" });
+    const rows = [row("lab", { id: "before" }), only, row("sleep")];
+    expect(layoutHistoryDay(rows, { rollup: true })).toEqual({
+      visible: rows,
+      rollups: [],
+    });
+  });
+
   it("splits the rollup per MEMBER, never per day", () => {
     // TWO MEMBERS ON ONE DAY, which is the only fixture that can tell the two apart: a
     // single-member day produces one line either way, so it cannot fail on a
@@ -136,6 +146,14 @@ describe("layoutHistoryDay", () => {
     const b = layoutHistoryDay([row("dose"), row("food")], { rollup: true });
     expect(a.rollups[0].label).toBe(b.rollups[0].label);
     expect(a.rollups[0].label).toBe("1 dose · 1 serving");
+  });
+});
+
+describe("the day-header destination cue", () => {
+  it("self-centers in a baseline-aligned text cluster", () => {
+    const [, cue] = DestinationLink({ href: "/history", children: "Today" })
+      .props.children;
+    expect(cue.props.className).toContain("self-center");
   });
 });
 

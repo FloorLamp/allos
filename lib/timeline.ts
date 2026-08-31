@@ -61,7 +61,6 @@ import {
   encounterHref,
   immunizationHref,
   importHref,
-  intakeHref,
   historyDayHref,
 } from "./hrefs";
 import { symptomLabel, severityLabel, severityLabelFor } from "./symptoms";
@@ -71,7 +70,6 @@ import {
 } from "./illness-episode";
 import { episodeHeadline } from "./illness-episode-format";
 import { episodeHref } from "./hrefs";
-import { foodGroupName } from "./food-groups";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { historyHref } from "./hrefs";
 
@@ -614,119 +612,6 @@ function collectEvents(
           ...(d.source ? [d.source] : []),
           `Uploaded: ${dateFromCreatedAt(d.uploaded_at, tz) ?? d.uploaded_at}`,
         ],
-      },
-      options
-    );
-  }
-
-  const intakeBounds = exact("l.date");
-  const intakeLogs = db
-    .prepare(
-      `SELECT l.date AS date, ii.kind AS kind, COUNT(*) AS count,
-              GROUP_CONCAT(DISTINCT ii.name) AS names,
-              GROUP_CONCAT(
-                ii.name || '::' || COALESCE(NULLIF(TRIM(l.amount), ''),
-                                            NULLIF(TRIM(d.amount), ''),
-                                            'Dose confirmed') ||
-                CASE WHEN ii.kind = 'medication'
-                           AND COALESCE(NULLIF(TRIM(l.product), ''),
-                                        NULLIF(TRIM(ii.product), '')) IS NOT NULL
-                     THEN ' · ' || COALESCE(NULLIF(TRIM(l.product), ''),
-                                             TRIM(ii.product)) ELSE '' END,
-                '||'
-              ) AS dose_details
-         FROM intake_item_logs l
-         JOIN intake_items ii ON ii.id = l.item_id
-         LEFT JOIN intake_item_doses d ON d.id = l.dose_id
-        WHERE ii.profile_id = ?${intakeBounds.clause}
-        GROUP BY l.date, ii.kind
-        ORDER BY l.date DESC
-        LIMIT ?`
-    )
-    .all(profileId, ...intakeBounds.params, perTableLimit) as {
-    date: string;
-    kind: "supplement" | "medication";
-    count: number;
-    names: string | null;
-    dose_details: string | null;
-  }[];
-  for (const l of intakeLogs) {
-    pushLimited(
-      events,
-      {
-        id: `intake:${l.kind}:${l.date}`,
-        date: l.date,
-        category: "medication",
-        // Supplements and medications share `intake_items`, and they share the
-        // `medication` timeline CATEGORY — the filter pill, the icon and the
-        // colour. The vocabulary has no supplement member and #2610 does not
-        // earn one: adding it would split one day's confirmed doses across two
-        // filter pills for a difference the reader is already told in words.
-        // What the reader SEES is the badge, so the badge follows the kind.
-        badgeLabel: l.kind === "medication" ? "Medication" : "Supplement",
-        title:
-          l.kind === "medication"
-            ? "Medication doses confirmed"
-            : "Supplement doses confirmed",
-        subtitle: `${l.count} dose${l.count === 1 ? "" : "s"}`,
-        detail: compactList((l.names ?? "").split(","), 5),
-        href: intakeHref(l.kind),
-        tone: "good",
-        detailItems: parseDetailItems(l.dose_details),
-      },
-      options
-    );
-  }
-
-  // Food servings (#3484): one card per profile-local DAY, not one card per tap.
-  // Alcohol shares this store but is classified below as substance, so one observed
-  // drink never appears twice under two Timeline filters.
-  const foodBounds = exact("date");
-  const foodDays = db
-    .prepare(
-      `SELECT date, SUM(servings) AS count,
-              json_group_array(
-                json_object('key', group_key, 'count', servings)
-              ) AS groups
-         FROM (
-           SELECT date, group_key, COUNT(*) AS servings
-             FROM food_log_events
-            WHERE profile_id = ? AND group_key != ?
-              AND substr(group_key, 1, 2) != '__'${foodBounds.clause}
-            GROUP BY date, group_key
-         )
-        GROUP BY date
-        ORDER BY date DESC
-        LIMIT ?`
-    )
-    .all(
-      profileId,
-      ALCOHOL_FOOD_GROUP,
-      ...foodBounds.params,
-      perTableLimit
-    ) as { date: string; count: number; groups: string | null }[];
-  for (const day of foodDays) {
-    const groups = (
-      JSON.parse(day.groups ?? "[]") as { key: string; count: number }[]
-    ).sort((left, right) =>
-      foodGroupName(left.key).localeCompare(foodGroupName(right.key))
-    );
-    pushLimited(
-      events,
-      {
-        id: `food:${day.date}`,
-        date: day.date,
-        category: "food",
-        title: `${day.count} serving${day.count === 1 ? "" : "s"} logged`,
-        subtitle: compactList(
-          groups.map((group) => foodGroupName(group.key)),
-          5
-        ),
-        href: historyHref({ kind: "food", day: day.date }),
-        detailItems: groups.map((group) => ({
-          label: foodGroupName(group.key),
-          value: `${group.count} serving${group.count === 1 ? "" : "s"}`,
-        })),
       },
       options
     );
