@@ -48,39 +48,33 @@ function goalRows(profileId: number) {
 beforeEach(() => revalidate.mockClear());
 
 describe("createGoal", () => {
-  it("refuses every new goal through early childhood", async () => {
+  it("refuses general goals in early childhood and strength goals in childhood", async () => {
     const login = createLogin();
-    const profile = createProfile("toddler-freeform-goal", login.id);
+    const profile = createProfile("minor-goals", login.id);
     actAs(login, profile);
     setStoredAge(profile.id, 2);
 
-    const result = await createGoal(
-      fd({ kind: "freeform", title: "Run a 5k" })
-    );
-    expect(result.ok).toBe(false);
+    expect(
+      await createGoal(fd({ kind: "freeform", title: "Run a 5k" }))
+    ).toMatchObject({ ok: false });
+
+    setStoredAge(profile.id, 12);
+    expect(
+      await createGoal(
+        fd({
+          kind: "exercise",
+          exercise: "Deadlift",
+          metric: "weight",
+          target_weight: 50,
+        })
+      )
+    ).toMatchObject({ ok: false });
     expect(goalRows(profile.id)).toHaveLength(0);
   });
 
-  it("refuses a new strength goal for a child", async () => {
-    const login = createLogin();
-    const profile = createProfile("child-strength-goal", login.id);
-    actAs(login, profile);
-    setStoredAge(profile.id, 4);
-
-    const result = await createGoal(
-      fd({
-        kind: "exercise",
-        exercise: "Deadlift",
-        metric: "weight",
-        target_weight: 50,
-      })
-    );
-    expect(result.ok).toBe(false);
-    expect(goalRows(profile.id)).toHaveLength(0);
-  });
-
-  it("stores a freeform goal with title/category/status", async () => {
-    const { profile } = seedActor();
+  it("stores a scoped freeform goal with title/category/status", async () => {
+    const { login, profile } = seedActor();
+    const otherProfile = createProfile("Other goals", login.id);
     await createGoal(
       fd({
         kind: "freeform",
@@ -96,10 +90,11 @@ describe("createGoal", () => {
     expect(rows[0].category).toBe("cardio");
     expect(rows[0].status).toBe("active");
     expect(rows[0].target_value).toBe(10);
+    expect(getOutcomeGoals(otherProfile.id)).toHaveLength(0);
     expect(revalidate).toHaveBeenCalledWith("/training");
   });
 
-  it("converts an exercise goal's weight target to kg from a lb login", async () => {
+  it("stores a canonical exercise target and rejects a non-positive one", async () => {
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("lifter", login.id);
     actAs(login, profile);
@@ -113,20 +108,6 @@ describe("createGoal", () => {
         target_weight: 315,
       })
     );
-
-    const row = goalRows(profile.id)[0];
-    expect(row.exercise).toBe("Deadlift");
-    expect(row.metric).toBe("weight");
-    expect(row.category).toBeNull();
-    expect(row.target_weight_kg).toBeCloseTo(315 / LB_PER_KG, 6);
-    expect(getOutcomeGoals(profile.id)[0]).toMatchObject({
-      kind: "exercise",
-      categoryLabel: null,
-    });
-  });
-
-  it("rejects an exercise goal with a non-positive primary target", async () => {
-    const { profile } = seedActor();
     await createGoal(
       fd({
         kind: "exercise",
@@ -135,7 +116,18 @@ describe("createGoal", () => {
         target_weight: 0,
       })
     );
-    expect(goalRows(profile.id)).toHaveLength(0);
+
+    const rows = goalRows(profile.id);
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect(row.exercise).toBe("Deadlift");
+    expect(row.metric).toBe("weight");
+    expect(row.category).toBeNull();
+    expect(row.target_weight_kg).toBeCloseTo(315 / LB_PER_KG, 6);
+    expect(getOutcomeGoals(profile.id)[0]).toMatchObject({
+      kind: "exercise",
+      categoryLabel: null,
+    });
   });
 });
 
@@ -164,7 +156,7 @@ describe("getOutcomeGoals vocabulary (#2480)", () => {
 });
 
 describe("updateGoal weight round-trip (issue #194)", () => {
-  it("does not drift the stored kg when an lb user re-saves an unchanged weight", async () => {
+  it("preserves an unchanged canonical weight and converts a genuine edit", async () => {
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("cutter", login.id);
     actAs(login, profile);
@@ -187,29 +179,15 @@ describe("updateGoal weight round-trip (issue #194)", () => {
 
     // The untouched round-trip is a true no-op: the canonical kg is byte-identical,
     // not nudged by the display-rounding quantum.
-    const row = goalRows(profile.id).find((r) => r.id === id);
-    expect(row.target_value).toBe(storedKg);
-  });
-
-  it("still stores a genuinely changed weight (converted through kg)", async () => {
-    const login = createLogin({ weightUnit: "lb" });
-    const profile = createProfile("cutter2", login.id);
-    actAs(login, profile);
-
-    const id = Number(
-      db
-        .prepare(
-          "INSERT INTO goals (title, category, target_value, body_metric, profile_id, status) VALUES (?, 'body', ?, 'weight', ?, 'active')"
-        )
-        .run("Cut", 142.9, profile.id).lastInsertRowid
-    );
+    const unchangedRow = goalRows(profile.id).find((r) => r.id === id);
+    expect(unchangedRow.target_value).toBe(storedKg);
 
     // User actually lowers the target to 300 lb.
     await updateGoal(
       fd({ id, kind: "body", body_metric: "weight", body_target: 300 })
     );
-    const row = goalRows(profile.id).find((r) => r.id === id);
-    expect(row.target_value).toBeCloseTo(300 / LB_PER_KG, 6);
+    const changedRow = goalRows(profile.id).find((r) => r.id === id);
+    expect(changedRow.target_value).toBeCloseTo(300 / LB_PER_KG, 6);
   });
 });
 
@@ -255,17 +233,6 @@ describe("updateGoal re-target clears the off-pace dismissal (#436)", () => {
 });
 
 describe("setStatus", () => {
-  it("marks a goal achieved for the acting profile", async () => {
-    const { profile } = seedActor();
-    await createGoal(fd({ kind: "freeform", title: "Do 10 pullups" }));
-    const id = goalRows(profile.id)[0].id;
-
-    expect(await setStatus(fd({ id, status: "achieved" }))).toEqual({
-      ok: true,
-    });
-    expect(goalRows(profile.id)[0].status).toBe("achieved");
-  });
-
   // #2394: `status` says WHETHER, `achieved_at` says WHEN — and without the second
   // one the recap had nothing to window on but the deadline. This is the only writer.
   it("stamps the achievement instant, keeps it on a re-state, and clears it on undo", async () => {
@@ -281,7 +248,10 @@ describe("setStatus", () => {
 
     expect(achievedAt()).toBeNull();
 
-    await setStatus(fd({ id, status: "achieved" }));
+    expect(await setStatus(fd({ id, status: "achieved" }))).toEqual({
+      ok: true,
+    });
+    expect(goalRows(profile.id)[0].status).toBe("achieved");
     const first = achievedAt();
     // The canonical UTC+Z convention (lib/date.ts utcInstant), not SQLite's bare shape:
     // the recap compares this column lexically against canonical bounds.
@@ -342,21 +312,6 @@ describe("setArchived", () => {
   });
 });
 
-describe("scoping", () => {
-  it("createGoal writes only to the acting profile", async () => {
-    const { login, profile: profileA } = seedActor();
-    const profileB = createProfile("GoalB", login.id);
-
-    actAs(login, profileA);
-    await createGoal(fd({ kind: "freeform", title: "A-only goal" }));
-
-    expect(getOutcomeGoals(profileB.id)).toHaveLength(0);
-    expect(getOutcomeGoals(profileA.id).map((g) => g.title)).toContain(
-      "A-only goal"
-    );
-  });
-});
-
 // ── Load context on an exercise goal (#1610, migration 120) ──────────────────
 // Two registry machines both serialize as the same exact logged exercise name, so
 // `goals.exercise` alone can't say which stack an 80 kg target belongs to. The
@@ -382,9 +337,12 @@ describe("createGoal / updateGoal load context", () => {
         .all(profileId) as { equipment_id: number | null }[]
     ).map((r) => r.equipment_id);
 
-  it("stores the chosen implement on an exercise goal", async () => {
+  it("stores valid load context, normalizes broad scopes, and widens on edit", async () => {
     const { profile } = seedActor();
     const hotel = addEquipment(profile.id, "Hotel chest press");
+    const other = createProfile("neighbour");
+    const foreign = addEquipment(other.id, "Someone else's machine");
+
     await createGoal(
       fd({
         kind: "exercise",
@@ -394,11 +352,6 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: hotel,
       })
     );
-    expect(storedContext(profile.id)).toEqual([hotel]);
-  });
-
-  it("leaves the goal movement-wide when no implement is chosen", async () => {
-    const { profile } = seedActor();
     await createGoal(
       fd({
         kind: "exercise",
@@ -407,13 +360,6 @@ describe("createGoal / updateGoal load context", () => {
         target_weight: 80,
       })
     );
-    // NULL is the goal's DEFAULT SCOPE, not an unassigned lane — the behavior every
-    // goal stored before this column has.
-    expect(storedContext(profile.id)).toEqual([null]);
-  });
-
-  it("treats the explicit 'any machine' choice as movement-wide", async () => {
-    const { profile } = seedActor();
     await createGoal(
       fd({
         kind: "exercise",
@@ -423,13 +369,6 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: "any",
       })
     );
-    expect(storedContext(profile.id)).toEqual([null]);
-  });
-
-  it("refuses an implement that belongs to another profile", async () => {
-    const other = createProfile("neighbour");
-    const foreign = addEquipment(other.id, "Someone else's machine");
-    const { profile } = seedActor();
     await createGoal(
       fd({
         kind: "exercise",
@@ -439,24 +378,12 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: foreign,
       })
     );
-    // Not an error the user can hit through the form; a leaked id must simply not
-    // scope this profile's goal to another profile's gear.
-    expect(storedContext(profile.id)).toEqual([null]);
-  });
 
-  it("lets an edit widen a machine-scoped goal back to movement-wide", async () => {
-    const { profile } = seedActor();
-    const home = addEquipment(profile.id, "Home chest press");
-    await createGoal(
-      fd({
-        kind: "exercise",
-        exercise: "Machine Chest Press",
-        metric: "weight",
-        target_weight: 80,
-        equipment_id: home,
-      })
-    );
-    const id = getOutcomeGoals(profile.id)[0].id;
+    // NULL is the movement-wide default for an omitted, explicit-any, or foreign
+    // context; only the profile's registered machine narrows the goal.
+    expect(storedContext(profile.id)).toEqual([hotel, null, null, null]);
+
+    const id = goalRows(profile.id)[0].id;
     await updateGoal(
       fd({
         id,
@@ -467,6 +394,6 @@ describe("createGoal / updateGoal load context", () => {
         equipment_id: "any",
       })
     );
-    expect(storedContext(profile.id)).toEqual([null]);
+    expect(storedContext(profile.id)).toEqual([null, null, null, null]);
   });
 });
