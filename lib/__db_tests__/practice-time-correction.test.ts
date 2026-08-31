@@ -120,6 +120,16 @@ function storedTime(logId: number): string | null {
   ).start_time;
 }
 
+function storedEndTime(logId: number): string | null {
+  return (
+    db
+      .prepare("SELECT end_time FROM practice_logs WHERE id = ?")
+      .get(logId) as {
+      end_time: string | null;
+    }
+  ).end_time;
+}
+
 function storedDate(logId: number): string {
   return (
     db.prepare("SELECT date FROM practice_logs WHERE id = ?").get(logId) as {
@@ -427,7 +437,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     const targetId = practiceTarget(pid, "Sauna");
 
     // The write path carries the pointer through, which is what the binding reads.
-    logPracticeByTargetId(pid, targetId, "page", null);
+    logPracticeByTargetId(pid, targetId, "telegram-nudge", null);
     const unattributed = lastLogId(pid);
     expect(
       (
@@ -451,7 +461,7 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     });
     const messageRow = messagePointerIdAt(pid, "5552875", 4210)!;
     expect(messageRow).toBeGreaterThan(0);
-    logPracticeByTargetId(pid, targetId, "page", messageRow);
+    logPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
     const attributed = lastLogId(pid);
 
     const taps = getRecentPracticeTaps(pid, clockNow());
@@ -800,7 +810,8 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     );
 
     // The write landed.
-    expect(storedTime(lastLogId(pid))).toBe("00:15");
+    expect(storedTime(lastLogId(pid))).toBeNull();
+    expect(storedEndTime(lastLogId(pid))).toBe("00:15");
     expect(storedDate(lastLogId(pid))).toBe("2026-06-17");
     // R1: the chat was redrawn. A null rebuild that fell out of the handler left the
     // stale keyboard standing — 0 edits, and "🕐 Sauna 00:45" still on screen.

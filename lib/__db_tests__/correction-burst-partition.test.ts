@@ -470,9 +470,13 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
     logPracticeByTargetId(pid, targets[1], "telegram-nudge", messageRows[1]);
     const logs = db
       .prepare(
-        "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
+        "SELECT id, start_time, end_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
       )
-      .all(pid) as { id: number; start_time: string }[];
+      .all(pid) as {
+      id: number;
+      start_time: string | null;
+      end_time: string;
+    }[];
     setNow("2026-08-05T12:10:00Z");
 
     // Two taps five minutes apart, two messages, two bursts — each bound to its own.
@@ -499,7 +503,8 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
     ).toEqual([]);
 
     // The write core partitions the same way: anchored on the first tap, it moves the
-    // Sauna session's stored HH:MM and leaves the other message's row untouched.
+    // Sauna session's stored end and leaves the other message's row untouched. With
+    // no usual duration, the acknowledgement stays end-only after correction.
     const out = restampPracticeLogsCore(pid, logs[0].id, (row) => {
       const at = new Date(row.statedAt ?? row.tapAt);
       return new Date(at.getTime() - 30 * 60_000);
@@ -507,11 +512,16 @@ describe("the practice twin: two nudges answered minutes apart stay two bursts (
     expect(out).toEqual({ kind: "restamped", count: 1 });
     const after = db
       .prepare(
-        "SELECT id, start_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
+        "SELECT id, start_time, end_time FROM practice_logs WHERE profile_id = ? ORDER BY id"
       )
-      .all(pid) as { id: number; start_time: string }[];
-    expect(after[0].start_time).not.toBe(logs[0].start_time);
-    expect(after[1].start_time).toBe(logs[1].start_time);
+      .all(pid) as {
+      id: number;
+      start_time: string | null;
+      end_time: string;
+    }[];
+    expect(after[0].start_time).toBeNull();
+    expect(after[0].end_time).not.toBe(logs[0].end_time);
+    expect(after[1]).toEqual(logs[1]);
   });
 });
 
@@ -814,7 +824,7 @@ describe("the write transaction re-binds for itself (#3092 follow-up, check-to-w
     });
     const messageRow = messagePointerIdAt(pid, chatId, 4410)!;
     setNow("2026-08-05T12:00:00Z");
-    logPracticeByTargetId(pid, targetId, "page", messageRow);
+    logPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow);
     const logId = (
       db
         .prepare(

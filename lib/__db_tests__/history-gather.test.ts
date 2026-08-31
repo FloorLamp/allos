@@ -986,12 +986,14 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
       start_time: "07:30",
       end_time: "07:50",
       duration_min: null,
+      live: false,
     });
     expect(windows.get(`practice:${derived}`)).toEqual({
       date: YESTERDAY,
       start_time: "12:15",
       end_time: null,
       duration_min: 25,
+      live: false,
     });
     // Nothing is invented for the row that stated nothing — the panel's own model
     // then draws no mark for it.
@@ -1000,6 +1002,7 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
       start_time: null,
       end_time: null,
       duration_min: 30,
+      live: false,
     });
 
     // EVERY EVENT ID IS A ROW ID ON THE PAGE. This is the pairing that makes a mark

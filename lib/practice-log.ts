@@ -570,17 +570,14 @@ export type PracticeRestampOutcome =
 // transaction, and a second callback against the same burst therefore reads what the
 // first committed.
 //
-// A NULL `start_time` IS NEVER GIVEN ONE. Such rows are not in `getRecentPracticeTaps`
-// at all, so they cannot be in a burst; the `start_time IS NOT NULL` filter is repeated
-// in the re-read below so the property holds against the LEDGER at write time and not
-// merely against whatever the renderer saw.
+// A NULL `start_time` IS NEVER GIVEN ONE except when a Telegram just-finished row has a
+// stored usual duration. That row's tap stated its END; a correction moves that end and
+// re-derives the same duration window. Without a duration, its start remains null.
 //
-// A SESSION CARRYING A STATED WINDOW NEVER JOINS A BURST (#3142, owner decision). The
-// chips exist to correct a tap's fuzzy stamp; a row with `end_time` set was stated in
-// the expanded form, and the form owns corrections to a stated window. `end_time IS
-// NULL` sits beside the two exclusions already here (imported rows, null-start rows)
-// and is repeated in `getRecentPracticeTaps` for the same reason they are: the renderer
-// and the write must bound the same burst.
+// A SESSION CARRYING A USER-STATED WINDOW NEVER JOINS A BURST (#3142). The only ended
+// rows admitted here are Telegram quick acknowledgements, identified by their immutable
+// provenance. The same predicate is repeated in `getRecentPracticeTaps`, so the
+// renderer and the write always bound the same rows.
 export function restampPracticeLogsCore(
   profileId: number,
   fromLogId: number,
@@ -601,10 +598,13 @@ export function restampPracticeLogsCore(
     // some earlier keyboard rendered.
     const rows = db
       .prepare(
-        `SELECT id, practice, date, start_time, created_at, notify_message_id
+        `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
+                created_at, notify_message_id
            FROM practice_logs
           WHERE profile_id = ? AND id >= ?
-            AND start_time IS NOT NULL AND end_time IS NULL AND live = 0
+            AND (start_time IS NOT NULL OR end_time IS NOT NULL)
+            AND (end_time IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
+            AND live = 0
             AND external_id IS NULL
           ORDER BY created_at, id
           LIMIT 200`
@@ -613,7 +613,10 @@ export function restampPracticeLogsCore(
       id: number;
       practice: string;
       date: string;
-      start_time: string;
+      start_time: string | null;
+      end_time: string | null;
+      duration_min: number | null;
+      logged_via: string | null;
       created_at: string;
       notify_message_id: number | null;
     }[];
@@ -621,7 +624,23 @@ export function restampPracticeLogsCore(
     const events: TapEvent[] = [];
     for (const r of rows) {
       const tapAt = recordInstant("practice_logs", r);
-      const statedAt = eventInstant("practice_logs", r, tz);
+      const chatFinished =
+        r.end_time != null &&
+        (r.logged_via === "telegram-nudge" ||
+          r.logged_via === "telegram-command");
+      const endDate =
+        chatFinished &&
+        r.start_time != null &&
+        r.end_time! <= r.start_time
+          ? shiftDateStr(r.date, 1)
+          : r.date;
+      const statedAt = eventInstant(
+        "practice_logs",
+        chatFinished
+          ? { ...r, date: endDate, start_time: r.end_time }
+          : r,
+        tz
+      );
       if (!tapAt.known || !statedAt.known) continue;
       events.push({
         id: r.id,
@@ -644,7 +663,10 @@ export function restampPracticeLogsCore(
 
     // RESOLVE AND DECOMPOSE EVERY ROW BEFORE WRITING ANY. One refusal — the chip floor,
     // or a day boundary — refuses the whole burst.
-    const targets = new Map<number, string>();
+    const targets = new Map<
+      number,
+      { start: string | null; end: string | null }
+    >();
     const byIdEvent = new Map(events.map((e) => [e.id, e]));
     for (const id of burst.ids) {
       const row = byId.get(id);
@@ -655,20 +677,46 @@ export function restampPracticeLogsCore(
         statedAt: event.statedAt ?? null,
       });
       if (!instant) return { kind: "out-of-range" as const };
+      const chatFinished =
+        row.end_time != null &&
+        (row.logged_via === "telegram-nudge" ||
+          row.logged_via === "telegram-command");
+      const endDate =
+        chatFinished &&
+        row.start_time != null &&
+        row.end_time! <= row.start_time
+          ? shiftDateStr(row.date, 1)
+          : row.date;
       const local = zonedDateParts(tz, instant);
-      if (local.date !== row.date) return { kind: "crosses-day" as const };
-      targets.set(id, local.hhmm);
+      if (local.date !== endDate) return { kind: "crosses-day" as const };
+      if (chatFinished) {
+        const start =
+          row.duration_min != null
+            ? subtractLocalMinutes(local.date, local.hhmm, row.duration_min)
+            : null;
+        if (start && start.date !== row.date)
+          return { kind: "crosses-day" as const };
+        targets.set(id, {
+          start: start?.time ?? null,
+          end: local.hhmm,
+        });
+      } else {
+        targets.set(id, {
+          start: local.hhmm,
+          end: null,
+        });
+      }
     }
 
-    for (const [id, hhmm] of targets) {
+    for (const [id, target] of targets) {
       // `edited` is the same mark the expanded form's correction sets: a human has
       // changed a value this app derived. These rows are never imported (the reader and
       // the re-read both exclude `external_id`), so it protects nothing here — it is set
       // because the two correction paths must agree about what a correction IS.
       db.prepare(
-        `UPDATE practice_logs SET start_time = ?, edited = 1
+        `UPDATE practice_logs SET start_time = ?, end_time = ?, edited = 1
           WHERE id = ? AND profile_id = ?`
-      ).run(hhmm, id, profileId);
+      ).run(target.start, target.end, id, profileId);
     }
     return { kind: "restamped" as const, count: targets.size };
   });

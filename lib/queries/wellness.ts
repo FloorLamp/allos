@@ -4,7 +4,7 @@
 
 import { db, today as profileToday } from "../db";
 import { now as clockNow } from "../clock";
-import { utcSqlString } from "../date";
+import { shiftDateStr, utcSqlString } from "../date";
 import { eventInstant, recordInstant } from "../row-instants";
 import { getTimezone } from "../settings";
 import {
@@ -1106,14 +1106,13 @@ export interface PracticeTapRow extends TapEvent {
 //    filter is not redundant with it but a BOUND — without it, a day of untimed rows
 //    could fill the `LIMIT` and push the timed taps a chip is actually about out of the
 //    window. Between them, a null-time row never reaches a burst and no chip can touch
-//    it. `lib/__db_tests__/practice-time-correction.test.ts` pins that from the outside.
+//    it. The one exception is a Telegram just-finished acknowledgement: its END is the
+//    tap statement, so a correction moves that end while leaving start null unless a
+//    stored usual duration supplied the derived window.
 //
-// 2b. A SESSION CARRYING A STATED WINDOW IS NOT A TAP EITHER (#3142, owner decision).
-//    `end_time IS NOT NULL` means somebody used the expanded form and said when the
-//    session ended; the chips correct a TAP's fuzzy stamp, and the form owns
-//    corrections to a stated window. The same predicate is repeated in
-//    `restampPracticeLogsCore`'s re-read, so the burst the renderer bounds and the
-//    burst the write re-derives are the same set.
+// 2b. A USER-STATED WINDOW IS NOT A TAP EITHER (#3142). Ended rows are admitted only
+//    when immutable Telegram provenance says the callback derived them. The same
+//    predicate is repeated in `restampPracticeLogsCore`'s re-read.
 //
 // 3. A CHAT CORRECTION CARRIES A CHAT TAP ONLY (#4356). With `chatOnly`, immutable
 //    `logged_via` provenance keeps page and offline sessions on their own surfaces;
@@ -1138,12 +1137,14 @@ export function getRecentPracticeTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, practice, date, start_time, created_at, notify_message_id
+      `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
+              created_at, notify_message_id
          FROM practice_logs
         WHERE profile_id = ?
           AND created_at >= ?
-          AND start_time IS NOT NULL
-          AND end_time IS NULL
+          AND (start_time IS NOT NULL OR end_time IS NOT NULL)
+          AND (end_time IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
+          AND live = 0
           AND external_id IS NULL
           AND (? = 0 OR logged_via IS NULL
             OR logged_via IN ('telegram-nudge', 'telegram-command'))
@@ -1154,7 +1155,10 @@ export function getRecentPracticeTaps(
     id: number;
     practice: string;
     date: string;
-    start_time: string;
+    start_time: string | null;
+    end_time: string | null;
+    duration_min: number | null;
+    logged_via: string | null;
     created_at: string;
     notify_message_id: number | null;
   }[];
@@ -1165,7 +1169,21 @@ export function getRecentPracticeTaps(
     // resolve is DROPPED rather than guessed at: a burst is a set of rows a chip is
     // about to rewrite, and one it cannot read is one it must not touch.
     const tapAt = recordInstant("practice_logs", r);
-    const statedAt = eventInstant("practice_logs", r, tz);
+    // A just-finished Telegram row states its END at the tap. Corrections therefore
+    // move that end (and the derived start with it), while legacy start-only taps keep
+    // their start anchor. Expanded stated windows never enter this query.
+    const chatFinished =
+      r.end_time &&
+      (r.logged_via === "telegram-nudge" ||
+        r.logged_via === "telegram-command");
+    const endDate =
+      chatFinished && r.start_time && r.end_time! <= r.start_time
+        ? shiftDateStr(r.date, 1)
+        : r.date;
+    const anchor = chatFinished
+      ? { ...r, date: endDate, start_time: r.end_time }
+      : r;
+    const statedAt = eventInstant("practice_logs", anchor, tz);
     if (!tapAt.known || !statedAt.known) continue;
     out.push({
       id: r.id,

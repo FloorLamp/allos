@@ -50,16 +50,16 @@ const HANDROLLED_ALLOW = new Map<
     },
   ],
   [
-    "components/practices/LogPracticeButton.tsx",
+    "components/practices/PracticeSessionForm.tsx",
     {
       count: 2,
       kind: "event",
       reason:
-        "the #3142 practice start/end pair — the SAME range shape as the " +
+        "the #3142 detailed practice start/end pair — the SAME range shape as the " +
         "activity start/end pair below, unmodelled by the control for the same " +
-        "reason. It was one input until #3142 renamed `time` to `start_time` " +
-        "and gave a session an END, on the owner's decision that the expanded " +
-        "form offers Start and End; migrates with DateTimeFields when the " +
+        "reason. #3143 extracted the deliberate historical form from the quick " +
+        "intent control so backfill remains exempt; the same two inputs moved, " +
+        "not grew. Migrates with DateTimeFields when the " +
         "control grows a range form",
     },
   ],
@@ -222,7 +222,13 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   ],
   [
     "components/practices/LogPracticeButton.tsx",
-    { mounts: true, why: "the sheet's collapsed session time (#3273)" },
+    {
+      mounts: false,
+      why:
+        "THE #3143 COUNTER-CASE: Start now and Just finished are explicit " +
+        "tap-instant statements, while a past/corrected window belongs to the " +
+        "separate detailed backfill form rather than a third quick intent",
+    },
   ],
   [
     "components/quick-entry/QuickMoodCheckin.tsx",
