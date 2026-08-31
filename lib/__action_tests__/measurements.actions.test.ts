@@ -600,4 +600,29 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
       expect(count(profile.id)).toBe(0);
     }
   );
+
+  // AND THE FORM IS TOLD. Nothing written is only half the contract: this action's
+  // result carries no error channel but the two NOTICE fields, so a refused day used
+  // to answer `{}` — byte-identical to a clean save that stated no time — and the form
+  // toasted "Measurements saved" over an empty table. `dateRefused` is what
+  // `MeasurementsQuickAdd` reads to `setError` instead of toasting.
+  it("answers a day-ahead sitting with a refusal the form can render", async () => {
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+
+    expect(
+      await addMeasurements(
+        fd({ date: "2026-05-21", weight: "80", weight_unit: "kg" })
+      )
+    ).toEqual({ dateRefused: true });
+
+    // The converse, through the SAME call: an ordinary save still answers with no
+    // refusal, so the field cannot pass by being set on everything.
+    expect(
+      await addMeasurements(
+        fd({ date: today(profile.id), weight: "80", weight_unit: "kg" })
+      )
+    ).toEqual({});
+    expect(bodyRows(profile.id)).toHaveLength(1);
+  });
 });

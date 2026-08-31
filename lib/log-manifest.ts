@@ -212,6 +212,14 @@ export interface LogDomainManifest {
   readonly writeConventions: WriteConventions;
   // The dated write cores this domain's every surface must post through — the list
   // the `STATEFUL_WRITE_TABLES` scan's call-site rule is about.
+  //
+  // THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review). `body` named
+  // `recordReading`/`recordReadings`, which no Server Action, component or Telegram
+  // handler calls — they sit under `insertVitals`. The row therefore did not name the
+  // five cores a body submission actually posts through, and this branch gated two of
+  // them and missed three, which shipped as a partial sitting nobody could see from
+  // here. The test for a name in this list is that a SURFACE calls it; the seven other
+  // rows were audited against that and all seven hold.
   readonly cores: readonly [string, ...string[]];
 }
 
@@ -524,7 +532,18 @@ export const LOG_MANIFEST = {
       },
     },
     writeConventions: { kind: "convention" },
-    cores: ["recordReading", "recordReadings", "logTemperatureCore"],
+    // The five "Log measurements" cores plus the symptom bar's temperature door. One
+    // submission fans out across the five by which fields it carries, so they are one
+    // contract and all five hold `isPastWriteAccepted`; `recordReading` is the store
+    // under `insertVitals` and is not a door.
+    cores: [
+      "insertBodyMetric",
+      "insertVitals",
+      "insertGrowth",
+      "insertWaistCirc",
+      "insertComposition",
+      "logTemperatureCore",
+    ],
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
 

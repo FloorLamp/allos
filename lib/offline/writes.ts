@@ -568,6 +568,18 @@ export function insertVitals(
         })()
       : undefined;
 
+  // WHY THE NEXT TWO LOOPS MAY DISCARD `recordReading`'S OUTCOME, stated here because
+  // it is a claim about THIS call site rather than about the core (#4425 review).
+  // `recordReading` refuses three ways, and none can produce a PARTIAL sitting:
+  //   • the date invariant — a pure function of (profileId, date), and the whole
+  //     sitting shares one date, already asked at this function's door above. Uniform
+  //     by construction: it cannot answer differently for row three than for row one.
+  //   • `edit-locked` — the #133 lock fires only for a SOURCE-OWNED row, and `source`
+  //     is 'manual' below, so `sourceOwned` is false and that branch is unreachable.
+  //   • `unplaceable` — `placeReading` refuses only a name with no reading identity,
+  //     and these are the `VITAL_CANONICAL` vocabulary.
+  // A tally here would be code defending against a state the shape already forbids. If
+  // any of those three premises stops holding, this is the comment that has to change.
   for (const m of medical) {
     // `source` is 'manual' and `external_id` stays NULL, so a same-window Health
     // Connect push never matches it. The core registers the canonical name and
