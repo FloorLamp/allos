@@ -600,7 +600,9 @@ ${landingLines}
   message or a PR body reads as though something checked it. Nothing did. Measured
   2026-08-31, two lanes, both already pushed: a comment read "deleted in #4515 after
   two years of rendering nowhere" — THIS CLONE IS SHALLOW, history begins two days
-  ago (\`git rev-parse --is-shallow-repository\` is true, 488 commits), so no command
+  ago (\`git rev-parse --is-shallow-repository\` is true and \`git log --reverse\`
+  starts on 2026-08-29 — a COUNT would have drifted by the hour, the boundary does
+  not), so no command
   in this container could produce "two years"; and a spec comment AND a PR body both
   justified measuring painted pixels rather than boxes with "the nearest clipping
   ancestor is 147px narrower than the screen", a figure the lane could not reproduce
