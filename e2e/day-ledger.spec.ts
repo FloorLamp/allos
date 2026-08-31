@@ -376,6 +376,47 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     await expect(outsideDose).toContainText("Not recorded");
     await expect(outsideDose.getByRole("button")).toHaveCount(0);
   });
+
+  test("a past-day dose captured offline leaves the ledger, then replays onto that day", async ({
+    page,
+  }) => {
+    const day = shiftDateStr(todayLocal(), -1);
+    const doseId = seeded.doseIds[0]!;
+    const todayBefore = takenCount(doseId, todayLocal());
+
+    await page.goto("/nutrition");
+    await hydratedClick(page, page.getByTestId("food-day-yesterday"));
+    const group = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(group).toHaveAttribute(
+      "data-doses",
+      new RegExp(`(^|,)${doseId}(,|$)`)
+    );
+    await hydratedClick(page, group);
+
+    const row = page.getByTestId(`ledger-due-dose-${doseId}`);
+    await expect(row).toBeVisible();
+
+    await page.context().setOffline(true);
+    // A plain click: the queue, rather than a Server Action response, settles this tap.
+    await row.getByTestId(`ledger-take-${doseId}`).click();
+    await expect(
+      page.getByText("Dose saved offline — will sync when you reconnect.")
+    ).toBeVisible();
+    await expect(page.getByTestId("offline-queue-badge")).toHaveText(
+      /1 queued offline/
+    );
+    // A kept capture resolves this occurrence now, before replay owns the durable write.
+    await expect(row).toHaveCount(0);
+
+    await page.context().setOffline(false);
+    await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+
+    // Replay lands once on the day the ledger named, without disturbing today's row.
+    expect(takenCount(doseId, day)).toBe(1);
+    expect(takenCount(doseId, todayLocal())).toBe(todayBefore);
+  });
 });
 
 test.describe("the day is stated once, and the chrome is measured", () => {
