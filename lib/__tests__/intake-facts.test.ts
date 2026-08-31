@@ -140,8 +140,10 @@ describe("intake fact summary (#3216)", () => {
       path.join(REPO, "app/(app)/medications/MedicationCard.tsx"),
       "utf8"
     );
-    expect(source).toContain("ingredients={ingredients}");
-    expect(source).toContain("purposes={parseItemPurposes(s.purposes_json)}");
+    expect(source.includes("ingredients={ingredients}")).toBe(true);
+    expect(
+      source.includes("purposes={parseItemPurposes(s.purposes_json)}")
+    ).toBe(true);
   });
 
   it("further dose rows read back as 'also [amount] at [slot]'", () => {
