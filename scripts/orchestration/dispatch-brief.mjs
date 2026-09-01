@@ -411,8 +411,10 @@ function buildBrief(opts) {
   A local pre-review is useful but does not replace the exact-head PR review.`
     : `- LANDING STATE: BANKED. Push durable branch checkpoints, but DO NOT open a
   PR. Run authored/edited specs and assigned local gates, then return the branch
-  and head SHA. Non-authored blast-radius specs wait for CI after the orchestrator
-  promotes this branch and reprints its brief.`;
+  and head SHA. Before promotion and periodically while banked, run
+  \`git fetch origin main && git log origin/main -- <your files>\`; if your subject
+  landed or its premise changed, drop redundant work and report it. Non-authored
+  blast-radius specs wait for CI after promotion reprints this brief.`;
   const blastRadiusInstruction = opts.candidate
     ? "Push, and read candidate CI."
     : "Defer them until promotion; the landing candidate's CI runs them.";
