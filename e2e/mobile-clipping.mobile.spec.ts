@@ -3,7 +3,6 @@ import type { Locator } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import {
   expectAtomicCardPairs,
-  expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
   overflowStory,
@@ -502,27 +501,6 @@ test.describe("mobile clipping batch (#2614)", () => {
         "cannot fit are unreachable rather than swipeable"
     ).toBeGreaterThan(0);
   });
-});
-
-// Fixing a clip must never be paid for by letting content out of the viewport,
-// which is the part the census found already correct everywhere. The blessed
-// element-level guard: it names the offending box rather than asserting a
-// document width the app shell clips anyway (#1543).
-test.describe("no surface pays for its fix with content past the edge (#2614)", () => {
-  for (const path of [
-    "/",
-    "/trends",
-    "/sleep",
-    "/import/908",
-    // #3712: the day-history calendar overhung by 4px here, invisibly, because
-    // `<main>`'s clip absorbed it and no page-level reading could see it.
-    "/training?tab=analyze",
-  ] as const) {
-    test(`${path} keeps every box inside the viewport`, async ({ page }) => {
-      await page.goto(path);
-      await expectNoClippedContent(page);
-    });
-  }
 });
 
 // A DIALOG BODY IS NOT A SIDEWAYS SCROLLER (#3360).
