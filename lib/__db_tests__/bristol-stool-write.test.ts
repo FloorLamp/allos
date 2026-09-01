@@ -33,6 +33,7 @@ import {
   getBristolReadings,
 } from "@/lib/queries/bristol-stool";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { FROZEN_WALL_TIME_UTC } from "./frozen-clock";
 
 // Profiles here take the instance-default timezone, so profile-local is UTC.
 let profileId: number;
@@ -215,7 +216,9 @@ describe("the reader is profile-scoped and metric-scoped", () => {
 // the statement is dropped, `statedTimeRefused` carries the reason), and this answers
 // with the same three properties.
 describe("logBristolStool — a stated time is judged (#4425)", () => {
-  const PINNED_HHMM = "23:45";
+  // Derived from the tier's own constant rather than retyped: if the freeze ever
+  // moves, this table should move with it instead of going quietly wrong.
+  const PINNED_HHMM = FROZEN_WALL_TIME_UTC.slice(0, 5);
 
   it.each([
     // Before "now" on the pinned day — the ordinary backfill, kept as stated.
