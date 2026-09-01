@@ -459,13 +459,14 @@ export function getWellnessPractices(
           item.target?.scope_value ?? latest?.practice ?? "",
           item.sessions.map((session) => session.practice)
         ),
+        // A LIVE ROW IS LIVE WHATEVER DAY IT STARTED ON. Filtering to `asOf` hid the
+        // End button from the one session that most needs it — the evening practice
+        // still running after local midnight. What retires a stale row is the
+        // abandonment sweep the page gathers run first, not this day comparison.
         liveSession:
           item.sessions
             .filter(
-              (session) =>
-                session.live === 1 &&
-                session.date === asOf &&
-                session.start_time != null
+              (session) => session.live === 1 && session.start_time != null
             )
             .map((session) => ({
               id: session.id,
@@ -561,14 +562,16 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
+  // No day filter, for the reason getWellnessPractices states: a session that crossed
+  // local midnight is still running, and the sweep is what closes an abandoned one.
   const liveRows = db
     .prepare(
       `SELECT id, practice, date, start_time
          FROM practice_logs
-        WHERE profile_id = ? AND live = 1 AND date = ?
+        WHERE profile_id = ? AND live = 1
         ORDER BY id DESC`
     )
-    .all(profileId, asOf) as {
+    .all(profileId) as {
     id: number;
     practice: string;
     date: string;

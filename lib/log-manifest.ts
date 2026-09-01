@@ -281,11 +281,21 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
+    // WRONG, AND THE TYPE CANNOT SAY SO — flagged rather than asserted (#3143 review).
+    // `none` means "the row has no instant column to state into", and both halves of
+    // that are now false: `practice_logs` carries `start_time`/`end_time` (#3142), and
+    // the quick sheet's restored "Happened earlier?" states an END that
+    // `logFinishedPracticeSession` accepts. The truthful value would be `judged`, which
+    // the type requires a shared seam for — and practice validates its stated end
+    // inline instead of through `judgeStatedAt`. So `none` stays because it is the only
+    // representable value, not because it is the answer. Settle it by routing the
+    // stated end through the seam, or by giving the union an arm for a domain that
+    // judges its own; both are rulings, not edits.
     statedTime: {
       kind: "none",
       reason:
-        "A session is a DAY's fact plus a duration: `practice_logs` carries no event instant, and the duration answers 'how long', never 'at what minute'. A time field here would collect a statement with nowhere to be stored — the `/history` door makes the same call for substance rows.",
-      ref: "#2908",
+        "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
+      ref: "#3143",
     },
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
@@ -298,7 +308,7 @@ export const LOG_MANIFEST = {
       form: {
         kind: "unconverged",
         reason:
-          "`LogPracticeButton` carries three incompatible field sets across four mounts, and `app/(app)/upcoming/PracticeLogButton.tsx` fronts a SECOND write core (`logUpcomingPractice`) with no duration and no confirm. #4424 ruling 7 deletes the parallel core; this row flips with it.",
+          "CONVERGING, not converged (#3143). The expanded form is one `PracticeSessionForm` mounted by both `LogPracticeButton` and `PracticeBackfillLauncher` — the extraction #4424 ruling 1 asks for — so the field sets are no longer three. What still blocks the flip is the second write core: `app/(app)/upcoming/PracticeLogButton.tsx` fronts `logUpcomingPractice` with no duration and no confirm. #4424 ruling 7 deletes it; this row flips with it.",
         ref: "#4424",
       },
       rowControl: {
@@ -309,7 +319,20 @@ export const LOG_MANIFEST = {
       },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logPracticeSession", "logPracticeSessionForDay"],
+    // Seven doors, not two. #3143 added the lifecycle and the just-finished intent, and
+    // `logPracticeByTargetId` was already missing: the test on this column is that a
+    // SURFACE calls it (#4425), and every name here has one — the wellness action's two
+    // intents, the two live-lifecycle actions, the offline replay, the Upcoming row, and
+    // Telegram's Done. Correction and delete are not listed, matching every sibling row.
+    cores: [
+      "logPracticeSession",
+      "logPracticeSessionForDay",
+      "logPracticeByTargetId",
+      "logFinishedPracticeSession",
+      "logFinishedPracticeByTargetId",
+      "startLivePracticeSession",
+      "endLivePracticeSession",
+    ],
   },
 
   mood: {

@@ -9,6 +9,7 @@ import { isStrengthTrainingRelevant } from "@/lib/life-stage";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import TabFirstPage from "@/components/TabFirstPage";
+import PageContainer from "@/components/PageContainer";
 import { DATA_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { ImportJobList } from "@/components/ImportClient";
 import ImportMethodTabs from "@/app/(app)/data/ImportMethodTabs";
@@ -220,8 +221,10 @@ export default async function DataPage(
   }
 
   return (
-    <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
-      {activeSection}
-    </TabFirstPage>
+    <PageContainer width="wide" className="mx-auto">
+      <TabFirstPage config={DATA_TAB_FIRST_PAGE} testId="data-page">
+        {activeSection}
+      </TabFirstPage>
+    </PageContainer>
   );
 }

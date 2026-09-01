@@ -137,6 +137,10 @@ export const FIXTURE_TIMEZONE_OVERRIDES = {
     kind: "own-zone",
     why: "The other direction of the same fixture: at UTC\u221212 the same 11:30 UTC capture has not yet left the previous local day, so one planted instant renders three different days across west, UTC and east. It is also the bin e2e/trash.spec.ts empties, which is why it must be a profile nothing else writes to (#3547).",
   },
+  "practice-midnight": {
+    kind: "own-zone",
+    why: "A live practice session that crossed local midnight is only observable where the profile's local time is just PAST midnight, and a pin-following profile can never be: the pin puts local time at 13:mm precisely so the local and UTC days agree. This spec-owned profile sits in the zone where the frozen instant reads 00:mm, so a session started three hours earlier is on the PREVIOUS local day and still running — the row the End button used to be hidden from. It asserts on /wellness only.",
+  },
   "trends-day-gaps": {
     kind: "run-pin",
     why: "This spec-owned profile follows the run's pinned timezone so every absolute sample lands on the chart day named by the fixture.",

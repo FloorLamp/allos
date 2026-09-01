@@ -314,22 +314,69 @@ export function updatePracticeSession(
   });
 }
 
-// Close every unfinished lifecycle whose stored local day is no longer the profile's
-// current day, without inventing an end. `<>` matters after a westward timezone
-// change, where the stale row's date can be ahead rather than behind.
-export function closeAbandonedPracticeSessions(
-  profileId: number,
-  localDay = today(profileId)
-): number {
-  return writeTx(
-    () =>
-      db
+// ── The live session's plausibility bound (#3143 review, the fasting shape) ─────
+//
+// Past this many hours an open lifecycle stops reading as "in progress" and starts
+// reading as "you tapped Start and forgot", which is the same judgement
+// `FAST_STALE_HOURS` makes one domain over. Six hours is longer than any practice this
+// app is a logger for — a sauna, a meditation, a mobility block — and short enough that
+// a Start tapped in the evening is abandoned before the next morning's page load. It is
+// a plausibility bound, not a measurement.
+export const LIVE_PRACTICE_STALE_HOURS = 6;
+
+// Minutes this live row has been running at `at`, or null when it is no longer a
+// session the app will complete: its start cannot be read, its start has not happened
+// yet, or it has been open past the bound above.
+//
+// ELAPSED TIME, NOT A DAY LABEL, and that is the correction this replaces. The day
+// comparison was widened from `<` to `<>` so a westward timezone edit could not strand
+// a future-dated row — right about that case, and it is kept: a start in the future
+// answers null here too. But NO day comparison can tell a 23:50→00:10 evening practice
+// (twenty minutes, and the ordinary case) from a 28-hour-old forgotten Start, because
+// both sit on a day that is not the profile's today. Measuring the elapsed span
+// separates them, and the same quantity bounds the duration `End` derives — so the
+// sweep and the write cannot disagree about what is still a session.
+function liveElapsedMin(
+  tz: string,
+  row: { date: string; start_time: string | null },
+  at: Date
+): number | null {
+  const started = eventInstant("practice_logs", row, tz);
+  if (!started.known) return null;
+  const minutes = (at.getTime() - Date.parse(started.at)) / 60_000;
+  if (minutes < 0 || minutes > LIVE_PRACTICE_STALE_HOURS * 60) return null;
+  return minutes;
+}
+
+// Close every unfinished lifecycle the bound above has given up on, without inventing
+// an end. The row keeps exactly what was observed — `live` cleared, no end, no
+// duration. Request gathers that render the offer state call this first; the
+// transition is idempotent.
+export function closeAbandonedPracticeSessions(profileId: number): number {
+  const tz = getTimezone(profileId);
+  const at = now();
+  return writeTx(() => {
+    const rows = db
+      .prepare(
+        `SELECT id, date, start_time FROM practice_logs
+          WHERE profile_id = ? AND live = 1`
+      )
+      .all(profileId) as {
+      id: number;
+      date: string;
+      start_time: string | null;
+    }[];
+    let closed = 0;
+    for (const row of rows) {
+      if (liveElapsedMin(tz, row, at) != null) continue;
+      closed += db
         .prepare(
-          `UPDATE practice_logs SET live = 0
-        WHERE profile_id = ? AND live = 1 AND date <> ?`
+          `UPDATE practice_logs SET live = 0 WHERE id = ? AND profile_id = ?`
         )
-        .run(profileId, localDay).changes
-  );
+        .run(row.id, profileId).changes;
+    }
+    return closed;
+  });
 }
 
 function openPracticeSession(
@@ -361,7 +408,7 @@ export function startLivePracticeSession(
   return writeTx(() => {
     const localStart = zonedDateParts(getTimezone(profileId), now());
     const date = localStart.date;
-    closeAbandonedPracticeSessions(profileId, date);
+    closeAbandonedPracticeSessions(profileId);
     const existing = openPracticeSession(profileId, name);
     if (existing) return { kind: "already-live" as const, session: existing };
     const outcome = logPracticeSession(profileId, name, date, loggedVia, {
@@ -381,35 +428,43 @@ export function startLivePracticeSession(
   });
 }
 
+// END the running session. The second tap of the two-tap window, so it must COMPLETE
+// the row it is about — including the ordinary evening practice that runs past local
+// midnight, which the day comparison here refused after sweeping the row away first.
+//
+// THE ROW KEEPS THE DAY IT STARTED ON. `date` is where a session is filed and counted;
+// re-dating a 23:50 sauna into the small hours would move a logged day and, at a week
+// boundary, a frequency target's credit. The stamped `end_time` is then simply earlier
+// than the start, which `activityWindow` already reads as the crossing it is.
+//
+// THE DURATION COMES FROM THE ROW'S OWN START, not from its insert stamp. The start is
+// what the row STATES — the first tap's instant, or a correction the user made to it —
+// so deriving from `created_at` produced a window and a number that contradicted each
+// other after a start edit (07:00→12:30 stored as 30 minutes) and let a stranded row
+// self-heal into a 1710-minute session. Both halves now come from one quantity,
+// computed as INSTANTS so a session across the spring DST jump is twenty minutes
+// rather than eighty, and bounded by the same rule the sweep applies.
 export function endLivePracticeSession(
   profileId: number,
   id: number
 ): PracticeLiveEndOutcome {
   return writeTx(() => {
-    // One instant answers both questions: its profile-local day/minute is what the
-    // row states, while its absolute distance from the start tap is the elapsed
-    // duration. Subtracting HH:MM values would turn a 20-minute session across the
-    // spring DST jump into 80 minutes (and loses the repeated hour in autumn).
     const endedAt = now();
-    const localEnd = zonedDateParts(getTimezone(profileId), endedAt);
-    const date = localEnd.date;
-    closeAbandonedPracticeSessions(profileId, date);
+    const tz = getTimezone(profileId);
     const current = getPracticeSession(profileId, id);
-    if (!current || current.live !== 1 || current.date !== date)
+    if (!current || current.live !== 1) return { kind: "not-live" as const };
+    const elapsed = liveElapsedMin(tz, current, endedAt);
+    if (elapsed == null) {
+      // Abandoned by the rule the sweep applies, so a stale End tap closes the row
+      // rather than leaving it open for the next gather to find.
+      closeAbandonedPracticeSessions(profileId);
       return { kind: "not-live" as const };
-    const startTap = recordInstant("practice_logs", {
-      created_at: current.created_at,
-    });
-    const elapsedMs = startTap.known
-      ? endedAt.getTime() - new Date(startTap.at).getTime()
-      : -1;
-    const durationMin =
-      elapsedMs >= 0 ? Math.max(1, Math.round(elapsedMs / 60_000)) : null;
+    }
     const updated = updatePracticeSession(profileId, id, {
-      date,
+      date: current.date,
       startTime: current.start_time,
-      endTime: localEnd.hhmm,
-      durationMin,
+      endTime: zonedDateParts(tz, endedAt).hhmm,
+      durationMin: Math.max(1, Math.round(elapsed)),
       notes: current.notes,
       preserveDerivedWindow: true,
     });
@@ -417,8 +472,8 @@ export function endLivePracticeSession(
       ? {
           kind: "ended" as const,
           session: updated.session,
-          count: getPracticeDayCount(profileId, current.practice, date),
-          date,
+          count: getPracticeDayCount(profileId, current.practice, current.date),
+          date: current.date,
         }
       : { kind: "not-live" as const };
   });
@@ -470,19 +525,45 @@ export function logFinishedPracticeSession(
       );
     }
   }
-  return logPracticeSession(
-    profileId,
-    practice,
-    start?.date ?? end.date,
-    loggedVia,
-    {
-      startTime: start?.hhmm ?? null,
+  const name = normalizePracticeName(practice);
+  if (!name) return { kind: "invalid-date" };
+  return writeTx(() => {
+    // A JUST-FINISHED TAP WHILE A SESSION IS RUNNING ENDS THAT SESSION. Both taps are
+    // the same statement ("that's done"), so a second row would double-log the day and
+    // leave the lifecycle open — which is what Telegram's Done did, on a surface with
+    // no End button to recover with. Only for a tap about NOW: a stated end is a claim
+    // about some other, earlier moment, and the running row's end is not it. That
+    // branch is unreachable from the web anyway (`whenShown` and the Just-finished
+    // button are both gated on `!currentLive`), and Telegram states no end at all.
+    const open = acceptedStatedEnd
+      ? null
+      : openPracticeSession(profileId, name);
+    if (open) {
+      const ended = endLivePracticeSession(profileId, open.id);
+      if (ended.kind === "ended")
+        return {
+          kind: "logged" as const,
+          count: ended.count,
+          date: ended.date,
+        };
+      // The open row turned out to be abandoned — End has closed it — so this tap is
+      // an ordinary just-finished statement rather than the second half of a lifecycle.
+    }
+    // IT FILES ON THE DAY THE END WAS STATED, tapped or typed. The end is the only
+    // instant this statement carries; the start is arithmetic over a duration. Filing
+    // on the derived start's day put a 00:20 tap on YESTERDAY, so today's count did not
+    // move and at a week boundary the target's credit landed in the previous week. A
+    // derived start that lands on another day cannot be expressed by a row that carries
+    // one date, so it is left null rather than moved onto a day it did not happen on —
+    // the end-only shape #3143 already defines, keeping its duration.
+    return logPracticeSession(profileId, name, end.date, loggedVia, {
+      startTime: start && start.date === end.date ? start.hhmm : null,
       endTime: end.hhmm,
       durationMin: duration,
       derivedWindow: duration != null,
       notifyMessageId: notifyMessageId ?? null,
-    }
-  );
+    });
+  });
 }
 
 // Log a session against a practice frequency TARGET id (#1259): resolve the target's
