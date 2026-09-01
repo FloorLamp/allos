@@ -410,10 +410,19 @@ export const LOG_MANIFEST = {
       // current value posts the narrow lower), the note, and the clear with its undo.
       //
       // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
-      // #3958 rather than a gap: it rules the row one line at every viewport with the
-      // trailing affordance EXCLUSIVE — ⋯ or ›, never both — so a third trailing
-      // control is not available there and the ⋯ opens the form. The day view's own
-      // card mounts the bar, whose rows are this control.
+      // ruling 3 itself rather than a gap: a full-statement edit opens the form in edit
+      // mode, which is what the ⋯ does. The feed row hosts no one-field inline edit
+      // because #3958 leaves it nowhere to go — that ruling makes the row one line at
+      // every viewport with the trailing affordance EXCLUSIVE (⋯ or ›, never both), and
+      // #4424 nowhere claims to override it. The day view's own card mounts the bar,
+      // whose rows are this control.
+      //
+      // THE CONTROL HAS ONE MOUNT TODAY — the bar — so read `shared` as "the domain has
+      // exactly one, and every symptom row hosting a write control mounts it", never as
+      // "mounted twice". The cell's complaint was that row-control-grade behaviour LIVED
+      // INSIDE the bar, and extracting it is the fix whether or not a second surface
+      // exists yet. A second one appears the day #4076's control slot reaches this
+      // domain, and it will not have to re-decide the raise/lower routing or the undo.
       form: { kind: "shared", component: "SymptomForm" },
       rowControl: { kind: "shared", component: "SymptomRowControl" },
     },
