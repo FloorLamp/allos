@@ -1282,9 +1282,10 @@ export async function updateIntakeItem(
 // the control the dose is resolved when nothing was written. Every reachable tap still
 // answers ok — the control is only rendered for an active, non-retired dose — so this
 // changes what a FORGED post is told, not what a real one sees.
-// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280), because a dose surface
-// renders what happened through `doseConfirmMessage` — an off-cadence confirm names
-// the schedule (#1602) — and `{ ok: true }` flattens that into an unearned confirm.
+// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280): a surface renders what
+// happened through `doseConfirmMessage` — an off-cadence confirm names the schedule
+// (#1602) — and `{ ok: true }` flattens that into a confirm the write may not have
+// earned.
 export type DoseStatusResult =
   { ok: true; outcome: DoseStatusOutcome } | { ok: false; error: string };
 
@@ -1381,18 +1382,16 @@ export async function setDoseStatus(
 // the same "the form is an UPPER BOUND, never an instruction" rule the dose ids already
 // obey, applied to the one field that was still an unbounded instruction.
 //
-// THE WHOLE-STACK TAP, and since #4424's dose leg only that: a single dose row is
-// `DoseStatusControl` posting `setDoseStatus` with the row's day, so this action no
-// longer serves "a stack of one" as its header used to say. What it still holds is the
-// bulk contract — the ids NAME an UPPER BOUND on the write, never an instruction, which
-// is what makes a stale tap on a stack of six safe.
-// `pendingDayDoses` is re-run here against fresh state and the named ids
-// are intersected with it, so a forged id, another profile's dose, a retired dose, a
-// paused item or a dose already resolved from the phone writes nothing — the
+// THE WHOLE-STACK TAP, and since #4424's dose leg only that — a single dose row is
+// `DoseStatusControl` posting the row's day, so this no longer serves "a stack of one"
+// as this header used to say. The bulk contract stands: the ids NAME an UPPER BOUND on
+// the write, never an instruction. `pendingDayDoses` is re-run against fresh state and
+// the named ids intersected with it, so a forged id, another profile's dose, a retired
+// dose, a paused item or a dose already resolved from the phone writes nothing — the
 // `logUsualRoutineCore` contract (#2458), one day further back. Every survivor still
-// goes through the stateful core and can refuse on its own terms, and the answer
-// carries each typed outcome unflattened so the sheet reports what was written rather
-// than what was asked for.
+// goes through the stateful core and can refuse on its own terms, and the answer carries
+// each typed outcome unflattened so the sheet reports what was written, not what was
+// asked for.
 export type DayDoseResolution = {
   doseId: number;
   name: string;

@@ -15,14 +15,11 @@ type DoseRowSettlement = {
   resolved: (doseIds: readonly number[]) => void;
 };
 
-// ONE DATED-DOSE BULK WRITE OWNER (#4316). The quick sheet and Day ledger compose
-// different chrome around the same whole-stack "Take all" row; neither restates its
-// pipeline, action or settlement.
-//
-// THE SINGLE-ROW ARM LEFT WITH #4424's DOSE LEG. Both surfaces used to reach a dose row
-// through here and draw their own buttons around it; the row control is
-// `DoseStatusControl` now, on any day inside the write window. What stays shared is the
-// BULK offer — `dose-day-stack`, whose tap moves on-hand supply for N items at once.
+// ONE DATED-DOSE BULK WRITE OWNER (#4316). The quick sheet and the Day ledger compose
+// different chrome around the same whole-stack "Take all"; neither restates its
+// pipeline, action or settlement. THE SINGLE-ROW ARM LEFT WITH #4424's DOSE LEG — both
+// surfaces used to reach a dose row through here and draw their own buttons around it,
+// and the row control is `DoseStatusControl` now, on any day inside the write window.
 export function useDoseDayResolution({
   date,
   bulkFailureMessage,
