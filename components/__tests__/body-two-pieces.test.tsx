@@ -128,6 +128,37 @@ describe("one form, one field set (#4424 ruling 1)", () => {
     expect(adult).toHaveLength(17);
   });
 
+  // ONE LAYOUT, DIFFERING ONLY IN SEED (#4424 ruling 1's line-budget guard). For this
+  // domain that is stronger than the ruling asks: `insertBodyMetric` is find-then-write
+  // per day, so a sitting resubmitted on a day that already holds a row CORRECTS it and
+  // there is no second action to differ by either. Edit mode is the day's own
+  // `occurred_at` seeded into the Time and nothing else — asserted as the two renders
+  // being the same field set posting the same action, with only the stated instant
+  // apart. A seed that started hiding or adding a field separates the two lists.
+  it("opens seeded from the day's own row without becoming a second layout", async () => {
+    const STATED = "2026-05-20T07:30:00.000Z";
+    render(<MeasurementsQuickAdd defaultDate="2026-05-20" weightUnit="kg" />);
+    const add = renderedFields();
+    cleanup();
+    render(
+      <MeasurementsQuickAdd
+        defaultDate="2026-05-20"
+        defaultStatedAt={STATED}
+        weightUnit="kg"
+      />
+    );
+    expect(renderedFields()).toEqual(add);
+
+    fireEvent.change(screen.getByLabelText("Weight"), {
+      target: { value: "80" },
+    });
+    await act(async () =>
+      fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+    );
+    // The SAME action an unseeded mount posts, carrying the seeded statement back.
+    expect(posted.addMeasurements[0].get("occurred_at")).toBe(STATED);
+  });
+
   // A COLLAPSED GROUP STILL POSTS, which is what lets one field set serve a mount that
   // opens on Body and a mount that opens on Vitals. The sitting below types into two
   // groups and only one of them is open.
