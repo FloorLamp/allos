@@ -560,9 +560,9 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await expect(menu).toBeVisible();
     await expect(page.getByTestId("chart-jump-weight")).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(page.getByTestId("chart-jump-steps")).toBeFocused();
+    await expect(page.getByTestId("chart-jump-resting_hr")).toBeFocused();
     await release();
-    await expect(page.getByTestId("chart-jump-steps")).toBeFocused();
+    await expect(page.getByTestId("chart-jump-resting_hr")).toBeFocused();
 
     await page.keyboard.press("Escape");
     await page
