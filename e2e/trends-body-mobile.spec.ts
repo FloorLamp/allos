@@ -36,6 +36,13 @@ import {
 const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1024, height: 800 };
 
+declare global {
+  interface Window {
+    __holdChartMenuFrames: () => void;
+    __releaseChartMenuFrames: () => Promise<void>;
+  }
+}
+
 type MenuFocus = `item:${string}` | "elsewhere" | "lost";
 
 async function menuFocus(menu: Locator): Promise<MenuFocus> {
@@ -46,6 +53,37 @@ async function menuFocus(menu: Locator): Promise<MenuFocus> {
     if (!item || !element.contains(item)) return "elsewhere";
     return `item:${item.dataset.testid ?? "missing-testid"}`;
   })) as MenuFocus;
+}
+
+async function installFrameGate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const nativeFrame = requestAnimationFrame.bind(window);
+    const nativeCancel = cancelAnimationFrame.bind(window);
+    let held = false;
+    let heldId = 1_000_000;
+    const queued = new Map<number, FrameRequestCallback>();
+    window.__holdChartMenuFrames = () => {
+      held = true;
+    };
+    window.__releaseChartMenuFrames = () =>
+      new Promise<void>((resolve) => {
+        held = false;
+        const callbacks = [...queued.values()];
+        queued.clear();
+        nativeFrame((time) => {
+          for (const callback of callbacks) callback(time);
+          nativeFrame(() => resolve());
+        });
+      });
+    window.requestAnimationFrame = (callback) => {
+      if (!held) return nativeFrame(callback);
+      queued.set(++heldId, callback);
+      return heldId;
+    };
+    window.cancelAnimationFrame = (id) => {
+      if (!queued.delete(id)) nativeCancel(id);
+    };
+  });
 }
 
 async function openBodyTab(
@@ -495,6 +533,47 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     await page.getByTestId("chart-jump-sleep").click();
     await expect(sleepTile).toBeInViewport();
     await expect(page.getByTestId("chart-jump-menu-options")).toHaveCount(0);
+  });
+
+  test("a deferred open focus cannot overwrite a chart-menu keystroke", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TRENDS_BODY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await installFrameGate(page);
+    await page.setViewportSize(DESKTOP);
+    await openBodyTab(page);
+
+    const trigger = page.getByTestId("chart-jump-menu-trigger");
+    const menu = page.getByTestId("chart-jump-menu-options");
+    const hold = () => page.evaluate(() => window.__holdChartMenuFrames());
+    const release = () =>
+      page.evaluate(() => window.__releaseChartMenuFrames());
+
+    await hold();
+    await trigger.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu).toBeVisible();
+    await expect(page.getByTestId("chart-jump-weight")).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByTestId("chart-jump-steps")).toBeFocused();
+    await release();
+    await expect(page.getByTestId("chart-jump-steps")).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await page
+      .locator("#sleep")
+      .evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await expect(trigger).toHaveAttribute("aria-label", /Sleep/);
+    await hold();
+    await trigger.evaluate((element) => element.focus({ preventScroll: true }));
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByTestId("chart-jump-weight")).toBeFocused();
+    await release();
+    await expect(page.getByTestId("chart-jump-sleep")).toBeFocused();
+    await page.context().close();
   });
 
   test("a per-chart #id anchor lands on the chart on load", async ({

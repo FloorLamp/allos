@@ -79,6 +79,13 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
     if (!open) return;
     const index = focusOnOpenIndexRef.current;
     const frame = requestAnimationFrame(() => {
+      // The host owns these two open-time positions. Anything else is a move the
+      // person already made, so this deferred focus must yield to it (#4037).
+      if (
+        document.activeElement !== triggerRef.current &&
+        document.activeElement !== optionRefs.current[0]
+      )
+        return;
       optionRefs.current[index]?.focus();
     });
     return () => cancelAnimationFrame(frame);
