@@ -15,13 +15,7 @@
 //
 // Every value is synthetic (a fake HA webhook URL; no phones, no PHI).
 
-import {
-  describe,
-  it,
-  expect,
-  afterEach,
-  vi,
-} from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,

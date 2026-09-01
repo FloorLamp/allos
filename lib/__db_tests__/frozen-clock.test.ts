@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { now, sqlNow } from "@/lib/clock";
-import { today } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   FROZEN_WALL_TIME_UTC,
   frozenInstantForDay,
@@ -44,10 +44,14 @@ describe("the db/action tiers freeze the clock (#4509)", () => {
     expect(now().toISOString()).toBe(
       `${now().toISOString().slice(0, 10)}T${FROZEN_WALL_TIME_UTC}`
     );
-    // The seam's two write shapes agree with it, and a UTC profile's day is the
-    // frozen day rather than whatever the real calendar has reached.
+    // The seam's write shape agrees with it, and a profile's day — read through the
+    // app's own reader, on the instance-default UTC timezone — is the frozen day.
     expect(sqlNow()).toBe(now().toISOString().slice(0, 19).replace("T", " "));
-    expect(today()).toBe(now().toISOString().slice(0, 10));
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('Frozen Clock')").run()
+        .lastInsertRowid
+    );
+    expect(today(profileId)).toBe(now().toISOString().slice(0, 10));
   });
 
   it("keeps a per-test setSystemTime working, and restores the tier instant after", () => {
