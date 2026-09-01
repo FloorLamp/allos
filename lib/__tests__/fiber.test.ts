@@ -11,6 +11,7 @@ import {
   fiberAdequacySignalKey,
   fiberBasisIsFloor,
   FIBER_ADEQUACY_PREFIX,
+  UNKNOWN_SUPPLEMENT_NOTE,
 } from "@/lib/fiber";
 import { SUPPLEMENT_CATALOG } from "@/lib/supplement-catalog";
 
@@ -143,6 +144,17 @@ describe("fiberIntake composition", () => {
       supplementedGrams: 5,
       unknownSupplement: true,
     });
+  });
+
+  it("keeps an unquantified supplement visible when tracked fiber wins", () => {
+    const i = fiberIntake({
+      dailyTracked: 30,
+      dailyEstimated: 0,
+      unknownSupplement: true,
+    })!;
+
+    expect(i).toMatchObject({ grams: 30, basis: "both-sources" });
+    expect(fiberIntakeSummary(i)).toContain(UNKNOWN_SUPPLEMENT_NOTE);
   });
 
   // The property the #4127 ruling bought, asserted as the comparison it is about rather
