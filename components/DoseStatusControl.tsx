@@ -231,14 +231,18 @@ export default function DoseStatusControl({
             message: "You're offline — reconnect to change a logged dose.",
           };
         const flow = target === "taken" ? "dose" : "skip-dose";
+        const capturedDate = date ?? localDate(tappedAt);
         return {
           kind: "capture",
           flow,
           // THE ROW'S DAY, NOT THE TAP'S: a past-day capture replays against the day
           // it names.
-          date: date ?? localDate(tappedAt),
-          // The server validates the stamp; a skip records no intake time, so it
-          // carries none.
+          date: capturedDate,
+          // Always carry the tap instant. This component has the row's PROFILE-local
+          // day but only the browser's clock — it cannot decide whether those two
+          // calendars call the instant today. Replay owns that comparison in the
+          // profile timezone: a matching day keeps the instant; a mismatched past-day
+          // row becomes deliberately untimed.
           payload: {
             doseId,
             ...(flow === "dose"

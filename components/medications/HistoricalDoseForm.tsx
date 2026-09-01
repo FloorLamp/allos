@@ -63,6 +63,8 @@ export default function HistoricalDoseForm({
   editing,
   subjectProfileId,
   tz: tzProp,
+  repeatAfterAdd = false,
+  onSaved,
   onDone,
 }: {
   /** In the order the mount wants them offered; one item renders no picker. */
@@ -96,6 +98,15 @@ export default function HistoricalDoseForm({
    * the same value for every single-subject mount.
    */
   tz?: string;
+  /**
+   * Keep an add form mounted for another entry. The record Add door uses this to
+   * retain the chosen day while restoring the entry fields to their initial values.
+   * Other add mounts and every edit keep their existing completion behavior.
+   */
+  repeatAfterAdd?: boolean;
+  /** Runs after a successful write; defaults to `onDone` for existing mounts. */
+  onSaved?: () => void;
+  /** Dismisses the form (and remains the success callback when `onSaved` is absent). */
   onDone: () => void;
 }) {
   const contextTz = useTimezone();
@@ -115,6 +126,7 @@ export default function HistoricalDoseForm({
   const [amount, setAmount] = useState(
     editing?.amount ?? initialDose?.amount ?? ""
   );
+  const [adjustSupply, setAdjustSupply] = useState(false);
 
   // SWITCHING THE ITEM RESETS THE DOSE AND ITS AMOUNT. The two wrappers this replaced
   // remounted the form on a `key` for that, throwing away the chosen date with it.
@@ -142,6 +154,21 @@ export default function HistoricalDoseForm({
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();
 
+  function resetAddEntry(): void {
+    const resetItem = items[0];
+    const resetDose = resetItem?.doses[0];
+    setItemId(resetItem?.id ?? 0);
+    setDoseId(resetDose?.id ?? 0);
+    setAmount(resetDose?.amount ?? "");
+    setAdjustSupply(false);
+    setWhen((current) => ({
+      date: current.date,
+      statedAt:
+        statedInstantOnDate(current.date, defaultTime, tz)?.toISOString() ??
+        null,
+    }));
+  }
+
   if (!item || !initialDose) return null;
   const { name: itemName, asNeeded, courseBound } = item;
 
@@ -161,7 +188,8 @@ export default function HistoricalDoseForm({
             ? `Updated dose of ${itemName}.`
             : `Logged past dose of ${itemName}.`
         );
-        onDone();
+        if (!editing && repeatAfterAdd) resetAddEntry();
+        (onSaved ?? onDone)();
       }}
       className="mt-3 space-y-3 border-y border-black/5 py-3 dark:border-white/5"
       data-testid="historical-dose-form"
@@ -263,6 +291,8 @@ export default function HistoricalDoseForm({
             type="checkbox"
             name="adjust_supply"
             value="1"
+            checked={adjustSupply}
+            onChange={(event) => setAdjustSupply(event.target.checked)}
             className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
           />
           <span>

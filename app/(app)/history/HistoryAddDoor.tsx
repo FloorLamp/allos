@@ -417,10 +417,9 @@ export default function HistoryAddDoor({
             initialDate={date}
             maxDate={maxDate}
             defaultTime={vocabulary.doseDefaultTime}
-            onDone={() => {
-              close();
-              router.refresh();
-            }}
+            repeatAfterAdd
+            onSaved={() => router.refresh()}
+            onDone={close}
           />
         );
       case "practice":
