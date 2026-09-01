@@ -224,7 +224,6 @@ export default function QuickDoseList({
                 skipped={false}
                 variant="pill"
                 label="Mark taken"
-                itemName={dose.title}
                 rowLeaves
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);

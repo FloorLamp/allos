@@ -14,6 +14,7 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import Button from "@/components/Button";
 import DoseStatusControl from "@/components/DoseStatusControl";
+import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
@@ -151,6 +152,25 @@ export default function DayLedger({
 
   function note(doseId: number, text: string): void {
     setNotes((prev) => ({ ...prev, [occurrenceKey(date, doseId)]: text }));
+  }
+
+  // WHAT ONE ROW'S CONTROL DID TO THIS DAY, AND THE INVERSE WITH IT. `resolved` is
+  // what this session has written, so a row leaves the due list under the finger that
+  // resolved it rather than waiting on the revalidate — and a CLEAR has to put it
+  // back, or the tri-state's way back would strike a dose off the ledger for good.
+  // The dated arm this replaces could not reach that state at all: `resolveDayDoses`
+  // resolves and never un-resolves.
+  function settleDose(doseId: number) {
+    return (result: DoseStatusResult) => {
+      if (!result.ok) return note(doseId, result.error);
+      setResolved((prev) => {
+        const next = new Set(prev);
+        const key = occurrenceKey(date, doseId);
+        if (result.outcome === "cleared") next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    };
   }
 
   const { resolveAll, bulkBlocked } = useDoseDayResolution({
@@ -330,15 +350,10 @@ export default function DayLedger({
         <DoseStatusControl
           doseId={dose.doseId}
           date={date}
-          itemName={dose.name}
           taken={false}
           skipped={false}
           variant="circle"
-          onSettled={(result) =>
-            result.ok
-              ? markResolved([dose.doseId])
-              : note(dose.doseId, result.error)
-          }
+          onSettled={settleDose(dose.doseId)}
         />
       </li>
     );
@@ -458,10 +473,10 @@ export default function DayLedger({
             <DoseStatusControl
               doseId={row.doseId}
               date={date}
-              itemName={row.name}
               taken={row.status === "taken"}
               skipped={row.status === "skipped"}
               variant="circle"
+              onSettled={settleDose(row.doseId)}
             />
           )}
         </li>

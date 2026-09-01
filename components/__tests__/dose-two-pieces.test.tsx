@@ -330,6 +330,9 @@ describe("one dose row control, any writable day (#4424 ruling 3)", () => {
     });
   });
 
+  // The CLEAR's other half — a cleared dose returning to the due list — is only
+  // observable across the revalidate that re-derives the day, so it is pinned in
+  // e2e/dose-skip.spec.ts's take → skip → clear round trip rather than here.
   it("takes a resolved past day back, which the dated arm could not", async () => {
     renderLedger(YESTERDAY);
     const logged = screen.getByTestId("ledger-dose-55");

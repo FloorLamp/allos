@@ -92,8 +92,10 @@ export default function DoseStatusControl({
    */
   date?: string;
   /**
-   * WHICH DOSE, for the accessible name (#2615 item 2) — a list of dose rows otherwise
-   * announces "Mark taken" N times. Absent where the row's own heading says it.
+   * WHICH DOSE, for the accessible name (#2615 item 2). Carried by the quick sheet's
+   * switched-day rows, whose own buttons named their dose before they became mounts of
+   * this control. Absent elsewhere — including the ledger, which never named one, so
+   * this leg moves no shipped accessible name.
    */
   itemName?: string;
   /** What the ROW does with the answer; absent on a row that just re-renders. */

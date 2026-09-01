@@ -108,9 +108,7 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
     renderSheet();
 
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Mark taken — Creatine" })
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
     });
     const after = Date.now();
 
@@ -139,9 +137,7 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
     renderSheet();
 
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Mark taken — Creatine" })
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
     });
 
     expect(mocks.enqueue).not.toHaveBeenCalled();
