@@ -281,10 +281,20 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
+    // WRONG, AND THE TYPE CANNOT SAY SO — flagged rather than asserted (#3143 review).
+    // `none` means "the row has no instant column to state into", and both halves of
+    // that are now false: `practice_logs` carries `start_time`/`end_time` (#3142), and
+    // the quick sheet's restored "Happened earlier?" states an END that
+    // `logFinishedPracticeSession` accepts. The truthful value would be `judged`, which
+    // the type requires a shared seam for — and practice validates its stated end
+    // inline instead of through `judgeStatedAt`. So `none` stays because it is the only
+    // representable value, not because it is the answer. Settle it by routing the
+    // stated end through the seam, or by giving the union an arm for a domain that
+    // judges its own; both are rulings, not edits.
     statedTime: {
       kind: "none",
       reason:
-        "No quick door collects a stated instant — but not for the reason this row used to give. `practice_logs` DOES carry one now (#3142's `start_time`/`end_time`, written by every tap: the tap instant, a live Start, a just-finished end), so 'a statement with nowhere to be stored' is simply false. What survives is the conclusion: the app STAMPS the tap and nobody STATES it. The quick-log sheet's 'Happened earlier?' control, which did collect one, is absent here and its restoration is parked on #3273; the expanded `PracticeSessionForm` is the door that takes a stated window, and it is not a quick door.",
+        "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
       ref: "#3143",
     },
     offline: { kind: "covered", flow: "practice" },

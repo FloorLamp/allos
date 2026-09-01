@@ -1443,9 +1443,10 @@ nudge line may name the rhythm ("usually Mon/Wed/Fri") — data, not advice.
 **Every one-tap practice log now records what it shows (#2204, owner ruling).** The
 inline duration stepper is on all three practice affordances — the quick-log
 sheet, the Wellness card, and the protocol detail card — each rendering
-`practiceDurationPrefill` over the practice's USUAL recorded duration (its most
-common positive value over the trailing sessions, one bounded vote every surface
-takes, #4384 Fix 5). `LogPracticeButton` routes the stepper's render
+`getPracticeUsualDuration` — the practice's most common recorded duration across
+every stored spelling of its identity, one query both surfaces read so the card
+and the sheet cannot offer different defaults (#4384 Fix 5). `LogPracticeButton`
+routes the stepper's render
 and the tap's write through ONE `stepperShown` expression, so no surface can
 post a duration that is not on screen. The expanded modal survives where it
 already was (`showDetails`): it owns the past date, the corrected time and the
@@ -1463,8 +1464,11 @@ profile's today, so a backdated correction never acquires a fabricated instant. 
 **"Done ✅"** button (`pdone:<profileId>:<targetId>:<token>`, ids only) that logs
 one session for TODAY through the shared write core
 (`logFinishedPracticeByTargetId` → `logFinishedPracticeSession`, #3143's
-just-finished semantics — and, while a live session is running, its END rather
-than a second row); the handler answers from the typed `PracticeLogOutcome`
+just-finished semantics): the chat shows no duration, so the only honest write is
+its observed END tap — start and duration stay null rather than being fabricated
+from a value nobody saw. While a live session is running that tap ENDS it rather
+than opening a second row, which is the chat's only way to close a lifecycle it
+has no End button for; the handler answers from the typed `PracticeLogOutcome`
 (never an unconditional confirm — a session log is NOT idempotent, multi-session
 days are supported) and CONSUMES the tapped button (siblings survive) so a stale
 message can’t double-log.
