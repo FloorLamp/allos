@@ -16,7 +16,9 @@
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -34,6 +36,9 @@ import {
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
 import { buildIntent, type VitalsPayload } from "@/lib/offline/queue";
 import { setTimezone } from "@/lib/settings";
+import SourceComparison from "@/app/(app)/trends/SourceComparison";
+import SleepPage from "@/app/(app)/sleep/page";
+import { seedActor } from "@/lib/__action_tests__/harness";
 
 // UTC-pinned so a stored instant IS the wall clock and every wake-day is
 // hand-checkable. The zone-sensitive cases below set their own zone.
@@ -90,6 +95,24 @@ const rowsOn = (profileId: number, date: string) =>
     value: number;
     source: string;
   }[];
+
+// THE CLOCK IS PINNED so this file's dated fixtures stay in the PAST. #4425's owner
+// ruling gave every domain write core the same date invariant — any real past day,
+// never the future — and these fixtures state fixed calendar days that would age
+// across that boundary as the real clock moves. Pinning is how the repo already keeps
+// such a file honest; the alternative is a suite that is green today and red later.
+const PINNED_NOW = "2026-12-01T12:00:00.000Z";
+let priorNow: string | undefined;
+
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
 
 describe("a typed night fills a gap the wearable missed (#1851)", () => {
   // THE CASE THE RULING IS ABOUT. 30 ring overnights, one of which the ring never
@@ -198,18 +221,19 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
     }
   );
 
-  // FINDING 1, PINNED AS THE RESIDUAL IT IS. Per-night resolution removes the harm
-  // the 90-day picker bound caused — nothing above needed the picker — but the bound
-  // itself is untouched by this change, and a claim that it is fixed would be false.
-  // This asserts the picker's ACTUAL reachability predicate: `SourceComparison`
-  // returns null below two series, over exactly the range `sleep/page.tsx` passes.
+  // FINDING 1, PINNED AS THE OWNER-ACCEPTED RESIDUAL. Per-night resolution removes
+  // the harm the 90-day picker bound caused, but the bound itself stays. This asserts
+  // the picker's ACTUAL reachability predicate: `SourceComparison` renders the
+  // supplied explanation rather than controls below two in-window series.
   //
   // The second expectation is this guard's own CONTROL rather than a second claim:
   // unbounded, both sources are there to choose between. So what hides the picker is
   // the range `sleep/page.tsx` passes and nothing else — which is what makes the
   // first expectation a statement about the bound instead of about the fixture.
-  it("still offers no picker for a device stream older than 90 days", () => {
-    const id = makeProfile("SleepPickerOutOfRange");
+  it("explains the bounded picker when an older device is outside it", async () => {
+    const { profile } = seedActor();
+    const id = profile.id;
+    setTimezone(id, "UTC");
     const wakeDay = today(id);
     upsertMetricSamples(
       id,
@@ -226,6 +250,30 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
       pageWindow.to
     );
     expect(inWindow.map((s) => s.source)).toEqual(["manual"]);
+    const html = renderToStaticMarkup(
+      createElement(SourceComparison, {
+        profileId: id,
+        weightUnit: "kg",
+        metricKey: "sleep_min",
+        range: pageWindow,
+        emptyState: createElement(
+          "p",
+          null,
+          "Sleep sources are chosen separately for each night."
+        ),
+      })
+    );
+    expect(html).toContain(
+      "Sleep sources are chosen separately for each night."
+    );
+    expect(html).not.toContain('data-testid="source-comparison"');
+    const pageTree = JSON.stringify(await SleepPage());
+    expect(pageTree).toContain(
+      `"range":{"from":"${pageWindow.from}","to":"${pageWindow.to}"}`
+    );
+    expect(pageTree).toContain(
+      "Source controls appear when two sources have data in the last 90 days."
+    );
     // Which is the whole of the residual: unbounded, both sources are there to
     // choose between, so the bound is the only thing hiding the control.
     expect(
@@ -233,6 +281,16 @@ describe("a typed night fills a gap the wearable missed (#1851)", () => {
         .map((s) => s.source)
         .sort()
     ).toEqual(["manual", "oura"]);
+    const unboundedHtml = renderToStaticMarkup(
+      createElement(SourceComparison, {
+        profileId: id,
+        weightUnit: "kg",
+        metricKey: "sleep_min",
+        emptyState: createElement("p", null, "No source controls"),
+      })
+    );
+    expect(unboundedHtml).toContain('data-testid="source-comparison"');
+    expect(unboundedHtml).not.toContain("No source controls");
   });
 });
 

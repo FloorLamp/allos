@@ -75,13 +75,18 @@ function stubCurl(dir: string, issue: Record<string, unknown>): string {
   return bin;
 }
 
-/** A stub `curl` that FAILS the way --fail-with-body fails: body, exit 22. */
-function failingCurl(dir: string, body: string): string {
+/** A stub `curl` that FAILS each issue read with its configured body, exit 22. */
+function failingCurl(dir: string, bodies: Record<string, string>): string {
   const bin = path.join(dir, "bin");
   fs.mkdirSync(bin, { recursive: true });
   fs.writeFileSync(
     path.join(bin, "curl"),
-    `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(body)});\nprocess.exit(22);\n`,
+    `#!${process.execPath}
+const bodies = ${JSON.stringify(bodies)};
+const issue = process.argv.at(-1).match(/\\/issues\\/(\\d+)$/)?.[1];
+process.stdout.write(bodies[issue] ?? "");
+process.exit(22);
+`,
     { mode: 0o755 }
   );
   return bin;
@@ -90,7 +95,8 @@ function failingCurl(dir: string, body: string): string {
 function runNew(
   dir: string,
   bin: string,
-  extraEnv: Record<string, string> = {}
+  extraEnv: Record<string, string> = {},
+  issues = "4347"
 ) {
   return spawnSync(
     process.execPath,
@@ -100,7 +106,7 @@ function runNew(
       "--branch",
       "stale-lane-4347",
       "--issues",
-      "4347",
+      issues,
       "--priority",
       "P2",
       "--lane",
@@ -192,31 +198,26 @@ describe("unreachableIssueWarning", () => {
 });
 
 describe("dispatch-brief.mjs new, when GitHub does not answer", () => {
-  it.each([
-    [
-      '{"message":"Not Found","status":"404"}',
-      "no such issue (404) — mistyped --issues?",
-      "a mistyped number gets a named message, not a stack trace",
-    ],
-    [
-      '{"message":"API rate limit exceeded"}',
-      "API rate limit exceeded",
-      "a rate limit is quoted as GitHub sent it",
-    ],
-    [
-      // The row that can REACH the token: with no body there is nothing to
-      // quote but err.message, and that is the whole curl command.
-      "",
-      "curl exited 22",
-      "a proxy blip answers with no body at all",
-    ],
-  ])("%#: %s", (body, expected, _why) => {
+  it("warns with every failure shape, then dispatches without exposing the token", () => {
     const dir = makeTmpDir("dispatch-unreachable");
-    const run = runNew(dir, failingCurl(dir, body));
+    const run = runNew(
+      dir,
+      failingCurl(dir, {
+        "404": '{"message":"Not Found","status":"404"}',
+        "429": '{"message":"API rate limit exceeded"}',
+        // With no body there is nothing to quote but err.message, and that is the
+        // whole curl command — the row that can reach the token.
+        "500": "",
+      }),
+      {},
+      "404,429,500"
+    );
     // Warn and DISPATCH, in the no-token path's voice.
     expect(run.status).toBe(0);
     expect(run.stderr).toContain("GITHUB DID NOT ANSWER");
-    expect(run.stderr).toContain(expected as string);
+    expect(run.stderr).toContain("no such issue (404) — mistyped --issues?");
+    expect(run.stderr).toContain("API rate limit exceeded");
+    expect(run.stderr).toContain("curl exited 22");
     expect(run.stderr).not.toContain("REFUSED");
     // execFileSync's own message carries the whole command; quoting it here
     // would print the Bearer token, which is what the crash path did.

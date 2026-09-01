@@ -15,7 +15,15 @@
 //     pairing is the whole risk of the relocation — "the entry surface moved,
 //     storage did not" has to be a test, not a claim.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  vi,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
@@ -74,6 +82,25 @@ function sampleValue(profileId: number, metric: string): number | undefined {
       .get(profileId, metric) as { value: number } | undefined
   )?.value;
 }
+
+// THE CLOCK IS PINNED so this file's dated fixtures stay in the PAST, and so the
+// FUTURE-statement case below is deterministic. #4425's owner ruling gave every domain
+// write core the same date invariant — any real past day, never the future — so the
+// refused-statement fixture can no longer reach for a far-future DATE to make the
+// `future` reason deterministic; it states a later hour of the pinned DAY instead,
+// which is the shape a real fast device clock produces anyway.
+const PINNED_NOW = "2026-05-20T09:00:00.000Z";
+let priorNow: string | undefined;
+
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
 
 describe("addMeasurements — one form, three stores", () => {
   it("writes body composition, vitals and growth from a single submission", async () => {
@@ -301,7 +328,10 @@ describe("addMeasurements — one form, three stores", () => {
 
     // A device clock past the five-minute tolerance — the reproduction the issue
     // names. The tolerance does not move; the silence does.
-    const ahead = "2099-06-01";
+    // A later hour of the pinned DAY rather than a far-future date: the row's own day
+    // must be past for the core to take it at all (#4425), and a fast device clock
+    // produces exactly this — today's row, an instant beyond the tolerance.
+    const ahead = "2026-05-20";
     expect(
       await addMeasurements(
         fd({
@@ -518,5 +548,81 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     // Food tab shows are scaled by lean mass rather than by total bodyweight.
     expect(after!.target.gramsLow).toBeLessThan(before!.target.gramsLow);
     expect(after!.target.gramsHigh).toBeLessThan(before!.target.gramsHigh);
+  });
+  // ALL FIVE CORES, ONE ANSWER (#4425 review). The sitting fans out across
+  // `insertBodyMetric`, `insertVitals`, `insertGrowth`, `insertWaistCirc` and
+  // `insertComposition`; when only the first two held the not-future invariant the
+  // form wrote its tape reading and dropped its weigh-in — a PARTIAL sitting, under a
+  // "Measurements saved" toast. The table names each store so a core that drifts back
+  // says which one it was.
+  it.each([
+    ["body_metrics", (p: number) => bodyRows(p).length],
+    [
+      "medical_records",
+      (p: number) => medRows(p, "Blood Pressure Systolic").length,
+    ],
+    [
+      "height (growth)",
+      (p: number) => (sampleValue(p, "height_cm") == null ? 0 : 1),
+    ],
+    [
+      "waist (tape)",
+      (p: number) => (sampleValue(p, "waist_circumference_cm") == null ? 0 : 1),
+    ],
+    [
+      "lean mass (composition)",
+      (p: number) => (sampleValue(p, "lean_mass_kg") == null ? 0 : 1),
+    ],
+  ])(
+    "writes no %s row for a sitting dated after the profile's day",
+    async (_store, count) => {
+      const { profile } = seedActor();
+      pinUtc(profile.id);
+      const tomorrow = "2026-05-21";
+      expect(tomorrow > today(profile.id)).toBe(true);
+
+      await addMeasurements(
+        fd({
+          date: tomorrow,
+          weight: "80",
+          weight_unit: "kg",
+          systolic: "118",
+          diastolic: "76",
+          height: "180",
+          height_unit: "cm",
+          waist_circ: "82",
+          waist_circ_unit: "cm",
+          lean_mass: "56",
+          lean_mass_unit: "kg",
+        })
+      );
+
+      expect(count(profile.id)).toBe(0);
+    }
+  );
+
+  // AND THE FORM IS TOLD. Nothing written is only half the contract: this action's
+  // result carries no error channel but the two NOTICE fields, so a refused day used
+  // to answer `{}` — byte-identical to a clean save that stated no time — and the form
+  // toasted "Measurements saved" over an empty table. `dateRefused` is what
+  // `MeasurementsQuickAdd` reads to `setError` instead of toasting.
+  it("answers a day-ahead sitting with a refusal the form can render", async () => {
+    const { profile } = seedActor();
+    pinUtc(profile.id);
+
+    expect(
+      await addMeasurements(
+        fd({ date: "2026-05-21", weight: "80", weight_unit: "kg" })
+      )
+    ).toEqual({ dateRefused: true });
+
+    // The converse, through the SAME call: an ordinary save still answers with no
+    // refusal, so the field cannot pass by being set on everything.
+    expect(
+      await addMeasurements(
+        fd({ date: today(profile.id), weight: "80", weight_unit: "kg" })
+      )
+    ).toEqual({});
+    expect(bodyRows(profile.id)).toHaveLength(1);
   });
 });

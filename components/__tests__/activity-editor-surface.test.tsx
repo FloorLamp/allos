@@ -15,6 +15,8 @@ import { LOGGED_VIA_FIELD, type WebLoggedVia } from "@/lib/logged-via";
 // the FormData the real `startWorkout` was called with.
 
 const posted: FormData[] = [];
+const discarded: FormData[] = [];
+let discardKind: "discarded" | "kept" = "kept";
 /** Every region the mounted editor has declared, in order. */
 const editorRegion: WebLoggedVia[] = [];
 /** The same, as seen by the workout dock — which sits in that region while CLOSED. */
@@ -25,7 +27,10 @@ vi.mock("@/app/(app)/training/activity-actions", () => ({
     posted.push(fd);
     return { ok: true as const, id: 7 };
   }),
-  discardWorkout: vi.fn(async () => ({ ok: true as const })),
+  discardWorkout: vi.fn(async (fd: FormData) => {
+    discarded.push(fd);
+    return { kind: discardKind };
+  }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -43,21 +48,32 @@ vi.mock("@/app/(app)/log-sheet-actions", () => ({
 // region — so the stand-in reads that region the same way ActivityForm's
 // `useLoggedViaStamp()` does, and every assertion below about "the editor's region" is
 // read off a component actually mounted in it rather than off provider state.
-function OverlayStandIn({ onClose }: { onClose: () => void }) {
+function OverlayStandIn({
+  onClose,
+  onLiveFinished,
+}: {
+  onClose: () => void;
+  onLiveFinished?: () => void;
+}) {
   editorRegion.push(useLoggedVia());
   return (
-    <button data-testid="activity-overlay" onClick={onClose}>
-      close
-    </button>
+    <>
+      <button data-testid="activity-overlay" onClick={onClose}>
+        close
+      </button>
+      <button data-testid="finish-live" onClick={onLiveFinished}>
+        finish
+      </button>
+    </>
   );
 }
 vi.mock("../ActivityOverlay", () => ({ default: OverlayStandIn }));
 // The dock is the OTHER thing inside the editor's region, and the only one still
 // mounted while the editor is closed — which is exactly the window in which a stale
 // declaration used to survive.
-function DockStandIn() {
+function DockStandIn({ onOpen }: { onOpen: () => void }) {
   dockRegion.push(useLoggedVia());
-  return <div data-testid="workout-dock" />;
+  return <button data-testid="workout-dock" onClick={onOpen} />;
 }
 vi.mock("../WorkoutDock", () => ({ default: DockStandIn }));
 vi.mock("../QuickEntryProvider", () => ({
@@ -96,6 +112,8 @@ function renderShell(children: React.ReactNode) {
 
 beforeEach(() => {
   posted.length = 0;
+  discarded.length = 0;
+  discardKind = "kept";
   editorRegion.length = 0;
   dockRegion.length = 0;
   window.matchMedia ??= ((q: string) => ({
@@ -109,6 +127,47 @@ beforeEach(() => {
     dispatchEvent: () => false,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   })) as any;
+});
+
+describe("a server-hydrated live workout", () => {
+  const shell = (id: number) => (
+    <TimezoneProvider tz="UTC">
+      <ActivityEditorProvider
+        {...PROVIDER_PROPS}
+        presence={{
+          state: "active",
+          activityId: id,
+          title: "Push",
+          stale: false,
+        }}
+        liveEditData={{ id, title: "Push", type: "strength" }}
+      >
+        <div />
+      </ActivityEditorProvider>
+    </TimezoneProvider>
+  );
+
+  it("does not resurrect the finished presence, but admits the next session", async () => {
+    const { rerender } = render(shell(9));
+    await act(async () => screen.getByTestId("workout-dock").click());
+    await act(async () => screen.getByTestId("finish-live").click());
+    await act(async () => screen.getByTestId("activity-overlay").click());
+    expect(screen.queryByTestId("workout-dock")).toBeNull();
+
+    rerender(shell(10));
+    await screen.findByTestId("workout-dock");
+  });
+
+  it("keeps the existing empty-session discard suppression", async () => {
+    discardKind = "discarded";
+    render(shell(9));
+    await act(async () => screen.getByTestId("workout-dock").click());
+    await act(async () => screen.getByTestId("activity-overlay").click());
+    await waitFor(() => expect(discarded).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByTestId("workout-dock")).toBeNull()
+    );
+  });
 });
 
 const surfaceOf = (fd: FormData) => fd.get(LOGGED_VIA_FIELD);

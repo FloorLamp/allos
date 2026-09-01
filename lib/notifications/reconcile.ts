@@ -1431,9 +1431,10 @@ async function reconcilePointer(
   // affordance until Telegram's edit horizon passes.
   const legacyRedose =
     pointer.kind === "redose" && tokens.some((t) => tokenPrefix(t) === "prn");
-  const inert = inertTokens(tokens, tokenPrefix);
   const family = owningFamily(tokens, tokenPrefix);
   const reconciler = family ? FAMILIES[family] : null;
+  const expired = messageExpiry(family, pointer.date, td);
+  const inert = inertTokens(tokens, tokenPrefix, expired !== null);
 
   // An UNKNOWN or claim-less keyboard is left exactly as it is: failing safe means
   // never closing a message nobody has reasoned about.
@@ -1450,7 +1451,7 @@ async function reconcilePointer(
     keyboard: pointer.keyboard,
     dead,
     inert,
-    expired: messageExpiry(family, pointer.date, td),
+    expired,
   });
 
   // WHAT this pass intends to do, decided BEFORE anything touches the network — so

@@ -5,6 +5,7 @@ import { loginAs } from "./nav";
 import {
   expectNoClippedContent,
   expectPhoneTapTargets,
+  openDashboardAll,
   settledBoxes,
 } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -454,6 +455,15 @@ test("a cold-start profile's tier is the getting-started list", async ({
         .getByTestId("dashboard-everything-setup")
         .locator('[data-testid="dashboard-candidate"][data-presence="never"]')
     ).not.toHaveCount(0);
+    await openDashboardAll(page);
+    const vitals = page.locator('[data-candidate-id="vitals.bootstrap"]');
+    await expect(vitals).toContainText("Vitals");
+    await vitals.getByRole("button", { name: "Log a vital" }).click();
+    const quickEntry = page.getByTestId("quick-entry-body");
+    await expect(quickEntry).toHaveAttribute("data-form", "measurements");
+    await expect(
+      quickEntry.locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
   } finally {
     await page.context().close();
   }

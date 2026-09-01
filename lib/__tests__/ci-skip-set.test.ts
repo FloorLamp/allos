@@ -224,7 +224,11 @@ function offendersIn(
   skipped: readonly string[]
 ): string[] {
   const out: string[] = [];
+  const markers = [
+    ...new Set(skipped.map((dir) => path.posix.basename(dir.slice(0, -1)))),
+  ];
   for (const { file, src } of files) {
+    if (!markers.some((marker) => src.includes(marker))) continue;
     for (const spec of importSpecifiers(src)) {
       const resolved = resolveSpecifier(file, spec);
       if (skipped.some((dir) => resolved.startsWith(dir)))
@@ -302,24 +306,6 @@ describe("the CI no-runtime-surface skip set", () => {
 // spelled (#2677): each case below is a reach that would have to fail, run through
 // the same `offendersIn` the real census uses.
 describe("the skip-set scan's reach", () => {
-  it("sees the RELATIVE form, which is the one the repo actually writes", () => {
-    // #2769's mutation, made permanent. Against the pre-fix matcher this exact
-    // file passed — a runtime-reachable `lib/` module importing the shared scanner
-    // that lives in a skipped directory, invisible because the specifier does not
-    // literally begin with `lib/`.
-    expect(
-      offendersIn(
-        [
-          {
-            file: "lib/queries/probe.ts",
-            src: 'import { x } from "../__db_tests__/migration-link-scan";',
-          },
-        ],
-        verifiedDirs()
-      )
-    ).toEqual(["lib/queries/probe.ts → ../__db_tests__/migration-link-scan"]);
-  });
-
   it("sees a reach into scripts/orchestration, which is CODE", () => {
     // #2786's mutation. Against the pre-fix scan — whose verified set was the
     // entries starting with `lib/` — every one of these returned nothing, because
@@ -352,6 +338,7 @@ describe("the skip-set scan's reach", () => {
 
   it("sees one reach in every spelling, from every scanned root", () => {
     const reaches = [
+      // #2769's exact regression: the relative form a `lib/` sibling writes.
       ["lib/queries/probe.ts", "../__db_tests__/migration-link-scan"],
       ["lib/queries/probe.ts", "@/lib/__db_tests__/migration-link-scan"],
       ["lib/queries/probe.ts", "lib/__db_tests__/migration-link-scan"],

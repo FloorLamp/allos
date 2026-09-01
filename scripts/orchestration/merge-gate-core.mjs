@@ -1,0 +1,112 @@
+// Pure verdicts for merge-gate.mjs. The CLI owns GitHub reads and process exits;
+// this module owns decisions so their full matrix does not need a fresh process.
+
+const ASSERTS_INDEPENDENCE =
+  /\b(?:did not|didn'?t)\s+(?:author|write)\b|\bindependent(?:ly)?\s+review/i;
+
+export function readinessVerdict(pr) {
+  const failures = [];
+  if (pr.state !== "open") {
+    failures.push(`PR is ${pr.merged ? "merged" : pr.state}`);
+  }
+  if (pr.draft) {
+    failures.push(
+      "PR is DRAFT — PRs open READY (environment.md §GitHub access)"
+    );
+  }
+  return { failures, ready: !pr.draft };
+}
+
+export function receiptVerdict(pr, reviews, head = pr.head.sha) {
+  const statesHead = (body) =>
+    [...(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].some((match) =>
+      head.startsWith(match[0])
+    );
+  const receiptShaped = (review) =>
+    ["COMMENTED", "APPROVED"].includes(review.state) && statesHead(review.body);
+  const receipt = reviews.find(
+    (review) => review.user?.login !== pr.user?.login && receiptShaped(review)
+  );
+  const sharedReceipt = receipt
+    ? null
+    : reviews.find(
+        (review) =>
+          review.user?.login === pr.user?.login &&
+          receiptShaped(review) &&
+          ASSERTS_INDEPENDENCE.test(review.body ?? "")
+      );
+  if (receipt) {
+    return {
+      ok: true,
+      message: `exact-head receipt: ${receipt.user.login} states ${head.slice(0, 8)}`,
+    };
+  }
+  if (sharedReceipt) {
+    return {
+      ok: true,
+      message:
+        `exact-head receipt (shared identity): ${sharedReceipt.user.login} states ` +
+        `${head.slice(0, 8)} and asserts they did not author the change`,
+    };
+  }
+
+  const unasserted = reviews.find(
+    (review) => review.user?.login === pr.user?.login && receiptShaped(review)
+  );
+  const staleReceipt = reviews.find(
+    (review) =>
+      review.user?.login !== pr.user?.login &&
+      /[0-9a-f]{8,40}/.test(review.body ?? "")
+  );
+  return {
+    ok: false,
+    message: unasserted
+      ? `a review by the PR's own account states ${head.slice(0, 8)} but does ` +
+        "not assert independence — on a shared identity the receipt must SAY " +
+        "the reviewer did not author the change (#4258); re-post the review " +
+        "with that statement"
+      : staleReceipt
+        ? `no receipt for ${head.slice(0, 8)} — the head changed since ` +
+          `${staleReceipt.user.login}'s review, which VOIDS it; re-review this head`
+        : "no exact-head receipt: no review states this head SHA",
+  };
+}
+
+export function checkRunsVerdict(allRuns, ignoreCheck, head) {
+  const checkRuns = allRuns.filter((run) => run.name !== ignoreCheck);
+  const pending = checkRuns.filter((run) => run.status !== "completed");
+  const red = checkRuns.filter(
+    (run) =>
+      run.status === "completed" &&
+      !["success", "neutral", "skipped"].includes(run.conclusion)
+  );
+  const ignored = Boolean(ignoreCheck && allRuns.length !== checkRuns.length);
+  if (checkRuns.length === 0 || pending.length) {
+    return {
+      kind: "incomplete",
+      ignored,
+      message:
+        `CI INCOMPLETE on ${head.slice(0, 8)}: ${checkRuns.length} registered, ` +
+        `${pending.length} pending. Not a verdict — run ci-watch.mjs to settlement.`,
+    };
+  }
+  if (red.length) {
+    return {
+      kind: "fail",
+      ignored,
+      message: `red checks on this head: ${red.map((run) => run.name).join(", ")}`,
+    };
+  }
+  return {
+    kind: "pass",
+    ignored,
+    message: `all ${checkRuns.length} checks green on this head`,
+  };
+}
+
+export function closedStatusDescription(failure) {
+  const description = `gate CLOSED — ${failure.replace(/\s+/g, " ").trim()}`;
+  return description.length <= 140
+    ? description
+    : `${description.slice(0, 137)}...`;
+}

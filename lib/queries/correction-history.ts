@@ -5,8 +5,8 @@
 // deliberately CROSS-DOMAIN: the thing the hint teaches is a single behaviour, so a
 // profile that learned it on a dose knows it on food and must not be told again.
 //
-// NO NEW STORED STATE. Both ledgers already carry the two instants a correction moves
-// apart, so this is two LIMIT 1 probes over rows the correction feature already reads,
+// NO NEW STORED STATE. Food/dose carry both instants; practice's date + start time is
+// composed through its profile zone, all over rows the correction feature already reads,
 // rather than a `notify_*` send marker owing a cadence, a retention rule and a sweep for
 // a fact the ledger answers directly.
 //
@@ -17,6 +17,8 @@
 
 import { hoistedStatement } from "../db";
 import { CORRECTED_MARK_MS } from "../correction-time";
+import { eventInstant, recordInstant } from "../row-instants";
+import { getTimezone } from "../settings";
 
 // THE TOLERANCE IS THE MARKER'S, NEVER A SECOND LITERAL: `CORRECTED_MARK_MS` decides
 // whether a burst's row says "(corrected)", so reusing it keeps the hint and that marker
@@ -61,6 +63,10 @@ const DOSE_CORRECTION_STMT = hoistedStatement(
     LIMIT 1`
 );
 
+const PRACTICE_CORRECTION_STMT = hoistedStatement(
+  `SELECT date, start_time, created_at FROM practice_logs WHERE profile_id = ? AND edited = 1 AND start_time IS NOT NULL`
+);
+
 export function hasCorrectedFoodTime(profileId: number): boolean {
   return FOOD_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined;
 }
@@ -69,8 +75,29 @@ export function hasCorrectedDoseTime(profileId: number): boolean {
   return DOSE_CORRECTION_STMT.get(profileId, CORRECTED_MARK_S) !== undefined;
 }
 
+export function hasCorrectedPracticeTime(profileId: number): boolean {
+  const tz = getTimezone(profileId);
+  const rows = PRACTICE_CORRECTION_STMT.all(profileId) as Array<{
+    date: string;
+    start_time: string;
+    created_at: string;
+  }>;
+  return rows.some((row) => {
+    const tap = recordInstant("practice_logs", row);
+    const stated = eventInstant("practice_logs", row, tz);
+    if (!tap.known || !stated.known) return false;
+    return (
+      Math.abs(Date.parse(stated.at) - Date.parse(tap.at)) > CORRECTED_MARK_MS
+    );
+  });
+}
+
 // The gate itself: one OR, so no surface can ask a per-domain version of this question.
 // Food first because it is a single-table probe where the dose one joins twice.
 export function hasCorrectedAnyTime(profileId: number): boolean {
-  return hasCorrectedFoodTime(profileId) || hasCorrectedDoseTime(profileId);
+  return (
+    hasCorrectedFoodTime(profileId) ||
+    hasCorrectedDoseTime(profileId) ||
+    hasCorrectedPracticeTime(profileId)
+  );
 }

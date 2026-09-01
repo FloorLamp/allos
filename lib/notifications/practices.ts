@@ -47,11 +47,13 @@ import {
   correctableBursts,
   correctionActions,
   correctionBodyStatement,
+  correctionHintLine,
   correctionOffScopeStatement,
   correctionPickerActions,
   correctionPickerTitle,
   PRACTICE_TIME_PREFIXES,
 } from "./correction-rows";
+import { hasCorrectedAnyTime } from "../queries/correction-history";
 import {
   offeredHours,
   type CorrectionBurst,
@@ -473,6 +475,12 @@ function practiceCorrection(
         // toast saying "Session time updated" above a body saying only that moving it
         // would change its day. What may be OFFERED is bounded; what is RECORDED is not.
         correctionBodyStatement(bursts, tz, now),
+    open
+      ? null
+      : correctionHintLine(
+          PRACTICE_TIME_PREFIXES,
+          actions.length === 0 || hasCorrectedAnyTime(profileId)
+        ),
     correctionOffScopeStatement(offScope, tz),
   ].filter((l): l is string => l != null);
   return { actions, statement: lines.length > 0 ? lines.join("\n") : null };

@@ -8,7 +8,8 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
+import { db, today } from "@/lib/db";
 import {
   logSymptom,
   editSymptom,
@@ -330,5 +331,74 @@ describe("profile scoping", () => {
     actAs(b, pb);
     expect(getSymptomsOnDate(pb.id, DATE)).toEqual([]);
     expect(getSymptomsOnDate(pa.id, DATE)).toHaveLength(1);
+  });
+});
+
+// THE DATE RULE (#4425, owner ruling 2026-08-31). Symptoms were the one logged domain
+// with NO date bound at all: the action shape-checked `\d{4}-\d{2}-\d{2}` (not
+// `isRealIsoDate`) and the core bounded nothing, so a post could file a symptom-day on
+// any string that looked like a date. The rule that replaced it is the one every domain
+// core now holds — ANY REAL PAST DAY, NEVER THE FUTURE — and it is deliberately open in
+// the past: `/history`'s day view mounts this same bar against the day being read, so
+// bounding the action would have made older days neither loggable nor correctable.
+describe("logSymptom — the #4425 date rule", () => {
+  it.each([
+    ["today", 0, true],
+    ["two days back", 2, true],
+    // The days a window would have refused, and the reason the ruling opened them:
+    // this is what the record's day view posts.
+    ["a month back", 31, true],
+    ["two years back", 730, true],
+    ["tomorrow", -1, false],
+  ])("%s: accepted=%s", async (_label, back, accepted) => {
+    const login = createLogin();
+    const profile = createProfile(`reach-${back}`, login.id);
+    actAs(login, profile);
+
+    const day = shiftDateStr(today(profile.id), -back);
+    const res = await logSymptom(
+      fd({ symptom: "cough", severity: 2, date: day })
+    );
+    expect(res).toEqual(
+      accepted
+        ? { ok: true, symptom: "cough", severity: 2 }
+        : { ok: false, error: "Couldn't log that symptom." }
+    );
+    expect(getSymptomsOnDate(profile.id, day)).toHaveLength(accepted ? 1 : 0);
+  });
+
+  // The filed defect, exactly: `2026-13-45` matched the old regex and reached the core
+  // as a literal string. `2026-02-30` is the quieter half — `Date.parse` rolls it to
+  // March 2, so a day-difference check alone answers for a day that does not exist.
+  it.each([["2026-13-45"], ["2026-02-30"], ["not-a-date"]])(
+    "refuses %s, which names no real day",
+    async (day) => {
+      const login = createLogin();
+      const profile = createProfile(`unreal-${day}`, login.id);
+      actAs(login, profile);
+
+      expect(
+        await logSymptom(fd({ symptom: "cough", severity: 2, date: day }))
+      ).toEqual({ ok: false, error: "Couldn't log that symptom." });
+      expect(rows(profile.id)).toEqual([]);
+    }
+  );
+
+  // The record's day view logs AND corrects an old day — the pair the ruling protects.
+  it("an old day is both loggable and correctable", async () => {
+    const login = createLogin();
+    const profile = createProfile("old-day", login.id);
+    actAs(login, profile);
+
+    const old = shiftDateStr(today(profile.id), -400);
+    expect(
+      await logSymptom(fd({ symptom: "cough", severity: 2, date: old }))
+    ).toMatchObject({ ok: true });
+    expect(
+      await editSymptom(
+        fd({ symptom: "cough", severity: 3, date: old, profile_id: profile.id })
+      )
+    ).toMatchObject({ ok: true, severity: 3 });
+    expect(getSymptomSeveritiesOnDate(profile.id, old)).toEqual({ cough: 3 });
   });
 });

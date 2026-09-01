@@ -92,6 +92,8 @@ test("live start → set → finish: the record settles at the session's own URL
   // The settled editor has one persistent dismissal action in its footer.
   await page.getByRole("button", { name: "Done", exact: true }).click();
   await expect(page.getByTestId("activity-form")).toHaveCount(0);
+  await expect(page.getByTestId("workout-dock")).toHaveCount(0);
+  await expect(page.getByTestId("session-in-progress")).toHaveCount(0);
   expect(page.url()).toBe(sessionUrl);
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();

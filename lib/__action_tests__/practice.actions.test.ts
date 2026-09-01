@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   deletePractice,
   editPracticeSession,
@@ -123,9 +124,20 @@ describe("logPractice action (#1259)", () => {
     await logPractice(fd({ practice: "Meditation" }));
     const id = sessionId(profile.id);
 
+    // #4425 owner ruling: a DATED correction surface reaches any real past day, so an
+    // old imported session is correctable in place. What it may never be is future.
     expect(
       await editPracticeSession(
         fd({ id, date: "2000-01-01", duration_min: 20 })
+      )
+    ).toMatchObject({ kind: "updated" });
+    expect(
+      await editPracticeSession(
+        fd({
+          id,
+          date: shiftDateStr(today(profile.id), 1),
+          duration_min: 20,
+        })
       )
     ).toEqual({ kind: "invalid-date" });
 

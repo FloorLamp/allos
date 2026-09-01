@@ -400,6 +400,72 @@ describe("upsert accounting: inserted → unchanged → updated", () => {
     expect(third.ids).toEqual(first.ids);
   });
 
+  it("keeps Health Connect local time, while source corrections still land", () => {
+    const activity: NormActivity = {
+      external_id: "health-connect:stable-time",
+      date: "2026-08-20",
+      type: "cardio",
+      title: "Run",
+      duration_min: 30,
+      distance_km: toKm(5, "km"),
+      start_time: "07:00",
+      end_time: "07:30",
+    };
+    upsertActivities(profileId, [activity], SOURCE);
+    const moved = {
+      ...activity,
+      date: "2026-08-21",
+      start_time: "03:00",
+      end_time: "03:30",
+    };
+    expect(upsertActivities(profileId, [moved], SOURCE).unchanged).toBe(1);
+    const strava = { ...activity, external_id: "strava:stable-time" };
+    upsertActivities(profileId, [strava], "strava");
+    expect(
+      upsertActivities(
+        profileId,
+        [{ ...moved, external_id: strava.external_id }],
+        "strava"
+      ).updated
+    ).toBe(1);
+  });
+
+  it("keeps a Health Connect vital day, while a lab reissue revises", () => {
+    const vital: NormVital = {
+      external_id: "health-connect:Heart Rate:stable-time",
+      date: "2026-08-20",
+      occurred_at: "2026-08-20T11:00:00Z",
+      category: "vitals",
+      name: "Heart rate",
+      canonical: "Heart Rate",
+      value_num: 64,
+      unit: "bpm",
+    };
+    const hcId = upsertVitals(profileId, [vital], SOURCE).ids[0];
+    expect(
+      upsertVitals(profileId, [{ ...vital, date: "2026-08-21" }], SOURCE).counts
+        .unchanged
+    ).toBe(1);
+    const lab = {
+      ...vital,
+      external_id: "lab:Heart Rate:stable-time",
+      category: "lab" as const,
+    };
+    const labId = upsertVitals(profileId, [lab], "lab").ids[0];
+    expect(
+      upsertVitals(profileId, [{ ...lab, date: "2026-08-21" }], "lab").counts
+        .updated
+    ).toBe(1);
+
+    expect(
+      db
+        .prepare(
+          "SELECT record_id FROM medical_record_revisions WHERE record_id IN (?, ?)"
+        )
+        .all(hcId, labId)
+    ).toEqual([{ record_id: labId }]);
+  });
+
   it("folds cleanly from an empty baseline", () => {
     // Sanity: empty input yields the zero baseline for every upsert.
     expect(upsertActivities(profileId, [], SOURCE)).toEqual(emptyCounts());

@@ -233,17 +233,20 @@ export function unwiredPosters(root: string): string[] {
   const actions = readingActions(root);
   const direct = readingActions(root, DIRECT_READ_RE);
   const clients = clientFiles(root);
-  const counts = new Map(
-    [...actions.keys()].map((action) => [
-      action,
-      clients.filter((client) => importsSymbol(client.src, action)).length,
+  const reached = new Map(
+    clients.map((client) => [
+      client.rel,
+      [...actions].filter(([action]) => importsSymbol(client.src, action)),
     ])
   );
+  const counts = new Map([...actions.keys()].map((action) => [action, 0]));
+  for (const entries of reached.values())
+    for (const [action] of entries)
+      counts.set(action, (counts.get(action) ?? 0) + 1);
   const out: string[] = [];
   for (const { rel, src } of clients) {
     const hook = /\/use[A-Z][^/]*\.ts$/.test(rel);
-    for (const [action, file] of actions) {
-      if (!importsSymbol(src, action)) continue;
+    for (const [action, file] of reached.get(rel) ?? []) {
       const unstamped = hasUnstampedCall(src, action);
       if (
         (direct.has(action) || (counts.get(action) ?? 0) > 1) &&

@@ -113,7 +113,10 @@ function sourceFiles(): { rel: string; code: string }[] {
       if (/__tests__|__db_tests__|__action_tests__|\.test\.tsx?$/.test(rel)) {
         continue;
       }
-      files.push({ rel, code: stripCommentsAndStrings(read(rel)) });
+      const source = read(rel);
+      if (!source.includes("shiftDateStr(") || !source.includes(".length"))
+        continue;
+      files.push({ rel, code: stripCommentsAndStrings(source) });
     }
   }
   return files;

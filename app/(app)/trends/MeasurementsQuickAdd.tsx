@@ -625,6 +625,15 @@ export default function MeasurementsQuickAdd({
       setError("Couldn't save these measurements. Try again.");
       return;
     }
+    // NOTHING LANDED (#4425). The one refusal this action can answer with, and it has
+    // to reach the person: the form's own date field can be set to a day that has not
+    // happened, every write core refuses it, and the ordinary path below would toast
+    // "Measurements saved" and reset over an empty table. Inline, like every other
+    // refusal here — the entry is still on screen to correct.
+    if (saved.dateRefused) {
+      setError("That date hasn't happened yet. Pick today or an earlier day.");
+      return;
+    }
     rememberWritten();
     // The measurements landed; the sitting's stated time may not have (#2311). That
     // is a NOTICE on the ordinary success toast — never `setError`, which would read

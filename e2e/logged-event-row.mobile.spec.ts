@@ -2,9 +2,10 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { hydratedClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick } from "./helpers";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../lib/date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { LONG_NAMES } from "../scripts/seed-long-names";
 
 // THE COMPACT LOGGED-EVENT ROW (#3671).
 //
@@ -119,18 +120,19 @@ function localInstant(db: Database.Database, hhmm: string): string {
 }
 
 function deleteFixtureRows(db: Database.Database): void {
-  db.prepare(
-    `DELETE FROM intake_item_logs WHERE item_id IN
-       (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
-  ).run(PROFILE, ITEM);
-  db.prepare(
-    `DELETE FROM intake_item_doses WHERE item_id IN
-       (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
-  ).run(PROFILE, ITEM);
-  db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
-    PROFILE,
-    ITEM
-  );
+  for (const name of [ITEM, ITEM_TWO, LONG_NAMES.intakeItem]) {
+    db.prepare(
+      `DELETE FROM intake_item_logs WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE, name);
+    db.prepare(
+      `DELETE FROM intake_item_doses WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE, name);
+    db.prepare(
+      "DELETE FROM intake_items WHERE profile_id = ? AND name = ?"
+    ).run(PROFILE, name);
+  }
   db.prepare(
     `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key IN (?, ?)`
   ).run(PROFILE, DAY, FOOD_GROUP, FOOD_GROUP_TWO);
@@ -144,15 +146,16 @@ function seedItem(
   db: Database.Database,
   name: string,
   amount: string,
-  ...hhmm: string[]
+  hhmm: readonly string[],
+  kind: "medication" | "supplement" = "supplement"
 ): void {
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
-           VALUES (?, ?, 1, 'supplement', 'daily', 'may')`
+           VALUES (?, ?, 1, ?, 'daily', 'may')`
       )
-      .run(PROFILE, name).lastInsertRowid
+      .run(PROFILE, name, kind).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -174,7 +177,7 @@ function seedDose(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    seedItem(db, ITEM, ITEM_AMOUNT, "08:46");
+    seedItem(db, ITEM, ITEM_AMOUNT, ["08:46"]);
   } finally {
     db.close();
   }
@@ -189,8 +192,18 @@ function seedStackDay(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    seedItem(db, ITEM, ITEM_AMOUNT, "08:46", "12:10");
-    seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, "08:46");
+    seedItem(db, ITEM, ITEM_AMOUNT, ["08:46", "12:10"]);
+    seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, ["08:46"]);
+  } finally {
+    db.close();
+  }
+}
+
+function seedLongMedication(): void {
+  const db = openDb();
+  try {
+    deleteFixtureRows(db);
+    seedItem(db, LONG_NAMES.intakeItem, "500 mg", ["08:46"], "medication");
   } finally {
     db.close();
   }
@@ -258,6 +271,40 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
   // record is for — so there is no collapse there to assert. The identical claim on a
   // SURVIVING EntryHistoryTable consumer is the next test: the in-card dose panel,
   // which is the same component at item scope and still discloses on tap.
+
+  test("a long record title ellipsizes at 320px without losing its accessible name", async ({
+    page,
+  }) => {
+    seedLongMedication();
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`/history?kind=dose&day=${DAY}`);
+
+    const row = page
+      .getByTestId("history-row")
+      .filter({ hasText: LONG_NAMES.intakeItem });
+    await expect(row).toHaveCount(1);
+    const title = row.getByTestId("history-row-title");
+    await expect(title).toHaveAccessibleName(LONG_NAMES.intakeItem);
+
+    const geometry = await title.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        contentOverflows: element.scrollWidth > element.clientWidth + 1,
+        overflow: style.overflow,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+        right: rect.right,
+        viewport: document.documentElement.clientWidth,
+      };
+    });
+    expect(geometry.contentOverflows).toBe(true);
+    expect(geometry.overflow).toBe("hidden");
+    expect(geometry.textOverflow).toBe("ellipsis");
+    expect(geometry.whiteSpace).toBe("nowrap");
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+    await expectNoClippedContent(page);
+  });
 
   test("the in-card dose history panel collapses and discloses the same way", async ({
     page,

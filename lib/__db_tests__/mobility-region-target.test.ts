@@ -8,8 +8,9 @@
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getFrequencyTargetProgress } from "@/lib/queries";
-import { setWeekMode } from "@/lib/settings";
+import { getFrequencyTargetProgress, getMobilityCoverage } from "@/lib/queries";
+import { getCadenceLedger } from "@/lib/queries/cadence-ledger";
+import { setWeekMode, setWeekStart } from "@/lib/settings";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -40,6 +41,48 @@ function logMobility(profileId: number, date: string, moves: string[]) {
 }
 
 describe("mobility_region frequency target (#840)", () => {
+  it("uses the profile's calendar week for both the strip and ledger (#4536)", () => {
+    const { profileId, anchor: currentDay } = makeProfile(
+      "mobility-week-window"
+    );
+    const anchor = shiftDateStr(currentDay, 2);
+    const anchorWeekday = new Date(`${anchor}T00:00:00Z`).getUTCDay();
+    setWeekMode(profileId, "calendar");
+    setWeekStart(
+      profileId,
+      ((anchorWeekday + 5) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6
+    );
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'mobility_region', 'Shoulders', 3)`
+    ).run(profileId);
+
+    logMobility(profileId, shiftDateStr(anchor, -5), ["shoulder_cars"]);
+    logMobility(profileId, shiftDateStr(anchor, -1), ["shoulder_cars"]);
+    logMobility(profileId, anchor, ["shoulder_cars"]);
+
+    const ledger = getCadenceLedger(profileId, {
+      weeks: 1,
+      includeCurrent: true,
+      direction: "floor",
+      asOf: anchor,
+    })[0].weeks[0];
+    const shoulders = getMobilityCoverage(profileId, anchor).find(
+      (row) => row.region === "Shoulders"
+    );
+    expect({ strip: shoulders?.days, ledger: ledger.count }).toEqual({
+      strip: 2,
+      ledger: 2,
+    });
+
+    setWeekMode(profileId, "rolling");
+    expect(
+      getMobilityCoverage(profileId, anchor).find(
+        (row) => row.region === "Shoulders"
+      )?.days
+    ).toBe(3);
+  });
+
   it("counts distinct days a mobility session mobilized the region, once per day", () => {
     const { profileId, anchor } = makeProfile("mobility-hips");
 

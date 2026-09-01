@@ -8,7 +8,8 @@
 // Deterministic: :memory:-backed temp DB via setup.ts; no network.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   resolveSituationId,
   getSituations,
@@ -122,5 +123,52 @@ describe("derived episode association (#799)", () => {
       events.some((e) => e.situation === "Illness" && e.change === "start")
     ).toBe(true);
     expect(getActiveSituations(p)).toContain("Illness");
+  });
+});
+
+// THE SHARED DATE INVARIANT AT THE CORE (#4425): any real past day, never the future.
+// The two cores here that can MINT a row, reached directly the way an import or a
+// future surface would reach them. `2026-02-30` is the one worth having: `Date.parse`
+// rolls it silently to March 2, so a day-difference bound answers for it and only
+// `isRealIsoDate` does not.
+describe("the minting cores hold the shared date invariant (#4425)", () => {
+  it.each([["2026-13-45"], ["2026-02-30"], ["2026-04-31"], ["not-a-date"]])(
+    "%s writes nothing",
+    (day) => {
+      const p = newProfile(`unreal-${day}`);
+      expect(logSymptomCore(p, "cough", 2, day, "page")).toEqual({
+        kind: "invalid",
+      });
+      expect(setSymptomSeverityCore(p, "cough", 2, day, "page")).toEqual({
+        kind: "invalid",
+      });
+      expect(
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM symptom_logs WHERE profile_id = ?"
+          )
+          .get(p) as { n: number }
+      ).toEqual({ n: 0 });
+    }
+  );
+
+  it("the past is open and the future is not", () => {
+    const p = newProfile("reach");
+    const old = shiftDateStr(today(p), -900);
+    expect(logSymptomCore(p, "cough", 2, old, "page")).toMatchObject({
+      kind: "logged",
+    });
+    const tomorrow = shiftDateStr(today(p), 1);
+    expect(logSymptomCore(p, "cough", 2, tomorrow, "page")).toEqual({
+      kind: "invalid",
+    });
+    expect(setSymptomSeverityCore(p, "cough", 2, tomorrow, "page")).toEqual({
+      kind: "invalid",
+    });
+    expect(
+      db
+        .prepare("SELECT date FROM symptom_logs WHERE profile_id = ?")
+        .all(p) as { date: string }[]
+    ).toEqual([{ date: old }]);
   });
 });

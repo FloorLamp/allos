@@ -49,9 +49,19 @@ export type SymptomLogResult =
   | { ok: true; symptom: string; severity: number; undoId?: number | null }
   | { ok: false; error: string };
 
+// The day a post is about: what was STATED, or the profile's today when nothing was.
+//
+// It used to shape-check `\d{4}-\d{2}-\d{2}` and fall back to today on a miss, which
+// is two defects in one line (#4425). The regex is not `isRealIsoDate`, so `2026-13-45`
+// passed it and reached the cores as a literal string; and a date that FAILED it was
+// laundered into today rather than refused, so a forged post silently wrote a different
+// day than it asked for. Both halves are gone: a stated day travels to the core exactly
+// as stated, and each core answers for it under its own declared bound
+// (`LOG_MANIFEST.symptom`). Absence still means today — that is a real answer, not a
+// laundering, and it is what every one-tap mount posts.
 function parseDate(formData: FormData, profileId: number): string {
   const raw = String(formData.get("date") ?? "").trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : today(profileId);
+  return raw || today(profileId);
 }
 
 function parseSeverity(formData: FormData): number {
@@ -113,11 +123,19 @@ export async function logSymptom(
   const episodeTarget = parseEpisodeTarget(formData);
   if (episodeTarget.kind === "invalid")
     return { ok: false, error: "That episode is no longer available." };
+  // NO WINDOW HERE, and that is the ruling rather than an omission (2026-08-31):
+  // windows bind OFFERS, not domains. This one action serves a today-only tap on the
+  // dashboard AND `/history`'s day view, which mounts the same bar against the day
+  // being read — so a bound here would be a bound on the dated surface too, and the
+  // record's older days would go neither loggable nor correctable. `TAP_REACH`
+  // declares the symptom tap as `dated` for exactly this reason. The core keeps the
+  // half that is always true: a real day, never the future.
+  const date = parseDate(formData, profileId);
   const outcome = logSymptomCore(
     profileId,
     symptom,
     parseSeverity(formData),
-    parseDate(formData, profileId),
+    date,
     // The symptom bar renders on the dashboard, on its own page and in the quick-log
     // sheet, all posting THIS action — so the surface rides the post.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),

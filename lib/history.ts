@@ -242,28 +242,29 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
 // drink ruling settled for food and substances. The timeline's own symptom entry is a
 // DAY AGGREGATE besides ("3 symptoms logged"); the record's symptom rows are the
 // entries themselves.
-const FEED_KIND: Record<TimelineCategory, HistoryKind | null> = {
-  activity: "activity",
-  endurance: "endurance",
-  milestone: "milestone",
-  medical: "lab",
-  visit: "visit",
-  imaging: "imaging",
-  medication: "medication",
-  immunization: "immunization",
-  condition: "condition",
-  allergy: "allergy",
-  document: "document",
-  protocol: "protocol",
-  goal: "goal",
-  illness: "illness",
-  injury: "injury",
-  insight: "insight",
-  body: null,
-  food: null,
-  substance: null,
-  practice: null,
-  symptom: null,
+type FeedRule = readonly [HistoryKind | null, "event" | "plain"];
+const FEED_RULE: Record<TimelineCategory, FeedRule> = {
+  activity: ["activity", "event"],
+  endurance: ["endurance", "plain"],
+  milestone: ["milestone", "event"],
+  medical: ["lab", "event"],
+  visit: ["visit", "event"],
+  imaging: ["imaging", "plain"],
+  medication: ["medication", "plain"],
+  immunization: ["immunization", "event"],
+  condition: ["condition", "plain"],
+  allergy: ["allergy", "plain"],
+  document: ["document", "event"],
+  protocol: ["protocol", "event"],
+  goal: ["goal", "plain"],
+  illness: ["illness", "event"],
+  injury: ["injury", "plain"],
+  insight: ["insight", "plain"],
+  body: [null, "plain"],
+  food: [null, "plain"],
+  substance: [null, "plain"],
+  practice: [null, "plain"],
+  symptom: [null, "plain"],
 };
 
 // WHOSE CLOCK A FEED EVENT'S `sortTime` IS. One category states a real event time
@@ -930,7 +931,7 @@ export function gatherHistoryLog(
       // recorded. A record that hides a person's own data is not a record.
     });
     for (const event of events) {
-      const kind = FEED_KIND[event.category];
+      const [kind, titleLink] = FEED_RULE[event.category];
       if (kind == null) continue;
       feedKinds.add(kind);
       if (!wants(opts, kind)) continue;
@@ -956,9 +957,9 @@ export function gatherHistoryLog(
         date: event.date,
         ...historyClockFields(event.sortTime ?? null, clockKind, prefs),
         title: event.title,
-        // The event's OWN record, which is what the › points at: a richer surface owns
-        // these rows and the correction lives there.
-        href: event.href ?? null,
+        // A title links only when the event names its own surface (or its own History
+        // view), never when the old feed offered a bare hub as nearby navigation.
+        href: titleLink === "event" ? (event.href ?? null) : null,
         // quantity → context, through the ONE separator. The feed's own composers built
         // `subtitle` and `detail` as separate strings for a two-line card; on a one-line
         // row they are one segment, joined by the grammar rather than by each composer.

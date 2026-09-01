@@ -1381,6 +1381,10 @@ const VITAL_COMPARE_COLS: string[] = [
   "result_status",
 ];
 
+function resendLocalField<T>(source: string, stored: T, incoming: T): T {
+  return source === HEALTH_CONNECT_ID ? stored : incoming;
+}
+
 export function upsertVitals(
   profileId: number,
   rows: NormVital[],
@@ -1432,7 +1436,7 @@ export function upsertVitals(
       // of band by reconcileFlags, not by this write.
       const status = normalizeResultStatus(r.result_status);
       const post = {
-        date: r.date,
+        date: resendLocalField(source, found.date as string, r.date),
         occurred_at: r.occurred_at ?? null,
         category: r.category,
         name: r.name,
@@ -1481,7 +1485,7 @@ export function upsertVitals(
           );
         }
         update.run(
-          r.date,
+          post.date,
           r.occurred_at ?? null,
           r.category,
           r.name,
@@ -1620,13 +1624,21 @@ export function upsertActivities(
       // Resolved post-image over the same columns the UPDATE writes (metric fields
       // reuse activityMetricValues so the compare and the write can't drift).
       const post: Record<string, unknown> = {
-        date: r.date,
+        date: resendLocalField(source, found.date as string, r.date),
         type: r.type,
         title: r.title,
         duration_min: r.duration_min,
         distance_km: r.distance_km,
-        start_time: r.start_time,
-        end_time: r.end_time,
+        start_time: resendLocalField(
+          source,
+          found.start_time as string | null,
+          r.start_time
+        ),
+        end_time: resendLocalField(
+          source,
+          found.end_time as string | null,
+          r.end_time
+        ),
         source,
         components: componentsJson,
       };
@@ -1639,13 +1651,13 @@ export function upsertActivities(
       );
       if (disposition === "updated") {
         update.run(
-          r.date,
+          post.date,
           r.type,
           r.title,
           r.duration_min,
           r.distance_km,
-          r.start_time,
-          r.end_time,
+          post.start_time,
+          post.end_time,
           ...metrics,
           componentsJson,
           source,

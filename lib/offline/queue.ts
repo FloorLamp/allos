@@ -47,8 +47,8 @@
 // against.
 import type { DoseTakenOutcome, SaveActivityOutcome } from "@/lib/types";
 import type { IdempotentTap, OneTapAffordance } from "@/lib/one-tap";
-// The three runtime imports, and all three keep the contract: lib/sw-update.ts,
-// lib/date.ts and lib/loggable-domains.ts are themselves pure and dependency-free
+// The runtime imports below all keep the contract: lib/sw-update.ts, lib/date.ts,
+// lib/stated-time.ts, lib/loggable-domains.ts and lib/log-manifest.ts are pure and dependency-free
 // (client-safe, DB-free). The stale-action signature is sw-update's knowledge —
 // deployment skew's Server Action half — the canonical instant minter is date.ts's
 // (#2205: the stored shape is decided by the column, never by the call site), and the
@@ -60,6 +60,9 @@ import {
   type StatedTimeRefusal,
 } from "@/lib/stated-time";
 import { arguedExclusion, type ArguedExclusion } from "@/lib/loggable-domains";
+// The one logging manifest (#4425). Pure and type-only-importing itself, so reading it
+// here keeps this module's runtime-dependency-free contract.
+import { LOG_MANIFEST } from "@/lib/log-manifest";
 
 export type FlowKind =
   | "dose"
@@ -107,21 +110,40 @@ export const FLOW_KINDS: readonly FlowKind[] = [
 // `Record<IdempotentTap, FlowKind | ArguedExclusion>` — and the record covers
 // the full `OneTapAffordance` axis, which subsumes it; the compile-time check
 // below pins that the idempotent half stays a subset of what's declared here.
+//
+// A ROW WHOSE ANSWER IS ITS DOMAIN'S NOW READS THE MANIFEST (#4425, fold-on-touch),
+// which is where #3275's offline-story column landed. The rest stay local because the
+// AXES differ: food has four affordances and two answers, dose five and two, and the
+// four `usual`/`backfill`/`stack` exclusions say "only the SHORTCUT needs a
+// connection" — an argument about one offer, false of the single taps underneath it,
+// so a domain-grain column cannot hold it.
+//
+// ADDRESSED TO THE NEXT LANE, because it is a CONSTRAINT on #4425 ruling 4 rather
+// than an unfinished fold: "each census becomes a manifest column or a typed
+// derivation of one" holds only where the census axis and the domain axis agree.
+// Here they do not, and the same is true of the three `LoggableDomain`-keyed censuses
+// for a different reason — `body` collapses weight/vitals/temperature, which carry
+// three different palette answers and three different Telegram answers. A fold that
+// forced those onto one row would not converge them, it would make the manifest say
+// something untrue. Fold the rows whose grain matches; leave the rest arguing for
+// themselves, here, next to what they are about.
 export const OFFLINE_QUEUE_COVERAGE = {
-  "food-serving": "food",
-  "protein-grams": "food",
+  "food-serving": LOG_MANIFEST.food.offline.flow,
+  "protein-grams": LOG_MANIFEST.food.offline.flow,
   // The one-tap DOSE resolutions ride two flows: "dose" (set-to-taken) and
   // "skip-dose" (set-to-skipped); the affordance's row names the confirm flow.
-  "dose-status": "dose",
-  "mood-valence": "mood",
+  "dose-status": LOG_MANIFEST.dose.offline.flow,
+  "mood-valence": LOG_MANIFEST.mood.offline.flow,
   // #2130: declared idempotent — the queue's own admission criterion — so it is
   // a member. The ON tap (set-add) queues; the OFF tap stays online-only under
   // the existing "−" exclusion above (a removal replayed against state that
   // moved could drop a move re-added from another device — not a capture).
   "mobility-move": "mobility",
-  "substance-unit": arguedExclusion(
-    "The tap's own feedback is server-derived: the card renders the week count and the #998 cap verdict beside the button, and a queued unit would leave that safety readout silently understating until replay. The queue's scope line — anything with server-derived state stays online-only — applies to the surface, not just the write. NARROWED, NOT YET OVERTURNED (#3279), and for the same reason as the quick-log census twin: the understating readout IS the cap verdict, so the argument presumes a cap exists. A profile with no reduction cap has no verdict to understate and its taps are as additive as any other one-tap; a profile WITH a cap keeps today's online-only behaviour and this exact reasoning. The exclusion stays absolute here until that split is built."
-  ),
+  // The whole substance DOMAIN is online-only, so this row is its story rather than an
+  // argument of its own: the reason is declared once in the manifest and read here. The
+  // queue's scope line — anything with server-derived state stays online-only — applies
+  // to the surface, not just the write.
+  "substance-unit": arguedExclusion(LOG_MANIFEST.substance.offline.reason),
   // AMENDED, not overridden (#2908 owner decision 3). The original #2130 exclusion —
   // preserved verbatim so the next reader sees the argument rather than rediscovering
   // #2007 — read: "Cadenced, not idempotent: the #2007 layer-3 re-log confirm asks a
@@ -138,13 +160,12 @@ export const OFFLINE_QUEUE_COVERAGE = {
   // session still needs signal. The affordance stays declared `cadenced` in
   // ONE_TAP_AFFORDANCES — its ONLINE semantics are unchanged, and it is the OFFLINE
   // capture that is narrowed to a day.
-  "practice-session": "practice",
+  "practice-session": LOG_MANIFEST.practice.offline.flow,
   "prn-dose": arguedExclusion(
     "A PRN administration arms the #798 redose window from its recorded_at — the safety-relevant instant (#2020). The control renders that advisory from server state at tap time; offline it would be stale, and a queued administration would guard nothing until replay. Deliberately online-only."
   ),
-  "symptom-severity": arguedExclusion(
-    "Deferred to #1860, which owns the symptom quick-log's offline story; deciding it here would preempt that issue's scope (#2130 excludes it by name)."
-  ),
+  // Likewise the whole symptom domain, deferred to #1860 — the manifest states it.
+  "symptom-severity": arguedExclusion(LOG_MANIFEST.symptom.offline.reason),
   "medication-refill": arguedExclusion(
     "A refill is stock arithmetic against the server's current supply plus the #1893 recency confirm — an increment applied to a total that may have moved, the same class as the excluded food '−' decrement, not a capture of raw fields."
   ),
@@ -154,7 +175,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
   "routine-usual": arguedExclusion(
     "Declared idempotent, excluded for `food-usual`'s reason and one MORE (#2458): the bundle's justification is server state on both axes, and its dose half CONFIRMS DOSES — an expired replay would double-log a meal window AND mis-decrement on-hand supply for three items, which is stock arithmetic against a total that moved (the excluded `medication-refill` class). The single-serving taps and the single-dose confirms underneath it queue exactly as they always did, so nothing is unreachable offline — only the shortcut is."
   ),
-  "stool-form": "stool",
+  "stool-form": LOG_MANIFEST.stool.offline.flow,
   "dose-backfill": arguedExclusion(
     "Online-only, and nothing that was reachable offline becomes unreachable: the form this offer sits above has never queued either, so the whole backfill door keeps the behaviour it has always had. The offer itself is rendered from a server-computed adherence strip — the day is offered BECAUSE the server says nothing is logged there — and a capture would carry that justification into a replay that cannot recheck it. The core would still refuse honestly (idempotent per dose and date), so this is not the destructive class; it is a dated assertion about a closed day, which is not the `dose` flow's set-to-taken-today shape, and inventing a dated flow for it belongs to whoever takes offline backfill on purpose."
   ),
@@ -179,7 +200,7 @@ export const OFFLINE_QUEUE_COVERAGE = {
   // refusal is reported, not swallowed, so nothing is lost silently; whether the
   // shortest case deserves a longer-lived dated flow is a real question and is NOT
   // decided here.
-  "dose-day": "dose",
+  "dose-day": LOG_MANIFEST.dose.offline.flow,
   "dose-day-stack": arguedExclusion(
     "Online-only, and for `routine-usual`'s dose-half reason narrowed to one bucket (#3936): the row is rendered from server state — these are the doses that bucket still owes on that day — and its write core re-derives the same set to write only the intersection, so a stale or repeated tap finds an EMPTY intersection and the surface answers from that (no dose is reported, because none was written) rather than double-logging a stack. A capture would carry a justification that expired, and its replay decrements on-hand supply for every item in the stack at once, which is stock arithmetic against totals that may have moved (the excluded `medication-refill` class) rather than a capture of raw fields. Nothing becomes unreachable offline: every single-dose tap in the same list queues as `dose-day` above, so only the shortcut needs a connection."
   ),

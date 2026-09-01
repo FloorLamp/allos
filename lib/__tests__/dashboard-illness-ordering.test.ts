@@ -185,6 +185,18 @@ describe("dashboard illness ordering", () => {
     ]);
   });
 
+  it("keeps the vitals bootstrap door in Setup without a reading-state input", () => {
+    const candidate = setupCandidates.vitalsBootstrap({
+      subject: { scope: "profile", profileId: activeProfileId },
+      sourceOrder: 1,
+    });
+
+    expect(rank([candidate])[0]).toMatchObject({
+      lane: "everything",
+      everythingGroup: "setup",
+    });
+  });
+
   it("assigns a repeated fact exactly once to the earlier ordered episode", () => {
     const shared = "illness.temperature:42";
     const placements = rank([

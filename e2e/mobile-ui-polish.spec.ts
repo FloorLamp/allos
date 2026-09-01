@@ -388,10 +388,12 @@ test.describe("the record's month calendar clears the floor on a phone (#3377/#3
       // breakout landed flush; assertion (1) above proves the same thing far more
       // precisely — the grid's own box against the box that clips it — and reads
       // the scroll extent that made the defect reachable. What the page sweep
-      // would add is everything ELSE on /history, and at 320px it reports a
-      // `history-row-title` reaching 565px, WITH THIS SHEET CLOSED and on rows
-      // this file does not touch. That belongs to whoever owns the record's phone
-      // density, not to a calendar test that would fail for it.
+      // would add is everything ELSE on /history — when this was written, a
+      // `history-row-title` reaching 565px at 320px, WITH THIS SHEET CLOSED and on
+      // rows this file does not touch. That belonged to whoever owns the record's
+      // phone density, not to a calendar test that would fail for it. #4394 has
+      // since made that title truncate; the reason for keeping the sweep out is
+      // the same whatever /history does next.
     }
   });
 });
