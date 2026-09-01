@@ -19,7 +19,7 @@
 
 import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
-import { now as clockNow } from "./clock";
+import { instantNow } from "./clock";
 import type { LoggedVia } from "./logged-via";
 import { substanceDayCounter } from "./day-counter-ledger-db";
 import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
@@ -48,7 +48,8 @@ export type SubstanceUndoOutcome =
 // units, and returns the resulting daily total. Single IMMEDIATE transaction
 // (#468) so the upsert + the count read see one consistent state under a
 // concurrent tap. `loggedAt` records the LAST tap instant (injectable for tests;
-// production always passes the default).
+// production always passes the default) and is a CANONICAL stored instant (#2205) —
+// the shape its history sibling already writes into the same column.
 export function logSubstanceUnitCore(
   profileId: number,
   substance: string,
@@ -58,7 +59,7 @@ export function logSubstanceUnitCore(
   // tail so a new call site cannot inherit a bucket by omission. The day row keeps
   // the LAST tap's surface beside that tap's `recorded_at`.
   loggedVia: LoggedVia,
-  loggedAt: string = clockNow().toISOString()
+  loggedAt: string = instantNow()
 ): SubstanceLogOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
   // THE SHARED DATE INVARIANT (#4425). This core re-checked NOTHING about its day: it
