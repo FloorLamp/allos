@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { IconCheck, IconClock, IconMinus, IconPlus } from "@tabler/icons-react";
+import { useState } from "react";
+import {
+  IconCheck,
+  IconClock,
+  IconMinus,
+  IconPlayerPlay,
+  IconPlayerStop,
+  IconPlus,
+} from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import DateField from "@/components/DateField";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
@@ -27,8 +34,12 @@ import {
   DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
-import type { PracticeLogOutcome } from "@/lib/types";
-import { logPractice } from "@/app/(app)/wellness/actions";
+import type { LivePracticeSession, PracticeLogOutcome } from "@/lib/types";
+import {
+  endPracticeLive,
+  logPractice,
+  startPracticeLive,
+} from "@/app/(app)/wellness/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 // Shared one-tap "Log session" control for a wellness practice (#1259). Logs a session for
@@ -54,6 +65,7 @@ export default function LogPracticeButton({
   atCeiling = false,
   today,
   defaultDurationMin = null,
+  liveSession = null,
   showDetails = false,
   inlineDuration = false,
   inlineWhen = false,
@@ -65,6 +77,7 @@ export default function LogPracticeButton({
   initialDetailsDate,
   detailsMinDate,
   detailsMaxDate,
+  subjectProfileId,
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -76,6 +89,7 @@ export default function LogPracticeButton({
   // The duration the controls START at — `practiceDurationPrefill` server-side, never
   // re-derived here. Null means blank, and blank is a real answer.
   defaultDurationMin?: number | null;
+  liveSession?: LivePracticeSession | null;
   showDetails?: boolean;
   // Render the INLINE duration stepper beside the tap (#2204). On for the quick-log
   // sheet — whose whole reason for existing is that opening the expanded form is the
@@ -93,14 +107,8 @@ export default function LogPracticeButton({
   // and any future condition on the stepper's visibility belongs there rather than in
   // the JSX, or the two drift and a value nobody saw gets logged.
   inlineDuration?: boolean;
-  // Render the collapsed "Happened earlier?" statement beside the tap (#3273). On for
-  // the quick-log sheet, which deliberately does NOT mount `showDetails` — stacking a
-  // modal over a one-tap sheet is not what that surface is for — and therefore had no
-  // way to say a session happened at 07:00 when it is tapped at 09:00.
-  //
-  // Same gate discipline as `stepperShown` below and for the same reason: `when` is
-  // component state, so the tap may only post a time where the control the user could
-  // have touched is actually on screen.
+  // Quick-sheet-only collapsed statement retained from #3273. With the new
+  // just-finished intent it states the observed END, not an invented start.
   inlineWhen?: boolean;
   // The local HH:MM of today's most recent session, when the surface knows it. The
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
@@ -119,15 +127,34 @@ export default function LogPracticeButton({
   initialDetailsDate?: string;
   detailsMinDate?: string;
   detailsMaxDate?: string;
+  // THE SUBJECT, OPTIONAL AND SPELLED ONCE (#4424 ruling 4): absent means the acting
+  // profile, present posts `profile_id` and is re-gated server-side by
+  // `gateItemProfile`. Upcoming's multi-view rows are the mount that needs it — a
+  // practice due on Sam's row must write to SAM — and the offline queue is narrowed
+  // to the acting profile because a replay carries no session to gate against.
+  subjectProfileId?: number;
 }) {
   // WHICH SURFACE THIS MOUNTING IS (#3087). One component, four homes — the Wellness
-  // card, the protocols row, the quick-log sheet and the backfill launcher — all
+  // card, the protocols row, the quick-log sheet and Upcoming's practice row — all
   // posting ONE Server Action, so only the mounting can say where a tap happened.
   // Read from the region rather than taken as a prop: a prop has to be passed at every
   // one of those four call sites and is silent when it is not, which is the failure
   // mode this column exists to avoid. Posted as a form field and re-checked
   // server-side against the web subset.
+  //
+  // THE BACKFILL LAUNCHER USED TO BE ON THAT LIST AND IS NOT A MOUNT OF THIS COMPONENT
+  // — it mounts the FORM (#3143 extracted it), which is why it could be named here
+  // while never posting a tap. Upcoming's row took its place for real (#4424).
   const stampLoggedVia = useLoggedViaStamp();
+  // EVERY WRITE THIS CONTROL POSTS NAMES ITS SUBJECT (ruling 4), including the live
+  // lifecycle's two: a mount that could log a household member's session while
+  // starting the ACTING profile's would be the cross-profile leak the ruling exists to
+  // close. Absent on a single-subject mount, which posts a byte-identical body.
+  const subject = (fd: FormData): FormData => {
+    if (subjectProfileId != null)
+      fd.set("profile_id", String(subjectProfileId));
+    return fd;
+  };
   const tz = useTimezone();
   const toast = useToast();
   const confirm = useConfirm();
@@ -136,6 +163,12 @@ export default function LogPracticeButton({
   const [pending, setPending] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(defaultDetailsOpen);
   const [count, setCount] = useState(todayCount);
+  const [currentLive, setCurrentLive] = useState(liveSession);
+  const [serverLive, setServerLive] = useState(liveSession);
+  if (serverLive?.id !== liveSession?.id) {
+    setServerLive(liveSession);
+    setCurrentLive(liveSession);
+  }
   // The time the confirm names, dropped once this mount logs its own session: the
   // action answers with the day's count, not with a local clock reading, and a stale
   // time on a fresh session would be the informational half telling a small lie.
@@ -151,16 +184,13 @@ export default function LogPracticeButton({
     setCount(todayCount);
     setLastTime(lastLoggedTime);
   }
-  const [whenOpen, setWhenOpen] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
   const [duration, setDuration] = useState(
     defaultDurationMin == null ? "" : String(defaultDurationMin)
   );
-  // Follow the SERVER's prefill for the same reason the count does: the prefill is
-  // "the last LOGGED duration", and a session can be corrected or deleted from the
-  // history table beside this button. A local value frozen at mount would keep
-  // offering a duration the log no longer contains — which is the "last-shown"
-  // failure #2204 constraint 4 names, arriving by the back door.
+  // Follow the SERVER's usual-duration prefill for the same reason the count does: a
+  // session can be corrected or deleted from the history table beside this button. A
+  // local value frozen at mount would keep offering a duration the log no longer
+  // supports.
   const [serverDuration, setServerDuration] = useState(defaultDurationMin);
   if (serverDuration !== defaultDurationMin) {
     setServerDuration(defaultDurationMin);
@@ -173,13 +203,13 @@ export default function LogPracticeButton({
   // the weekly ceiling", "hide it on a narrow row") is added HERE and both halves
   // follow it. Adding it to the JSX alone would leave the tap posting a value that is
   // no longer on screen, which is precisely the failure the constraint names.
-  const stepperShown = inlineDuration;
-  // The same ONE expression for the when-control: read by its render and by the tap's
-  // write, so a value nobody saw can never be posted.
-  const whenShown = inlineWhen;
-  // Follow `today` for the same reason `count` and `duration` do: the sheet's props
-  // are gathered on open, and a page left across local midnight would otherwise anchor
-  // a statement on a day the server no longer files taps under.
+  // The duration belongs to the Just-finished statement. A running session's End
+  // action derives elapsed time from its two taps, so leaving this input beside End
+  // would show a value that the action deliberately ignores.
+  const stepperShown = inlineDuration && !currentLive;
+  const whenShown = inlineWhen && !currentLive;
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
   const [whenDay, setWhenDay] = useState(today);
   if (whenDay !== today) {
     setWhenDay(today);
@@ -244,7 +274,7 @@ export default function LogPracticeButton({
     toast("Saved offline — it'll sync when you're back online.");
   }
 
-  async function onClick() {
+  async function onFinished() {
     // Inside the post-success window this tap is the second half of a double-tap:
     // absorbed silently, and — checked here rather than inside `tap` — never
     // escalated into a dialog the user did not ask for.
@@ -252,7 +282,14 @@ export default function LogPracticeButton({
     // Offline, a second same-day tap enqueues NOTHING: the replay would no-op it, and
     // a queue badge counting an entry that will never become a session is its own small
     // lie. The narrowing is enforced here, not merely documented.
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // A CROSS-PROFILE TAP NEVER QUEUES (the #1373 dose rule, same seam): the replay
+    // route carries no target profile, so a captured session would land on the acting
+    // one. Go online and let a dropped link surface the retry sentence instead.
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.onLine === false &&
+      subjectProfileId == null
+    ) {
       if (count > 0) {
         toast("Already logged today — it'll sync when you're back online.");
         return;
@@ -278,35 +315,26 @@ export default function LogPracticeButton({
       return;
     await ledger.tap({
       write: () => {
-        const fd = new FormData();
+        const fd = subject(new FormData());
         stampLoggedVia(fd);
         fd.set("practice", practice);
+        fd.set("intent", "finished");
         // Only where the stepper is rendered, and only when it holds a value: the tap
         // may write a duration the user SAW, never the seeded-for-the-modal state.
-        // No `start_time` field is set on any path here — its absence is what tells
-        // the write core to stamp the tap instant (#2204 part 2). No `end_time`
-        // either: a tap never states a window (#3142).
+        // The intent is the statement: the server stamps the end tap and derives a
+        // start only from the visible usual duration. Client clock fields never cross
+        // this boundary.
         const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
+        const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
+        if (at) fd.set("end_time", at);
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
-        const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
-        if (at) fd.set("start_time", at);
         return logPractice(fd);
       },
       settle: (outcome) => {
         report(outcome);
-        // A STATEMENT IS SPENT BY THE TAP IT ANSWERS: multi-session days are the
-        // point here, and a surviving 07:00 would quietly stamp the evening's sauna
-        // with the morning's time.
-        //
-        // A PLAIN RESET IS ENOUGH HERE, and the reason is one surface over: the stool
-        // picker scopes its reset to the statement the tap consumed, because its
-        // control stays live through the write and a statement can genuinely arrive
-        // mid-flight. This one hands `disabled` to the control while the tap is
-        // pending, so there is no window to defend and a scoped reset would be a
-        // guard for a state the UI cannot reach.
         if (outcome.kind === "logged") setWhen({ date: today, statedAt: null });
         // A refused log (a forged date, a stale target) wrote nothing, so the tap
         // stays immediately retryable instead of cooling down.
@@ -320,7 +348,8 @@ export default function LogPracticeButton({
         // the failure the dose confirm takes.
         if (
           shouldQueueOffline(navigator.onLine !== false, err) &&
-          count === 0
+          count === 0 &&
+          subjectProfileId == null
         ) {
           void queueOffline();
           return { kind: "keep" };
@@ -331,21 +360,65 @@ export default function LogPracticeButton({
     });
   }
 
-  async function onDetailedSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
+  async function onStart() {
+    if (pending || currentLive) return;
     setPending(true);
-    const fd = new FormData(form);
+    const fd = subject(new FormData());
     stampLoggedVia(fd);
     fd.set("practice", practice);
     try {
-      const outcome = await logPractice(fd);
-      report(outcome);
-      if (outcome.kind === "logged") {
-        setDetailsOpen(false);
+      const outcome = await startPracticeLive(fd);
+      if (outcome.kind === "started") {
+        setCurrentLive(outcome.session);
+        toast("Session started");
+      } else if (outcome.kind === "already-live") {
+        // The server's row wins over this mount's stale state. Offer the same shared
+        // decision substrate as re-log, and end ONLY the exact row the typed refusal
+        // returned — never a client-guessed practice/name lookup.
+        setCurrentLive(outcome.session);
+        if (
+          await confirm({
+            title: "End running session?",
+            message: `${practice} is already running. End it now?`,
+            confirmLabel: "End session",
+          })
+        ) {
+          await finishLive(outcome.session);
+        } else {
+          toast("Session is already running");
+        }
+      } else {
+        toast("Couldn't start that session.");
       }
     } catch {
-      toast("Couldn't log that session. Try again.");
+      toast("Couldn't start that session. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function finishLive(session: LivePracticeSession) {
+    const fd = subject(new FormData());
+    fd.set("id", String(session.id));
+    const outcome = await endPracticeLive(fd);
+    if (outcome.kind === "ended") {
+      setCurrentLive(null);
+      setCount(outcome.count);
+      setLastTime(null);
+      toast("Session finished");
+    } else {
+      setCurrentLive(null);
+      toast("That session is no longer running.");
+    }
+  }
+
+  async function onEnd() {
+    if (pending || !currentLive) return;
+    setPending(true);
+    try {
+      await finishLive(currentLive);
+    } catch {
+      toast("Couldn't end that session. Try again.");
     } finally {
       setPending(false);
     }
@@ -440,27 +513,60 @@ export default function LogPracticeButton({
             </button>
           </div>
         )}
-        <button
-          type="button"
-          disabled={pending || ledger.blocked()}
-          onClick={onClick}
-          data-testid="practice-log-button"
-          // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
-          // second tap of a day is visibly a SECOND one before it is taken. The
-          // count itself is on the line beside it; the accessible name composes the
-          // whole sentence while the visible label stays short enough for a phone.
-          aria-label={
-            count === 0
-              ? `Log now — log a ${practice} session for today`
-              : `Log another ${practice} session — ${count} already logged today`
-          }
-          className={`${DOSE_ACTION_LABEL} ${
-            primaryTone === "neutral" ? DOSE_ACTION_NEUTRAL : DOSE_ACTION_BRAND
-          }`}
-        >
-          <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-          {count === 0 ? "Log now" : "Log another"}
-        </button>
+        {currentLive ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onEnd}
+            data-testid="practice-end-button"
+            aria-label={`End the running ${practice} session`}
+            className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_BRAND}`}
+          >
+            <IconPlayerStop className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+            End session
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onStart}
+              data-testid="practice-start-button"
+              aria-label={`Start a ${practice} session now`}
+              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
+            >
+              <IconPlayerPlay
+                className="h-3.5 w-3.5"
+                stroke={2.5}
+                aria-hidden
+              />
+              Start now
+            </button>
+            <button
+              type="button"
+              disabled={pending || ledger.blocked()}
+              onClick={onFinished}
+              data-testid="practice-log-button"
+              // Layer 2 (#1893's doctrine): the affordance renders today's state, so the
+              // second tap of a day is visibly a SECOND one before it is taken. The
+              // count itself is on the line beside it; the accessible name composes the
+              // whole sentence while the visible label stays short enough for a phone.
+              aria-label={
+                count === 0
+                  ? `Just finished a ${practice} session`
+                  : `Just finished another ${practice} session — ${count} already logged today`
+              }
+              className={`${DOSE_ACTION_LABEL} ${
+                primaryTone === "neutral"
+                  ? DOSE_ACTION_NEUTRAL
+                  : DOSE_ACTION_BRAND
+              }`}
+            >
+              <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
+              Just finished
+            </button>
+          </>
+        )}
         {showDetails && (
           <button
             type="button"
@@ -476,11 +582,6 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {/* The collapsed WHEN (#3273): the sheet's one-tap row could not state an
-          earlier session at all, because the time it needs lives in the details modal
-          this surface deliberately does not mount. Absolute local times through the
-          shared control, with the day fixed to `today` — a past DAY is what the
-          details form and the history table are for. */}
       {whenShown ? (
         <div className="w-full">
           <button
@@ -501,7 +602,7 @@ export default function LogPracticeButton({
                 onChange={setWhen}
                 minDate={today}
                 maxDate={today}
-                timeLabel={`Time of this ${practice} session`}
+                timeLabel={`End time of this ${practice} session`}
                 disabled={pending || ledger.pending()}
                 testId="practice-when"
               />
@@ -515,66 +616,25 @@ export default function LogPracticeButton({
           onClose={() => setDetailsOpen(false)}
           size="sm"
         >
-          <form
-            onSubmit={onDetailedSubmit}
-            className="grid gap-3 sm:grid-cols-2"
-            data-testid="practice-log-details"
-          >
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Date
-              <DateField
-                name="date"
-                defaultValue={initialDetailsDate ?? today}
-                min={detailsMinDate}
-                max={detailsMaxDate}
-                inputClassName="mt-1 w-full"
-                required
-              />
-            </label>
-            {/* START AND END (#3142, owner decision). Both optional: the pair is
-                what lets a stated session draw a block on the day view's chart, and
-                a start alone still draws a tick. */}
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Start
-              <input
-                type="time"
-                name="start_time"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              End
-              <input
-                type="time"
-                name="end_time"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min="1"
-                step="1"
-                value={duration}
-                onChange={(event) => setDuration(event.target.value)}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200 sm:col-span-2">
-              Notes
-              <textarea name="notes" rows={2} className="input mt-1 w-full" />
-            </label>
-            <button
-              type="submit"
-              disabled={pending}
-              className="btn w-fit disabled:opacity-50 sm:col-span-2"
-              data-testid="practice-log-detailed-submit"
-            >
-              {pending ? "Logging…" : "Log session"}
-            </button>
-          </form>
+          <PracticeSessionForm
+            practices={[practice]}
+            today={today}
+            date={initialDetailsDate ?? today}
+            defaultDurationMin={durationValue()}
+            minDate={detailsMinDate}
+            maxDate={detailsMaxDate}
+            subjectProfileId={subjectProfileId}
+            onSaved={(logged) => {
+              // The form owns its own confirmation; what the BUTTON still owns is the
+              // day's count on the line beside it, which only a same-day log moves.
+              if (logged && logged.date === today) {
+                setCount(logged.count);
+                setLastTime(null);
+              }
+              setDetailsOpen(false);
+            }}
+            onCancel={() => setDetailsOpen(false)}
+          />
         </ModalShell>
       )}
     </div>

@@ -182,7 +182,11 @@ describe(`${MIGRATION}`, () => {
         .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'practice_logs'")
         .get()
     ).toEqual({ seq: 99 });
-    expect(indexNames(db)).toEqual(before);
+    // Later migrations may add indexes to this table; the interval rebuild must keep
+    // every index it inherited rather than requiring the final schema to be frozen at
+    // this migration's exact index set.
+    expect(indexNames(db)).toEqual(expect.arrayContaining(before));
+    expect(indexNames(db)).toContain("idx_practice_logs_profile_live");
 
     // THE COMPOSITION, not the column set. Each row's (date, start_time) pair must
     // still resolve through the profile's timezone to the instant it denoted before —

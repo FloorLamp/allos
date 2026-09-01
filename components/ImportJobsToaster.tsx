@@ -81,6 +81,7 @@ export default function ImportJobsToaster({
       }
       const observed = await observeStates(
         IMPORT_JOB_STATES_ENDPOINT,
+        profileId,
         isImportJobState
       );
       if (!active) return;
@@ -89,7 +90,8 @@ export default function ImportJobsToaster({
         // with an empty set here would defeat the on-load guard (pre-existing
         // ready/failed jobs would re-announce next tick). Retry soon rather than
         // dropping cadence. Over `fetch` this covers the offline case, a 401 after
-        // the session lapsed, and a 200 whose body is not the envelope.
+        // the session lapsed, a malformed envelope, or an answer for a profile
+        // that switched at a different point in the request/render sequence.
         timer = setTimeout(poll, 2000);
         return;
       }

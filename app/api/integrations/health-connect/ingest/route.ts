@@ -4,6 +4,7 @@ import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
 import {
   resolveHealthConnectProfile,
+  emitSyncEvent,
   recordUnmatchedHealthConnectPush,
   recordSync,
   recordSyncEvent,
@@ -213,7 +214,7 @@ export async function POST(req: Request) {
     // IMMEDIATE transactions, so the connection is never blocked longer than one chunk
     // and a mid-batch failure leaves the committed chunks in place (the next rolling-
     // window push re-covers the rest). Every chunk's split still folds into the ONE
-    // recordSyncEvent below (the #14 accounting is per-push, not per-chunk).
+    // sync event below (the #14 accounting is per-push, not per-chunk).
     ({ counts, split, vitalIds, provenance } = ingestHealthConnectPayload(
       INGEST_PROFILE_ID,
       parsed,
@@ -239,19 +240,14 @@ export async function POST(req: Request) {
       "the next push of the rolling window re-covers the rest."
     );
     const win = payloadWindow(parsed);
-    const eventId = recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+    const eventId = emitSyncEvent({
+      profileId: INGEST_PROFILE_ID,
+      sourceId: HEALTH_CONNECT_ID,
+      window: win,
+      split: partial?.split ?? null,
+      skipped: parsed.skipped,
+      partial: null,
       ok: false,
-      windowStart: win.start,
-      windowEnd: win.end,
-      received: tally?.received ?? null,
-      written: tally ? tally.inserted + tally.updated + tally.unchanged : null,
-      inserted: tally?.inserted ?? null,
-      updated: tally?.updated ?? null,
-      unchanged: tally?.unchanged ?? null,
-      suppressed: tally?.suppressed ?? null,
-      edited: tally?.edited ?? null,
-      superseded: tally?.superseded ?? null,
-      skipped: tally?.skipped ?? null,
       details: serializeSyncEventDetails({
         ...parsed.details,
         warnings: [failure, ...parsed.details.warnings],
@@ -305,25 +301,16 @@ export async function POST(req: Request) {
 
   const summary = { ...counts, skipped: parsed.skipped };
   recordSync(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, summary);
-  // Best-effort debug event: one row per POST with the data window + the real
-  // insert/update/unchanged split (written = inserted + updated + unchanged, the
-  // rows the idempotent upserts touched; skipped = rows received but parser-dropped).
-  // recordSyncEvent never throws, so it can't affect ingest.
-  const tally = summarizeSplit(split, parsed.skipped);
+  // Best-effort event: one row per POST; it can never affect ingest.
   const win = payloadWindow(parsed);
-  const eventId = recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+  const eventId = emitSyncEvent({
+    profileId: INGEST_PROFILE_ID,
+    sourceId: HEALTH_CONNECT_ID,
+    window: win,
+    split,
+    skipped: parsed.skipped,
+    partial: null,
     ok: true,
-    windowStart: win.start,
-    windowEnd: win.end,
-    received: tally.received,
-    written: tally.inserted + tally.updated + tally.unchanged,
-    inserted: tally.inserted,
-    updated: tally.updated,
-    unchanged: tally.unchanged,
-    suppressed: tally.suppressed,
-    edited: tally.edited,
-    superseded: tally.superseded,
-    skipped: tally.skipped,
     details: serializeSyncEventDetails(parsed.details),
     raw_ref: rawRef,
   });

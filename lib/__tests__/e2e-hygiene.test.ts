@@ -350,9 +350,10 @@ const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
 // EMPTY — the only sanctioned waitForTimeout is the IRREDUCIBLE bounded absence-of-effect
 // proof, now carried by a same-line `waitfortimeout-ok: <why>` marker at each site (the
-// training-log-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
-// 6s-idle-poll ghost-toast probes), so it's excluded from the count and the allowlist is
-// empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. A NEW unmarked waitForTimeout fails CI.
+// training-log-provenance 700ms-autosave-must-not-fire probes), so it's excluded from
+// the count and the allowlist is empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. The
+// profile-switch toaster polls became identifiable GETs in #1878/#4592, so that spec
+// awaits the responses directly. A NEW unmarked waitForTimeout fails CI.
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {};
 
 // Frozen .first() offenders (per-file counts, `first-ok`-marked lines excluded)
@@ -521,7 +522,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "episode-med-reconcile.spec.ts": 1,
   "equipment-lifecycle.spec.ts": 3,
   "equipment-manager.spec.ts": 1,
-  "food-log-correction.spec.ts": 4,
+  "food-log-correction.spec.ts": 3,
   "genomics.spec.ts": 2,
   "goal-metric-switch.spec.ts": 1,
   "imaging.spec.ts": 3,
@@ -772,6 +773,9 @@ export function hygieneScanText(
  * lines: the `ci-ok:` escape LIVES in a comment.
  */
 export function unmarkedCiBranchLines(text: string): number[] {
+  // Comment stripping cannot create the marker. Most e2e files do not mention it,
+  // so avoid lexing the whole corpus for the handful that can answer this check.
+  if (!CI_ENV_RE.test(text)) return [];
   const lines = text.split("\n");
   const code = cachedStripComments(text).split("\n");
   const out: number[] = [];
@@ -1460,6 +1464,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       // over an existing database, which is their job and not a spec's cleanup —
       // e2e/seed/merge.ts alone does it four times, correctly.
       if (!name.endsWith(".spec.ts")) continue;
+      if (!/DELETE\s+FROM\s+activities/i.test(text)) continue;
       const count = countMatches(
         hygieneScanText(text),
         SHARED_ACTIVITY_DELETE_RE

@@ -49,6 +49,7 @@ export const HISTORY_LOG_KINDS = [
   "dose",
   "food",
   "practice",
+  "mood",
   "substance",
   "body",
   "sleep",
@@ -124,6 +125,7 @@ export const HISTORY_KIND_LABELS: Record<HistoryKind, string> = {
   dose: "Doses",
   food: "Food",
   practice: "Practices",
+  mood: "Mood",
   substance: "Substances",
   body: "Body",
   sleep: "Sleep",
@@ -183,6 +185,7 @@ const ROLLUP_NOUNS: Partial<Record<HistoryKind, [string, string]>> = {
   dose: ["dose", "doses"],
   food: ["serving", "servings"],
   practice: ["practice", "practices"],
+  mood: ["check-in", "check-ins"],
   substance: ["substance", "substances"],
   body: ["reading", "readings"],
   symptom: ["symptom", "symptoms"],
@@ -244,6 +247,16 @@ export type HistoryRowEdit =
       substance: string;
       amount: number;
       notes: string | null;
+    }
+  | {
+      kind: "mood";
+      target: string;
+      valence: number;
+      energy: number | null;
+      anxiety: number | null;
+      factors: string[];
+      notes: string | null;
+      calmRelevant: boolean;
     }
   | { kind: "body"; target: string; slug: string; value: number; unit: string }
   | {
@@ -568,20 +581,22 @@ export function layoutHistoryDay(
   opts: { rollup: boolean }
 ): HistoryDayLayout {
   if (!opts.rollup) return { visible: [...rows], rollups: [] };
-  const visible: HistoryRow[] = [];
   const byMember = new Map<number, HistoryRow[]>();
   for (const row of rows) {
-    if (!HISTORY_ROLLUP_KINDS.includes(row.kind)) {
-      visible.push(row);
-      continue;
-    }
+    if (!HISTORY_ROLLUP_KINDS.includes(row.kind)) continue;
     const list = byMember.get(row.profileId);
     if (list) list.push(row);
     else byMember.set(row.profileId, [row]);
   }
+  const visible = rows.filter(
+    (row) =>
+      !HISTORY_ROLLUP_KINDS.includes(row.kind) ||
+      byMember.get(row.profileId)?.length === 1
+  );
   const rollups: HistoryRollup[] = [];
   for (const profileId of [...byMember.keys()].sort((a, b) => a - b)) {
     const group = byMember.get(profileId)!;
+    if (group.length === 1) continue;
     const counts = new Map<HistoryKind, number>();
     for (const row of group)
       counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);

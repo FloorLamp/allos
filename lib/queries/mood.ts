@@ -76,6 +76,17 @@ export function getMoodOnDate(profileId: number, date: string): MoodLog | null {
   return row ? toMoodLog(row) : null;
 }
 
+// The record's filter chip asks a cheaper question than its row gather. Keep the
+// existence probe beside the store's other profile-scoped reads so `/history` never
+// needs to name the private mood table itself (#992).
+export function hasMoodLogs(profileId: number): boolean {
+  return (
+    db
+      .prepare("SELECT 1 FROM mood_logs WHERE profile_id = ? LIMIT 1")
+      .get(profileId) != null
+  );
+}
+
 // Whether the profile has EVER logged an anxiety rating — the "prior use" signal of
 // the check-in Calm-scale relevance gate (issue #1313, signal 1: continuity trumps
 // inference, so a profile that's used the scale keeps it). Kept here in the mood

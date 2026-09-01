@@ -1,10 +1,10 @@
 "use server";
 
 import { requireWriteAccess } from "@/lib/auth";
-import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
 import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
-import { insertBodyMetric } from "@/lib/offline/writes";
+import { LOGGED_VIA_FIELD } from "@/lib/logged-via";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { getTrackedPractices } from "@/lib/queries";
 import { practiceLogOutcomeText } from "@/lib/practice";
 import { parseQuickLog } from "@/lib/palette-quick-log";
@@ -15,10 +15,12 @@ import { logPractice } from "@/app/(app)/wellness/actions";
 // wellness practices in #1633). The palette parses the same input client-side (pure
 // parseQuickLog) to preview the row; this re-parses AUTHORITATIVELY — including
 // re-deriving the tracked-practice set from the database rather than trusting the
-// client's copy of it — and writes through the shared cores (insertBodyMetric, the same
-// validation as the body-metrics form and the offline replay; logPractice, the same
-// action the Wellness card's button and the quick-entry overlay post). Mutating, so it
-// gates on requireWriteAccess.
+// client's copy of it — and writes through each domain's own ACTION: `addMeasurements`,
+// the same one the measurements form posts from every surface (#4424 ruling 7 — this
+// path used to reach past it into `insertBodyMetric`, so the palette was the one weight
+// door with no shared day bound above it and no shared revalidation), and `logPractice`,
+// the same action the Wellness card's button and the quick-entry overlay post.
+// Mutating, so it gates on requireWriteAccess.
 //
 // `capturedUnit` is the unit the PREVIEW was parsed against, so an unsuffixed number
 // commits as the row the person read ("Log weight · 82.5 kg") rather than against the
@@ -56,21 +58,23 @@ export async function paletteQuickLog(
     };
   }
 
-  // Time-blind, like every quick-log door: the palette states a WEIGHT, never a
-  // "when", so the core's outcome has no refusal to carry here (#2311).
-  const { wrote } = insertBodyMetric(profile.id, {
-    date: today(profile.id),
-    weight: String(parsed.value),
-    weightUnit: parsed.unit,
-    bodyFatPct: null,
-    restingHr: null,
-    notes: null,
-    // The command palette IS the quick-log surface (#3087).
-    loggedVia: "quick-log",
-  });
-  if (!wrote) return { ok: false, message: "Couldn't log that weight." };
-
-  revalidateRoute("/trends");
-  revalidateRoute("/");
+  // TIME-BLIND, like every quick-log door: the palette states a WEIGHT, never a
+  // "when", so it posts no `occurred_at` field at all — which the action reads as "no
+  // statement was made" and leaves any stored time alone (#2235's trichotomy), rather
+  // than as the explicit clear an empty field means.
+  const fd = new FormData();
+  fd.set("date", today(profile.id));
+  fd.set("weight", String(parsed.value));
+  fd.set("weight_unit", parsed.unit);
+  // The command palette IS the quick-log surface (#3087).
+  fd.set(LOGGED_VIA_FIELD, "quick-log");
+  const saved = await addMeasurements(fd);
+  // The one refusal this submission can meet: the action judges the day against the
+  // profile's own today, and the line above states that very day — so this is the
+  // gate answering rather than a case a user can reach. It is asked anyway because
+  // an unconditional confirm is what #232 forbids, and because the day this posts is
+  // derived rather than constant.
+  if (saved.dateRefused)
+    return { ok: false, message: "Couldn't log that weight." };
   return { ok: true, message: `Logged weight ${parsed.value} ${parsed.unit}.` };
 }

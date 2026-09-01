@@ -1,12 +1,15 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import {
   parseTrainingTab,
   retiredTrainingTabTarget,
+  trainingTabStrip,
 } from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
@@ -42,6 +45,10 @@ export default async function TrainingPage(props: {
   if (retired) redirect(retired);
 
   const activeTab = parseTrainingTab(searchParams?.tab);
+  // The pending state names the tab the way the strip above it does, so the two
+  // never disagree about what is arriving.
+  const activeTabLabel =
+    trainingTabStrip().find((t) => t.id === activeTab)?.label ?? "Training";
   const requestedDate = one(searchParams?.date);
   const initialCreateDate =
     isRealIsoDate(requestedDate) && requestedDate <= today(profile.id)
@@ -104,7 +111,22 @@ export default async function TrainingPage(props: {
           </Link>
         }
       >
-        {activeSection}
+        {/* THE HEAD DOES NOT WAIT ON THE TAB (#2641 gap 1, the Trends pattern).
+            Everything above this line is two cheap reads; the selected section is
+            the hub's whole query load. The tabs are LINKS, so what flushes first
+            is usable rather than decorative — you can change surface before the
+            first one has arrived.
+
+            NOT a route-level `loading.tsx` (#530): that judgment — a content-less
+            shell is worse than nothing — is exactly why the boundary sits BELOW
+            the header and the strip, and why the fallback is a card at the height
+            the panel's own first card lands at rather than a spinner in a void
+            (#2531/#2399, carried across to a pending state). Nothing renders under
+            it, so a taller section grows the page downward instead of moving
+            anything the reader is looking at. */}
+        <Suspense fallback={<PendingSection label={activeTabLabel} />}>
+          <StreamedSection>{activeSection}</StreamedSection>
+        </Suspense>
       </TabFirstPage>
     </PageContainer>
   );

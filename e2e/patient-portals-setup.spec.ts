@@ -464,10 +464,15 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     await removePortal(page, portal);
   });
 
-  test("a portal refuses a web address in its name, inline on the form", async ({
+  test("a portal refuses an address, then edits metadata without losing its mapping (#1836)", async ({
     page,
   }) => {
     test.slow();
+    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
+    const portal = `Editable Portal ${stamp}`;
+    const fixed = `Fixed Portal ${stamp}`;
+    const label = `Editable Patient ${stamp}`;
+
     await page.goto("/integrations/patient-portals");
     const toggle = page.getByTestId("portal-add-toggle");
     if (await toggle.isVisible()) await hydratedClick(page, toggle);
@@ -478,36 +483,31 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
     );
     await hydratedClick(page, page.getByTestId("portal-add"));
 
-    // Refused, with the reason stated beside the field it refuses.
+    // Refused, with the reason stated beside the field it refuses, and not stored.
     await expect(
       page
         .getByTestId("portal-add-form")
         .getByTestId("row-note")
         .filter({ hasText: "never a web address" })
     ).toBeVisible();
-    // And nothing was stored.
     await expect(
       page.locator(
         '[data-testid="portal-section"][data-portal-name*="mychart.example.org"]'
       )
     ).toHaveCount(0);
-  });
 
-  test("software is chips at creation and editable from the portal ⋯ afterwards (#1836)", async ({
-    page,
-  }) => {
-    test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
-    const portal = `Software Portal ${stamp}`;
-
-    // eClinicalWorks is a first-class chip (#1836's ecw enum addition).
-    await addPortal(page, portal, "ecw");
+    // Correct the same form. eClinicalWorks is a first-class chip (#1836's ecw
+    // enum addition), and the successful action replaces the inline refusal.
+    await settledFill(page, page.getByTestId("portal-name"), portal);
+    await hydratedClick(page, page.getByTestId("software-chip-ecw"));
+    await hydratedClick(page, page.getByTestId("portal-add"));
     const section = sectionFor(page, portal);
+    await expect(section).toBeVisible();
     await expect(section.getByTestId("portal-software-tag")).toHaveText(
       "eClinicalWorks"
     );
 
-    // Edit it after creation — the ⋯ opens the same chips.
+    // Edit the software after creation — the ⋯ opens the same chips.
     await openRowMenu(page, section, portal);
     await (await menuItem(page, "portal-software-edit")).click();
     const denseButton = section.getByTestId("software-chip-generic-ccd");
@@ -522,22 +522,9 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
       "Something else"
     );
 
-    await removePortal(page, portal);
-  });
-
-  test("renaming a portal from its ⋯ keeps every mapping in place", async ({
-    page,
-  }) => {
-    test.slow();
-    const stamp = String(Date.now()).slice(-6); // clock-ok: a uniqueness suffix for this spec's own fixture rows, never a stored timestamp
-    const portal = `Typo Portal ${stamp}`;
-    const fixed = `Fixed Portal ${stamp}`;
-    const label = `Typo Patient ${stamp}`;
-
-    await addPortal(page, portal);
     await prebind(page, portal, label);
 
-    const section = sectionFor(page, portal);
+    // Renaming edits only the display name; the mapping and stable slug survive.
     await openRowMenu(page, section, portal);
     await (await menuItem(page, "portal-rename")).click();
     await settledFill(page, section.getByTestId("portal-rename-input"), fixed);
@@ -549,8 +536,6 @@ test.describe("Patient portals — the portal sections (#1874)", () => {
       renamed.getByTestId("row-note").filter({ hasText: "✓ Renamed" })
     ).toBeVisible();
     await expect(sectionFor(page, portal)).toHaveCount(0);
-    // The mapping rode along — a rename touches the display name only; the slug every
-    // tool config quotes never moves (that is the whole point of minting it).
     await expect(patientRowFor(page, label)).toBeVisible();
 
     await removePortal(page, fixed);

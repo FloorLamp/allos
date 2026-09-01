@@ -145,6 +145,7 @@ describe("the URL grammar", () => {
     // Phase 2's kinds resolve now — that is what shipping them means. The degrade
     // rule is asserted on the cases that still cannot resolve.
     ["sleep", "sleep"],
+    ["mood", "mood"],
     ["cycle", "cycle"],
     ["nonsense", undefined],
     ["", undefined],

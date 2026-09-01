@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
@@ -9,7 +10,6 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
@@ -29,9 +29,11 @@ import {
   getDaylightOutdoorMinutesByDay,
   getIntakeDoses,
   getIntakeItems,
+  getMoodOnDate,
   getSymptomLogOrder,
   getSymptomNotesOnDate,
   getSymptomSeveritiesOnDate,
+  isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
 import { getTimelineDates } from "@/lib/timeline";
@@ -57,7 +59,7 @@ import {
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
-import { PICKER_SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
@@ -84,6 +86,7 @@ import {
   type HistoryRow,
 } from "@/lib/history-format";
 import { TIMELINE_EMPTY_ACTIONS } from "@/lib/timeline-format";
+import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import { isTrainingRelevant } from "@/lib/life-stage";
 import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import {
@@ -243,6 +246,7 @@ export default async function HistoryPage(props: {
   const scope = await requireScope();
   const { loginId, actingProfileId, viewIds } = scope;
   const todayStr = today(actingProfileId);
+  closeAbandonedPracticeSessions(actingProfileId);
   const prefs = getDisplayFormatPrefs(loginId);
 
   // A kind IMPLIES its family, so `?family=` only matters when no kind is named. Phase
@@ -495,16 +499,28 @@ export default async function HistoryPage(props: {
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
   // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
-  // life records are created on their domain surfaces, and the two remaining Logs kinds
-  // are not declared either: sleep arrives from an integration and is corrected at its
-  // source, and a symptom is quick-logged — the day view mounts the bar that does it.
+  // life records are created on their domain surfaces, and sleep arrives from an
+  // integration and is corrected at its source.
+  //
+  // SYMPTOM ONLY WHERE THE BAR IS NOT (#4424 ruling 2). A symptom is quick-logged and
+  // the day view mounts the bar that does it — but a reader filtered to `?kind=symptom`
+  // is standing on no day, so that argument covered a view the bar never reaches: the
+  // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
+    kind === "dose" ||
     kind === "practice" ||
+    kind === "mood" ||
     kind === "substance" ||
     kind === "body"
       ? kind
-      : null;
+      : kind === "symptom" && day == null
+        ? kind
+        : null;
+  const defaultTime = zonedDateParts(
+    getTimezone(actingProfileId),
+    new Date()
+  ).hhmm;
   const addVocabulary =
     canWrite && addKind
       ? {
@@ -519,7 +535,42 @@ export default async function HistoryPage(props: {
                   label: substanceDef(key).label,
                 }))
               : [],
-          weightUnit: getUnitPrefs(loginId).weightUnit,
+          // THE SAME VOCABULARY THE BAR OFFERS, in the same ranked order (#857): this
+          // profile's history first, then the curated catalog, then its own customs.
+          // Free text still logs — `logSymptomCore` is the one place a custom key is
+          // minted, so the door never has to guess one.
+          symptoms:
+            addKind === "symptom"
+              ? [
+                  ...new Set([
+                    ...getSymptomLogOrder(actingProfileId),
+                    ...PICKER_SYMPTOMS.map((entry) => entry.slug),
+                    ...getCustomSymptomNames(actingProfileId),
+                  ]),
+                ].map((key) => ({ key, label: symptomLabel(key) }))
+              : [],
+          // ONLY ITEMS WITH A LIVE DOSE, which is the dose door's own presence rule
+          // (`hasAddDoor` below reads the same list): an item whose schedule is
+          // entirely retired keeps its history and takes no new rows.
+          doseItems: addKind === "dose" ? loggable : [],
+          doseDefaultTime: defaultTime,
+          // WHAT THE BODY DOMAIN'S ONE FORM NEEDS ON THE DAY BEING READ (#4424
+          // ruling 2) — the same reader the quick-log sheet's measurements overlay
+          // uses, asked for this day instead of today, so the door and the sheet
+          // cannot disagree about which fields a body sitting has.
+          measurements: measurementsQuickEntry(
+            loginId,
+            actingProfileId,
+            day ?? todayStr
+          ),
+          moodDay: {
+            date: day ?? todayStr,
+            label: formatMonthDay(day ?? todayStr, prefs, {
+              today: todayStr,
+            }),
+            mood: getMoodOnDate(actingProfileId, day ?? todayStr),
+          },
+          moodShowCalm: isAnxietyScaleRelevant(actingProfileId),
           // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
           // door's first paint is the server's answer rather than a flash of nothing;
           // the door re-reads through `usualRoutineOffersOn` when its date field moves.
@@ -535,16 +586,16 @@ export default async function HistoryPage(props: {
   // that cannot offer one falls back to the kind chooser rather than to an empty row,
   // which is what the dose branch already did.
   const hasAddDoor = addVocabulary
-    ? addKind === "practice"
-      ? addVocabulary.practices.length > 0
-      : addKind === "substance"
-        ? addVocabulary.substances.length > 0
-        : true
-    : kind === "dose" && loggable.length > 0;
-  const defaultTime = zonedDateParts(
-    getTimezone(actingProfileId),
-    new Date()
-  ).hhmm;
+    ? addKind === "dose"
+      ? addVocabulary.doseItems.length > 0
+      : addKind === "practice"
+        ? addVocabulary.practices.length > 0
+        : addKind === "substance"
+          ? addVocabulary.substances.length > 0
+          : addKind === "symptom"
+            ? addVocabulary.symptoms.length > 0
+            : true
+    : false;
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -963,7 +1014,6 @@ export default async function HistoryPage(props: {
               {HISTORY_LOG_KINDS.filter(
                 (candidate) =>
                   candidate !== "sleep" &&
-                  candidate !== "symptom" &&
                   (presentKinds.length === 0 ||
                     presentKinds.includes(candidate))
               ).map((candidate) => (
@@ -977,12 +1027,6 @@ export default async function HistoryPage(props: {
                 </Link>
               ))}
             </div>
-          ) : kind === "dose" ? (
-            <DoseBackfillLauncher
-              loggable={loggable}
-              maxDate={todayStr}
-              defaultTime={defaultTime}
-            />
           ) : addVocabulary && addKind ? (
             <HistoryAddDoor
               kind={addKind}

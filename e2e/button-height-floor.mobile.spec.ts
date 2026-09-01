@@ -68,9 +68,11 @@ type BoxSurface = {
 const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
   // THE OWNER'S EXAMPLE, RE-HOMED (#3958). This entry read the dose ledger, whose
   // route is deleted: the four ledgers folded into `/history`, and the record is the
-  // surface that now renders the two controls this row still binds. `dose-ledger-add`
-  // is LITERALLY the same control — `DoseBackfillLauncher`, same testid — mounted by
-  // the record's kind-resolved Add door, and the chip is the record's own filter row.
+  // surface that now renders the two controls this row still binds. The dose door's
+  // control is `history-add-open-dose` — the same btn-ghost, mounted by the record's
+  // kind-resolved Add door, which since #4424's dose leg opens the domain's shared form
+  // directly rather than `DoseBackfillLauncher`'s own toggle (that launcher is deleted)
+  // — and the chip is the record's own filter row.
   //
   // TWO SURFACES LEFT WITH THE RANGE ROW RATHER THAN MOVING, and neither was replaced
   // by a nearby element to keep this list the same length:
@@ -94,7 +96,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ready: "history-filters",
     surfaces: [
       { kind: "chip", testId: "history-chip-all", repairable: true },
-      { kind: "btn-ghost", testId: "dose-ledger-add", repairable: true },
+      { kind: "btn-ghost", testId: "history-add-open-dose", repairable: true },
     ],
   },
   {
@@ -137,7 +139,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       { kind: "typed field", testId: "m-time", repairable: false },
     ],
   },
-  // THE QUICK-LOG SHEET'S TWO "Happened earlier?" DISCLOSURES (#3273). They are
+  // THE STOOL SHEET'S "Happened earlier?" DISCLOSURE (#3273). It is
   // `btn-ghost btn-sm` and carry no `.tap-target`, so the `/nutrition` sweep further
   // down is structurally unable to see them and no other entry here names them — two
   // new phone controls outside the standing census is the gap #3938 exists to close.
@@ -973,27 +975,41 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-    const extended = page.locator(".tap-target:visible");
-    // A sweep over nothing is green and says nothing — the same discipline the
-    // family sweep above keeps.
-    expect(await extended.count()).toBeGreaterThan(0);
-
-    const tooSmall = await extended.evaluateAll(
+    // Measure visibility and geometry from the SAME rendered snapshot. A locator
+    // `:visible` filter and a later `evaluateAll` can straddle a responsive/details
+    // transition on repeat runs, leaving controls that are now display:none in the
+    // selected set with a 0px box. Zero-area controls are not rendered controls; a
+    // visible undersized one still has positive area and remains in `tooSmall`.
+    const measured = await page.locator(".tap-target").evaluateAll(
       (els, minimum) =>
-        els
-          .map((el) => ({
-            what:
-              el.getAttribute("data-testid") ??
-              el.getAttribute("aria-label") ??
-              (el.textContent ?? "").trim().slice(0, 30),
-            height: el.getBoundingClientRect().height,
-          }))
-          .filter((b) => b.height < minimum),
+        els.reduce(
+          (result, el) => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return result;
+            result.visibleCount += 1;
+            if (rect.height >= minimum) return result;
+            result.tooSmall.push({
+              what:
+                el.getAttribute("data-testid") ??
+                el.getAttribute("aria-label") ??
+                (el.textContent ?? "").trim().slice(0, 30),
+              height: rect.height,
+            });
+            return result;
+          },
+          {
+            visibleCount: 0,
+            tooSmall: [] as { what: string; height: number }[],
+          }
+        ),
       TAP_TARGET_MIN_RENDERED_PX
     );
+    // A sweep over nothing is green and says nothing — the same discipline the
+    // family sweep above keeps.
+    expect(measured.visibleCount).toBeGreaterThan(0);
 
     expect(
-      tooSmall,
+      measured.tooSmall,
       `A \`.tap-target\` control renders under ${TAP_TARGET_MIN_RENDERED_PX}px at ${PHONE.width}px. The ` +
         `overlay adds a fixed 2x${TAP_TARGET_INSET_PX}px, so below that it lands short of the ` +
         `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Give the ` +

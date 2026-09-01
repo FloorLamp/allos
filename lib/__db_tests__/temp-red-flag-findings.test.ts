@@ -22,6 +22,11 @@ import {
 } from "@/lib/rule-finding-prefixes";
 import { TEMP_RED_FLAG_PREFIX } from "@/lib/temp-red-flag";
 
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
+
 // #448 findings-builder fixture for the single-reading temperature red-flag builder
 // (issue #859 item 3). Seeds a realistic open illness episode + a logged reading and
 // asserts the end-to-end care-tier finding output — the input layer the pure tier

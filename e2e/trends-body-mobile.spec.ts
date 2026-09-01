@@ -318,7 +318,6 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     const logButton = controls.getByTestId("log-measurements-toggle");
     await expect(logButton).toBeVisible();
     await expect(logButton).toHaveClass(/btn/);
-    await expect(page.getByTestId("chart-jump-chips")).toHaveCount(0);
 
     // Toggle first, menu second, with matched vertical centers and only the
     // compact 8px control-to-content gap.

@@ -4,6 +4,7 @@ import {
   comboboxRows,
   deleteActivityFromForm,
   expectNoClippedContent,
+  settledBoxes,
   settledFill,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -194,4 +195,150 @@ test("a multi-part exercise header reads and taps at 390px (#1613)", async ({
     .click();
   await expect(parts).toHaveCount(1);
   await cleanUpDraft(page);
+});
+
+// Issue #4515 — the same two sticky rows, pinned against the phone's top edge.
+//
+// The workspace overlay is `fixed inset-0 … overflow-y-auto`, so it IS the scroll
+// container at the viewport: a child at `top: 0` pins UNDER the status bar, which
+// is #4282's page-strip defect one layer in. The panel's own top padding clears
+// the notch at REST and says nothing about where a pinned row stops.
+//
+// Headless Chromium reports a ZERO safe-area inset, so the defect is invisible to
+// every ordinary measurement here and would stay green forever. Overriding
+// `--top-edge-inset` (app/globals.css) on <html> is the same substitution a notched
+// device performs — the same forge e2e/trends-context-bar.mobile.spec.ts uses for
+// #4282 — so this exercises the arithmetic `top-edge-safe` actually does.
+test("pinned part header and set schema park BELOW a notch band (#4515)", async ({
+  page,
+}) => {
+  const NOTCH = 44; // an iPhone-class status-bar inset, in CSS px
+  // How far past the first part's top to scroll. #4515 records the defect as
+  // UNREACHABLE on a one-part form — nothing scrolls far enough to pin — so the
+  // number that matters here is the window in which BOTH rows are pinned, and it
+  // is bounded on both sides: below ~210 the set-schema row is still in flow, and
+  // past ~300 the part runs out and sticky pushes that row back up. Measured at
+  // 390×844 on this two-part fixture; the stationarity check below is what turns
+  // a drift out of that window into a red instead of a silent vacuous pass.
+  //
+  // A CONSTANT ON PURPOSE, NOT A SEARCH. Scanning for a depth at which both rows
+  // hold still would make this spec self-healing, and a self-healing spec cannot
+  // fail: it would hunt until some depth passed and report green while the layout
+  // had drifted out from under it. The constant is what makes the drift visible;
+  // the proof below is what stops the constant going quietly wrong.
+  const INTO_PART = 260;
+  const forge = (px: number) =>
+    page.evaluate(
+      (v) =>
+        document.documentElement.style.setProperty(
+          "--top-edge-inset",
+          `${v}px`
+        ),
+      px
+    );
+
+  await page.goto("/training?tab=log");
+  const sheet = await openLogSheet(page);
+  await (await showLogRow(sheet, "log-activity")).click();
+
+  const firstName = page.getByPlaceholder(/What did you do/);
+  await pickActivity(page, firstName, "Barbell Bench Press");
+  const weight = page.getByTestId("set1-weight");
+  await weight.fill("60");
+  await expect(weight).toHaveValue("60");
+  await settledFill(page, page.getByTestId("set1-reps"), "5");
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+
+  try {
+    // A second part is what makes the defect REACHABLE at all: one part does not
+    // give the overlay enough content to scroll a row into its pin.
+    await page.getByRole("button", { name: "+ Add another activity" }).click();
+    const parts = page.getByTestId("activity-part");
+    await expect(parts).toHaveCount(2);
+    await pickActivity(
+      page,
+      parts
+        .nth(1) // nth-ok: the part this spec just added, addressed by the order it created
+        .getByPlaceholder(/Add another activity/),
+      "Barbell Overhead Press"
+    );
+
+    const workspace = page.getByTestId("activity-workspace");
+    const first = parts.nth(0); // nth-ok: the lift this spec entered first
+    const header = first.getByTestId("part-header");
+    const schema = first.getByTestId("set-column-headings");
+
+    // Scroll to a fixed depth INTO the first part. Absolute, not relative: the
+    // scroll lands on the same offset however deep the overlay already is, so the
+    // second call after the forge measures the same place as the first.
+    const scrollInto = (extra: number) =>
+      workspace.evaluate((root, ex) => {
+        const part = root.querySelector<HTMLElement>(
+          '[data-testid="activity-part"]'
+        )!;
+        const before = root.scrollTop;
+        root.scrollTop +=
+          part.getBoundingClientRect().top -
+          root.getBoundingClientRect().top +
+          ex;
+        return { moved: root.scrollTop - before, top: root.scrollTop };
+      }, extra);
+
+    // Park both rows, and PROVE they parked rather than assuming it. A pinned row
+    // holds still while the scroll advances; a row still in normal flow travels
+    // with it, 1:1. Same locators as the assertions below, so this cannot pass on
+    // a row the assertions never reach.
+    const pinned = async () => {
+      await scrollInto(INTO_PART);
+      const [h0, s0] = await settledBoxes([header, schema]);
+      const nudge = await scrollInto(INTO_PART + 20);
+      expect(
+        nudge.moved,
+        "the workspace overlay should still have room to scroll"
+      ).toBe(20);
+      const [h1, s1] = await settledBoxes([header, schema]);
+      expect(h1.y, "the part header should be pinned, not scrolling").toBe(
+        h0.y
+      );
+      expect(s1.y, "the set-schema row should be pinned, not scrolling").toBe(
+        s0.y
+      );
+      return [h1, s1];
+    };
+
+    // WHAT THESE ASSERT: a relationship, never a device number. The pinned header
+    // sits exactly the forged inset below the overlay's top edge, and the schema
+    // row sits exactly the header's own height below the header — which is what
+    // `--set-schema-top` means. Both hold with and without a notch, so the notched
+    // pair proves the offset and the inset COMPOSE rather than replace each other.
+    const [flushHeader, flushSchema] = await pinned();
+    expect(
+      flushHeader.y,
+      "the overlay panel claims NONE of the top edge, so with no inset its first " +
+        "pinned row parks flush against it. If a strip inside this overlay has " +
+        "deliberately taken part of that edge, the claim changed and THIS is the " +
+        "line to update — exact on purpose, because 'at or below the inset' would " +
+        "also pass for the zero-claim the fix exists to install."
+    ).toBe(0);
+    expect(
+      Math.abs(flushSchema.y - (flushHeader.y + flushHeader.height))
+    ).toBeLessThanOrEqual(1);
+
+    await forge(NOTCH);
+    const [notchedHeader, notchedSchema] = await pinned();
+    expect(
+      notchedHeader.y - flushHeader.y,
+      "a forged notch moves the pinned header down by exactly that much"
+    ).toBe(NOTCH);
+    expect(
+      Math.abs(notchedSchema.y - (notchedHeader.y + notchedHeader.height))
+    ).toBeLessThanOrEqual(1);
+
+    await expectNoClippedContent(page);
+  } finally {
+    await forge(0);
+    await cleanUpDraft(page);
+  }
 });

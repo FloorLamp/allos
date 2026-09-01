@@ -220,7 +220,6 @@ function barTree({
                 today={DATE}
                 days={offered}
                 groupsBySlot={GROUPS}
-                excludedGroups={[]}
                 slot={slot}
                 slotBoundaries={{ midday: 660, evening: 900 }}
                 dayLedger={ledgerFor(day)}
@@ -277,7 +276,6 @@ function twoBarTree({ showFirst = true, day = DAY } = {}) {
         today={DATE}
         days={[day]}
         groupsBySlot={GROUPS}
-        excludedGroups={[]}
         slot="Midday"
         slotBoundaries={{ midday: 660, evening: 900 }}
         dayLedger={ledgerFor(day)}

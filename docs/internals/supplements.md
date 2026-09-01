@@ -27,8 +27,10 @@ invariants are summarized in AGENTS.md.
 dose/schedule/adherence/escalation/refill machinery serves both; medication-only
 fields (`prescriber`/`pharmacy`/`rx_number`/`as_needed`) are nullable columns on
 the same table. **Surfaces (#746):** the two kinds render on separate pages —
-supplements on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a tab
-of the Food | Supplements umbrella), medications on the standalone
+supplements on **Nutrition → Manage** (`/nutrition?tab=supplements`, a tab of the
+Day | Manage umbrella — the tab was labelled Supplements until #3987 phase 2, and
+the `?tab=` value keeps that spelling because it is what every stored deep link
+carries), medications on the standalone
 **Medications** page (`/medications`, Medical nav group). The former combined
 intake route was removed outright (#1635) and now 404s — historical deep
 links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
@@ -230,12 +232,13 @@ decrement), while a retired dose, a paused item, the OTHER resolution already
 standing, or an entry that outlived the `isDoseDateAccepted` window is
 dead-lettered into the queue's review panel with its own reason instead of being
 reported as synced. A replayed confirm carries the CAPTURED tap instant
-(`clientTakenAt`) and stamps it as `recorded_at` — the untrusted client clock
-validated by the pure `resolveQueuedTakenAt` (not future beyond
-`GIVEN_AT_FUTURE_SKEW_MS`, and its profile-local date must be the log row's own
-day), falling back to the replay instant when unusable, since a skewed phone
-clock must cost the minute and never the dose log. The amount snapshot still
-comes from the dose row at replay, per the snapshot-on-confirm rule. **Dueness
+(`clientTakenAt`) for `occurred_at` — the client cannot infer a profile-local day
+from the browser calendar. Replay compares that untrusted instant with the row in
+the profile timezone: a matching day survives even when it replays after midnight;
+a mismatched explicit past-day row is deliberately untimed. A row that is still
+profile-today falls back to the replay instant when the clock is unusable, since a
+skewed phone clock must cost the minute and never the dose log. The amount snapshot
+still comes from the dose row at replay, per the snapshot-on-confirm rule. **Dueness
 for workout-conditioned items keys on the PREDICTED training day, not "was a
 workout logged" (#558):** `isDueOn` takes an optional `predictedWorkoutDay`
 (from `isPredictedWorkoutDay`/`inferWorkoutSchedule` — the same cadence the
@@ -306,7 +309,7 @@ remembered in two others, and only medications had a frictionless door at all.
 
 **Name first; every door owns the kind.** The form opens on one field, but it is
 never a generic intake chooser: each of its six shipped hosts passes a literal
-`medication` or `supplement` kind. Medication doors and Nutrition → Supplements
+`medication` or `supplement` kind. Medication doors and Nutrition → Manage
 therefore keep their own write vocabulary without asking a question the route
 has already answered. The form rejects a missing or unknown kind at its runtime
 boundary, and the caller census keeps every mount literal and classified.
@@ -622,8 +625,11 @@ renderer:
   food and practice ledgers, and the shared event-ledger frame they mounted went
   with them. `lib/history.ts` reads the same `getIntakeDoseLedgerPage`, composes
   the same amount/product detail, and renders the ⋯ Edit / Delete-with-undo over
-  the SAME unchanged cores; `DoseBackfillLauncher.tsx` is still the backfill, now
-  in the record's kind-resolved Add door. See `docs/internals/history.md`.
+  the SAME unchanged cores; the backfill is `HistoricalDoseForm` itself, mounted by
+  the record's kind-resolved Add door with the day the reader was looking at
+  (#4424 — `DoseBackfillLauncher.tsx`, which mounted the same form behind its own
+  toggle and picker and opened on today, is deleted). See
+  `docs/internals/history.md`.
 - One door, two pre-filters: `historyHref({ kind: "dose", class })` — the same
   kind→surface seam `intakeHref` encodes one level up, now a param on one page
   rather than two routes. Both intake surfaces carry the one-click door
@@ -641,8 +647,9 @@ renderer:
   genuinely want the whole window in one array, and as the row-for-row cross-check
   against the per-item panel — but nothing that RENDERS the record uses it.
 - **"Log past dose" is a top-level entry** on the record's Add door — the same
-  `HistoricalDoseForm` with an item picker in front. The per-item panel keeps its
-  own entry: an item-scoped question stays answerable on the item.
+  `HistoricalDoseForm`, whose own item picker renders because the door hands it more
+  than one item (a per-item mount hands it one and gets no picker). The per-item panel
+  keeps its own entry: an item-scoped question stays answerable on the item.
 - **The recent past is NOT the ledger's job** (#3936). The quick-log sheet's dose
   form carries a day switcher offering exactly `doseLogDays(today)` — today,
   yesterday, the day before, read off `DOSE_LOG_DATE_WINDOW_DAYS` so the offer and
@@ -748,8 +755,9 @@ is always available.
 - _User-initiated LOGGING — dueness gates nudging, never logging_ (#2419). Every
   ACTIVE, unpaused item renders its one-tap log control on
   the web, whatever its dueness says: `EditableSupplementRow` gates
-  `DoseStatusControl` on the item's state and the row's DAY (a past day stays
-  read-only, showing its recorded outcome), not on `due`, so a `may` item, an
+  `DoseStatusControl` on the item's state and the row's DAY (that row's past days stay
+  read-only, showing their recorded outcome; the day ledger, which stands on ONE day,
+  carries the control for every day inside the write window since #4424), not on `due`, so a `may` item, an
   off-cadence row and a situation-inactive one are all one tap away from the
   collapsed "More supplements" section. A situationally HELD row (#1296) is active
   too, so it keeps the control: a hold suppresses dueness, and if the dose was taken
@@ -1240,7 +1248,7 @@ nav entry. Its old Medical-group row was worse than an ordinary one: it was
 `requiresMultiProfile`, so it materialized unannounced when a second profile was
 added, wearing the same `IconPill` as the "Medications" row above it. The row was
 removed; the ROUTE is unchanged. Its doors are `components/intake/SharedSuppliesLink`
-(the Medications header, the Nutrition → Supplements tab, and the Household header,
+(the Medications header, the Nutrition → Manage tab, and the Household header,
 labelled by the pure `sharedSuppliesLinkLabel`), the shared-bottle chip on a linked
 item, and the "See all shared bottles" exit in `SharedSupplyPicker`. `/supplies`
 highlights **Medications** and `/equipment` highlights **Training** through

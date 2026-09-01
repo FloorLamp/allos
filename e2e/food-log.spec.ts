@@ -21,7 +21,7 @@ import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
-    await page.getByTestId("food-more-groups-summary").click();
+    await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
     await expect(row).toBeVisible();
   }
 }
@@ -32,7 +32,7 @@ async function revealFoodGroup(page: Page, slug: string) {
 // Uses the shared authenticated storageState (the seeded profile already has food_daily_totals
 // rows from scripts/seed.ts).
 
-test("logging a serving shows in the day count and the weekly rollup, undo decrements (#579)", async ({
+test("logging updates the day count, header total, and weekly rollup; undo restores them (#579)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -43,10 +43,16 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
 
   const count = page.getByTestId("count-nuts_seeds");
   const before = Number((await count.textContent())?.trim() || "0");
+  const total = page.getByTestId("food-day-total");
+  await expect(total).toBeVisible();
+  const readTotal = async () =>
+    Number((await total.textContent())?.match(/\d+/)?.[0] ?? "0");
+  const totalBefore = await readTotal();
 
   // One tap → optimistic increment.
   await page.getByTestId("log-nuts_seeds").click();
   await expect(count).toHaveText(String(before + 1));
+  await expect.poll(readTotal).toBe(totalBefore + 1);
 
   // The weekly rollup (server-rendered) reflects the serving after refresh.
   await expect(page.getByTestId("food-weekly-rollup")).toBeVisible();
@@ -55,6 +61,7 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
   // Undo → decrement back (leave the fixture as found).
   await page.getByTestId("undo-nuts_seeds").click();
   await expect(count).toHaveText(String(before));
+  await expect.poll(readTotal).toBe(totalBefore);
 });
 
 test("button counts are labeled for the selected meal and day", async ({
@@ -203,7 +210,7 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   // last quick row. The overflow is sectioned by tier, so rank is read off the attribute
   // rather than off DOM order.
   const more = page.getByTestId("food-more-groups");
-  await more.getByTestId("food-more-groups-summary").click();
+  await hydratedClick(page, more.getByTestId("food-more-groups-summary"));
   const overflow = more.locator('li[data-testid^="food-group-"]');
   await expect(overflow.first()).toBeVisible(); // first-ok: the disclosure's own rows, opened by this test
   const overflowRanks = await ranksIn(overflow);
@@ -211,34 +218,30 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   expect(Math.min(...overflowRanks)).toBeGreaterThan(Math.max(...quickRanks));
 });
 
-test("dietary preferences can be edited in a modal without leaving the food log", async ({
+test("dietary preferences left the day for Manage (#3987)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // ONE preferences affordance at every width since #3987 — the Meals-cards header
-  // that carried the desktop twin retired with the cards.
+  // THE RETIREMENT. The icon in the day header, the modal behind it and its Done
+  // button all went with the split: preferences are configuration, and the Day tab
+  // states only what the day held.
+  await expect(page.getByTestId("food-preferences-open")).toHaveCount(0);
   await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(
     0
   );
-  const open = page.getByTestId("food-preferences-open");
-  await expect(open).toBeVisible();
-  await expect(open).not.toHaveAttribute("href");
-  await open.click();
+  await expect(page.getByTestId("dietary-preferences-form")).toHaveCount(0);
 
-  const dialog = page.getByRole("dialog", { name: "Dietary preferences" });
-  await expect(dialog).toBeVisible();
-  const form = dialog.getByTestId("dietary-preferences-form");
-  await expect(form).toBeVisible();
-  await expect(form).not.toHaveClass(/\bcard\b/);
-  await expect(dialog.getByTestId("dietary-preset")).toBeVisible();
-
-  const done = dialog.getByTestId("food-preferences-done");
-  await expect(done).toHaveClass(/\bbtn\b/);
-  await done.click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page).toHaveURL(/\/nutrition/);
+  // THE CONVERSE, in the same test, because the absence above passes just as well on
+  // the tree where the form vanished from the app entirely. Same form, same write,
+  // on Manage — a card in the page rather than a dialog behind an icon.
+  await page.goto("/nutrition?tab=supplements");
+  const card = page.getByTestId("food-preferences-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("dietary-preferences-form")).toBeVisible();
+  await expect(card.getByTestId("dietary-preset")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", async ({
@@ -416,23 +419,6 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
 
   // Restore the fixture.
   await page.getByTestId("undo-other_vegetables").click();
-});
-
-test("the header shows today's total, ticking up on log and back on undo", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  await revealFoodGroup(page, "eggs");
-  const total = page.getByTestId("food-day-total");
-  await expect(total).toBeVisible();
-  const read = async () =>
-    Number((await total.textContent())?.match(/\d+/)?.[0] ?? "0");
-
-  const before = await read();
-  await page.getByTestId("log-eggs").click();
-  await expect.poll(read).toBe(before + 1);
-  await page.getByTestId("undo-eggs").click();
-  await expect.poll(read).toBe(before);
 });
 
 test.describe("the dense row keeps its anatomy on a phone (#3987)", () => {
@@ -756,7 +742,7 @@ async function removeLoggedServing(page: Page, eventId: string): Promise<void> {
   await expect(row).toHaveCount(0);
 }
 
-test("a serving logged with no stated time records no eating time (#2053)", async ({
+test("unstated and Now captures store distinct eating-time truth (#2053/#3273)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -779,26 +765,16 @@ test("a serving logged with no stated time records no eating time (#2053)", asyn
   await settledClick(page, page.getByTestId("log-nuts_seeds"));
   await expect(loggedListRows(page)).toHaveCount(before.length + 1);
 
-  const eventId = await newlyLoggedId(page, before);
+  const unstatedId = await newlyLoggedId(page, before);
   // NULL, not "now": defaulting a web log to the tap instant would reintroduce the
   // guess `occurred_at` exists to end, under a more authoritative name.
-  expect(eatingTimeOf(eventId)).toEqual({
+  expect(eatingTimeOf(unstatedId)).toEqual({
     occurred_at: null,
     time_source: null,
   });
 
-  await removeLoggedServing(page, eventId);
-});
-
-test("the control's Now fills an absolute local time, and it is what lands (#2053/#3273)", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-
   // Not a "now" MODE — the button FILLS the field with the absolute local time it
-  // means, so what will be written is on screen and adjustable before the tap.
-  await openWhenFold(page);
+  // means, so what will be written on the next capture is visible and adjustable.
   await hydratedClick(page, page.getByTestId("food-when-now"));
   const field = page.getByTestId("food-when-time");
   await expect(field).not.toHaveValue("");
@@ -808,13 +784,15 @@ test("the control's Now fills an absolute local time, and it is what lands (#205
     `recorded as eaten at ${filled}`
   );
 
-  await revealFoodGroup(page, "nuts_seeds");
-  const before = await loggedListIds(page);
-  await settledClick(page, page.getByTestId("log-nuts_seeds"));
-  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
+  // Use a different group so the tap ledger's same-row cooldown cannot absorb this
+  // second, intentionally distinct capture.
+  await revealFoodGroup(page, "berries");
+  const withUnstated = await loggedListIds(page);
+  await settledClick(page, page.getByTestId("log-berries"));
+  await expect(loggedListRows(page)).toHaveCount(before.length + 2);
 
-  const eventId = await newlyLoggedId(page, before);
-  const stamped = eatingTimeOf(eventId);
+  const statedId = await newlyLoggedId(page, withUnstated);
+  const stamped = eatingTimeOf(statedId);
   // 'stated', never 'tap': the web "+" declares no contract of its own, so the source of
   // the instant is the person who pressed the chip.
   expect(stamped.time_source).toBe("stated");
@@ -830,56 +808,11 @@ test("the control's Now fills an absolute local time, and it is what lands (#205
     "recorded with no eating time"
   );
 
-  await removeLoggedServing(page, eventId);
+  await removeLoggedServing(page, statedId);
+  await removeLoggedServing(page, unstatedId);
 });
 
-test("an earlier hour states an absolute time, and it is what lands (#2053)", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-
-  await openWhenFold(page);
-  // The day half is FIXED to the SELECTED day, so the control renders it as text
-  // rather than as a picker that could disagree with the tab.
-  await expect(page.getByTestId("food-when-date")).toHaveText("Today");
-
-  // Every offered hour is one the write will accept: the control truncates today's
-  // hours at the current local hour, so nothing on screen can be refused. The e2e
-  // clock is pinned to 13:mm local, so 08:00 is always among them.
-  const hhmm = EARLIER_HOUR;
-  await stateEatingTime(page, hhmm);
-  await expect(page.getByTestId("food-eating-time-note")).toContainText(
-    `recorded as eaten at ${hhmm}`
-  );
-
-  await revealFoodGroup(page, "nuts_seeds");
-  const before = await loggedListIds(page);
-  await settledClick(page, page.getByTestId("log-nuts_seeds"));
-  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
-
-  const eventId = await newlyLoggedId(page, before);
-  const stamped = eatingTimeOf(eventId);
-  expect(stamped.time_source).toBe("stated");
-  // The stated wall time is what the row carries — resolved server-side in the profile's
-  // timezone, so the browser never converted it.
-  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toBeVisible();
-  expect(stamped.occurred_at).not.toBeNull();
-  expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
-    frozenNow().getTime()
-  );
-  // AND THE ROW STATES IT (#2206). The web half of "a surface must not go on showing the
-  // time a statement replaced": the logged list names this serving by the hour that was
-  // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
-  // control's own option label is what the row ends up reading.
-  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toContainText(
-    hhmm
-  );
-
-  await removeLoggedServing(page, eventId);
-});
-
-test("a stated time wins over the tab: the serving lands, visibly, in its derived section (#2269)", async ({
+test("an earlier stated time lands exactly and wins over the selected meal (#2053/#2269)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -890,6 +823,8 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
   const filingSlot = EARLIER_HOUR_SLOT;
   await openWhenFold(page);
+  // The day half is fixed to the selected day rather than being another picker.
+  await expect(page.getByTestId("food-when-date")).toHaveText("Today");
   await stateEatingTime(page, EARLIER_HOUR);
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
@@ -905,6 +840,9 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `and land in ${filingSlot}`
   );
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    `recorded as eaten at ${EARLIER_HOUR}`
+  );
 
   await revealFoodGroup(page, "nuts_seeds");
   const before = await loggedListIds(page);
@@ -916,6 +854,13 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await expect(loggedListRows(page)).toHaveCount(before.length + 1);
   const eventId = await newlyLoggedId(page, before);
   const row = page.getByTestId(`ledger-serving-${eventId}`);
+  const stamped = eatingTimeOf(eventId);
+  expect(stamped.time_source).toBe("stated");
+  expect(stamped.occurred_at).not.toBeNull();
+  expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
+    frozenNow().getTime()
+  );
+  await expect(row).toContainText(EARLIER_HOUR);
   await expect(row).toHaveAttribute("data-slot", filingSlot);
   await expect(
     page.getByTestId(`ledger-group-${filingSlot.toLowerCase()}`)

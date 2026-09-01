@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useWritePipeline } from "@/components/useWritePipeline";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
-import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
+import {
+  setDoseStatus,
+  type DoseStatusResult,
+} from "@/app/(app)/nutrition/intake-actions";
+import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { localDate } from "@/lib/offline/queue";
 import {
@@ -17,10 +21,11 @@ import {
   DOSE_ACTION_RESOLVED,
 } from "@/components/medications/dose-action-styles";
 
-// Tri-state dose check-off (issue #232): one dose is taken, deliberately skipped,
-// or clear. Shared by MedicationCard and EditableSupplementRow so BOTH surfaces
-// (and every viewport) get the same control — a ✅ take toggle and a ⏭️ skip
-// toggle, each flipping its state back to clear when pressed again.
+// Tri-state dose check-off (issue #232), and THE dose domain's one row control (#4424
+// ruling 3): taken, deliberately skipped, or clear, on every row that hosts a dose
+// write control. IT TAKES A DAY, which is what made the row one control — the ledger
+// picked between this and a hand-rolled pair on `isToday` and the sheet spelled two
+// more, because `setDoseStatus` stamped today and nothing could reach yesterday.
 //
 // Online every transition calls the setDoseStatus Server Action with an explicit
 // target, which keeps on-hand supply in lock-step (only crossing the taken
@@ -62,6 +67,10 @@ export default function DoseStatusControl({
   label,
   compact = false,
   profileId,
+  date,
+  itemName,
+  onSettled,
+  rowLeaves = false,
 }: {
   doseId: number;
   taken: boolean;
@@ -76,6 +85,25 @@ export default function DoseStatusControl({
   // A cross-profile write always goes online (the offline replay has no target-profile
   // seam), so it's never queued.
   profileId?: number;
+  /**
+   * The day this row stands on; absent means today. Past `doseLogDays` the action
+   * refuses, so a surface beyond the window offers no control (`doseWritable`).
+   */
+  date?: string;
+  /**
+   * WHICH DOSE, for the accessible name (#2615 item 2). Carried by the sheet's
+   * switched-day rows, whose own buttons named their dose; absent elsewhere, including
+   * the ledger, which never named one — so this leg moves no shipped name.
+   */
+  itemName?: string;
+  /** What the ROW does with the answer; absent on a row that just re-renders. */
+  onSettled?: (result: DoseStatusResult) => void;
+  /**
+   * Whether the surface REMOVES this row when the write lands. The control becoming its
+   * done state is the receipt (#2654), so a row that stays says nothing — the sheet
+   * drops a resolved row, unmounting the receipt, so there the outcome is spoken.
+   */
+  rowLeaves?: boolean;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -85,7 +113,13 @@ export default function DoseStatusControl({
   // The shared client write pipeline (#3276): it stamps the surface, decides online vs
   // capture, says the sentence, and settles the one-tap ledger. This control declares
   // what a dose resolution means; it hand-wires none of that choreography.
-  const pipeline = useWritePipeline("dose-status");
+  // WHICH AFFORDANCE THIS TAP IS (lib/one-tap.ts): `dose-day` for a stated day,
+  // `dose-status` for today — two registry rows so a census can see the dated write.
+  // Both hooks run and the day picks: `one-tap-call-sites.test.ts` refuses an id it
+  // cannot read as a literal.
+  const todayTap = useWritePipeline("dose-status");
+  const datedTap = useWritePipeline("dose-day");
+  const pipeline = date == null ? todayTap : datedTap;
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -142,6 +176,10 @@ export default function DoseStatusControl({
       fields: {
         dose_id: String(doseId),
         status: target,
+        // THE STATE THIS CONTROL WAS SHOWING (#280) — see `setDoseStatus`.
+        from: state,
+        // Omitted on a today mount so its post stays byte-identical.
+        ...(date != null ? { date } : {}),
         // #858/#1373: target the row's own profile so a caregiver confirms a household
         // member's dose from its board; absent on the acting board (byte-identical).
         ...(profileId != null ? { profileId: String(profileId) } : {}),
@@ -153,17 +191,31 @@ export default function DoseStatusControl({
       //
       // A landed transition says nothing: the control BECOMING its done state is the
       // receipt (#2654), and there is no toast to hang an Undo on.
-      settle: (outcome) =>
-        outcome.ok
-          ? { wrote: true, announce: "silent" as const }
-          : {
-              wrote: false,
-              announce: {
-                message: outcome.error,
-                tone: "error" as const,
-                undo: null,
-              },
+      settle: (result) => {
+        onSettled?.(result);
+        if (!result.ok)
+          return {
+            wrote: false,
+            announce: {
+              message: result.error,
+              tone: "error" as const,
+              undo: null,
             },
+          };
+        // A clear writes nothing anybody needs told; `unchanged` is the double-tap.
+        const spoken =
+          rowLeaves &&
+          result.outcome !== "cleared" &&
+          result.outcome !== "unchanged"
+            ? doseConfirmMessage(result.outcome)
+            : null;
+        return {
+          wrote: true,
+          announce: spoken
+            ? { message: spoken.text, tone: spoken.tone, undo: null }
+            : ("silent" as const),
+        };
+      },
       failureMessage: "Couldn't update this dose. Try again.",
       offline: (tappedAt) => {
         // Cross-profile writes (#1373) are never queued — the offline replay route
@@ -179,12 +231,18 @@ export default function DoseStatusControl({
             message: "You're offline — reconnect to change a logged dose.",
           };
         const flow = target === "taken" ? "dose" : "skip-dose";
+        const capturedDate = date ?? localDate(tappedAt);
         return {
           kind: "capture",
           flow,
-          date: localDate(tappedAt),
-          // The server validates the stamp; a skip records no intake time, so it
-          // carries none.
+          // THE ROW'S DAY, NOT THE TAP'S: a past-day capture replays against the day
+          // it names.
+          date: capturedDate,
+          // Always carry the tap instant. This component has the row's PROFILE-local
+          // day but only the browser's clock — it cannot decide whether those two
+          // calendars call the instant today. Replay owns that comparison in the
+          // profile timezone: a matching day keeps the instant; a mismatched past-day
+          // row becomes deliberately untimed.
           payload: {
             doseId,
             ...(flow === "dose"
@@ -198,6 +256,9 @@ export default function DoseStatusControl({
         };
       },
     });
+    // A CAPTURE SETTLES THE ROW TOO: the pipeline runs `settle` only for a write that
+    // reached the server, so a queued tap would leave a resolved row in the list.
+    if (result === "captured") onSettled?.({ ok: true, outcome: "logged" });
     if (result === "nothing") return;
     // A server write is authoritative, so the optimistic override is dropped and the
     // props take over; a capture has no revalidate behind it, so the override stands in
@@ -206,6 +267,9 @@ export default function DoseStatusControl({
     // The one place that knows a tap both aimed at `taken` AND landed.
     if (target === "taken") settleConfirm();
   }
+
+  // The visible verb stays short; the name says WHICH dose when the row does not.
+  const named = (verb: string) => (itemName ? `${verb} — ${itemName}` : verb);
 
   const takeClass =
     variant === "circle"
@@ -257,7 +321,7 @@ export default function DoseStatusControl({
         data-settling={settling ? "true" : "false"}
         className={`${takeClass}${settling ? " motion-settle" : ""}`}
         aria-pressed={isTaken}
-        aria-label={isTaken ? "Mark not taken" : "Mark taken"}
+        aria-label={named(isTaken ? "Mark not taken" : "Mark taken")}
         data-testid="dose-take"
       >
         <IconCheck
@@ -274,7 +338,7 @@ export default function DoseStatusControl({
         disabled={busy}
         className={skipClass}
         aria-pressed={isSkipped}
-        aria-label={isSkipped ? "Undo skip" : "Skip this dose"}
+        aria-label={named(isSkipped ? "Undo skip" : "Skip this dose")}
         data-testid="dose-skip"
       >
         <IconPlayerTrackNext

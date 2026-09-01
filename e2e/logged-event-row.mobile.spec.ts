@@ -2,9 +2,10 @@ import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
-import { hydratedClick } from "./helpers";
+import { expectNoClippedContent, hydratedClick } from "./helpers";
 import { shiftDateStr, utcInstant, zonedWallTimeToUtc } from "../lib/date";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { LONG_NAMES } from "../scripts/seed-long-names";
 
 // THE COMPACT LOGGED-EVENT ROW (#3671).
 //
@@ -119,18 +120,19 @@ function localInstant(db: Database.Database, hhmm: string): string {
 }
 
 function deleteFixtureRows(db: Database.Database): void {
-  db.prepare(
-    `DELETE FROM intake_item_logs WHERE item_id IN
-       (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
-  ).run(PROFILE, ITEM);
-  db.prepare(
-    `DELETE FROM intake_item_doses WHERE item_id IN
-       (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
-  ).run(PROFILE, ITEM);
-  db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
-    PROFILE,
-    ITEM
-  );
+  for (const name of [ITEM, ITEM_TWO, LONG_NAMES.intakeItem]) {
+    db.prepare(
+      `DELETE FROM intake_item_logs WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE, name);
+    db.prepare(
+      `DELETE FROM intake_item_doses WHERE item_id IN
+         (SELECT id FROM intake_items WHERE profile_id = ? AND name = ?)`
+    ).run(PROFILE, name);
+    db.prepare(
+      "DELETE FROM intake_items WHERE profile_id = ? AND name = ?"
+    ).run(PROFILE, name);
+  }
   db.prepare(
     `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key IN (?, ?)`
   ).run(PROFILE, DAY, FOOD_GROUP, FOOD_GROUP_TWO);
@@ -144,15 +146,16 @@ function seedItem(
   db: Database.Database,
   name: string,
   amount: string,
-  ...hhmm: string[]
+  hhmm: readonly string[],
+  kind: "medication" | "supplement" = "supplement"
 ): void {
   const itemId = Number(
     db
       .prepare(
         `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
-           VALUES (?, ?, 1, 'supplement', 'daily', 'may')`
+           VALUES (?, ?, 1, ?, 'daily', 'may')`
       )
-      .run(PROFILE, name).lastInsertRowid
+      .run(PROFILE, name, kind).lastInsertRowid
   );
   const doseId = Number(
     db
@@ -174,7 +177,7 @@ function seedDose(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    seedItem(db, ITEM, ITEM_AMOUNT, "08:46");
+    seedItem(db, ITEM, ITEM_AMOUNT, ["08:46"]);
   } finally {
     db.close();
   }
@@ -189,8 +192,18 @@ function seedStackDay(): void {
   const db = openDb();
   try {
     deleteFixtureRows(db);
-    seedItem(db, ITEM, ITEM_AMOUNT, "08:46", "12:10");
-    seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, "08:46");
+    seedItem(db, ITEM, ITEM_AMOUNT, ["08:46", "12:10"]);
+    seedItem(db, ITEM_TWO, ITEM_TWO_AMOUNT, ["08:46"]);
+  } finally {
+    db.close();
+  }
+}
+
+function seedLongMedication(): void {
+  const db = openDb();
+  try {
+    deleteFixtureRows(db);
+    seedItem(db, LONG_NAMES.intakeItem, "500 mg", ["08:46"], "medication");
   } finally {
     db.close();
   }
@@ -258,6 +271,40 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
   // record is for — so there is no collapse there to assert. The identical claim on a
   // SURVIVING EntryHistoryTable consumer is the next test: the in-card dose panel,
   // which is the same component at item scope and still discloses on tap.
+
+  test("a long record title ellipsizes at 320px without losing its accessible name", async ({
+    page,
+  }) => {
+    seedLongMedication();
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`/history?kind=dose&day=${DAY}`);
+
+    const row = page
+      .getByTestId("history-row")
+      .filter({ hasText: LONG_NAMES.intakeItem });
+    await expect(row).toHaveCount(1);
+    const title = row.getByTestId("history-row-title");
+    await expect(title).toHaveAccessibleName(LONG_NAMES.intakeItem);
+
+    const geometry = await title.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        contentOverflows: element.scrollWidth > element.clientWidth + 1,
+        overflow: style.overflow,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+        right: rect.right,
+        viewport: document.documentElement.clientWidth,
+      };
+    });
+    expect(geometry.contentOverflows).toBe(true);
+    expect(geometry.overflow).toBe("hidden");
+    expect(geometry.textOverflow).toBe("ellipsis");
+    expect(geometry.whiteSpace).toBe("nowrap");
+    expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+    await expectNoClippedContent(page);
+  });
 
   test("the in-card dose history panel collapses and discloses the same way", async ({
     page,
@@ -675,14 +722,14 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // now, so the claim is POSITIONAL and is asserted that way: the door is above
     // every supplement row it is a door to, and above where the rail begins.
     //
-    // WHY NOT "inside the first 932px". Measured 2026-08-27 at 430px on the e2e
-    // seed: this page renders ~1500px of intake findings (ul-warnings,
-    // rda-adequacy, demotion-suggestions, interaction warnings) before the schedule
-    // begins at y=1619, so nothing in the schedule is inside the first viewport for
-    // this profile whatever the door does. The move is still the whole fix —
-    // y=3253 in the rail, y=1639 in the day header — and a viewport-absolute
-    // assertion would be a claim about the FINDINGS stack, which #3671 does not
-    // touch.
+    // AND NOW ALSO "inside the first screen", which it could not be before. This
+    // comment used to explain why a viewport-absolute assertion was impossible here:
+    // the page rendered ~1500px of intake findings (ul-warnings, rda-adequacy,
+    // demotion-suggestions, interaction warnings) before the schedule began, so
+    // nothing in it was inside the first viewport whatever the door did — the #3892
+    // measurement. #3987 phase 2 moved those findings BELOW the stack (they are all
+    // still on the page, at full height, undismissed — #2385), so the claim the door
+    // could not make is now the one this page can be held to.
     await page.goto("/nutrition?tab=supplements");
     const doseDoor = page.getByTestId("dose-ledger-link");
     await expect(doseDoor).toBeVisible();
@@ -711,6 +758,26 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
         `first supplement row at ${geometry.firstRow}px`
     ).toBeLessThan(geometry.firstRow!);
     expect(geometry.doorBottom).toBeLessThan(geometry.rail!);
+
+    // THE MANAGE MEASUREMENT (#3987's chrome gate, the analogue of the Day ledger's
+    // in day-ledger.spec.ts). The redesign's goal is LESS, so less is measured: the y
+    // of the FIRST STACK ROW at 430x932, reported in the PR body. Scoped to
+    // `supplement-stack` and not to the page, so a Held or Paused row — which fold
+    // BELOW and are allowed to be far down — can never satisfy it.
+    const firstStackRow = page
+      .getByTestId("supplement-stack")
+      .getByTestId("supplement-row")
+      .first(); // first-ok: the topmost stack row IS the measurement — order is the point
+    const stackBox = await firstStackRow.boundingBox();
+    expect(stackBox).not.toBeNull();
+    // eslint-disable-next-line no-console
+    console.log(`MANAGE_FIRST_STACK_ROW_Y=${Math.round(stackBox!.y)}`);
+    // A ceiling, not the number: the gate is that the chrome above the stack cannot
+    // grow back. 520px is the SAME ceiling the Day ledger's first row is held to —
+    // roughly half the 932px viewport — because the two tabs make the same promise
+    // and one number is easier to keep honest than two.
+    expect(stackBox!.y).toBeLessThan(520);
+
     const doseShape = await doseDoor.getAttribute("class");
 
     // FOOD: the same door, not a bare text link in a row of its own.

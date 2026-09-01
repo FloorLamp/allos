@@ -331,25 +331,36 @@ describe("offline replay — dose confirms (issue #1427)", () => {
     ).toBe(11);
   });
 
-  it("keeps a past-day confirm untimed when the queued tap states no instant", async () => {
+  it("keeps a past-day confirm untimed even if an older capture sent its tap instant", async () => {
     const admin = createLogin();
     const profile = createProfile(`Untimed ${uniqueKey()}`);
     actAs(admin, profile);
     const itemId = seedItem(profile.id);
     const pastDose = seedDose(itemId);
+    const delayedDose = seedDose(itemId);
     const todayDose = seedDose(itemId);
     const currentDay = today(profile.id);
     const pastDay = shiftDateStr(currentDay, -1);
+    const delayedTap = zonedWallTimeToUtc(
+      getTimezone(profile.id),
+      pastDay,
+      "08:30"
+    )!;
 
     const { body } = await replay([
-      doseIntent(pastDose, profile.id, pastDay),
+      doseIntent(pastDose, profile.id, pastDay, new Date().toISOString()),
+      doseIntent(delayedDose, profile.id, pastDay, delayedTap.toISOString()),
       doseIntent(todayDose, profile.id, currentDay),
     ]);
     expect(body.results?.map((result) => result.status)).toEqual([
       "done",
       "done",
+      "done",
     ]);
     expect(logFor(pastDose, pastDay)?.occurred_at).toBeNull();
+    expect(logFor(delayedDose, pastDay)?.occurred_at).toBe(
+      utcInstant(delayedTap)
+    );
     expect(logFor(todayDose, currentDay)?.occurred_at).not.toBeNull();
   });
 

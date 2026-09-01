@@ -152,24 +152,45 @@ export const DYNAMIC_ROUTES = [
 /** @type {DisclosureExpansion[]} */
 export const DISCLOSURE_EXPANSIONS = [
   {
+    // #3672: the resting Food tab deliberately shows only the idle fasting door;
+    // the companion capture opens it so the start controls and history remain visible
+    // to the census while a running fast continues to render unfolded by construction.
+    route: "/nutrition",
+    label: "Food tab idle fasting controls and history",
+    closedToggle: 'details:not([open]) > [data-testid="fasting-fold"]',
+  },
+  {
     // The Clinical results catalog: every panel group (Vitamins, Lipids, …) collapses by
     // default, hiding the per-analyte rows where identity splits show.
     route: "/results/clinical-results",
     label: "clinical results catalog panel groups",
     closedToggle:
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
-    loadMore: '[data-testid="clinical-result-panel-load-all"]',
+    loadMore: '[data-testid="clinical-result-panel-pager-row"]',
   },
   {
-    // Standing's quiet tail (#3548): dormant lines, months-old results, quiet
-    // pillars and out-ranked connect-a-source CTAs all live behind one disclosure
-    // now, so the resting dashboard shot no longer photographs them at all. The
-    // fold is a native <details>, which publishes its state as the element's own
-    // `open` rather than as an aria attribute — hence the structural selector.
+    // THE DASHBOARD'S ONE FOLD, and the census's only picture of the tail (#3366).
+    //
+    // It began as Standing's quiet tail (#3548) — dormant lines, months-old
+    // results, quiet pillars, out-ranked connect-a-source CTAs. #4480 merged that
+    // fold into Show everything, so a single <details> now hides BOTH it and the
+    // exhaustive remainder, and the resting dashboard shot photographs neither.
+    //
+    // WHAT IS BEHIND IT CHANGED TWICE UNDER THIS ENTRY, which is what #3366's
+    // census criterion is about and why the label above it moved:
+    //   * #4083 retired the tail's four always-available write cards — weight,
+    //     vitals, well-day and cycle — to the quick-log sheet. The expanded shot
+    //     is a picture of a tail that no longer offers a write.
+    //   * #4396 then removed the "Elsewhere" door rows #4083 had drawn for the one
+    //     nav-duplicate candidate it drops (owner: "utterly useless"). So there is
+    //     no door row to photograph either; that drop's completeness is proven at
+    //     the placement-manifest tier instead.
+    //
+    // The fold is a native <details>, which publishes its state as the element's
+    // own `open` rather than as an aria attribute — hence the structural selector.
     route: "/",
-    label: "the dashboard's quiet Standing tail",
-    closedToggle:
-      'details:not([open]) > [data-testid="dashboard-standing-tail-summary"]',
+    label: "the dashboard's Show everything fold",
+    closedToggle: 'details:not([open]) > [data-testid="dashboard-all-summary"]',
   },
 ];
 

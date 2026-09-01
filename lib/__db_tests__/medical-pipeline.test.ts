@@ -14,7 +14,13 @@
 //   4. reprocessAllForProfile with nothing to run returns the no-op message.
 
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript-api";
+import { CdaError } from "@/lib/cda/constants";
 import { db } from "@/lib/db";
+import { FhirError } from "@/lib/fhir/common";
 import {
   ingestMedicalUpload,
   computeReprocessAllCost,
@@ -23,6 +29,52 @@ import {
 } from "@/lib/medical-pipeline";
 import { getAiUsageCount } from "@/lib/ai-usage";
 import { seedActor } from "@/lib/__action_tests__/harness";
+import { SmartHealthCardError } from "@/lib/smart-health-card";
+import { UserFacingError, userErrorCopy } from "@/lib/user-error-copy";
+import { ZipIndexError } from "@/lib/zip-index";
+
+const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const PARSER_ERRORS = new Set([
+  "CdaError",
+  "FhirError",
+  "SmartHealthCardError",
+  "ZipIndexError",
+]);
+
+function parserErrorMessages(): { site: string; literal: boolean }[] {
+  const messages: { site: string; literal: boolean }[] = [];
+  const files = fs
+    .globSync("lib/**/*.{ts,tsx}", { cwd: REPO })
+    .filter((rel) => !rel.includes("__tests__") && !rel.includes(".test."));
+  for (const rel of files) {
+    const full = path.join(REPO, rel);
+    const source = ts.createSourceFile(
+      rel,
+      fs.readFileSync(full, "utf8"),
+      ts.ScriptTarget.Latest,
+      true
+    );
+    function visit(node: ts.Node): void {
+      if (
+        ts.isNewExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        PARSER_ERRORS.has(node.expression.text)
+      ) {
+        const message = node.arguments?.[0];
+        messages.push({
+          site: `${rel}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`,
+          literal:
+            message !== undefined &&
+            (ts.isStringLiteral(message) ||
+              ts.isNoSubstitutionTemplateLiteral(message)),
+        });
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  return messages;
+}
 
 function docRows(profileId: number) {
   return db
@@ -158,6 +210,26 @@ describe("medical-pipeline: ingestMedicalUpload validation", () => {
 // operator-facing `Clearing imported <table> rows for document <id> failed:
 // <SQLite>` that lib/import-persist.ts throws on purpose (#1808).
 describe("medical-pipeline: health-record import failure copy (#3198)", () => {
+  it("marks every parser sentence as literal reader-authored copy", () => {
+    for (const ErrorType of [
+      CdaError,
+      FhirError,
+      SmartHealthCardError,
+      ZipIndexError,
+    ]) {
+      const error = new ErrorType("This import needs a different file.");
+      expect(error).toBeInstanceOf(UserFacingError);
+      expect(userErrorCopy(error, { doing: "import this file" })).toBe(
+        "This import needs a different file."
+      );
+    }
+    const messages = parserErrorMessages();
+    expect(messages).toHaveLength(28);
+    expect(
+      messages.filter(({ literal }) => !literal).map(({ site }) => site)
+    ).toEqual([]);
+  });
+
   it("records house copy, not the caught message, when the parse throws", async () => {
     const { login, profile } = seedActor();
     // Sniffs as a FHIR bundle (`{` + `"resourceType":"Bundle"`) and then fails to
@@ -172,9 +244,9 @@ describe("medical-pipeline: health-record import failure copy (#3198)", () => {
     const rows = docRows(profile.id);
     expect(rows).toHaveLength(1);
     expect(rows[0].status).toBe("failed");
-    // The house sentence for an unclassified failure. Before the fix this column
-    // held the parser's own "Invalid FHIR bundle (could not parse JSON)."
-    expect(rows[0].error).toBe("Couldn't import this file.");
+    // The parser authored this sentence for a reader, so the shared typed boundary
+    // preserves it instead of flattening it to generic import copy.
+    expect(rows[0].error).toBe("Invalid FHIR bundle (could not parse JSON).");
     // And nothing from the layer below reaches the page: no table name, no SQLite
     // vocabulary, no stack fragment.
     expect(rows[0].error ?? "").not.toMatch(

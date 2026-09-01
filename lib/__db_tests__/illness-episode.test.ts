@@ -35,6 +35,11 @@ import { shiftDateStr } from "@/lib/date";
 import { resolveEpisodeAcrossProfiles } from "@/lib/illness-episode-store";
 import type { IllnessEpisode } from "@/lib/symptom-episode";
 
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
+
 function newProfile(name: string): number {
   const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)

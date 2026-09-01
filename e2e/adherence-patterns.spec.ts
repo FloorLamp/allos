@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // Issue #45 (domain 3): adherence-PATTERN detection on Supplements & Meds. The seed
@@ -14,14 +14,12 @@ test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async (
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
-  const badge = page.getByTestId("supplement-patterns-badge");
-  await expect(badge).toHaveAttribute("aria-haspopup", "dialog");
-  await expect(badge).not.toHaveAttribute("aria-expanded", /.*/);
-  // Pure client launcher (InsightLauncher onClick -> setOpen), clicked straight
-  // after goto, so the click can be lost in the hydration window.
-  await hydratedClick(page, badge);
-  const dialog = page.getByRole("dialog", { name: "Patterns" });
-  const card = dialog.getByTestId("adherence-findings");
+  // THE PATTERNS DIALOG IS GONE (#3987 phase 2): Manage renders its insights as
+  // sections, not as counted badges that open modals, so the finding is simply on
+  // the page — inside the Insights section, which is what scopes this.
+  const card = page
+    .getByTestId("supplement-insights")
+    .getByTestId("adherence-findings");
   await expect(card).toBeVisible();
   await expect(card).toContainText(/Vitamin C/i);
   await expect(card).toContainText(/Friday/i);
@@ -57,24 +55,19 @@ test.afterAll(() => resetAdherenceDismissals());
 // Dismissing an adherence-pattern finding hides it via the shared findings-bus
 // store (dismissAdherencePattern → dismissFinding), so it stops rendering.
 //
-// BOTH the locate and the disappearance assertion are scoped to the Patterns
-// DIALOG, and that is load-bearing rather than tidiness (#1543's vacuous-guard
-// rule). The findings render only inside that modal, and ModalShell portals to
-// document.body — OUTSIDE <main> — so a `getByRole("main")`-scoped disappearance
-// check matches zero nodes at every instant and passes even when the dismiss
-// button does nothing at all. Proven both ways: with dismissAdherencePattern
-// stubbed to a no-op the dialog-scoped assertion goes red (the row is still
-// there after the action), and green again once the real dismiss is restored.
+// BOTH the locate and the disappearance assertion are scoped to the INSIGHTS
+// SECTION, and the scope is load-bearing rather than tidiness (#1543's vacuous-guard
+// rule): a disappearance check scoped to something that never holds the row matches
+// zero nodes at every instant and passes even when the dismiss button does nothing
+// at all. That is exactly how it read while the findings lived in a portalled modal
+// and the check was scoped to <main>. Scope it to the element that actually renders
+// the row, and the zero means something.
 test("an adherence-pattern finding can be dismissed (#45)", async ({
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
-  await hydratedClick(
-    page,
-    page.getByRole("main").getByTestId("supplement-patterns-badge")
-  );
-  const dialog = page.getByRole("dialog", { name: "Patterns" });
-  const finding = dialog
+  const insights = page.getByTestId("supplement-insights");
+  const finding = insights
     .getByTestId("adherence-findings-item")
     .filter({ hasText: "Vitamin C" });
   await expect(finding).toBeVisible();
@@ -83,13 +76,13 @@ test("an adherence-pattern finding can be dismissed (#45)", async ({
   // Action; the assertion below ran on the 5s default against that round trip.
   await settledClick(page, finding.getByTestId("adherence-findings-dismiss"));
 
-  // The dialog is a client-state panel that survives the action's revalidation,
-  // so it stays mounted while its content re-renders without the dismissed row.
-  // Asserting it is still open keeps the count below honest: a closed dialog
-  // would make the zero-count vacuous for the same reason <main> did.
-  await expect(dialog).toBeVisible();
+  // The section survives the action's revalidation and re-renders without the
+  // dismissed row. Asserting it is still THERE keeps the count below honest: a
+  // section that had vanished would make the zero-count vacuous for the same
+  // reason a closed dialog did.
+  await expect(insights).toBeVisible();
   await expect(
-    dialog
+    insights
       .getByTestId("adherence-findings-item")
       .filter({ hasText: "Vitamin C" })
   ).toHaveCount(0);

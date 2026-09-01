@@ -135,15 +135,14 @@ export function maxLogSheetRows(
 // literals inside the renderer.
 
 /**
- * A row measures 62px — 36px icon + 24px vertical padding + the 1px border on
+ * A row measures 46px — 28px icon + 16px vertical padding + the 1px border on
  * each side — followed by the list's 4px gap. The list's `pb-1` spends that final
- * gap after the last row, so N × 66px is the exact rendered list block rather
+ * gap after the last row, so N × 50px is the exact rendered list block rather
  * than an approximate minimum (#3675).
  *
- * MEASURED, not derived: 1/2/3 rows render 66/132/198px at 390px (2026-08-28).
  * #3718's 64 omitted the border and under-reserved every list by 2px a row.
  */
-export const LOG_SHEET_ROW_BLOCK_PX = 66;
+export const LOG_SHEET_ROW_BLOCK_PX = 50;
 
 /**
  * The context region at its tallest, at 390px. Two offers is the most it can ever
@@ -155,25 +154,13 @@ export const LOG_SHEET_ROW_BLOCK_PX = 66;
  * `log-sheet-reserve` e2e persona renders all of them at once so the SUM is measured
  * too, not only its parts.
  *
- * AN OFFER ROW BY LABEL LINES, measured: 62 / 66 / 86 for one, two and three. The
- * first wrapped line is nearly free because the 36px icon is still the tallest thing
- * in the row — an offer carries no hint under its label, unlike the long-tail entries
- * below — and every line after it costs a full 20px.
- *
- * WHICH IS WHY THE LABEL IS CLAMPED TO TWO LINES rather than this number being made
- * generous. `dueDoseChipLabel` prints `Due: <two item names> +N` from names the
- * profile chose; unbounded, two portal-imported names reach three lines and overrun
- * by 16px, and the panel would answer by growing AFTER the gather resolves — the
- * resize #3675 exists to stop. No larger number fixes that, because a fourth line is
- * always reachable. `SHEET_ROW_CLASS`'s label carries `line-clamp-2`, so 66 is the
- * row's MAXIMUM and this bound holds by construction instead of by luck.
  */
 export const LOG_SHEET_CONTEXT_RESERVE_PX =
   16 + // the "Due & usual now" heading
   8 + // its `mb-2`
   54 + // UsualRoutineControl, absent unless the window has a usual set
   12 + // its `mb-3`
-  2 * 66 + // the two offer rows at their TWO-LINE height (62 with a one-line label)
+  2 * 46 + // the two single-line offer rows
   4 + // the ONE `gap-1` between those two rows
   12 + // the section's `pb-3`
   1 + // its rule

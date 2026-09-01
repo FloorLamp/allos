@@ -227,17 +227,20 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
           </span>
         )}
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+      <span
+        className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        data-testid={`source-trailing-${source.id}`}
+      >
         {source.latest && (
           <SyncTimestamp value={source.latest.at} relativeOnly />
         )}
+        {href ? <DestinationIndicator /> : null}
       </span>
     </>
   );
   const surface = (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/5 px-3 py-2 transition group-hover:border-brand-300 dark:border-white/5 dark:group-hover:border-brand-800">
       {body}
-      {href ? <DestinationIndicator /> : null}
     </div>
   );
   return (

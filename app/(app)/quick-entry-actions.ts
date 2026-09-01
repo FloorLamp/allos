@@ -31,7 +31,7 @@ import {
   type TrackedPractice,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
+import { MOOD_LOG_DATE_WINDOW_DAYS, moodBackfillLabel } from "@/lib/mood";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -66,6 +66,8 @@ import {
   getSymptomNotesOnDate,
   getSymptomSeveritiesOnDate,
 } from "@/lib/queries/symptoms";
+import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
+import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -214,6 +216,7 @@ export type QuickEntryData =
       form: "mood";
       days: {
         date: string;
+        label: string;
         mood: {
           valence: number;
           energy: number | null;
@@ -222,6 +225,7 @@ export type QuickEntryData =
           notes: string | null;
         } | null;
       }[];
+      showCalm: boolean;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount
@@ -349,6 +353,7 @@ export async function loadQuickEntry(
   }
 
   if (form === "practice") {
+    closeAbandonedPracticeSessions(profile.id);
     // The tracked-practice list (a practice-scope frequency target IS the user's
     // declaration that they mean to keep doing it).
     //
@@ -433,6 +438,7 @@ export async function loadQuickEntry(
         const logged = getMoodOnDate(profile.id, day);
         return {
           date: day,
+          label: moodBackfillLabel(offset),
           mood: logged
             ? {
                 valence: logged.valence,
@@ -445,7 +451,11 @@ export async function loadQuickEntry(
         };
       }
     );
-    return { form: "mood", days };
+    return {
+      form: "mood",
+      days,
+      showCalm: isAnxietyScaleRelevant(profile.id),
+    };
   }
 
   if (form === "symptom") {

@@ -12,7 +12,13 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { isPastWriteAccepted, isWithinTapReach } from "@/lib/log-manifest";
+import {
+  BODY_READING_WRITE,
+  MOOD_CHECKIN,
+  STOOL_MOVEMENT_LOG,
+  isPastWriteAccepted,
+  isWithinTapReach,
+} from "@/lib/log-manifest";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -43,6 +49,7 @@ import {
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import {
+  HYDRATION_METRIC,
   normalizeCompositionInput,
   type CompositionInputRaw,
 } from "@/lib/composition-input";
@@ -112,12 +119,20 @@ function applyDoseIntent(
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
     return { status: "rejected" };
   }
+  const todayStr = today(profileId);
   // Distinguish "the entry sat in the queue too long" from "the dose is gone" for the
   // user-facing reason ONLY — the same pure predicate the core gates on, so the two
   // can't drift. The core still enforces it (it answers stale-dose either way).
-  if (!isDoseDateAccepted(today(profileId), date)) {
+  if (!isDoseDateAccepted(todayStr, date)) {
     return { status: "rejected", reason: STALE_QUEUED_DOSE_REASON };
   }
+  const capturedTakenAt = payload.clientTakenAt
+    ? new Date(payload.clientTakenAt)
+    : null;
+  const capturedOnRowDate =
+    capturedTakenAt != null &&
+    !Number.isNaN(capturedTakenAt.getTime()) &&
+    zonedDateParts(getTimezone(profileId), capturedTakenAt).date === date;
   const outcome =
     flow === "dose"
       ? markDoseTaken(
@@ -126,10 +141,10 @@ function applyDoseIntent(
           null,
           date,
           OFFLINE_REPLAY,
-          payload.clientTakenAt
-            ? new Date(payload.clientTakenAt)
-            : date === today(profileId)
-              ? undefined
+          capturedOnRowDate
+            ? capturedTakenAt
+            : date === todayStr
+              ? (capturedTakenAt ?? undefined)
               : null
         )
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);
@@ -287,18 +302,25 @@ export function insertBodyMetric(
   // holds the reason — and every one of them renders it rather than dropping it.
   return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const insertBodyMetricDeclares = BODY_READING_WRITE;
 
 // ── vitals quick-add ────────────────────────────────────────────────────────────
 
-// Insert-or-update a manual daily metric sample (sleep/HRV) — one row per date so a
-// re-entry corrects rather than duplicates. source='manual', origin=NULL, and a
-// fixed midnight start make the natural key stable, while `source` keeps a Health
-// Connect push from ever touching it.
+// Insert-or-update a manual metric sample. Most callers use the stable midnight
+// point so a re-entry corrects; genuinely additive hydration supplies its tap instant
+// so each contribution appends. `source` keeps integration rows separate.
 // The day's midnight, the natural-key anchor a POINT measurement is filed at. It is
 // a day attribution rather than an instant, which is why it is a template here and
 // not a `utcInstant()` call.
 function dayMidnightAnchor(date: string): string {
   return `${date}T00:00:00`;
+}
+
+function sampleTime(profileId: number, date: string, instant: Date): string {
+  const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
+  const seconds = String(instant.getUTCSeconds()).padStart(2, "0");
+  return `${date}T${hhmm}:${seconds}`;
 }
 
 function upsertManualSample(
@@ -647,6 +669,7 @@ export function insertVitals(
     ...(sleepWindowRefused ? { sleepWindowRefused } : {}),
   };
 }
+export const insertVitalsDeclares = BODY_READING_WRITE;
 
 // ── growth (height / head circumference) ───────────────────────────────────────
 
@@ -688,6 +711,7 @@ export function insertGrowth(
   });
   return true;
 }
+export const insertGrowthDeclares = BODY_READING_WRITE;
 
 // ── waist circumference (issue #2322) ─────────────────────────────────────────
 
@@ -717,6 +741,7 @@ export function insertWaistCirc(
   });
   return true;
 }
+export const insertWaistCircDeclares = BODY_READING_WRITE;
 
 // ── lean mass / bone mass / hydration (issue #1851) ───────────────────────────
 
@@ -741,11 +766,22 @@ export function insertComposition(
   if ("error" in normalized) return false;
   writeTx(() => {
     for (const s of normalized.samples) {
-      upsertManualSample(profileId, s.metric, date, s.value);
+      const ts =
+        s.metric === HYDRATION_METRIC
+          ? sampleTime(profileId, date, clockNow())
+          : null;
+      upsertManualSample(
+        profileId,
+        s.metric,
+        date,
+        s.value,
+        ts ? { startedAt: ts, endedAt: ts } : undefined
+      );
     }
   });
   return true;
 }
+export const insertCompositionDeclares = BODY_READING_WRITE;
 
 // ── Bristol stool form (issue #2785) ──────────────────────────────────────────
 
@@ -822,11 +858,9 @@ export function logBristolStool(
     : ({ kind: "unstated" } as const);
   const stated = verdict.kind === "accepted" ? shaped : null;
   const refused = verdict.kind === "refused" ? verdict.reason : undefined;
-  const hhmm = stated ?? zonedDateParts(tz, instant).hhmm;
-  const seconds = stated
-    ? "00"
-    : String(instant.getUTCSeconds()).padStart(2, "0");
-  const ts = `${date}T${hhmm}:${seconds}`;
+  const ts = stated
+    ? `${date}T${stated}:00`
+    : sampleTime(profileId, date, instant);
   writeTx(() => {
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
@@ -837,6 +871,7 @@ export function logBristolStool(
   });
   return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
+export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
@@ -898,6 +933,7 @@ export function upsertMoodLog(
   resetMoodCheckinIgnored(profileId);
   return true;
 }
+export const upsertMoodLogDeclares = MOOD_CHECKIN;
 
 // Correct or remove ONE past check-in, from the mood detail page's readings table
 // (issue #1488, absorbing #1397). Before this, `upsertMoodLog` was the only mood

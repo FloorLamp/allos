@@ -44,9 +44,7 @@ const QuickPracticeList = dynamic(
 const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 // Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
 // hook and the mood action's client reference; loaded only once opened.
-const QuickMoodCheckin = dynamic(
-  () => import("./quick-entry/QuickMoodCheckin")
-);
+const MoodForm = dynamic(() => import("./mood/MoodForm"));
 // Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
 // the seven inline glyphs and the stool action's client reference; loaded on open.
 const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
@@ -289,19 +287,15 @@ function QuickEntryBody({
     case "measurements":
       return (
         <MeasurementsQuickAdd
+          // The whole field set, spread (#4424 ruling 1): `measurementsQuickEntry`
+          // answers "what does this form need on day D" for every surface that mounts
+          // it, so the sheet and the record's add door cannot list different props.
+          {...data}
           // A dialog body renders content, never chrome (#3361). Without this the
           // form falls back to `presentation="card"` and draws its own card
           // border and `<h2>` inside a panel that already draws both — the same
           // escape hatch its two ModalShell mounts already pass.
           presentation="modal"
-          weightUnit={data.weightUnit}
-          defaultDate={data.defaultDate}
-          defaultStatedAt={data.statedAt}
-          temperatureUnit={data.temperatureUnit}
-          showBodyFat={data.showBodyFat}
-          showGrowth={data.showGrowth}
-          showHeadCirc={data.showHeadCirc}
-          profileId={data.profileId}
           defaultGroup={prefill?.measurementGroup}
           onSaved={onDone}
         />
@@ -318,7 +312,6 @@ function QuickEntryBody({
             days={data.days}
             groupsBySlot={data.groupsBySlot}
             proteinRankBySlot={data.proteinRankBySlot}
-            excludedGroups={data.excludedGroups}
             slot={data.slot}
             slotBoundaries={data.slotBoundaries}
             initialFoodGroup={prefill?.foodGroup}
@@ -358,7 +351,9 @@ function QuickEntryBody({
       // The SAME MoodValencePicker + logMood write the dashboard card runs, with
       // the #2128 day chips — a second mounting context, never a second write
       // path. A successful tap closes (a check-in is a transaction with an end).
-      return <QuickMoodCheckin days={data.days} onDone={onDone} />;
+      return (
+        <MoodForm days={data.days} showCalm={data.showCalm} onDone={onDone} />
+      );
     case "practice":
       // No `onSaved`: like the food bar, practice logging has no single "saved"
       // moment — multi-session days are the point and a morning check may log two

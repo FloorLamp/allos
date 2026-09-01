@@ -153,6 +153,114 @@ export type StatedTimePolicy =
       readonly ref: IssueRef;
     };
 
+// ── WHAT A CORE DECLARES BESIDE ITSELF (#4614) ───────────────────────────────
+//
+// The manifest used to NAME its cores, and that column alone had a type floor with no
+// completeness check — three rows went stale inside a day, one of them wrong at birth.
+// The direction is inverted here: each core declares its own domain beside its
+// definition and the column DERIVES, so drift by addition is a missing declaration
+// where the door is written rather than an omission in a file nobody opened, and a
+// rename or a delete takes the declaration with it.
+//
+// The stated-time answer rides on the same declaration (#4568 ruling 1) — it is a
+// per-CORE property, `TAP_REACH`'s axis lesson applied to the column body's six cores
+// disagreed on — so a declaration cannot be made without answering it.
+export interface LogCoreDeclaration<D extends LogDomain = LogDomain> {
+  readonly domain: D;
+  readonly statedTime: StatedTimePolicy;
+}
+
+function declaresLogCore<D extends LogDomain>(
+  domain: D,
+  statedTime: StatedTimePolicy
+): LogCoreDeclaration<D> {
+  return { domain, statedTime };
+}
+
+// One declaration per (domain, stated-time answer) pair. A core writes
+// `export const <name>Declares = <one of these>;` beside its definition; the suffix is
+// what the derivation at the foot of this file reads. Naming them here keeps each
+// argument in ONE place — five practice cores share a reason rather than restating it.
+
+// An UNDO takes back the row its own tap wrote and carries no instant, while the LOG
+// door beside it judges one. That is the disagreement a domain-grain cell could not
+// hold, in the smallest case there is.
+const UNDO_STATES_NOTHING = {
+  kind: "none",
+  reason:
+    "An undo names the row its own tap created and takes no time: the instant it removes was judged when the tap wrote it, so there is no second statement to judge.",
+  ref: "#4568",
+} as const satisfies StatedTimePolicy;
+
+const JUDGED = {
+  kind: "judged",
+  seam: "judgeStatedAt",
+} as const satisfies StatedTimePolicy;
+
+export const FOOD_SERVING_LOG = declaresLogCore("food", JUDGED);
+export const FOOD_SERVING_UNDO = declaresLogCore("food", UNDO_STATES_NOTHING);
+
+export const DOSE_RESOLUTION = declaresLogCore("dose", {
+  kind: "judged",
+  seam: "dose-guards",
+});
+export const DOSE_CONFIRM_UNDO = declaresLogCore("dose", UNDO_STATES_NOTHING);
+
+// WRONG, AND THE TYPE STILL CANNOT SAY SO — flagged rather than asserted (#3143
+// review). `none` means "no instant column to state into", and both halves are false
+// for the cores that take a statement: `practice_logs` carries `start_time`/`end_time`
+// (#3142) and the quick sheet's "Happened earlier?" states an END. The truthful value
+// would be `judged`, which the type requires a shared seam for, and practice checks its
+// stated end inline. So `none` stays because it is the only representable value, not
+// because it is the answer. Settle it by routing the stated end through the seam, or by
+// giving the union an arm for a domain that judges its own; both are rulings, not edits.
+export const PRACTICE_SESSION_LOG = declaresLogCore("practice", {
+  kind: "none",
+  reason:
+    "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
+  ref: "#3143",
+});
+
+// The live pair is the half of practice the cell above was never true of, and the
+// re-key per core is what let it say so: neither start nor end takes a stated time.
+export const PRACTICE_LIVE_TAP = declaresLogCore("practice", {
+  kind: "none",
+  reason:
+    "A live session's start and end are the taps themselves (#3142): each stamps the profile-local minute at the moment it is pressed and neither accepts a time, so nothing is stated.",
+  ref: "#3142",
+});
+
+export const MOOD_CHECKIN = declaresLogCore("mood", {
+  kind: "none",
+  reason:
+    "A check-in is a DAY's answer (#992/#2312, answered rather than left to inference): `MoodPayload` carries no instant, the queue's captured date is the whole of its time model, and a replay at dinner still lands on the day the user tapped.",
+  ref: "#992",
+});
+
+export const SYMPTOM_DAY_WRITE = declaresLogCore("symptom", {
+  kind: "none",
+  reason:
+    "A symptom-day is ONE row, UNIQUE(profile_id, date, symptom), keeping the day's WORST severity: the table has no instant column and a second tap settles onto the same row rather than becoming a second observation. The temperature reading the bar can also take is the `body` domain's, and it states its own time there.",
+  ref: "#799",
+});
+
+export const STOOL_MOVEMENT_LOG = declaresLogCore("stool", JUDGED);
+
+export const SUBSTANCE_USE_WRITE = declaresLogCore("substance", {
+  kind: "none",
+  reason:
+    "`substance_daily_totals` is a DAY TOTAL. It has a `recorded_at` — when the use was filed — and no event instant at all, which is why the record renders these rows date-only and sinks them below the day's timed ones.",
+  ref: "#3327",
+});
+
+// TRUE OF ALL SIX BODY CORES SINCE #4568, and it was true of five: both temperature
+// doors resolved through a file-private `normalizeClockTime` — a SHAPE check — so the
+// old domain-grain cell asserted something false about one of them. They run
+// `resolveStatedOccurredAt` now. What a refusal COSTS still differs by door (log keeps
+// the reading, correction refuses the submission), which is lib/stated-time.ts's rule
+// and not a second policy.
+export const BODY_READING_WRITE = declaresLogCore("body", JUDGED);
+
 // #4424 ruling 7: exactly two shared client pieces per domain — one FORM (add and
 // full-statement edit) and one ROW CONTROL (taps and micro-corrections). Naming
 // them here is what makes each domain leg's definition of done a COMPILE ERROR
@@ -181,7 +289,6 @@ export type WriteConventions =
     };
 
 export interface LogDomainManifest {
-  readonly statedTime: StatedTimePolicy;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
   // domain-grain rows from here instead of restating them.
@@ -210,24 +317,13 @@ export interface LogDomainManifest {
     readonly rowControl: ClientPiece;
   };
   readonly writeConventions: WriteConventions;
-  // The dated write cores this domain's every surface must post through — the list
-  // the `STATEFUL_WRITE_TABLES` scan's call-site rule is about.
-  //
-  // THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review). `body` named
-  // `recordReading`/`recordReadings`, which no Server Action, component or Telegram
-  // handler calls — they sit under `insertVitals`. The row therefore did not name the
-  // five cores a body submission actually posts through, and this branch gated two of
-  // them and missed three, which shipped as a partial sitting nobody could see from
-  // here. The test for a name in this list is that a SURFACE calls it; the seven other
-  // rows were audited against that and all seven hold.
-  readonly cores: readonly [string, ...string[]];
+  // No `cores` column: the cores DECLARE and `LogCoresOf` derives (see below).
 }
 
 // ── THE MANIFEST ─────────────────────────────────────────────────────────────
 
 export const LOG_MANIFEST = {
   food: {
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: { kind: "covered", flow: "food" },
     surfaces: {
       sheet: { kind: "covered", via: "log-food" },
@@ -250,11 +346,9 @@ export const LOG_MANIFEST = {
       },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logFoodServingCore", "undoFoodServingCore"],
   },
 
   dose: {
-    statedTime: { kind: "judged", seam: "dose-guards" },
     offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
     surfaces: {
       sheet: { kind: "covered", via: "log-dose" },
@@ -263,30 +357,59 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "dose" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`HistoricalDoseForm` already carries the ruled add/edit dual mode — it is the log-side PROOF of #4424 ruling 1 — but the `/history` door still routes doses to the legacy `DoseBackfillLauncher`, so the domain does not yet have ONE form every surface mounts.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "`DoseConfirmButton`/`DoseStatusControl` are the shape, and the Day ledger still picks between two controls per row by `isToday` while `QuickDoseList` straddles `markTaken`/`resolveDayDoses`; #4316's shared dose-row shape absorbs both.",
-        ref: "#4316",
-      },
+      // #4424's dose leg. `HistoricalDoseForm` is add AND full-statement edit at every
+      // mount — the record's door, that record row's correction, the Supplements card,
+      // and the per-item dose history's add and ⋯.
+      //
+      // THE FORM CLAIM WAS RIGHT ABOUT THE COMPLAINT AND WRONG ABOUT THE FACT. It said
+      // the `/history` door "routes doses to the legacy `DoseBackfillLauncher`, so the
+      // domain does not yet have ONE form every surface mounts" — but that launcher
+      // MOUNTED this form, as did every other dose door. What was spelled twice was the
+      // ITEM PICKER in front of it (`DoseBackfillLauncher`, `HistoricalDoseLauncher`),
+      // each building the dose options its own way; the form owns it now and the
+      // launcher is deleted. And the door had NO DAY: every other kind opens on the day
+      // being read (#4045 §1) and the dose branch bypassed `HistoryAddDoor` to open on
+      // today.
+      //
+      // `DoseStatusControl` is the control every dose row hosting a write control
+      // mounts. THE CELL WAS RIGHT that the ledger "picks between two controls per row
+      // by `isToday`" and that `QuickDoseList` straddles two writes; the reason was one
+      // line — `setDoseStatus` stamped `today(profileId)`, so the tri-state could not
+      // name yesterday and each surface hand-rolled a dated pair. The ledger's own
+      // comment blamed the CORE ("the tri-state's CLEAR has no dated core"): wrong —
+      // `setDoseStatusCore` gates on `isDoseDateAccepted`, the same ±2, and always did.
+      // The action takes a day bounded by `doseLogDays` now, so a past day gained the
+      // CLEAR it never had and three spellings are deleted.
+      //
+      // WHAT #4316 ACTUALLY LANDED, since this cell named it as the blocker: `a6aa7867`
+      // extracted `useDoseDayResolution` — a shared WRITE OWNER, not a row component —
+      // and both surfaces went on drawing their own buttons. Its single-row arm goes
+      // with this leg; what stays shared is the whole-stack "Take all", which is
+      // `dose-day-stack`, a bulk offer and not a row control.
+      //
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Four mounts, on
+      // three surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
+      // attention row, the household card's due row, and — since #2579-D — both of
+      // Upcoming's, its banded due-dose row and the `DoseChip` its dose fold and its
+      // "Available to log" run share. This cell said TWO, and named only the first
+      // pair; that was true when it was written and #2579-D is what changed it.
+      //
+      // WHAT UNITES THEM IS THAT THE TRI-STATE'S RECEIPT (#2654) HAS NOWHERE TO LIVE,
+      // and #2579-D widened the reason rather than breaking it. On the first three the
+      // row lists what is still OWED, so the write UNMOUNTS it. On Upcoming's offer
+      // chips it does not — a `may` item is still offered after it is logged — but an
+      // offer has no per-day STATUS to state, so a control whose three states are
+      // taken/skipped/cleared for a scheduled day has nothing to say about it. Either
+      // way the answer has to be a toast carrying the inverse (#2642), which is this
+      // component. Folding it into the tri-state would delete a documented undo with no
+      // ruling, and would put a status on a row that has none.
+      form: { kind: "shared", component: "HistoricalDoseForm" },
+      rowControl: { kind: "shared", component: "DoseStatusControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["markDoseTaken", "markDoseSkipped", "logHistoricalDose"],
   },
 
   practice: {
-    statedTime: {
-      kind: "none",
-      reason:
-        "A session is a DAY's fact plus a duration: `practice_logs` carries no event instant, and the duration answers 'how long', never 'at what minute'. A time field here would collect a statement with nowhere to be stored — the `/history` door makes the same call for substance rows.",
-      ref: "#2908",
-    },
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
       sheet: { kind: "covered", via: "log-practice" },
@@ -295,60 +418,75 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "practice" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`LogPracticeButton` carries three incompatible field sets across four mounts, and `app/(app)/upcoming/PracticeLogButton.tsx` fronts a SECOND write core (`logUpcomingPractice`) with no duration and no confirm. #4424 ruling 7 deletes the parallel core; this row flips with it.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "`PracticeSessionHistory` spells its own correction form and the compact `LogPracticeButton` is not yet the one row control every surface mounts.",
-        ref: "#4424",
-      },
+      // #4424's practice leg. `PracticeSessionForm` is add AND full-statement edit at
+      // every mount — the Wellness card's modal, the backfill launcher, the record's
+      // door, that record row's correction and the session history's ⋯.
+      //
+      // THIS CELL SAID THE FIELD SETS WERE "NO LONGER THREE" AND THAT THE FLIP WAS
+      // BLOCKED ON A SECOND WRITE CORE. Both were re-derived and both were wrong. #3143
+      // did extract one expanded form and give it two mounts, but FOUR hand-rolled
+      // spellings of the practice statement were live when this leg opened: that form,
+      // this history's own edit form (the same five fields again), the `/history`
+      // door's, and that record row's correction — the last two carrying four of the
+      // five, with no END, so a window stated in the expanded form was correctable on
+      // exactly one surface. And
+      // `logUpcomingPractice` was never a core — it reached `logPracticeSession`
+      // through `logPracticeByTargetId`, the resolver Telegram's Done shares — so
+      // ruling 7 deleted a DOOR, and the `cores` column below was already correct.
+      // The defects the cell named were all real: no duration, no confirm, its own
+      // gate, its own result shape.
+      //
+      // `LogPracticeButton` is the row control every practice row hosting a write
+      // control mounts: the Wellness card, the dashboard protocol rows, the quick
+      // sheet's rows and — since this leg — Upcoming's, which fronted its own button
+      // and its own action. That row gains the duration stepper, the same-day re-log
+      // confirm and the live lifecycle by mounting the shared one rather than by
+      // having them re-added to a copy.
+      //
+      // UPCOMING'S ROW DROPS ITS `stale-target` REFUSAL, deliberately (owner ruling,
+      // 2026-09-01, so nobody reads the loss as an oversight). The deleted door posted a
+      // target id and could refuse when that target had gone; the control posts a NAME.
+      // Practice logs are name-keyed and outlive their target, so that refusal guarded a
+      // stale POINTER — and this leg leaves no pointer to be stale. See `practiceItems`
+      // for why the row resolves rather than the control (lib/queries/upcoming/plans.ts).
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // ruling 3 itself rather than a gap — the precedent recorded on #4424 after the
+      // symptom leg: #3958 makes that row one line at every viewport with its trailing
+      // affordance EXCLUSIVE, so a full-statement edit behind the ⋯ is what ruling 3
+      // asks for there. `shared` means the domain has exactly ONE implementation and
+      // every row hosting a write control mounts it; mount count is not the test.
+      form: { kind: "shared", component: "PracticeSessionForm" },
+      rowControl: { kind: "shared", component: "LogPracticeButton" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logPracticeSession", "logPracticeSessionForDay"],
   },
 
   mood: {
-    // Ordinary: the same two days as a dose, past-only, and nothing about it needs
-    // arguing beyond the past-only shape the type already states.
-    statedTime: {
-      kind: "none",
-      reason:
-        "A check-in is a DAY's answer (#992/#2312, answered rather than left to inference): `MoodPayload` carries no instant, the queue's captured date is the whole of its time model, and a replay at dinner still lands on the day the user tapped.",
-      ref: "#992",
-    },
     offline: { kind: "covered", flow: "mood" },
     surfaces: {
       sheet: { kind: "covered", via: "log-mood" },
       palette: { kind: "covered", via: ["log-mood"] },
       telegram: { kind: "covered", via: ["mood"] },
-      history: {
-        kind: "excluded",
-        reason:
-          "`HISTORY_LOG_KINDS` has no mood row: the check-in store is store-private under the #992 sensitivity contract, and giving the record a mood kind is a decision about that contract rather than about the kind registry.",
-        ref: "#4427",
-      },
+      history: { kind: "covered", via: "mood" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`QuickMoodCheckin` is a declared HALF-form — the expand fields exist on one mount and not the others — so mood has no single form serving add and full-statement edit.",
-        ref: "#4427",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The readings table's value cell is the row-control-grade edit and the dashboard card's faces are the tap; neither is a shared control any surface can mount.",
-        ref: "#4427",
-      },
+      // THE FORM CELL'S COUNT WAS STALE IN BOTH DIRECTIONS (#4427). The optional
+      // Energy/Calm/factors/note fields had ZERO current logging mounts: the retired
+      // dashboard card once drew them, while `QuickMoodCheckin` only carried stored
+      // values through its one-tap payload. `SleepMoodEditDialog` likewise corrected
+      // valence while preserving the hidden remainder. `MoodForm` owns the complete
+      // statement now and is mounted by quick entry and the record's add/edit doors.
+      //
+      // THE ROW-CONTROL CELL WAS ALSO STALE. The dashboard faces it cited retired
+      // with the dashboard becoming a door; metric-detail mood rows already mounted
+      // `ReadingValueControl`, inherited from body exactly as body's cell promised.
+      // The record keeps the feed-row precedent from #3958: its exclusive ⋯ opens the
+      // shared full form, with no third inline control.
+      form: { kind: "shared", component: "MoodForm" },
+      rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["upsertMoodLog"],
   },
 
   symptom: {
@@ -358,12 +496,6 @@ export const LOG_MANIFEST = {
     // — and `logSymptomCore` bounded nothing. Matching mood is the ruling, and mood
     // is the honest sibling: a subjective daily self-report, backfilled a day or two
     // late, correctable afterwards from the row rather than re-logged.
-    statedTime: {
-      kind: "none",
-      reason:
-        "A symptom-day is ONE row, UNIQUE(profile_id, date, symptom), keeping the day's WORST severity: the table has no instant column and a second tap settles onto the same row rather than becoming a second observation. The temperature reading the bar can also take is the `body` domain's, and it states its own time there.",
-      ref: "#799",
-    },
     offline: {
       kind: "excluded",
       reason:
@@ -377,25 +509,33 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "symptom" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`SymptomLogBar` takes 21 props and hand-rolls its own temperature entry (a raw time input on the allowlist) instead of composing the vitals field; the `/history` row correction is a second spelling and posts the subject under a second name.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The severity-lower confirm is row-control-grade and lives inside the bar; `/history` symptom rows carry a correction form and no shared control.",
-        ref: "#4424",
-      },
+      // #4424's symptom leg. `SymptomForm` is add AND full-statement edit — the record's
+      // symptom door and that row's correction — with the day riding in from the mount,
+      // because the store is UNIQUE(profile_id, date, symptom) and a date FIELD would
+      // let a correction merge two days' worst severities into one.
+      //
+      // `SymptomRowControl` is everything a logged day can be corrected with WITHOUT
+      // restating it: the severity taps (a plain tap RAISES, a labelled chip below the
+      // current value posts the narrow lower), the note, and the clear with its undo.
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // ruling 3 itself rather than a gap: a full-statement edit opens the form in edit
+      // mode, which is what the ⋯ does. The feed row hosts no one-field inline edit
+      // because #3958 leaves it nowhere to go — that ruling makes the row one line at
+      // every viewport with the trailing affordance EXCLUSIVE (⋯ or ›, never both), and
+      // #4424 nowhere claims to override it. The day view's own card mounts the bar,
+      // whose rows are this control.
+      //
+      // THE CONTROL HAS ONE MOUNT TODAY — the bar — so read `shared` as "the domain has
+      // exactly one, and every symptom row hosting a write control mounts it", never as
+      // "mounted twice". The cell's complaint was that row-control-grade behaviour LIVED
+      // INSIDE the bar, and extracting it is the fix whether or not a second surface
+      // exists yet. A second one appears the day #4076's control slot reaches this
+      // domain, and it will not have to re-decide the raise/lower routing or the undo.
+      form: { kind: "shared", component: "SymptomForm" },
+      rowControl: { kind: "shared", component: "SymptomRowControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: [
-      "logSymptomCore",
-      "setSymptomSeverityCore",
-      "lowerSymptomSeverityCore",
-    ],
   },
 
   stool: {
@@ -403,7 +543,6 @@ export const LOG_MANIFEST = {
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
     // whose natural key IS its instant.
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: { kind: "covered", flow: "stool" },
     surfaces: {
       sheet: { kind: "covered", via: "log-stool" },
@@ -447,16 +586,9 @@ export const LOG_MANIFEST = {
         "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
       ref: "#3276",
     },
-    cores: ["logBristolStool"],
   },
 
   substance: {
-    statedTime: {
-      kind: "none",
-      reason:
-        "`substance_daily_totals` is a DAY TOTAL. It has a `recorded_at` — when the use was filed — and no event instant at all, which is why the record renders these rows date-only and sinks them below the day's timed ones.",
-      ref: "#3327",
-    },
     offline: {
       kind: "excluded",
       reason:
@@ -480,29 +612,16 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "substance" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "The `/history` add door spells its own substance form with an unlabeled amount; the sheet's overlay is a third spelling beside the Medical page's.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The unit tap and the record's row correction share no control, and the cap-progress line rides only the former.",
-        ref: "#4424",
-      },
+      // #4424's substance leg. `SubstanceForm` is add AND full-statement edit at every
+      // mount, with the unit-labelled amount (#4211); `SubstanceUnitControl` carries the
+      // tap, its undo, and the cap verdict the exclusion above is argued from.
+      form: { kind: "shared", component: "SubstanceForm" },
+      rowControl: { kind: "shared", component: "SubstanceUnitControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: [
-      "logSubstanceUnitCore",
-      "undoSubstanceUnitCore",
-      "addSubstanceDailyTotalCore",
-    ],
   },
 
   body: {
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: {
       kind: "covered",
       flow: "body-metric",
@@ -518,34 +637,114 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "body" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "THREE shapes with three field sets — a 13-field form, a 3-field door, a 1-field row edit — plus `PediatricWeightUpdate` as a fourth weight form and a palette path posting raw `insertBodyMetric` instead of the measurements action.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The readings-table value cell is the row-control-grade inline edit and is not a shared component; the dashboard Now rows carry no body control at all.",
-        ref: "#4424",
-      },
+      // #4424's body leg. `MeasurementsQuickAdd` is the form at every mount — the
+      // Trends panel, a metric detail page, the quick-log sheet and the record's add
+      // door — and `measurementsQuickEntry` is the ONE reader that answers what it
+      // needs on a given day, so a mount SPREADS that shape rather than listing seven
+      // props and quietly listing six.
+      //
+      // THE PEDIATRIC LABEL LOOKUP COMPOSES THE FIELD, NOT THE FORM, and that is ruling
+      // 2's own wording rather than a shortfall: it renders inside `IntakeItemForm`'s
+      // `<form>`, so a component drawing its own would be a nested one and its Save
+      // would be inert. It mounts `WeightField` — the `TemperatureField` precedent,
+      // ruling 5 — and posts `addMeasurements` like every other body door.
+      //
+      // ADD AND EDIT ARE ONE LAYOUT AND ALSO ONE ACTION here, which is stronger than
+      // ruling 1 asks for: `insertBodyMetric` is find-then-write per day, so a sitting
+      // resubmitted on a day that already has a row CORRECTS it. Edit mode is therefore
+      // the seed — `defaultStatedAt` off that day's own `occurred_at` — and nothing
+      // else. A reading's one-field correction is the row control below.
+      //
+      // THE CELL'S FIGURES DID NOT SURVIVE MEASUREMENT and are corrected here rather
+      // than inherited. The form defines NINETEEN fields (eighteen plus Notes) and
+      // renders SEVENTEEN at either life stage, not thirteen; the stale number traces
+      // to a comment in the form itself, written before #1850, #1851 and #2322 added
+      // seven more, and is fixed at that source too. `PediatricWeightUpdate` was the
+      // THIRD weight form, not the fourth: the count reached four by including the
+      // one-field row edit, which ruling 3 classes as row-control-grade and which edits
+      // any metric's value rather than a weight. The door's three measures,
+      // `PediatricWeightUpdate`'s hand-drawn weight input and `addBodyMetric` — a fourth
+      // body write action carrying a strict subset of `addMeasurements` — are all
+      // deleted, and the palette posts the measurements action.
+      //
+      // THE ROW CONTROL HAD THREE IMPLEMENTATIONS, not the one the cell named: the
+      // readings-table cell, `/history`'s `case "body"` correction form, and
+      // `BodyMetricRowMenu`'s modal — all three posting `updateMetricReading` with the
+      // same three fields. All three mount `ReadingValueControl` now, and it is the only
+      // thing in the tree that imports that action.
+      //
+      // MOOD'S LEG INHERITS THAT CONTROL RATHER THAN EXTRACTING A SECOND ONE (#4427).
+      // `/trends/metric/<slug>` charts mood and sleep beside the body measures, so a
+      // mood reading's value is corrected through this same component —
+      // `updateMetricRow` routes the mood store underneath it. Named here so that leg
+      // reads it as an inheritance in its own cell instead of finding a body-named
+      // control on its rows and drawing a fourth.
+      //
+      // THE DASHBOARD IS NOT A GAP. Its body rows are readouts with an `href`; the one
+      // body write control there is the setup-tier Vitals row's
+      // `DashboardQuickEntryAction`, which OPENS the form in the sheet and is ruling 2's
+      // mount rather than a second row control. So read `shared` as the symptom leg
+      // established it: the domain has exactly one control and every body row hosting a
+      // write control mounts it. Mount count is not the test.
+      form: { kind: "shared", component: "MeasurementsQuickAdd" },
+      rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
-    // The five "Log measurements" cores plus the symptom bar's temperature door. One
-    // submission fans out across the five by which fields it carries, so they are one
-    // contract and all five hold `isPastWriteAccepted`; `recordReading` is the store
-    // under `insertVitals` and is not a door.
-    cores: [
-      "insertBodyMetric",
-      "insertVitals",
-      "insertGrowth",
-      "insertWaistCirc",
-      "insertComposition",
-      "logTemperatureCore",
-    ],
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
+
+// ── THE DERIVED CORES COLUMN (#4614) ─────────────────────────────────────────
+//
+// Every module that defines a log core. TYPE-ONLY, and `typeof import(...)` rather
+// than an import statement, so this file stays as pure and dependency-free as its
+// header promises — a client component reading `LOG_MANIFEST` pulls in no `db`.
+//
+// THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review): `body` named
+// `recordReading`, which nothing but `insertVitals` calls, and so missed the five cores
+// a body submission posts through. The test for a declaration is that a SURFACE calls
+// the function; corrections and deletes carry none, matching what the rows named.
+type LogCoreModules =
+  | typeof import("./food-log-write")
+  | typeof import("./queries/intake/adherence")
+  | typeof import("./practice-log")
+  | typeof import("./offline/writes")
+  | typeof import("./symptom-log-write")
+  | typeof import("./substance-log-write")
+  | typeof import("./substance-daily-totals-write")
+  | typeof import("./temperature-log");
+
+// Read every `<coreName>Declares` export whose declaration names domain `D`.
+// Distributive so the module union is walked one module at a time.
+type DeclaredCoresIn<M, D extends LogDomain> = M extends unknown
+  ? {
+      [K in keyof M]: K extends `${infer Core}Declares`
+        ? M[K] extends LogCoreDeclaration<D>
+          ? Core
+          : never
+        : never;
+    }[keyof M]
+  : never;
+
+// The manifest's cores column, derived. `LogCoresOf<"practice">` is what the practice
+// row used to spell out by hand.
+export type LogCoresOf<D extends LogDomain> = DeclaredCoresIn<
+  LogCoreModules,
+  D
+>;
+
+// Every core in the app, as a union — so a renamed or deleted core stops being one.
+export type LogCoreName = LogCoresOf<LogDomain>;
+
+// COMPLETENESS, THE HALF THE OLD COLUMN NEVER HAD: a domain whose cores all lost their
+// declarations — or a new `LogDomain` whose doors never wrote one — derives an empty
+// list, and this assignment stops compiling.
+type DomainsThatDeclareACore = {
+  [D in LogDomain]: [LogCoresOf<D>] extends [never] ? never : D;
+}[LogDomain];
+
+export const EVERY_DOMAIN_DECLARES_A_CORE: LogDomain extends DomainsThatDeclareACore
+  ? true
+  : never = true;
 
 // ── The shared invariant every domain core holds ─────────────────────────────
 
@@ -615,7 +814,7 @@ export const TAP_REACH = {
     back: 2,
     forward: 2,
     reason:
-      "The day switcher's single dated tap rides the SAME scheduled cores as the tri-state (#3936), so it inherits the pointer-retention bound rather than declaring one: `doseLogDays` offers exactly the past half of this reach, off this constant.",
+      "A single dated dose tap — the day switcher's, and since #4424's dose leg the day ledger's row on any day but today. It IS the tri-state on a stated day (`DoseStatusControl` posts `setDoseStatus` with the row's date), so it inherits the pointer-retention bound rather than declaring one: `doseLogDays` offers exactly the past half of this reach, off this constant, and the action checks the posted day against that same list.",
     ref: "#3936",
   },
   "dose-day-stack": {

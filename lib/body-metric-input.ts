@@ -1,5 +1,5 @@
 // Pure client-side validation for the body-metrics "Add entry" form. The
-// addBodyMetric server action silently skips non-finite / out-of-range numbers
+// The body write cores silently skip non-finite / out-of-range numbers
 // (so bad input can't land as NaN), which on its own would leave the user with
 // a false "saved" confirmation. This mirrors those bounds up front so the form
 // can surface an inline error instead. Kept DB-free and pure so it's unit-tested

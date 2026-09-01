@@ -16,6 +16,11 @@ import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
 import { updateHistoricalDose } from "@/lib/queries";
 
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
+
 // DB-tier gather tests for the school-return countdown (#859 item 2) and the
 // stale-open-episode nudge (#859 item 1) — the input layer the pure tier can't see.
 

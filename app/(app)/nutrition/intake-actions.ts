@@ -107,6 +107,7 @@ import {
   type CadenceKind,
   type DoseSchedule,
 } from "@/lib/intake-cadence";
+import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { getDoseScheduleVersions } from "@/lib/queries";
 import {
   formError,
@@ -1281,19 +1282,36 @@ export async function updateIntakeItem(
 // the control the dose is resolved when nothing was written. Every reachable tap still
 // answers ok — the control is only rendered for an active, non-retired dose — so this
 // changes what a FORGED post is told, not what a real one sees.
-function doseStatusResult(outcome: DoseStatusOutcome): FormResult {
-  switch (outcome) {
-    case "stale-dose":
-      return formError("That dose is no longer scheduled.");
-    case "inactive":
-      return formError("That item is paused.");
-    default:
-      return formOk();
-  }
+// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280): a surface renders what
+// happened through `doseConfirmMessage` — an off-cadence confirm names the schedule
+// (#1602) — and `{ ok: true }` flattens that into a confirm the write may not have
+// earned.
+export type DoseStatusResult =
+  { ok: true; outcome: DoseStatusOutcome } | { ok: false; error: string };
+
+function doseStatusResult(
+  outcome: DoseStatusOutcome,
+  target: DoseStatusTarget
+): DoseStatusResult {
+  // The already-* pair is reachable only from a resolve-only tap. Contradicted, the
+  // tap wrote nothing and it is a refusal; agreeing, the dose is where the tap wanted
+  // it and an idempotent repeat is not one.
+  const contradicted =
+    (outcome === "already-taken" && target !== "taken") ||
+    (outcome === "already-skipped" && target !== "skipped");
+  if (contradicted || outcome === "stale-dose" || outcome === "inactive")
+    return formError(doseConfirmMessage(outcome).text);
+  return { ok: true, outcome };
 }
 
-// Set a single dose's status for today to an explicit target — the web
-// tri-state's write path (taken / skipped / clear). #232
+// Set a single dose's status on a day to an explicit target — the web tri-state's
+// write path (taken / skipped / clear). #232
+//
+// THE DAY IS OPTIONAL AND BOUNDED BY THE OFFER (#4424). Absent it is the profile's
+// today. Present it is checked against `doseLogDays(localToday)` — the same upper-bound
+// rule `resolveDayDoses` below applies, off the same constant — so a forged POST cannot
+// reach TOMORROW through the ±2 the core allows a late Telegram tap. Widening it means
+// widening `TAP_REACH["dose-status"]`, coupled to pointer retention.
 //
 // Cross-profile (#858/#1373): a multi-view Medications board confirms a household
 // member's scheduled dose without switching the acting profile — the board posts an
@@ -1307,7 +1325,9 @@ function doseStatusResult(outcome: DoseStatusOutcome): FormResult {
 // refusals and every supply movement belong to the auth-blind core in
 // lib/queries/intake/adherence.ts, which the Telegram, offline and household paths use
 // too.
-export async function setDoseStatus(formData: FormData): Promise<FormResult> {
+export async function setDoseStatus(
+  formData: FormData
+): Promise<DoseStatusResult> {
   const targetProfile = Number(formData.get("profileId"));
   let profileId: number;
   if (Number.isInteger(targetProfile) && targetProfile > 0) {
@@ -1318,23 +1338,32 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   }
   const doseId = Number(formData.get("dose_id"));
   const target = String(formData.get("status") ?? "");
+  const localToday = today(profileId);
+  const posted = String(formData.get("date") ?? "");
+  const date = posted === "" ? localToday : posted;
   if (
     !doseId ||
-    (target !== "taken" && target !== "skipped" && target !== "clear")
+    (target !== "taken" && target !== "skipped" && target !== "clear") ||
+    !doseLogDays(localToday).includes(date)
   ) {
     return formError("Couldn't update this dose.");
   }
   const outcome = setDoseStatusCore(
     profileId,
     doseId,
-    today(profileId),
+    date,
     target,
-    // The tri-state check-off renders on the Nutrition/Medications pages and in the
-    // quick-log sheet's dose list, all posting THIS action.
-    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+    // The tri-state check-off renders on the Nutrition/Medications pages, the day
+    // ledger's rows and the quick-log sheet's dose list, all posting THIS action.
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+    // THE STATE THE CONTROL WAS SHOWING, which decides whether this may overwrite
+    // (#280): a row in a list of what a day still owes renders CLEAR whether or not
+    // another device resolved it since, so from clear the tap may only resolve. Absent
+    // — a caller rendering no state — keeps the explicit set this action always did.
+    String(formData.get("from") ?? "") === "clear" && target !== "clear"
   );
   revalidateIntake();
-  return doseStatusResult(outcome);
+  return doseStatusResult(outcome, target);
 }
 
 // ── Recent-past dose catch-up (#3936) ───────────────────────────────────────────
@@ -1353,15 +1382,16 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
 // the same "the form is an UPPER BOUND, never an instruction" rule the dose ids already
 // obey, applied to the one field that was still an unbounded instruction.
 //
-// ONE ACTION FOR THE ROW AND THE STACK, because a single-dose tap IS a stack of one:
-// both name a list of dose ids that is an UPPER BOUND on the write, never an
-// instruction. `pendingDayDoses` is re-run here against fresh state and the named ids
-// are intersected with it, so a forged id, another profile's dose, a retired dose, a
-// paused item or a dose already resolved from the phone writes nothing — the
+// THE WHOLE-STACK TAP, and since #4424's dose leg only that — a single dose row is
+// `DoseStatusControl` posting the row's day, so this no longer serves "a stack of one"
+// as this header used to say. The bulk contract stands: the ids NAME an UPPER BOUND on
+// the write, never an instruction. `pendingDayDoses` is re-run against fresh state and
+// the named ids intersected with it, so a forged id, another profile's dose, a retired
+// dose, a paused item or a dose already resolved from the phone writes nothing — the
 // `logUsualRoutineCore` contract (#2458), one day further back. Every survivor still
-// goes through the stateful core and can refuse on its own terms, and the answer
-// carries each typed outcome unflattened so the sheet reports what was written rather
-// than what was asked for.
+// goes through the stateful core and can refuse on its own terms, and the answer carries
+// each typed outcome unflattened so the sheet reports what was written, not what was
+// asked for.
 export type DayDoseResolution = {
   doseId: number;
   name: string;
@@ -1728,15 +1758,16 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
       "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
     )
     .get(doseId, date) as { status: DoseStatusTarget } | undefined;
+  const target = existing?.status === "taken" ? "clear" : "taken";
   const outcome = setDoseStatusCore(
     profile.id,
     doseId,
     date,
-    existing?.status === "taken" ? "clear" : "taken",
+    target,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   revalidateIntake();
-  return doseStatusResult(outcome);
+  return doseStatusResult(outcome, target);
 }
 
 export type SetItemActiveResult =

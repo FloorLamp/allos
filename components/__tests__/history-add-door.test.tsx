@@ -30,11 +30,32 @@ const record = (name: string) => (fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
+vi.mock("@/app/(app)/symptom-actions", () => ({
+  logSymptom: async (fd: FormData) => {
+    record("logSymptom")(fd);
+    return {
+      ok: true,
+      symptom: String(fd.get("symptom")),
+      severity: Number(fd.get("severity")),
+    };
+  },
+  editSymptom: async () => ({ ok: false, error: "the door never corrects" }),
+}));
 vi.mock("@/app/(app)/nutrition/actions", () => ({
   logFoodServing: async (fd: FormData) => {
     record("logFoodServing")(fd);
     return { ok: true, servings: 1 };
   },
+}));
+vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
+  logHistoricalDose: async (fd: FormData) => {
+    record("logHistoricalDose")(fd);
+    return { ok: true };
+  },
+  updateHistoricalDose: async () => ({
+    ok: false,
+    error: "the Add door never corrects",
+  }),
 }));
 vi.mock("@/app/(app)/wellness/actions", () => ({
   logPractice: async (fd: FormData) => {
@@ -48,10 +69,36 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
     return { kind: "added" };
   },
 }));
-vi.mock("@/app/(app)/trends/body-actions", () => ({
-  addBodyMetric: async (fd: FormData) => {
-    record("addBodyMetric")(fd);
+vi.mock("@/app/(app)/mood-actions", () => ({
+  logMood: async (fd: FormData) => {
+    record("logMood")(fd);
+    return { ok: true };
   },
+}));
+// THE MEASUREMENTS ACTION, not a body-shaped one (#4424 ruling 2): the body kind
+// mounts the domain's one form, so the door's write is the same action the quick-log
+// sheet and the Trends panel post.
+vi.mock("@/app/(app)/trends/measurement-actions", () => ({
+  addMeasurements: async (fd: FormData) => {
+    record("addMeasurements")(fd);
+    return {};
+  },
+}));
+vi.mock("@/components/OfflineQueueProvider", () => ({
+  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+}));
+vi.mock("@/components/useOptimisticLedger", () => ({
+  useOptimisticLedger: () => ({
+    tap: async (spec: {
+      optimistic: number;
+      commit: (value: number) => void;
+      write: () => Promise<unknown>;
+      settle: (value: unknown) => unknown;
+    }) => {
+      spec.commit(spec.optimistic);
+      spec.settle(await spec.write());
+    },
+  }),
 }));
 // #4118's pair: the composed write the one-tap posts, and the dated offer read the
 // door consults when its date field moves. `offerReads` records every day asked about
@@ -91,6 +138,7 @@ vi.mock("@/app/(app)/actions", () => ({
 const refreshed: number[] = [];
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => refreshed.push(1) }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 // THE TOAST IS AN ASSERTION SUBJECT, not scenery (#4118). It was a no-op mock, so the
 // door could report a success it had not achieved and nothing here could see it.
@@ -101,6 +149,15 @@ vi.mock("@/components/Toast", () => ({
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 
 beforeEach(() => {
+  // The symptom door's picker is the shared Combobox, which observes its own box.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   for (const key of Object.keys(posted)) delete posted[key];
   refreshed.length = 0;
   offerReads.length = 0;
@@ -130,14 +187,45 @@ const MORNING_OFFER: UsualOffer = {
   doses: [{ id: 41, name: "Creatine", stack: null }],
 };
 
+/** What the body domain's one form needs on the found day (`measurementsQuickEntry`). */
+const MEASUREMENTS = {
+  form: "measurements" as const,
+  defaultDate: FOUND_DAY,
+  defaultStatedAt: null,
+  maxDate: TODAY,
+  profileId: 7,
+  weightUnit: "lb" as const,
+  temperatureUnit: "F" as const,
+  showBodyFat: true,
+  showGrowth: false,
+  showHeadCirc: false,
+};
+
 const VOCABULARY = {
   practices: ["Rowing", "Sauna"],
   substances: [
     { key: "nicotine", label: "Nicotine" },
     { key: "cannabis", label: "Cannabis" },
   ],
-  weightUnit: "lb" as const,
+  symptoms: [
+    { key: "headache", label: "Headache" },
+    { key: "cough", label: "Cough" },
+  ],
+  measurements: MEASUREMENTS,
+  moodDay: { date: FOUND_DAY, label: "Aug 18", mood: null },
+  moodShowCalm: true,
   usual: [] as UsualOffer[],
+  doseItems: [
+    {
+      id: 7,
+      name: "Creatine",
+      kind: "supplement" as const,
+      product: null,
+      asNeeded: false,
+      doses: [{ id: 11, amount: "5 g", time_of_day: "Morning" }],
+    },
+  ],
+  doseDefaultTime: "08:00",
 };
 
 function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
@@ -167,6 +255,119 @@ function only(action: string): Record<string, string> {
 }
 
 describe("the record's Add door posts to the domain's own create action", () => {
+  it("keeps the mood door on its day, clears it, and accepts a second save", async () => {
+    open("mood");
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "clear afternoon" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(only("logMood")).toMatchObject({
+      date: FOUND_DAY,
+      date_reach: "dated",
+      valence: "4",
+      energy: "4",
+      factors: "work",
+      note: "clear afternoon",
+    });
+    expect(refreshed).toHaveLength(1);
+    expect(screen.getByTestId("history-add-panel-mood")).toBeTruthy();
+    expect(screen.getByTestId("quick-mood-status").textContent).toBe(
+      "Tap to log that day."
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Good" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 4" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Work" }).getAttribute("aria-pressed")
+    ).toBe("false");
+    expect((screen.getByLabelText("Note") as HTMLTextAreaElement).value).toBe(
+      ""
+    );
+
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(posted.logMood).toHaveLength(2);
+    expect(Object.fromEntries(posted.logMood![1]!.entries())).toMatchObject({
+      date: FOUND_DAY,
+      date_reach: "dated",
+      valence: "4",
+    });
+    expect(refreshed).toHaveLength(2);
+    expect(screen.getByTestId("history-add-panel-mood")).toBeTruthy();
+  });
+
+  it("keeps the dose form on its chosen day and resets it for a second save", async () => {
+    open("dose");
+    const chosenDay = "2026-08-17";
+    fireEvent.change(screen.getByTestId("historical-dose-date"), {
+      target: { value: chosenDay },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "7 g" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /adjust current supply/i })
+    );
+
+    await submit("dose");
+
+    expect(posted.logHistoricalDose).toHaveLength(1);
+    expect(
+      Object.fromEntries(posted.logHistoricalDose![0]!.entries())
+    ).toMatchObject({
+      date: chosenDay,
+      amount: "7 g",
+      adjust_supply: "1",
+    });
+    expect(screen.getByTestId("history-add-panel-dose")).toBeTruthy();
+    expect(
+      (
+        screen
+          .getByTestId("historical-dose-form")
+          .querySelector('input[name="date"]') as HTMLInputElement
+      ).value
+    ).toBe(chosenDay);
+    expect((screen.getByLabelText("Amount") as HTMLInputElement).value).toBe(
+      "5 g"
+    );
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: /adjust current supply/i,
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(false);
+    expect(refreshed).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "6 g" },
+    });
+    await submit("dose");
+
+    expect(posted.logHistoricalDose).toHaveLength(2);
+    expect(
+      Object.fromEntries(posted.logHistoricalDose![1]!.entries())
+    ).toMatchObject({
+      date: chosenDay,
+      amount: "6 g",
+    });
+    expect(screen.getByTestId("history-add-panel-dose")).toBeTruthy();
+    expect(refreshed).toHaveLength(2);
+  });
+
   // Each kind, the action it must reach, and the fields that make its write mean what
   // the door says it means. A table because the cases differ only in inputs and
   // expectations; what they share — the found day, the in-place resolution, the
@@ -183,7 +384,11 @@ describe("the record's Add door posts to the domain's own create action", () => 
       "addSubstanceDailyTotalAction",
       { substance: "nicotine", amount: "1" },
     ],
-    ["body", "addBodyMetric", {}],
+    ["body", "addMeasurements", { weight: "154", weight_unit: "lb" }],
+    // THE DOMAIN'S OWN LOG CORE (#4424 ruling 2): the door is a date-context wrapper,
+    // so the symptom kind reaches `logSymptom` — the same action a tap on the bar
+    // posts — and never a door-shaped write of its own.
+    ["symptom", "logSymptom", { symptom: "Headache", severity: "1" }],
   ] as [HistoryAddKind, string, Record<string, string>][])(
     "%s writes on the day the reader was looking at, through %s",
     async (kind, action, fields) => {
@@ -199,17 +404,28 @@ describe("the record's Add door posts to the domain's own create action", () => 
           target: { value: "154" },
         });
       }
+      if (kind === "symptom") {
+        fireEvent.change(screen.getByRole("combobox", { name: "Symptom" }), {
+          target: { value: "Headache" },
+        });
+      }
       await submit(kind);
       const sent = only(action);
       expect(sent.date).toBe(FOUND_DAY);
       for (const [key, value] of Object.entries(fields)) {
         expect(sent[key], `${action} posted ${key}=${sent[key]}`).toBe(value);
       }
-      // RESOLVED IN PLACE, WITH THE RESULT VISIBLE: the panel closes and the feed is
-      // re-read. Without the re-read the door writes silently and reads as dead — the
-      // same complaint as the redirect it replaces.
-      expect(screen.queryByTestId(`history-add-panel-${kind}`)).toBeNull();
+      // RESOLVED IN PLACE, WITH THE RESULT VISIBLE: the feed is re-read. Without it
+      // the door writes silently and reads as dead — the same complaint as the
+      // redirect it replaces.
       expect(refreshed).toHaveLength(1);
+      // AND THE BODY DOOR STAYS OPEN on purpose (#4211, absorbed into #4424): the
+      // shared form resets its own fields and keeps its date, so five readings
+      // backfilled onto one past day are five quick saves. Asserted as the same
+      // question for every kind, so a kind that silently changed side is visible.
+      expect(screen.queryByTestId(`history-add-panel-${kind}`) !== null).toBe(
+        kind === "body"
+      );
     }
   );
 
@@ -262,16 +478,16 @@ describe("the record's Add door posts to the domain's own create action", () => 
     expect(screen.queryByTestId("history-add-open-practice")).toBeNull();
   });
 
-  it("refuses an out-of-range body reading inline instead of closing over nothing", async () => {
-    // `addBodyMetric` SILENTLY SKIPS a number outside its range, so a door that just
-    // posted would close on a write that never happened. The refusal is the one case
-    // where the panel must stay open.
+  it("refuses an out-of-range body reading inline instead of posting it", async () => {
+    // The write cores SILENTLY SKIP a number outside their range, so a submission that
+    // just posted would confirm a write that never happened. The shared form runs the
+    // same pure guard (`validateBodyMetricInput`) the cores do and never posts.
     open("body");
     fireEvent.change(screen.getByRole("spinbutton", { name: /weight/i }), {
       target: { value: "9999" },
     });
     await submit("body");
-    expect(posted.addBodyMetric ?? []).toHaveLength(0);
+    expect(posted.addMeasurements ?? []).toHaveLength(0);
     expect(screen.getByTestId("history-add-panel-body")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBeTruthy();
     expect(refreshed).toHaveLength(0);
@@ -288,15 +504,32 @@ describe("the record's Add door posts to the domain's own create action", () => 
   // column
   // and body's action deliberately states none, so neither gets a time field, and the
   // absence assertion below is what stops this drifting into "all four eventually".
+  //
+  // AND THE TWO NOW STATE IT THROUGH DIFFERENT CONTROLS, which is why the locator is
+  // part of the table. Food keeps the door's `WhenControl`; the practice door mounts
+  // the domain's one form (#4424 ruling 2), whose start/end PAIR is the range shape
+  // `WhenControl` does not model and the reason it sits on the #2236 allowlist. The
+  // claim being made is the same one either way: an absolute wall clock reaches the
+  // action, and the day does not move under it.
   it.each([
-    ["food", "logFoodServing", "occurred_at"],
-    ["practice", "logPractice", "start_time"],
-  ] as [HistoryAddKind, string, string][])(
+    [
+      "food",
+      "logFoodServing",
+      "occurred_at",
+      () => screen.getByTestId("history-add-when-food-time"),
+    ],
+    [
+      "practice",
+      "logPractice",
+      "start_time",
+      () => screen.getByLabelText("Start"),
+    ],
+  ] as [HistoryAddKind, string, string, () => HTMLElement][])(
     "%s carries a stated time through to %s as %s",
-    async (kind, action, field) => {
+    async (kind, action, field, timeField) => {
       open(kind);
       await act(async () => {
-        fireEvent.change(screen.getByTestId(`history-add-when-${kind}-time`), {
+        fireEvent.change(timeField(), {
           target: { value: "07:15" },
         });
       });
@@ -328,20 +561,23 @@ describe("the record's Add door posts to the domain's own create action", () => 
     }
   );
 
-  // THE DATE-ONLY KINDS HAVE NO TIME FIELD AT ALL, and this is the assertion that
-  // keeps that a decision rather than an accident. Both are date-only in the SCHEMA:
-  // `substance_daily_totals` is a day total with no event instant, and
-  // `addBodyMetric` states none. A time input on either would collect a statement
-  // with nowhere to be stored.
-  it.each(["substance", "body"] as HistoryAddKind[])(
-    "%s offers no time field, because its row has no instant to state",
-    (kind) => {
-      open(kind);
-      expect(screen.queryByTestId(`history-add-when-${kind}-time`)).toBeNull();
-      // The converse in the same test: the door still exists and still takes a day.
-      expect(screen.getByTestId(`history-add-panel-${kind}`)).toBeTruthy();
-    }
-  );
+  // A KIND OFFERS A TIME EXACTLY WHEN ITS ROW HAS AN INSTANT TO PUT ONE IN, and this
+  // is the assertion that keeps that a decision rather than an accident. Substance is
+  // date-only in the SCHEMA — `substance_daily_totals` is a day total with no event
+  // instant (#3327) — so a time input there would collect a statement with nowhere to
+  // be stored. Body is the converse and it CHANGED with #4424 ruling 2:
+  // `body_metrics.occurred_at` has existed since migration 165, and the door's own
+  // bare `DateField` was the only reason a reading backfilled from the record could
+  // not say when it was taken. The domain's form carries the sitting's Time, so it can.
+  it("offers a time exactly where the row has an instant to hold one", () => {
+    open("substance");
+    expect(screen.queryByTestId("history-add-when-substance-time")).toBeNull();
+    expect(screen.getByTestId("history-add-panel-substance")).toBeTruthy();
+    cleanup();
+    open("body");
+    // The shared form's own control (testId "m"), not a door-shaped one.
+    expect(screen.getByTestId("m-time")).toBeTruthy();
+  });
 });
 
 // ── THE ONE-TAP USUAL ON A PAST DAY (#4118) ──────────────────────────────────
@@ -536,12 +772,20 @@ describe("the composed usual on the add door", () => {
     }
   );
 
-  it("still says the plain sentence for the four per-item forms", async () => {
+  it("still says the plain sentence for the door's own per-item forms", async () => {
     // The converse at the OTHER end: `announce` is optional, so a form that writes one
     // row must keep the sentence it always had. Without this, moving the composed
     // bundle's answer into `submit` could have silently re-worded every door.
-    open("practice");
-    await submit("practice");
+    //
+    // FOOD, BECAUSE THE DOOR STILL OWNS ITS FORM. Three kinds mount their domain's own
+    // form now (#4424 ruling 2) and those answer in the domain's words — the practice
+    // door this case used to drive says "Logged past session", which is the shared
+    // form's sentence and is asserted where that form lives.
+    open("food");
+    fireEvent.change(screen.getByRole("combobox", { name: /food group/i }), {
+      target: { value: "leafy_greens" },
+    });
+    await submit("food");
     expect(toasts).toEqual(["Added to the record."]);
   });
 

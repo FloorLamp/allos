@@ -5,14 +5,11 @@ import { ResponsiveTable, Td } from "./ResponsiveTable";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
 import { useConfirm } from "./ConfirmDialog";
 import { useUndoableDelete } from "./useUndoableDelete";
-import { useToast } from "./Toast";
 import { EmptyState, Tag } from "./ui";
 import NotesText from "./NotesText";
 import DelegatedCard from "./DelegatedCard";
-import {
-  deleteMetricReading,
-  updateMetricReading,
-} from "@/app/(app)/trends/reading-actions";
+import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";
+import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 import type { WeightUnit } from "@/lib/settings";
 
 // The readings TABLE under a metric detail page's chart (issue #1488, absorbing
@@ -31,10 +28,15 @@ import type { WeightUnit } from "@/lib/settings";
 // the #1426 `ResponsiveTable` card pattern — ONE table in the DOM, re-laid as cards
 // by CSS, so there is no `hidden md:*` twin to drift.
 //
-// EDIT IS IN PLACE. Value is the only editable field here — a detail page is about
-// one metric on one date, and re-dating a reading is a record-level move that belongs
-// on the record's own editor. The row swaps to a small number input; the surrounding
-// row (date, source, flag) stays visible so the reader can see what they're changing.
+// EDIT IS IN PLACE, THROUGH THE DOMAIN'S SHARED ROW CONTROL (#4424 ruling 3). Value is
+// the only editable field here — a detail page is about one metric on one date, and
+// re-dating a reading is a record-level move that belongs on the domain's form. The row
+// swaps to `ReadingValueControl`, which the record's own body rows mount too; the
+// surrounding row (date, source, flag) stays visible so the reader can see what they
+// are changing. The control carries its Save and Cancel with it, so the value cell owns
+// the whole edit and the actions cell simply stands down — which is what the action
+// cell already had to do, since leaving the ⋯ beside an inline Save lets it intercept
+// that button at tight widths.
 
 export interface MetricReadingRow {
   id: number;
@@ -176,33 +178,8 @@ function ReadingRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [value, setValue] = useState(String(row.editValue));
-  const [busy, setBusy] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
-  const toast = useToast();
-
-  async function save() {
-    const fd = new FormData();
-    fd.set("kind", kind);
-    fd.set("target", row.target);
-    fd.set("value", value);
-    fd.set("weight_unit", weightUnit);
-    setBusy(true);
-    try {
-      const res = await updateMetricReading(fd);
-      if (!res.ok) {
-        toast(res.error ?? "Couldn't save that reading.", { tone: "error" });
-        return;
-      }
-      setEditing(false);
-      toast("Reading updated.");
-      // The chart above this table is server-rendered from the same rows, so it has
-      // to redraw with the correction (revalidatePath marked it stale).
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <tr className="border-b border-black/5 dark:border-white/10">
@@ -211,20 +188,13 @@ function ReadingRow({
       </Td>
       <Td slot="value">
         {editing ? (
-          <input
-            className="input w-24 py-1 text-sm"
-            type="number"
-            step="any"
-            inputMode="decimal"
-            aria-label="Reading value"
-            value={value}
-            autoFocus
-            disabled={busy}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void save();
-              if (e.key === "Escape") setEditing(false);
-            }}
+          <ReadingValueControl
+            kind={kind}
+            target={row.target}
+            value={row.editValue}
+            weightUnit={weightUnit}
+            onSaved={() => setEditing(false)}
+            onCancel={() => setEditing(false)}
           />
         ) : (
           <span className="tabular-nums">
@@ -261,29 +231,7 @@ function ReadingRow({
         {row.notes ? <NotesText notes={row.notes} /> : "—"}
       </Td>
       <Td slot="actions">
-        {editing ? (
-          <span className="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              className="btn btn-sm"
-              disabled={busy}
-              onClick={() => void save()}
-            >
-              Save
-            </button>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => {
-                setValue(String(row.editValue));
-                setEditing(false);
-              }}
-            >
-              Cancel
-            </button>
-          </span>
-        ) : (
+        {editing ? null : (
           <div className="flex items-center justify-end">
             <OverflowMenu
               kind="Reading"

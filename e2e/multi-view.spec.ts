@@ -434,7 +434,7 @@ function multiProfileIds(): { ownerId: number; sharedId: number } {
 }
 
 test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
-  test("Conditions: single-view shows no chips; multi-view chips the non-acting row only", async ({
+  test("conditions, allergies, and goals stay plain in single view and stamp only shared rows in multi-view", async ({
     browser,
   }) => {
     test.slow();
@@ -443,118 +443,74 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       username: E2E_LOGIN_MULTI,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      // First visit all three readers in the acting profile's plain single-view state.
+      await page.goto("/records/problems/conditions");
+      await expect(
+        page.getByText(MULTI_OWNER_CONDITION, { exact: false })
+      ).toBeVisible();
+      await expect(
+        page.getByText(MULTI_SHARED_CONDITION, { exact: false })
+      ).toHaveCount(0);
+      await expectInView(page, 1);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Single view (acting = owner): owner's condition shows, no strip, no chips, and the
-    // shared profile's condition is absent — the byte-identical regression bar.
-    await page.goto("/records/problems/conditions");
-    await expect(
-      page.getByText(MULTI_OWNER_CONDITION, { exact: false })
-    ).toBeVisible();
-    await expect(
-      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
-    ).toHaveCount(0);
-    await expectInView(page, 1);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+      await page.goto("/records/problems/allergies");
+      await expect(
+        page.locator("tr").filter({ hasText: MULTI_OWNER_ALLERGY })
+      ).toBeVisible();
+      await expect(
+        page.locator("tr").filter({ hasText: MULTI_SHARED_ALLERGY })
+      ).toHaveCount(0);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Toggle the shared profile into view.
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+      await page.goto("/records/care/overview#health-goals");
+      await expectInView(page, 1);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Multi view: the strip appears, the shared condition merges in with a subject chip
-    // on ITS row, and the acting (owner) row never carries a chip.
-    await expectInView(page, 2);
-    await expect(
-      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
-    ).toBeVisible();
-    // Scope the chip check to the shared condition's own row (Conditions + Allergies
-    // both render on the Conditions pane, so the shared chip appears on more than one row).
-    const sharedConditionRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_CONDITION });
-    await expect(
-      sharedConditionRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
+      // Toggle once. The session view-set must survive navigation across all readers.
+      await openProfileSwitcher(page);
+      await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+      await expectInView(page, 2);
+      const sharedGoalRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_GOAL });
+      await expect(
+        sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
 
-    await page.context().close();
-  });
+      await page.goto("/records/problems/conditions");
+      await expectInView(page, 2);
+      const sharedConditionRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_CONDITION });
+      await expect(
+        sharedConditionRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
+      await expect(
+        page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+      ).toHaveCount(0);
 
-  test("Allergies: shared row gets a subject chip in multi-view", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { ownerId, sharedId } = multiProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/records/problems/allergies");
-    // The stored "Recorded allergies" table (single view: owner only, no chip). Scope to
-    // the table row — the substance also appears in the merged "Known allergies" card.
-    await expect(
-      page.locator("tr").filter({ hasText: MULTI_OWNER_ALLERGY })
-    ).toBeVisible();
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-
-    await expectInView(page, 2);
-    // The shared allergy's row carries the shared subject chip; the owner never does.
-    const sharedRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_ALLERGY });
-    await expect(
-      sharedRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
-
-    await page.context().close();
-  });
-
-  test("Health goals (set-based reader): shared row gets a subject chip in multi-view", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { sharedId } = multiProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/records/care/overview#health-goals");
-    await expectInView(page, 1);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-
-    await expectInView(page, 2);
-    await expect(
-      page.getByText(MULTI_SHARED_GOAL, { exact: false })
-    ).toBeVisible();
-    const sharedGoalRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_GOAL });
-    await expect(
-      sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-
-    await page.context().close();
+      await page.goto("/records/problems/allergies");
+      await expectInView(page, 2);
+      const sharedAllergyRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_ALLERGY });
+      await expect(
+        sharedAllergyRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
+      await expect(
+        page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+      ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
   });
 });
 
@@ -980,34 +936,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
     await expectInView(page, 2);
   }
 
-  test("single-view renders ONE board with no subject header (byte-identical structure)", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MVMEDS,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/medications");
-    // The acting (self) medication renders. No multi-view board WRAPPERS / headers and
-    // no leading strip in single-view — the byte-identical bar (one board, no header).
-    await expect(
-      page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
-    ).toBeVisible();
-    await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
-    await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
-    // Its own dose check-off control is live (write on the acting profile).
-    await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
-    // The read-only member's med is NOT in view.
-    await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
-      0
-    );
-
-    await page.context().close();
-  });
-
-  test("multi-view stacks a board per member behind the leading strip; the read-only board is view-only", async ({
+  test("single-view stays plain, then multi-view stacks writable and read-only boards", async ({
     browser,
   }) => {
     test.slow();
@@ -1016,33 +945,38 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       username: E2E_LOGIN_MVMEDS,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      await page.goto("/medications");
+      // The acting medication renders without multi-view wrappers or a leading strip.
+      await expect(
+        page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
+      ).toBeVisible();
+      await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
+      await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
+      await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
+      await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
+        0
+      );
 
-    await toggleIntoView(page, roId);
-    // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/medications");
-    await expectInView(page, 2);
+      await toggleIntoView(page, roId);
+      // Re-navigation proves the selected view-set persists on the session.
+      await page.goto("/medications");
+      await expectInView(page, 2);
+      await expect(page.getByTestId("med-today-everyone")).toBeVisible();
 
-    // The merged "Today across everyone" strip leads the page.
-    await expect(page.getByTestId("med-today-everyone")).toBeVisible();
-
-    // One board per in-view member, acting (self) first.
-    const selfBoard = page.getByTestId(`med-board-${selfId}`);
-    const roBoard = page.getByTestId(`med-board-${roId}`);
-    await expect(selfBoard).toBeVisible();
-    await expect(roBoard).toBeVisible();
-
-    // The read-only member's board wears the RO badge and shows NO dose-confirm control.
-    await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
-    await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
-    // Its medication still renders (read).
-    await expect(
-      roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
-    ).toBeVisible();
-
-    // The acting (write) board keeps its live dose-confirm control.
-    await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
-
-    await page.context().close();
+      const selfBoard = page.getByTestId(`med-board-${selfId}`);
+      const roBoard = page.getByTestId(`med-board-${roId}`);
+      await expect(selfBoard).toBeVisible();
+      await expect(roBoard).toBeVisible();
+      await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
+      await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
+      await expect(
+        roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
+      ).toBeVisible();
+      await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+    } finally {
+      await page.context().close();
+    }
   });
 });
 
@@ -1081,35 +1015,7 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
     await expectInView(page, 2);
   }
 
-  test("single-view: only the acting member's readings, no Profile column, no chip", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MVBIO,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/results/clinical-results");
-    await expect(page.getByTestId("results-clinical-results")).toBeVisible();
-    // The acting (self) member's unique analyte renders.
-    await expect(
-      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-    // No leading Profile column and no subject chips in single view.
-    await expect(
-      page.getByRole("columnheader", { name: "Profile" })
-    ).toHaveCount(0);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-    // The read-only member's unique analyte is NOT in view.
-    await expect(
-      page.getByText(MVBIO_RO_ANALYTE, { exact: false })
-    ).toHaveCount(0);
-
-    await page.context().close();
-  });
-
-  test("multi-view: both members' shared family merges, chip + no write on the read-only rows", async ({
+  test("single-view stays plain, then multi-view merges both members without granting writes", async ({
     browser,
   }) => {
     test.slow();
@@ -1118,48 +1024,55 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
       username: E2E_LOGIN_MVBIO,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      await page.goto("/results/clinical-results");
+      await expect(page.getByTestId("results-clinical-results")).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      await expect(
+        page.getByRole("columnheader", { name: "Profile" })
+      ).toHaveCount(0);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
+      await expect(
+        page.getByText(MVBIO_RO_ANALYTE, { exact: false })
+      ).toHaveCount(0);
 
-    await toggleIntoView(page, roId);
-    // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/results/clinical-results");
-    await expectInView(page, 2);
+      await toggleIntoView(page, roId);
+      // Re-navigation proves the selected view-set persists on the session.
+      await page.goto("/results/clinical-results");
+      await expectInView(page, 2);
+      await expect(
+        page.getByRole("columnheader", { name: "Profile" })
+      ).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      const roChip = page.getByTestId(`subject-chip-${roId}`);
+      await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
 
-    // The leading Profile column appears in multi-view.
-    await expect(
-      page.getByRole("columnheader", { name: "Profile" })
-    ).toBeVisible();
+      // Both members' shared-family rows survive the per-member dedup partition.
+      await page.goto("/results/clinical-results?q=vitamin+d");
+      await expectInView(page, 2);
+      await expect(
+        page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
+      ).toHaveCount(2);
 
-    // Both members' unique analytes are merged into the one table.
-    await expect(
-      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-    await expect(
-      page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-
-    // The non-acting (read-only) member's rows carry its subject chip.
-    const roChip = page.getByTestId(`subject-chip-${roId}`);
-    await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
-
-    // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
-    // dedup never collapsed the two people into one series (per-member partitions).
-    await page.goto("/results/clinical-results?q=vitamin+d");
-    await expectInView(page, 2);
-    await expect(
-      page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
-    ).toHaveCount(2);
-
-    // The read-only member's row shows NO edit/delete affordance; a self row does.
-    const roRow = page.locator("tr", {
-      has: page.getByTestId(`subject-chip-${roId}`),
-    });
-    await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
-    // At least one write affordance exists (on the acting member's own rows).
-    await expect(
-      page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
-    ).toBeVisible();
-
-    await page.context().close();
+      const roRow = page.locator("tr", {
+        has: page.getByTestId(`subject-chip-${roId}`),
+      });
+      await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
+      await expect(
+        page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
+      ).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
   });
 });
 

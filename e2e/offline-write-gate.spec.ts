@@ -21,8 +21,7 @@ import { hashPasswordSync } from "../lib/password";
 // Leaks measured on this branch before the gate existed, all of the same shape — a guard
 // that was true of its own function and false of the system:
 //   R1   the OFF SWITCH re-materialised all five kinds from a server not yet told;
-//   R2   a SECOND TAB wrote everything back into the store logout had just cleared;
-//   R2b  the same, with the race removed: a tab that LOADS inside the logout window;
+//   R2b  a SECOND TAB that LOADS inside the logout window wrote everything back;
 //   R2c  and the other direction — the next login must get the feature back;
 //   R3d  a queue flush in flight re-wrote its retry entries after the wipe;
 //   R3e  a form draft's 600ms debounce landed a half-typed record after the wipe.
@@ -45,10 +44,10 @@ import { hashPasswordSync } from "../lib/password";
 // tests added here since have been caught not measuring. Mutation testing is the only
 // thing that found either, so it is the standard for anything added below:
 //
-//   • R2 passed 12/12 locally against an `openSessionAs` that re-opened the gate
-//     unconditionally — the exact shipped defect — and failed 2 of 3 on a loaded CI
-//     runner. It is a race, not a property. R2b is the same finding with the race taken
-//     out, and it fails 2/2 against that mutant.
+//   • The retired R2 passed 12/12 locally against an `openSessionAs` that re-opened the
+//     gate unconditionally — the exact shipped defect — and failed 2 of 3 on a loaded CI
+//     runner. It was a race, not a property. R2b keeps the same finding with the race
+//     taken out, and fails 2/2 against that mutant.
 //   • R3d asserted an empty intents store after a logout that had already navigated to
 //     /login, taking the flush continuation with it. The store was empty because the
 //     writer had been destroyed. It passed against `gateAllows` mutated to `return true`.
@@ -305,53 +304,6 @@ test("R1 — the OFF SWITCH stops the REQUEST, so nothing re-materialises before
   await expect(page.getByLabel("Saved")).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await capturedAll(page);
-});
-
-test("R2 — a SECOND TAB does not write everything back after the first logs out", async ({
-  page,
-  context,
-}: {
-  page: Page;
-  context: BrowserContext;
-}) => {
-  test.slow();
-  await login(page);
-  await page.goto("/");
-  await capturedAll(page);
-
-  // Tab B: same context, same cookies, same IndexedDB — and, before the gate was
-  // persisted, its own module state saying "nothing has been closed here".
-  const tabB = await context.newPage();
-  await tabB.goto("/");
-  await capturedAll(tabB);
-
-  let tabBGetsAfterLogout = 0;
-  let loggedOut = false;
-  await tabB.route("**/api/offline-snapshots*", async (route) => {
-    if (loggedOut) tabBGetsAfterLogout += 1;
-    await route.continue();
-  });
-
-  await holdLogoutPost(page);
-  loggedOut = true;
-  await page.getByRole("button", { name: "Log out" }).click();
-
-  // Wait for tab A's wipe to land, observed from tab B — one database, two documents.
-  await expect.poll(() => storedKinds(tabB), { timeout: 15_000 }).toEqual([]);
-
-  // Tab B is still mounted, still believes it is authenticated, and the session is still
-  // alive because the POST has not landed. This is the whole finding.
-  await tabB.evaluate(() => window.dispatchEvent(new Event("online")));
-  await tabB.bringToFront();
-  await page.waitForURL(/\/login/, { timeout: 30_000 });
-  await tabB.waitForTimeout(2_000); // waitfortimeout-ok: absence — tab B must write nothing in the window its refresh would have used
-
-  expect(await storedKinds(tabB)).toEqual([]);
-  expect(
-    tabBGetsAfterLogout,
-    "the second tab asked the server for snapshots after the first logged out"
-  ).toBe(0);
-  await tabB.close();
 });
 
 test("R2b — a tab that LOADS inside the logout window does not re-open the gate", async ({

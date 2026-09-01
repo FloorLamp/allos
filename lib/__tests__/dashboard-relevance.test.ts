@@ -112,6 +112,29 @@ describe("atomic dashboard placement", () => {
     expect(placements[0].lane).toBe("everything");
   });
 
+  it("keeps an available action out of Now when its null date looks due", () => {
+    const [candidate] = attentionCandidates(
+      subject,
+      [
+        {
+          key: "available:1",
+          domain: "available",
+          title: "Magnesium",
+          href: "/nutrition?tab=supplements",
+          dueDate: null,
+          actionLabel: "Log",
+        },
+      ],
+      "2026-08-19"
+    );
+    expect(candidate).toMatchObject({
+      kind: "action",
+      obligation: "may",
+      rankReasons: { owed: true, windowOpen: true },
+    });
+    expect(rank([candidate])[0].lane).toBe("everything");
+  });
+
   // #3224 — the window a `should` action declares must be a MOMENT. A weekly
   // target spelled `windowOpen` as "not met this week", which is true for seven
   // days, so its log offer occupied Now all week and "Nothing needs you." — the

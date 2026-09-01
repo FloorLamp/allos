@@ -239,7 +239,7 @@ describe("setSymptomEpisode — detach / attach (#1093)", () => {
           symptom: "cough",
           date: DATE,
           episodeId: foreignEp,
-          profileId: foreign.id,
+          profile_id: foreign.id,
         })
       )
     ).rejects.toThrow();

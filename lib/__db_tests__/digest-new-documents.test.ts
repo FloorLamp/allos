@@ -20,6 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { persistDocumentImport } from "@/lib/import-persist";
 import type { PersistInput } from "@/lib/import-shape";
@@ -33,11 +34,20 @@ function newProfile(name: string): number {
   );
 }
 
-// A datetime('now') UTC string shifted by a SQLite modifier — the same format
-// the digest cursor and uploaded_at use, so string comparison is exact.
+// A UTC datetime string shifted by a SQLite modifier — the same format the digest
+// cursor and uploaded_at use, so string comparison is exact.
+//
+// ANCHORED ON THE CLOCK SEAM, not on SQL's own `datetime('now')`. The stamp every
+// window here brackets — `extraction_completed_at` — is written from `sqlNow()`, and
+// persistDocumentImport's comment says in as many words that mixing the two clocks on
+// one row breaks the #1022 invariant. It read as equivalent while the seam was unset;
+// under the tier freeze (#4509) the two are hours apart and the cursors land on the
+// wrong side of a completion that has not moved.
 function at(modifier: string): string {
   return (
-    db.prepare("SELECT datetime('now', ?) AS t").get(modifier) as { t: string }
+    db.prepare("SELECT datetime(?, ?) AS t").get(sqlNow(), modifier) as {
+      t: string;
+    }
   ).t;
 }
 

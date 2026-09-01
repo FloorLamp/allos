@@ -21,6 +21,7 @@ import { isTruncatedSyncEvent } from "./sync-details";
 import { formatTolerance, isSyncStale } from "./staleness";
 import { parseSyncEventAt } from "./pull-cadence";
 import type { IntegrationDelivery } from "./delivery";
+import { pluralRunNoun, type SyncRunNoun } from "./sync-run-vocabulary";
 
 // The event fields every state answer is derived from. Structurally typed rather than
 // importing the row type, so the pure tier never drags @/lib/db in behind it.
@@ -83,10 +84,6 @@ export function syncVocabularyForKind(kind: IntegrationKind): SyncVocabulary {
 // is a keyless forecast fetch. Derived from the source KIND for the same reason the
 // vocabulary is: a future source of a known kind gets the right word for free.
 //
-// `import` (archive) and `upload` (external-attended) joined in #2301 — the two
-// attended kinds had been silently taking the polled word.
-export type SyncRunNoun = "push" | "sync" | "refresh" | "import" | "upload";
-
 // NULL FOR `feed`, and deliberately: a noun for a run is a fiction where no runs are
 // recorded. Outbound surfaces never ask for one, and giving them "sync" is how
 // "No syncs yet" ended up rendering forever on a card nothing will ever sync into.
@@ -568,23 +565,6 @@ export function periodActivityLabel(
   if (day.inserted > 0) parts.push(`${day.inserted} records added`);
   if (day.updated > 0) parts.push(`${day.updated} updated`);
   return parts.length ? `${head}, ${parts.join(", ")}` : `${head}, nothing new`;
-}
-
-// A DECLARED TABLE, not a suffix rule (#2301). The old `${noun}es` fallback happened
-// to be right for exactly the three nouns that existed and yields "importes" and
-// "uploades" for the two added here — an English pluralisation rule is not something
-// to derive, and `Record<SyncRunNoun, string>` makes a new noun a build error until it
-// declares its plural.
-const RUN_NOUN_PLURAL: Record<SyncRunNoun, string> = {
-  push: "pushes",
-  sync: "syncs",
-  refresh: "refreshes",
-  import: "imports",
-  upload: "uploads",
-};
-
-export function pluralRunNoun(noun: SyncRunNoun): string {
-  return RUN_NOUN_PLURAL[noun];
 }
 
 // The escalation policy, stated visibly on the source page (#1880 item 1): the one

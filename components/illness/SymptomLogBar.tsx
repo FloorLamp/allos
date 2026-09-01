@@ -1,11 +1,11 @@
 "use client";
+import { measurementsSavedText } from "@/lib/body-metric-input";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import {
   IconX,
   IconPlus,
-  IconNote,
   IconChevronDown,
   IconChartBar,
 } from "@tabler/icons-react";
@@ -20,23 +20,15 @@ import {
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
-import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
-import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import NotesText from "@/components/NotesText";
-import { round, fmtTemp } from "@/lib/units";
-import { zonedDateParts } from "@/lib/date";
-import {
-  resolveTemperatureUnit,
-  toCanonicalTempF,
-  temperatureRangeError,
-} from "@/lib/vitals-input";
+import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
+import TemperatureField from "@/components/vitals/TemperatureField";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm } from "@/lib/stated-time";
 import {
   logSymptom,
-  lowerSymptom,
-  setSymptomNote,
-  removeSymptom,
   logTemperature,
   activateIllnessForSymptoms,
   suggestSymptomsFromText,
@@ -45,6 +37,7 @@ import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 import type { AppRoute } from "@/lib/hrefs";
 import Link from "next/link";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
+import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 
@@ -164,21 +157,25 @@ export default function SymptomLogBar({
   }));
   const [customDraft, setCustomDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  // The logged row whose note input is open, or null.
-  const [noteEditing, setNoteEditing] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
   const [, startTransition] = useTransition();
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("symptom-severity");
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const [tempOpen, setTempOpen] = useState(false);
-  const [tempValue, setTempValue] = useState("");
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
-  const tempUnit = tempUnitDetection.unit;
-  // Reading time (#800/#843): seeded to the target profile's current local minute when
-  // the disclosure opens; the user can still adjust it for an earlier reading.
-  const [tempTime, setTempTime] = useState("");
+  // Reading time (#800/#843) through the shared control, which is what retires this
+  // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
+  // card's primary date, so the control renders it as text and offers only the clock —
+  // and its invariant 3 replaces the old seeded-now field: an untouched time states
+  // NOTHING and the action stamps the profile's current minute, which is what a
+  // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
+  // still one tap away, on the same absolute-local terms every other statement uses.
+  const tempZone = useTimezone();
+  const [tempWhen, setTempWhen] = useState<WhenValue>(() => ({
+    date,
+    statedAt: null,
+  }));
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
@@ -280,44 +277,28 @@ export default function SymptomLogBar({
   function toggleTemperatureEntry() {
     const opening = !tempOpen;
     setTempOpen(opening);
-    if (opening) {
-      setPickerOpen(false);
-      if (tempTime === "") {
-        const zone =
-          timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-        setTempTime(zonedDateParts(zone, new Date()).hhmm);
-      }
-    }
+    if (opening) setPickerOpen(false);
   }
 
-  async function logTemp() {
-    const raw = Number(tempValue);
-    if (tempValue.trim() === "" || !Number.isFinite(raw)) {
-      setTempError("Enter a temperature.");
-      return;
-    }
-    const resolvedUnit = resolveTemperatureUnit(raw, tempUnit);
-    const rangeErr = temperatureRangeError(
-      round(toCanonicalTempF(raw, resolvedUnit), 1)
-    );
-    if (rangeErr) {
-      setTempError(rangeErr);
-      return;
-    }
-    setTempError(null);
-    setTempPending(true);
-    const fd = new FormData();
-    fd.set("temperature", tempValue);
-    fd.set("temp_unit", tempUnit);
+  // NO CLIENT RANGE CHECK. `logTemperatureCore` runs `temperatureRangeError` over the
+  // same canonical °F this would have computed and answers with that exact sentence, so
+  // the second copy could only ever disagree with the one that decides.
+  async function logTemp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fd = new FormData(form);
     // The reading is "now" for today (the card's primary date), never the alt day.
     fd.set("date", date);
-    if (tempTime.trim() !== "") fd.set("time", tempTime);
+    const hhmm = statedHhmm(tempWhen.statedAt, timeZone ?? tempZone);
+    if (hhmm) fd.set("time", hhmm);
+    setTempError(null);
+    setTempPending(true);
     const res = await logTemperature(withTarget(fd));
     setTempPending(false);
     if (res.ok) {
-      setTempValue("");
+      form.reset();
       tempUnitDetection.reset();
-      setTempTime("");
+      setTempWhen({ date, statedAt: null });
       setTempOpen(false);
       toast(
         `Temperature logged: ${fmtTemp(res.degF, temperatureUnit)}${
@@ -330,6 +311,13 @@ export default function SymptomLogBar({
       if (res.redFlag) {
         toast(res.redFlag, { tone: "error" });
       }
+      // The minute the gate discarded (#4568), said in the body domain's own words —
+      // the same sentence `MeasurementsQuickAdd` raises for the sitting's Time. Its
+      // own toast for the reason the red flag has one: the reading LANDED, so this
+      // amends nothing about the line above and must not be squeezed into it.
+      if (res.statedTimeRefused) {
+        toast(measurementsSavedText("Saved", res.statedTimeRefused));
+      }
     } else {
       setTempError(res.error);
       toast(res.error, { tone: "error" });
@@ -339,11 +327,12 @@ export default function SymptomLogBar({
   const severities = severitiesByDate[activeDate] ?? {};
   const notes = notesByDate[activeDate] ?? {};
 
-  // Stamp the cross-profile target (issue #858) onto every write, when this bar is a
+  // Stamp the cross-profile subject (issue #858) onto every write, when this bar is a
   // illness Now cockpit for a non-active profile. A no-op on the default mounts (profileId
-  // undefined), which write the session's active profile.
+  // undefined), which write the session's active profile. ONE SPELLING, `profile_id`
+  // (#4424 ruling 4) — the same field every record row posts and `gateItemProfile` reads.
   const withTarget = (fd: FormData): FormData => {
-    if (profileId != null) fd.set("profileId", String(profileId));
+    if (profileId != null) fd.set("profile_id", String(profileId));
     if (episodeId != null) fd.set("episodeId", String(episodeId));
     // WHICH SURFACE (#3087). This bar is mounted on the dashboard, on the Timeline,
     // on the Cycles page and inside the illness cockpit's panels — one component,
@@ -444,127 +433,6 @@ export default function SymptomLogBar({
       },
       onError: () => {
         toast("Couldn't log that symptom — try again.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-    });
-  }
-
-  // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
-  // lowers, calls the narrow lower action, and reconciles. Preserves the day's note.
-  async function lower(key: string, severity: number) {
-    const prev = severities[key] ?? 0;
-    if (severity >= prev) return;
-    await ledger.tap({
-      key: `${key}:${prev}->${severity}`,
-      from: prev,
-      optimistic: severity,
-      commit: (value) => setSeverity(key, value),
-      write: () => {
-        const fd = new FormData();
-        fd.set("symptom", key);
-        fd.set("severity", String(severity));
-        fd.set("date", activeDate);
-        return lowerSymptom(withTarget(fd));
-      },
-      settle: (res) => {
-        if (res.ok) return { kind: "adopt", value: res.severity };
-        toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-      onError: () => {
-        toast("Couldn't lower that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-    });
-  }
-
-  async function saveNote(key: string, value: string) {
-    const prev = notes[key] ?? "";
-    setNote(key, value);
-    setNoteEditing(null);
-    const fd = new FormData();
-    fd.set("symptom", key);
-    fd.set("date", activeDate);
-    fd.set("note", value);
-    const res = await setSymptomNote(withTarget(fd));
-    if (!res.ok) {
-      setNote(key, prev);
-      toast(res.error || "Couldn't save that note.", { tone: "error" });
-    }
-  }
-
-  // The × is a one-tap delete that used to reach OFF-DB — it unlinked the day's photo
-  // FILES — with no confirm and nothing to take it back (#2124). It stays one tap,
-  // deliberately: for a symptom chip a confirm on every clear is the wrong tax, and
-  // undo-after-the-fact is the calmer contract. So the capture the action now returns
-  // gets a toast whose Undo restores the row, its photo rows and their files, and puts
-  // the chip back where it was.
-  //
-  // No token means nothing was deleted (the day was already clear) — a plain
-  // confirmation then, never an Undo that would restore nothing.
-  function offerUndo(
-    key: string,
-    undoId: number | null,
-    prevSeverity: number,
-    prevNote: string
-  ) {
-    if (undoId == null) return;
-    toast("Symptom removed.", {
-      duration: UNDO_TOAST_MS,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          void (async () => {
-            const { ok } = await undoDelete(undoId);
-            if (!ok) {
-              toast("Couldn’t undo — it may have expired.", { tone: "error" });
-              return;
-            }
-            // Put the chip back at the severity the row was restored with, and its
-            // note with it — the restore re-inserted the captured row verbatim, so the
-            // local state that named it is exactly right again.
-            setSeverity(key, prevSeverity);
-            if (prevNote) setNote(key, prevNote);
-            toast("Restored.");
-          })();
-        },
-      },
-    });
-  }
-
-  async function clear(key: string) {
-    const prev = severities[key] ?? 0;
-    const prevNote = notes[key] ?? "";
-    setNote(key, "");
-    if (noteEditing === key) setNoteEditing(null);
-    const restoreNote = () => {
-      if (prevNote) setNote(key, prevNote);
-    };
-    await ledger.tap({
-      key: `${key}:${prev}->clear`,
-      from: prev,
-      optimistic: 0,
-      commit: (value) => setSeverity(key, value),
-      write: () => {
-        const fd = new FormData();
-        fd.set("symptom", key);
-        fd.set("date", activeDate);
-        return removeSymptom(withTarget(fd));
-      },
-      settle: (res) => {
-        // The × has no authoritative number to adopt — the row is gone — so the
-        // optimistic zero stands and only a refusal puts the day back.
-        if (res.ok) {
-          offerUndo(key, res.undoId ?? null, prev, prevNote);
-          return { kind: "keep" };
-        }
-        restoreNote();
-        toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-      onError: () => {
-        restoreNote();
-        toast("Couldn't remove that symptom.", { tone: "error" });
         return { kind: "rollback" };
       },
     });
@@ -895,80 +763,50 @@ export default function SymptomLogBar({
       )}
 
       {showTemperature && tempOpen && (
-        <div
+        <form
           id="temp-quick-entry"
           data-testid="temp-quick-entry"
+          onSubmit={(event) => void logTemp(event)}
           className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
         >
           <label className="label mb-1 block" htmlFor="temp-quick-input">
             Temperature
           </label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <div className="col-span-2 flex min-w-0 gap-2 sm:col-span-1">
-              <input
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-40 flex-1">
+              {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
+              <TemperatureField
                 id="temp-quick-input"
-                data-testid="temp-quick-input"
-                type="number"
-                step="0.1"
-                inputMode="decimal"
+                testIdPrefix="temp-quick"
+                detection={tempUnitDetection}
+                unitLabel="Temperature unit"
+                required
                 autoFocus
-                value={tempValue}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setTempValue(value);
-                  tempUnitDetection.readValue(value);
-                  if (tempError) setTempError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void logTemp();
-                  }
-                }}
-                placeholder="Thermometer reading"
-                className="input min-w-0 flex-1"
               />
-              <select
-                data-testid="temp-quick-unit"
-                aria-label="Temperature unit"
-                value={tempUnit}
-                onChange={(e) =>
-                  tempUnitDetection.chooseUnit(
-                    e.target.value === "C" ? "C" : "F"
-                  )
-                }
-                className="input w-auto"
-              >
-                <option value="F">°F</option>
-                <option value="C">°C</option>
-              </select>
             </div>
-            <input
-              data-testid="temp-quick-time"
-              type="time"
-              aria-label="Reading time"
-              value={tempTime}
-              onChange={(e) => setTempTime(e.target.value)}
-              className="input min-w-0 w-full"
+            <WhenControl
+              mode="state"
+              grain="minute"
+              value={tempWhen}
+              onChange={setTempWhen}
+              tz={timeZone}
+              // ONE DAY, the card's primary date: a reading is filed against the day
+              // the bar is standing on, so the control renders it as text and the pair
+              // rule holds with nothing to enforce.
+              minDate={date}
+              maxDate={date}
+              timeLabel="Reading time"
+              testId="temp-quick"
             />
             <button
-              type="button"
+              type="submit"
               data-testid="temp-quick-save"
               disabled={tempPending}
-              onClick={() => void logTemp()}
               className="btn btn-sm"
             >
               {tempPending ? "Logging…" : "Log temp"}
             </button>
           </div>
-          {tempUnitDetection.detectedUnit && (
-            <p
-              data-testid="temp-unit-detected"
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-            >
-              Detected °{tempUnitDetection.detectedUnit} from the reading.
-            </p>
-          )}
           {tempError && (
             <p
               role="alert"
@@ -978,7 +816,7 @@ export default function SymptomLogBar({
               {tempError}
             </p>
           )}
-        </div>
+        </form>
       )}
 
       {/* Picker guidance stays with the expanded picker instead of occupying the
@@ -1007,7 +845,6 @@ export default function SymptomLogBar({
             if (!r) return null;
             const sev = severities[key] ?? 0;
             const note = notes[key] ?? "";
-            const editingNote = noteEditing === key;
             return (
               <li
                 key={key}
@@ -1019,84 +856,20 @@ export default function SymptomLogBar({
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
-                  {/* `gap-3` is the reach floor (#3938). */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <SymptomSeverityControl
-                      symptomLabel={r.label}
-                      value={sev}
-                      testIdPrefix={`symptom-${key}-sev`}
-                      onChange={(severity) => {
-                        if (severity < sev) void lower(key, severity);
-                        else void tap(key, severity);
-                      }}
-                    />
-                    <IconButton
-                      type="button"
-                      data-testid={`symptom-${key}-note-toggle`}
-                      label={`${note ? "Edit" : "Add"} note for ${r.label}`}
-                      pressed={editingNote}
-                      tone={note ? "brand" : "neutral"}
-                      onClick={() => {
-                        if (editingNote) setNoteEditing(null);
-                        else {
-                          setNoteDraft(note);
-                          setNoteEditing(key);
-                        }
-                      }}
-                    >
-                      <IconNote className="h-3.5 w-3.5" />
-                    </IconButton>
-                    <IconButton
-                      type="button"
-                      data-testid={`symptom-${key}-clear`}
-                      label={`Clear ${r.label}`}
-                      disabled={sev <= 0}
-                      onClick={() => clear(key)}
-                    >
-                      <IconX className="h-3.5 w-3.5" />
-                    </IconButton>
-                  </div>
-                </div>
-
-                {editingNote && (
-                  <form
-                    className="mt-1 flex items-center gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void saveNote(key, noteDraft);
-                    }}
-                  >
-                    <input
-                      data-testid={`symptom-${key}-note-input`}
-                      autoFocus
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      onBlur={() => {
-                        if (noteDraft !== (notes[key] ?? ""))
-                          void saveNote(key, noteDraft);
-                        else setNoteEditing(null);
-                      }}
-                      placeholder="Note (e.g. worse at night)…"
-                      maxLength={500}
-                      className="input flex-1 text-sm"
-                    />
-                    <Button
-                      type="submit"
-                      data-testid={`symptom-${key}-note-save`}
-                    >
-                      Save
-                    </Button>
-                  </form>
-                )}
-
-                {!editingNote && note && (
-                  <NotesText
-                    data-testid={`symptom-${key}-note`}
-                    as="p"
-                    notes={note}
-                    className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3). The bar owns which
+                      rows are logged; the control owns what each one's taps write. */}
+                  <SymptomRowControl
+                    symptom={key}
+                    label={r.label}
+                    date={activeDate}
+                    severity={sev}
+                    note={note}
+                    subjectProfileId={profileId}
+                    episodeId={episodeId}
+                    onSeverity={(value) => setSeverity(key, value)}
+                    onNote={(value) => setNote(key, value)}
                   />
-                )}
+                </div>
               </li>
             );
           })}

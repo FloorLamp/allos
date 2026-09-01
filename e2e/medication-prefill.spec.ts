@@ -186,9 +186,11 @@ test("a pediatric formulation persists from quick add to the medication list", a
     // dose to work the weight band, and the formulation is the chip row above it.
     await openFact(page, "dose", panel);
 
-    // The label lookup can record a fresh measurement in place. It writes through
-    // the normal Body metric action in this login's preferred unit (kg for this
-    // fixture), then immediately moves the recorded marker to the new label band.
+    // The label lookup can record a fresh measurement in place. Since #4424 ruling 2 the
+    // number is the body domain's shared `WeightField` and the write is
+    // `addMeasurements` — the one action every body sitting posts — in this login's
+    // preferred unit (kg for this fixture); the recorded marker then moves to the new
+    // label band.
     await quickAdd.getByTestId("pediatric-weight-update-open").click();
     const weightUpdate = quickAdd.getByTestId("pediatric-weight-update");
     await expect(weightUpdate.getByLabel("Weight (kg)")).toBeVisible();

@@ -35,6 +35,11 @@ import { shiftDateStr } from "@/lib/date";
 import { logTemperatureCore } from "@/lib/temperature-log";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
+
 // Make the acting profile currently sick with an ongoing Illness episode ROW; return id.
 function makeSick(profileId: number): number {
   resolveSituationId(profileId, "Illness"); // born illness_type=1

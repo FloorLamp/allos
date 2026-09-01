@@ -58,6 +58,7 @@ import { getActivitiesByDate, isPredictedWorkoutDay } from "../training";
 import type { IntakeCondition, IntakeItemKind } from "../../types";
 import { intakeShortLabels } from "../../intake-short-name";
 import { getIntakeItems } from "./schedule";
+import { DOSE_CONFIRM_UNDO, DOSE_RESOLUTION } from "@/lib/log-manifest";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
 // logs to the right calendar date — but the token is client-supplied, so an
@@ -463,6 +464,8 @@ export function markDoseTaken(
     })
   );
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const markDoseTakenDeclares = DOSE_RESOLUTION;
 
 // Log a single dose as SKIPPED on `date` (#232) — the sibling of markDoseTaken for the
 // Telegram ⏭️ button and the offline skip. A skip is a deliberate "chose not to take it"
@@ -485,6 +488,7 @@ export function markDoseSkipped(
     })
   );
 }
+export const markDoseSkippedDeclares = DOSE_RESOLUTION;
 
 // Set one dose to an explicit target status for `date` — the web tri-state check-off's
 // write (#232), auth-blind and profileId-first like every other lib write core. The
@@ -495,10 +499,19 @@ export function setDoseStatusCore(
   doseId: number,
   date: string,
   target: DoseStatusTarget,
-  loggedVia: LoggedVia
+  loggedVia: LoggedVia,
+  // RESOLVE-ONLY, when the control was showing a CLEAR dose (#280, #4424). The
+  // tri-state's licence to overwrite comes from the person LOOKING at the state, so it
+  // does not extend to a clear the surface only believed in: a list of what a day owes
+  // renders every stale row clear, and a ✅ there would flip a skip made elsewhere. A
+  // flip or a clear off a state the person could see is unaffected.
+  resolveOnly = false
 ): DoseStatusOutcome {
-  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia);
+  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, {
+    resolveOnly,
+  });
 }
+export const setDoseStatusCoreDeclares = DOSE_RESOLUTION;
 
 // Take BACK the dose confirm a tap just made (#2642) — the inverse behind the act→undo
 // toast, auth-blind and profileId-first like every other core here.
@@ -563,6 +576,7 @@ export function undoDoseConfirm(
     return outcome === "cleared" ? "undone" : "stale-dose";
   });
 }
+export const undoDoseConfirmDeclares = DOSE_CONFIRM_UNDO;
 
 // ---- PRN (as-needed) administrations ledger (#797) ----
 
@@ -934,6 +948,7 @@ export function logHistoricalDose(
     return { kind: "logged", date };
   });
 }
+export const logHistoricalDoseDeclares = DOSE_RESOLUTION;
 
 // Edit one existing taken ledger row (kind-neutral since #1933, for the same reasons
 // as logHistoricalDose above). Date/course rules mirror it, including moving a PRN

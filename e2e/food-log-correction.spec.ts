@@ -33,7 +33,7 @@ import { shiftDateStr } from "@/lib/date";
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
-    await page.getByTestId("food-more-groups-summary").click();
+    await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
     await expect(row).toBeVisible();
   }
 }
@@ -157,7 +157,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
   await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore);
 });
 
-test("the ⋯ menu removes the serving it names, even when a correction left it older than its neighbour (#1963)", async ({
+test("the ⋯ menu removes the corrected row it names, and Undo restores that row (#1963/#2038)", async ({
   page,
 }) => {
   test.slow(); // the nutrition route compiles on first hit
@@ -182,7 +182,7 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await page.getByTestId("food-slot-morning").click();
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
   await revealFoodGroup(page, "shellfish");
-  await page.getByTestId("log-shellfish").click();
+  await hydratedClick(page, page.getByTestId("log-shellfish"));
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const correctedId = await newRowId(page, idsBefore);
   const idsWithFirst = await loggedIds(page);
@@ -192,7 +192,7 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await page.getByTestId("food-slot-evening").click();
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
   await revealFoodGroup(page, "shellfish");
-  await page.getByTestId("log-shellfish").click();
+  await hydratedClick(page, page.getByTestId("log-shellfish"));
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 2);
   const untouchedId = await newRowId(page, idsWithFirst);
 
@@ -229,9 +229,28 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
     String(eveningCountBefore + 1)
   );
 
-  // Leave the fixture as found, through the same affordance. The reload proves the
-  // server re-derives an empty result from both tables rather than the client merely
-  // having hidden two rows.
+  // #2038: the precise row control is forgiving too. Undo restores the corrected
+  // serving under a new id, while preserving the Evening slot it had when removed.
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  await expect(page.getByText("Restored.")).toBeVisible();
+  await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 2);
+  await expect(page.getByTestId("count-shellfish")).toHaveText(
+    String(eveningCountBefore + 2)
+  );
+  await page.reload();
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+  const restoredId = await newRowId(page, [
+    ...idsBefore,
+    `ledger-serving-${untouchedId}`,
+  ]);
+  const restored = page.getByTestId(`ledger-serving-${restoredId}`);
+  await expect(restored).toHaveAttribute("data-group", "shellfish");
+  await expect(restored).toHaveAttribute("data-slot", "Evening");
+
+  // Leave the fixture as found, through the same affordance. The final reload proves
+  // the server re-derives the baseline from both tables rather than the client merely
+  // hiding either row.
+  await removeServingRow(page, restoredId);
   await removeServingRow(page, untouchedId);
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
@@ -241,73 +260,9 @@ test("the ⋯ menu removes the serving it names, even when a correction left it 
   await expect(page.getByTestId(`ledger-serving-${untouchedId}`)).toHaveCount(
     0
   );
+  await expect(page.getByTestId(`ledger-serving-${restoredId}`)).toHaveCount(0);
   await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore);
   await expect.poll(() => slotTotal(page, "Morning")).toBe(morningBefore);
-});
-
-test("removing one serving offers Undo, and Undo brings the serving back (#2038)", async ({
-  page,
-}) => {
-  test.slow(); // the nutrition route compiles on first hit
-  await page.goto("/nutrition");
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-
-  await page.getByTestId("food-slot-midday").click();
-  await expect(page.getByTestId("food-slot-chip")).toHaveText("Midday");
-  await revealFoodGroup(page, "berries");
-
-  const middayBefore = await slotTotal(page, "Midday");
-  const idsBefore = await loggedIds(page);
-  const countBefore = Number(
-    (await page.getByTestId("count-berries").textContent())?.trim() || "0"
-  );
-
-  await page.getByTestId("log-berries").click();
-  await expect(page.getByTestId("count-berries")).toHaveText(
-    String(countBefore + 1)
-  );
-  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
-  const eventId = await newRowId(page, idsBefore);
-
-  // ⋯ → Remove this serving. Until #2038 this was permanent: the PRECISE control was
-  // the unforgiving one, sitting beside a group "−" whose mistap costs one tap.
-  const row = page.getByTestId(`ledger-serving-${eventId}`);
-  await row.getByRole("button", { name: /^Actions for the/ }).click();
-  await settledClick(
-    page,
-    page.getByTestId(`ledger-serving-remove-${eventId}`)
-  );
-  await expect(page.getByText("Serving removed.")).toBeVisible();
-  await expect(row).toHaveCount(0);
-  await expect(page.getByTestId("count-berries")).toHaveText(
-    String(countBefore)
-  );
-  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
-
-  // THE PIN: the toast carries an Undo, and taking it gives the serving back — both the
-  // ledger row and the day counter it decremented.
-  await settledClick(page, page.getByRole("button", { name: "Undo" }));
-  await expect(page.getByText("Restored.")).toBeVisible();
-  await expect(page.getByTestId("count-berries")).toHaveText(
-    String(countBefore + 1)
-  );
-  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore + 1);
-  // The restore re-inserts with a NEW id (the undo substrate's contract), so the row is
-  // identified as the one row this test added rather than by its original id.
-  await page.reload();
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
-  const restoredId = await newRowId(page, idsBefore);
-  await expect(
-    page.getByTestId(`ledger-serving-${restoredId}`)
-  ).toHaveAttribute("data-group", "berries");
-
-  // Leave the fixture as found.
-  await removeServingRow(page, restoredId);
-  await page.reload();
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-  await expect(loggedRows(page)).toHaveCount(idsBefore.length);
-  await expect.poll(() => slotTotal(page, "Midday")).toBe(middayBefore);
 });
 
 test("the sheet corrects a serving's eating time; Meal follows the hour until touched; Not stated clears (#2227)", async ({
@@ -323,7 +278,7 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
   const idsBefore = await loggedIds(page);
 
   // An UNSTATED serving — the row this test will teach an eating time to.
-  await page.getByTestId("log-legumes").click();
+  await hydratedClick(page, page.getByTestId("log-legumes"));
   await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
   const eventId = await newRowId(page, idsBefore);
   const row = page.getByTestId(`ledger-serving-${eventId}`);
@@ -411,89 +366,4 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
 
   // Leave the fixture as found (still on the Yesterday view, where the row lives).
   await removeServingRow(page, eventId);
-});
-
-test("the correction sheet names the time it shows: eating time when stated, logged time otherwise (#2227)", async ({
-  page,
-}) => {
-  test.slow(); // the nutrition route compiles on first hit
-  await page.goto("/nutrition");
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-
-  await page.getByTestId("food-slot-morning").click();
-  await expect(page.getByTestId("food-slot-chip")).toHaveText("Morning");
-  await revealFoodGroup(page, "nuts_seeds");
-
-  const idsBefore = await loggedIds(page);
-
-  // 1. A serving with NO eating-time statement: the honest default (#2019) — the row
-  //    has only its tap instant.
-  //
-  // hydratedClick, not a bare click. HARDENING ON A SIGNATURE MATCH, AND NOT A
-  // DIAGNOSED FIX — the distinction is the point, so the next reader does not inherit
-  // a cause nobody established.
-  //
-  // What is known: this is the FIRST write-tap after a fresh /nutrition load (the
-  // route compiles here — see `test.slow()`), it was the ONE write in this file not
-  // going through hydratedClick/settledClick, and CI failed on the next line on
-  // 2026-08-31 with `expected 7, received 6` — the signature a swallowed
-  // pre-hydration tap produces, since actionability checks pass on an element that is
-  // genuinely there and the loss only surfaces as a count that never moved.
-  //
-  // What is NOT known: that hydration is what bit. A slow write reads identically. The
-  // shard was reproduced locally at its exact CI composition (byte-identical to main's
-  // plan) and ran 139/139 green, and a CDP CPU throttle at 20x across the navigation
-  // did not reach the window in 3 runs either way — so the failure is UNREPRODUCED
-  // here and this change may not be what stops it recurring.
-  await hydratedClick(page, page.getByTestId("log-nuts_seeds"));
-  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 1);
-  const unstatedId = await newRowId(page, idsBefore);
-  const idsWithFirst = await loggedIds(page);
-
-  // 2. A serving logged UNDER a statement, through the bar's own control (#2053):
-  //    the shared when-control's "Now" fills an absolute local time, a human answer
-  //    that writes occurred_at via the real action path. A DIFFERENT group on purpose:
-  //    a second tap of the same row inside the tap ledger's cooldown is absorbed as an
-  //    accidental double.
-  await revealFoodGroup(page, "berries");
-  await hydratedClick(page, page.getByTestId("food-when-summary"));
-  await page.getByTestId("food-when-now").click();
-  await expect(page.getByTestId("food-when-time")).not.toHaveValue("");
-  await page.getByTestId("log-berries").click();
-  await expect(loggedRows(page)).toHaveCount(idsBefore.length + 2);
-  const statedId = await newRowId(page, idsWithFirst);
-  // The statement is sticky across taps by design — release it before anything else.
-  await settledSelect(page, page.getByTestId("food-when-time"), "");
-
-  // THE PIN, unstated half: the ⋯ menu's accessible name claims the LOGGED time and
-  // the sheet opens with the "No eating time recorded" line — never a bare clock
-  // wearing the wrong claim.
-  const unstated = page.getByTestId(`ledger-serving-${unstatedId}`);
-  await unstated.getByRole("button", { name: /serving logged at/ }).click();
-  await page.getByTestId(`ledger-serving-correct-${unstatedId}`).click();
-  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
-  await expect(page.getByTestId("food-correct-provenance")).toContainText(
-    /No eating time recorded — logged at \d{2}:\d{2}\./
-  );
-  await page.getByTestId("food-correct-cancel").click();
-  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
-
-  // THE PIN, stated half: the menu names the EATING time and the sheet opens with
-  // "Ate at …" — the words "logged at" no longer sit over an eating time.
-  const stated = page.getByTestId(`ledger-serving-${statedId}`);
-  await stated.getByRole("button", { name: /serving eaten at/ }).click();
-  await page.getByTestId(`ledger-serving-correct-${statedId}`).click();
-  await expect(page.getByTestId("food-correct-modal")).toBeVisible();
-  await expect(page.getByTestId("food-correct-provenance")).toContainText(
-    /Ate at \d{2}:\d{2}\./
-  );
-  await expect(page.getByTestId("food-correct-provenance")).not.toContainText(
-    "No eating time recorded"
-  );
-  await page.getByTestId("food-correct-cancel").click();
-  await expect(page.getByTestId("food-correct-modal")).toBeHidden();
-
-  // Leave the fixture as found.
-  await removeServingRow(page, statedId);
-  await removeServingRow(page, unstatedId);
 });

@@ -12,11 +12,15 @@ import {
 } from "./helpers";
 import { loginAs, openCommandPalette } from "./nav";
 import {
+  E2E_LOGIN_DAILY,
   E2E_LOGIN_PRACTICE_ZERO,
   E2E_MEMBER_PASSWORD,
   PRACTICE_ZERO_PROFILE,
 } from "./fixture-logins";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { setFixtureTimezone } from "./fixture-timezones";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { zonedDateParts, zonedWallTimeToUtc } from "@/lib/date";
 import { practiceIdentity } from "@/lib/practice";
 
 async function openPracticeCreate(page: Page) {
@@ -405,8 +409,8 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Nothing logged yet: the first tap is offered as a first tap.
   await expect(todayLine).toContainText("No sessions yet");
-  await expect(button).toHaveText("Log now");
-  await expect(button).toHaveAccessibleName(/^Log now — /);
+  await expect(button).toHaveText("Just finished");
+  await expect(button).toHaveAccessibleName(/^Just finished a /);
 
   // #2204, owner ruling: the CARD carries the inline stepper too, alongside the
   // expanded form rather than instead of it. "The modal is one tap away" answered
@@ -428,7 +432,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   });
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(todayLine).toContainText("1 session logged");
-  await expect(button).toHaveAccessibleName(/^Log another /);
+  await expect(button).toHaveAccessibleName(/^Just finished another /);
   // The existing cooldown is a rendered state, not a silent onClick return: a
   // caller can await readiness without guessing the ledger's two-second window.
   await expect(button).toBeDisabled();
@@ -436,7 +440,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Layer 2 — the affordance now renders today's state, so the next tap is visibly
   // a SECOND one before it is taken.
-  await expect(button).toHaveText("Log another");
+  await expect(button).toHaveText("Just finished");
   await expect(button).toHaveAccessibleName(/1 already logged today/);
 
   // The pin: exactly one session reached the store. The reload also clears the
@@ -513,7 +517,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(reloaded).toHaveCount(0);
 });
 
-test("the cross-practice day-history renders a row per practice, on one day axis", async ({
+test("the cross-practice day-history aligns its frozen labels at first paint (#3243)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -540,17 +544,46 @@ test("the cross-practice day-history renders a row per practice, on one day axis
     insert.run(A, day(9), 25);
     insert.run(B, day(3), null);
 
-    await page.goto("/wellness");
     const history = page.getByTestId("practice-history");
-    await expect(history).toBeVisible();
     const rowA = history.locator(
       `[data-testid="day-history-row"][data-group="${keyA}"]`
     );
     const rowB = history.locator(
       `[data-testid="day-history-row"][data-group="${keyB}"]`
     );
-    await expect(rowA).toHaveCount(1);
-    await expect(rowB).toHaveCount(1);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto("/wellness");
+      await expect(rowA).toHaveCount(1);
+      await expect(rowB).toHaveCount(1);
+      await expect(
+        history.getByTestId("day-history-visible-range")
+      ).toBeVisible();
+      const geometry = await rowA.evaluate((row) => {
+        const label = row.querySelector<HTMLElement>("[data-matrix-label]")!;
+        const text = label.querySelector<HTMLElement>("button > span")!;
+        const labelBox = label.getBoundingClientRect();
+        const partialCells = [
+          ...row.querySelectorAll<HTMLElement>("[data-matrix-col] > span"),
+        ].filter((cell) => {
+          const box = cell.getBoundingClientRect();
+          const overlap = Math.min(labelBox.right, box.right) - box.left;
+          return overlap > 0.5 && overlap < box.width - 0.5;
+        });
+        return {
+          label: text.textContent,
+          labelClipped:
+            text.scrollWidth > text.clientWidth + 0.5 ||
+            text.scrollHeight > text.clientHeight + 0.5,
+          partialCells: partialCells.length,
+        };
+      });
+      expect(geometry).toEqual({
+        label: A,
+        labelClipped: false,
+        partialCells: 0,
+      });
+    }
     // Rows share ONE day axis: the calendar half renders beside them.
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history).toContainText(
@@ -656,5 +689,159 @@ test("a practice logged with Start and End draws a block on the day chart (#3142
       handle.close();
     }
     await page.context().close();
+  }
+});
+
+// THE END BUTTON SURVIVES LOCAL MIDNIGHT (#3143 review, defect 1's user-visible half).
+//
+// A session started at 23:xx and still running at 00:xx is the ordinary evening
+// practice, and the first cut of the lifecycle hid its End button: both gathers asked
+// for a live row whose `date` equalled the profile's today, so the row answered
+// "running" to the store and rendered nothing to the user. A session you cannot end is
+// the whole bug — the DB tier proves the query answers, only a browser proves the
+// button is there and can be tapped.
+//
+// WHY THIS PROFILE HAS ITS OWN CALENDAR. The run pins local time to 13:mm at every UTC
+// start hour (e2e/pinned-timezone.ts), and at 13:00 every live row dated on another day
+// is genuinely abandoned — so the crossing is UNREACHABLE on a pin-following profile.
+// This one sits in the zone where the frozen instant reads 00:mm, declared as
+// `practice-midnight` in e2e/fixture-timezones.ts, and it asserts nothing on the
+// dashboard.
+function midnightZone(frozen: Date): string {
+  // The inverse of pinnedTimezone's arithmetic, aimed at 00:mm instead of 13:mm. The
+  // POSIX sign is inverted in the Etc names: Etc/GMT-11 is UTC+11.
+  const utcHour = frozen.getUTCHours();
+  const offset = utcHour === 0 ? 0 : utcHour <= 12 ? -utcHour : 24 - utcHour;
+  if (offset === 0) return "UTC";
+  return offset > 0 ? `Etc/GMT-${offset}` : `Etc/GMT+${-offset}`;
+}
+
+const LIVE_SESSION_HOURS_AGO = 3;
+
+test("a live session that crossed local midnight can still be ended (#3143)", async ({
+  browser,
+}, testInfo) => {
+  test.slow(); // a fixture profile, a sign-in, a page load and a write
+  const suffix = `${process.pid}-${testInfo.repeatEachIndex}`;
+  const practiceName = `E2E Midnight Sauna ${suffix}`;
+  const zone = midnightZone(frozenNow());
+  const startedAt = new Date(
+    frozenNow().getTime() - LIVE_SESSION_HOURS_AGO * 3_600_000
+  );
+  const local = zonedDateParts(zone, startedAt);
+  const localToday = zonedDateParts(zone, frozenNow()).date;
+  // The premise this whole case rests on, asserted rather than assumed: the running
+  // session's day is NOT the profile's today, which is what used to hide the button.
+  expect(local.date).not.toBe(localToday);
+
+  const handle = new Database(workerDbPath());
+  handle.pragma("busy_timeout = 5000");
+  const username = `e2e_practice_midnight_${suffix}`;
+  let profileId = 0;
+  let logId = 0;
+  try {
+    handle.transaction(() => {
+      const passwordHash = (
+        handle
+          .prepare("SELECT password_hash FROM logins WHERE username = ?")
+          .get(E2E_LOGIN_DAILY) as { password_hash: string }
+      ).password_hash;
+      profileId = createFixtureProfile(handle, `Midnight practice ${suffix}`);
+      const loginId = Number(
+        handle
+          .prepare(
+            "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+          )
+          .run(username, passwordHash).lastInsertRowid
+      );
+      handle
+        .prepare(
+          `INSERT INTO login_profiles (login_id, profile_id, access)
+           VALUES (?, ?, 'write')`
+        )
+        .run(loginId, profileId);
+      setFixtureTimezone(handle, profileId, "practice-midnight", zone);
+      logId = Number(
+        handle
+          .prepare(
+            `INSERT INTO practice_logs
+               (profile_id, practice, date, start_time, live, logged_via, created_at)
+             VALUES (?, ?, ?, ?, 1, 'page', ?)`
+          )
+          .run(
+            profileId,
+            practiceName,
+            local.date,
+            local.hhmm,
+            startedAt.toISOString().slice(0, 19).replace("T", " ")
+          ).lastInsertRowid
+      );
+    })();
+
+    const page = await loginAs(browser, {
+      username,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto("/wellness");
+      const card = page
+        .getByTestId("wellness-practice-card")
+        .filter({ hasText: practiceName });
+      await expect(card).toBeVisible();
+      // The assertion the day comparison used to fail: the card offers END, not Start.
+      const end = card.getByTestId("practice-end-button");
+      await expect(end).toBeVisible();
+      await expect(card.getByTestId("practice-start-button")).toHaveCount(0);
+
+      await settledClick(page, end);
+      await dismissToast(page, "Session finished");
+
+      const row = handle
+        .prepare(
+          `SELECT date, start_time, end_time, duration_min, live
+             FROM practice_logs WHERE id = ?`
+        )
+        .get(logId) as {
+        date: string;
+        start_time: string;
+        end_time: string | null;
+        duration_min: number | null;
+        live: number;
+      };
+      // THE ROW KEEPS THE DAY IT STARTED ON, and its window and its duration are one
+      // statement: the end is earlier than the start because the session crossed
+      // midnight, which is exactly what `activityWindow` reads as the crossing.
+      // NOT `LIVE_SESSION_HOURS_AGO * 60`: the stored start is minute-grained and the
+      // frozen instant carries seconds, so the elapsed span is three hours plus those
+      // seconds and rounds to 180 or 181 depending on the run. The expectation is
+      // therefore composed from the STORED start through the same inverse the write
+      // core reads it with, which is the quantity the row is claiming.
+      const statedStart = zonedWallTimeToUtc(zone, local.date, local.hhmm)!;
+      expect(row).toEqual({
+        date: local.date,
+        start_time: local.hhmm,
+        end_time: zonedDateParts(zone, frozenNow()).hhmm,
+        duration_min: Math.round(
+          (frozenNow().getTime() - statedStart.getTime()) / 60_000
+        ),
+        live: 0,
+      });
+      expect(row.end_time! < row.start_time).toBe(true);
+    } finally {
+      await page.context().close();
+    }
+  } finally {
+    try {
+      handle
+        .prepare("DELETE FROM practice_logs WHERE profile_id = ?")
+        .run(profileId);
+      handle
+        .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
+        .run(profileId);
+      if (profileId) destroyFixtureProfile(handle, profileId);
+      handle.prepare("DELETE FROM logins WHERE username = ?").run(username);
+    } finally {
+      handle.close();
+    }
   }
 });

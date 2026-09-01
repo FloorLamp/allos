@@ -19,6 +19,20 @@ export interface HistoricalDoseOption {
   amount: string | null;
 }
 
+/**
+ * One item a past dose may be logged against. The form takes a LIST and owns the
+ * picker, which was spelled twice — the record door's launcher and the Supplements
+ * tab's card — with the option list built two ways.
+ */
+export interface HistoricalDoseItem {
+  id: number;
+  name: string;
+  doses: HistoricalDoseOption[];
+  asNeeded: boolean;
+  /** Bounded by a medication course? False for an item that keeps none (supplements). */
+  courseBound: boolean;
+}
+
 // Backfill / amend one recorded dose. Shared by both intake surfaces since #1933, so
 // its copy names the ITEM, not "the medication": the only medication-specific rule
 // left is the course window, which only an item that HAS courses is bound by
@@ -41,31 +55,24 @@ export interface HistoricalDoseOption {
 // action re-anchors the wall time against the submitted date in the profile's
 // timezone, and the core enforces the pair rule again at the boundary.
 export default function HistoricalDoseForm({
-  itemId,
-  itemName,
-  doses,
+  items,
   minDate,
   maxDate,
   initialDate,
   defaultTime,
-  asNeeded,
-  courseBound = true,
   editing,
   subjectProfileId,
   tz: tzProp,
+  repeatAfterAdd = false,
+  onSaved,
   onDone,
 }: {
-  itemId: number;
-  itemName: string;
-  doses: HistoricalDoseOption[];
+  /** In the order the mount wants them offered; one item renders no picker. */
+  items: HistoricalDoseItem[];
   minDate?: string;
   maxDate: string;
   initialDate?: string;
   defaultTime: string;
-  asNeeded: boolean;
-  // Whether this item's history is bounded by a medication course. False for an item
-  // that keeps no courses (every supplement), whose backfill may reach any past date.
-  courseBound?: boolean;
   editing?: {
     logId: number;
     doseId: number;
@@ -91,10 +98,22 @@ export default function HistoricalDoseForm({
    * the same value for every single-subject mount.
    */
   tz?: string;
+  /**
+   * Keep an add form mounted for another entry. The record Add door uses this to
+   * retain the chosen day while restoring the entry fields to their initial values.
+   * Other add mounts and every edit keep their existing completion behavior.
+   */
+  repeatAfterAdd?: boolean;
+  /** Runs after a successful write; defaults to `onDone` for existing mounts. */
+  onSaved?: () => void;
+  /** Dismisses the form (and remains the success callback when `onSaved` is absent). */
   onDone: () => void;
 }) {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
+  const [itemId, setItemId] = useState(items[0]?.id ?? 0);
+  const item = items.find((candidate) => candidate.id === itemId) ?? items[0];
+  const doses = item?.doses ?? [];
   const first = doses[0];
   const initialDose = editing
     ? (doses.find((dose) => dose.id === editing.doseId) ?? {
@@ -107,6 +126,17 @@ export default function HistoricalDoseForm({
   const [amount, setAmount] = useState(
     editing?.amount ?? initialDose?.amount ?? ""
   );
+  const [adjustSupply, setAdjustSupply] = useState(false);
+
+  // SWITCHING THE ITEM RESETS THE DOSE AND ITS AMOUNT. The two wrappers this replaced
+  // remounted the form on a `key` for that, throwing away the chosen date with it.
+  function pickItem(nextId: number): void {
+    const next = items.find((candidate) => candidate.id === nextId);
+    if (!next) return;
+    setItemId(nextId);
+    setDoseId(next.doses[0]?.id ?? 0);
+    setAmount(next.doses[0]?.amount ?? "");
+  }
   const [when, setWhen] = useState<WhenValue>(() =>
     editing
       ? { date: editing.date, statedAt: editing.statedAt }
@@ -124,7 +154,23 @@ export default function HistoricalDoseForm({
   const toast = useToast();
   const stampLoggedVia = useLoggedViaStamp();
 
-  if (!initialDose) return null;
+  function resetAddEntry(): void {
+    const resetItem = items[0];
+    const resetDose = resetItem?.doses[0];
+    setItemId(resetItem?.id ?? 0);
+    setDoseId(resetDose?.id ?? 0);
+    setAmount(resetDose?.amount ?? "");
+    setAdjustSupply(false);
+    setWhen((current) => ({
+      date: current.date,
+      statedAt:
+        statedInstantOnDate(current.date, defaultTime, tz)?.toISOString() ??
+        null,
+    }));
+  }
+
+  if (!item || !initialDose) return null;
+  const { name: itemName, asNeeded, courseBound } = item;
 
   return (
     <form
@@ -142,7 +188,8 @@ export default function HistoricalDoseForm({
             ? `Updated dose of ${itemName}.`
             : `Logged past dose of ${itemName}.`
         );
-        onDone();
+        if (!editing && repeatAfterAdd) resetAddEntry();
+        (onSaved ?? onDone)();
       }}
       className="mt-3 space-y-3 border-y border-black/5 py-3 dark:border-white/5"
       data-testid="historical-dose-form"
@@ -157,6 +204,28 @@ export default function HistoricalDoseForm({
       <input type="hidden" name="date" value={when.date} />
       <input type="hidden" name="time" value={statedHhmm(when.statedAt, tz)} />
       <div className="grid gap-3 sm:grid-cols-2">
+        {!editing && items.length > 1 ? (
+          <div>
+            {/* Named for what it selects rather than "Item": a record filtered by item
+                renders its own control, and two named "Item" are indistinguishable. */}
+            <label className="label" htmlFor="historical-dose-item">
+              Item to log against
+            </label>
+            <select
+              id="historical-dose-item"
+              className="input"
+              value={itemId}
+              data-testid="historical-dose-item-picker"
+              onChange={(event) => pickItem(Number(event.target.value))}
+            >
+              {items.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {!editing && doses.length > 1 ? (
           <div>
             <label className="label" htmlFor={`history-dose-${itemId}`}>
@@ -222,6 +291,8 @@ export default function HistoricalDoseForm({
             type="checkbox"
             name="adjust_supply"
             value="1"
+            checked={adjustSupply}
+            onChange={(event) => setAdjustSupply(event.target.checked)}
             className="mt-0.5 h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
           />
           <span>

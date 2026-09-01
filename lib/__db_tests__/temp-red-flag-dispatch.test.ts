@@ -31,6 +31,11 @@ import {
 import { logTemperatureCore } from "@/lib/temperature-log";
 import { dispatchTempRedFlagForReading } from "@/lib/notifications/temp-red-flag";
 
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
+
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-trf";
 
 function newProfile(name: string): number {

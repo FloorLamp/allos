@@ -120,8 +120,11 @@ export type UpcomingDomain =
   // region is not training it, which is the whole reason the scope exists beside
   // `region` (#482), and the row now says so.
   | "mobility-target"
-  // A wellness-practice weekly target running behind its floor (#1259) — the calm,
-  // coaching-tier twin of the pace-aware Telegram nudge, alongside the training target.
+  // An UNMET wellness-practice weekly target (#1259, re-ruled by #2579 ruling 1) —
+  // the calm, coaching-tier twin of the pace-aware Telegram nudge, alongside the
+  // training target. The behind-pace gate is gone on this surface: the ledger's
+  // charter is completeness, so practice aligns UP to training and every unmet
+  // target renders. The SEND keeps its own behind gate (lib/notifications/practices).
   | "practice"
   | "careplan"
   // A tracked finding→follow-up→resolution chain node (issue #700): a linked
@@ -216,8 +219,8 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // scopes read on the page: train, then feed, then mobilize.
   "nutrition-target": 13.2,
   "mobility-target": 13.4,
-  // A wellness-practice weekly target behind its floor (#1259) — sort it alongside the
-  // training target it mirrors (a calm, coaching-tier pace nudge).
+  // An unmet wellness-practice weekly target (#1259, re-ruled by #2579 ruling 1) —
+  // sort it alongside the training target it mirrors, whose unmet gate it now shares.
   practice: 13.5,
   // A finding follow-up (#700) is care-tier safety — sort it alongside the other
   // care notes (just after the condition-review suggestion), ahead of the calm
@@ -326,17 +329,29 @@ export interface UpcomingItem {
   // Explicit due-text override for status-driven signals ("Overdue", "2/3 this
   // week"); date-driven items fall back to a computed countdown label.
   dueText?: string;
-  // The `available` domain only (#1505/#2579-F): the availability qualifier WITHOUT
-  // the leading "Available" — "Bedtime", "Bedtime · Mondays", or absent when the item
-  // states no slot and no cadence.
+  // THE INTAKE DOMAINS' CHIP QUALIFIER (#1505/#2579-D/F): whatever rides beside the
+  // item's own name when this row is drawn as a CHIP rather than as a sentence.
+  // `available` states its availability without the leading "Available" ("Bedtime",
+  // "Bedtime · Mondays"); a scheduled `dose` states its amount and, when it has one,
+  // its cadence ("400 mg", "400 mg · Mondays") — the slot is the run header it sits
+  // under (`slot`), so repeating it on every chip would restate the header.
   //
-  // It exists because Upcoming renders an offer as a CHIP whose text is the item's own
-  // name, so the chip needs the qualifier as its own fragment ("Magnesium · Bedtime"),
-  // while `dueText` stays the full row phrase ("Available · Bedtime · Mondays") for
-  // every reader that wants a sentence. Both are composed from the same pieces in one
-  // place (offeredItems), which is the point: a renderer must never reconstruct one by
+  // It exists because a chip's text is the item's own NAME, so the chip needs the
+  // qualifier as its own fragment, while `dueText` stays the full row phrase for every
+  // reader that wants a sentence. Both are composed from the same pieces in ONE place
+  // (the producer), which is the point: a renderer must never reconstruct one by
   // slicing the other.
   offerHint?: string | null;
+  // The scheduled `dose` domain only (#2579-D): the row's TIME BUCKET — "Morning",
+  // "Midday", "Evening", "Before sleep", "Anytime" — carried as its own fragment
+  // because the expanded dose fold groups its chips into slot RUNS and the run header
+  // is this label. `dueText` is this fragment plus the cadence, composed beside it.
+  //
+  // Declared rather than parsed out of `dueText` or off the head of `sortHint`: both
+  // encode it, and a renderer that split either back apart would be a second
+  // definition of "which slot is this dose in" — the same failure the offerHint note
+  // above names.
+  slot?: string;
   // The intake domains only (`dose`, `available`): the item's curated CONTROL label
   // (lib/intake-short-name) — "Coenzyme Q10" → "CoQ10" — for the surfaces that render
   // this row as a chip or a truncating control line rather than as the record (#2858).
@@ -397,9 +412,23 @@ export interface UpcomingItem {
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
-  // Wellness-practice items carry their stable frequency-target id so Upcoming can
-  // offer the same typed one-tap log as the wellness/protocol surfaces (#1591).
-  practiceTargetId?: number;
+  // WHAT THE SHARED ROW CONTROL NEEDS TO STAND ON THIS ROW (#4424 ruling 7). The row
+  // used to carry only the frequency-target id, because its own button posted one; the
+  // shared `LogPracticeButton` posts the practice NAME and renders the day's count, so
+  // the resolution moved here — server-side, beside the read that already holds the
+  // target. It is one field rather than four so the row cannot half-exist: a row either
+  // can host the control or does not offer one.
+  practiceLog?: {
+    /** The target's own `scope_value` — the name every practice core is keyed on. */
+    practice: string;
+    /** Sessions already logged on the SUBJECT's today, which is what makes the
+     *  control's re-log question ("2 already logged today") answerable at all. */
+    todayCount: number;
+    /** The practice's usual duration, so the row's stepper opens holding it. */
+    defaultDurationMin: number | null;
+    /** A session already running, so this row says End rather than Start. */
+    liveSession: { id: number; date: string; startTime: string } | null;
+  };
   // When set, the row renders inline preventive controls — "Mark done" (records a
   // satisfaction) plus a declined / not-applicable override — for this stable
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors

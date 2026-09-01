@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import DateField from "@/components/DateField";
 import WhenControl from "@/components/WhenControl";
 import { statedHhmm, type WhenValue } from "@/lib/stated-time";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -22,29 +21,36 @@ import {
   usualRoutinePhrase,
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
-import { logPractice } from "@/app/(app)/wellness/actions";
-import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
-import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import {
+  doseOptionsFor,
+  type DoseLedgerItem,
+} from "@/components/intake/dose-ledger-entry";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import SubstanceForm from "@/components/substances/SubstanceForm";
+import SymptomForm from "@/components/illness/SymptomForm";
+import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
-import type { WeightUnit } from "@/lib/settings";
+import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
+import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
-// kind's backfill". The other four kinds rendered plain redirect links, so the page
+// kind's backfill". The other kinds rendered plain redirect links, so the page
 // built for FINDING a gap in the record sent the reader somewhere else to fill it and
 // lost the day they were looking at on the way. `body` was the loudest of them: it
 // pointed at `/trends/metric/weight`, as if a body reading were only ever a weight.
 //
 // NO SIXTH WRITE CORE. Each form below posts the domain's own create action —
-// `logFoodServing`, `logPractice`, `addSubstanceDailyTotalAction`, `addBodyMetric` —
+// `logFoodServing`, `logPractice`, `addSubstanceDailyTotalAction`, `addMeasurements` —
 // exactly as HistoryRows' correction forms post that domain's own update action. Each
 // one re-checks write access server-side, so the door is an affordance and never a gate.
 //
 // THE CONTROL KEEPS ONE IDENTITY while its form is open, and dismissal belongs to the
-// form. `DoseBackfillLauncher` follows the same rule (#3911), so all five record doors
-// keep the identity that opened them instead of turning that control into Cancel.
+// form (#3911), so every record door keeps the identity that opened it instead of
+// turning that control into Cancel.
 //
 // THE DATE OPENS ON THE DAY THE READER WAS LOOKING AT, not on today: the whole reason
 // to add from here is a gap you just found. Bounded by today at every kind, which is
@@ -62,23 +68,23 @@ import type { WeightUnit } from "@/lib/settings";
 // time field stays empty and emits null, so a backfill that states nothing still
 // states nothing, which is the behaviour phase 1 was protecting.
 //
-// TWO KINDS KEEP A BARE DATE, and neither is an oversight:
-//   • SUBSTANCE — `substance_daily_totals` is a DAY TOTAL. It has a `recorded_at`
-//     (when the use was logged) and no event instant at all, which is why the record
-//     renders these rows date-only and sinks them below the day's timed ones. A time
-//     field here would collect a statement with nowhere to be stored.
-//   • BODY — `body_metrics.occurred_at` exists (migration 165, #2235) and the write
-//     core takes it, but `addBodyMetric` deliberately states no time, and its
-//     find-then-write CLEARS the column on an empty submission while leaving it alone
-//     for a time-blind one. Choosing between those is a decision about the body
-//     domain's write contract, not about this door, so it is raised rather than
-//     guessed at here.
+// BODY NO LONGER KEEPS A BARE DATE, because it no longer keeps a form (#4424 ruling 2).
+// This door drew three of the domain's measures behind a `DateField` and posted
+// `addBodyMetric` — a fourth body write action that stated no time at all — while the
+// record above it fans every body measure onto the feed. It mounts the domain's ONE
+// form instead, which carries the whole field set, the sitting's optional Time through
+// the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
+// SUBSTANCE is date-only in the SCHEMA (`substance_daily_totals` is a day total with no
+// event instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
+  dose: "Log past dose",
   practice: "Log a practice",
+  mood: "Log a check-in",
   substance: "Log a use",
   body: "Log a reading",
+  symptom: "Log a symptom",
 } as const;
 
 export type HistoryAddKind = keyof typeof KIND_LABEL;
@@ -87,10 +93,30 @@ export type HistoryAddKind = keyof typeof KIND_LABEL;
 export interface HistoryAddVocabulary {
   /** Practices this profile tracks. An empty list renders no practice door. */
   practices: string[];
+  /**
+   * The items a past dose may be logged against — only those with a LIVE dose, so an
+   * item whose schedule is retired keeps its history and takes no new rows. Empty for
+   * every other kind, and an empty list renders no dose door.
+   */
+  doseItems: DoseLedgerItem[];
+  /** The profile-local clock a dose backfill prefills its time with. */
+  doseDefaultTime: string;
   /** This profile's substance keys, with the label its record prints. */
   substances: { key: string; label: string }[];
-  /** The login's weight unit — what the value the reader types is in. */
-  weightUnit: WeightUnit;
+  /**
+   * The symptom vocabulary this profile picks from — the curated catalog plus its own
+   * customs, in the order its history ranks them (#857). Empty for every other kind.
+   */
+  symptoms: { key: string; label: string }[];
+  /**
+   * What the body domain's one form needs to stand on the day being read — the SAME
+   * reader the quick-log sheet's measurements overlay uses (#4424 ruling 2), so the
+   * door and the sheet cannot offer different field sets for one form.
+   */
+  measurements: MeasurementsQuickEntry;
+  /** The record day's full check-in seed and the canonical Calm relevance verdict. */
+  moodDay: MoodFormDay;
+  moodShowCalm: boolean;
   /**
    * The composed "your usual <window>" offers standing on the day being read (#4118),
    * one per window, seeded server-side. Empty for every kind but `food`, for a day
@@ -113,6 +139,7 @@ export default function HistoryAddDoor({
 }) {
   const router = useRouter();
   const tz = useTimezone();
+  const formatPrefs = useFormatPrefs();
   // THE PAIR, held as one value (#2236 invariant 1). `date` opens on the day the
   // reader was looking at and `statedAt` opens EMPTY — never defaulted to now.
   const [when, setWhen] = useState<WhenValue>({ date, statedAt: null });
@@ -168,8 +195,10 @@ export default function HistoryAddDoor({
       });
   }, [when.date, seededDate, vocabulary.usual]);
 
+  if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
+  if (kind === "symptom" && vocabulary.symptoms.length === 0) return null;
 
   function close(): void {
     setOpen(false);
@@ -301,22 +330,6 @@ export default function HistoryAddDoor({
     );
   }
 
-  // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
-  // time hidden: a control rendered without half of itself is a variant, and these two
-  // kinds are date-only in the SCHEMA rather than by presentation choice.
-  const dateField = (
-    <label className="text-xs text-slate-500 dark:text-slate-400">
-      Date
-      <DateField
-        name="date"
-        defaultValue={date}
-        max={maxDate}
-        required
-        inputClassName="mt-1 w-full"
-      />
-    </label>
-  );
-
   // The TIMED kinds' field, and the day and the minute come out of it together.
   // `mode="state"` because a backfill is an assertion rather than an amendment, and
   // `timeRequired` is false because stating a time is optional here — the record's own
@@ -393,157 +406,115 @@ export default function HistoryAddDoor({
             {buttons}
           </form>
         );
-      case "practice":
+      case "dose":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind already
+        // opened a form in place, but through `DoseBackfillLauncher` — its own toggle,
+        // its own item picker, and NO day. The launcher is deleted.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await logPractice(fd);
-                return outcome.kind === "logged"
-                  ? null
-                  : "Couldn't log that session.";
-              })
-            }
-          >
-            {whenField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Practice
-              <select name="practice" className="input mt-1 w-full">
-                {vocabulary.practices.map((practice) => (
-                  <option key={practice}>{practice}</option>
-                ))}
-              </select>
-            </label>
-            {/* THE FIELD IS ALWAYS POSTED, AND ITS VALUE IS NOW THE READER'S.
-                `logPractice` reads PRESENCE, not value (#2204): an absent
-                `start_time` means "you have the clock" and would stamp the filing
-                instant onto a day that is not today, so this stays present
-                unconditionally. Its value is the wall clock WhenControl collected —
-                and an unstated time still resolves to "", which is the same honest
-                "this session has no minute" the door has always been able to say.
-                The field is `start_time` since #3142 renamed the column; posting the
-                old name would have left the presence gate unsatisfied and stamped
-                the tap instant over what the person actually said. NO `end_time`:
-                this door states a start, and a session's window is the expanded
-                form's to state. */}
-            <input
-              type="hidden"
-              name="start_time"
-              value={statedHhmm(when.statedAt, tz)}
-            />
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min={1}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <HistoricalDoseForm
+            items={vocabulary.doseItems.map((item) => ({
+              id: item.id,
+              name: item.name,
+              doses: doseOptionsFor(item, formatPrefs),
+              asNeeded: item.asNeeded,
+              courseBound: item.kind === "medication",
+            }))}
+            initialDate={date}
+            maxDate={maxDate}
+            defaultTime={vocabulary.doseDefaultTime}
+            repeatAfterAdd
+            onSaved={() => router.refresh()}
+            onDone={close}
+          />
+        );
+      case "practice":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own
+        // practice form — a start with no end, so a window it could state here was
+        // correctable only on the Wellness card — is deleted and the domain's one form
+        // mounts with the found day in hand. The close and re-read stay the door's.
+        return (
+          <PracticeSessionForm
+            practices={vocabulary.practices}
+            // The door is bounded by today at every kind (see the header), so
+            // `maxDate` IS this profile's today — there is no second day to pass.
+            today={maxDate}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "substance":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance
+        // form — with the bare "Amount" — is deleted and the domain's one form mounts
+        // with the found day in hand. The close and re-read stay the door's.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await addSubstanceDailyTotalAction(fd);
-                return outcome.kind === "added"
-                  ? null
-                  : "Couldn't save that entry.";
-              })
-            }
-          >
-            {dateField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Substance
-              <select name="substance" className="input mt-1 w-full">
-                {vocabulary.substances.map((substance) => (
-                  <option key={substance.key} value={substance.key}>
-                    {substance.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={1}
-                className="input mt-1 w-full"
-                required
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={vocabulary.substances}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
+        );
+      case "mood":
+        return (
+          <MoodForm
+            days={[vocabulary.moodDay]}
+            showCalm={vocabulary.moodShowCalm}
+            dateReach="dated"
+            repeatAfterSave
+            onSaved={() => router.refresh()}
+            onCancel={close}
+          />
+        );
+      case "symptom":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The day view's own
+        // symptom card mounts the tap BAR, which is why this kind had no door at all —
+        // but a reader filtered to `?kind=symptom` is standing on no day, so the record
+        // could show symptom rows and correct them while offering no way to add one.
+        // The domain's form is that way, with the found day in hand.
+        //
+        // NO `dateField`: the store is UNIQUE(profile_id, date, symptom) and the form
+        // says so — the day is the door's, not a field inside it.
+        return (
+          <SymptomForm
+            symptoms={vocabulary.symptoms}
+            date={date}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "body":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The domain's one form,
+        // with the found day in hand — every measure the record's body rows print, not
+        // the three this door used to draw.
+        //
+        // IT STAYS OPEN AFTER A SAVE, which is the one behaviour this mount adds and
+        // the #4211 requirement absorbed into #4424: the form resets its own fields and
+        // keeps its date, so five readings backfilled onto one past day are five quick
+        // saves rather than five re-openings. `router.refresh()` is what puts each of
+        // them into the record the reader is standing in; `close()` is deliberately NOT
+        // called, and the form's own toast is the confirmation.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                // THE ACTION SILENTLY SKIPS an out-of-range number, so a reader who
-                // typed one would watch the door close over nothing. The same pure
-                // guard the two weight quick-adds run answers first.
-                const refusal = validateBodyMetricInput({
-                  weight: fd.get("weight") as string | null,
-                  bodyFatPct: fd.get("body_fat_pct") as string | null,
-                  restingHr: fd.get("resting_hr") as string | null,
-                });
-                if (refusal) return refusal;
-                await addBodyMetric(fd);
-                return null;
-              })
-            }
-          >
-            {dateField}
-            {/* EVERY BODY MEASURE THE RECORD SHOWS, not weight alone — `body_metrics`
-                holds three quantities per day and `bodyMetricMeasures` fans all three
-                onto the feed, so a door that took only a weight could not backfill two
-                thirds of the rows it sits above. `addBodyMetric` writes whichever
-                fields carry a value. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              {`Weight (${vocabulary.weightUnit})`}
-              <input
-                type="number"
-                step="any"
-                name="weight"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Body fat (%)
-              <input
-                type="number"
-                step="any"
-                name="body_fat_pct"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Resting HR (bpm)
-              <input
-                type="number"
-                name="resting_hr"
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <MeasurementsQuickAdd
+            {...vocabulary.measurements}
+            presentation="modal"
+            // The record's `body` rows ARE `body_metrics` (`bodyMetricMeasures` fans
+            // weight, body fat and resting HR onto the feed), so the door opens on the
+            // group holding them rather than on the form's own default.
+            defaultGroup="body"
+            onSaved={() => router.refresh()}
+          />
         );
     }
   }

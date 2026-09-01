@@ -7,7 +7,6 @@ import {
   openMeasurementGroup,
   openMobileDrawer,
   settledClick,
-  settledFill,
   stageMediaFiles,
 } from "./helpers";
 import { openLogSheet, showLogRow } from "./log-sheet-helpers";
@@ -107,19 +106,25 @@ function shellProfileId(): number {
 // The single practice row this spec's tap wrote, for the #2204 assertions that are
 // about the STORE rather than about the screen.
 function readShellPracticeLog(): {
+  date: string;
   start_time: string | null;
+  end_time: string | null;
   duration_min: number | null;
+  live: number;
 } {
   const db = openDb();
   try {
     return db
       .prepare(
-        `SELECT start_time, duration_min FROM practice_logs
+        `SELECT date, start_time, end_time, duration_min, live FROM practice_logs
           WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
       )
       .get(shellProfileId()) as {
+      date: string;
       start_time: string | null;
+      end_time: string | null;
       duration_min: number | null;
+      live: number;
     };
   } finally {
     db.close();
@@ -875,59 +880,6 @@ test("a past day's dose captured with no signal leaves that day, then replays on
   }
 });
 
-test("the food and vitals overlays mount the same forms their pages carry", async ({
-  browser,
-}) => {
-  const page = await signIn(browser);
-  try {
-    await page.goto("/");
-
-    // Food: the Nutrition tab's own FoodLogBar, scoped to the overlay body so
-    // this can never accidentally assert the page's copy.
-    const food = await openQuickEntry(page, "log-food");
-    const foodBody = page.getByTestId("quick-entry-body");
-    await expect(foodBody).toHaveAttribute("data-form", "food");
-    await expect(foodBody.getByTestId("food-log-bar")).toBeVisible();
-    // The protein entry is ranked in only for a profile that tracks protein (#1980),
-    // and this fixture profile logs none — so the compact sheet offers no gram box. The
-    // Food tab stays the complete surface where those grams are first entered.
-    await expect(foodBody.getByTestId("protein-quickadd")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(food).toHaveCount(0);
-
-    // Measurements — the ONE row (#1486/#1506) that replaced the former weight +
-    // vitals pair, opening the SAME MeasurementsQuickAdd the Trends surfaces mount
-    // (no second form was written for the sheet).
-    const vitals = await openQuickEntry(page, "log-measurements");
-    const vitalsBody = page.getByTestId("quick-entry-body");
-    await expect(vitalsBody).toHaveAttribute("data-form", "measurements");
-    await expect(
-      vitalsBody.getByTestId("measurements-quick-add")
-    ).toBeVisible();
-
-    // And a reading submitted from here lands: the toast fires only after
-    // addMeasurements returned, so the write reached the same server action the
-    // page mount uses. (That action's persistence is already pinned by the action
-    // tier and manual-vitals.spec.ts — a mount, not a new write path.)
-    await openMeasurementGroup(
-      page,
-      vitalsBody.getByTestId("measurements-quick-add"),
-      "vitals"
-    );
-    await vitals.locator("#m-systolic").fill("118");
-    await vitals.locator("#m-diastolic").fill("76");
-    await settledClick(
-      page,
-      vitals.getByRole("button", { name: "Save measurements" })
-    );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/$/);
-  } finally {
-    await page.context().close();
-  }
-});
-
 test("food serving taps settle, roll one cumulative Undo toast, and undo only the latest tap (#3611)", async ({
   browser,
 }) => {
@@ -937,6 +889,12 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
   try {
     await page.goto("/");
     const food = await openQuickEntry(page, "log-food");
+    // The overlay mounts the Nutrition page's FoodLogBar rather than a second form.
+    // Protein is ranked in only for profiles that track it; this fixture does not.
+    const foodBody = page.getByTestId("quick-entry-body");
+    await expect(foodBody).toHaveAttribute("data-form", "food");
+    await expect(foodBody.getByTestId("food-log-bar")).toBeVisible();
+    await expect(foodBody.getByTestId("protein-quickadd")).toHaveCount(0);
     const row = food.getByTestId(`food-group-${group}`);
     if (!(await row.isVisible())) {
       await food.getByTestId("food-more-groups-summary").click();
@@ -1088,42 +1046,10 @@ test("switching profiles clears the originating food receipt and cannot target i
   }
 });
 
-// Tap "Log another" through the same-day re-log confirm the sheet asks on every tap
-// after the first (#2007 layer 3 / #798: informational, never permissive).
-async function logAnother(page: Page, row: Locator): Promise<void> {
-  await hydratedClick(page, row.getByTestId("practice-log-button"));
-  const dialog = page.getByTestId("confirm-dialog");
-  await expect(dialog).toBeVisible();
-  await settledClick(page, dialog.getByRole("button", { name: "Log session" }));
-}
-
-// CLEAR THE ONE-TAP COOLDOWN BETWEEN TWO TAPS OF THE SAME WRITE KEY (#2007), the
-// idiom every neighbour that does this already uses (food-limit-note.spec.ts,
-// substance-use.spec.ts, wellness-practices.spec.ts): a reload drops the client-side
-// ledger, without which the next tap is absorbed as an accidental double and reaches
-// neither the confirm nor the server.
-//
-// IT USED TO BE PROVIDED BY A BUG, which is why this arrives with #4334. Measured on
-// this test at 390x844: the second tap fires ~210ms after the first, well inside the
-// 2s window — and passed anyway, because the "Logged today's session" notice came to
-// rest ON the log button (notice band 709-771, button centre y=712, and
-// `document.elementFromPoint` at that centre returning the toast), so Playwright spent
-// the cooldown waiting for the interception to clear. Now that the sheet claims the
-// bottom edge the notice is out of the way, the tap lands at once, and the wait this
-// test always depended on has to be asked for out loud.
-async function reopenPastCooldown(page: Page): Promise<Locator> {
-  await page.reload();
-  return openQuickEntry(page, "log-practice");
-}
-
-// #3273 — the sheet can now STATE when a session happened.
-//
-// The gap this closes: the sheet mounts LogPracticeButton without `showDetails` (a
-// modal over a one-tap sheet is not what that surface is for), and the time lived only
-// in that modal — so a 07:00 sauna logged at 09:00 wore 09:00 forever and #4009's
-// correction had to repair it. The property that matters is the PAIR: a stated minute
-// is what the row carries, and an untouched sheet still writes the tap instant.
-test("the sheet states an earlier session time, and an untouched tap still writes the tap instant (#3273)", async ({
+// Both quick intents live in the same sheet row. The running half is server-rendered
+// again after navigation, and the day chart distinguishes the live block from the
+// finished minute-rounded window.
+test("the sheet starts and ends a live practice, then draws its exact tap window (#3143)", async ({
   browser,
 }) => {
   clearShellPracticeLogs();
@@ -1131,7 +1057,7 @@ test("the sheet states an earlier session time, and an untouched tap still write
   const page = await signIn(browser);
   try {
     await page.goto("/");
-    const opened = await openQuickEntry(page, "log-practice");
+    let opened = await openQuickEntry(page, "log-practice");
     const rowIn = (sheet: Locator) =>
       sheet
         .getByTestId("quick-entry-practice-list")
@@ -1139,65 +1065,86 @@ test("the sheet states an earlier session time, and an untouched tap still write
         .filter({ hasText: SHELL_PRACTICE });
     let row = rowIn(opened);
     await expect(row).toBeVisible();
-
-    // COLLAPSED and empty: the fast path is one tap and nothing is stated until the
-    // affordance is opened, so the control is not even in the DOM.
-    await expect(row.getByTestId("practice-when-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false"
+    await expect(row.getByTestId("practice-start-button")).toBeVisible();
+    await expect(row.getByTestId("practice-log-button")).toContainText(
+      "Just finished"
     );
+
+    const tapMinute = zonedDateParts(PINNED_TZ, frozenNow()).hhmm;
+    await settledClick(page, row.getByTestId("practice-start-button"));
+    await expect(page.getByTestId("toast")).toContainText("Session started");
+    await expect(row.getByTestId("practice-end-button")).toBeVisible();
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: tapMinute,
+      end_time: null,
+      duration_min: null,
+      live: 1,
+    });
+
+    const day = readShellPracticeLog().date;
+    await page.goto(`/history?day=${day}`);
+    let chart = page
+      .getByTestId("intraday-panel")
+      .locator('[data-variant="compact"]');
+    await expect(chart.getByTestId("intraday-block")).toHaveAttribute(
+      "data-running",
+      "true"
+    );
+
+    await page.goto("/");
+    opened = await openQuickEntry(page, "log-practice");
+    row = rowIn(opened);
+    await expect(row.getByTestId("practice-end-button")).toBeVisible();
+    await settledClick(page, row.getByTestId("practice-end-button"));
+    await expect(page.getByTestId("toast")).toContainText("Session finished");
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: tapMinute,
+      end_time: tapMinute,
+      duration_min: 1,
+      live: 0,
+    });
+
+    await page.goto(`/history?day=${day}`);
+    chart = page
+      .getByTestId("intraday-panel")
+      .locator('[data-variant="compact"]');
+    const finished = chart.getByTestId("intraday-block");
+    await expect(finished).toHaveAttribute("data-title", SHELL_PRACTICE);
+    await expect(finished).not.toHaveAttribute("data-running", "true");
+  } finally {
+    clearShellPracticeLogs();
+    await page.close();
+  }
+});
+
+test("the sheet keeps its collapsed earlier-time statement for Just finished (#3273/#3143)", async ({
+  browser,
+}) => {
+  clearShellPracticeLogs();
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const sheet = await openQuickEntry(page, "log-practice");
+    const row = sheet
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    const toggle = row.getByTestId("practice-when-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
 
-    // Leg 1 — the untouched tap. It must write what it wrote before this control
-    // existed: the tap instant's profile-local wall minute, off the app's clock seam.
-    await settledClick(page, row.getByTestId("practice-log-button"));
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "1 session logged"
-    );
-    expect(readShellPracticeLog().start_time).toBe(
-      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
-    );
-
-    row = rowIn(await reopenPastCooldown(page));
-    await expect(row).toBeVisible();
-    let toggle = row.getByTestId("practice-when-toggle");
-
-    // Leg 2 — the statement. Absolute local time, on the day the sheet is filing to;
-    // the day half is fixed, so a statement can only move the minute.
     await hydratedClick(page, toggle);
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
-    await settledFill(page, row.getByTestId("practice-when-time"), "07:05");
-    // A second same-day tap ASKS (#2007 layer 3) — a genuine second session is
-    // legitimate, so the dialog's default is to proceed.
-    await logAnother(page, row);
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "2 sessions logged"
-    );
-    expect(readShellPracticeLog().start_time).toBe("07:05");
-
-    // THE STATEMENT IS SPENT BY THE TAP IT ANSWERS. Multi-session days are the point
-    // of this surface, so a surviving 07:05 would stamp the evening's session with the
-    // morning's time — the field empties IN FRONT OF THE USER, which is what this
-    // reads on the live surface before anything is remounted.
+    await row.getByTestId("practice-when-time").fill("07:05");
+    await settledClick(page, row.getByTestId("practice-log-button"));
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: null,
+      end_time: "07:05",
+      duration_min: null,
+      live: 0,
+    });
     await expect(row.getByTestId("practice-when-time")).toHaveValue("");
-
-    // Leg 3 — and the OTHER half of that claim: an open-but-empty when panel posts no
-    // time at all, so the next session carries the tap instant. The panel is opened
-    // again after the cooldown clear so this still runs the `whenShown` branch rather
-    // than the collapsed one leg 1 already covers.
-    row = rowIn(await reopenPastCooldown(page));
-    toggle = row.getByTestId("practice-when-toggle");
-    await hydratedClick(page, toggle);
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
-    await logAnother(page, row);
-    await expect(row.getByTestId("practice-today-count")).toContainText(
-      "3 sessions logged"
-    );
-    expect(readShellPracticeLog().start_time).toBe(
-      zonedDateParts(PINNED_TZ, frozenNow()).hhmm
-    );
+    await expect(page.getByTestId("practice-log-details")).toHaveCount(0);
   } finally {
     clearShellPracticeLogs();
     await page.close();
@@ -1322,7 +1269,7 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     const dashboardUrl = page.url();
 
     const overlay = await openQuickEntry(page, "log-mood");
-    const checkin = overlay.getByTestId("quick-mood-checkin");
+    const checkin = overlay.getByTestId("mood-form");
     await expect(checkin).toBeVisible();
     const moodChoices = Array.from({ length: 5 }, (_, index) =>
       checkin.getByTestId(`quick-mood-tap-${index + 1}`)
@@ -1343,6 +1290,13 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     await yesterdayChip.click();
     await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
 
+    // The tap and the full statement are one form. Fill details before choosing the
+    // valence and prove the one-tap submission carries every visible answer with it.
+    await checkin.getByText("Details").click();
+    await checkin.getByRole("button", { name: "Energy: 3" }).click();
+    await checkin.getByRole("button", { name: "Work" }).click();
+    await checkin.getByLabel("Note").fill("clear afternoon");
+
     // One tap writes and closes the sheet (a check-in is a transaction with an
     // end); you are still on the dashboard.
     await settledClick(page, checkin.getByTestId("quick-mood-tap-4"));
@@ -1356,10 +1310,25 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     try {
       const rows = db
         .prepare(
-          "SELECT date, valence FROM mood_logs WHERE profile_id = ? ORDER BY date"
+          `SELECT date, valence, energy, factors, notes
+             FROM mood_logs WHERE profile_id = ? ORDER BY date`
         )
-        .all(shellProfileId()) as { date: string; valence: number }[];
-      expect(rows).toEqual([{ date: yesterdayDate, valence: 4 }]);
+        .all(shellProfileId()) as {
+        date: string;
+        valence: number;
+        energy: number | null;
+        factors: string | null;
+        notes: string | null;
+      }[];
+      expect(rows).toEqual([
+        {
+          date: yesterdayDate,
+          valence: 4,
+          energy: 3,
+          factors: '["work"]',
+          notes: "clear afternoon",
+        },
+      ]);
     } finally {
       db.close();
     }

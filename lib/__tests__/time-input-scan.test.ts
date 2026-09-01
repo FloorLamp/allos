@@ -41,36 +41,32 @@ const HANDROLLED_ALLOW = new Map<
   // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
   // write half: both adopt the shared control (backfill = state + timeRequired,
   // amend = correct with "Not stated" reachable).
+  // SymptomLogBar.tsx left it on the touch its own entry named (#4424 ruling 5): the
+  // temperature reading time is WhenControl's now, day-fixed to the card's date.
+  // PracticeSessionHistory.tsx left it on #4424 ruling 1's touch: its edit form spelled
+  // the same five fields the log form did, so it now MOUNTS that form and the pair it
+  // carried is GONE rather than migrated.
+  //
+  // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
+  // stated here rather than smuggled: the `/history` add door's practice case and that
+  // record row's correction each stated a START through `WhenControl` and could not
+  // state an END at all, so a window stated in the expanded form was correctable on
+  // exactly one surface. Both mount the one form now, which states the RANGE — the
+  // shape this entry exists for. The ratchet's count does not move, because the pair is
+  // spelled once and four surfaces mount it.
   [
-    "components/illness/SymptomLogBar.tsx",
-    {
-      count: 1,
-      kind: "event",
-      reason: "temperature reading time on the symptom bar; migrates on touch",
-    },
-  ],
-  [
-    "components/practices/LogPracticeButton.tsx",
+    "components/practices/PracticeSessionForm.tsx",
     {
       count: 2,
       kind: "event",
       reason:
-        "the #3142 practice start/end pair — the SAME range shape as the " +
+        "the #3142 detailed practice start/end pair — the SAME range shape as the " +
         "activity start/end pair below, unmodelled by the control for the same " +
-        "reason. It was one input until #3142 renamed `time` to `start_time` " +
-        "and gave a session an END, on the owner's decision that the expanded " +
-        "form offers Start and End; migrates with DateTimeFields when the " +
-        "control grows a range form",
-    },
-  ],
-  [
-    "components/practices/PracticeSessionHistory.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "the #3142 practice start/end pair on the edit form — same range shape " +
-        "and same migration as the log form above",
+        "reason. #3143 extracted the deliberate historical form from the quick " +
+        "intent control so backfill remains exempt; the same two inputs moved, " +
+        "not grew. #4424 ruling 1 made this THE practice form — add and edit, at " +
+        "every mount — so four spellings of the pair are now this one. Migrates " +
+        "with DateTimeFields when the control grows a range form",
     },
   ],
   [
@@ -222,10 +218,13 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   ],
   [
     "components/practices/LogPracticeButton.tsx",
-    { mounts: true, why: "the sheet's collapsed session time (#3273)" },
+    {
+      mounts: true,
+      why: '"Happened earlier?" states the end of Just finished (#3273/#3143)',
+    },
   ],
   [
-    "components/quick-entry/QuickMoodCheckin.tsx",
+    "components/mood/MoodForm.tsx",
     {
       mounts: false,
       why:

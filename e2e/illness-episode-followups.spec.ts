@@ -558,7 +558,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(bar.getByTestId("temp-quick-unit")).toHaveValue("F");
     await bar.getByTestId("temp-quick-input").fill("37.8");
     await expect(bar.getByTestId("temp-quick-unit")).toHaveValue("C");
-    await expect(bar.getByTestId("temp-unit-detected")).toContainText(
+    await expect(bar.getByTestId("temp-quick-detected")).toContainText(
       "Detected °C"
     );
     await bar.getByTestId("temp-quick-save").click();

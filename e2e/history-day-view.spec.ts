@@ -163,6 +163,88 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
     }
   });
 
+  test("both sticky strips park below a forged top inset (#4558)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await signIn(browser);
+    try {
+      await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
+      await chromeReady(page);
+
+      const nav = page.getByTestId("timeline-day-nav");
+      const day = page.locator('[data-testid="history-day"] h2');
+      const flow = page.getByTestId("history-filters");
+      const NOTCH = 37;
+
+      // A sticky-looking position at rest proves nothing: <main>'s safe-area padding
+      // moves ordinary flow too. Hold the target still across a real scroll while the
+      // static filter moves by the inverse delta, then compare the two inset states.
+      const parkedY = async (
+        target: typeof nav,
+        from: number,
+        to: number
+      ): Promise<number> => {
+        const firstScroll = await scrollTo(page, from);
+        const [first, firstFlow] = await settledBoxes([target, flow]);
+        const secondScroll = await scrollTo(page, to);
+        const [second, secondFlow] = await settledBoxes([target, flow]);
+        const moved = secondScroll - firstScroll;
+        expect(Math.abs(moved), "the page really scrolled").toBeGreaterThan(30);
+        expect(
+          Math.abs(second.y - first.y),
+          "the strip stays parked"
+        ).toBeLessThan(2);
+        expect(
+          Math.abs(secondFlow.y - firstFlow.y + moved),
+          "an in-flow row travels one-for-one with the scroll"
+        ).toBeLessThan(2);
+        return second.y;
+      };
+
+      const measure = async (inset: number) => {
+        await page.evaluate(
+          (px) =>
+            document.documentElement.style.setProperty(
+              "--top-edge-inset",
+              `${px}px`
+            ),
+          inset
+        );
+        await scrollTo(page, 0);
+        await expect(nav).toHaveAttribute("data-hidden", "false");
+        const [dayAtRest] = await settledBoxes([day]);
+        const maxScroll = await page.evaluate(
+          () => document.documentElement.scrollHeight - window.innerHeight
+        );
+        const dayFrom = Math.round(dayAtRest.y + 40);
+        expect(
+          maxScroll - dayFrom,
+          "the busy day has a sticky window"
+        ).toBeGreaterThan(100);
+
+        await scrollTo(page, dayFrom);
+        await expect(nav).toHaveAttribute("data-hidden", "true");
+        const dayY = await parkedY(day, dayFrom, dayFrom + 48);
+
+        const deep = await scrollTo(page, maxScroll);
+        await expect(nav).toHaveAttribute("data-hidden", "true");
+        const navFrom = deep - 100;
+        await scrollTo(page, navFrom);
+        await expect(nav).toHaveAttribute("data-hidden", "false");
+        const navY = await parkedY(nav, navFrom, navFrom - 48);
+        return { dayY, navY };
+      };
+
+      const ordinary = await measure(0);
+      const forged = await measure(NOTCH);
+      expect.soft(Math.round(forged.dayY - ordinary.dayY)).toBe(NOTCH);
+      expect.soft(Math.round(forged.navY - ordinary.navY)).toBe(NOTCH);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   // FIX B HAS NO SUBJECT HERE, AND THAT IS THE POINT. `/timeline` met its chrome
   // budget by COLLAPSING a filter block that carried a category row, a date-range
   // card and a quick-range row. The record meets the same budget by not having them:

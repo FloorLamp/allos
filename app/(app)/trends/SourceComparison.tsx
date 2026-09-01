@@ -28,12 +28,13 @@ import type { BodyMetricKind, IntegrationId } from "@/lib/types";
 import type { WeightUnit } from "@/lib/settings";
 import type { DateRange } from "@/lib/timeline-format";
 import type { CompareSeries } from "@/components/SourceCompareChartInner";
+import type { ReactNode } from "react";
 import SourceCompareChart from "@/components/SourceCompareChart";
 import PrimarySourcePicker from "./PrimarySourcePicker";
 
 // "Compare sources" (issue #14): the per-source overlay and primary-source
-// picker for ONE metric detail page. Renders NOTHING for a single-source profile
-// — the control only exists when there is genuinely something to compare.
+// picker for ONE metric detail page. Renders no comparison for a single-source
+// profile; a caller may supply its own domain-specific explanation instead.
 //
 // Document series (#533): a metric extracted from two documents stays two DISTINCT
 // series (foldSourceSeries keeps document:5 and document:7 apart), so each carries
@@ -68,12 +69,14 @@ export default function SourceComparison({
   metricKey,
   className = "",
   range,
+  emptyState = null,
 }: {
   profileId: number;
   weightUnit: WeightUnit;
   metricKey: string;
   className?: string;
   range?: DateRange;
+  emptyState?: ReactNode;
 }) {
   const metric = COMPARABLE_METRICS.find((entry) => entry.key === metricKey);
   if (!metric) return null;
@@ -107,7 +110,7 @@ export default function SourceComparison({
       : metric.kind === "body"
         ? getBodyMetricSeriesBySource(profileId, metric.key as BodyMetricKind)
         : getHrSeriesBySource(profileId);
-  if (raw.length < 2) return null;
+  if (raw.length < 2) return emptyState;
 
   // Doc id → filename/date, so a 'document:<id>' series labels by the document's
   // own identity instead of a collapsed "Document" (#533).

@@ -172,7 +172,16 @@ export default function ActivityOverlay({
       onClick={dismissFromOverlay}
     >
       {/* Bottom padding is plain p-4: the form's sticky footer re-spans it and
-          carries the safe-area inset itself. */}
+          carries the safe-area inset itself.
+
+          THE TOP EDGE IS THIS SURFACE'S (#4515). The scroll container above is
+          `fixed inset-0`, so it is the viewport's own scroller: the form's sticky
+          rows pin against the phone's top edge and park with `top-edge-safe`
+          (app/globals.css). This padding cannot stand in for that — padding on a
+          scrolled child places content at rest and says nothing about where a
+          pinned row stops. Nothing claims that edge above them here, so the
+          utility's zero default IS this panel's claim; a row clearing another row
+          inside the form declares its own offset. */}
       <div
         ref={panelRef}
         data-testid="activity-overlay-panel"

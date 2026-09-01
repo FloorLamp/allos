@@ -4,10 +4,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
+import {
+  checkRunsVerdict,
+  closedStatusDescription,
+  readinessVerdict,
+  receiptVerdict,
+} from "../../scripts/orchestration/merge-gate-core.mjs";
 
-// THE MERGE GATE, DRIVEN AS A SCRIPT — the same stub-curl construction as
-// `./delete-unknown-labels-script.test.ts`. What matters here is the verdict
-// logic in the script's control flow: the exact-head invariant
+// THE MERGE GATE. Verdict branches run against the pure core; the smaller
+// stub-curl set drives the real CLI where process, auth and transport matter.
+// The exact-head invariant
 // (review-merge.md §Merge) says merge needs a non-author receipt STATING the
 // current head SHA, green checks on that head, and zero unresolved threads.
 // Each case below is one way a head that must not merge could read as safe.
@@ -141,18 +147,32 @@ function runGate(
   return { ...run, calls };
 }
 
+function receipt(overrides: Fixture) {
+  const state = fixture(overrides);
+  return receiptVerdict(state.pr, state.reviews, HEAD);
+}
+
 describe("merge-gate.mjs", () => {
-  it("opens the gate for a receipted, green, thread-clean head", () => {
+  it("opens the gate and sends no write verb", () => {
     const run = runGate({});
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("GATE OPEN");
     expect(run.stdout).toContain(
       `receipt: reviewer-agent states ${HEAD.slice(0, 8)}`
     );
+    for (const call of run.calls) {
+      if (call.method === "POST") {
+        expect(call.url).toMatch(/\/graphql$/);
+        expect(call.data).toContain('"query"');
+        expect(call.data).not.toContain("mutation");
+      } else {
+        expect(call.method).toBe("GET");
+      }
+    }
   });
 
   it("closes on a receipt pinned to a PREVIOUS head — the review is void", () => {
-    const run = runGate({
+    const result = receipt({
       reviews: [
         {
           state: "COMMENTED",
@@ -161,14 +181,14 @@ describe("merge-gate.mjs", () => {
         },
       ],
     });
-    expect(run.status).toBe(1);
-    expect(run.stdout).toContain("VOIDS");
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("VOIDS");
   });
 
   it("closes a same-account review that states the SHA but not independence", () => {
     // The #4258 boundary: on a shared identity the receipt must SAY the
     // reviewer did not author the change — a SHA alone is not the claim.
-    const run = runGate({
+    const result = receipt({
       reviews: [
         {
           state: "COMMENTED",
@@ -177,15 +197,15 @@ describe("merge-gate.mjs", () => {
         },
       ],
     });
-    expect(run.status).toBe(1);
-    expect(run.stdout).toContain("does not assert independence");
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("does not assert independence");
   });
 
   it("opens on a shared-identity receipt that states SHA AND non-authorship", () => {
     // The orchestrator and its lanes post as one account (#4258): a genuine
     // independent review used to fail on identity rather than content. The
     // claim the gate can actually check is the stated one.
-    const run = runGate({
+    const result = receipt({
       reviews: [
         {
           state: "COMMENTED",
@@ -196,13 +216,13 @@ describe("merge-gate.mjs", () => {
         },
       ],
     });
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain("shared identity");
-    expect(run.stdout).toContain("did not author");
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("shared identity");
+    expect(result.message).toContain("did not author");
   });
 
   it("a shared-identity assertion still needs THIS head's SHA", () => {
-    const run = runGate({
+    const result = receipt({
       reviews: [
         {
           state: "COMMENTED",
@@ -211,23 +231,25 @@ describe("merge-gate.mjs", () => {
         },
       ],
     });
-    expect(run.status).toBe(1);
+    expect(result.ok).toBe(false);
   });
 
   it("closes when a review exists but never states the SHA", () => {
-    const run = runGate({
+    const result = receipt({
       reviews: [
         { state: "COMMENTED", user: { login: "reviewer-agent" }, body: "LGTM" },
       ],
     });
-    expect(run.status).toBe(1);
-    expect(run.stdout).toContain("no exact-head receipt");
-    expect(run.stdout).toContain("STATUS: gate CLOSED — no exact-head receipt");
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("no exact-head receipt");
+    expect(closedStatusDescription(result.message)).toContain(
+      "gate CLOSED — no exact-head receipt"
+    );
   });
 
   it("keeps the published failure description inside GitHub's 140-character limit", () => {
-    const run = runGate({
-      checkRuns: [
+    const result = checkRunsVerdict(
+      [
         green("lint"),
         {
           name: `test-${"very-long-check-name-".repeat(10)}`,
@@ -235,32 +257,35 @@ describe("merge-gate.mjs", () => {
           conclusion: "failure",
         },
       ],
-    });
-    const status = run.stdout
-      .split("\n")
-      .find((line) => line.startsWith("STATUS: "));
-    expect(status).toBeDefined();
-    expect(status!.slice("STATUS: ".length).length).toBeLessThanOrEqual(140);
+      null,
+      HEAD
+    );
+    const status = closedStatusDescription(result.message);
+    expect(status.length).toBeLessThanOrEqual(140);
     expect(status).toContain("gate CLOSED — red checks on this head");
   });
 
   it("closes on a red check and names it", () => {
-    const run = runGate({
-      checkRuns: [
+    const result = checkRunsVerdict(
+      [
         green("lint"),
         { name: "test", status: "completed", conclusion: "failure" },
       ],
-    });
-    expect(run.status).toBe(1);
-    expect(run.stdout).toContain("red checks on this head: test");
+      null,
+      HEAD
+    );
+    expect(result.kind).toBe("fail");
+    expect(result.message).toContain("red checks on this head: test");
   });
 
   it("exits 2 — NOT a verdict — while a check is still running", () => {
-    const run = runGate({
-      checkRuns: [green("lint"), { name: "test", status: "in_progress" }],
-    });
-    expect(run.status).toBe(2);
-    expect(run.stdout).toContain("CI INCOMPLETE");
+    const result = checkRunsVerdict(
+      [green("lint"), { name: "test", status: "in_progress" }],
+      null,
+      HEAD
+    );
+    expect(result.kind).toBe("incomplete");
+    expect(result.message).toContain("CI INCOMPLETE");
   });
 
   it("--ignore-check excludes the gate's own wrapper, and only it", () => {
@@ -273,18 +298,23 @@ describe("merge-gate.mjs", () => {
         { name: "merge-gate", status: "in_progress" },
       ],
     };
-    expect(runGate(withSelf).status).toBe(2);
-    const run = runGate(withSelf, {}, ["--ignore-check", "merge-gate"]);
-    expect(run.status).toBe(0);
-    expect(run.stdout).toContain('ignoring check "merge-gate"');
+    expect(checkRunsVerdict(withSelf.checkRuns, null, HEAD).kind).toBe(
+      "incomplete"
+    );
+    const result = checkRunsVerdict(withSelf.checkRuns, "merge-gate", HEAD);
+    expect(result.kind).toBe("pass");
+    expect(result.ignored).toBe(true);
+    const cli = runGate(withSelf, {}, ["--ignore-check", "merge-gate"]);
+    expect(cli.status).toBe(0);
+    expect(cli.stdout).toContain('ignoring check "merge-gate"');
     // The exclusion is by NAME, not by status: a pending check that is not
     // the wrapper still blocks.
-    const other = runGate(
-      { checkRuns: [green("lint"), { name: "test", status: "in_progress" }] },
-      {},
-      ["--ignore-check", "merge-gate"]
+    const other = checkRunsVerdict(
+      [green("lint"), { name: "test", status: "in_progress" }],
+      "merge-gate",
+      HEAD
     );
-    expect(other.status).toBe(2);
+    expect(other.kind).toBe("incomplete");
   });
 
   it("closes on an unresolved review thread, outdated or not", () => {
@@ -332,9 +362,9 @@ describe("merge-gate.mjs", () => {
   });
 
   it("closes on a draft PR — PRs open READY", () => {
-    const run = runGate({ pr: { draft: true } });
-    expect(run.status).toBe(1);
-    expect(run.stdout).toContain("DRAFT");
+    const state = fixture({ pr: { draft: true } });
+    const result = readinessVerdict(state.pr);
+    expect(result.failures).toEqual([expect.stringContaining("DRAFT")]);
   });
 
   it("blocks (exit 3) without a token rather than reporting empty sets", () => {
@@ -346,20 +376,6 @@ describe("merge-gate.mjs", () => {
     expect(run.stderr).toContain(
       "no GH_TOKEN/GITHUB_TOKEN and no authenticated gh"
     );
-  });
-
-  it("sends no write verb — every call is a GET or the GraphQL read", () => {
-    const run = runGate({});
-    expect(run.status).toBe(0);
-    for (const call of run.calls) {
-      if (call.method === "POST") {
-        expect(call.url).toMatch(/\/graphql$/);
-        expect(call.data).toContain('"query"');
-        expect(call.data).not.toContain("mutation");
-      } else {
-        expect(call.method).toBe("GET");
-      }
-    }
   });
 });
 

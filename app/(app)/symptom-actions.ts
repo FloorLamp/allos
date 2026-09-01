@@ -8,6 +8,7 @@ import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
@@ -91,27 +92,28 @@ function revalidateSymptoms(): void {
 }
 
 // Cross-profile write gating for the illness Now group (issue #858). The hero lets a caregiver
-// log for a household member WITHOUT switching, so the bar may post an explicit
-// `profileId`: when present the write is gated by requireProfileWriteAccess(target) — the
-// #31 cross-profile gate that asserts the target is reachable AND write; when absent the
+// log for a household member WITHOUT switching, so a mount may post an explicit subject:
+// when present the write is gated by requireProfileWriteAccess(target) — the #31
+// cross-profile gate that asserts the target is reachable AND write; when absent the
 // write hits the session's ACTIVE profile via requireWriteAccess(). The default
-// dashboard/record symptom mounts send no profileId and are unaffected. The gate is
+// dashboard/record symptom mounts name no subject and are unaffected. The gate is
 // inlined in each of THESE actions (never a shared helper) so the write-access scanner
 // (lib/__tests__/actions-write-access.test.ts) sees a literal requireWriteAccess() in
 // their bodies; the write cores stay auth-blind profileId-first (#319).
 //
-// `editSymptom` IS THE ONE EXCEPTION AND IT IS DELIBERATE. It is not a bar action — the
-// record's ⋯ is its only caller — so it reads the ROW subject field `profile_id`
-// through the shared gateItemProfile(), with an allowlist entry naming that gate. Two
-// spellings of one subject is not a shape this lane invented; converging #858's
-// `profileId` onto #1328's `profile_id` would have to move every bar action and the
-// bar's own `withTarget` with them, which is its own change.
+// ONE SPELLING, `profile_id` (#4424 ruling 4, completing #4238). This domain used to
+// spell its subject twice — #858's `profileId` in every bar action and #1328's
+// `profile_id` in `editSymptom` — so `/history` had to post BOTH names on one delete to
+// reach the same profile through two field readers. The record row's spelling won,
+// because it is the one `gateItemProfile` already reads for every other kind on that
+// page. Both always resolved to requireProfileWriteAccess(target); this changed a field
+// name, never a gate.
 
 // Log (tap) a symptom at a severity — keeps the day's WORST severity (a tap only raises).
 export async function logSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -153,11 +155,8 @@ export async function editSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
   // THE ROW'S PROFILE, NOT THE ACTING ONE (#3958's multiprofile clause / #2106).
-  // This action's only caller is the record's ⋯, which posts the row's own
-  // `profile_id` the way every other correction on that page does — so it takes the
-  // shared gateItemProfile() rather than the #858 `profileId` its neighbours here
-  // read. Both resolve to requireProfileWriteAccess(target); they differ only in the
-  // field name, and this one is spelled the way a RECORD ROW spells its subject.
+  // It takes the shared gateItemProfile() rather than inlining the gate its
+  // neighbours here spell out, which is the one difference left between them.
   //
   // Before this it gated the session and wrote `profile.id`, and `setSymptomSeverityCore`
   // is keyed on (profile, symptom, date) rather than on a row id — so a ⋯ on another
@@ -181,12 +180,15 @@ export async function editSymptom(
 }
 
 // Explicit LOWER (#857): drop a symptom-day's worst severity to a strictly lower value,
-// preserving its note. Backs the bar's inline "Lower to mild?" confirm — a narrow action
-// so a plain tap can never lower (it raises) and this can never raise.
+// preserving its note. Backs `SymptomRowControl`'s labelled chips — selecting one BELOW
+// the day's current value is sufficient intent, so there is no confirm; the narrowness is
+// what makes that safe, since a plain tap can never lower (it raises) and this can never
+// raise. The "Lower to mild?" confirm this line used to name has not existed for some
+// time, and #4425's manifest inherited the word from here.
 export async function lowerSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -216,7 +218,7 @@ export async function lowerSymptom(
 export async function setSymptomNote(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -245,7 +247,7 @@ export async function setSymptomNote(
 export async function removeSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -285,7 +287,7 @@ export async function removeSymptom(
 export async function setSymptomEpisode(
   formData: FormData
 ): Promise<SymptomLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -354,13 +356,22 @@ export async function deleteCustomSymptom(
 // surfaces on the dashboard, Timeline, Trends, and the clinical results catalog, so all are
 // revalidated.
 export type TemperatureLogResult =
-  | { ok: true; degF: number; flag: string | null; redFlag?: string | null }
+  | {
+      ok: true;
+      degF: number;
+      flag: string | null;
+      redFlag?: string | null;
+      // The minute the acceptance gate discarded (#4568) — a NOTICE beside a reading
+      // that landed, the same verdict `addMeasurements` reports for the sitting's
+      // Time. Absent whenever nothing was stated or the statement was accepted.
+      statedTimeRefused?: StatedTimeRefusal;
+    }
   | { ok: false; error: string };
 
 export async function logTemperature(
   formData: FormData
 ): Promise<TemperatureLogResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);
@@ -401,7 +412,15 @@ export async function logTemperature(
     outcome.degF,
     profileAgeMonths(profileId, date)
   );
-  return { ok: true, degF: outcome.degF, flag: outcome.flag, redFlag };
+  return {
+    ok: true,
+    degF: outcome.degF,
+    flag: outcome.flag,
+    redFlag,
+    ...(outcome.statedTimeRefused
+      ? { statedTimeRefused: outcome.statedTimeRefused }
+      : {}),
+  };
 }
 
 // Free-text symptom intake (issue #877): map a typed sentence onto the vocabulary via
@@ -421,7 +440,7 @@ export type SymptomTextSuggestResult =
 export async function suggestSymptomsFromText(
   formData: FormData
 ): Promise<SymptomTextSuggestResult> {
-  const target = Number(formData.get("profileId"));
+  const target = Number(formData.get("profile_id"));
   let profileId: number;
   if (Number.isInteger(target) && target > 0) {
     await requireProfileWriteAccess(target);

@@ -7,7 +7,10 @@ import { gateItemProfile } from "../gate-item";
 import { today } from "@/lib/db";
 import {
   deletePracticeSession,
+  endLivePracticeSession,
+  logFinishedPracticeSession,
   logPracticeSession,
+  startLivePracticeSession,
   updatePracticeSession,
 } from "@/lib/practice-log";
 import {
@@ -21,6 +24,8 @@ import {
   formOk,
   type FormResult,
   type PracticeLogOutcome,
+  type PracticeLiveEndOutcome,
+  type PracticeLiveStartOutcome,
   type PracticeSessionMutationOutcome,
 } from "@/lib/types";
 
@@ -54,21 +59,49 @@ function optionalNumber(formData: FormData, key: string): number | null {
 // `end_time` IS NOT PRESENCE-GATED, because it is not three-valued (#3142): a tap
 // never states one, so "absent" and "empty" mean the same thing here — no stated end —
 // and the window falls back to `duration_min` at read time.
+//
+// AND THE SUBJECT IS THE ROW'S, NOT THE ACTING ONE (#4424 ruling 4). Upcoming's
+// multi-view rows mount the shared control, so a practice due on Sam's row must write
+// to SAM: the control posts `profile_id` and `gateItemProfile` re-gates it through
+// requireProfileWriteAccess (reachable AND write, redirect otherwise), falling back to
+// the acting-profile gate when no subject is posted — which is every other mount,
+// posting a byte-identical body. This is what replaced `logUpcomingPractice`'s own
+// copy of the same two-branch gate.
 export async function logPractice(
   formData: FormData
 ): Promise<PracticeLogOutcome> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const practice = String(formData.get("practice") ?? "").trim();
   if (!practice) return { kind: "invalid-date" };
-  const date = String(formData.get("date") ?? "").trim() || today(profile.id);
+  const date = String(formData.get("date") ?? "").trim() || today(profileId);
+  if (formData.get("intent") === "finished") {
+    const outcome = logFinishedPracticeSession(
+      profileId,
+      practice,
+      parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+      optionalNumber(formData, "duration_min"),
+      null,
+      formData.has("end_time")
+        ? {
+            date,
+            time: String(formData.get("end_time") ?? "").trim(),
+          }
+        : undefined
+    );
+    if (outcome.kind === "logged") revalidatePracticeSurfaces();
+    return outcome;
+  }
   const outcome = logPracticeSession(
-    profile.id,
+    profileId,
     practice,
     date,
-    // ONE ACTION, FOUR MOUNTINGS (#3087). LogPracticeButton renders on the Wellness
-    // page, on the dashboard practice card, in the quick-log sheet and behind the
-    // command palette — the server cannot tell them apart, so each mounting posts its
-    // own surface and the parse refuses anything outside the web subset.
+    // ONE ACTION, MANY MOUNTINGS (#3087). The shared row control renders on the
+    // Wellness card, the dashboard protocol rows, the quick-log sheet and Upcoming's
+    // practice row; the shared form renders in the card's modal, the backfill launcher
+    // and both of the record's practice surfaces; and the command palette posts this
+    // action directly with no component at all. The server cannot tell them apart, so
+    // each mounting declares its own surface and the parse refuses anything outside
+    // the web subset.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     {
       startTime: formData.has("start_time")
@@ -80,6 +113,32 @@ export async function logPractice(
     }
   );
   if (outcome.kind === "logged") revalidatePracticeSurfaces();
+  return outcome;
+}
+
+// The live lifecycle takes the same subject as the log, for the same reason and by the
+// same gate: a control mounted on a household member's row must not start the ACTING
+// profile's session (#4424 ruling 4).
+export async function startPracticeLive(
+  formData: FormData
+): Promise<PracticeLiveStartOutcome> {
+  const profileId = await gateItemProfile(formData);
+  const practice = String(formData.get("practice") ?? "").trim();
+  const outcome = startLivePracticeSession(
+    profileId,
+    practice,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
+  if (outcome.kind === "started") revalidatePracticeSurfaces();
+  return outcome;
+}
+
+export async function endPracticeLive(
+  formData: FormData
+): Promise<PracticeLiveEndOutcome> {
+  const profileId = await gateItemProfile(formData);
+  const outcome = endLivePracticeSession(profileId, Number(formData.get("id")));
+  if (outcome.kind === "ended") revalidatePracticeSurfaces();
   return outcome;
 }
 

@@ -995,7 +995,7 @@ close)
 AI supplement/medication suggestions (`intake_item_suggestions` — the
 `rationale`/`trigger`/`model` provenance columns; produced by
 `generateAndStoreSuggestions` in `lib/supplement-suggest.ts`, surfaced on
-Nutrition → Supplements with per-row **Accept**/**Dismiss** —
+Nutrition → Manage with per-row **Accept**/**Dismiss** —
 `acceptSuggestion`/`dismissSuggestion` in
 `app/(app)/nutrition/intake-actions.ts`) are a **parallel mechanism**: they
 never become `Finding`s and their dismissal does NOT flow through the shared

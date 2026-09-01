@@ -12,7 +12,7 @@ import {
 } from "@/lib/hrefs";
 import type { FeedEntry } from "@/lib/import-feed";
 import type { DocumentTombstone } from "@/lib/document-tombstones";
-import RelativeTime from "@/components/RelativeTime";
+import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import DuplicateReview from "@/components/DuplicateReview";
 import UnitMislabelReview from "@/components/UnitMislabelReview";
@@ -173,9 +173,10 @@ export default function ReviewInbox({
                         {sourceName(ev.source_id)}{" "}
                         {stale ? "sync has stopped" : "sync failed"}
                       </span>
-                      <RelativeTime
+                      <SyncTimestamp
                         value={ev.at}
                         className="text-xs text-slate-500 dark:text-slate-400"
+                        relativeOnly
                       />
                     </div>
                     {ev.error && (

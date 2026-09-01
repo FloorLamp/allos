@@ -283,8 +283,10 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
 
   // ── "Log past dose" without opening any item's menu ────────────────────────
   // The record's Add door IS this kind's backfill when the page is filtered to it.
-  await hydratedClick(page, page.getByTestId("dose-ledger-add"));
-  const picker = page.getByTestId("dose-ledger-item-picker");
+  await hydratedClick(page, page.getByTestId("history-add-open-dose"));
+  // The picker is the FORM's now (#4424): the record door and the Supplements tab
+  // card each carried their own before, built from different option lists.
+  const picker = page.getByTestId("historical-dose-item-picker");
   const itemValue = await picker
     .locator("option")
     .filter({ hasText: name })

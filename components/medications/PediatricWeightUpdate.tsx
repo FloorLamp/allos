@@ -1,20 +1,31 @@
 "use client";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IconScale } from "@tabler/icons-react";
 import DateField from "@/components/DateField";
+import WeightField from "@/components/vitals/WeightField";
 import { useToast } from "@/components/Toast";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
-import { isRealIsoDate } from "@/lib/date";
 import { toKg } from "@/lib/units";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 
-// A deliberately small body-weight entry embedded in the pediatric label lookup.
-// It reuses the canonical Body write action rather than creating medication-owned
-// weight data. This component sits inside medication forms, so it uses type="button"
-// controls and invokes the action directly instead of nesting a second <form>.
+// The dosing-weight update embedded in the pediatric label lookup. Since #4424 it
+// DEFINES NO FIELDS OF ITS OWN — the number is `WeightField`, the day is the shared
+// `DateField` — and it posts `addMeasurements`, the one action every body sitting goes
+// through. It used to draw its own weight input with the unit in its LABEL, its own
+// never-the-future check, and `addBodyMetric`: a fourth body write action carrying a
+// strict subset of the same submission, which ruling 7 deletes.
+//
+// IT CANNOT MOUNT THE FORM ITSELF, and that is ruling 2's "mounts the shared body-metric
+// FIELD" rather than a shortcut. This renders inside `IntakeItemForm`'s `<form>` (its
+// `renderPanel()` output is part of that element), so a component that draws its own
+// `<form>` would be a nested one — the submit is then inert and the caregiver watches a
+// Save do nothing. Measured: mounting `MeasurementsQuickAdd` here reddened
+// e2e/medication-prefill.spec.ts three times out of three with the form still on screen
+// and the value still in it. Hence `type="button"` controls, a ref instead of a
+// `<form>`'s FormData, and the field composed rather than the whole form.
 export default function PediatricWeightUpdate({
   idPrefix,
   context,
@@ -28,7 +39,7 @@ export default function PediatricWeightUpdate({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(initiallyOpen);
-  const [weight, setWeight] = useState("");
+  const weightRef = useRef<HTMLInputElement>(null);
   const [date, setDate] = useState(context.today);
   // The dosing-weight update, on whichever surface renders the item form (#3087).
   const stampLoggedVia = useLoggedViaStamp();
@@ -37,6 +48,9 @@ export default function PediatricWeightUpdate({
 
   async function save() {
     setError(null);
+    const weight = weightRef.current?.value ?? "";
+    // The same pure guard the shared form runs before it posts: the write cores skip an
+    // out-of-range number in silence, which on its own reads as a save.
     const validationError = validateBodyMetricInput({
       weight,
       bodyFatPct: null,
@@ -46,23 +60,27 @@ export default function PediatricWeightUpdate({
       setError(validationError);
       return;
     }
-    if (!isRealIsoDate(date) || date > context.today) {
-      setError("Enter a valid date that is not in the future.");
-      return;
-    }
 
     const formData = stampLoggedVia(new FormData());
     formData.set("date", date);
     formData.set("weight", weight);
     formData.set("weight_unit", context.weightUnit);
     setPending(true);
+    let saved;
     try {
-      await addBodyMetric(formData);
+      saved = await addMeasurements(formData);
     } catch {
       setError("Couldn't update the weight. Try again.");
       return;
     } finally {
       setPending(false);
+    }
+    // THE DAY BOUND IS THE ACTION'S NOW, not a second copy of it here (#4425): every
+    // body core refuses a day that has not happened, and this is that refusal reaching
+    // the caregiver instead of a Save that closes over nothing.
+    if (saved.dateRefused) {
+      setError("That date hasn't happened yet. Pick today or an earlier day.");
+      return;
     }
 
     onSaved({
@@ -70,7 +88,7 @@ export default function PediatricWeightUpdate({
       weightKg: toKg(Number(weight), context.weightUnit),
       weightDate: date,
     });
-    setWeight("");
+    if (weightRef.current) weightRef.current.value = "";
     setOpen(false);
     toast("Weight updated");
   }
@@ -98,16 +116,11 @@ export default function PediatricWeightUpdate({
         <label className="label" htmlFor={`${idPrefix}-weight`}>
           Weight ({context.weightUnit})
         </label>
-        <input
+        <WeightField
           id={`${idPrefix}-weight`}
-          data-testid="pediatric-weight-input"
-          type="number"
-          inputMode="decimal"
-          min="0"
-          step="0.1"
-          value={weight}
-          onChange={(event) => setWeight(event.target.value)}
-          className="input"
+          unit={context.weightUnit}
+          inputRef={weightRef}
+          testId="pediatric-weight-input"
           autoFocus
         />
       </div>

@@ -125,7 +125,7 @@ import TrendMetricCharts, {
 } from "@/components/TrendMetricCharts";
 import GrowthChartsCard from "@/components/GrowthChartsCard";
 import LogMeasurementsPanel from "./LogMeasurementsPanel";
-import type { ChartChip } from "./ChartJumpChips";
+import type { ChartChip } from "./ChartJumpMenu";
 import ChartJumpMenu from "./ChartJumpMenu";
 import TrendMetricTiles from "./TrendMetricTiles";
 import BodyViewToggle from "./BodyViewToggle";

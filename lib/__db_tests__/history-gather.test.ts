@@ -63,6 +63,14 @@ function units(profileId: number, date: string, n: number): void {
   ).run(profileId, date, n);
 }
 
+function mood(profileId: number, date: string, valence: number): void {
+  db.prepare(
+    `INSERT INTO mood_logs
+       (profile_id, date, valence, energy, anxiety, factors, notes)
+     VALUES (?, ?, ?, 4, 2, '["social"]', 'steady enough')`
+  ).run(profileId, date, valence);
+}
+
 const TODAY = new Date().toISOString().slice(0, 10);
 const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 const TOMORROW = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
@@ -74,10 +82,12 @@ describe("gatherHistoryLog", () => {
     const loginId = login();
     serving(mine, YESTERDAY, 1);
     practice(mine, YESTERDAY, "history breathwork");
+    mood(mine, YESTERDAY, 4);
     weighIn(mine, YESTERDAY, 71.5);
     units(mine, YESTERDAY, 2);
     serving(theirs, YESTERDAY, 2);
     practice(theirs, YESTERDAY, "stranger breathwork");
+    mood(theirs, YESTERDAY, 1);
     weighIn(theirs, YESTERDAY, 99.9);
     units(theirs, YESTERDAY, 9);
 
@@ -85,6 +95,7 @@ describe("gatherHistoryLog", () => {
     expect(gather.rows.map((r) => r.kind).sort()).toEqual([
       "body",
       "food",
+      "mood",
       "practice",
       "substance",
     ]);
@@ -94,6 +105,7 @@ describe("gatherHistoryLog", () => {
     expect(gather.presentKinds.sort()).toEqual([
       "body",
       "food",
+      "mood",
       "practice",
       "substance",
     ]);
@@ -680,6 +692,31 @@ describe("every kind's edit payload carries the stored row", () => {
     });
   });
 
+  it("mood: the whole daily statement and the inherited reading target", () => {
+    const p = profile("history edit mood");
+    const loginId = login();
+    mood(p, YESTERDAY, 4);
+    const [row] = gatherHistoryLog(p, {
+      loginId,
+      limit: 200,
+      kind: "mood",
+    }).rows;
+    expect(row.clock).toBeNull();
+    expect(row.detail).toBe(
+      "Good (4/5) · Energy 4/5 · Calm 4/5 · Social · steady enough"
+    );
+    expect(row.edit).toMatchObject({
+      kind: "mood",
+      target: expect.stringMatching(/^mood:\d+:valence$/),
+      valence: 4,
+      energy: 4,
+      anxiety: 2,
+      factors: ["social"],
+      notes: "steady enough",
+      calmRelevant: true,
+    });
+  });
+
   it("body: every measure names its own cell, in the unit its row printed", () => {
     const p = profile("history edit body");
     const loginId = login();
@@ -986,12 +1023,18 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
       start_time: "07:30",
       end_time: "07:50",
       duration_min: null,
+      live: false,
+      derived_duration: false,
+      elapsed_min: null,
     });
     expect(windows.get(`practice:${derived}`)).toEqual({
       date: YESTERDAY,
       start_time: "12:15",
       end_time: null,
       duration_min: 25,
+      live: false,
+      derived_duration: false,
+      elapsed_min: null,
     });
     // Nothing is invented for the row that stated nothing — the panel's own model
     // then draws no mark for it.
@@ -1000,6 +1043,9 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
       start_time: null,
       end_time: null,
       duration_min: 30,
+      live: false,
+      derived_duration: false,
+      elapsed_min: null,
     });
 
     // EVERY EVENT ID IS A ROW ID ON THE PAGE. This is the pairing that makes a mark

@@ -20,7 +20,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { emptyCounts } from "@/lib/integrations/sync-log";
+import { emptyCounts, tallyUpsert } from "@/lib/integrations/sync-log";
 import { METRIC_READING_STORE } from "@/lib/metric-readings";
 import { JUDGED_METRIC_SLUGS, METRIC_KNOWLEDGE } from "@/lib/metric-judgment";
 import {
@@ -31,7 +31,6 @@ import {
 import {
   deleteReadingAt,
   recordReading,
-  recordReadings,
   updateReadingAt,
 } from "@/lib/reading-writes";
 import { getReadingSeries } from "@/lib/queries/readings";
@@ -211,9 +210,13 @@ describe("the shared upsert accounting", () => {
       source: "oura",
       loggedVia: "page" as const,
     };
-    recordReadings(p.profileId, [one], counts);
-    recordReadings(p.profileId, [one], counts); // same value again → unchanged
-    recordReadings(p.profileId, [{ ...one, value: 59 }], counts); // → updated
+    // THE CALLER TALLIES, from the disposition this core answers with (#4564): the
+    // plural `recordReadings` that used to loop and tally here had no non-test caller
+    // and is deleted, so this drives the loop a real sync writes.
+    for (const input of [one, one, { ...one, value: 59 }]) {
+      const outcome = recordReading(p.profileId, input);
+      if (outcome.ok) tallyUpsert(counts, outcome.disposition);
+    }
     expect(counts.inserted).toBe(1);
     expect(counts.unchanged).toBe(1);
     expect(counts.updated).toBe(1);
@@ -235,23 +238,19 @@ describe("the shared upsert accounting", () => {
         WHERE profile_id = ? AND date = '2026-02-01' AND source = 'oura'`
     ).run(p.profileId);
     const counts = emptyCounts();
-    const outcomes = recordReadings(
-      p.profileId,
-      [
-        {
-          loggedVia: "page",
-          name: "Resting Heart Rate",
-          value: 44,
-          unit: "bpm",
-          date: "2026-02-01",
-          source: "oura",
-        },
-      ],
-      counts
-    );
-    expect(outcomes[0]).toEqual({ ok: false, error: "edit-locked" });
+    const outcome = recordReading(p.profileId, {
+      loggedVia: "page",
+      name: "Resting Heart Rate",
+      value: 44,
+      unit: "bpm",
+      date: "2026-02-01",
+      source: "oura",
+    });
+    expect(outcome).toEqual({ ok: false, error: "edit-locked" });
     // Its OWN counter, parallel to `suppressed` — a lock is visible in Review rather
-    // than hiding as an ordinary no-op (#659).
+    // than hiding as an ordinary no-op (#659). The refusal is TYPED, so the caller
+    // cannot bump the dedup split for it: there is no disposition to pass.
+    if (!outcome.ok && outcome.error === "edit-locked") counts.edited++;
     expect(counts.edited).toBe(1);
     expect(counts.inserted + counts.updated + counts.unchanged).toBe(0);
     expect(
