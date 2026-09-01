@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "@/components/intake/SharedSupplyPicker";
+import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
+import CreateAction from "@/components/CreateAction";
+import { ToastProvider } from "@/components/Toast";
 
 // WHICH BOTTLES THE SHARED-SUPPLY PICKER OFFERS (#3315).
 //
@@ -36,6 +41,19 @@ const BOTTLES: SupplyOption[] = [
   // no-sibling ruling, which this picker inherits rather than re-deciding).
   { id: 33, name: "Magnesium", strength: null, form: null, siblingKind: null },
 ];
+
+vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
+  lookupRxcui: vi.fn(async () => [
+    { rxcui: "5640", name: "Ibuprofen", score: 100 },
+  ]),
+  lookupRxcuiIngredients: vi.fn(async () => ["5640"]),
+}));
+
+class R {
+  observe() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", R);
 
 vi.mock("@/app/(app)/supplies/actions", () => ({
   listSharedSupplyOptions: vi.fn(async () => BOTTLES),
@@ -109,5 +127,68 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
       />
     );
     expect(await offeredBottleIds()).toEqual([22, 11, 33]);
+  });
+});
+
+async function saveBottle(kind: "medication" | "supplement", name: string) {
+  const action = vi.fn(async (_data: FormData) => ({ ok: true as const }));
+  const common = {
+    action,
+    allIntakeItems: [],
+    stackItems: [],
+    pgxVariants: [],
+  };
+  const supplement = <AddSupplementModal {...common} />;
+  const form =
+    kind === "medication" ? (
+      <MedicationAddWorkspace
+        {...common}
+        subtitle=""
+        age={null}
+        todayStr="2026-09-01"
+        conditions={[]}
+      />
+    ) : (
+      <CreateAction
+        declaration={{ kind: "supplement", control: supplement }}
+        housing="section"
+      />
+    );
+  render(
+    <ToastProvider>
+      <ConfirmProvider>{form}</ConfirmProvider>
+    </ToastProvider>
+  );
+  fireEvent.click(screen.getByTestId(`${kind}-add-toggle`));
+  const input = screen.getByRole("combobox", { name: "Name" });
+  fireEvent.focus(input);
+  const option = await screen.findByRole("option", {
+    name: new RegExp(`^${name}.*— shared bottle$`),
+  });
+  fireEvent.mouseDown(option);
+  await waitFor(() => expect((input as HTMLInputElement).value).toBe(name));
+  if (kind === "medication") await screen.findByTestId("rxcui-current");
+  screen.getByRole("button", { name: "Add" }).click();
+  await waitFor(() => expect(action).toHaveBeenCalledOnce());
+  return action.mock.calls[0]![0];
+}
+
+describe("IntakeItemForm bottle picks (#4608)", () => {
+  it("saves the product name and applies medication prefill", async () => {
+    const data = await saveBottle("medication", "Ibuprofen");
+    expect(data.get("name")).toBe("Ibuprofen");
+    expect(data.get("rxcui")).toBe("5640");
+    expect(data.get("obligation")).toBe("may");
+    expect(data.get("min_interval_hours")).toBe("6");
+    expect(data.get("max_daily_count")).toBe("4");
+    expect(data.get("supply_id")).toBe("22");
+  });
+
+  it("keeps bottle strength while applying supplement catalog timing", async () => {
+    const data = await saveBottle("supplement", "Vitamin D3");
+    const [dose] = JSON.parse(String(data.get("doses")));
+    expect(dose.amount).toBe("5000 IU");
+    expect(dose.time_of_day).toBe("Morning");
+    expect(data.get("supply_id")).toBe("11");
   });
 });
