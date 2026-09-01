@@ -304,7 +304,15 @@ export default function DashboardPlacementCanvas({
             // moved every dormant line, quiet pillar, quiet result and out-ranked
             // setup row behind THIS control; at its inherited 28px it was the one
             // tap standing between a phone reader and all of them.
-            <summary className="mb-3 flex min-h-11 cursor-pointer list-none items-center text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100">
+            <summary
+              // Named so the UX census can reach the control it must click before the
+              // tail is in any picture at all (scripts/ux-census-routes.mjs). The
+              // `<details>` carries `dashboard-all` through a prop, so a selector that
+              // reached this toggle through its parent would name no marker a rename
+              // guard can pin — which is how the previous registration went stale.
+              data-testid="dashboard-all-summary"
+              className="mb-3 flex min-h-11 cursor-pointer list-none items-center text-lg font-semibold text-slate-900 marker:content-none dark:text-slate-100"
+            >
               <span
                 aria-hidden
                 className="mr-2 inline-block transition-transform group-open:rotate-90 motion-reduce:transition-none"
