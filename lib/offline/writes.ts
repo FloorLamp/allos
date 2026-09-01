@@ -43,6 +43,7 @@ import {
 import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import { normalizeWaistInput, type WaistInputRaw } from "@/lib/waist-input";
 import {
+  HYDRATION_METRIC,
   normalizeCompositionInput,
   type CompositionInputRaw,
 } from "@/lib/composition-input";
@@ -290,15 +291,20 @@ export function insertBodyMetric(
 
 // ── vitals quick-add ────────────────────────────────────────────────────────────
 
-// Insert-or-update a manual daily metric sample (sleep/HRV) — one row per date so a
-// re-entry corrects rather than duplicates. source='manual', origin=NULL, and a
-// fixed midnight start make the natural key stable, while `source` keeps a Health
-// Connect push from ever touching it.
+// Insert-or-update a manual metric sample. Most callers use the stable midnight
+// point so a re-entry corrects; genuinely additive hydration supplies its tap instant
+// so each contribution appends. `source` keeps integration rows separate.
 // The day's midnight, the natural-key anchor a POINT measurement is filed at. It is
 // a day attribution rather than an instant, which is why it is a template here and
 // not a `utcInstant()` call.
 function dayMidnightAnchor(date: string): string {
   return `${date}T00:00:00`;
+}
+
+function sampleTime(profileId: number, date: string, instant: Date): string {
+  const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
+  const seconds = String(instant.getUTCSeconds()).padStart(2, "0");
+  return `${date}T${hhmm}:${seconds}`;
 }
 
 function upsertManualSample(
@@ -741,7 +747,17 @@ export function insertComposition(
   if ("error" in normalized) return false;
   writeTx(() => {
     for (const s of normalized.samples) {
-      upsertManualSample(profileId, s.metric, date, s.value);
+      const ts =
+        s.metric === HYDRATION_METRIC
+          ? sampleTime(profileId, date, clockNow())
+          : null;
+      upsertManualSample(
+        profileId,
+        s.metric,
+        date,
+        s.value,
+        ts ? { startedAt: ts, endedAt: ts } : undefined
+      );
     }
   });
   return true;
@@ -822,11 +838,9 @@ export function logBristolStool(
     : ({ kind: "unstated" } as const);
   const stated = verdict.kind === "accepted" ? shaped : null;
   const refused = verdict.kind === "refused" ? verdict.reason : undefined;
-  const hhmm = stated ?? zonedDateParts(tz, instant).hhmm;
-  const seconds = stated
-    ? "00"
-    : String(instant.getUTCSeconds()).padStart(2, "0");
-  const ts = `${date}T${hhmm}:${seconds}`;
+  const ts = stated
+    ? `${date}T${stated}:00`
+    : sampleTime(profileId, date, instant);
   writeTx(() => {
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
