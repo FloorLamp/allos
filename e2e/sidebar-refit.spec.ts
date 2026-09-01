@@ -404,9 +404,8 @@ test.describe("the desktop sidebar refit (#3154)", () => {
     await expect(
       aside.getByRole("link", { name: "Disclaimer" })
     ).toBeInViewport();
-    // Frequent is drawer-only now; on desktop the nav it duplicated is one glance
-    // below, and its shortcuts are what the aside-wide role queries used to collide
-    // with (e2e/progress-photos.spec.ts).
+    // Frequent is retired outright (#4102); this desktop absence keeps its old
+    // shortcuts from colliding with aside-wide role queries.
     await expect(aside.getByTestId("frequent-pages")).toHaveCount(0);
     // The commit hash left the footer for What's new, which already rendered it.
     await expect(aside.locator('a[href*="/commit/"]')).toHaveCount(0);
