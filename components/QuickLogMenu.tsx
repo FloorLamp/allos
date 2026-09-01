@@ -129,9 +129,9 @@ const LOG_SURFACE: WebLoggedVia = "quick-log";
 
 // The sheet's own full-width row — ONE shape for the context offers and the
 // long-tail entries, so the panel reads as one list top to bottom rather than a
-// bordered card above a half-width pill (#3736). `min-h-11` is the #644 floor.
+// bordered card above a half-width pill (#3736).
 const SHEET_ROW_CLASS =
-  "press flex min-h-11 w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-3 text-left transition hover:bg-(--ghost-hover)";
+  "press flex w-full items-center gap-3 rounded-xl border border-(--border) bg-surface px-3 py-2 text-left transition hover:bg-(--ghost-hover)";
 
 export default function QuickLogMenu({
   open,
@@ -344,7 +344,6 @@ export default function QuickLogMenu({
                 label={
                   item.target.kind === "live" ? workoutOffer.label : item.label
                 }
-                hint={item.hint}
                 onClick={() => run(item)}
               />
             </li>
@@ -365,20 +364,17 @@ export default function QuickLogMenu({
 // ONE ROW, BOTH SECTIONS (#3736). The context offers and the long-tail entries
 // are the same class of thing — something the reader can act on right now, whose
 // tap opens an existing form — so they are drawn by one component instead of a
-// full-width bordered card above a half-width pill. Only the long tail carries a
-// `hint`; an offer's label is the whole promise.
+// full-width bordered card above a half-width pill.
 function SheetRow({
   testId,
   icon,
   label,
-  hint,
   onClick,
   workoutOffer,
 }: {
   testId: string;
   icon: QuickLogIcon;
   label: string;
-  hint?: string;
   onClick: () => void;
   workoutOffer?: string;
 }) {
@@ -391,30 +387,16 @@ function SheetRow({
       onClick={onClick}
       className={SHEET_ROW_CLASS}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
         <Icon className="h-5 w-5" stroke={1.75} />
       </span>
       <span className="min-w-0 flex-1">
-        {/* TWO LINES, BY CONSTRUCTION (#3736). The panel's reserve budgets an offer
-            row at its two-line height, and an OFFER's label is user data — item
-            names, through `dueDoseChipLabel` — so without a bound here the reserve
-            holds by luck and a fourth line is always reachable. Clamped, the row
-            cannot exceed the height the reserve already pays for. Nothing is lost:
-            the label is a compression already (two names plus `+N`) and the tap
-            opens the list holding the full ones. The long-tail entries below carry
-            authored constants that never reach two lines, so the clamp is inert
-            there rather than absent — one rule, no branch to drift. */}
         <span
           data-sheet-row-label
-          className="line-clamp-2 text-sm font-medium text-slate-800 dark:text-slate-100"
+          className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100"
         >
           {label}
         </span>
-        {hint && (
-          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-            {hint}
-          </span>
-        )}
       </span>
       <IconChevronRight
         className="h-4 w-4 shrink-0 text-slate-400"
