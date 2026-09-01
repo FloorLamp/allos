@@ -25,7 +25,7 @@ import {
   TAP_REACH,
   isPastWriteAccepted,
 } from "@/lib/log-manifest";
-import type { LogCoreName, LogDomain } from "@/lib/log-manifest";
+import type { LogCoreName, LogCoresOf, LogDomain } from "@/lib/log-manifest";
 import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isDoseDateAccepted,
@@ -154,6 +154,10 @@ describe("every argued absence argues", () => {
 // core declares its own domain beside itself; this table is exhaustive over the
 // DERIVED union, so a core that is renamed, deleted, or newly declared fails `tsc`
 // here rather than leaving a row quietly describing the old set.
+type DomainOfCore<C extends LogCoreName> = {
+  [D in LogDomain]: C extends LogCoresOf<D> ? D : never;
+}[LogDomain];
+
 const DECLARED_CORES = {
   logFoodServingCore: "food",
   undoFoodServingCore: "food",
@@ -183,7 +187,7 @@ const DECLARED_CORES = {
   insertWaistCirc: "body",
   insertComposition: "body",
   logTemperatureCore: "body",
-} as const satisfies Record<LogCoreName, LogDomain>;
+} as const satisfies { [C in LogCoreName]: DomainOfCore<C> };
 
 describe("cores declare and the manifest derives (#4614)", () => {
   it("every domain is answered by at least one declared core", () => {
