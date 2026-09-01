@@ -34,6 +34,7 @@ import {
   getPracticeSessions,
   getPracticeSpellings,
 } from "./queries/wellness";
+import { ADMIN_DEDUP_WINDOW_SEC } from "./queries/intake/adherence";
 
 // THE LAUNCHER'S REACH, not the domain's (owner ruling 2026-08-31). This was a ±30
 // bound inside the write cores; it is now what the wellness page's log launcher
@@ -138,6 +139,23 @@ export function logPracticeSession(
   const notes = opts.notes?.trim() || null;
 
   return writeTx((): PracticeLogOutcome => {
+    if (loggedVia === "telegram-nudge" || loggedVia === "telegram-command") {
+      const recent = db
+        .prepare(
+          `SELECT 1 FROM practice_logs
+            WHERE profile_id = ? AND practice = ?
+              AND logged_via IN ('telegram-nudge', 'telegram-command')
+              AND ABS(strftime('%s', created_at) - strftime('%s', ?)) <= ?
+            LIMIT 1`
+        )
+        .get(profileId, name, sqlNow(), ADMIN_DEDUP_WINDOW_SEC);
+      if (recent)
+        return {
+          kind: "logged",
+          count: getPracticeDayCount(profileId, name, date),
+          date,
+        };
+    }
     db.prepare(
       `INSERT INTO practice_logs
          (profile_id, practice, date, start_time, end_time, duration_min, notes,

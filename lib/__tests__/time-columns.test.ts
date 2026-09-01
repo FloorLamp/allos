@@ -447,15 +447,26 @@ describe("the event/record pairing ledger (issue #2205 phase 3)", () => {
   it("freezes every hand-rolled pairing, so the ledger only shrinks", () => {
     const patterns = pairPatterns();
     const needles = [...new Set(patterns.map(({ needle }) => needle))];
+    const patternsByNeedle = new Map(
+      needles.map((needle) => [
+        needle,
+        patterns.filter((pattern) => pattern.needle === needle),
+      ])
+    );
+    const needleRe = new RegExp(`\\b(?:${needles.join("|")})\\b`, "g");
     const counts = new Map<string, number>();
     for (const { rel, source } of runtimeSources()) {
       // The readers themselves, and the module that declares the pairs.
       if (rel === "lib/row-instants.ts" || rel === "lib/time-columns.ts") {
         continue;
       }
-      if (!needles.some((needle) => source.includes(needle))) continue;
+      const present = [...new Set(source.match(needleRe) ?? [])];
+      if (present.length === 0) continue;
       const text = stripComments(source);
-      const n = countPairings(text, patterns);
+      const candidates = present.flatMap(
+        (needle) => patternsByNeedle.get(needle) ?? []
+      );
+      const n = countPairings(text, candidates);
       if (n > 0) counts.set(rel, n);
     }
 
