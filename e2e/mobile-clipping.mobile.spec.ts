@@ -767,7 +767,8 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
       ready: (sheet) =>
         sheet
           .getByTestId("quick-entry-substance-list")
-          .or(sheet.getByTestId("quick-entry-substance-error")),
+          // Per-substance since #4424: the failure sits beside the tap it is about.
+          .or(sheet.getByTestId(/^quick-entry-substance-error-/)),
     },
     {
       id: "add-document",
