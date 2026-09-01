@@ -434,7 +434,7 @@ function multiProfileIds(): { ownerId: number; sharedId: number } {
 }
 
 test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
-  test("Conditions: single-view shows no chips; multi-view chips the non-acting row only", async ({
+  test("conditions, allergies, and goals stay plain in single view and stamp only shared rows in multi-view", async ({
     browser,
   }) => {
     test.slow();
@@ -443,118 +443,74 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       username: E2E_LOGIN_MULTI,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      // First visit all three readers in the acting profile's plain single-view state.
+      await page.goto("/records/problems/conditions");
+      await expect(
+        page.getByText(MULTI_OWNER_CONDITION, { exact: false })
+      ).toBeVisible();
+      await expect(
+        page.getByText(MULTI_SHARED_CONDITION, { exact: false })
+      ).toHaveCount(0);
+      await expectInView(page, 1);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Single view (acting = owner): owner's condition shows, no strip, no chips, and the
-    // shared profile's condition is absent — the byte-identical regression bar.
-    await page.goto("/records/problems/conditions");
-    await expect(
-      page.getByText(MULTI_OWNER_CONDITION, { exact: false })
-    ).toBeVisible();
-    await expect(
-      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
-    ).toHaveCount(0);
-    await expectInView(page, 1);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+      await page.goto("/records/problems/allergies");
+      await expect(
+        page.locator("tr").filter({ hasText: MULTI_OWNER_ALLERGY })
+      ).toBeVisible();
+      await expect(
+        page.locator("tr").filter({ hasText: MULTI_SHARED_ALLERGY })
+      ).toHaveCount(0);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Toggle the shared profile into view.
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+      await page.goto("/records/care/overview#health-goals");
+      await expectInView(page, 1);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
 
-    // Multi view: the strip appears, the shared condition merges in with a subject chip
-    // on ITS row, and the acting (owner) row never carries a chip.
-    await expectInView(page, 2);
-    await expect(
-      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
-    ).toBeVisible();
-    // Scope the chip check to the shared condition's own row (Conditions + Allergies
-    // both render on the Conditions pane, so the shared chip appears on more than one row).
-    const sharedConditionRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_CONDITION });
-    await expect(
-      sharedConditionRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
+      // Toggle once. The session view-set must survive navigation across all readers.
+      await openProfileSwitcher(page);
+      await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+      await expectInView(page, 2);
+      const sharedGoalRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_GOAL });
+      await expect(
+        sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
 
-    await page.context().close();
-  });
+      await page.goto("/records/problems/conditions");
+      await expectInView(page, 2);
+      const sharedConditionRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_CONDITION });
+      await expect(
+        sharedConditionRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
+      await expect(
+        page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+      ).toHaveCount(0);
 
-  test("Allergies: shared row gets a subject chip in multi-view", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { ownerId, sharedId } = multiProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/records/problems/allergies");
-    // The stored "Recorded allergies" table (single view: owner only, no chip). Scope to
-    // the table row — the substance also appears in the merged "Known allergies" card.
-    await expect(
-      page.locator("tr").filter({ hasText: MULTI_OWNER_ALLERGY })
-    ).toBeVisible();
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-
-    await expectInView(page, 2);
-    // The shared allergy's row carries the shared subject chip; the owner never does.
-    const sharedRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_ALLERGY });
-    await expect(
-      sharedRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
-
-    await page.context().close();
-  });
-
-  test("Health goals (set-based reader): shared row gets a subject chip in multi-view", async ({
-    browser,
-  }) => {
-    test.slow();
-    const { sharedId } = multiProfileIds();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MULTI,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/records/care/overview#health-goals");
-    await expectInView(page, 1);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-
-    const trigger = page.getByTestId("profile-identity-bar");
-    await expect(trigger).toBeEnabled();
-    await trigger.click();
-    await expect(page.getByTestId("profile-switcher-panel")).toBeVisible();
-    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
-
-    await expectInView(page, 2);
-    await expect(
-      page.getByText(MULTI_SHARED_GOAL, { exact: false })
-    ).toBeVisible();
-    const sharedGoalRow = page
-      .locator("tr")
-      .filter({ hasText: MULTI_SHARED_GOAL });
-    await expect(
-      sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
-    ).toBeVisible();
-
-    await page.context().close();
+      await page.goto("/records/problems/allergies");
+      await expectInView(page, 2);
+      const sharedAllergyRow = page
+        .locator("tr")
+        .filter({ hasText: MULTI_SHARED_ALLERGY });
+      await expect(
+        sharedAllergyRow.getByTestId(`subject-chip-${sharedId}`)
+      ).toBeVisible();
+      await expect(
+        page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+      ).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
   });
 });
 
