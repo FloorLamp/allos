@@ -211,7 +211,7 @@
   "e2e/kids-growth.spec.ts": 13.846,
   "e2e/lab-result-lifecycle.spec.ts": 3.137,
   "e2e/lab-value-goal.spec.ts": 5.162,
-  "e2e/lead-fold-census.mobile.spec.ts": 7.567,
+  "e2e/lead-fold-census.mobile.spec.ts": 7.087,
   "e2e/lesion-allergy-visit-link.spec.ts": 2.924,
   "e2e/lifestage-cycle-gates.spec.ts": 5.277,
   "e2e/live-page.spec.ts": 3.239,
