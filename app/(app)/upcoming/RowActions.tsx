@@ -329,6 +329,8 @@ export default function UpcomingRowMenu({
           {suppressions.map(({ label, ...props }) => (
             <div
               key={props.signalKey}
+              data-testid="suppression-group"
+              data-subject={label}
               className="border-b border-black/5 pb-1 last:border-b-0 dark:border-white/5"
             >
               {named && label && (
