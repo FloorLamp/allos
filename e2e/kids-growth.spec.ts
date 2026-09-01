@@ -120,7 +120,8 @@ function restoreRileyHeight(snapshot: RileyHeightSnapshot): void {
         "UPDATE metric_samples SET value = ? WHERE id = ? AND profile_id = ?"
       )
       .run(snapshot.value, snapshot.id, snapshot.profileId);
-    if (result.changes !== 1) throw new Error("Riley's height was not restored");
+    if (result.changes !== 1)
+      throw new Error("Riley's height was not restored");
   } finally {
     db.close();
   }
