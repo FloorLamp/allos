@@ -30,8 +30,10 @@ export interface DoseOutcomeMessage {
 // The shape every in-app dose-confirm Server Action resolves with (#2106): `ok`
 // means "the request was understood", and the OUTCOME — not the fact the action
 // returned — is what the surface renders through doseConfirmMessage. Shared so the
-// Upcoming markTaken, the household confirm and the dashboard atom mark-taken all
-// answer in one currency and none can quietly go back to returning void.
+// Upcoming markTaken and the dashboard atom mark-taken both answer in one currency and
+// neither can quietly go back to returning void. (The household card's confirm was the
+// third; #1463 §1 removed that mount, and the Telegram household round — a different
+// surface — answers through the same shape from lib/notifications/.)
 export type DoseConfirmResult =
   { ok: true; outcome: DoseTakenOutcome } | { ok: false; error: string };
 

@@ -134,56 +134,6 @@ test("Dashboard ordinary actions render through Button at the phone floor", asyn
   }
 });
 
-test("Household dose confirmation uses the same contained phone target", async ({
-  page,
-}) => {
-  await page.goto("/household");
-  await expect(page.getByRole("heading", { name: "Household" })).toBeVisible();
-
-  const visibleConfirms = page
-    .getByTestId("household-confirm-dose")
-    .filter({ visible: true });
-  if ((await visibleConfirms.count()) === 0) {
-    const summaries = page
-      .getByTestId("household-dose-aggregate-summary")
-      .filter({ visible: true });
-    const summaryCount = await summaries.count();
-    expect(
-      summaryCount,
-      "Household aggregate with confirm adopters"
-    ).toBeGreaterThan(0);
-    for (let index = 0; index < summaryCount; index += 1) {
-      await summaries.nth(index).click();
-    }
-  }
-  const confirmCount = await visibleConfirms.count();
-  expect(
-    confirmCount,
-    "visible Household confirm adopter corpus"
-  ).toBeGreaterThan(0);
-  for (let index = 0; index < confirmCount; index += 1) {
-    const confirm = visibleConfirms.nth(index);
-    await expect(confirm).toBeVisible();
-    await expect(confirm).toHaveAttribute("data-button-control", "");
-    await expect(confirm).toHaveAccessibleName(/^Confirm .+/);
-    await expectEffectiveFloor(`Household dose confirmation ${index}`, confirm);
-
-    const card = confirm.locator(
-      'xpath=ancestor::*[@data-testid="household-card"][1]'
-    );
-    await expect(card, `Household card for confirm ${index}`).toHaveCount(1);
-    const [confirmBox, cardBox] = await settledBoxes([confirm, card]);
-    expect(
-      confirmBox.x,
-      `Household confirm ${index} left card edge`
-    ).toBeGreaterThanOrEqual(cardBox.x);
-    expect(
-      confirmBox.x + confirmBox.width,
-      `Household confirm ${index} right card edge`
-    ).toBeLessThanOrEqual(cardBox.x + cardBox.width);
-  }
-});
-
 test("Appointment row actions keep compact boxes and disjoint effective targets", async ({
   page,
 }) => {

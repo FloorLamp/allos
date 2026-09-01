@@ -100,9 +100,10 @@ export function seedHouseholdRollup(): void {
   // A SECOND profile so the Household cross-profile view has more than one card and
   // the caregiver-grant flows can be exercised (a login granted 2 profiles sees the
   // overview; a single-grant login does not). The profile carries exactly one due-
-  // today supplement dose, unlogged, so it surfaces as an "Attention today" item a
-  // caregiver can confirm from the household card WITHOUT switching to it. Fully
-  // synthetic — no real PHI. Idempotent: the DB is reset per run, but guard anyway.
+  // today supplement dose, unlogged, so the card states a non-zero attention count
+  // and Upcoming multi-view has a cross-profile row to confirm (#1463 §1 moved the
+  // confirm itself off the card). Fully synthetic — no real PHI. Idempotent: the DB
+  // is reset per run, but guard anyway.
   const HOUSEHOLD_PROFILE_ID = 2;
   const HOUSEHOLD_PROFILE_NAME = "Sam Rivers"; // obviously-fictional
   const HOUSEHOLD_SUPP_NAME = "Household Vitamin D";

@@ -284,13 +284,9 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/household/actions.ts",
-    fn: "confirmDoseAction",
-    why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
-  },
-  {
-    file: "app/(app)/household/actions.ts",
-    fn: "undoConfirmDoseAction",
-    why: "the #2642 inverse of confirmDoseAction and exempt for the identical reason: it acts on the NON-active target profile the form names and gates via requireProfileWriteAccess(targetId), so a read-only caregiver can no more un-log a member's dose than log it",
+    fn: "openMemberDayAction",
+    why: "navigation only (#1463): moves the session's active-profile pointer to the card's member and redirects to THAT member's own day, resolved server-side from their timezone and never posted; gated read-level on getAccessibleProfiles() before any of that member's facts are read, because a read-only caregiver must still be able to follow their digest's overflow line",
+    gate: "getAccessibleProfiles",
   },
   {
     file: "app/(app)/household/actions.ts",

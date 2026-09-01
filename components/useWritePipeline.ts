@@ -48,7 +48,7 @@ export type WriteResult = "wrote" | "captured" | "nothing";
 // What this surface says about a settled write, and whether an Undo may ride it.
 // `undo` is not optional: `lib/undo-offer.ts` already decides whether an offer is
 // legitimate, and the failure this closes is a surface that never asked (the sheet's
-// "Mark taken" has no undo while `DoseConfirmButton`'s two mounts do). `"silent"` is a
+// "Mark taken" has no undo while `DoseConfirmButton` does). `"silent"` is a
 // real answer rather than an omission — a control that BECOMES its done state is its
 // own receipt (#2654) — spelled out so saying nothing stays a decision.
 export type WriteAnnouncement =

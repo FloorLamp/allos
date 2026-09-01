@@ -165,7 +165,7 @@ export default async function NutritionSection({
   //
   // The SHORT names come from the shared resolver's set-aware entry point, which is
   // the ONE definition of "what is this item called on a dense surface" — the same
-  // answer the Upcoming chips and the household confirm rows get. It has already
+  // answer the Upcoming chips and their due-dose rows get. It has already
   // dropped any label two items would have shared, so this pass only adds the
   // qualifier/ordinal a duplicate FULL name still earns.
   //

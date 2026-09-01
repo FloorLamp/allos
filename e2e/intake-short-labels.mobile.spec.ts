@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { expectPhoneTapTargets, hydratedClick, settledBoxes } from "./helpers";
+import { expectPhoneTapTargets, settledBoxes } from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 
@@ -14,15 +14,16 @@ import { TAP_FLOOR_FLOAT_EPSILON_PX } from "@/lib/tap-floor-tokens";
 // the reader already reads as "CoQ10". A desktop-only assertion would pass on the
 // version that fixed nothing.
 //
-// THE HAZARD, and why two of these tests exist. Shortening is MANY-TO-ONE: the
-// curated map aliases on purpose, most of its values are plausible names in their
-// own right, and the product fallback needs no curated entry at all. On these two
-// surfaces the label sits on a control whose TAP WRITES A DOSE, so two rows wearing
-// one label is a wrong-subject defect — the wrong item gets a taken row, the wrong
-// supply is decremented, the wrong redose window moves, the intended dose is left
-// open, and on the household card it is a dose confirmed on a member's behalf that
-// they never took. The gather resolves collisions across the profile's whole item
-// set so no renderer can emit an ambiguous control; these prove it in a browser.
+// THE HAZARD. Shortening is MANY-TO-ONE: the curated map aliases on purpose, most of
+// its values are plausible names in their own right, and the product fallback needs no
+// curated entry at all. Where the label sits on a control whose TAP WRITES A DOSE, two
+// rows wearing one label is a wrong-subject defect — the wrong item gets a taken row,
+// the wrong supply is decremented, the wrong redose window moves, and the intended dose
+// is left open. The gather resolves collisions across the profile's whole item set so no
+// renderer can emit an ambiguous control; these prove it in a browser.
+//
+// The household card carried a third case until #1463 §1 removed its dose rows; the
+// cross-profile form of the hazard now lives entirely on Upcoming's multi-view rows.
 //
 // Item names are the curated map's own keys, not decorated fixture names: the
 // resolver is a LOOKUP, so a "(e2e)"-suffixed name would resolve to itself and the
@@ -34,8 +35,6 @@ const FULL_NAME = "Coenzyme Q10";
 const SHORT_NAME = "CoQ10";
 const ALIAS_NAME = "Ubiquinone";
 const EITHER_NAME = new RegExp(`${FULL_NAME}|${ALIAS_NAME}|${SHORT_NAME}`);
-
-const SEEDED_PROFILE_2 = 2; // "Sam Rivers" — the household card admin can confirm for.
 
 function openDb(): Database.Database {
   const db = new Database(workerDbPath());
@@ -92,20 +91,6 @@ async function openAvailable(page: Page): Promise<Locator> {
   await expect(available).toBeVisible();
   await available.locator("summary").click();
   return available;
-}
-
-// A household card FOLDS its due-dose list past the shared threshold (#1504/#2615),
-// so how many rows a card lays out is a neighbour's business. A plain <details>, so
-// opening it is a pure client toggle and never a POST.
-async function revealDoseRows(page: Page, card: Locator): Promise<void> {
-  const aggregate = card.getByTestId("household-dose-aggregate");
-  if ((await aggregate.count()) === 0) return;
-  if (await aggregate.evaluate((el) => (el as HTMLDetailsElement).open)) return;
-  await hydratedClick(
-    page,
-    card.getByTestId("household-dose-aggregate-summary")
-  );
-  await expect(aggregate).toHaveJSProperty("open", true);
 }
 
 test("an offered item's chip wears the short name and still announces the full one", async ({
@@ -207,38 +192,6 @@ test("two items that shorten alike keep distinct logging chips", async ({
         ownerBox.x + ownerBox.width + TAP_FLOOR_FLOAT_EPSILON_PX
       );
     }
-  } finally {
-    dropItems(db, seeded);
-    db.close();
-  }
-});
-
-test("a household card never shows two identical Confirm rows for two items", async ({
-  page,
-}) => {
-  const db = openDb();
-  const seeded: number[] = [];
-  try {
-    // On a member's card the same collision would confirm a dose on their behalf
-    // that they did not take — the #2615 wrong-subject defect by a new mechanism.
-    seeded.push(seedItem(db, SEEDED_PROFILE_2, FULL_NAME, "should"));
-    seeded.push(seedItem(db, SEEDED_PROFILE_2, ALIAS_NAME, "should"));
-
-    await page.goto("/household");
-    const card = page.locator(
-      `[data-testid="household-card"][data-profile-id="${SEEDED_PROFILE_2}"]`
-    );
-    await revealDoseRows(page, card);
-    const rows = card.getByTestId("household-due-dose").filter({
-      hasText: EITHER_NAME,
-    });
-    await expect(rows).toHaveCount(2);
-
-    // The row's first line is the item's name; the slot/amount line follows it.
-    const titles = (await rows.allInnerTexts()).map((t) =>
-      t.trim().split("\n")[0].trim()
-    );
-    expect(titles.sort()).toEqual([ALIAS_NAME, FULL_NAME].sort());
   } finally {
     dropItems(db, seeded);
     db.close();
