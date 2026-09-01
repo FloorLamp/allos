@@ -66,7 +66,9 @@ export function getSchoolReturnThresholdHours(profileId: number): number {
 
 // Compute the school-return countdown for an assembled OPEN episode, or null when it
 // doesn't apply yet — there has been no fever-range reading in the episode, so there
-// is nothing to count down from. `nowMs` is injectable for tests.
+// is nothing to count down from. A fever WITHOUT a later normal reading is a
+// different state, not an absent one: the status is returned with no fever-free claim
+// in it (#4685). `nowMs` is injectable for tests.
 function schoolReturnStatusForRows(
   profileId: number,
   episode: AssembledEpisode,
@@ -96,6 +98,23 @@ function schoolReturnStatusForRows(
     }
   }
   if (lastFeverAtMs == null) return null;
+
+  // THE EVIDENCE (#4685): the FIRST normal (non-fever-flag) reading after that fever.
+  // Same skip rules — a reading whose clock cannot be read is not evidence of
+  // anything, and a day-granular one is anchored at local noon exactly as above.
+  let firstNormalAfterFeverAtMs: number | null = null;
+  for (const t of episode.temperatures) {
+    if (t.flag === "high") continue;
+    const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
+    if (!at) continue;
+    const ms = at.getTime();
+    if (
+      ms > lastFeverAtMs &&
+      (firstNormalAfterFeverAtMs == null || ms < firstNormalAfterFeverAtMs)
+    ) {
+      firstNormalAfterFeverAtMs = ms;
+    }
+  }
 
   // Last ANTIPYRETIC administration in the episode window. Mirrors
   // assembleIllnessEpisode's PRN gather (obligation 'may' + status 'taken', profile-scoped by
@@ -147,6 +166,7 @@ function schoolReturnStatusForRows(
   return computeSchoolReturn({
     lastFeverAtMs,
     lastFeverDegF,
+    firstNormalAfterFeverAtMs,
     lastAntipyreticAtMs,
     lastAntipyreticName,
     lastAntipyreticClockLabel,

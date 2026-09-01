@@ -13,17 +13,18 @@ const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 6, 17, 12, 0, 0); // fixed "now"
 
 describe("computeSchoolReturn", () => {
-  it("counts fever-free hours from the last fever reading when no antipyretic", () => {
+  it("counts fever-free hours from the measured normal reading when no antipyretic", () => {
     const s = computeSchoolReturn({
       lastFeverAtMs: NOW - 18 * HOUR,
       lastFeverDegF: 99.1,
+      firstNormalAfterFeverAtMs: NOW - 18 * HOUR,
       lastAntipyreticAtMs: null,
       lastAntipyreticName: null,
       lastAntipyreticClockLabel: null,
       nowMs: NOW,
       thresholdHours: 24,
     });
-    expect(s.feverFreeHours).toBe(18);
+    expect(s.hoursSinceFever).toBe(18);
     expect(s.hoursSinceAntipyretic).toBeNull();
     expect(s.clearedForHours).toBe(18);
     expect(s.met).toBe(false);
@@ -33,6 +34,7 @@ describe("computeSchoolReturn", () => {
     const s = computeSchoolReturn({
       lastFeverAtMs: NOW - 25 * HOUR,
       lastFeverDegF: 100.9,
+      firstNormalAfterFeverAtMs: NOW - 25 * HOUR,
       lastAntipyreticAtMs: null,
       lastAntipyreticName: null,
       lastAntipyreticClockLabel: null,
@@ -48,13 +50,14 @@ describe("computeSchoolReturn", () => {
     const s = computeSchoolReturn({
       lastFeverAtMs: NOW - 30 * HOUR,
       lastFeverDegF: 102.2,
+      firstNormalAfterFeverAtMs: NOW - 30 * HOUR,
       lastAntipyreticAtMs: NOW - 6 * HOUR,
       lastAntipyreticName: "Ibuprofen",
       lastAntipyreticClockLabel: "6:00am",
       nowMs: NOW,
       thresholdHours: 24,
     });
-    expect(s.feverFreeHours).toBe(30);
+    expect(s.hoursSinceFever).toBe(30);
     expect(s.hoursSinceAntipyretic).toBe(6);
     expect(s.clearedForHours).toBe(6); // governed by the later event
     expect(s.met).toBe(false);
@@ -64,13 +67,14 @@ describe("computeSchoolReturn", () => {
     const s = computeSchoolReturn({
       lastFeverAtMs: NOW - 26 * HOUR,
       lastFeverDegF: 101,
+      firstNormalAfterFeverAtMs: NOW - 26 * HOUR,
       lastAntipyreticAtMs: NOW - 40 * HOUR,
       lastAntipyreticName: "Acetaminophen",
       lastAntipyreticClockLabel: "8:00pm",
       nowMs: NOW,
       thresholdHours: 24,
     });
-    expect(s.clearedForHours).toBe(26); // fever reading is the later event
+    expect(s.clearedForHours).toBe(26); // the normal reading is the later event
     expect(s.met).toBe(true);
   });
 
@@ -78,13 +82,14 @@ describe("computeSchoolReturn", () => {
     const s = computeSchoolReturn({
       lastFeverAtMs: NOW + 3 * HOUR,
       lastFeverDegF: 100.4,
+      firstNormalAfterFeverAtMs: NOW + 4 * HOUR,
       lastAntipyreticAtMs: null,
       lastAntipyreticName: null,
       lastAntipyreticClockLabel: null,
       nowMs: NOW,
       thresholdHours: 24,
     });
-    expect(s.feverFreeHours).toBe(0);
+    expect(s.hoursSinceFever).toBe(0);
     expect(s.clearedForHours).toBe(0);
   });
 });
@@ -93,6 +98,7 @@ describe("formatSchoolReturnLine / schoolReturnCompactClause", () => {
   const status = computeSchoolReturn({
     lastFeverAtMs: NOW - 18 * HOUR,
     lastFeverDegF: 99.1,
+    firstNormalAfterFeverAtMs: NOW - 18 * HOUR,
     lastAntipyreticAtMs: NOW - 20 * HOUR,
     lastAntipyreticName: "Ibuprofen",
     lastAntipyreticClockLabel: "6:00pm",

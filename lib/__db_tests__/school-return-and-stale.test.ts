@@ -13,6 +13,7 @@ import {
   episodeForProfileDate,
 } from "@/lib/illness-episode";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
+import { schoolReturnCompactClause } from "@/lib/school-return";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
 import { updateHistoricalDose } from "@/lib/queries";
 
@@ -103,24 +104,58 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     setProfileSetting(p, "timezone", "UTC");
     makeSick(p, 2);
     const td = today(p);
-    // Fever reading at 09:00 UTC today; ibuprofen at 06:00 UTC today.
+    // Fever reading at 09:00 UTC today, a NORMAL one at 12:00 (the evidence the
+    // clock starts on, #4685); ibuprofen at 06:00 UTC today.
     logTemperatureCore(p, 101.5, "F", td, "page", "09:00");
+    logTemperatureCore(p, 98.6, "F", td, "page", "12:00");
     addAntipyretic(p, "Ibuprofen", td, `${td} 06:00:00`);
 
     const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
     const nowMs = Date.parse(`${td}T20:00:00Z`);
     const s = schoolReturnStatusFor(p, ep, nowMs);
     expect(s).not.toBeNull();
-    expect(s!.feverFreeHours).toBe(11); // 20:00 - 09:00
+    expect(s!.evidence).toBe("measured");
+    expect(s!.hoursSinceFever).toBe(11); // 20:00 - 09:00
     expect(s!.hoursSinceAntipyretic).toBe(14); // 20:00 - 06:00
-    // Cleared clock runs from the LATER event (the fever reading at 09:00).
-    expect(s!.clearedForHours).toBe(11);
+    // Cleared clock runs from the LATER event (the normal reading at 12:00).
+    expect(s!.clearedForHours).toBe(8);
     expect(s!.met).toBe(false);
     expect(s!.lastAntipyreticName).toBe("Ibuprofen");
     // #2228 decision 4: nobody stated an intake time (`occurred_at` is unwritten),
     // so the note's clock is the RECORD chain and says so — "last ibuprofen
     // recorded 6:00am", never a bare clock claiming an administration time.
     expect(s!.lastAntipyreticClockLabel).toBe("recorded 6:00am");
+  });
+
+  // THE SILENCE CASE (#4685), the owner's screenshot end to end: a fever reading and
+  // nothing since. There IS a status — the episode has had a fever — but it carries no
+  // fever-free claim, and no threshold can make one out of unmeasured hours.
+  it("a fever with no reading since renders the honest state, and met stays false", () => {
+    const p = newProfile("sr-silent");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 2);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "19:10");
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    // 09:16 the next morning — 14h of unmeasured night.
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:16:00Z`))!;
+    expect(s.evidence).toBe("none");
+    expect(s.hoursSinceFever).toBe(14);
+    expect(s.clearedForHours).toBeNull();
+    expect(s.met).toBe(false);
+    expect(schoolReturnCompactClause(s)).toBe(
+      "no reading since 103.4 °F (14h ago)"
+    );
+    // Two days of silence is still silence, not a met guideline.
+    const later = schoolReturnStatusFor(
+      p,
+      ep,
+      Date.parse(`${td}T09:16:00Z`) + 48 * 3_600_000
+    )!;
+    expect(later.met).toBe(false);
+    expect(schoolReturnCompactClause(later)).not.toContain("fever-free");
   });
 
   it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {
