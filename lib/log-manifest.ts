@@ -330,6 +330,13 @@ export const LOG_MANIFEST = {
       // confirm and the live lifecycle by mounting the shared one rather than by
       // having them re-added to a copy.
       //
+      // UPCOMING'S ROW DROPS ITS `stale-target` REFUSAL, deliberately (owner ruling,
+      // 2026-09-01, so nobody reads the loss as an oversight). The deleted door posted a
+      // target id and could refuse when that target had gone; the control posts a NAME.
+      // Practice logs are name-keyed and outlive their target, so that refusal guarded a
+      // stale POINTER — and this leg leaves no pointer to be stale. See `practiceItems`
+      // for why the row resolves rather than the control (lib/queries/upcoming/plans.ts).
+      //
       // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
       // ruling 3 itself rather than a gap — the precedent recorded on #4424 after the
       // symptom leg: #3958 makes that row one line at every viewport with its trailing
