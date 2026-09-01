@@ -25,15 +25,6 @@ export const STRAVA_REAUTH_PROFILE = "Strava Reauth (e2e)";
 export const E2E_LOGIN_HC = "e2e_hc";
 export const HEALTH_CONNECT_PROFILE = "Health Connect (e2e)";
 
-// #1063 — the mobile clipped-content audit. A dedicated profile whose Health
-// Connect connection is seeded CONNECTED with a long, synthetic DB-backed token,
-// so the mobile-overflow spec can assert the endpoint/token rows fit a phone
-// viewport WITHOUT generating or rotating anything — the HEALTH_CONNECT_PROFILE
-// above is owned by the generate→rotate spec, whose token mutations would race a
-// concurrent reader under parallel workers. Read-only in its spec.
-export const E2E_LOGIN_MOBILE_HC = "e2e_mobile_hc";
-export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
-
 // #1991 — the day-grouped sync history. A member granted a dedicated profile whose
 // Health Connect connection carries a DAY of high-frequency pushes (the exporter
 // re-sends its rolling window every ~20 minutes), so the spec can assert that ~30
