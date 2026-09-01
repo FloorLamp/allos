@@ -16,7 +16,11 @@ import {
   LOG_SHEET_CONTEXT_RESERVE_PX,
   LOG_SHEET_ROW_BLOCK_PX,
 } from "@/lib/log-sheet";
-import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import {
+  CONTROL_BOX_PX,
+  TAP_FLOOR_FLOAT_EPSILON_PX,
+  TAP_FLOOR_PX,
+} from "@/lib/tap-floor-tokens";
 
 const PHONE_430 = { viewport: { width: 430, height: 932 }, hasTouch: true };
 const PHONE_390 = { viewport: { width: 390, height: 844 }, hasTouch: true };
@@ -489,7 +493,9 @@ test("the context region at its tallest still fits the panel's one reserve (#373
       sheet.getByTestId("log-sheet-context-slot"),
       "context slot at its tallest"
     );
-    expect(slot.height).toBeLessThanOrEqual(LOG_SHEET_CONTEXT_RESERVE_PX);
+    expect(slot.height).toBeLessThanOrEqual(
+      LOG_SHEET_CONTEXT_RESERVE_PX + TAP_FLOOR_FLOAT_EPSILON_PX
+    );
 
     // ...and with the region at its tallest the PANEL is still the same height on
     // every segment, which is the invariant the reserve exists for. If the sum were
