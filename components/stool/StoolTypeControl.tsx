@@ -13,12 +13,11 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
 
 // THE STOOL DOMAIN'S ROW CONTROL (#4424 ruling 7), named by
-// `LOG_MANIFEST.stool.pieces.rowControl`: the Bristol Stool Form Scale as seven
-// one-tap buttons over the day's running count. It was `QuickStoolForm`, the quick
-// sheet's own body, and it hand-rolled the commit dance every tap surface used to —
-// ledger wiring, the online/offline decision, the enqueue, the refused-capture
-// sentence, the toast. All of that is `useWritePipeline` now (#3276); what is left
-// here is what this domain's tap MEANS.
+// `LOG_MANIFEST.stool.pieces.rowControl`: the Bristol Stool Form Scale as seven one-tap
+// buttons over the day's running count. As `QuickStoolForm` it hand-rolled the commit
+// dance — ledger wiring, the offline decision, the enqueue, the refused-capture
+// sentence, the toast. `useWritePipeline` owns all of that now (#3276); what is left is
+// what this domain's tap MEANS.
 //
 // WHY SEVEN BUTTONS AND NOT A SLIDER OR A NUMBER FIELD. The scale is CATEGORICAL-
 // ORDINAL: the types are ordered, but the distance between them is not a quantity, and
@@ -50,8 +49,7 @@ export default function StoolTypeControl({
   // The acting profile's today (YYYY-MM-DD) — the day the count counts and the day
   // the action files a tap under, so the "happened earlier" statement is anchored on
   // the SERVER's day rather than on a browser that may have crossed midnight.
-  // `TAP_REACH` files `stool-form` as a `today` tap; the day a BACKFILL states comes
-  // from `StoolForm`'s mount, not from here.
+  // `TAP_REACH` files this as a `today` tap; a BACKFILL states its day on `StoolForm`.
   today: string;
 }) {
   const tz = useTimezone();
@@ -85,8 +83,7 @@ export default function StoolTypeControl({
     }, settlePlan.ms);
   }
   // Follow the server whenever it disagrees — a reading can be removed elsewhere (the
-  // record's ⋯ deletes one now), and a local count frozen at mount would keep claiming
-  // a day that no longer holds it.
+  // record's ⋯ now does), and a count frozen at mount would claim a day that moved.
   const [serverCount, setServerCount] = useState(todayCount);
   if (serverCount !== todayCount) {
     setServerCount(todayCount);
@@ -115,17 +112,16 @@ export default function StoolTypeControl({
         prev.statedAt === consumed ? { date: today, statedAt: null } : prev
       );
     // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The pipeline settles the ledger and says
-    // the sentence; the COUNT is this surface's state, so it is committed here — the
-    // shape `DoseStatusControl` uses for its own optimistic override.
+    // the sentence; the COUNT is this surface's state, committed here as
+    // `DoseStatusControl` commits its own override.
     const before = count;
     let landed: number | null = null;
     setCount(before + 1);
     const result = await pipeline.run({
       key: String(type),
-      // ONLY when a time was actually stated. The field's ABSENCE is what tells the
-      // action to leave the instant to the clock seam, so an untouched sheet posts
-      // precisely the body it posted before (#3273's byte-identity rule). Same for the
-      // day: this tap states none, so the action stamps the profile's today.
+      // ONLY when a time was actually stated, and never a day: the ABSENCE of each
+      // field leaves the instant to the clock seam and the day to the action's `today`,
+      // so an untouched sheet posts precisely the body it always posted (#3273).
       fields: { type: String(type), ...(stated ? { at: stated } : {}) },
       action: logStoolForm,
       settle: (res) => {
@@ -158,10 +154,9 @@ export default function StoolTypeControl({
           // the observation — so the sentence says the reading is filed at the moment
           // of the tap instead of the minute typed. The phrasing is this surface's own:
           // the user TYPED the time here, so the shared "your device's clock is ahead"
-          // note would diagnose the wrong machine (lib/stated-time.ts says so).
-          //
-          // NO UNDO, declared rather than forgotten: the count beside the buttons moves
-          // on every tap and the record's ⋯ is where a movement is removed.
+          // note would diagnose the wrong machine (lib/stated-time.ts says so). NO UNDO,
+          // declared rather than forgotten: the record's ⋯ is where a movement is
+          // removed, and the count beside the buttons already moved.
           announce: {
             message:
               res.statedTimeRefused === "future"
@@ -185,8 +180,7 @@ export default function StoolTypeControl({
       }),
     });
     // The server's total is authoritative; a capture has no revalidate behind it, so
-    // the optimistic +1 stands in for the queued write until replay; nothing written
-    // rolls the count back.
+    // its +1 stands in until replay; nothing written rolls back.
     if (result === "wrote") setCount(landed ?? before + 1);
     else if (result === "nothing") setCount(before);
     else spendStatement();
@@ -233,10 +227,10 @@ export default function StoolTypeControl({
       </div>
       {/* The collapsed WHEN (#3273). A tap still writes the tap instant — the one-tap
           ledger is the point — and this is the escape hatch for the log that arrives
-          late, which for a bowel movement is the ordinary case (#2785's grain
-          argument). Absolute local times only, via the shared control: no "-2h" chip
-          that means something different every minute the sheet sits open. A day EARLIER
-          than today is the record's door, not this tap's (`TAP_REACH`). */}
+          late, the ordinary case for a bowel movement (#2785's grain argument).
+          Absolute local times only, via the shared control: no "-2h" chip that means
+          something different every minute the sheet sits open. A day EARLIER than today
+          is the record's door, not this tap's (`TAP_REACH`). */}
       <div className="mt-3">
         <button
           type="button"
