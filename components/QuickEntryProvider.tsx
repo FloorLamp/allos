@@ -44,9 +44,7 @@ const QuickPracticeList = dynamic(
 const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 // Same rule, fourth body (#2130): the mood check-in drags in the shared ledger
 // hook and the mood action's client reference; loaded only once opened.
-const QuickMoodCheckin = dynamic(
-  () => import("./quick-entry/QuickMoodCheckin")
-);
+const MoodForm = dynamic(() => import("./mood/MoodForm"));
 // Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
 // the seven inline glyphs and the stool action's client reference; loaded on open.
 const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
@@ -354,7 +352,9 @@ function QuickEntryBody({
       // The SAME MoodValencePicker + logMood write the dashboard card runs, with
       // the #2128 day chips — a second mounting context, never a second write
       // path. A successful tap closes (a check-in is a transaction with an end).
-      return <QuickMoodCheckin days={data.days} onDone={onDone} />;
+      return (
+        <MoodForm days={data.days} showCalm={data.showCalm} onDone={onDone} />
+      );
     case "practice":
       // No `onSaved`: like the food bar, practice logging has no single "saved"
       // moment — multi-session days are the point and a morning check may log two

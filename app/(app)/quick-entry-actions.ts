@@ -67,6 +67,7 @@ import {
   getSymptomSeveritiesOnDate,
 } from "@/lib/queries/symptoms";
 import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
+import { isAnxietyScaleRelevant } from "@/lib/queries/mood-anxiety";
 
 // The quick-entry overlay's DATA half (issue #1468).
 //
@@ -223,6 +224,7 @@ export type QuickEntryData =
           notes: string | null;
         } | null;
       }[];
+      showCalm: boolean;
     }
   | {
       // The well-day symptom bar (#4064) — the SAME props the dashboard's own mount
@@ -447,7 +449,11 @@ export async function loadQuickEntry(
         };
       }
     );
-    return { form: "mood", days };
+    return {
+      form: "mood",
+      days,
+      showCalm: isAnxietyScaleRelevant(profile.id),
+    };
   }
 
   if (form === "symptom") {
