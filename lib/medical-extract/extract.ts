@@ -29,6 +29,13 @@ import type { ExtractionResult, ExtractionMeta } from "./types";
 // console. One line per lifecycle event (start / done / skipped / failed).
 const log = createLogger("medical-extract");
 
+export const AI_SETUP_COPY = {
+  heavy:
+    "an admin can configure the Heavy AI tier under Settings → Server → AI",
+  lightOrHeavy:
+    "an admin can configure a Light (or Heavy) AI tier under Settings → Server → AI",
+} as const;
+
 // Every branch here is AUTHORED for a reader, and the two that used to append the
 // client's own `err.message` no longer do (#3198): the raw text added nothing a
 // person could act on and everything a stack frame or a request URL carries. The
@@ -148,8 +155,7 @@ export async function extractMedicalDocument(
     });
     return {
       status: "skipped",
-      message:
-        "AI not configured — file stored but not extracted. Configure the Heavy AI tier under Settings → Server → AI and re-upload to import results.",
+      message: `AI not configured — file stored but not extracted; ${AI_SETUP_COPY.heavy}, then re-upload to import results.`,
     };
   }
   const { client, model: MODEL, tier, host } = resolved;

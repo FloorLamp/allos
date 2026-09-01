@@ -9,16 +9,13 @@ import {
   setActiveProfile,
 } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { markDoseTaken, undoDoseConfirm, dismissFinding } from "@/lib/queries";
+import { dismissFinding } from "@/lib/queries";
+import { historyDayHref } from "@/lib/hrefs";
 import { householdSetupForProfile } from "@/lib/queries/household-setup";
 import {
   HOUSEHOLD_SETUP_CHECK_IDS,
   type HouseholdSetupCheckId,
 } from "@/lib/household-setup";
-import type {
-  DoseConfirmResult,
-  DoseUndoResult,
-} from "@/lib/dose-outcome-text";
 
 // Switch the current session's active profile to the clicked household card and
 // jump to that profile's dashboard — the same "set active profile + navigate" the
@@ -33,67 +30,27 @@ export async function openProfileAction(formData: FormData) {
   redirect("/");
 }
 
-// Confirm a due dose for a household member WITHOUT switching the active profile
-// (issue #31). The target profile comes from the form, so this must gate on THAT
-// profile, not the active one: requireProfileWriteAccess(profileId) asserts the
-// caller can reach AND write the target (a read-only caregiver is bounced to the
-// app root before any write). markDoseTaken is itself profile-scoped and idempotent
-// — it verifies the dose belongs to the target profile via its parent supplement
-// and logs it once — so a tampered dose_id from another profile is dropped even
-// past the access gate.
+// Follow a member's "+N more this week" into their own day (#1463 §1). The digest
+// is about THAT member, so the destination has to be theirs — and #1329 took
+// `?subject=` out of the URL grammar for good ("reading a member's day means
+// switching to them"), so this switches first and lands second, exactly as the setup
+// CTA below does and as tapping the card header does.
 //
-// The result CARRIES markDoseTaken's typed outcome (#2106): this surface's own
-// one-tap registry entry declares `outcome-toast`, and the action had been dropping
-// the outcome and returning void — so a tap on a dose whose item was meanwhile
-// paused, or whose dose row a schedule edit retired, logged nothing and said
-// nothing, on a medication-adherence surface. The card's confirm button renders
-// every branch through doseConfirmMessage.
-export async function confirmDoseAction(
-  formData: FormData
-): Promise<DoseConfirmResult> {
+// THE DESTINATION IS NEVER POSTED. The form carries the member's profile id and
+// nothing else; the day is resolved server-side as that member's own today, in THEIR
+// timezone. So there is no client-supplied redirect target, and the link cannot be
+// made to point at a day the member does not have.
+export async function openMemberDayAction(formData: FormData) {
+  await requireSession();
   const profileId = Number(formData.get("profileId"));
-  const doseId = Number(formData.get("dose_id"));
-  if (!profileId || !doseId)
-    return { ok: false, error: "Couldn't find that dose." };
-  await requireProfileWriteAccess(profileId);
-  const outcome = markDoseTaken(
-    profileId,
-    doseId,
-    null,
-    today(profileId),
-    // The Household page's own per-member card.
-    "page"
-  );
-  revalidateRoute("/household");
-  revalidateRoute("/nutrition");
-  revalidateRoute("/medications");
-  revalidateRoute("/");
-  return { ok: true, outcome };
-}
-
-// Take back the card's confirm (#2642) — the inverse behind its Undo toast. The gate is
-// the CONFIRM'S gate, re-run: requireProfileWriteAccess on the profile the form names,
-// never the active one, so a read-only caregiver cannot un-log a member's dose any more
-// than they could log it. undoDoseConfirm is itself profile-scoped through the parent
-// item, so a tampered dose_id from a third profile is dropped past the access gate too.
-//
-// A caregiver's undo is still only their OWN tap being taken back: the inverse refuses
-// the moment the day's ledger is no longer the single taken row that confirm wrote, so a
-// second caregiver's confirm, or a skip recorded in between, is never erased by it.
-export async function undoConfirmDoseAction(
-  formData: FormData
-): Promise<DoseUndoResult> {
-  const profileId = Number(formData.get("profileId"));
-  const doseId = Number(formData.get("dose_id"));
-  if (!profileId || !doseId)
-    return { ok: false, error: "Couldn't find that dose." };
-  await requireProfileWriteAccess(profileId);
-  const outcome = undoDoseConfirm(profileId, doseId, today(profileId), "page");
-  revalidateRoute("/household");
-  revalidateRoute("/nutrition");
-  revalidateRoute("/medications");
-  revalidateRoute("/");
-  return { ok: true, outcome };
+  if (!profileId) redirect("/household");
+  // READ-level gate, as on the setup CTA: this is a navigation, not a write, so a
+  // read-only caregiver may follow it — but a login that cannot reach the profile must
+  // never derive anything from it. (`setActiveProfile` re-checks independently.)
+  const accessible = await getAccessibleProfiles();
+  if (!accessible.some((p) => p.id === profileId)) redirect("/household");
+  await setActiveProfile(profileId);
+  redirect(historyDayHref(today(profileId)));
 }
 
 // ── Member setup health (issue #2173) ─────────────────────────────────────────

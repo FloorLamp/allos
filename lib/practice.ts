@@ -363,8 +363,12 @@ export const PRACTICE_PLENTY_TEXT = "Weekly maximum reached";
 // the Wellness card's button, the quick-entry overlay's practice row, the command
 // palette's inline quick log, and the Telegram "Done ✅" answer — so four surfaces over
 // one write core cannot drift into four wordings (#1633).
-export function practiceLogOutcomeText(outcome: PracticeLogOutcome): string {
+export function practiceLogOutcomeText(
+  outcome: PracticeLogOutcome,
+  profileToday: string
+): string {
   if (outcome.kind === "logged") {
+    if (outcome.date !== profileToday) return "Logged past session";
     return outcome.count === 1
       ? "Logged today's session"
       : `Logged — ${outcome.count} sessions today`;

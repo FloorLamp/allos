@@ -78,14 +78,22 @@ const DRAWER_TOP_LEVEL_ORDER: (string | RegExp)[] = TOP_LEVEL_ORDER.map((e) =>
   typeof e === "string" && GROUP_LABELS.includes(e) ? new RegExp(`^${e}`) : e
 );
 
-test("mobile drawer renders the same order through the shared content (#1042)", async ({
+test("mobile drawer keeps its shared nav order and retired siblings out (#1042, #4660)", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  const aside = page.locator("aside");
+  await expect(aside.getByRole("button", { name: /^Search/ })).toBeVisible();
+  await expect(aside.getByTestId("sidebar-log")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
   const drawer = await openMobileDrawer(page);
   const drawerNav = drawer.locator("nav");
   await expect(drawerNav.locator("> *")).toHaveText(DRAWER_TOP_LEVEL_ORDER);
+  await expect(drawer.getByRole("button", { name: /^Search/ })).toHaveCount(0);
+  await expect(drawer.getByTestId("sidebar-log")).toHaveCount(0);
+  await expect(drawer.getByTestId("frequent-pages")).toHaveCount(0);
+  await expect(drawer.getByTestId("sidebar-calendar")).toHaveCount(0);
 });
 
 // Open the Medical group WITHOUT clicking: navigating to an always-visible child

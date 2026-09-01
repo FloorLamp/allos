@@ -4,10 +4,7 @@ import {
   requireSession,
   getAccessibleProfiles,
   accessForProfile,
-  ownProfileForLogin,
 } from "@/lib/auth";
-import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
-import { writeSubjectName } from "@/lib/own-profile";
 import { EPISODES_HREF, historyHref } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
@@ -61,6 +58,8 @@ import { shiftDateStr } from "@/lib/date";
 import { PageHeader, EmptyState } from "@/components/ui";
 import SharedSuppliesLink from "@/components/intake/SharedSuppliesLink";
 import { getIntakeDeltaLine } from "@/lib/intake-history";
+import { collectRecentChanges } from "@/lib/queries/recent-changes";
+import { RECENT_CHANGES_MAX_LINES } from "@/lib/recent-changes";
 import HouseholdCard, {
   type HouseholdCardData,
 } from "@/components/HouseholdCard";
@@ -76,14 +75,9 @@ export default async function HouseholdPage() {
   const { login } = await requireSession();
   const profiles = await getAccessibleProfiles();
   if (profiles.length < 2) redirect("/");
-  // Own-profile link (#1013): the login's self, so each card's dose-confirm names
-  // the CARD's person unless it's the login's own card (or no own-profile is set).
-  // Names are disambiguated (#534) so two same-named profiles stay distinguishable.
-  const ownProfileId = ownProfileForLogin(login.id);
   // The already-authorized accessible ids — the only legitimate input to a
   // cross-profile reader (here, the medicine-cabinet door's count).
   const profileIds = profiles.map((p) => p.id);
-  const cardNames = disambiguateProfileNames(profiles);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -166,9 +160,15 @@ export default async function HouseholdPage() {
       : [];
     const goalProgress = getOutcomeGoalProgressMap(pid, goals);
 
-    // The actionable rollup — today's attention items (due doses, low refills,
-    // next visit) reusing the Upcoming aggregation's per-domain builders.
+    // Today's attention items (due doses, low refills, next visit), reusing the
+    // Upcoming aggregation's per-domain builders. The card renders the COUNT and a
+    // link now, not the rows (#1463 §1): Upcoming multi-view owns the cross-profile
+    // action, so the same aggregation answers "how much is waiting" instead.
     const rollup = collectHouseholdRollup(pid, day);
+    const attention =
+      rollup.dueDoses.length +
+      rollup.lowRefills.length +
+      (rollup.nextAppointment ? 1 : 0);
 
     // Structural data-quality gaps (issue #1045), bus-filtered so a member's own
     // dismissal silences the line here too (dismiss once, silence everywhere). Kids'
@@ -184,21 +184,27 @@ export default async function HouseholdPage() {
     );
 
     // Whether THIS login may WRITE this profile: admins always can, a member per
-    // its grant level. Read-only cards show the attention items but no quick-action
-    // buttons; the server action (confirmDoseAction) re-checks this per profile.
+    // its grant level. It gates the setup row's dismiss only — the card offers no
+    // other write since #1463 ceded in-app actions to Upcoming multi-view.
     const canWrite = accessForProfile(login.id, login.role, pid) === "write";
 
     return {
       profile,
       canWrite,
-      subjectName: writeSubjectName(
-        ownProfileId,
-        pid,
-        cardNames.get(pid) ?? profile.name
-      ),
-      rollup,
-      today: day,
-      formatPrefs,
+      // THE MEMBER'S WEEK (#1463 §2), from the SHIPPED collector the morning digest
+      // already asks at 24 hours — one definition of "what changed", two windows.
+      // `shared: true` is what puts behavioral-health masking on this surface, and it
+      // is applied INSIDE the collector (§3) so no formatter can forget it. The window
+      // edges are `day`, which this loop already resolved in the MEMBER's timezone —
+      // never the viewer's. Ordering never reads the viewer at all.
+      recent: collectRecentChanges(pid, {
+        sinceDays: 7,
+        today: day,
+        shared: true,
+        max: RECENT_CHANGES_MAX_LINES,
+        overflowLabel: "this week",
+      }),
+      attention,
       adherence,
       // The pushed tier's state changes (#1505 part 3) — the SAME shared line the
       // morning digest and the weekly recap render, so a caregiver reading the
@@ -268,7 +274,7 @@ export default async function HouseholdPage() {
     <div>
       <PageHeader
         title="Household"
-        subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
+        subtitle="Everyone at a glance — what changed this week, or tap a card to open that profile."
         // The action gets its OWN LINE on a phone (#3403). Two affordances plus the
         // title do not fit 360px, and the shell clips rather than scrolls, so an
         // un-wrapping row would hide one of them outright. This used to be bought by

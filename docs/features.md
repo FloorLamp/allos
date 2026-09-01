@@ -1167,12 +1167,22 @@ photo core) — factual capture, tagging, and playback only.
 
 For any login that can reach more than one profile (an admin, or a caregiver
 **member** granted several profiles), a cross-profile overview: one card per
-person showing today's **attention items** — supplement/medication doses due,
-low refills, and the next scheduled visit — alongside at-a-glance stats.
-**Confirm** a due dose for anyone straight from their card **without switching
-profiles** (the button shows only where you have write access; a read-only grant
-sees the card but no actions), or tap a card to open that profile. Hidden for
-single-profile logins. The cross-household **illness + visit trail** lives on
+person, read as a **status board**. Each card carries at-a-glance stats
+(supplement adherence, biomarkers, last activity, weight, plus sick / mid-workout
+chips), then that member's **recent-changes digest** — up to four lines of what
+actually happened for them **in the last 7 days**, newest and most relevant
+first, with **"+N more this week"** opening that member's own day view. Below
+that, a count of what needs attention today (doses due, low refills, the next
+visit) linking to **Upcoming**, where the action lives: Upcoming's multi-view
+rows confirm a dose for whoever the row belongs to. The card itself offers no
+dose action — a summary is not a second action surface. Tap a card to open that
+profile. Hidden for single-profile logins.
+
+Each member's 7-day window is computed in **that member's** timezone, and the
+line order never depends on who is looking — two caregivers reading the same
+member see the same picture. What a caregiver may **see** does depend on the
+surface: a behavioral-health visit reads as "Medical appointment" and **mood
+check-ins do not appear at all** (see [Mental health](#mental-health)). The cross-household **illness + visit trail** lives on
 **Medical → Illness episodes** (`/medical/episodes`) — the view-set-driven
 care-trail surface that superseded the removed `/household/history` (#1373): the
 session view-set drives whose data shows (grant-scoped like the rest of
@@ -1234,8 +1244,8 @@ chrome when it isn't.
 caregiver-only login leaves it unset; an admin can set it for anyone under
 **Settings → People & access**). It
 grants no access — it's purely a label — but once set, any write whose target
-**isn't** your own profile **names the person right on the button**: a household
-card's dose confirm reads "Confirm — Mia", the dashboard weigh-in "Log today's
+**isn't** your own profile **names the person right on the button**: an Upcoming
+row's dose confirm reads "Mark taken — Mia", the dashboard weigh-in "Log today's
 weight for Mia", the live workout editor "Finish workout — Mia". No confirmation
 interstitial (routine caregiving stays one-tap) — the passive naming just makes
 a wrong-profile dose or weigh-in obvious at the point of action. The sidebar (or
@@ -2446,10 +2456,14 @@ profile's own on-screen view, but is **NEVER** sent as a notification on any
 channel (Telegram / Web Push / Home Assistant): the app informs on-screen, it
 does not push crisis content to a possibly-shared or locked device. A
 mental-health **appointment** additionally defaults to **minimal detail**
-("Medical appointment") on shared/exported surfaces — household rollups and the
-`.ics` family calendar feed — via the ONE `sharedSurfaceDetail` decision
-(`lib/appointment-sensitivity.ts`) every shared surface consults, overridable
-per profile; the profile's OWN surfaces always show full detail. Informational,
+("Medical appointment") on shared/exported surfaces — household rollups, the
+Household card's digest and the `.ics` family calendar feed — overridable per
+profile. **Mood check-ins never appear on a shared surface at all**: a daily
+self-report has no useful minimal form, and access granted to help with someone's
+medications is not access to their mood feed. Both rules live in
+`lib/appointment-sensitivity.ts` as the ONE decision every shared surface
+consults, so a surface added later inherits them rather than restating them; the
+profile's OWN surfaces always show everything. Informational,
 a screening instrument, **never a diagnosis**.
 
 ## Crisis support

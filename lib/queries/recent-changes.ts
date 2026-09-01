@@ -44,7 +44,10 @@ import { getIntegration } from "../integrations/registry";
 import { syncVocabularyForKind } from "../integrations/source-state";
 import type { IntegrationId } from "../types/integrations";
 import { currentEpisodeForProfile } from "../illness-episode";
-import { sharedSurfaceDetail } from "../appointment-sensitivity";
+import {
+  sharedSurfaceDetail,
+  sharedSurfaceWithholdsCategory,
+} from "../appointment-sensitivity";
 import { biomarkerFamily } from "../canonical-name";
 import type { AppRoute } from "../hrefs";
 import { getIntakeDeltas } from "../intake-history";
@@ -63,8 +66,10 @@ export interface RecentChangesOptions {
   exclude?: readonly RecentChangeCategory[];
   // Categories the reader has demoted (#1714) — only their notable entries survive.
   demoted?: readonly RecentChangeCategory[];
-  // A SHARED surface (the household card) masks behavioral-health visits. A profile's
-  // own surfaces (its digest) pass false and see full detail.
+  // A SHARED surface — one other people can read, like the household card. It states
+  // behavioral-health visits minimally and withholds mood check-ins entirely; both
+  // rules are decided in lib/appointment-sensitivity.ts, never here and never at a call
+  // site. A profile's OWN surfaces (its digest) pass false and see everything.
   shared?: boolean;
   // Line cap and overflow copy.
   max?: number;
@@ -480,10 +485,25 @@ export function collectRecentChanges(
   // ── data arrival (#1713) ─────────────────────────────────────────────────────
   if (on("data")) changes.push(...arrivalChanges(profileId, sinceInstant));
 
+  // §3, THE WHOLE-CATEGORY HALF (#1463, owner ruling 2026-09-01). Applied ONCE here,
+  // over everything collected, rather than inside the branch that produces each
+  // category: `shared: true` then means the same thing for every consumer that passes
+  // it and for every category added later, which is the property a per-branch or a
+  // call-site `exclude` cannot give. The visit rule above stays where it is because it
+  // rewrites a line rather than dropping one.
+  //
+  // BEFORE `present`, deliberately: `presentCategories` answers "what is in today's
+  // message" for the #1714 Tune control, and a category this surface withholds is not
+  // in the message — offering a toggle for it would name the very thing the rule
+  // exists to keep off a shared surface.
+  const visible = opts.shared
+    ? changes.filter((c) => !sharedSurfaceWithholdsCategory(c.category))
+    : changes;
+
   // Pre-demotion, so the Tune control (#1714) can offer a toggle for a category that
   // IS producing lines this reader has chosen not to see.
-  const present = new Set(changes.map((c) => c.category));
-  const kept = applyRecentChangeDemotion(changes, new Set(opts.demoted ?? []));
+  const present = new Set(visible.map((c) => c.category));
+  const kept = applyRecentChangeDemotion(visible, new Set(opts.demoted ?? []));
   const ranked = rankRecentChanges(kept, {
     lifeStage: stage,
     openEpisode: currentEpisodeForProfile(profileId) != null,

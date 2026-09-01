@@ -218,8 +218,8 @@ describe("the client write pipeline (#3276)", () => {
     );
   });
 
-  // CLASS 3 — UNDO. The sheet's "Mark taken" has none while `DoseConfirmButton`'s two
-  // mounts do, because nothing asked. Here the announcement's `undo` is required, and a
+  // CLASS 3 — UNDO. The sheet's "Mark taken" has none while `DoseConfirmButton` does,
+  // because nothing asked. Here the announcement's `undo` is required, and a
   // declared offer rides the toast through the shared 15s window.
   it("carries a declared undo offer onto the outcome toast", async () => {
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);

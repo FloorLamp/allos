@@ -274,7 +274,7 @@ test.describe("the dose fold's slot runs (#2579-D)", () => {
 
     // THE WRITE IS THE DOMAIN'S SHARED CONTROL, not a chip-shaped copy of it: the tap
     // posts the same markTaken and answers with the same typed outcome the dashboard
-    // and household confirms do. This fixture's name is not abbreviated, so the #2858
+    // confirm does. This fixture's name is not abbreviated, so the #2858
     // announcement adds nothing and the accessible name IS the visible text — the same
     // rule, and now the same composer, as the offer chips below (their abbreviated
     // case is pinned in e2e/intake-short-labels.mobile.spec.ts).
