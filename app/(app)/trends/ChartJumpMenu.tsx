@@ -37,6 +37,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const focusOnOpenIndexRef = useRef(0);
+  const menuNavigationSinceOpenRef = useRef(false);
   const activeIndex = Math.max(
     0,
     items.findIndex((item) => item.id === active)
@@ -79,6 +80,7 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
     if (!open) return;
     const index = focusOnOpenIndexRef.current;
     const frame = requestAnimationFrame(() => {
+      if (menuNavigationSinceOpenRef.current) return;
       // The host owns these two open-time positions. Anything else is a move the
       // person already made, so this deferred focus must yield to it (#4037).
       if (
@@ -103,10 +105,14 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
 
   const openMenu = () => {
     focusOnOpenIndexRef.current = activeIndex;
+    menuNavigationSinceOpenRef.current = false;
     setOpen(true);
   };
 
   const moveFocus = (direction: 1 | -1) => {
+    // Claim focus even when wrapping lands on the same option. The deferred
+    // open callback must not infer intent from whether activeElement changed.
+    menuNavigationSinceOpenRef.current = true;
     const focusedIndex = optionRefs.current.findIndex(
       (option) => option === document.activeElement
     );
@@ -170,9 +176,11 @@ export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
               moveFocus(event.key === "ArrowDown" ? 1 : -1);
             } else if (event.key === "Home") {
               event.preventDefault();
+              menuNavigationSinceOpenRef.current = true;
               optionRefs.current[0]?.focus();
             } else if (event.key === "End") {
               event.preventDefault();
+              menuNavigationSinceOpenRef.current = true;
               optionRefs.current[items.length - 1]?.focus();
             }
           }}
