@@ -264,42 +264,41 @@ export const LOG_MANIFEST = {
     },
     pieces: {
       // #4424's dose leg. `HistoricalDoseForm` is add AND full-statement edit at every
-      // mount — the record's door, that record row's correction, the Supplements tab's
-      // card, and the per-item dose history's add and ⋯.
+      // mount — the record's door, that record row's correction, the Supplements card,
+      // and the per-item dose history's add and ⋯.
       //
       // THE FORM CLAIM WAS RIGHT ABOUT THE COMPLAINT AND WRONG ABOUT THE FACT. It said
       // the `/history` door "routes doses to the legacy `DoseBackfillLauncher`, so the
       // domain does not yet have ONE form every surface mounts" — but that launcher
-      // MOUNTED this form, as did every other dose door: there was one form already.
-      // What was spelled twice was the ITEM PICKER in front of it (`DoseBackfillLauncher`
-      // and `HistoricalDoseLauncher`), each building the dose options its own way. The
-      // form owns the picker now and the launcher is deleted. And the door had NO DAY:
-      // every other kind opens on the day the reader was looking at (#4045 §1) and the
-      // dose branch bypassed `HistoryAddDoor` entirely to open on today.
+      // MOUNTED this form, as did every other dose door. What was spelled twice was the
+      // ITEM PICKER in front of it (`DoseBackfillLauncher`, `HistoricalDoseLauncher`),
+      // each building the dose options its own way; the form owns it now and the
+      // launcher is deleted. And the door had NO DAY: every other kind opens on the day
+      // being read (#4045 §1) and the dose branch bypassed `HistoryAddDoor` to open on
+      // today.
       //
-      // `DoseStatusControl` is the row control every dose row hosting a write control
+      // `DoseStatusControl` is the control every dose row hosting a write control
       // mounts. THE CELL WAS RIGHT that the ledger "picks between two controls per row
       // by `isToday`" and that `QuickDoseList` straddles two writes; the reason was one
       // line — `setDoseStatus` stamped `today(profileId)`, so the tri-state could not
-      // name yesterday and each surface hand-rolled a dated pair beside it. The ledger's
-      // own comment blamed the CORE ("the tri-state's CLEAR has no dated core"), and
-      // that was wrong: `setDoseStatusCore` gates on `isDoseDateAccepted`, the same ±2,
-      // and always did. The action takes a day bounded by `doseLogDays` now, so a past
-      // day gained the CLEAR it never had and three spellings are deleted.
+      // name yesterday and each surface hand-rolled a dated pair. The ledger's own
+      // comment blamed the CORE ("the tri-state's CLEAR has no dated core"): wrong —
+      // `setDoseStatusCore` gates on `isDoseDateAccepted`, the same ±2, and always did.
+      // The action takes a day bounded by `doseLogDays` now, so a past day gained the
+      // CLEAR it never had and three spellings are deleted.
       //
       // WHAT #4316 ACTUALLY LANDED, since this cell named it as the blocker: `a6aa7867`
       // extracted `useDoseDayResolution` — a shared WRITE OWNER, not a row component —
-      // and both surfaces went on drawing their own buttons. Its single-row arm is gone
-      // with this leg; what stays shared is the whole-stack "Take all" row, which is
+      // and both surfaces went on drawing their own buttons. Its single-row arm goes
+      // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
       // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Its two mounts —
       // the dashboard attention row, the household card's due row — list what is still
-      // OWED, so the row is unmounted by its own write: the tri-state's receipt (the
-      // control becoming its done state, #2654) cannot exist there and the answer has
-      // to be a toast carrying the inverse (#2642). One component, two gates, which the
-      // issue body names as the requirement. Folding it in would delete a documented
-      // undo with no ruling; raised rather than assumed.
+      // OWED, so the row is unmounted by its own write: the tri-state's receipt (#2654)
+      // cannot exist there and the answer has to be a toast carrying the inverse
+      // (#2642). One component, two gates, which the issue body names as the
+      // requirement. Folding it in would delete a documented undo with no ruling.
       form: { kind: "shared", component: "HistoricalDoseForm" },
       rowControl: { kind: "shared", component: "DoseStatusControl" },
     },

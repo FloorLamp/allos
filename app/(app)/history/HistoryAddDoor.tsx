@@ -92,9 +92,9 @@ export interface HistoryAddVocabulary {
   /** Practices this profile tracks. An empty list renders no practice door. */
   practices: string[];
   /**
-   * The intake items a past dose may be logged against — only items with a LIVE dose,
-   * so an item whose schedule is entirely retired keeps its history but takes no new
-   * rows. Empty for every other kind, and an empty list renders no dose door.
+   * The items a past dose may be logged against — only those with a LIVE dose, so an
+   * item whose schedule is retired keeps its history and takes no new rows. Empty for
+   * every other kind, and an empty list renders no dose door.
    */
   doseItems: DoseLedgerItem[];
   /** The profile-local clock a dose backfill prefills its time with. */
@@ -404,8 +404,7 @@ export default function HistoryAddDoor({
       case "dose":
         // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind already
         // opened a form in place, but through `DoseBackfillLauncher` — its own toggle,
-        // its own item picker, and NO day: it opened on today whatever day the reader
-        // stood on. The launcher is deleted and the one form mounts with the day.
+        // its own item picker, and NO day. The launcher is deleted.
         return (
           <HistoricalDoseForm
             items={vocabulary.doseItems.map((item) => ({

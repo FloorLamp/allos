@@ -154,12 +154,10 @@ export default function DayLedger({
     setNotes((prev) => ({ ...prev, [occurrenceKey(date, doseId)]: text }));
   }
 
-  // WHAT ONE ROW'S CONTROL DID TO THIS DAY, AND THE INVERSE WITH IT. `resolved` is
-  // what this session has written, so a row leaves the due list under the finger that
-  // resolved it rather than waiting on the revalidate — and a CLEAR has to put it
-  // back, or the tri-state's way back would strike a dose off the ledger for good.
-  // The dated arm this replaces could not reach that state at all: `resolveDayDoses`
-  // resolves and never un-resolves.
+  // WHAT ONE ROW'S CONTROL DID TO THIS DAY, AND THE INVERSE WITH IT. A resolved row
+  // leaves the due list under the finger rather than waiting on the revalidate — and a
+  // CLEAR has to put it back, or the tri-state's way back strikes a dose off for good.
+  // The dated arm this replaces could not reach that state: it never un-resolved.
   function settleDose(doseId: number) {
     return (result: DoseStatusResult) => {
       if (!result.ok) return note(doseId, result.error);
@@ -343,10 +341,9 @@ export default function DayLedger({
             </span>
           )}
         </LoggedEventRow>
-        {/* ONE CONTROL, ANY WRITABLE DAY (#4424 ruling 3). This row used to pick
-            between the tri-state and a hand-rolled Take/Skip pair on `isToday`,
-            because `setDoseStatus` stamped today; the control carries the row's day
-            now, so the flag that selected a layout is gone rather than moved. */}
+        {/* ONE CONTROL, ANY WRITABLE DAY (#4424 ruling 3). This row picked between the
+            tri-state and a hand-rolled Take/Skip pair on `isToday` because
+            `setDoseStatus` stamped today; the control carries the row's day now. */}
         <DoseStatusControl
           doseId={dose.doseId}
           date={date}
@@ -460,15 +457,11 @@ export default function DayLedger({
           <span className={LOGGED_EVENT_TRAILING}>
             {historyClock(row.hhmm, row.clockKind, prefs)}
           </span>
-          {/* THE WAY BACK (#232's tri-state). A resolved dose is a statement somebody
-              made with one tap, and taking it back has to be one tap too. This was
-              TODAY ONLY on the reasoning that "the tri-state's CLEAR has no dated
-              core" — the core took a day all along (`setDoseStatusCore` gates on
-              `isDoseDateAccepted`, the ±2 window); it was the ACTION that stamped
-              today. So a dose taken on the wrong past day could be logged from this
-              ledger and not un-logged from it. Inside the write window every day's
-              rows carry it now; beyond it nothing is offered, because nothing would
-              be written. */}
+          {/* THE WAY BACK (#232's tri-state). This was TODAY ONLY on the reasoning
+              that "the tri-state's CLEAR has no dated core" — the core took a day all
+              along (`setDoseStatusCore` gates on `isDoseDateAccepted`); it was the
+              ACTION that stamped today. So a dose taken on the wrong past day could be
+              logged from this ledger and not un-logged from it. */}
           {doseWritable && (
             <DoseStatusControl
               doseId={row.doseId}

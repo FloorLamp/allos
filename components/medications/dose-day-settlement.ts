@@ -19,12 +19,10 @@ type DoseRowSettlement = {
 // different chrome around the same whole-stack "Take all" row; neither restates its
 // pipeline, action or settlement.
 //
-// THE SINGLE-ROW ARM LEFT WITH #4424's DOSE LEG. Both surfaces used to reach a dose
-// row through here and draw their own pair of buttons around it; the row control is
-// `DoseStatusControl` now, on today and on any day inside the write window alike, so
-// what is shared here is the BULK offer — `dose-day-stack`, whose tap moves on-hand
-// supply for N items at once and is the reason that affordance is its own registry
-// row. A single tap is `dose-status` / `dose-day` and lives in the control.
+// THE SINGLE-ROW ARM LEFT WITH #4424's DOSE LEG. Both surfaces used to reach a dose row
+// through here and draw their own buttons around it; the row control is
+// `DoseStatusControl` now, on any day inside the write window. What stays shared is the
+// BULK offer — `dose-day-stack`, whose tap moves on-hand supply for N items at once.
 export function useDoseDayResolution({
   date,
   bulkFailureMessage,

@@ -23,10 +23,9 @@ import {
 
 // Tri-state dose check-off (issue #232), and THE dose domain's one row control (#4424
 // ruling 3): taken, deliberately skipped, or clear, on every row that hosts a dose
-// write control — medication card, supplement row, the ledger's due and logged rows,
-// the quick sheet's list. IT TAKES A DAY, which is what made the row one control: the
-// ledger picked between this and a hand-rolled pair on `isToday` and the sheet spelled
-// two more, because `setDoseStatus` stamped today and nothing could reach yesterday.
+// write control. IT TAKES A DAY, which is what made the row one control — the ledger
+// picked between this and a hand-rolled pair on `isToday` and the sheet spelled two
+// more, because `setDoseStatus` stamped today and nothing could reach yesterday.
 //
 // Online every transition calls the setDoseStatus Server Action with an explicit
 // target, which keeps on-hand supply in lock-step (only crossing the taken
@@ -92,10 +91,9 @@ export default function DoseStatusControl({
    */
   date?: string;
   /**
-   * WHICH DOSE, for the accessible name (#2615 item 2). Carried by the quick sheet's
-   * switched-day rows, whose own buttons named their dose before they became mounts of
-   * this control. Absent elsewhere — including the ledger, which never named one, so
-   * this leg moves no shipped accessible name.
+   * WHICH DOSE, for the accessible name (#2615 item 2). Carried by the sheet's
+   * switched-day rows, whose own buttons named their dose; absent elsewhere, including
+   * the ledger, which never named one — so this leg moves no shipped name.
    */
   itemName?: string;
   /** What the ROW does with the answer; absent on a row that just re-renders. */
