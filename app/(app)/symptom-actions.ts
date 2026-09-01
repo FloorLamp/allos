@@ -8,6 +8,7 @@ import { today } from "@/lib/db";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
@@ -355,7 +356,16 @@ export async function deleteCustomSymptom(
 // surfaces on the dashboard, Timeline, Trends, and the clinical results catalog, so all are
 // revalidated.
 export type TemperatureLogResult =
-  | { ok: true; degF: number; flag: string | null; redFlag?: string | null }
+  | {
+      ok: true;
+      degF: number;
+      flag: string | null;
+      redFlag?: string | null;
+      // The minute the acceptance gate discarded (#4568) — a NOTICE beside a reading
+      // that landed, the same verdict `addMeasurements` reports for the sitting's
+      // Time. Absent whenever nothing was stated or the statement was accepted.
+      statedTimeRefused?: StatedTimeRefusal;
+    }
   | { ok: false; error: string };
 
 export async function logTemperature(
@@ -402,7 +412,15 @@ export async function logTemperature(
     outcome.degF,
     profileAgeMonths(profileId, date)
   );
-  return { ok: true, degF: outcome.degF, flag: outcome.flag, redFlag };
+  return {
+    ok: true,
+    degF: outcome.degF,
+    flag: outcome.flag,
+    redFlag,
+    ...(outcome.statedTimeRefused
+      ? { statedTimeRefused: outcome.statedTimeRefused }
+      : {}),
+  };
 }
 
 // Free-text symptom intake (issue #877): map a typed sentence onto the vocabulary via

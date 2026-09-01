@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { resolveSituationId, setProfileSetting } from "@/lib/settings";
@@ -15,6 +15,25 @@ import {
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { staleEpisodeNudgeFor, ackStaleNudge } from "@/lib/stale-episode-data";
 import { updateHistoricalDose } from "@/lib/queries";
+
+// THE CLOCK IS PINNED HERE because this file states WALL TIMES on a `today()`-derived
+// day, and #4568 made `logTemperatureCore` JUDGE that statement instead of shape-checking
+// it. Unpinned, a fixture stating 14:00 is in the past when the suite runs in the evening
+// and in the FUTURE when it runs at lunchtime — green for part of the day and red for the
+// rest, the #3260 shape. Late on its own UTC day, so every wall time below has already
+// happened; the profiles here are UTC. Same pin, same reason, as
+// lib/__db_tests__/bristol-stool-write.test.ts, which stool's own graduation armed.
+const PINNED_NOW = "2026-08-31T23:45:00.000Z";
+let priorNow: string | undefined;
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
+
 
 // DB-tier gather tests for the school-return countdown (#859 item 2) and the
 // stale-open-episode nudge (#859 item 1) — the input layer the pure tier can't see.
