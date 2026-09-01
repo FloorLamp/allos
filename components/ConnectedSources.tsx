@@ -227,7 +227,10 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
           </span>
         )}
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+      <span
+        className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        data-testid={`source-trailing-${source.id}`}
+      >
         {source.latest && (
           <SyncTimestamp value={source.latest.at} relativeOnly />
         )}

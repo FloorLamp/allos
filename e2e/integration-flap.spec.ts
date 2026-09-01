@@ -112,7 +112,7 @@ function clearFixture(): void {
 
 test.afterAll(() => clearFixture());
 
-test("Connected-source timestamps share a trailing column inside the Data page measure", async ({
+test("Connected-source timestamp and chevron share a trailing rail inside the Data page measure", async ({
   page,
 }) => {
   seedFlapping();
@@ -120,12 +120,27 @@ test("Connected-source timestamps share a trailing column inside the Data page m
   await page.goto("/data?section=review");
 
   const healthy = page.getByTestId("sources-healthy");
-  const timestamps = healthy.getByTestId("sync-timestamp-compact");
-  await expect(timestamps).toHaveCount(2);
-  const rightEdges = await timestamps.evaluateAll((nodes) =>
-    nodes.map((node) => Math.round(node.getBoundingClientRect().right))
-  );
-  expect(new Set(rightEdges).size).toBe(1);
+  const trailing = healthy.getByTestId(`source-trailing-${PROVIDER}`);
+  const timestamp = trailing.getByTestId("sync-timestamp-compact");
+  await expect(timestamp).toHaveCount(1);
+  await expect(trailing.locator("svg")).toHaveCount(1);
+  const geometry = await trailing.evaluate((rail) => {
+    const timestamp = rail.querySelector<HTMLElement>(
+      '[data-testid="sync-timestamp-compact"]'
+    )!;
+    const chevron = rail.querySelector<SVGElement>("svg")!;
+    const surface = rail.parentElement!;
+    return {
+      timestampBeforeChevron:
+        Math.round(timestamp.getBoundingClientRect().right) <
+        Math.round(chevron.getBoundingClientRect().left),
+      rightInset: Math.round(
+        surface.getBoundingClientRect().right -
+          chevron.getBoundingClientRect().right
+      ),
+    };
+  });
+  expect(geometry).toEqual({ timestampBeforeChevron: true, rightInset: 12 });
   expect(
     (await page.getByTestId("data-page").boundingBox())!.width
   ).toBeLessThanOrEqual(1152);
