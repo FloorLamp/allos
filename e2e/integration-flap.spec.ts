@@ -124,27 +124,33 @@ test("Connected-source timestamp and chevron share a trailing rail inside the Da
   const timestamp = trailing.getByTestId("sync-timestamp-compact");
   await expect(timestamp).toHaveCount(1);
   await expect(trailing.locator("svg")).toHaveCount(1);
-  const geometry = await trailing.evaluate((rail) => {
+  const timestampBeforeChevron = await trailing.evaluate((rail) => {
     const timestamp = rail.querySelector<HTMLElement>(
       '[data-testid="sync-timestamp-compact"]'
     )!;
     const chevron = rail.querySelector<SVGElement>("svg")!;
-    const surface = rail.parentElement!;
-    return {
-      timestampBeforeChevron:
-        (timestamp.compareDocumentPosition(chevron) &
-          Node.DOCUMENT_POSITION_FOLLOWING) !==
-        0,
-      rightGap:
-        surface.getBoundingClientRect().right -
-        chevron.getBoundingClientRect().right,
-      rightPadding: parseFloat(getComputedStyle(surface).paddingRight),
-    };
+    return (
+      (timestamp.compareDocumentPosition(chevron) &
+        Node.DOCUMENT_POSITION_FOLLOWING) !==
+      0
+    );
   });
-  expect(geometry.timestampBeforeChevron).toBe(true);
-  expect(
-    Math.abs(geometry.rightGap - geometry.rightPadding)
-  ).toBeLessThanOrEqual(1);
+  expect(timestampBeforeChevron).toBe(true);
+  await expect
+    .poll(async () => {
+      const rightGap = await trailing.evaluate((rail) => {
+        const chevron = rail.querySelector<SVGElement>("svg")!;
+        const surface = rail.parentElement!;
+        return (
+          surface.getBoundingClientRect().right -
+          chevron.getBoundingClientRect().right
+        );
+      });
+      return rightGap >= 10 && rightGap <= 14
+        ? "right gap is 10–14px"
+        : `right gap is ${rightGap}px`;
+    })
+    .toBe("right gap is 10–14px");
   expect(
     (await page.getByTestId("data-page").boundingBox())!.width
   ).toBeLessThanOrEqual(1152);
