@@ -1282,29 +1282,28 @@ export async function updateIntakeItem(
 // the control the dose is resolved when nothing was written. Every reachable tap still
 // answers ok — the control is only rendered for an active, non-retired dose — so this
 // changes what a FORGED post is told, not what a real one sees.
+// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280). A dose surface renders
+// what actually happened through `doseConfirmMessage`, the one formatter every dose
+// path answers through — an off-cadence confirm names the schedule (#1602), an
+// idempotent repeat says so — and a bare `{ ok: true }` flattens all of that into a
+// confirm the write may not have earned. `ok` means "the request was understood".
+export type DoseStatusResult =
+  { ok: true; outcome: DoseStatusOutcome } | { ok: false; error: string };
+
 function doseStatusResult(
   outcome: DoseStatusOutcome,
   target: DoseStatusTarget
-): FormResult {
-  switch (outcome) {
-    case "stale-dose":
-      return formError("That dose is no longer scheduled.");
-    case "inactive":
-      return formError("That item is paused.");
-    // THE DAY WAS ALREADY RESOLVED, THE OTHER WAY (#280) — only reachable from a
-    // resolve-only tap. The honest answer is the status that persists, in the words
-    // every other dose surface uses. Asked-for and found agreeing is not a refusal.
-    case "already-taken":
-      return target === "taken"
-        ? formOk()
-        : formError(doseConfirmMessage("already-taken").text);
-    case "already-skipped":
-      return target === "skipped"
-        ? formOk()
-        : formError(doseConfirmMessage("already-skipped").text);
-    default:
-      return formOk();
-  }
+): DoseStatusResult {
+  // Reachable only from a resolve-only tap — a control that was showing CLEAR. Where
+  // the day already stands the OTHER way the tap wrote nothing, so it is a refusal in
+  // the words every dose surface uses; where it agrees, the dose is where the tap
+  // wanted it and an idempotent repeat is not a refusal.
+  const contradicted =
+    (outcome === "already-taken" && target !== "taken") ||
+    (outcome === "already-skipped" && target !== "skipped");
+  if (contradicted || outcome === "stale-dose" || outcome === "inactive")
+    return formError(doseConfirmMessage(outcome).text);
+  return { ok: true, outcome };
 }
 
 // Set a single dose's status on a day to an explicit target — the web tri-state's
@@ -1328,7 +1327,9 @@ function doseStatusResult(
 // refusals and every supply movement belong to the auth-blind core in
 // lib/queries/intake/adherence.ts, which the Telegram, offline and household paths use
 // too.
-export async function setDoseStatus(formData: FormData): Promise<FormResult> {
+export async function setDoseStatus(
+  formData: FormData
+): Promise<DoseStatusResult> {
   const targetProfile = Number(formData.get("profileId"));
   let profileId: number;
   if (Number.isInteger(targetProfile) && targetProfile > 0) {

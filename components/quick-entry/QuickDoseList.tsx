@@ -225,6 +225,7 @@ export default function QuickDoseList({
                 variant="pill"
                 label="Mark taken"
                 itemName={dose.title}
+                rowLeaves
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);
                   else
@@ -354,6 +355,7 @@ function PastDayDoses({
                     variant="pill"
                     compact
                     itemName={dose.name}
+                    rowLeaves
                     onSettled={(result) => {
                       if (result.ok) onResolved([dose.doseId]);
                       else onNote(dose.doseId, result.error);

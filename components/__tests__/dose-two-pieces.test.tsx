@@ -99,7 +99,7 @@ beforeEach(() => {
   });
   mocks.setDoseStatus.mockImplementation(async (fd: FormData) => {
     posted.push(fd);
-    return { ok: true };
+    return { ok: true, outcome: "logged" };
   });
 });
 afterEach(() => cleanup());

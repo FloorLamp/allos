@@ -226,7 +226,7 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
 // correctly logged.
 describe("resolving several doses in quick succession (#3936)", () => {
   it("keeps every resolved row gone, not just the last one", async () => {
-    mocks.setDoseStatus.mockResolvedValue({ ok: true });
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
 
     renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
@@ -254,7 +254,7 @@ describe("resolving several doses in quick succession (#3936)", () => {
 describe("one schedule row on several days is several occurrences", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.setDoseStatus.mockResolvedValue({ ok: true });
+    mocks.setDoseStatus.mockResolvedValue({ ok: true, outcome: "logged" });
   });
 
   it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {

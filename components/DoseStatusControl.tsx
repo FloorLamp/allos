@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { IconCheck, IconPlayerTrackNext } from "@tabler/icons-react";
 import { useWritePipeline } from "@/components/useWritePipeline";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
-import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
+import {
+  setDoseStatus,
+  type DoseStatusResult,
+} from "@/app/(app)/nutrition/intake-actions";
+import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { localDate } from "@/lib/offline/queue";
-import type { FormResult } from "@/lib/types/forms";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -71,6 +74,7 @@ export default function DoseStatusControl({
   date,
   itemName,
   onSettled,
+  rowLeaves = false,
 }: {
   doseId: number;
   taken: boolean;
@@ -102,7 +106,14 @@ export default function DoseStatusControl({
    * sheet drops a resolved row and closes when nothing is left. Absent on a standing
    * row, which re-renders from the revalidated server state.
    */
-  onSettled?: (result: FormResult) => void;
+  onSettled?: (result: DoseStatusResult) => void;
+  /**
+   * Whether the surface REMOVES this row when the write lands. The control becoming its
+   * done state is the receipt (#2654), so a row that stays says nothing — but the quick
+   * sheet drops a resolved row and closes when the day is empty, which unmounts the
+   * receipt the write just earned. There the outcome is spoken instead.
+   */
+  rowLeaves?: boolean;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -190,18 +201,30 @@ export default function DoseStatusControl({
       //
       // A landed transition says nothing: the control BECOMING its done state is the
       // receipt (#2654), and there is no toast to hang an Undo on.
-      settle: (outcome) => {
-        onSettled?.(outcome);
-        return outcome.ok
-          ? { wrote: true, announce: "silent" as const }
-          : {
-              wrote: false,
-              announce: {
-                message: outcome.error,
-                tone: "error" as const,
-                undo: null,
-              },
-            };
+      settle: (result) => {
+        onSettled?.(result);
+        if (!result.ok)
+          return {
+            wrote: false,
+            announce: {
+              message: result.error,
+              tone: "error" as const,
+              undo: null,
+            },
+          };
+        // A clear writes nothing anybody needs told; `unchanged` is the double-tap.
+        const spoken =
+          rowLeaves &&
+          result.outcome !== "cleared" &&
+          result.outcome !== "unchanged"
+            ? doseConfirmMessage(result.outcome)
+            : null;
+        return {
+          wrote: true,
+          announce: spoken
+            ? { message: spoken.text, tone: spoken.tone, undo: null }
+            : ("silent" as const),
+        };
       },
       failureMessage: "Couldn't update this dose. Try again.",
       offline: (tappedAt) => {
@@ -241,7 +264,7 @@ export default function DoseStatusControl({
     });
     // A CAPTURE SETTLES THE ROW TOO: the pipeline runs `settle` only for a write that
     // reached the server, so a queued tap would leave a resolved row in the list.
-    if (result === "captured") onSettled?.({ ok: true });
+    if (result === "captured") onSettled?.({ ok: true, outcome: "logged" });
     if (result === "nothing") return;
     // A server write is authoritative, so the optimistic override is dropped and the
     // props take over; a capture has no revalidate behind it, so the override stands in

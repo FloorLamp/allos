@@ -579,7 +579,7 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     // due. The open sheet is a frozen snapshot; its button is about to describe a
     // world that no longer holds.
     setDoseRetired(doseId, true);
-    await settledClick(page, row.getByRole("button", { name: "Mark taken" }));
+    await settledClick(page, row.getByRole("button", { name: /^Mark taken/ }));
 
     // THE assertion: it says what actually happened. markDoseTaken wrote nothing,
     // and claiming "Dose logged" here would be a false confirmation of a
@@ -607,7 +607,7 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
       page,
       fresh
         .getByTestId(`quick-entry-dose-${doseId}`)
-        .getByRole("button", { name: "Mark taken" })
+        .getByRole("button", { name: /^Mark taken/ })
     );
     await expect(page.getByText("Dose logged")).toBeVisible();
     // AND THE SHEET STAYS OPEN (#3936). It used to close here, and that was only ever
@@ -769,7 +769,7 @@ test("a dose confirmed from the sheet with no signal queues, then replays", asyn
     await context.setOffline(true);
     // A plain click, not settledClick: this tap deliberately posts NOTHING, so there is
     // no Server Action response to settle on.
-    await row.getByRole("button", { name: "Mark taken" }).click();
+    await row.getByRole("button", { name: /^Mark taken/ }).click();
     await expect(
       page.getByText("Dose saved offline — will sync when you reconnect.")
     ).toBeVisible();
