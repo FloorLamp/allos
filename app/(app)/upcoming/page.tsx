@@ -74,6 +74,7 @@ import {
   bandShowsDoseProgress,
   pageRowDetail,
   planBandRender,
+  planSlotRuns,
   sumDoseProgress,
   EMPTY_DOSE_PROGRESS,
   type AggregateKind,
@@ -86,7 +87,11 @@ import { getDisplayFormatPrefs } from "@/lib/settings/display";
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import Button from "@/components/Button";
-import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
+import UpcomingRowMenu, {
+  RowActionChips,
+  type RowAction,
+  type RowSuppression,
+} from "./RowActions";
 import { DISMISS_ROW_ATTR } from "./dismiss-row";
 import FoldSummary from "./FoldSummary";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
@@ -111,6 +116,8 @@ import {
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import DoseConfirmButton from "@/components/DoseConfirmButton";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
@@ -487,7 +494,17 @@ function GroupSection({
               facts={summaryFacts(node)}
               tone={GROUP_TONE[group.kind]}
             >
-              {node.items.map(renderRow)}
+              {node.kind === "dose" ? (
+                <DoseSlotRuns
+                  items={node.items}
+                  multi={multi}
+                  chipRow={chipRows === true}
+                  actingProfileId={actingProfileId}
+                  subjectByProfile={subjectByProfile}
+                />
+              ) : (
+                node.items.map(renderRow)
+              )}
             </AggregateDisclosure>
           )
         )}
@@ -1032,6 +1049,204 @@ function SuppressedSection({
   );
 }
 
+// The per-item snooze/dismiss descriptor a kebab needs, wherever the item is drawn
+// (#1496: folding is a rendering decision, identity is not). The dismissal writes to
+// the ITEM's own profile (profile_id threaded), never the acting one (#1096); it is
+// item-scoped suppression, so it gates on the SUBJECT's write access — not the
+// acting-targeted actionVisible — and you may snooze another member's finding.
+// Omitted on a read-only-granted row.
+function itemSuppression(
+  item: ProfiledUpcomingItem,
+  subjectCanWrite: boolean
+): RowSuppression | null {
+  if (!subjectCanWrite || !isItemSuppressibleFlag(item)) return null;
+  return {
+    // Named for the slot-run kebab, which holds several of these at once. A row's
+    // kebab holds one and prints no label.
+    label: item.shortLabel ?? item.title,
+    signalKey: item.key,
+    profileId: item.profileId,
+    snoozeOnly: item.carePersistent === true,
+    snoozeAction: async (fd: FormData) => {
+      "use server";
+      await snoozeItem(fd);
+    },
+    dismissAction: async (fd: FormData) => {
+      "use server";
+      await dismissItem(fd);
+    },
+  };
+}
+
+// THE PAGE'S DOSE CHIP (#2579-D/F). The item's name, the qualifier its producer
+// composed beside it ("CoQ10 · 400 mg · Mondays"), and the tap IS the log.
+//
+// The write is `DoseConfirmButton` — the dose domain's ONE row control for rows that
+// list what is still OWED (#4424 ruling 3), the same component the dashboard attention
+// row and the household card's due row mount, posting the same `markTaken` with its
+// typed-outcome toast. The chip GRAMMAR is F's, which is why this is not a new
+// component: `SubmitActionChip` is `Button type="submit"`, and `DoseConfirmButton`
+// renders exactly that, so the offer chips and the due-dose chips are the same box
+// with the same paint and the same 44px target — no bespoke chip was minted for
+// either.
+//
+// The name is the CONTROL form (#2858): a chip run wraps, and "Coenzyme Q10 · 100 mg"
+// spends its width on a word the reader already reads as "CoQ10". The full record name
+// is the accessible name and a sibling disclosure; a medication is never shortened
+// (the resolver's own gate). The visible text is a noun, so the accessible name says
+// what the tap DOES as well as which dose it does it to.
+function DoseChip({
+  item,
+  actionVisible,
+  testId,
+}: {
+  item: ProfiledUpcomingItem;
+  actionVisible: boolean;
+  testId: string;
+}) {
+  const chipText = (name: string) =>
+    [name, item.offerHint].filter(Boolean).join(" · ");
+  const label = chipText(item.shortLabel ?? item.title);
+  // Stated only when the two actually differ, so an unabbreviated chip gets no
+  // redundant title/aria copy of its own visible text.
+  const fullLabel =
+    label === chipText(item.title) ? undefined : chipText(item.title);
+  // No write affordance (no dose to log, or a read-only-granted member's row) ⇒ the
+  // dose is still PRESENT and still one tap from its item, exactly as an offer with no
+  // affordance is. A chip that logs nothing and goes nowhere would make a folded row
+  // look like a deleted one, which is the fold's one forbidden outcome.
+  if (!actionVisible || item.doseId == null) {
+    return (
+      <DestinationActionLink href={item.href} aria-label={fullLabel ?? label}>
+        {label}
+      </DestinationActionLink>
+    );
+  }
+  return (
+    <>
+      <DoseConfirmButton
+        action={markTaken}
+        fields={{ dose_id: item.doseId, profile_id: item.profileId }}
+        testid={testId}
+        ariaLabel={`Mark taken — ${fullLabel ?? label}`}
+      >
+        {label}
+      </DoseConfirmButton>
+      {fullLabel ? (
+        <InfoTooltipIcon label={`Full label: ${fullLabel}`} />
+      ) : null}
+    </>
+  );
+}
+
+// THE EXPANDED DOSE FOLD (#2579-D): one line per time SLOT, holding that slot's doses
+// as tap-to-take chips, with one compact kebab per run (owner ruling 2, 2026-08-13)
+// carrying per-dose suppression for the chips beside it — so a caregiver keeps an
+// in-app per-dose snooze at the moment of annoyance and the chips stay clean.
+//
+// A RENDER PLAN OVER UNCHANGED ROWS. `planSlotRuns` never re-sorts: the runs are the
+// bucket boundaries of the band's own `sortHint` order (#297), which is why the header
+// can be trusted to describe everything under it. Every item keeps its key, its
+// suppression identity, its WriteTarget and its per-item write gate — the fold is
+// presentation and identity is not (#1496) — so a chip answers to the same
+// `upcoming-item-<key>` the row it replaced did.
+//
+// The slot label leaves the chips: it was the status column on every one of these
+// rows, repeated once per dose, and it is now the header they sit under. What stays on
+// the chip is what the header does not say — the amount and the cadence.
+function DoseSlotRuns({
+  items,
+  multi,
+  chipRow,
+  actingProfileId,
+  subjectByProfile,
+}: {
+  items: ProfiledUpcomingItem[];
+  multi: boolean;
+  chipRow: boolean;
+  actingProfileId: number;
+  subjectByProfile: Map<number, SubjectInfo>;
+}) {
+  return (
+    <>
+      {planSlotRuns(items).map((run, index) => {
+        const suppressions: RowSuppression[] = [];
+        for (const item of run.items) {
+          const subject = multi
+            ? (subjectByProfile.get(item.profileId) ?? null)
+            : null;
+          const s = itemSuppression(
+            item,
+            subject == null || subject.access === "write"
+          );
+          if (s) suppressions.push(s);
+        }
+        return (
+          <div
+            key={`${run.slot}:${index}`}
+            data-testid="upcoming-slot-run"
+            data-slot={run.slot}
+            className="rounded-lg px-2 py-1.5"
+          >
+            <div className="flex items-center gap-2">
+              <span
+                data-testid="upcoming-slot-label"
+                className="section-label text-slate-500 dark:text-slate-400"
+              >
+                {run.slot}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                ({run.items.length})
+              </span>
+              <UpcomingRowMenu
+                itemName={run.slot}
+                folded={[]}
+                suppressions={suppressions}
+              />
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {run.items.map((item) => {
+                const subject = multi
+                  ? (subjectByProfile.get(item.profileId) ?? null)
+                  : null;
+                const actionVisible = itemAffordanceVisible(item.writeTarget, {
+                  isActing: item.profileId === actingProfileId,
+                  subjectCanWrite:
+                    subject == null || subject.access === "write",
+                });
+                return (
+                  <span
+                    key={`${item.profileId}:${item.key}`}
+                    data-testid={`upcoming-item-${item.key}`}
+                    {...{ [DISMISS_ROW_ATTR]: item.key }}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <DoseChip
+                      item={item}
+                      actionVisible={actionVisible}
+                      testId="upcoming-dose-chip"
+                    />
+                    {/* Whose dose it is, in merged multi-view (#1327 fix 1) — the same
+                        chip the rows carry, because the run header names a SLOT and
+                        several members' doses share one. By-person mode names the
+                        subject in its member header and passes nothing. */}
+                    {chipRow &&
+                      subjectChipVisible({
+                        multi,
+                        isActing: item.profileId === actingProfileId,
+                      }) &&
+                      subject && <SubjectChip subject={subject} />}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function Row({
   item,
   now,
@@ -1091,28 +1306,6 @@ function Row({
   // chips into an orphaned trailing line. One list, two presenters — never two
   // hand-mirrored authorings (the responsive-surfaces rule).
   const actions: RowAction[] = [];
-  if (actionVisible && item.doseId != null) {
-    actions.push({
-      id: "mark-taken",
-      kind: "submit",
-      label: "Mark taken",
-      toast: "Marked taken",
-      fields: { dose_id: item.doseId, profile_id: item.profileId },
-      // Answered from markDoseTaken's typed outcome (#2106's rule, applied to this
-      // row too): a refusal — dose retired by an edit, item since paused — surfaces
-      // as an error toast instead of the row silently staying due, and a success
-      // carries the outcome's own wording (doseConfirmMessage, the #1468 formatter).
-      action: async (fd) => {
-        "use server";
-        const result = await markTaken(fd);
-        if (!result.ok) return { ok: false as const, error: result.error };
-        const msg = doseConfirmMessage(result.outcome);
-        return msg.tone === "error"
-          ? { ok: false as const, error: msg.text }
-          : { ok: true as const, message: msg.text };
-      },
-    });
-  }
   if (item.bookHref) {
     actions.push({
       id: "book",
@@ -1192,27 +1385,7 @@ function Row({
     });
   }
 
-  // Per-item snooze/dismiss — the dismissal writes to the ITEM's own profile
-  // (profile_id threaded), never the acting one (#1096). This is item-scoped
-  // suppression (correct cross-profile even on a non-acting row), so it gates on the
-  // subject's write access — NOT the acting-targeted actionVisible — so you may snooze
-  // another member's finding. Omitted on a read-only-granted row.
-  const suppression =
-    subjectCanWrite && isItemSuppressibleFlag(item)
-      ? {
-          signalKey: item.key,
-          profileId: item.profileId,
-          snoozeOnly: item.carePersistent === true,
-          snoozeAction: async (fd: FormData) => {
-            "use server";
-            await snoozeItem(fd);
-          },
-          dismissAction: async (fd: FormData) => {
-            "use server";
-            await dismissItem(fd);
-          },
-        }
-      : null;
+  const suppression = itemSuppression(item, subjectCanWrite);
 
   const preventiveRuleKey =
     actionVisible && item.preventiveRuleKey != null
@@ -1246,6 +1419,7 @@ function Row({
   // too (overrides / snooze). That's also the only case where the secondary chips
   // may fold away below `sm` — otherwise they'd have nowhere to fold to.
   const hasMenu = preventiveRuleKey != null || suppression != null;
+  const suppressions = suppression ? [suppression] : [];
   const hasTrailing =
     item.scheduled === true ||
     hasFollowUp ||
@@ -1254,6 +1428,7 @@ function Row({
     cta != null ||
     hasMenu ||
     actions.length > 0 ||
+    (actionVisible && item.doseId != null) ||
     (actionVisible && item.practiceLog != null);
 
   return (
@@ -1263,7 +1438,7 @@ function Row({
       // The row is server-rendered and the menu's panel is portaled to <body>, so the
       // menu walks UP from its trigger to this marker; the attribute name is spelled
       // once, in ./dismiss-row (a plain module, readable from BOTH sides).
-      {...{ [DISMISS_ROW_ATTR]: "" }}
+      {...{ [DISMISS_ROW_ATTR]: item.key }}
       // flex-wrap (#1063): the trailing action/badge chips are nowrap-by-design,
       // so at phone width they must WRAP under the title instead of forcing the
       // row past the viewport (where the shell's overflow-x-clip hides them).
@@ -1373,6 +1548,24 @@ function Row({
               and the practice name it posts is resolved server-side beside the target
               (see `practiceItems`). `compact` because the row is dense; the subject is
               the ROW's, re-gated by `gateItemProfile` at the action. */}
+          {/* THE DOSE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), beside the practice
+              one. This row used to hand-roll the confirm as a `RowAction` chip that
+              re-spelled `markTaken`'s typed outcome into a toast — a third copy of
+              what `DoseConfirmButton` already is on the dashboard attention row and
+              the household card's due row, and the same class of row: it lists what
+              is still OWED, so the write unmounts it. Like the practice control it
+              stays INLINE at every width — RowActionChips folds SECONDARY actions,
+              and a domain's row control is not one. No `undoAction`: this page has no
+              inverse wired, and the control's honest default is to offer none rather
+              than a broken one. */}
+          {actionVisible && item.doseId != null && (
+            <DoseConfirmButton
+              action={markTaken}
+              fields={{ dose_id: item.doseId, profile_id: item.profileId }}
+            >
+              Mark taken
+            </DoseConfirmButton>
+          )}
           {actionVisible && item.practiceLog != null && (
             <LogPracticeButton
               practice={item.practiceLog.practice}
@@ -1403,7 +1596,7 @@ function Row({
                 "use server";
                 await overridePreventive(fd);
               }}
-              suppression={suppression}
+              suppressions={suppressions}
             />
           </div>
         </div>

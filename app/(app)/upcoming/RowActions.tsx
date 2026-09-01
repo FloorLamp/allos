@@ -256,33 +256,56 @@ function PreventiveOverrideItems({
   );
 }
 
-// THE per-row overflow menu — exactly one "⋯" per Upcoming row, always (#1446).
-// It composes everything a row can offer behind a kebab: the folded secondary
-// actions (below `sm`), the preventive overrides, and snooze/dismiss.
+// The element a dismissal of `signalKey` travels with (#2654, motion 2). Marked
+// elements carry their own key, so this is an exact lookup rather than a selector
+// built by string concatenation — a key is a domain-composed string and nothing
+// promises it is CSS-safe.
+function dismissTarget(signalKey: string): HTMLElement | null {
+  for (const el of document.querySelectorAll<HTMLElement>(
+    `[${DISMISS_ROW_ATTR}]`
+  )) {
+    if (el.getAttribute(DISMISS_ROW_ATTR) === signalKey) return el;
+  }
+  return null;
+}
+
+// One suppressible subject behind a kebab. `label` names it when the menu carries
+// MORE THAN ONE — a slot run's kebab holds every chip in that run (#2579-D, owner
+// ruling 2), and "Snooze / 1 day" repeated three times with nothing between them
+// would be three unlabelled copies of one choice.
+export type RowSuppression = SnoozeDismissProps & { label?: string };
+
+// THE per-row overflow menu — exactly one "⋯" per Upcoming row, always (#1446) — and,
+// since #2579-D, the one per SLOT RUN as well. A run's chips are the same items a
+// band's rows would have been, so the menu that carries their suppression is the same
+// menu, holding several subjects instead of one. That is why this takes a LIST rather
+// than growing a second kebab component beside it: a row passes one entry, a run
+// passes its chips, and nothing about the popover forks.
 export default function UpcomingRowMenu({
   itemName,
   folded,
   preventiveRuleKey,
   overrideAction,
-  suppression,
+  suppressions,
 }: {
-  // The row's own title (#3501) — "Fermented foods", "Shingles vaccine". Below
-  // `md` this menu is a bottom sheet that has left the row behind, and a sheet
-  // offering "Snooze 1 week" over a five-row list names nothing.
+  // The row's own title (#3501) — "Fermented foods", "Shingles vaccine", or the run's
+  // slot ("Evening"). Below `md` this menu is a bottom sheet that has left the row
+  // behind, and a sheet offering "Snooze 1 week" over a five-row list names nothing.
   itemName: string;
   folded: RowAction[];
   preventiveRuleKey?: string;
   overrideAction?: (formData: FormData) => Promise<void>;
-  suppression: SnoozeDismissProps | null;
+  suppressions: readonly RowSuppression[];
 }) {
   const [open, setOpen] = useState(false);
   const hasPreventive = preventiveRuleKey != null && overrideAction != null;
+  const named = suppressions.length > 1;
   // The menu exists only when it has content at EVERY width. A row whose menu
   // would hold nothing but the phone-folded chips gets no menu — rendering a
   // trigger that is CSS-hidden at desktop would still put it in the DOM (and in
   // any "exactly one ⋯ per row" count); that row's caller keeps its chips inline
   // at all widths instead.
-  if (!hasPreventive && suppression == null) return null;
+  if (!hasPreventive && suppressions.length === 0) return null;
   return (
     <OverflowMenu
       // The kebab can hold overrides, snooze/dismiss and (on phones) the folded
@@ -293,7 +316,7 @@ export default function UpcomingRowMenu({
       open={open}
       onOpenChange={setOpen}
     >
-      {({ runAction, anchorRef }) => (
+      {({ runAction }) => (
         <>
           <RowActionMenuItems actions={folded} runAction={runAction} />
           {hasPreventive && (
@@ -303,22 +326,28 @@ export default function UpcomingRowMenu({
               runAction={runAction}
             />
           )}
-          {suppression && (
-            <SnoozeDismissItems
-              {...suppression}
-              runAction={runAction}
-              // #2654 motion 2. Upcoming is the surface that HAS a fold — the
-              // "Snoozed & dismissed" disclosure below these rows catches every
-              // dismissal — so a dismissal here travels toward it. The row is found
-              // by walking up from the kebab, which is the only part of this menu
-              // still standing inside it (the panel is portaled to <body>).
-              slideTarget={() =>
-                anchorRef.current?.closest<HTMLElement>(
-                  `[${DISMISS_ROW_ATTR}]`
-                ) ?? null
-              }
-            />
-          )}
+          {suppressions.map(({ label, ...props }) => (
+            <div
+              key={props.signalKey}
+              className="border-b border-black/5 pb-1 last:border-b-0 dark:border-white/5"
+            >
+              {named && label && (
+                <div className="px-3 pt-1 section-label">{label}</div>
+              )}
+              <SnoozeDismissItems
+                {...props}
+                runAction={runAction}
+                // #2654 motion 2. Upcoming is the surface that HAS a fold — the
+                // "Snoozed & dismissed" disclosure below these rows catches every
+                // dismissal — so a dismissal here travels toward it. The element is
+                // found BY THE SIGNAL KEY it is marked with, not by walking up from
+                // the kebab: a slot run's kebab stands in the run header and the chip
+                // that must travel is its sibling, so an ancestor walk would find the
+                // whole run (or, from the portaled panel, nothing).
+                slideTarget={() => dismissTarget(props.signalKey)}
+              />
+            </div>
+          ))}
         </>
       )}
     </OverflowMenu>
