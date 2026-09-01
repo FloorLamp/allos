@@ -108,7 +108,10 @@ export function addSubstanceDailyTotalCore(
           input.date,
           loggedVia
         );
-      return { kind: "added" as const, id: alcoholDayRow(profileId, input.date, notes) };
+      return {
+        kind: "added" as const,
+        id: alcoholDayRow(profileId, input.date, notes),
+      };
     }
 
     substanceDayCounter.bump(profileId, input.date, [substance], input.amount, [

@@ -890,7 +890,8 @@ describe("custom substances (#3279)", () => {
   it("stays NEUTRAL with no cap: no status, no finding, no digest line", () => {
     const p = newProfile("SU custom neutral");
     const day = today(p);
-    for (let i = 0; i < 9; i += 1) logSubstanceUnitCore(p, "Kratom", day, "page");
+    for (let i = 0; i < 9; i += 1)
+      logSubstanceUnitCore(p, "Kratom", day, "page");
 
     // #3279 ruling 1. Nine uses is a fact, not a verdict. With no target row there is
     // no SubstanceCapStatus for any surface to render — the opt-in is structural, so
