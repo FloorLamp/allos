@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { loadClinicalResultPanelRows } from "@/app/(app)/results/actions";
+import { PANEL_ROW_LIMIT } from "@/lib/biomarker-panel-groups";
 import { seedActor, createLogin, createProfile, actAs } from "./harness";
 
 const DRAW = "2024-05-01";
@@ -43,6 +44,40 @@ function namesOf(res: Awaited<ReturnType<typeof loadClinicalResultPanelRows>>) {
 }
 
 describe("loadClinicalResultPanelRows", () => {
+  it("returns bounded, stable pages and clamps past the panel end", async () => {
+    const { profile } = seedActor();
+    for (let day = 1; day <= PANEL_ROW_LIMIT + 2; day += 1)
+      seedLab(
+        profile.id,
+        "Total Cholesterol",
+        180 + day,
+        `2024-05-${String(day).padStart(2, "0")}`
+      );
+    const [first, second, pastEnd] = await Promise.all(
+      [1, 2, 99].map((page) =>
+        loadClinicalResultPanelRows({
+          panel: "lipids",
+          searchParams: {},
+          page,
+        })
+      )
+    );
+    if (!first.ok || !second.ok || !pastEnd.ok)
+      throw new Error("expected every page to load");
+    expect([first.page, first.limit, first.total, first.rows.length]).toEqual([
+      1,
+      PANEL_ROW_LIMIT,
+      PANEL_ROW_LIMIT + 2,
+      PANEL_ROW_LIMIT,
+    ]);
+
+    expect([second.page, second.rows.map((row) => row.date)]).toEqual([
+      2,
+      ["2024-05-02", "2024-05-01"],
+    ]);
+    expect(pastEnd.page).toBe(2);
+  });
+
   it("returns one panel's stored and derived results", async () => {
     const { profile } = seedActor();
     seedTwoPanels(profile.id);
