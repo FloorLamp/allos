@@ -110,13 +110,16 @@ import type { OverlaySize } from "./overlay";
 //       `components/useFormDraft.ts` rather than by a bespoke adopter each: the hook
 //       already computes "has the content moved off the mount snapshot", which is
 //       exactly the question, so it publishes it.
-//     FoodLogBar (DietaryPreferencesForm — hand-composed, but it AUTOSAVES, so it
-//       has nothing unsaved to lose and is owed no guard).
+//       (DietaryPreferencesForm used to be listed here as the hand-composed
+//       exception that AUTOSAVES and is therefore owed no guard. It has no modal
+//       mount at all since #3987 phase 2 — it is a card on Manage — so the entry is
+//       gone rather than restated; the reasoning survives for the next autosaving
+//       form that wants a dialog.)
 //
 //   NOTHING TO LOSE — no typed input to discard, so no guard is owed:
 //     CommandPalette (a search box, deliberately untracked), RawPayloadDialog and
 //     ActivityPartsList's guide (read-only), PhotoCapture (a camera),
-//     BodyMetricRowMenu, SupplementInsightBadges, FoodSuggestionsLayout,
+//     BodyMetricRowMenu, FoodSuggestionsLayout,
 //     ProgressPhotosView, AddEntryPanel (a shell around whatever form it is given),
 //     EndEpisodeReconcile and ReopenEpisodeReconcile (checkbox selections over rows
 //     that already exist — nothing was typed).
