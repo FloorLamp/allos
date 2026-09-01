@@ -31,7 +31,6 @@ import {
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import DateField from "@/components/DateField";
-import WhenControl from "@/components/WhenControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
   LOGGED_EVENT_LIST,
@@ -55,10 +54,7 @@ import {
   deleteFoodLogEvent,
   updateFoodLogEvent,
 } from "@/app/(app)/nutrition/actions";
-import {
-  editPracticeSession,
-  removePracticeSession,
-} from "@/app/(app)/wellness/actions";
+import { removePracticeSession } from "@/app/(app)/wellness/actions";
 import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import {
@@ -79,26 +75,12 @@ import DestinationLink from "@/components/DestinationLink";
 import { MedicalValue } from "@/components/ui";
 import { removeSymptom } from "@/app/(app)/symptom-actions";
 import SymptomForm from "@/components/illness/SymptomForm";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import {
   deleteCycleAction,
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
-import {
-  statedHhmm,
-  statedInstantOnDate,
-  type WhenValue,
-} from "@/lib/stated-time";
-
-const practiceWhenFor = (
-  row: HistoryRow,
-  statedTime: string | null
-): WhenValue => ({
-  date: row.date,
-  statedAt: statedTime
-    ? (statedInstantOnDate(row.date, statedTime, row.tz)?.toISOString() ?? null)
-    : null,
-});
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -314,7 +296,6 @@ export default function HistoryRows({
   const undoable = useUndoableDelete();
   const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [practiceWhen, setPracticeWhen] = useState<WhenValue | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   // THE OPEN ROW, in client state rather than in the URL — and the split is a rule,
@@ -568,66 +549,35 @@ export default function HistoryRows({
             {buttons}
           </form>
         );
-      case "practice": {
-        const when = practiceWhen ?? practiceWhenFor(row, edit.statedStart);
+      case "practice":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // This row's own correction stated a START and carried the END through hidden,
+        // so a window stated in the expanded form could be corrected only on the
+        // Wellness card; the shared form states both. It stamps `profile_id` itself,
+        // like the dose, substance and symptom forms, so it does not run through
+        // `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("id", String(edit.sessionId));
-                fd.set("date", when.date);
-                fd.set("start_time", statedHhmm(when.statedAt, row.tz));
-                // THE STATED END RIDES ALONG UNCHANGED (#3142).
-                // `editPracticeSession` REWRITES every field it reads, so omitting
-                // this one would silently clear a window the person stated in the
-                // expanded form — and this control states a START, not a range.
-                // Correcting an end stays on the practice card, where the full
-                // editor is.
-                fd.set("end_time", edit.statedEnd ?? "");
-                const outcome = await editPracticeSession(fd);
-                return outcome.kind === "updated"
-                  ? { ok: true }
-                  : { ok: false, error: "Couldn't save that session." };
-              })
-            }
-          >
-            <div className="sm:col-span-2">
-              <WhenControl
-                mode="correct"
-                grain="minute"
-                value={when}
-                onChange={setPracticeWhen}
-                tz={row.tz}
-                maxDate={maxDateFor(row)}
-                dateLabel="Date"
-                timeLabel="Time"
-                testId="history-practice-when"
-              />
-            </div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min={1}
-                defaultValue={edit.durationMin ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input
-                type="text"
-                name="notes"
-                defaultValue={edit.notes ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <PracticeSessionForm
+            practices={[row.title]}
+            today={maxDateFor(row)}
+            date={row.date}
+            maxDate={maxDateFor(row)}
+            row={{
+              id: edit.sessionId,
+              date: row.date,
+              startTime: edit.statedStart,
+              endTime: edit.statedEnd,
+              durationMin: edit.durationMin,
+              notes: edit.notes ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
         );
-      }
       case "substance":
         // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
         // It stamps the ROW's profile itself, like the dose form above, so it does not
@@ -932,11 +882,6 @@ export default function HistoryRows({
                       data-testid="history-row-edit"
                       onClick={() => {
                         close();
-                        if (row.edit?.kind === "practice") {
-                          setPracticeWhen(
-                            practiceWhenFor(row, row.edit.statedStart)
-                          );
-                        }
                         setEditingId(row.id);
                       }}
                       className={MENU_ITEM}

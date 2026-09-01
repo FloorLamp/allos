@@ -314,7 +314,11 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     expect(fd.notes).toBe("evening wind-down");
   });
 
-  it("practice corrects its date and stated time through the shared control", async () => {
+  it("practice corrects the whole window, which this row could not state before", async () => {
+    // THE GAIN FROM MOUNTING THE DOMAIN'S FORM (#4424 ruling 1). This row's own
+    // correction stated a START and carried the END through a hidden input, with a
+    // comment sending anyone who wanted to fix an end to the Wellness card. One form
+    // means both ends are correctable wherever the row is.
     await openEdit([
       row({
         id: "practice:6",
@@ -326,30 +330,28 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           kind: "practice",
           sessionId: 6,
           statedStart: "07:15",
-          // A STATED END, on purpose: with a null one the "rides along unchanged"
-          // assertion below would read "" whether the field was carried or dropped.
           statedEnd: "19:25",
           durationMin: 20,
           notes: null,
         },
       }),
     ]);
-    fireEvent.change(screen.getByTestId("history-practice-when-date"), {
+    fireEvent.change(screen.getByLabelText("Date"), {
       target: { value: "2026-08-19" },
     });
-    fireEvent.change(screen.getByTestId("history-practice-when-time"), {
+    fireEvent.change(screen.getByLabelText("Start"), {
       target: { value: "08:30" },
+    });
+    fireEvent.change(screen.getByLabelText("End"), {
+      target: { value: "09:10" },
     });
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
     expect(only("editPracticeSession")).toMatchObject({
       date: "2026-08-19",
-      // The control states the session's START (#3142) …
       start_time: "08:30",
-      // … and the stated END rides along unchanged, because the action rewrites
-      // every field it reads and this control does not state a range.
-      end_time: "19:25",
+      end_time: "09:10",
     });
   });
 
@@ -388,7 +390,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("history-row-edit"))
     );
-    fireEvent.change(screen.getByTestId("history-practice-when-time"), {
+    fireEvent.change(screen.getByLabelText("Start"), {
       target: { value: "06:30" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -397,14 +399,18 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("history-row-edit"))
     );
-    expect(
-      (screen.getByTestId("history-practice-when-date") as HTMLInputElement)
-        .value
-    ).toBe("2026-08-19");
-    expect(
-      (screen.getByTestId("history-practice-when-time") as HTMLInputElement)
-        .value
-    ).toBe("18:40");
+    // THE REMOUNT IS THE LIST'S, not the form's — measured rather than assumed. The
+    // form's fields are uncontrolled, so a REUSED instance would keep the first row's
+    // DOM values however its seed prop changed; the editing row renders as its own
+    // `<li key={row.id}>`, so opening a second row unmounts the first and there is no
+    // instance to reuse. A `key` on the form itself was tried, reverted, and is not
+    // what makes this pass.
+    expect((screen.getByLabelText("Date") as HTMLInputElement).value).toBe(
+      "2026-08-19"
+    );
+    expect((screen.getByLabelText("Start") as HTMLInputElement).value).toBe(
+      "18:40"
+    );
   });
 
   it.each(["kg", "lb"] as const)(
@@ -662,11 +668,21 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       "editPracticeSession",
       {
         id: "5",
+        // THE PRACTICE IS PART OF THE ROW'S ADDRESS and rides every post now: the
+        // shared form is the same component in add mode, where the name is the
+        // statement. `updatePracticeSession` rewrites date, window, duration and notes
+        // and never the name, so this is inert on a correction and cannot move a row
+        // to another practice.
+        practice: "Breathwork",
         date: "2026-08-18",
         start_time: "07:15",
         end_time: "",
         duration_min: "25",
         notes: "evening wind-down",
+        // The shared form declares its surface (#3087); the hand-rolled row form it
+        // replaced posted nothing, so every practice correction made here was stamped
+        // by the action's fallback instead.
+        logged_via: "page",
       },
       "Save",
     ],

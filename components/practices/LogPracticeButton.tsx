@@ -77,6 +77,7 @@ export default function LogPracticeButton({
   initialDetailsDate,
   detailsMinDate,
   detailsMaxDate,
+  subjectProfileId,
 }: {
   practice: string;
   // Sessions already logged on `today`, by contract — both the line beside the button
@@ -126,15 +127,34 @@ export default function LogPracticeButton({
   initialDetailsDate?: string;
   detailsMinDate?: string;
   detailsMaxDate?: string;
+  // THE SUBJECT, OPTIONAL AND SPELLED ONCE (#4424 ruling 4): absent means the acting
+  // profile, present posts `profile_id` and is re-gated server-side by
+  // `gateItemProfile`. Upcoming's multi-view rows are the mount that needs it — a
+  // practice due on Sam's row must write to SAM — and the offline queue is narrowed
+  // to the acting profile because a replay carries no session to gate against.
+  subjectProfileId?: number;
 }) {
   // WHICH SURFACE THIS MOUNTING IS (#3087). One component, four homes — the Wellness
-  // card, the protocols row, the quick-log sheet and the backfill launcher — all
+  // card, the protocols row, the quick-log sheet and Upcoming's practice row — all
   // posting ONE Server Action, so only the mounting can say where a tap happened.
   // Read from the region rather than taken as a prop: a prop has to be passed at every
   // one of those four call sites and is silent when it is not, which is the failure
   // mode this column exists to avoid. Posted as a form field and re-checked
   // server-side against the web subset.
+  //
+  // THE BACKFILL LAUNCHER USED TO BE ON THAT LIST AND IS NOT A MOUNT OF THIS COMPONENT
+  // — it mounts the FORM (#3143 extracted it), which is why it could be named here
+  // while never posting a tap. Upcoming's row took its place for real (#4424).
   const stampLoggedVia = useLoggedViaStamp();
+  // EVERY WRITE THIS CONTROL POSTS NAMES ITS SUBJECT (ruling 4), including the live
+  // lifecycle's two: a mount that could log a household member's session while
+  // starting the ACTING profile's would be the cross-profile leak the ruling exists to
+  // close. Absent on a single-subject mount, which posts a byte-identical body.
+  const subject = (fd: FormData): FormData => {
+    if (subjectProfileId != null)
+      fd.set("profile_id", String(subjectProfileId));
+    return fd;
+  };
   const tz = useTimezone();
   const toast = useToast();
   const confirm = useConfirm();
@@ -262,7 +282,14 @@ export default function LogPracticeButton({
     // Offline, a second same-day tap enqueues NOTHING: the replay would no-op it, and
     // a queue badge counting an entry that will never become a session is its own small
     // lie. The narrowing is enforced here, not merely documented.
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    // A CROSS-PROFILE TAP NEVER QUEUES (the #1373 dose rule, same seam): the replay
+    // route carries no target profile, so a captured session would land on the acting
+    // one. Go online and let a dropped link surface the retry sentence instead.
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.onLine === false &&
+      subjectProfileId == null
+    ) {
       if (count > 0) {
         toast("Already logged today — it'll sync when you're back online.");
         return;
@@ -288,7 +315,7 @@ export default function LogPracticeButton({
       return;
     await ledger.tap({
       write: () => {
-        const fd = new FormData();
+        const fd = subject(new FormData());
         stampLoggedVia(fd);
         fd.set("practice", practice);
         fd.set("intent", "finished");
@@ -321,7 +348,8 @@ export default function LogPracticeButton({
         // the failure the dose confirm takes.
         if (
           shouldQueueOffline(navigator.onLine !== false, err) &&
-          count === 0
+          count === 0 &&
+          subjectProfileId == null
         ) {
           void queueOffline();
           return { kind: "keep" };
@@ -335,7 +363,7 @@ export default function LogPracticeButton({
   async function onStart() {
     if (pending || currentLive) return;
     setPending(true);
-    const fd = new FormData();
+    const fd = subject(new FormData());
     stampLoggedVia(fd);
     fd.set("practice", practice);
     try {
@@ -370,7 +398,7 @@ export default function LogPracticeButton({
   }
 
   async function finishLive(session: LivePracticeSession) {
-    const fd = new FormData();
+    const fd = subject(new FormData());
     fd.set("id", String(session.id));
     const outcome = await endPracticeLive(fd);
     if (outcome.kind === "ended") {
@@ -589,16 +617,23 @@ export default function LogPracticeButton({
           size="sm"
         >
           <PracticeSessionForm
-            practice={practice}
+            practices={[practice]}
             today={today}
+            date={initialDetailsDate ?? today}
             defaultDurationMin={durationValue()}
-            initialDate={initialDetailsDate}
             minDate={detailsMinDate}
             maxDate={detailsMaxDate}
-            onLogged={(outcome) => {
-              report(outcome);
+            subjectProfileId={subjectProfileId}
+            onSaved={(logged) => {
+              // The form owns its own confirmation; what the BUTTON still owns is the
+              // day's count on the line beside it, which only a same-day log moves.
+              if (logged && logged.date === today) {
+                setCount(logged.count);
+                setLastTime(null);
+              }
               setDetailsOpen(false);
             }}
+            onCancel={() => setDetailsOpen(false)}
           />
         </ModalShell>
       )}

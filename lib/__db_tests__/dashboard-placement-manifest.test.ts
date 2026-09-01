@@ -946,7 +946,12 @@ describe("actual atomic dashboard manifests", () => {
     household: 269,
     pregnant: 222,
     "diabetic-cgm": 233,
-    biohacker: 239,
+    // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
+    // the row now resolves what that control renders — `getTrackedPractices`, which is
+    // one grouped today-tally and one live sweep however many practices there are,
+    // plus the usual-duration vote per practice. Assembling the same four fields
+    // per-target instead measured +13.
+    biohacker: 248,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
