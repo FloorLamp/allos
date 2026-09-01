@@ -113,12 +113,20 @@ function applyDoseIntent(
   if (!Number.isInteger(doseId) || doseId <= 0 || !isRealIsoDate(date)) {
     return { status: "rejected" };
   }
+  const todayStr = today(profileId);
   // Distinguish "the entry sat in the queue too long" from "the dose is gone" for the
   // user-facing reason ONLY — the same pure predicate the core gates on, so the two
   // can't drift. The core still enforces it (it answers stale-dose either way).
-  if (!isDoseDateAccepted(today(profileId), date)) {
+  if (!isDoseDateAccepted(todayStr, date)) {
     return { status: "rejected", reason: STALE_QUEUED_DOSE_REASON };
   }
+  const capturedTakenAt = payload.clientTakenAt
+    ? new Date(payload.clientTakenAt)
+    : null;
+  const capturedOnRowDate =
+    capturedTakenAt != null &&
+    !Number.isNaN(capturedTakenAt.getTime()) &&
+    zonedDateParts(getTimezone(profileId), capturedTakenAt).date === date;
   const outcome =
     flow === "dose"
       ? markDoseTaken(
@@ -127,10 +135,10 @@ function applyDoseIntent(
           null,
           date,
           OFFLINE_REPLAY,
-          payload.clientTakenAt
-            ? new Date(payload.clientTakenAt)
-            : date === today(profileId)
-              ? undefined
+          capturedOnRowDate
+            ? capturedTakenAt
+            : date === todayStr
+              ? (capturedTakenAt ?? undefined)
               : null
         )
       : markDoseSkipped(profileId, doseId, null, date, OFFLINE_REPLAY);

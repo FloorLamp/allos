@@ -47,6 +47,16 @@ vi.mock("@/app/(app)/nutrition/actions", () => ({
     return { ok: true, servings: 1 };
   },
 }));
+vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
+  logHistoricalDose: async (fd: FormData) => {
+    record("logHistoricalDose")(fd);
+    return { ok: true };
+  },
+  updateHistoricalDose: async () => ({
+    ok: false,
+    error: "the Add door never corrects",
+  }),
+}));
 vi.mock("@/app/(app)/wellness/actions", () => ({
   logPractice: async (fd: FormData) => {
     record("logPractice")(fd);
@@ -224,6 +234,65 @@ function only(action: string): Record<string, string> {
 }
 
 describe("the record's Add door posts to the domain's own create action", () => {
+  it("keeps the dose form on its chosen day and resets it for a second save", async () => {
+    open("dose");
+    const chosenDay = "2026-08-17";
+    fireEvent.change(screen.getByTestId("historical-dose-date"), {
+      target: { value: chosenDay },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "7 g" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /adjust current supply/i })
+    );
+
+    await submit("dose");
+
+    expect(posted.logHistoricalDose).toHaveLength(1);
+    expect(
+      Object.fromEntries(posted.logHistoricalDose![0]!.entries())
+    ).toMatchObject({
+      date: chosenDay,
+      amount: "7 g",
+      adjust_supply: "1",
+    });
+    expect(screen.getByTestId("history-add-panel-dose")).toBeTruthy();
+    expect(
+      (
+        screen
+          .getByTestId("historical-dose-form")
+          .querySelector('input[name="date"]') as HTMLInputElement
+      ).value
+    ).toBe(chosenDay);
+    expect((screen.getByLabelText("Amount") as HTMLInputElement).value).toBe(
+      "5 g"
+    );
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: /adjust current supply/i,
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(false);
+    expect(refreshed).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "6 g" },
+    });
+    await submit("dose");
+
+    expect(posted.logHistoricalDose).toHaveLength(2);
+    expect(
+      Object.fromEntries(posted.logHistoricalDose![1]!.entries())
+    ).toMatchObject({
+      date: chosenDay,
+      amount: "6 g",
+    });
+    expect(screen.getByTestId("history-add-panel-dose")).toBeTruthy();
+    expect(refreshed).toHaveLength(2);
+  });
+
   // Each kind, the action it must reach, and the fields that make its write mean what
   // the door says it means. A table because the cases differ only in inputs and
   // expectations; what they share — the found day, the in-place resolution, the
