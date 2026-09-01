@@ -254,7 +254,7 @@ jobs:
             BASE="HEAD^1"
           fi
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          if git diff --name-only "$BASE" HEAD | grep -qE '^e2e/.*\.spec\.ts$'; then
+          if git diff --name-only --diff-filter=ACMR "$BASE" HEAD | grep -qE '^e2e/.*\.spec\.ts$'; then
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
@@ -267,7 +267,7 @@ jobs:
       - name: E2E changed specs (--repeat-each=3 --retries=0)
         if: steps.e2e-diff.outputs.any == 'true'
         run: |
-          DIFF=$(git diff --name-only "${{ steps.e2e-diff.outputs.base }}" HEAD)
+          DIFF=$(git diff --name-only --diff-filter=ACMR "${{ steps.e2e-diff.outputs.base }}" HEAD)
           CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
 
           echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"

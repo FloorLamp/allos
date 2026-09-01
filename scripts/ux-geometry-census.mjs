@@ -25,11 +25,8 @@
 //
 // The census is a seeing tool (`.claude/skills/ux-walkthrough/SKILL.md`'s standing
 // rule) and #3489 puts "making any of this a CI gate" explicitly out of scope. The
-// probe's output lands in `metrics.json` and as two ranked tables in `audit.md`; a
-// human reads them. What IS asserted, in CI, is that the probe can SEE — see
-// e2e/ux-geometry-probe.mobile.spec.ts, which plants offenders of both classes in a
-// live DOM and requires them back, and asserts the probe's silence on the benign
-// neighbours that would get it deleted within a week if it cried wolf on them.
+// probe's output lands in `metrics.json` and as ranked tables in `audit.md`; a
+// human reads and validates the findings during the census run.
 //
 // #3481 HAS SINCE BEEN FIXED (2026-08-23), so the medicine cabinet's add row no
 // longer serves as a live example of the height class — the sentences above and
@@ -521,9 +518,9 @@ export function geometryProbe(opts) {
     // over a card — and a census that reports the layout working gets deleted within
     // a week, taking its real findings with it. The last rule is silent on all six
     // and still catches a paragraph pulled up onto its own heading, which is the
-    // defect this class was filed for and what e2e/ux-geometry-probe.mobile.spec.ts
-    // forges. IT IS NARROWER THAN THE ISSUE'S WORDS: a title wrapped in a `<div>`
-    // and a body beside it are not siblings, and that pair is not reported.
+    // defect this class was filed for. IT IS NARROWER THAN THE ISSUE'S WORDS: a
+    // title wrapped in a `<div>` and a body beside it are not siblings, and that
+    // pair is not reported.
     const textLeaves = [];
     for (const el of root.querySelectorAll("*")) {
       if (el.children.length !== 0) continue;

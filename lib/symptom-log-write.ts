@@ -18,7 +18,7 @@
 // leaving rows that already differ only by case alone, is in lib/vocabulary-store.ts.
 
 import { db, today, writeTx } from "./db";
-import { isPastWriteAccepted } from "./log-manifest";
+import { SYMPTOM_DAY_WRITE, isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import {
   resolveSymptomKey,
@@ -156,6 +156,8 @@ export function logSymptomCore(
     };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const logSymptomCoreDeclares = SYMPTOM_DAY_WRITE;
 
 // Typed result of an attach/detach — the symptom-day link to an episode (#1093).
 export type SymptomEpisodeOutcome =
@@ -225,6 +227,7 @@ export function setSymptomSeverityCore(
     return { kind: "logged" as const, symptom, severity };
   });
 }
+export const setSymptomSeverityCoreDeclares = SYMPTOM_DAY_WRITE;
 
 // Explicit LOWER (#857): drop an existing symptom-day's severity to a strictly lower
 // value, PRESERVING its note (unlike setSymptomSeverityCore, which rewrites the note).
@@ -264,6 +267,7 @@ export function lowerSymptomSeverityCore(
     return { kind: "logged" as const, symptom, severity };
   });
 }
+export const lowerSymptomSeverityCoreDeclares = SYMPTOM_DAY_WRITE;
 
 // Set (or clear) a logged symptom-day's NOTE without touching its severity (#857 per-
 // symptom note affordance). A blank note clears the row's note; a non-blank one replaces

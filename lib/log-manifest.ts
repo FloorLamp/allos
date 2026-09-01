@@ -153,6 +153,114 @@ export type StatedTimePolicy =
       readonly ref: IssueRef;
     };
 
+// ── WHAT A CORE DECLARES BESIDE ITSELF (#4614) ───────────────────────────────
+//
+// The manifest used to NAME its cores, and that column alone had a type floor with no
+// completeness check — three rows went stale inside a day, one of them wrong at birth.
+// The direction is inverted here: each core declares its own domain beside its
+// definition and the column DERIVES, so drift by addition is a missing declaration
+// where the door is written rather than an omission in a file nobody opened, and a
+// rename or a delete takes the declaration with it.
+//
+// The stated-time answer rides on the same declaration (#4568 ruling 1) — it is a
+// per-CORE property, `TAP_REACH`'s axis lesson applied to the column body's six cores
+// disagreed on — so a declaration cannot be made without answering it.
+export interface LogCoreDeclaration<D extends LogDomain = LogDomain> {
+  readonly domain: D;
+  readonly statedTime: StatedTimePolicy;
+}
+
+function declaresLogCore<D extends LogDomain>(
+  domain: D,
+  statedTime: StatedTimePolicy
+): LogCoreDeclaration<D> {
+  return { domain, statedTime };
+}
+
+// One declaration per (domain, stated-time answer) pair. A core writes
+// `export const <name>Declares = <one of these>;` beside its definition; the suffix is
+// what the derivation at the foot of this file reads. Naming them here keeps each
+// argument in ONE place — five practice cores share a reason rather than restating it.
+
+// An UNDO takes back the row its own tap wrote and carries no instant, while the LOG
+// door beside it judges one. That is the disagreement a domain-grain cell could not
+// hold, in the smallest case there is.
+const UNDO_STATES_NOTHING = {
+  kind: "none",
+  reason:
+    "An undo names the row its own tap created and takes no time: the instant it removes was judged when the tap wrote it, so there is no second statement to judge.",
+  ref: "#4568",
+} as const satisfies StatedTimePolicy;
+
+const JUDGED = {
+  kind: "judged",
+  seam: "judgeStatedAt",
+} as const satisfies StatedTimePolicy;
+
+export const FOOD_SERVING_LOG = declaresLogCore("food", JUDGED);
+export const FOOD_SERVING_UNDO = declaresLogCore("food", UNDO_STATES_NOTHING);
+
+export const DOSE_RESOLUTION = declaresLogCore("dose", {
+  kind: "judged",
+  seam: "dose-guards",
+});
+export const DOSE_CONFIRM_UNDO = declaresLogCore("dose", UNDO_STATES_NOTHING);
+
+// WRONG, AND THE TYPE STILL CANNOT SAY SO — flagged rather than asserted (#3143
+// review). `none` means "no instant column to state into", and both halves are false
+// for the cores that take a statement: `practice_logs` carries `start_time`/`end_time`
+// (#3142) and the quick sheet's "Happened earlier?" states an END. The truthful value
+// would be `judged`, which the type requires a shared seam for, and practice checks its
+// stated end inline. So `none` stays because it is the only representable value, not
+// because it is the answer. Settle it by routing the stated end through the seam, or by
+// giving the union an arm for a domain that judges its own; both are rulings, not edits.
+export const PRACTICE_SESSION_LOG = declaresLogCore("practice", {
+  kind: "none",
+  reason:
+    "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
+  ref: "#3143",
+});
+
+// The live pair is the half of practice the cell above was never true of, and the
+// re-key per core is what let it say so: neither start nor end takes a stated time.
+export const PRACTICE_LIVE_TAP = declaresLogCore("practice", {
+  kind: "none",
+  reason:
+    "A live session's start and end are the taps themselves (#3142): each stamps the profile-local minute at the moment it is pressed and neither accepts a time, so nothing is stated.",
+  ref: "#3142",
+});
+
+export const MOOD_CHECKIN = declaresLogCore("mood", {
+  kind: "none",
+  reason:
+    "A check-in is a DAY's answer (#992/#2312, answered rather than left to inference): `MoodPayload` carries no instant, the queue's captured date is the whole of its time model, and a replay at dinner still lands on the day the user tapped.",
+  ref: "#992",
+});
+
+export const SYMPTOM_DAY_WRITE = declaresLogCore("symptom", {
+  kind: "none",
+  reason:
+    "A symptom-day is ONE row, UNIQUE(profile_id, date, symptom), keeping the day's WORST severity: the table has no instant column and a second tap settles onto the same row rather than becoming a second observation. The temperature reading the bar can also take is the `body` domain's, and it states its own time there.",
+  ref: "#799",
+});
+
+export const STOOL_MOVEMENT_LOG = declaresLogCore("stool", JUDGED);
+
+export const SUBSTANCE_USE_WRITE = declaresLogCore("substance", {
+  kind: "none",
+  reason:
+    "`substance_daily_totals` is a DAY TOTAL. It has a `recorded_at` — when the use was filed — and no event instant at all, which is why the record renders these rows date-only and sinks them below the day's timed ones.",
+  ref: "#3327",
+});
+
+// TRUE OF ALL SIX BODY CORES SINCE #4568, and it was true of five: both temperature
+// doors resolved through a file-private `normalizeClockTime` — a SHAPE check — so the
+// old domain-grain cell asserted something false about one of them. They run
+// `resolveStatedOccurredAt` now. What a refusal COSTS still differs by door (log keeps
+// the reading, correction refuses the submission), which is lib/stated-time.ts's rule
+// and not a second policy.
+export const BODY_READING_WRITE = declaresLogCore("body", JUDGED);
+
 // #4424 ruling 7: exactly two shared client pieces per domain — one FORM (add and
 // full-statement edit) and one ROW CONTROL (taps and micro-corrections). Naming
 // them here is what makes each domain leg's definition of done a COMPILE ERROR
@@ -181,7 +289,6 @@ export type WriteConventions =
     };
 
 export interface LogDomainManifest {
-  readonly statedTime: StatedTimePolicy;
   // The domain's offline story. `flow` is the queue's primary capture; `alsoFlows`
   // names the others a domain rides, so `lib/offline/queue.ts` can derive its
   // domain-grain rows from here instead of restating them.
@@ -210,24 +317,13 @@ export interface LogDomainManifest {
     readonly rowControl: ClientPiece;
   };
   readonly writeConventions: WriteConventions;
-  // The dated write cores this domain's every surface must post through — the list
-  // the `STATEFUL_WRITE_TABLES` scan's call-site rule is about.
-  //
-  // THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review). `body` named
-  // `recordReading`/`recordReadings`, which no Server Action, component or Telegram
-  // handler calls — they sit under `insertVitals`. The row therefore did not name the
-  // five cores a body submission actually posts through, and this branch gated two of
-  // them and missed three, which shipped as a partial sitting nobody could see from
-  // here. The test for a name in this list is that a SURFACE calls it; the seven other
-  // rows were audited against that and all seven hold.
-  readonly cores: readonly [string, ...string[]];
+  // No `cores` column: the cores DECLARE and `LogCoresOf` derives (see below).
 }
 
 // ── THE MANIFEST ─────────────────────────────────────────────────────────────
 
 export const LOG_MANIFEST = {
   food: {
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: { kind: "covered", flow: "food" },
     surfaces: {
       sheet: { kind: "covered", via: "log-food" },
@@ -250,11 +346,9 @@ export const LOG_MANIFEST = {
       },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logFoodServingCore", "undoFoodServingCore"],
   },
 
   dose: {
-    statedTime: { kind: "judged", seam: "dose-guards" },
     offline: { kind: "covered", flow: "dose", alsoFlows: ["skip-dose"] },
     surfaces: {
       sheet: { kind: "covered", via: "log-dose" },
@@ -303,26 +397,9 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "DoseStatusControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["markDoseTaken", "markDoseSkipped", "logHistoricalDose"],
   },
 
   practice: {
-    // WRONG, AND THE TYPE CANNOT SAY SO — flagged rather than asserted (#3143 review).
-    // `none` means "the row has no instant column to state into", and both halves of
-    // that are now false: `practice_logs` carries `start_time`/`end_time` (#3142), and
-    // the quick sheet's restored "Happened earlier?" states an END that
-    // `logFinishedPracticeSession` accepts. The truthful value would be `judged`, which
-    // the type requires a shared seam for — and practice validates its stated end
-    // inline instead of through `judgeStatedAt`. So `none` stays because it is the only
-    // representable value, not because it is the answer. Settle it by routing the
-    // stated end through the seam, or by giving the union an arm for a domain that
-    // judges its own; both are rulings, not edits.
-    statedTime: {
-      kind: "none",
-      reason:
-        "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
-      ref: "#3143",
-    },
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
       sheet: { kind: "covered", via: "log-practice" },
@@ -373,38 +450,9 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "LogPracticeButton" },
     },
     writeConventions: { kind: "convention" },
-    // Seven doors, not two. #3143 added the lifecycle and the just-finished intent, and
-    // `logPracticeByTargetId` was already missing: the test on this column is that a
-    // SURFACE calls it (#4425), and every name here has one — the wellness action's two
-    // intents, the two live-lifecycle actions, the offline replay, and Telegram's two
-    // target-keyed taps. Correction and delete are not listed, matching every sibling
-    // row.
-    //
-    // `logPracticeByTargetId` LOST ITS WEB CALLER AND KEPT ITS ROW (#4424 ruling 7).
-    // Upcoming's own button posted a target id; its row mounts the shared control now,
-    // which posts a practice NAME resolved server-side beside the target read. Telegram
-    // is the caller that remains, and it is the one that needs a resolver: a chat
-    // callback carries an id and no day.
-    cores: [
-      "logPracticeSession",
-      "logPracticeSessionForDay",
-      "logPracticeByTargetId",
-      "logFinishedPracticeSession",
-      "logFinishedPracticeByTargetId",
-      "startLivePracticeSession",
-      "endLivePracticeSession",
-    ],
   },
 
   mood: {
-    // Ordinary: the same two days as a dose, past-only, and nothing about it needs
-    // arguing beyond the past-only shape the type already states.
-    statedTime: {
-      kind: "none",
-      reason:
-        "A check-in is a DAY's answer (#992/#2312, answered rather than left to inference): `MoodPayload` carries no instant, the queue's captured date is the whole of its time model, and a replay at dinner still lands on the day the user tapped.",
-      ref: "#992",
-    },
     offline: { kind: "covered", flow: "mood" },
     surfaces: {
       sheet: { kind: "covered", via: "log-mood" },
@@ -429,7 +477,6 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["upsertMoodLog"],
   },
 
   symptom: {
@@ -439,12 +486,6 @@ export const LOG_MANIFEST = {
     // — and `logSymptomCore` bounded nothing. Matching mood is the ruling, and mood
     // is the honest sibling: a subjective daily self-report, backfilled a day or two
     // late, correctable afterwards from the row rather than re-logged.
-    statedTime: {
-      kind: "none",
-      reason:
-        "A symptom-day is ONE row, UNIQUE(profile_id, date, symptom), keeping the day's WORST severity: the table has no instant column and a second tap settles onto the same row rather than becoming a second observation. The temperature reading the bar can also take is the `body` domain's, and it states its own time there.",
-      ref: "#799",
-    },
     offline: {
       kind: "excluded",
       reason:
@@ -485,11 +526,6 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "SymptomRowControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: [
-      "logSymptomCore",
-      "setSymptomSeverityCore",
-      "lowerSymptomSeverityCore",
-    ],
   },
 
   stool: {
@@ -497,7 +533,6 @@ export const LOG_MANIFEST = {
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
     // whose natural key IS its instant.
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: { kind: "covered", flow: "stool" },
     surfaces: {
       sheet: { kind: "covered", via: "log-stool" },
@@ -541,16 +576,9 @@ export const LOG_MANIFEST = {
         "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
       ref: "#3276",
     },
-    cores: ["logBristolStool"],
   },
 
   substance: {
-    statedTime: {
-      kind: "none",
-      reason:
-        "`substance_daily_totals` is a DAY TOTAL. It has a `recorded_at` — when the use was filed — and no event instant at all, which is why the record renders these rows date-only and sinks them below the day's timed ones.",
-      ref: "#3327",
-    },
     offline: {
       kind: "excluded",
       reason:
@@ -581,22 +609,9 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "SubstanceUnitControl" },
     },
     writeConventions: { kind: "convention" },
-    cores: [
-      "logSubstanceUnitCore",
-      "undoSubstanceUnitCore",
-      "addSubstanceDailyTotalCore",
-    ],
   },
 
   body: {
-    // TRUE OF ALL SIX CORES SINCE #4568. It was true of five: `logTemperatureCore` and
-    // `updateTemperatureCore` resolved through a file-private resolver that ran
-    // `normalizeClockTime` — a SHAPE check — so this cell asserted something false about
-    // one of them, which is what a domain-grain column risks whenever its cores are not
-    // one contract. Both temperature doors run `resolveStatedOccurredAt` now, and what a
-    // refusal COSTS still differs by door (log keeps the reading, correction refuses the
-    // submission) because that is lib/stated-time.ts's rule and not a second policy.
-    statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: {
       kind: "covered",
       flow: "body-metric",
@@ -665,22 +680,61 @@ export const LOG_MANIFEST = {
       rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
-    // The five "Log measurements" cores plus the symptom bar's temperature door. One
-    // submission fans out across the five by which fields it carries, so they are one
-    // contract and all five hold `isPastWriteAccepted`; `recordReading` is the store
-    // under `insertVitals` and is not a door. Its plural `recordReadings` was in this
-    // list until #4425 and had no non-test caller at all (#4564); #4424's body leg
-    // deleted it, so the store layer is one function and this list is only doors.
-    cores: [
-      "insertBodyMetric",
-      "insertVitals",
-      "insertGrowth",
-      "insertWaistCirc",
-      "insertComposition",
-      "logTemperatureCore",
-    ],
   },
 } as const satisfies Record<LogDomain, LogDomainManifest>;
+
+// ── THE DERIVED CORES COLUMN (#4614) ─────────────────────────────────────────
+//
+// Every module that defines a log core. TYPE-ONLY, and `typeof import(...)` rather
+// than an import statement, so this file stays as pure and dependency-free as its
+// header promises — a client component reading `LOG_MANIFEST` pulls in no `db`.
+//
+// THE SUBMISSION CORE, NOT THE STORAGE LAYER BENEATH IT (#4425 review): `body` named
+// `recordReading`, which nothing but `insertVitals` calls, and so missed the five cores
+// a body submission posts through. The test for a declaration is that a SURFACE calls
+// the function; corrections and deletes carry none, matching what the rows named.
+type LogCoreModules =
+  | typeof import("./food-log-write")
+  | typeof import("./queries/intake/adherence")
+  | typeof import("./practice-log")
+  | typeof import("./offline/writes")
+  | typeof import("./symptom-log-write")
+  | typeof import("./substance-log-write")
+  | typeof import("./substance-daily-totals-write")
+  | typeof import("./temperature-log");
+
+// Read every `<coreName>Declares` export whose declaration names domain `D`.
+// Distributive so the module union is walked one module at a time.
+type DeclaredCoresIn<M, D extends LogDomain> = M extends unknown
+  ? {
+      [K in keyof M]: K extends `${infer Core}Declares`
+        ? M[K] extends LogCoreDeclaration<D>
+          ? Core
+          : never
+        : never;
+    }[keyof M]
+  : never;
+
+// The manifest's cores column, derived. `LogCoresOf<"practice">` is what the practice
+// row used to spell out by hand.
+export type LogCoresOf<D extends LogDomain> = DeclaredCoresIn<
+  LogCoreModules,
+  D
+>;
+
+// Every core in the app, as a union — so a renamed or deleted core stops being one.
+export type LogCoreName = LogCoresOf<LogDomain>;
+
+// COMPLETENESS, THE HALF THE OLD COLUMN NEVER HAD: a domain whose cores all lost their
+// declarations — or a new `LogDomain` whose doors never wrote one — derives an empty
+// list, and this assignment stops compiling.
+type DomainsThatDeclareACore = {
+  [D in LogDomain]: [LogCoresOf<D>] extends [never] ? never : D;
+}[LogDomain];
+
+export const EVERY_DOMAIN_DECLARES_A_CORE: LogDomain extends DomainsThatDeclareACore
+  ? true
+  : never = true;
 
 // ── The shared invariant every domain core holds ─────────────────────────────
 

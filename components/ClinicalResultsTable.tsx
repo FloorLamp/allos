@@ -18,7 +18,10 @@ import {
   updateResult,
   deleteResult,
 } from "@/app/(app)/results/clinical-result-actions";
-import { loadClinicalResultPanelRows } from "@/app/(app)/results/actions";
+import {
+  loadClinicalResultPanelRows,
+  type ClinicalResultPanelPage,
+} from "@/app/(app)/results/actions";
 import type {
   ClinicalResultTableObservation,
   ClinicalResultsSearchParams,
@@ -49,9 +52,12 @@ import {
 } from "@/lib/derived-table";
 import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import {
+  PANEL_ROW_LIMIT,
   panelGroupSummary,
   type BoundedPanelGroup,
 } from "@/lib/biomarker-panel-groups";
+import { pageCount } from "@/lib/pagination";
+import PaginationControls from "@/components/PaginationControls";
 
 // A table row in multi-view carries its owning profile + stamped subject identity
 // (stampSubjects); single-view rows omit both. The subject powers the leading chip
@@ -692,80 +698,11 @@ function PanelGroupHeader({
   );
 }
 
-// The rows a group is currently showing, and whether that is all of them. The
-// server's slice is what arrived; a fetched set replaces it wholesale.
 function groupRows(
   group: BoundedPanelGroup<ClinicalResultTableObservation>,
-  loaded: Map<PanelId, ClinicalResultTableObservation[]>
+  loaded: Map<PanelId, ClinicalResultPanelPage>
 ): ClinicalResultTableObservation[] {
-  return loaded.get(group.panel) ?? group.rows;
-}
-
-function groupComplete(
-  group: BoundedPanelGroup<ClinicalResultTableObservation>,
-  loaded: Map<PanelId, ClinicalResultTableObservation[]>
-): boolean {
-  return loaded.has(group.panel) || group.rows.length >= group.total;
-}
-
-// The footer inside an expanded group that has more results than it was given —
-// the visible half of the payload bound (#1651). It states what is being held back
-// and loads the rest on demand; a collapsed group's expansion loads through the same
-// path, so there is one fetch, not two mechanisms.
-function PanelRowsFooter({
-  group,
-  shown,
-  loading,
-  failed,
-  onLoad,
-  colSpan,
-}: {
-  group: BoundedPanelGroup<ClinicalResultTableObservation>;
-  shown: number;
-  loading: boolean;
-  failed: boolean;
-  onLoad: () => void;
-  colSpan: number;
-}) {
-  return (
-    <tr className={NESTED_ROW} data-testid="clinical-result-panel-more">
-      <Td slot="full" colSpan={colSpan} className="py-2">
-        {loading ? (
-          <span
-            className="text-xs text-slate-500 dark:text-slate-400"
-            data-testid="clinical-result-panel-loading"
-          >
-            Loading clinical results…
-          </span>
-        ) : (
-          <span className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            {failed ? (
-              <span data-testid="clinical-result-panel-error">
-                Couldn’t load these clinical results.
-              </span>
-            ) : (
-              shown > 0 && (
-                <span>
-                  Showing {shown} of {group.total} clinical results
-                </span>
-              )
-            )}
-            <button
-              type="button"
-              data-testid="clinical-result-panel-load-all"
-              data-panel={group.panel}
-              onClick={onLoad}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-            >
-              {failed
-                ? "Try again"
-                : `Show all ${group.total} clinical ${group.total === 1 ? "result" : "results"}`}
-            </button>
-          </span>
-        )}
-      </Td>
-    </tr>
-  );
+  return loaded.get(group.panel)?.rows ?? group.rows;
 }
 
 // What the reader has opened, and what has been loaded for it. All five fields move
@@ -775,9 +712,7 @@ function PanelRowsFooter({
 interface DisclosureState {
   signature: string;
   open: Set<PanelId>;
-  // Panels whose FULL row set has been fetched — the server's bounded slice is
-  // replaced by it.
-  loaded: Map<PanelId, ClinicalResultTableObservation[]>;
+  loaded: Map<PanelId, ClinicalResultPanelPage>;
   loading: Set<PanelId>;
   failed: Set<PanelId>;
 }
@@ -804,14 +739,6 @@ function without<T>(set: Set<T>, value: T): Set<T> {
 // The Clinical results table. Client-side so each row can swap in place for an
 // inline editor and offer delete — but the display, grouping, sorting, staleness,
 // and filter links are unchanged from the prior server-rendered table.
-//
-// NO PAGER (#1581 section A). It used to ship one 50-row page (#114) and round-trip
-// the rest through `?p=`, which is a ROW-denominated bound over a surface whose unit
-// is the PANEL: a six-analyte lipid panel with twelve draws is seventy-two rows, so a
-// panel could straddle a page boundary and render on both with partial counts, and
-// paging re-collapsed every group the reader had opened. The INDEX is bounded by
-// construction instead — PANEL_IDS is a closed, small taxonomy (37 entries today), so
-// the header list has a hard ceiling no lab history can exceed.
 //
 // BOUNDED PAYLOAD (#1651). That ceiling is on the index, not on the results inside
 // it, and props handed to a client component are serialized into the RSC payload
@@ -872,10 +799,11 @@ export default function ClinicalResultsTable({
   if (state.signature !== signature)
     setState(initialDisclosure(signature, initialOpen));
 
-  // Fetch ONE panel's full results. Guarded by the signature: a response that
+  // Fetch ONE bounded page from a panel. Guarded by the signature: a response that
   // arrives after the reader has filtered away describes rows this view no longer
   // shows, so it is dropped rather than merged into a different result set.
-  const loadPanel = (id: PanelId) => {
+  const loadPanel = (id: PanelId, page: number) => {
+    if (state.loading.has(id)) return;
     const at = signature;
     setState((prev) =>
       prev.loading.has(id)
@@ -886,7 +814,7 @@ export default function ClinicalResultsTable({
             failed: without(prev.failed, id),
           }
     );
-    loadClinicalResultPanelRows({ panel: id, searchParams })
+    loadClinicalResultPanelRows({ panel: id, searchParams, page })
       .then((res) =>
         setState((prev) => {
           if (prev.signature !== at) return prev;
@@ -896,7 +824,7 @@ export default function ClinicalResultsTable({
           return {
             ...prev,
             loading,
-            loaded: new Map(prev.loaded).set(id, res.rows),
+            loaded: new Map(prev.loaded).set(id, res),
           };
         })
       )
@@ -913,11 +841,6 @@ export default function ClinicalResultsTable({
       );
   };
 
-  // Opening a group it has no results for fetches them — the reader asked for that
-  // panel, which is what pays for its rows. A TRUNCATED open group is deliberately
-  // NOT auto-filled: it is already showing results, and topping every open group up
-  // on arrival would rebuild the unbounded payload for exactly the narrowed views
-  // that open them all. Its footer asks.
   const toggleGroup = (
     group: BoundedPanelGroup<ClinicalResultTableObservation>
   ) => {
@@ -931,10 +854,10 @@ export default function ClinicalResultsTable({
     if (
       opening &&
       groupRows(group, state.loaded).length === 0 &&
-      !groupComplete(group, state.loaded) &&
+      !state.loaded.has(group.panel) &&
       !state.loading.has(group.panel)
     )
-      loadPanel(group.panel);
+      loadPanel(group.panel, 1);
   };
 
   return (
@@ -1033,7 +956,10 @@ export default function ClinicalResultsTable({
           {panelGroups.map((group) => {
             const open = state.open.has(group.panel);
             const rows = groupRows(group, state.loaded);
-            const complete = groupComplete(group, state.loaded);
+            const loaded = state.loaded.get(group.panel);
+            const page = loaded?.page ?? 1;
+            const limit = loaded?.limit ?? PANEL_ROW_LIMIT;
+            const total = loaded?.total ?? group.total;
             const bodyId = `clinical-result-panel-${group.panel}`;
             const colSpan = multiView ? 9 : 8;
             return (
@@ -1081,16 +1007,44 @@ export default function ClinicalResultsTable({
                       );
                     }
                   )}
-                {open && !complete && (
-                  <PanelRowsFooter
-                    group={group}
-                    shown={rows.length}
-                    loading={state.loading.has(group.panel)}
-                    failed={state.failed.has(group.panel)}
-                    onLoad={() => loadPanel(group.panel)}
-                    colSpan={colSpan}
-                  />
-                )}
+                {open &&
+                  (pageCount(total, limit) > 1 ||
+                    state.loading.has(group.panel) ||
+                    state.failed.has(group.panel)) && (
+                    <tr
+                      className={NESTED_ROW}
+                      data-testid="clinical-result-panel-pager-row"
+                      data-panel={group.panel}
+                    >
+                      <Td slot="full" colSpan={colSpan} className="p-0!">
+                        <PaginationControls
+                          page={page}
+                          pageCount={pageCount(total, limit)}
+                          pageSize={limit}
+                          total={total}
+                          visibleCount={rows.length}
+                          onPageChange={(nextPage) =>
+                            loadPanel(group.panel, nextPage)
+                          }
+                          testId="clinical-result-panel-pagination"
+                          unit="clinical results"
+                        />
+                        {(state.loading.has(group.panel) ||
+                          state.failed.has(group.panel)) && (
+                          <button
+                            type="button"
+                            disabled={state.loading.has(group.panel)}
+                            onClick={() => loadPanel(group.panel, page)}
+                            className="mx-3 mb-2 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                          >
+                            {state.loading.has(group.panel)
+                              ? "Loading clinical results…"
+                              : "Couldn’t load that page. Try again."}
+                          </button>
+                        )}
+                      </Td>
+                    </tr>
+                  )}
               </tbody>
             );
           })}
