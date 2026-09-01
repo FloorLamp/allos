@@ -10,12 +10,9 @@ import { now as clockNow } from "../../lib/clock";
 import { utcSqlString } from "../../lib/date";
 import { upsertConnection } from "../../lib/integrations/connections";
 import { syncFailureCopy } from "../../lib/integrations/auth-failure";
-import { hashShareToken } from "../../lib/share-token";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_HC,
-  E2E_LOGIN_MOBILE_HC,
-  MOBILE_HC_PROFILE,
   E2E_LOGIN_STRAVA,
   HEALTH_CONNECT_PROFILE,
   STRAVA_REAUTH_PROFILE,
@@ -76,28 +73,6 @@ export function seedCoverageGaps(): void {
   // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
   const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
   seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
-
-  // #1063 — a dedicated Health Connect profile seeded already CONNECTED so the
-  // mobile-overflow spec renders the endpoint card read-only (never generating or
-  // rotating — those mutations belong to the E2E_LOGIN_HC spec above and would race a
-  // concurrent reader). Since #1209 the token is HASHED at rest, so we seed only its
-  // SHA-256 (`tokenHash`), not a plaintext — `connected` gates on `hasToken`, which
-  // reads `tokenHash`. The plaintext is never re-shown (reveal-once), so the wide
-  // element under test at phone width is the endpoint-URL row, not the token.
-  const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
-  upsertConnection(mobileHcId, "health-connect", {
-    status: "connected",
-    config: {
-      // The stored hash of a synthetic value (a real generate stores the same shape:
-      // sha256 hex). Deliberately derived from a LOW-entropy input so no random-looking
-      // literal appears — the value here is a 64-char hex HASH computed at seed time.
-      tokenHash: hashShareToken("e2e0".repeat(16)),
-      tokenCreatedAt: utcSqlString(
-        new Date(clockNow().getTime() - 24 * 3600 * 1000)
-      ),
-    },
-  });
-  seedMemberLogin(E2E_LOGIN_MOBILE_HC, mobileHcId);
 
   console.log(
     `e2e: seeded member logins for the child (${rileyId}), Strava-reauth (${stravaReauthId}), and Health-Connect (${healthConnectId}) fixture profiles (#391)`
