@@ -522,7 +522,7 @@ const MENU_TRIGGER_CLICK_ALLOW: Record<string, number> = {
   "episode-med-reconcile.spec.ts": 1,
   "equipment-lifecycle.spec.ts": 3,
   "equipment-manager.spec.ts": 1,
-  "food-log-correction.spec.ts": 4,
+  "food-log-correction.spec.ts": 3,
   "genomics.spec.ts": 2,
   "goal-metric-switch.spec.ts": 1,
   "imaging.spec.ts": 3,
