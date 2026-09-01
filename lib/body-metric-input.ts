@@ -77,7 +77,7 @@ export function validateBodyMetricInput(
 // control's one-tap "Now", so diagnosing their clock would be diagnosing the wrong
 // machine. What is shared is the REASON CODE, which is the whole point of the
 // verdict.
-export const MEASUREMENT_TIME_NOTE: Record<StatedTimeRefusal, string> = {
+const MEASUREMENT_TIME_NOTE: Record<StatedTimeRefusal, string> = {
   future: "that time hasn't happened yet",
   "other-day": "it isn't on that day",
   malformed: "it couldn't be read",

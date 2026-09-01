@@ -45,7 +45,6 @@ import {
   normalizeClockTime,
   type TempUnit,
 } from "./vitals-input";
-import { MEASUREMENT_TIME_NOTE } from "./body-metric-input";
 import type { MedicalFlag } from "./types";
 
 // Typed outcome so a caller answers from what ACTUALLY happened (the markDoseTaken /
@@ -67,8 +66,14 @@ export type TemperatureLogOutcome =
     }
   | { kind: "invalid"; error: string };
 
+// `updated` carries the same NOTICE its log sibling does, and for the same reason.
 export type TemperatureUpdateOutcome =
-  | { kind: "updated"; degF: number; flag: MedicalFlag | null }
+  | {
+      kind: "updated";
+      degF: number;
+      flag: MedicalFlag | null;
+      statedTimeRefused?: StatedTimeRefusal;
+    }
   | { kind: "missing" }
   | { kind: "invalid"; error: string };
 
@@ -206,16 +211,16 @@ export function updateTemperatureCore(
   // clears it. `notes` is no longer written — a genuine note survives an edit
   // instead of being clobbered by the retired clock-in-notes convention.
   //
-  // A REFUSED STATEMENT COSTS THE SUBMISSION HERE, not just the minute — the
-  // correction-path half of lib/stated-time.ts's rule. The whole of what this door
-  // takes is a value, a day and a minute, and silently keeping two of the three
-  // would tell the caregiver their correction landed as typed when it did not.
+  // A REFUSED MINUTE COSTS THE MINUTE, NOT THE CORRECTION — the LOG branch of
+  // lib/stated-time.ts's rule, because that rule's correction branch has a
+  // precondition this door does not meet. It reads "a correction path — WHERE THE
+  // STATEMENT IS THE WHOLE SUBMISSION — surfaces it as an error", and the submission
+  // here is a value AND a day AND a minute. Refusing all three over a stray clock is
+  // losing the serving to save the cosmetic half, which is the very trade the rule's
+  // first branch exists to prevent. The bad DAY above still refuses outright: that
+  // file's next paragraph calls an instant outside its own row's day corruption, and a
+  // wrong day is a different question from a wrong minute.
   const stated = statedOccurredAt(profileId, date, time);
-  if (stated.refused)
-    return {
-      kind: "invalid",
-      error: `Couldn't save that time — ${MEASUREMENT_TIME_NOTE[stated.refused]}.`,
-    };
   const occurredAt = stated.value ?? null;
 
   return writeTx((): TemperatureUpdateOutcome => {
@@ -254,6 +259,11 @@ export function updateTemperatureCore(
       )
       .get(id, profileId, TEMP.canonical) as
       { flag: MedicalFlag | null } | undefined;
-    return { kind: "updated", degF, flag: row?.flag ?? null };
+    return {
+      kind: "updated",
+      degF,
+      flag: row?.flag ?? null,
+      ...(stated.refused ? { statedTimeRefused: stated.refused } : {}),
+    };
   });
 }

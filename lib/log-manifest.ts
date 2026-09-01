@@ -622,7 +622,15 @@ export const LOG_MANIFEST = {
       // THE ROW CONTROL HAD THREE IMPLEMENTATIONS, not the one the cell named: the
       // readings-table cell, `/history`'s `case "body"` correction form, and
       // `BodyMetricRowMenu`'s modal — all three posting `updateMetricReading` with the
-      // same three fields. All three mount `ReadingValueControl` now.
+      // same three fields. All three mount `ReadingValueControl` now, and it is the only
+      // thing in the tree that imports that action.
+      //
+      // MOOD'S LEG INHERITS THAT CONTROL RATHER THAN EXTRACTING A SECOND ONE (#4427).
+      // `/trends/metric/<slug>` charts mood and sleep beside the body measures, so a
+      // mood reading's value is corrected through this same component —
+      // `updateMetricRow` routes the mood store underneath it. Named here so that leg
+      // reads it as an inheritance in its own cell instead of finding a body-named
+      // control on its rows and drawing a fourth.
       //
       // THE DASHBOARD IS NOT A GAP. Its body rows are readouts with an `href`; the one
       // body write control there is the setup-tier Vitals row's

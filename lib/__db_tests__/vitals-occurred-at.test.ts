@@ -357,27 +357,52 @@ describe("the temperature cores judge their stated time (#4568)", () => {
     ]).toEqual([undefined, "future"]);
   });
 
-  it("the correction door refuses a future minute and a future day, and changes nothing", () => {
+  // BOTH ARMS OF THE CORRECTION DOOR, and they differ because the questions do. A
+  // wrong MINUTE costs the minute: lib/stated-time.ts's correction branch is for a path
+  // "where the statement IS the whole submission", and this submission is a value and a
+  // day as well — refusing all three over a stray clock loses the serving to save the
+  // cosmetic half, which is the trade that file's FIRST branch exists to prevent. A
+  // wrong DAY is refused outright: the same file calls an instant outside its own row's
+  // day corruption, and `date` is what every downstream query keys on.
+  it("keeps a correction whose minute is refused, and refuses one whose day is", () => {
     const p = newProfile("TempJudgeEdit");
     const date = today(p);
     const logged = logTemperatureCore(p, 99.4, "F", date, "page", "08:00");
     const id = (logged as { id: number }).id;
-    const before = medRows("Body Temperature", date, p)[0];
 
-    // The statement IS the submission here, so a refusal costs the whole edit rather
-    // than the minute — lib/stated-time.ts's own log-versus-correction rule.
-    expect(updateTemperatureCore(p, id, 100.6, date, "23:50")).toEqual({
-      kind: "invalid",
-      error: "Couldn't save that time — that time hasn't happened yet.",
+    // The minute arm: the value edit LANDS, the refused statement is a notice, and
+    // `occurred_at` is honest NULL rather than a fact about the future.
+    const kept = updateTemperatureCore(p, id, 100.6, date, "23:50");
+    expect(kept).toEqual({
+      kind: "updated",
+      degF: 100.6,
+      flag: "high",
+      statedTimeRefused: "future",
     });
-    // The never-the-future DAY bound its log sibling gained in #4425.
-    expect(
-      updateTemperatureCore(p, id, 100.6, shiftDateStr(date, 1), "08:00")
-    ).toEqual({ kind: "invalid", error: "Enter a valid date." });
-    // A refusal is not a partial write: value, day and minute are all as they were.
     expect(medRows("Body Temperature", date, p)[0]).toMatchObject({
-      value_num: before.value_num,
-      occurred_at: before.occurred_at,
+      value_num: 100.6,
+      occurred_at: null,
     });
+
+    // The day arm: nothing is written at all, and the reading keeps the value the
+    // minute arm just gave it — so this cannot pass by refusing everything.
+    expect(
+      updateTemperatureCore(p, id, 101.8, shiftDateStr(date, 1), "08:00")
+    ).toEqual({ kind: "invalid", error: "Enter a valid date." });
+    expect(medRows("Body Temperature", date, p)[0]).toMatchObject({
+      value_num: 100.6,
+      date,
+    });
+
+    // And the converse of the minute arm, through the SAME call: a statement the gate
+    // ACCEPTS lands on the column and reports nothing.
+    expect(updateTemperatureCore(p, id, 100.6, date, "09:15")).toEqual({
+      kind: "updated",
+      degF: 100.6,
+      flag: "high",
+    });
+    expect(medRows("Body Temperature", date, p)[0].occurred_at).toBe(
+      `${date}T09:15:00Z`
+    );
   });
 });

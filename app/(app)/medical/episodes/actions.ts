@@ -15,6 +15,7 @@ import { db, today } from "@/lib/db";
 import { getTimezone, deleteProfileSetting } from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { updateTemperatureCore } from "@/lib/temperature-log";
+import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { deleteAdministrationLog, updateHistoricalDose } from "@/lib/queries";
 import { historicalDoseErrorMessage } from "@/lib/historical-dose-error";
 import { captureDelete } from "@/lib/undo-delete-db";
@@ -69,7 +70,12 @@ import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
 export type EpisodeShareResult =
   { ok: true; path: string } | { ok: false; error: string };
 
-export type EpisodeActionResult = { ok: true } | { ok: false; error: string };
+// `statedTimeRefused` is a NOTICE on a correction that LANDED (#4568) — the minute the
+// acceptance gate discarded, in the same shape the body domain's other five cores
+// answer with. Never a failure: the value and the day are corrected either way.
+export type EpisodeActionResult =
+  | { ok: true; statedTimeRefused?: StatedTimeRefusal }
+  | { ok: false; error: string };
 
 function parseEpisodeId(formData: FormData): number | null {
   const n = Number(formData.get("episodeId"));
@@ -141,7 +147,12 @@ export async function updateEpisodeTemperatureAction(
   if (outcome.kind === "missing")
     return { ok: false, error: "That reading is no longer available." };
   revalidateEpisodeEvents();
-  return { ok: true };
+  return {
+    ok: true,
+    ...(outcome.statedTimeRefused
+      ? { statedTimeRefused: outcome.statedTimeRefused }
+      : {}),
+  };
 }
 
 export async function updateEpisodeSymptomAction(
