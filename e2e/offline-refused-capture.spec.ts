@@ -507,7 +507,7 @@ test("a refused quick-entry mood tap says so, rolls back, and keeps the sheet op
   const input = await openCommandPalette(page);
   await input.fill("log mood");
   await page.getByTestId("palette-action-log-mood").click();
-  const checkin = page.getByTestId("quick-mood-checkin");
+  const checkin = page.getByTestId("mood-form");
   await expect(checkin).toBeVisible();
 
   // Tap a face that is not already the stored rating, so the rollback below is

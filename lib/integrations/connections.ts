@@ -16,8 +16,12 @@ import {
 } from "@/lib/token-lifecycle";
 import { cutoffDaysAgo, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
 import { utcInstant } from "@/lib/date";
-import { boundSyncDetailsJson } from "./sync-details";
-import type { ProvenanceEntry } from "./sync-log";
+import { boundSyncDetailsJson, truncatedSyncDetails } from "./sync-details";
+import {
+  summarizeSplit,
+  type ProvenanceEntry,
+  type UpsertCounts,
+} from "./sync-log";
 
 // Generic per-source connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
@@ -208,6 +212,37 @@ export interface SyncEventInput {
     accountId: number;
     patientLabel: string;
   } | null;
+}
+
+type AccountedSyncEventInput = Pick<
+  SyncEventInput,
+  "ok" | "raw_ref" | "error" | "identity"
+> & {
+  profileId: number;
+  sourceId: string;
+  window: { start: string | null; end: string | null } | null;
+  split: UpsertCounts | null;
+  skipped: number;
+  partial: { warning?: string } | null;
+  details?: string | null;
+};
+
+// Omitting a split segment, window, skip count, or partial marker is a type error.
+export function emitSyncEvent(input: AccountedSyncEventInput): number | null {
+  const { profileId, sourceId, window, split, skipped, partial, ...event } =
+    input;
+  const tally = split ? summarizeSplit(split, skipped) : null;
+  return recordSyncEvent(profileId, sourceId, {
+    ...event,
+    windowStart: window?.start ?? null,
+    windowEnd: window?.end ?? null,
+    ...(tally
+      ? { ...tally, written: tally.inserted + tally.updated + tally.unchanged }
+      : {}),
+    details: partial
+      ? truncatedSyncDetails(partial.warning)
+      : (event.details ?? null),
+  });
 }
 
 // Append one integration_sync_events row (the append-only debug history the setup

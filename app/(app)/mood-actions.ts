@@ -15,6 +15,8 @@ import {
   resetMoodCheckinIgnored,
 } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { gateItemProfile } from "./gate-item";
+import { isPastWriteAccepted } from "@/lib/log-manifest";
 
 // Server write path for the daily wellbeing check-in (issue #992). ONE action:
 // the dashboard "How are you today?" card posts here for both the one-tap valence
@@ -27,19 +29,21 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // both are revalidated.
 
 export async function logMood(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
 
   const rawDate = String(formData.get("date") ?? "").trim();
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
-    ? rawDate
-    : today(profile.id);
-  // The #2128 backfill bound — the dose-log-window discipline (lib/dose-log-window.ts):
-  // the day chips supply a recent past date, and a well-formed date outside that
-  // window is refused rather than written, so a stale tab or crafted request can't
-  // land a far-off check-in. (The offline REPLAY path calls upsertMoodLog directly
-  // and deliberately keeps landing on its captured date — see lib/mood.ts.)
-  if (!isMoodDateAccepted(today(profile.id), date)) {
-    return formError(MOOD_DATE_OUT_OF_WINDOW_ERROR);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today(profileId);
+  // WINDOWS BIND OFFERS, NOT THE DOMAIN (#4425). Quick-log day chips remain bounded
+  // for stale-tap protection; the record's dated form can state any real past day,
+  // like every other `/history` add/correction door. Both land through the same core.
+  const dated = formData.get("date_reach") === "dated";
+  const accepted = dated
+    ? isPastWriteAccepted(today(profileId), date)
+    : isMoodDateAccepted(today(profileId), date);
+  if (!accepted) {
+    return formError(
+      dated ? "Choose today or an earlier date." : MOOD_DATE_OUT_OF_WINDOW_ERROR
+    );
   }
 
   const opt = (k: string): string | null => {
@@ -47,7 +51,7 @@ export async function logMood(formData: FormData): Promise<FormResult> {
     return v === null || String(v).trim() === "" ? null : String(v).trim();
   };
 
-  const ok = upsertMoodLog(profile.id, date, {
+  const ok = upsertMoodLog(profileId, date, {
     valence: String(formData.get("valence") ?? ""),
     energy: opt("energy"),
     anxiety: opt("anxiety"),
@@ -59,6 +63,7 @@ export async function logMood(formData: FormData): Promise<FormResult> {
   revalidateRoute("/");
   revalidateRoute("/trends");
   revalidateRoute("/sleep");
+  revalidateRoute("/history");
   return formOk();
 }
 

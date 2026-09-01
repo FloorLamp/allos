@@ -23,8 +23,8 @@ import {
 } from "@/lib/portals";
 import { canReportOnAccount } from "@/lib/portal-visibility";
 import {
+  emitSyncEvent,
   recordSync,
-  recordSyncEvent,
   upsertConnection,
 } from "@/lib/integrations/connections";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -438,20 +438,26 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     // The append-only event history: this is what Data → Review reads and what the
-    // failure badge keys off. recordSyncEvent is best-effort by contract (it never throws
+    // failure badge keys off. emitSyncEvent is best-effort by contract (it never throws
     // into its caller), so a reporting hiccup can't fail an otherwise-good run.
-    const eventId = recordSyncEvent(profileId, SOURCE_ID, {
-      ok: ev.ok,
-      received: ev.received,
-      written: ev.inserted + ev.updated,
-      inserted: ev.inserted,
-      updated: ev.updated,
-      unchanged: ev.unchanged,
+    const eventId = emitSyncEvent({
+      profileId,
+      sourceId: SOURCE_ID,
+      window: null,
+      split: {
+        inserted: ev.inserted,
+        updated: ev.updated,
+        unchanged: ev.unchanged,
+        suppressed: ev.suppressed,
+        edited: 0,
+        superseded: 0,
+      },
       skipped: ev.skipped,
+      partial: null,
+      ok: ev.ok,
       // Tombstone-blocked re-offers (#1777) ride the column migration 023 already added
       // for the #507/#508 re-import tombstones, so Data → Review renders "N suppressed"
       // through the same formatSplitLabel path as every other source.
-      suppressed: ev.suppressed,
       error: ev.error,
       // WHICH identity this run was about (#1739). Null for a `profile=<id>` report from
       // a human debugging with curl, and for every other source's events — the card
