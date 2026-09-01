@@ -823,53 +823,7 @@ test("the control's Now fills an absolute local time, and it is what lands (#205
   await removeLoggedServing(page, eventId);
 });
 
-test("an earlier hour states an absolute time, and it is what lands (#2053)", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  await expect(page.getByTestId("food-log-bar")).toBeVisible();
-
-  await openWhenFold(page);
-  // The day half is FIXED to the SELECTED day, so the control renders it as text
-  // rather than as a picker that could disagree with the tab.
-  await expect(page.getByTestId("food-when-date")).toHaveText("Today");
-
-  // Every offered hour is one the write will accept: the control truncates today's
-  // hours at the current local hour, so nothing on screen can be refused. The e2e
-  // clock is pinned to 13:mm local, so 08:00 is always among them.
-  const hhmm = EARLIER_HOUR;
-  await stateEatingTime(page, hhmm);
-  await expect(page.getByTestId("food-eating-time-note")).toContainText(
-    `recorded as eaten at ${hhmm}`
-  );
-
-  await revealFoodGroup(page, "nuts_seeds");
-  const before = await loggedListIds(page);
-  await settledClick(page, page.getByTestId("log-nuts_seeds"));
-  await expect(loggedListRows(page)).toHaveCount(before.length + 1);
-
-  const eventId = await newlyLoggedId(page, before);
-  const stamped = eatingTimeOf(eventId);
-  expect(stamped.time_source).toBe("stated");
-  // The stated wall time is what the row carries — resolved server-side in the profile's
-  // timezone, so the browser never converted it.
-  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toBeVisible();
-  expect(stamped.occurred_at).not.toBeNull();
-  expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
-    frozenNow().getTime()
-  );
-  // AND THE ROW STATES IT (#2206). The web half of "a surface must not go on showing the
-  // time a statement replaced": the logged list names this serving by the hour that was
-  // chosen, not by the moment the "+" was pressed. Both surfaces are absolute, so the
-  // control's own option label is what the row ends up reading.
-  await expect(page.getByTestId(`ledger-serving-${eventId}`)).toContainText(
-    hhmm
-  );
-
-  await removeLoggedServing(page, eventId);
-});
-
-test("a stated time wins over the tab: the serving lands, visibly, in its derived section (#2269)", async ({
+test("an earlier stated time lands exactly and wins over the selected meal (#2053/#2269)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -880,6 +834,8 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   // boundaries), so 08:00 is offered and files under Morning at every UTC start hour.
   const filingSlot = EARLIER_HOUR_SLOT;
   await openWhenFold(page);
+  // The day half is fixed to the selected day rather than being another picker.
+  await expect(page.getByTestId("food-when-date")).toHaveText("Today");
   await stateEatingTime(page, EARLIER_HOUR);
 
   // Stand in a DIFFERENT tab than the one the hour files under. The tab is
@@ -895,6 +851,9 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await expect(page.getByTestId("food-eating-time-note")).toContainText(
     `and land in ${filingSlot}`
   );
+  await expect(page.getByTestId("food-eating-time-note")).toContainText(
+    `recorded as eaten at ${EARLIER_HOUR}`
+  );
 
   await revealFoodGroup(page, "nuts_seeds");
   const before = await loggedListIds(page);
@@ -906,6 +865,13 @@ test("a stated time wins over the tab: the serving lands, visibly, in its derive
   await expect(loggedListRows(page)).toHaveCount(before.length + 1);
   const eventId = await newlyLoggedId(page, before);
   const row = page.getByTestId(`ledger-serving-${eventId}`);
+  const stamped = eatingTimeOf(eventId);
+  expect(stamped.time_source).toBe("stated");
+  expect(stamped.occurred_at).not.toBeNull();
+  expect(new Date(stamped.occurred_at!).getTime()).toBeLessThan(
+    frozenNow().getTime()
+  );
+  await expect(row).toContainText(EARLIER_HOUR);
   await expect(row).toHaveAttribute("data-slot", filingSlot);
   await expect(
     page.getByTestId(`ledger-group-${filingSlot.toLowerCase()}`)
