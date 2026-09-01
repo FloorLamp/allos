@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,20 +149,6 @@ export function isStringShaped(annotation: string): boolean {
   return t === "string";
 }
 
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "node_modules" || entry.name === ".next") continue;
-      out.push(...walk(full));
-    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
-
 interface SourceFile {
   rel: string;
   text: string;
@@ -171,19 +158,22 @@ let sourceFilesCache: SourceFile[] | undefined;
 
 function sourceFiles(): SourceFile[] {
   if (sourceFilesCache) return sourceFilesCache;
-  const files: { rel: string; text: string }[] = [];
-  for (const d of SCAN_DIRS) {
-    const abs = path.join(REPO, d);
-    if (!fs.existsSync(abs)) continue;
-    for (const full of walk(abs)) {
-      const rel = path.relative(REPO, full).split(path.sep).join("/");
-      if (/__tests__|__db_tests__|__action_tests__|\.test\.tsx?$/.test(rel)) {
-        continue;
-      }
-      files.push({ rel, text: fs.readFileSync(full, "utf8") });
-    }
-  }
-  sourceFilesCache = files;
+  const candidates = execFileSync(
+    "git",
+    ["grep", "-Il", "-i", "href", "--", ...SCAN_DIRS],
+    { cwd: REPO, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
+  )
+    .trimEnd()
+    .split("\n")
+    .filter(
+      (rel) =>
+        (rel.endsWith(".ts") || rel.endsWith(".tsx")) &&
+        !/__tests__|__db_tests__|__action_tests__|\.test\.tsx?$/.test(rel)
+    );
+  sourceFilesCache = candidates.map((rel) => ({
+    rel,
+    text: fs.readFileSync(path.join(REPO, rel), "utf8"),
+  }));
   return sourceFilesCache;
 }
 

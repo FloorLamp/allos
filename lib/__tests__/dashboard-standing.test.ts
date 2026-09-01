@@ -18,6 +18,7 @@ import {
   STANDING_CTA_CLAIM_CAP,
   STANDING_READING_ORDER,
 } from "../dashboard-standing";
+import { dashboardHabitHref } from "../dashboard-presentation";
 
 const profile = { scope: "profile" as const, profileId: 7 };
 
@@ -66,6 +67,16 @@ const rank = (candidates: readonly DashboardCandidate[]) =>
     today: "2026-08-19",
     upcoming: [],
   });
+
+describe("dashboard habit destinations", () => {
+  it.each([
+    ["food", "/nutrition"],
+    ["practice", "/wellness"],
+    ["training", "/training"],
+  ] as const)("maps %s to its logging home", (domain, href) => {
+    expect(dashboardHabitHref(domain)).toBe(href);
+  });
+});
 
 function standingIds(candidates: readonly DashboardCandidate[]): string[] {
   return rank(candidates)
