@@ -57,6 +57,17 @@ import {
   BOOT_LOCK_TIMEOUT_MS,
 } from "@/lib/migrations/schema-utils";
 import { makeTmpDir } from "../__tests__/tmp-dir";
+import { usesRealElapsedTime } from "./frozen-clock";
+
+// OPT OUT OF THE TIER CLOCK FREEZE (#4509). The floor below is a stopwatch across two
+// genuinely concurrent OS threads: a worker holds the write lock for HOLD ms of REAL
+// wall clock, and the assertion is that acquireBootLock did not return before it let
+// go. Under a frozen Date both readings are the same instant and the wait measures 0,
+// which would pass the pre-fix code that never waited at all. Nothing in this file
+// states a wall time or derives a day, so the freeze has nothing to offer it.
+usesRealElapsedTime(
+  "measures real elapsed wall time across two OS threads holding a file lock"
+);
 
 // Worker body (eval'd raw JS, no TS transform): optionally take the advisory boot
 // lock (the cooperating-booter shape), then open the main file, establish WAL, take

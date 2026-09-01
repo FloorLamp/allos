@@ -14,16 +14,15 @@
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts before import.
 //
-// AND THE CLOCK IS PINNED HERE, by this file, because the db tier does not pin it —
-// a comment below used to say the tiers freeze it and that was simply not true. No
-// tier config or setup file names ALLOS_TEST_NOW at all; 36 spec files set it
-// themselves, which is the convention this one now joins. It
-// matters now that the stated time is JUDGED rather than shape-checked (#4425): a
-// fixture stating 19:40 is in the past when the suite runs in the evening and in the
-// FUTURE when it runs at lunchtime, so an unpinned clock would make this file green
-// for part of the day and red for the rest — the #3260 shape.
+// AND THE CLOCK IS FROZEN, tier-wide, by lib/__db_tests__/frozen-clock.ts (#4509) —
+// which is what a comment here used to claim before it was true. It matters because
+// the stated time is JUDGED rather than shape-checked (#4425): a fixture stating 19:40
+// is in the past when the suite runs in the evening and in the FUTURE when it runs at
+// lunchtime, so an unpinned clock would make this file green for part of the day and
+// red for the rest — the #3260 shape. The freeze sits late on its own UTC day, so every
+// wall time below has already happened.
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { db, today } from "@/lib/db";
 import { now as clockNow } from "@/lib/clock";
 import { zonedWallIsoToUtc } from "@/lib/date";
@@ -35,21 +34,7 @@ import {
 } from "@/lib/queries/bristol-stool";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 
-// Late enough that every wall time these fixtures state has already happened on the
-// pinned day. Profiles here take the instance-default timezone, so profile-local is UTC.
-const PINNED_NOW = "2026-08-31T23:45:00.000Z";
-let priorNow: string | undefined;
-
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
+// Profiles here take the instance-default timezone, so profile-local is UTC.
 let profileId: number;
 
 function rows(): { date: string; started_at: string; value: number }[] {
