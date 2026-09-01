@@ -19,7 +19,11 @@
 // counter rides with, meal-window derivation, the typed outcomes — is unchanged.
 
 import { db, readTx, today, writeTx } from "./db";
-import { isPastWriteAccepted } from "./log-manifest";
+import {
+  FOOD_SERVING_LOG,
+  FOOD_SERVING_UNDO,
+  isPastWriteAccepted,
+} from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import { now as clockNow, instantNow } from "./clock";
 import { foodDayCounter } from "./day-counter-ledger-db";
@@ -250,6 +254,8 @@ export function logFoodServingCore(
     };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const logFoodServingCoreDeclares = FOOD_SERVING_LOG;
 
 // Undo one serving of a food group on a day (issue #748 item 5): decrement the day's
 // row and drop it when it would hit zero, so a fully-undone group leaves no stray row.
@@ -389,6 +395,7 @@ export function undoFoodServingCore(
     };
   });
 }
+export const undoFoodServingCoreDeclares = FOOD_SERVING_UNDO;
 
 // ---- Correction (issue #1934) ----
 

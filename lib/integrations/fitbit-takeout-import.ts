@@ -30,7 +30,7 @@ import {
   upsertPracticeLogs,
   upsertVitals,
 } from "./normalize";
-import { recordSyncEvent, recordSyncRows } from "./connections";
+import { emitSyncEvent, recordSyncRows } from "./connections";
 import {
   FITBIT_TAKEOUT_ID,
   classifyTakeoutEntry,
@@ -303,16 +303,14 @@ export function importTakeoutArchive(
       tally.inserted + tally.updated,
       "re-importing the archive is safe."
     );
-    const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
+    const eventId = emitSyncEvent({
+      profileId,
+      sourceId: FITBIT_TAKEOUT_ID,
+      window: null,
+      split: counts,
+      skipped: parsed.skipped,
+      partial: null,
       ok: false,
-      received: tally.received,
-      written: tally.inserted + tally.updated + tally.unchanged,
-      inserted: tally.inserted,
-      updated: tally.updated,
-      unchanged: tally.unchanged,
-      suppressed: tally.suppressed,
-      edited: tally.edited,
-      skipped: tally.skipped,
       details: JSON.stringify({ warnings: [failure], origins: [] }),
       error: failure,
     });
@@ -329,20 +327,14 @@ export function importTakeoutArchive(
       `${parsed.roundTripSkipped} rows already synced through Health Connect were left to that source.`
     );
 
-  const tally = summarizeSplit(counts, parsed.skipped);
-  const eventId = recordSyncEvent(profileId, FITBIT_TAKEOUT_ID, {
+  const eventId = emitSyncEvent({
+    profileId,
+    sourceId: FITBIT_TAKEOUT_ID,
+    window: null,
+    split: counts,
+    skipped: parsed.skipped,
+    partial: null,
     ok: true,
-    received: tally.received,
-    written: tally.inserted + tally.updated + tally.unchanged,
-    inserted: tally.inserted,
-    updated: tally.updated,
-    unchanged: tally.unchanged,
-    suppressed: tally.suppressed,
-    edited: tally.edited,
-    skipped: tally.skipped,
-    // Serialized here, not by recordSyncEvent — `details` is a JSON STRING column and
-    // the shape is the one Data → Review already renders for Health Connect, so the
-    // warnings surface with no reader change.
     details: JSON.stringify({ warnings, origins: [] }),
   });
   recordSyncRows(eventId, provenance);

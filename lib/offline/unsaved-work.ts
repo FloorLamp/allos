@@ -44,6 +44,18 @@ export interface UnsavedWorkEntry {
   capture: () => Promise<ResumePointer | null>;
 }
 
+export interface DiscardableUnsavedWorkEntry extends UnsavedWorkEntry {
+  // DOM identity only; the draft content stays in IndexedDB.
+  owner: Node | null;
+  discard: () => Promise<void>;
+}
+
+function isDiscardable(
+  entry: UnsavedWorkEntry
+): entry is DiscardableUnsavedWorkEntry {
+  return "discard" in entry && "owner" in entry;
+}
+
 const dirtyKeys = new Map<string, UnsavedWorkEntry | null>();
 const unrecoverableKeys = new Set<string>();
 const listeners = new Set<(dirty: boolean) => void>();
@@ -79,6 +91,16 @@ export function markUnsavedWork(
 /** True while any draft-backed form is holding unsaved input. */
 export function hasUnsavedWork(): boolean {
   return dirtyKeys.size > 0;
+}
+
+/** Discard registered dirty drafts owned by `root`, and no others. */
+export async function discardUnsavedWorkWithin(root: Node): Promise<void> {
+  const owned = new Set<DiscardableUnsavedWorkEntry>();
+  for (const entry of dirtyKeys.values()) {
+    if (!entry || !isDiscardable(entry)) continue;
+    if (entry.owner && root.contains(entry.owner)) owned.add(entry);
+  }
+  await Promise.all([...owned].map((entry) => entry.discard()));
 }
 
 /**

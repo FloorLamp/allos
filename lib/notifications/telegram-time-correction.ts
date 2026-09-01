@@ -145,6 +145,12 @@ const OUT_OF_RANGE_TEXT =
 // refuses writes nothing and says so.
 const notBoundText = (p: CorrectionPrefixes) =>
   `This message can't correct those entries any more — nothing was changed. Fix it in ${p.appSurface}.`;
+type SharedRestampRefusal = Exclude<FoodRestampOutcome["kind"], "restamped">;
+export const RESTAMP_REFUSAL_TEXT = {
+  "no-burst": (_: CorrectionPrefixes) => NO_BURST_TEXT,
+  "out-of-range": (_: CorrectionPrefixes) => OUT_OF_RANGE_TEXT,
+  "not-bound": notBoundText,
+} satisfies Record<SharedRestampRefusal, (p: CorrectionPrefixes) => string>;
 
 // The binding predicate, built ONCE per tap and consulted at both doors — see
 // `Resolved.stillBound`. Exported for the DB tier, which pins the write-transaction
@@ -333,9 +339,8 @@ function foodRestampOutcomeText(
   outcome: FoodRestampOutcome,
   hhmm?: string
 ): string {
-  if (outcome.kind === "no-burst") return NO_BURST_TEXT;
-  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
-  if (outcome.kind === "not-bound") return notBoundText(FOOD_TIME_PREFIXES);
+  if (outcome.kind !== "restamped")
+    return RESTAMP_REFUSAL_TEXT[outcome.kind](FOOD_TIME_PREFIXES);
   return foodRestampText(outcome.count, outcome.movedDays, hhmm);
 }
 
@@ -725,10 +730,9 @@ function practiceRestampOutcomeText(
   outcome: PracticeRestampOutcome,
   hhmm?: string
 ): string {
-  if (outcome.kind === "no-burst") return NO_BURST_TEXT;
-  if (outcome.kind === "out-of-range") return OUT_OF_RANGE_TEXT;
+  if (outcome.kind !== "restamped" && outcome.kind !== "crosses-day")
+    return RESTAMP_REFUSAL_TEXT[outcome.kind](PRACTICE_TIME_PREFIXES);
   if (outcome.kind === "crosses-day") return CROSSES_DAY_TEXT;
-  if (outcome.kind === "not-bound") return notBoundText(PRACTICE_TIME_PREFIXES);
   const what = outcome.count === 1 ? "1 session" : `${outcome.count} sessions`;
   const when = hhmm ? ` to ${hhmm}` : " back";
   return `Session time updated${when} for ${what} ${GLYPH.eventTime}`;
