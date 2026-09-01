@@ -18,6 +18,8 @@ import { createAiClient } from "@/lib/ai-client";
 import {
   suggestSymptomsFromText,
   logSymptom,
+  lowerSymptom,
+  setSymptomNote,
 } from "@/app/(app)/symptom-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 import { toolMessage, fakeClient } from "../__db_tests__/ai-fake-client";
@@ -39,10 +41,104 @@ afterAll(() => {
 function symptomRows(profileId: number) {
   return db
     .prepare(
-      "SELECT date, symptom, severity FROM symptom_logs WHERE profile_id = ? ORDER BY symptom"
+      "SELECT date, symptom, severity, note FROM symptom_logs WHERE profile_id = ? ORDER BY symptom"
     )
-    .all(profileId) as { date: string; symptom: string; severity: number }[];
+    .all(profileId) as {
+    date: string;
+    symptom: string;
+    severity: number;
+    note: string | null;
+  }[];
 }
+
+describe("one profile_id subject across symptom actions (#4238)", () => {
+  it("lowers and annotates the target without touching the acting profile", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("acting symptom writer", login.id);
+    const target = createProfile("target symptom writer", login.id);
+    actAs(login, acting);
+
+    await logSymptom(
+      fd({ symptom: "cough", severity: 4, profile_id: target.id })
+    );
+    await lowerSymptom(
+      fd({ symptom: "cough", severity: 2, profile_id: target.id })
+    );
+    await setSymptomNote(
+      fd({ symptom: "cough", note: "target note", profile_id: target.id })
+    );
+
+    expect(symptomRows(target.id)[0]).toMatchObject({
+      severity: 2,
+      note: "target note",
+    });
+    expect(symptomRows(acting.id)).toEqual([]);
+  });
+
+  it("refuses lower and note writes for an ungranted target", async () => {
+    const owner = createLogin();
+    const target = createProfile("ungranted symptom target", owner.id);
+    actAs(owner, target);
+    await logSymptom(fd({ symptom: "cough", severity: 4 }));
+
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("ungranted symptom actor", login.id);
+    actAs(login, acting);
+    await expect(
+      lowerSymptom(fd({ symptom: "cough", severity: 2, profile_id: target.id }))
+    ).rejects.toThrow();
+    await expect(
+      setSymptomNote(
+        fd({ symptom: "cough", note: "forged", profile_id: target.id })
+      )
+    ).rejects.toThrow();
+
+    expect(symptomRows(target.id)[0]).toMatchObject({
+      severity: 4,
+      note: null,
+    });
+    expect(symptomRows(acting.id)).toEqual([]);
+  });
+
+  it("builds suggestions from the target's vocabulary, not the acting profile's", async () => {
+    const login = createLogin();
+    const acting = createProfile("acting symptom suggester", login.id);
+    const target = createProfile("target symptom suggester", login.id);
+    actAs(login, acting);
+    await logSymptom(
+      fd({ symptom: "Target Flare", severity: 1, profile_id: target.id })
+    );
+    createAiClientMock.mockReturnValue(
+      fakeClient(
+        toolMessage("map_symptoms", {
+          symptoms: [{ slug: "custom", custom_name: "target flare" }],
+        })
+      )
+    );
+
+    const result = await suggestSymptomsFromText(
+      fd({ text: "target flare", profile_id: target.id })
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      mapping: { symptoms: [{ slug: "Target Flare", isCustom: false }] },
+    });
+  });
+
+  it("refuses suggestions for an ungranted target before calling the model", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("ungranted suggestion actor", login.id);
+    const target = createProfile("ungranted suggestion target");
+    actAs(login, acting);
+    createAiClientMock.mockClear();
+
+    await expect(
+      suggestSymptomsFromText(fd({ text: "cough", profile_id: target.id }))
+    ).rejects.toThrow();
+    expect(createAiClientMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("suggestSymptomsFromText — suggest-only, then confirm via existing actions", () => {
   it("maps a sentence to suggestions and never writes on suggest", async () => {
