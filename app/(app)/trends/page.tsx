@@ -29,9 +29,7 @@ import { parseBodyView } from "./body-view";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
 import SectionHashScroll from "./SectionHashScroll";
-import StreamedSection, {
-  PendingSection,
-} from "@/components/StreamedSection";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import TrendsSectionShell from "./TrendsSectionShell";
 import type { AppRoute } from "@/lib/hrefs";
 import {
@@ -245,7 +243,9 @@ export default async function TrendsPage(props: {
               heading="Body"
               quietHeading
             >
-              <Suspense fallback={<PendingSection label="Body" bodyClassName="h-32" />}>
+              <Suspense
+                fallback={<PendingSection label="Body" bodyClassName="h-32" />}
+              >
                 <StreamedSection>
                   <BodySection
                     range={range}

@@ -2,9 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
-import StreamedSection, {
-  PendingSection,
-} from "@/components/StreamedSection";
+import StreamedSection, { PendingSection } from "@/components/StreamedSection";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
