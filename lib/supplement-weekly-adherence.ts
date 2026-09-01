@@ -1,4 +1,8 @@
-import type { AdherenceState } from "./intake-adherence";
+import {
+  aggregateDoseDay,
+  trailingPendingIndex,
+  type AdherenceState,
+} from "./intake-adherence";
 
 export interface SupplementAdherenceDayInput {
   date: string;
@@ -29,22 +33,16 @@ export interface SupplementWeeklyAdherence {
   pct: number | null;
 }
 
-function normalizeDay(
-  day: SupplementAdherenceDayInput
-): SupplementAdherenceDay {
+function normalizeDay(day: SupplementAdherenceDayInput) {
   const due = Math.max(0, day.due);
   const skipped = Math.min(due, Math.max(0, day.skipped));
   const intended = Math.max(0, due - skipped);
   const taken = Math.min(intended, Math.max(0, day.taken));
   const pending = Math.max(0, due - taken - skipped);
 
-  let state: WeeklyAdherenceState;
-  if (due === 0) state = "na";
-  else if (day.isToday && pending > 0) state = "pending";
-  else if (intended === 0) state = "skipped";
-  else if (taken >= intended) state = "taken";
-  else if (taken > 0) state = "partial";
-  else state = "missed";
+  // `na` is this rail's one extension: no due doses means no counted verdict.
+  const state: Exclude<WeeklyAdherenceState, "pending"> =
+    due === 0 ? "na" : aggregateDoseDay(due, taken, skipped);
 
   return {
     ...day,
@@ -63,7 +61,11 @@ function normalizeDay(
 export function buildSupplementWeeklyAdherence(
   input: SupplementAdherenceDayInput[]
 ): SupplementWeeklyAdherence {
-  const days = input.map(normalizeDay);
+  const normalized = input.map(normalizeDay);
+  const pendingIndex = trailingPendingIndex(normalized);
+  const days = normalized.map((day, index) =>
+    index === pendingIndex ? { ...day, state: "pending" as const } : day
+  );
   let taken = 0;
   let intended = 0;
 
