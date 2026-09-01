@@ -246,15 +246,19 @@ export default function IntakeItemForm({
     initialSupply ? [initialSupply] : []
   );
   useEffect(() => {
-    if (s) return;
     let live = true;
     void listSharedSupplyOptions().then((options) => {
-      if (live) setBottles(options);
+      const offered = bottlesForKindDoor(options, lockedKind);
+      const linkedId = s?.supply_id ?? initialSupply?.id;
+      const linked = options.find((option) => option.id === linkedId);
+      if (linked && !offered.some((option) => option.id === linked.id))
+        offered.unshift(linked);
+      if (live) setBottles(offered);
     });
     return () => {
       live = false;
     };
-  }, [s]);
+  }, [s, initialSupply, lockedKind]);
   const rx = useIntakeRxcui(s);
 
   const kind = lockedKind;
@@ -311,7 +315,11 @@ export default function IntakeItemForm({
   );
   const [qtyPerDose, setQtyPerDose] = useState(String(s?.qty_per_dose ?? 1));
   const [supplyId, setSupplyId] = useState(
-    initialSupply ? String(initialSupply.id) : ""
+    s?.supply_id != null
+      ? String(s.supply_id)
+      : initialSupply
+        ? String(initialSupply.id)
+        : ""
   );
   const [supplyLabel, setSupplyLabel] = useState<string | null>(
     s?.supply_name ?? initialSupply?.name ?? null
@@ -546,10 +554,7 @@ export default function IntakeItemForm({
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
     // supply_id on this item's own save. The locked door filters the bottle choices
     // to its own kind before this point.
-    const bottle = bottleForOptionLabel(
-      bottlesForKindDoor(bottles, lockedKind),
-      picked
-    );
+    const bottle = bottleForOptionLabel(bottles, picked);
     const name = bottle ? itemSeedFromPool(bottle).name : picked;
     if (bottle) {
       onPickSupply(bottle);
@@ -678,9 +683,15 @@ export default function IntakeItemForm({
           : d
       )
     );
+    onLinkSupply(supply);
+    seededRef.current = seed;
+  }
+
+  function onLinkSupply(supply: SupplyOption | null): void {
     setSupplyId(supply ? String(supply.id) : "");
     setSupplyLabel(supply?.name ?? null);
-    seededRef.current = seed;
+    if (supply && !bottles.some((option) => option.id === supply.id))
+      setBottles([...bottles, supply]);
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -999,14 +1010,14 @@ export default function IntakeItemForm({
   // holds the rule and the no-sibling ruling.
   const nameOptions = useMemo(
     () => [
-      ...bottlesForKindDoor(bottles, lockedKind).map(bottleOptionLabel),
+      ...(s ? [] : bottles.map(bottleOptionLabel)),
       ...(lockedKind === "supplement"
         ? catalogOptions.supplements
         : lockedKind === "medication"
           ? catalogOptions.medications
           : [...catalogOptions.medications, ...catalogOptions.supplements]),
     ],
-    [bottles, lockedKind, catalogOptions]
+    [s, bottles, lockedKind, catalogOptions]
   );
 
   const ingredientNames = useMemo(
@@ -1696,9 +1707,10 @@ export default function IntakeItemForm({
           <RefillTracking
             fid={fid}
             item={s}
-            kind={lockedKind}
-            initialSupply={initialSupply}
-            onPickSupply={onPickSupply}
+            bottles={bottles}
+            supplyId={supplyId}
+            supplyName={supplyLabel}
+            onPickSupply={s ? onLinkSupply : onPickSupply}
             quantityOnHand={quantityOnHand}
             setQuantityOnHand={setQuantityOnHand}
             qtyPerDose={qtyPerDose}

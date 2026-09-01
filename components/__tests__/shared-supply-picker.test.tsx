@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "@/components/intake/SharedSupplyPicker";
+import IntakeItemForm from "@/components/IntakeItemForm";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -42,6 +43,17 @@ const BOTTLES: SupplyOption[] = [
   { id: 33, name: "Magnesium", strength: null, form: null, siblingKind: null },
 ];
 
+const TRACKED_MEDICATION = {
+  id: 7,
+  name: "Aspirin",
+  quantity_on_hand: 90,
+} as unknown as NonNullable<Parameters<typeof IntakeItemForm>[0]["item"]>;
+
+const supplyActions = vi.hoisted(() => ({
+  list: vi.fn(async () => BOTTLES),
+  link: vi.fn(async () => ({ ok: true as const, supply: BOTTLES[1] })),
+}));
+
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcui: vi.fn(async () => [
     { rxcui: "5640", name: "Ibuprofen", score: 100 },
@@ -56,9 +68,9 @@ class R {
 vi.stubGlobal("ResizeObserver", R);
 
 vi.mock("@/app/(app)/supplies/actions", () => ({
-  listSharedSupplyOptions: vi.fn(async () => BOTTLES),
+  listSharedSupplyOptions: supplyActions.list,
   createPoolAction: vi.fn(async () => ({ ok: true })),
-  linkItemAction: vi.fn(async () => ({ ok: true })),
+  linkItemAction: supplyActions.link,
   unlinkItemAction: vi.fn(async () => ({ ok: true })),
 }));
 
@@ -79,6 +91,8 @@ async function offeredBottleIds(): Promise<number[]> {
     .filter((v) => Number.isInteger(v) && v > 0);
 }
 
+const bottles = (ids: number[]) => BOTTLES.filter((b) => ids.includes(b.id));
+
 describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)", () => {
   it.each([
     ["supplement" as const, [11, 33]],
@@ -88,8 +102,8 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
       <SharedSupplyPicker
         itemId={7}
         itemName="Vitamin D3"
-        kind={kind}
-        supplyId={null}
+        options={bottles(ids)}
+        supplyId=""
         supplyName={null}
       />
     );
@@ -105,8 +119,8 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
     render(
       <SharedSupplyPicker
         itemName="Vitamin D3"
-        kind={kind}
-        supplyId={null}
+        options={bottles(ids)}
+        supplyId=""
         supplyName={null}
       />
     );
@@ -121,8 +135,8 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
       <SharedSupplyPicker
         itemId={7}
         itemName="Vitamin D3"
-        kind="supplement"
-        supplyId={22}
+        options={[BOTTLES[1], BOTTLES[0], BOTTLES[2]]}
+        supplyId="22"
         supplyName="Ibuprofen"
       />
     );
@@ -165,6 +179,8 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
   const option = await screen.findByRole("option", {
     name: new RegExp(`^${name}.*— shared bottle$`),
   });
+  const excluded = kind === "medication" ? "Vitamin D3" : "Ibuprofen";
+  expect(screen.queryByText(new RegExp(`^${excluded}`))).toBeNull();
   fireEvent.mouseDown(option);
   await waitFor(() => expect((input as HTMLInputElement).value).toBe(name));
   if (kind === "medication") await screen.findByTestId("rxcui-current");
@@ -191,4 +207,41 @@ describe("IntakeItemForm bottle picks (#4608)", () => {
     expect(dose.time_of_day).toBe("Morning");
     expect(data.get("supply_id")).toBe("11");
   });
+});
+
+it("updates the supply fact after edit apply without changing item identity (#4670)", async () => {
+  supplyActions.list.mockClear();
+  render(
+    <ToastProvider>
+      <ConfirmProvider>
+        <IntakeItemForm
+          action={vi.fn(async () => ({ ok: true as const }))}
+          item={TRACKED_MEDICATION}
+          kind="medication"
+        />
+      </ConfirmProvider>
+    </ToastProvider>
+  );
+
+  fireEvent.click(screen.getByTestId("intake-fact-supply"));
+  fireEvent.change(await screen.findByLabelText("Shared supply"), {
+    target: { value: "22" },
+  });
+  fireEvent.click(screen.getByTestId("shared-supply-apply"));
+  await screen.findByText("Linked to “Ibuprofen”.");
+  expect(
+    screen
+      .getByLabelText("Quantity on hand")
+      .closest("[aria-hidden]")
+      ?.getAttribute("aria-hidden")
+  ).toBe("true");
+  fireEvent.click(screen.getByTestId("intake-editor-done"));
+
+  expect(screen.getByTestId("intake-fact-supply").textContent).toContain(
+    "Ibuprofen"
+  );
+  expect(
+    (screen.getByRole("combobox", { name: "Name" }) as HTMLInputElement).value
+  ).toBe("Aspirin");
+  expect(supplyActions.list).toHaveBeenCalledOnce();
 });
