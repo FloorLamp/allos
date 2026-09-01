@@ -51,6 +51,19 @@ export function dashboardHabitDomain(scopeKind: string): DashboardHabitDomain {
   return "training";
 }
 
+export function dashboardHabitHref(
+  domain: DashboardHabitDomain
+): "/nutrition" | "/wellness" | "/training" {
+  switch (domain) {
+    case "food":
+      return "/nutrition";
+    case "practice":
+      return "/wellness";
+    case "training":
+      return "/training";
+  }
+}
+
 export function orderDashboardHabits<T extends DashboardHabitProgress>(
   targets: readonly T[]
 ): T[] {

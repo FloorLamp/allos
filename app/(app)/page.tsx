@@ -124,6 +124,7 @@ import { recapScaleEntry } from "@/lib/recap-scale";
 import {
   coachingObservationFindings,
   dashboardHabitDomain,
+  dashboardHabitHref,
   isDataQualityDashboardFinding,
   orderDashboardHabits,
 } from "@/lib/dashboard-presentation";
@@ -1801,6 +1802,9 @@ async function renderDashboard(
   sourceOrder += goals.length;
   orderedFreqTargets.forEach((progress, index) => {
     const id = progress.target.id;
+    const habitHref = dashboardHabitHref(
+      dashboardHabitDomain(progress.target.scope_kind)
+    );
     // A moment, not the whole week (#3224). "Unmet" spans seven days, so spelling
     // the window `!met` kept every open target parked in Now. The rhythm answers
     // when this target normally gets done; with no rhythm there is no moment.
@@ -1850,12 +1854,7 @@ async function renderDashboard(
         ) : (
           "this week"
         ),
-        href:
-          dashboardHabitDomain(progress.target.scope_kind) === "food"
-            ? "/nutrition"
-            : dashboardHabitDomain(progress.target.scope_kind) === "practice"
-              ? "/wellness"
-              : "/training?tab=goals",
+        href: habitHref,
         presence: "current",
       }
     );
@@ -1879,10 +1878,7 @@ async function renderDashboard(
       {
         label: `Log ${progress.target.scope_value}`,
         detail: `${progress.count} of ${progress.per_week} this week`,
-        href:
-          dashboardHabitDomain(progress.target.scope_kind) === "food"
-            ? "/nutrition"
-            : "/training",
+        href: habitHref,
         actionLabel: "Log",
       }
     );
