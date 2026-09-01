@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AI_MODEL } from "./ai-client";
 import { resolveTaskClient } from "./ai-resolve";
-import { describeError } from "./medical-extract";
+import { AI_SETUP_COPY, describeError } from "./medical-extract/extract";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { strOrNull } from "./parse";
@@ -385,8 +385,7 @@ async function extractChunk(
     });
     return {
       status: "skipped",
-      message:
-        "AI not configured — configure the Heavy AI tier under Settings → Server to extract workouts.",
+      message: `AI not configured — ${AI_SETUP_COPY.heavy} to extract workouts.`,
     };
   }
   const { client, model: MODEL, tier, host } = resolved;

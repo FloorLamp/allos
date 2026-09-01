@@ -214,6 +214,46 @@ function crossProfileVoiceViolations(
 }
 
 describe("copy-lint: user-facing tone standard (issue #945)", () => {
+  it("uses admin-framed setup copy at every AI configuration site", () => {
+    const ruledFiles = [
+      "lib/medical-extract/extract.ts",
+      "lib/medical-pipeline.ts",
+      "lib/supplement-suggest.ts",
+      "lib/workout-extract.ts",
+    ];
+    const sources = ruledFiles.map((rel) => ({
+      rel,
+      text: fs.readFileSync(path.join(REPO, rel), "utf8"),
+    }));
+    const owner = sources[0].text;
+
+    expect(owner).toContain(
+      "an admin can configure the Heavy AI tier under Settings → Server → AI"
+    );
+    expect(owner).toContain(
+      "an admin can configure a Light (or Heavy) AI tier under Settings → Server → AI"
+    );
+    expect(
+      sources.flatMap(
+        ({ text }) =>
+          text.match(/\$\{AI_SETUP_COPY\.(?:heavy|lightOrHeavy)\}/g) ?? []
+      )
+    ).toHaveLength(7);
+
+    const imperative = sources.flatMap(({ rel, text }) =>
+      text
+        .split("\n")
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) =>
+          /AI not configured[^\n]*(?:Configure the|configure (?:the|a)) [^(\n]*AI tier/.test(
+            line
+          )
+        )
+        .map(({ line, index }) => `${rel}:${index + 1} — ${line.trim()}`)
+    );
+    expect(imperative, imperative.join("\n")).toEqual([]);
+  });
+
   it("has no banned error phrasing or 'please' in user-facing copy", () => {
     const violations: string[] = [];
     for (const file of sourceFiles()) {
