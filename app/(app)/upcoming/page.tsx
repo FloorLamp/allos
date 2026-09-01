@@ -1098,11 +1098,9 @@ function itemSuppression(
 function DoseChip({
   item,
   actionVisible,
-  testId,
 }: {
   item: ProfiledUpcomingItem;
   actionVisible: boolean;
-  testId: string;
 }) {
   const chipText = (name: string) =>
     [name, item.offerHint].filter(Boolean).join(" · ");
@@ -1127,7 +1125,7 @@ function DoseChip({
       <DoseConfirmButton
         action={markTaken}
         fields={{ dose_id: item.doseId, profile_id: item.profileId }}
-        testid={testId}
+        testid="upcoming-dose-chip"
         ariaLabel={`Mark taken — ${fullLabel ?? label}`}
       >
         {label}
@@ -1167,20 +1165,33 @@ function DoseSlotRuns({
   actingProfileId: number;
   subjectByProfile: Map<number, SubjectInfo>;
 }) {
+  // Each chip's gates, resolved ONCE per item: the run header's kebab and the chip
+  // itself ask the same two questions of the same subject, and asking twice is how the
+  // two would eventually answer differently.
+  const seat = (item: ProfiledUpcomingItem) => {
+    const subject = multi
+      ? (subjectByProfile.get(item.profileId) ?? null)
+      : null;
+    const isActing = item.profileId === actingProfileId;
+    const subjectCanWrite = subject == null || subject.access === "write";
+    return {
+      item,
+      // Whose dose it is, in merged multi-view (#1327 fix 1) — the same chip the rows
+      // carry, because the run header names a SLOT and several members' doses share
+      // one. By-person mode names the subject in its member header and shows none.
+      subject:
+        chipRow && subjectChipVisible({ multi, isActing }) ? subject : null,
+      actionVisible: itemAffordanceVisible(item.writeTarget, {
+        isActing,
+        subjectCanWrite,
+      }),
+      suppression: itemSuppression(item, subjectCanWrite),
+    };
+  };
   return (
     <>
       {planSlotRuns(items).map((run, index) => {
-        const suppressions: RowSuppression[] = [];
-        for (const item of run.items) {
-          const subject = multi
-            ? (subjectByProfile.get(item.profileId) ?? null)
-            : null;
-          const s = itemSuppression(
-            item,
-            subject == null || subject.access === "write"
-          );
-          if (s) suppressions.push(s);
-        }
+        const seats = run.items.map(seat);
         return (
           <div
             key={`${run.slot}:${index}`}
@@ -1201,44 +1212,23 @@ function DoseSlotRuns({
               <UpcomingRowMenu
                 itemName={run.slot}
                 folded={[]}
-                suppressions={suppressions}
+                suppressions={seats
+                  .map((s) => s.suppression)
+                  .filter((s) => s != null)}
               />
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {run.items.map((item) => {
-                const subject = multi
-                  ? (subjectByProfile.get(item.profileId) ?? null)
-                  : null;
-                const actionVisible = itemAffordanceVisible(item.writeTarget, {
-                  isActing: item.profileId === actingProfileId,
-                  subjectCanWrite:
-                    subject == null || subject.access === "write",
-                });
-                return (
-                  <span
-                    key={`${item.profileId}:${item.key}`}
-                    data-testid={`upcoming-item-${item.key}`}
-                    {...{ [DISMISS_ROW_ATTR]: item.key }}
-                    className="inline-flex items-center gap-1"
-                  >
-                    <DoseChip
-                      item={item}
-                      actionVisible={actionVisible}
-                      testId="upcoming-dose-chip"
-                    />
-                    {/* Whose dose it is, in merged multi-view (#1327 fix 1) — the same
-                        chip the rows carry, because the run header names a SLOT and
-                        several members' doses share one. By-person mode names the
-                        subject in its member header and passes nothing. */}
-                    {chipRow &&
-                      subjectChipVisible({
-                        multi,
-                        isActing: item.profileId === actingProfileId,
-                      }) &&
-                      subject && <SubjectChip subject={subject} />}
-                  </span>
-                );
-              })}
+              {seats.map(({ item, subject, actionVisible }) => (
+                <span
+                  key={`${item.profileId}:${item.key}`}
+                  data-testid={`upcoming-item-${item.key}`}
+                  {...{ [DISMISS_ROW_ATTR]: item.key }}
+                  className="inline-flex items-center gap-1"
+                >
+                  <DoseChip item={item} actionVisible={actionVisible} />
+                  {subject && <SubjectChip subject={subject} />}
+                </span>
+              ))}
             </div>
           </div>
         );
