@@ -28,6 +28,8 @@ const SESSION: PracticeLog = {
   start_time: "08:30",
   end_time: null,
   live: 0,
+  derived_window: 0,
+  correction_locked: 0,
   duration_min: 20,
   notes: null,
   source: null,

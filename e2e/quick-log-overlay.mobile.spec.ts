@@ -1164,6 +1164,40 @@ test("the sheet starts and ends a live practice, then draws its exact tap window
   }
 });
 
+test("the sheet keeps its collapsed earlier-time statement for Just finished (#3273/#3143)", async ({
+  browser,
+}) => {
+  clearShellPracticeLogs();
+  const page = await signIn(browser);
+  try {
+    await page.goto("/");
+    const sheet = await openQuickEntry(page, "log-practice");
+    const row = sheet
+      .getByTestId("quick-entry-practice-list")
+      .getByRole("listitem")
+      .filter({ hasText: SHELL_PRACTICE });
+    const toggle = row.getByTestId("practice-when-toggle");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(row.getByTestId("practice-when-time")).toHaveCount(0);
+
+    await hydratedClick(page, toggle);
+    await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
+    await row.getByTestId("practice-when-time").fill("07:05");
+    await settledClick(page, row.getByTestId("practice-log-button"));
+    expect(readShellPracticeLog()).toMatchObject({
+      start_time: null,
+      end_time: "07:05",
+      duration_min: null,
+      live: 0,
+    });
+    await expect(row.getByTestId("practice-when-time")).toHaveValue("");
+    await expect(page.getByTestId("practice-log-details")).toHaveCount(0);
+  } finally {
+    clearShellPracticeLogs();
+    await page.close();
+  }
+});
+
 test("a practice logs in one tap from the sheet and the week count moves", async ({
   browser,
 }) => {

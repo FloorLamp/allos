@@ -356,9 +356,17 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     const running =
       liveStart != null &&
       input.nowMinute != null &&
-      input.nowMinute >= liveStart;
+      (win.elapsed_min != null || input.nowMinute >= liveStart);
     const runningEnd = running
-      ? Math.min(MINUTES_IN_DAY, Math.max(input.nowMinute!, liveStart! + 1))
+      ? Math.min(
+          MINUTES_IN_DAY,
+          Math.max(
+            liveStart! + 1,
+            win.elapsed_min != null
+              ? liveStart! + Math.max(1, win.elapsed_min)
+              : input.nowMinute!
+          )
+        )
       : null;
     const w = running
       ? {
@@ -368,7 +376,11 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
               ? `${shiftDateStr(input.date, 1)}T00:00`
               : `${input.date}T${String(Math.floor(runningEnd! / 60)).padStart(2, "0")}:${String(runningEnd! % 60).padStart(2, "0")}`,
         }
-      : activityWindow(win);
+      : activityWindow(
+          win.derived_duration && win.duration_min != null
+            ? { ...win, end_time: null }
+            : win
+        );
     if (w) {
       const startMinute = localStampMinute(input.date, w.start);
       const endMinute = localStampMinute(input.date, w.end);
@@ -390,7 +402,9 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
       });
       continue;
     }
-    const minute = clockMinute(win.start_time);
+    // An end-only acknowledgement is a single observed instant. Draw its observed
+    // END as a tick; never drop it merely because the unknown start is null.
+    const minute = clockMinute(win.start_time ?? win.end_time);
     if (minute == null || minute < 0 || minute >= MINUTES_IN_DAY) continue;
     windowedEventIds.add(event.id);
     windowTicks.push({

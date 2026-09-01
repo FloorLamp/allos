@@ -395,6 +395,12 @@ export interface PracticeLog {
   end_time: string | null;
   // One-tap session currently in progress. A stated start-only row keeps this false.
   live: number;
+  // The stored window was derived from elapsed minutes rather than typed as two
+  // wall-clock values. Downstream window readers use duration across DST only here.
+  derived_window: number;
+  // History has rewritten this row, so Telegram's tap-time correction substrate
+  // must never reinterpret its now-user-stated values.
+  correction_locked: number;
   // Canonical minutes (the Units rule); null when not recorded.
   duration_min: number | null;
   notes: string | null;

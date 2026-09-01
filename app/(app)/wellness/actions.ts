@@ -71,7 +71,14 @@ export async function logPractice(
       profile.id,
       practice,
       parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-      optionalNumber(formData, "duration_min")
+      optionalNumber(formData, "duration_min"),
+      null,
+      formData.has("end_time")
+        ? {
+            date,
+            time: String(formData.get("end_time") ?? "").trim(),
+          }
+        : undefined
     );
     if (outcome.kind === "logged") revalidatePracticeSurfaces();
     return outcome;

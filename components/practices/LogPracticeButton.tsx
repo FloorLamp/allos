@@ -14,6 +14,9 @@ import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm } from "@/lib/stated-time";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import {
@@ -65,6 +68,7 @@ export default function LogPracticeButton({
   liveSession = null,
   showDetails = false,
   inlineDuration = false,
+  inlineWhen = false,
   lastLoggedTime = null,
   usualSessionDay = false,
   compact = false,
@@ -102,6 +106,9 @@ export default function LogPracticeButton({
   // and any future condition on the stepper's visibility belongs there rather than in
   // the JSX, or the two drift and a value nobody saw gets logged.
   inlineDuration?: boolean;
+  // Quick-sheet-only collapsed statement retained from #3273. With the new
+  // just-finished intent it states the observed END, not an invented start.
+  inlineWhen?: boolean;
   // The local HH:MM of today's most recent session, when the surface knows it. The
   // confirm names it ("You logged Sauna today at 08:12"); a surface that only holds
   // the count still asks an honest question rather than inventing a time.
@@ -128,6 +135,7 @@ export default function LogPracticeButton({
   // mode this column exists to avoid. Posted as a form field and re-checked
   // server-side against the web subset.
   const stampLoggedVia = useLoggedViaStamp();
+  const tz = useTimezone();
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
@@ -179,6 +187,14 @@ export default function LogPracticeButton({
   // action derives elapsed time from its two taps, so leaving this input beside End
   // would show a value that the action deliberately ignores.
   const stepperShown = inlineDuration && !currentLive;
+  const whenShown = inlineWhen && !currentLive;
+  const [whenOpen, setWhenOpen] = useState(false);
+  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
+  const [whenDay, setWhenDay] = useState(today);
+  if (whenDay !== today) {
+    setWhenDay(today);
+    setWhen({ date: today, statedAt: null });
+  }
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
   // non-numeric input reads as blank rather than NaN.
@@ -283,6 +299,8 @@ export default function LogPracticeButton({
         // this boundary.
         const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
+        const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
+        if (at) fd.set("end_time", at);
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
@@ -290,6 +308,7 @@ export default function LogPracticeButton({
       },
       settle: (outcome) => {
         report(outcome);
+        if (outcome.kind === "logged") setWhen({ date: today, statedAt: null });
         // A refused log (a forged date, a stale target) wrote nothing, so the tap
         // stays immediately retryable instead of cooling down.
         return outcome.kind === "logged"
@@ -321,13 +340,25 @@ export default function LogPracticeButton({
     fd.set("practice", practice);
     try {
       const outcome = await startPracticeLive(fd);
-      if (outcome.kind === "started" || outcome.kind === "already-live") {
+      if (outcome.kind === "started") {
         setCurrentLive(outcome.session);
-        toast(
-          outcome.kind === "started"
-            ? "Session started"
-            : "Session is already running"
-        );
+        toast("Session started");
+      } else if (outcome.kind === "already-live") {
+        // The server's row wins over this mount's stale state. Offer the same shared
+        // decision substrate as re-log, and end ONLY the exact row the typed refusal
+        // returned — never a client-guessed practice/name lookup.
+        setCurrentLive(outcome.session);
+        if (
+          await confirm({
+            title: "End running session?",
+            message: `${practice} is already running. End it now?`,
+            confirmLabel: "End session",
+          })
+        ) {
+          await finishLive(outcome.session);
+        } else {
+          toast("Session is already running");
+        }
       } else {
         toast("Couldn't start that session.");
       }
@@ -338,22 +369,26 @@ export default function LogPracticeButton({
     }
   }
 
+  async function finishLive(session: LivePracticeSession) {
+    const fd = new FormData();
+    fd.set("id", String(session.id));
+    const outcome = await endPracticeLive(fd);
+    if (outcome.kind === "ended") {
+      setCurrentLive(null);
+      setCount(outcome.count);
+      setLastTime(null);
+      toast("Session finished");
+    } else {
+      setCurrentLive(null);
+      toast("That session is no longer running.");
+    }
+  }
+
   async function onEnd() {
     if (pending || !currentLive) return;
     setPending(true);
-    const fd = new FormData();
-    fd.set("id", String(currentLive.id));
     try {
-      const outcome = await endPracticeLive(fd);
-      if (outcome.kind === "ended") {
-        setCurrentLive(null);
-        setCount(outcome.count);
-        setLastTime(null);
-        toast("Session finished");
-      } else {
-        setCurrentLive(null);
-        toast("That session is no longer running.");
-      }
+      await finishLive(currentLive);
     } catch {
       toast("Couldn't end that session. Try again.");
     } finally {
@@ -519,6 +554,34 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
+      {whenShown ? (
+        <div className="w-full">
+          <button
+            type="button"
+            data-testid="practice-when-toggle"
+            aria-expanded={whenOpen}
+            onClick={() => setWhenOpen((open) => !open)}
+            className="btn-ghost btn-sm"
+          >
+            Happened earlier?
+          </button>
+          {whenOpen ? (
+            <div className="mt-2">
+              <WhenControl
+                mode="state"
+                grain="minute"
+                value={when}
+                onChange={setWhen}
+                minDate={today}
+                maxDate={today}
+                timeLabel={`End time of this ${practice} session`}
+                disabled={pending || ledger.pending()}
+                testId="practice-when"
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}

@@ -33,7 +33,8 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "./settings";
-import { bestKnownInstant } from "./row-instants";
+import { bestKnownInstant, recordInstant } from "./row-instants";
+import { now } from "./clock";
 import { getIntakeDoseLedgerPage } from "./queries";
 import { getFoodLedgerPage } from "./queries/nutrition";
 import { getPracticeLedgerPage } from "./queries/wellness";
@@ -510,7 +511,17 @@ export function gatherHistoryLog(
       // came from, for the same reason the feed loop pushes at its emit point: a
       // session the reader's `?kind=` or `?item=` dropped never reaches this array,
       // so the panel cannot draw a mark for something the list below does not show.
-      if (opts.day != null)
+      if (opts.day != null) {
+        const started = recordInstant("practice_logs", { ...row });
+        const elapsedMin =
+          row.live === 1 && started.known
+            ? Math.max(
+                0,
+                Math.round(
+                  (now().getTime() - new Date(started.at).getTime()) / 60_000
+                )
+              )
+            : null;
         dayEvents.push({
           id: `practice:${row.id}`,
           date: row.date,
@@ -522,8 +533,11 @@ export function gatherHistoryLog(
             end_time: row.end_time,
             duration_min: row.duration_min,
             live: row.live === 1,
+            derived_duration: row.derived_window === 1,
+            elapsed_min: elapsedMin,
           },
         });
+      }
     }
   }
 

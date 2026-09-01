@@ -468,6 +468,54 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks).toEqual([]);
   });
 
+  it("uses elapsed minutes for derived DST windows and repeated-hour live rows", () => {
+    const completed = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent("practice:spring", {
+            ...win("01:50", "03:10", 20),
+            derived_duration: true,
+          }),
+        ],
+      })
+    );
+    expect(completed!.blocks[0]).toMatchObject({
+      startMinute: 110,
+      endMinute: 130,
+      running: false,
+    });
+
+    const repeatedHour = buildIntradayModel(
+      input({
+        nowMinute: 80,
+        events: [
+          practiceEvent("practice:fall-live", {
+            ...win("01:50", null, null),
+            live: true,
+            derived_duration: true,
+            elapsed_min: 30,
+          }),
+        ],
+      })
+    );
+    expect(repeatedHour!.blocks[0]).toMatchObject({
+      startMinute: 110,
+      endMinute: 140,
+      running: true,
+    });
+    expect(repeatedHour!.ticks).toEqual([]);
+  });
+
+  it("draws an end-only acknowledgement as a tick at its observed end", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [practiceEvent("practice:end-only", win(null, "12:05", null))],
+      })
+    );
+    expect(model!.blocks).toEqual([]);
+    expect(model!.ticks[0]).toMatchObject({ minute: 12 * 60 + 5 });
+  });
+
   it("falls back to the honest start tick when a live row is no longer today", () => {
     const model = buildIntradayModel(
       input({

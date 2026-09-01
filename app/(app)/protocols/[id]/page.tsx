@@ -14,6 +14,7 @@ import {
   getProtocolIntakeItem,
   getPracticeDayCount,
   getPracticeSessions,
+  getPracticeUsualDuration,
   getPracticeSpellingsMap,
   isPredictedPracticeDay,
   practiceSpellingsFor,
@@ -31,7 +32,6 @@ import {
   protocolPracticeNoun,
 } from "@/lib/protocol-practice";
 import { protocolRelevantPanels } from "@/lib/protocol-outcome-picker";
-import { practiceDurationPrefill } from "@/lib/practice";
 import { closeAbandonedPracticeSessions } from "@/lib/practice-log";
 import PracticeCardHeader from "@/components/practices/PracticeCardHeader";
 import PracticeHistorySection from "@/components/practices/PracticeHistorySection";
@@ -154,15 +154,7 @@ export default async function ProtocolDetailPage(props: {
       : [];
   const previousDurationMin =
     practice?.scopeKind === "practice"
-      ? practiceDurationPrefill(
-          getPracticeSessions(
-            profile.id,
-            practice.value,
-            50,
-            undefined,
-            practiceSpellings
-          )
-        )
+      ? getPracticeUsualDuration(profile.id, practice.value, practiceSpellings)
       : null;
   const liveSession =
     practice?.scopeKind === "practice"
