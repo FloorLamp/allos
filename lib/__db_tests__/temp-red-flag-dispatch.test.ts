@@ -15,15 +15,7 @@
 //
 // Every value is synthetic (a fake HA webhook URL; no phones, no PHI).
 
-import {
-  describe,
-  it,
-  expect,
-  afterEach,
-  vi,
-  beforeAll,
-  afterAll,
-} from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,
@@ -39,23 +31,10 @@ import {
 import { logTemperatureCore } from "@/lib/temperature-log";
 import { dispatchTempRedFlagForReading } from "@/lib/notifications/temp-red-flag";
 
-// THE CLOCK IS PINNED HERE because this file states WALL TIMES on a `today()`-derived
-// day, and #4568 made `logTemperatureCore` JUDGE that statement instead of shape-checking
-// it. Unpinned, a fixture stating 14:00 is in the past when the suite runs in the evening
-// and in the FUTURE when it runs at lunchtime — green for part of the day and red for the
-// rest, the #3260 shape. Late on its own UTC day, so every wall time below has already
-// happened; the profiles here are UTC. Same pin, same reason, as
-// lib/__db_tests__/bristol-stool-write.test.ts, which stool's own graduation armed.
-const PINNED_NOW = "2026-08-31T23:45:00.000Z";
-let priorNow: string | undefined;
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
+// The clock is FROZEN for the whole tier (#4509), late on its own UTC day, so every
+// wall time this file states has already happened and `logTemperatureCore` judges it
+// against a fixed instant rather than against lunchtime. The per-file pin this used to
+// carry is retired with the rest of them; the profiles here are UTC.
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-trf";
 
