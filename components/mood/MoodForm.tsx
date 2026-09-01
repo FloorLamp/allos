@@ -304,132 +304,142 @@ export default function MoodForm({
     <form
       className="space-y-3"
       data-testid="mood-form"
+      aria-busy={busy}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
       }}
     >
-      {days.length > 1 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {days.map((entry, index) => (
-            <button
-              key={entry.date}
-              type="button"
-              data-testid={`quick-mood-day-${index}`}
-              data-date={entry.date}
-              aria-pressed={index === selected}
-              onClick={() => pickDay(index)}
-              className={`badge cursor-pointer border ${
-                index === selected
-                  ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                  : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-              }`}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <MoodValencePicker
-          value={valence}
-          onChange={tap}
-          disabled={busy}
-          testIdPrefix="quick-mood-tap"
-        />
-        <span
-          className="text-xs text-slate-500 dark:text-slate-400"
-          data-testid="quick-mood-status"
-        >
-          {valence != null ? moodLabel(valence) : "Tap to log that day."}
-        </span>
-      </div>
-
-      <Disclosure data-testid="mood-details">
-        <summary className="cursor-pointer text-sm font-medium text-link">
-          Details
-        </summary>
-        <div className="mt-3 space-y-3">
-          <ScaleRow
-            name="Energy"
-            value={energy}
-            onPick={(score) =>
-              setEnergy((current) => (current === score ? null : score))
-            }
-            testPrefix="mood-energy"
-            lowLabel="drained"
-            highLabel="energized"
-          />
-          {showCalm ? (
-            <ScaleRow
-              name="Calm"
-              value={anxiety == null ? null : anxietyDisplaySlot(anxiety)}
-              onPick={(score) => {
-                const stored = anxietyStoredValue(score);
-                setAnxiety((current) => (current === stored ? null : stored));
-              }}
-              testPrefix="mood-anxiety"
-              lowLabel={ANXIETY_CALM_LOW_LABEL}
-              highLabel={ANXIETY_CALM_HIGH_LABEL}
-            />
-          ) : null}
-          <fieldset>
-            <legend className="label mb-1">What’s going on?</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {MOOD_FACTORS.map((factor) => (
-                <button
-                  key={factor.slug}
-                  type="button"
-                  aria-pressed={factors.includes(factor.slug)}
-                  onClick={() => toggleFactor(factor.slug)}
-                  className={`badge cursor-pointer border ${
-                    factors.includes(factor.slug)
-                      ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                      : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                  }`}
-                >
-                  {factor.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <label className="label block">
-            Note
-            <textarea
-              className="input mt-1 min-h-20"
-              value={note}
-              maxLength={500}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-          <div className="flex items-center gap-2">
-            <button
-              className="btn btn-sm"
-              type="submit"
-              disabled={busy || valence == null}
-            >
-              {busy ? "Saving…" : "Save"}
-            </button>
-            {onCancel ? (
+      {/* One write snapshots the whole statement and its date. Freeze that whole
+          transaction boundary until it settles so the visible draft cannot move
+          beyond the payload already in flight or receive a rollback for another day. */}
+      <fieldset
+        className="min-w-0 space-y-3"
+        data-testid="mood-form-controls"
+        disabled={busy}
+      >
+        {days.length > 1 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {days.map((entry, index) => (
               <button
-                className="btn-ghost btn-sm"
+                key={entry.date}
                 type="button"
-                disabled={busy}
-                onClick={onCancel}
+                data-testid={`quick-mood-day-${index}`}
+                data-date={entry.date}
+                aria-pressed={index === selected}
+                onClick={() => pickDay(index)}
+                className={`badge cursor-pointer border ${
+                  index === selected
+                    ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                    : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                }`}
               >
-                Cancel
+                {entry.label}
               </button>
-            ) : null}
+            ))}
           </div>
-        </div>
-      </Disclosure>
+        ) : null}
 
-      {error ? (
-        <p className="text-xs text-rose-600" role="alert">
-          {error}
-        </p>
-      ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <MoodValencePicker
+            value={valence}
+            onChange={tap}
+            disabled={busy}
+            testIdPrefix="quick-mood-tap"
+          />
+          <span
+            className="text-xs text-slate-500 dark:text-slate-400"
+            data-testid="quick-mood-status"
+          >
+            {valence != null ? moodLabel(valence) : "Tap to log that day."}
+          </span>
+        </div>
+
+        <Disclosure data-testid="mood-details">
+          <summary className="cursor-pointer text-sm font-medium text-link">
+            Details
+          </summary>
+          <div className="mt-3 space-y-3">
+            <ScaleRow
+              name="Energy"
+              value={energy}
+              onPick={(score) =>
+                setEnergy((current) => (current === score ? null : score))
+              }
+              testPrefix="mood-energy"
+              lowLabel="drained"
+              highLabel="energized"
+            />
+            {showCalm ? (
+              <ScaleRow
+                name="Calm"
+                value={anxiety == null ? null : anxietyDisplaySlot(anxiety)}
+                onPick={(score) => {
+                  const stored = anxietyStoredValue(score);
+                  setAnxiety((current) => (current === stored ? null : stored));
+                }}
+                testPrefix="mood-anxiety"
+                lowLabel={ANXIETY_CALM_LOW_LABEL}
+                highLabel={ANXIETY_CALM_HIGH_LABEL}
+              />
+            ) : null}
+            <fieldset>
+              <legend className="label mb-1">What’s going on?</legend>
+              <div className="flex flex-wrap gap-1.5">
+                {MOOD_FACTORS.map((factor) => (
+                  <button
+                    key={factor.slug}
+                    type="button"
+                    aria-pressed={factors.includes(factor.slug)}
+                    onClick={() => toggleFactor(factor.slug)}
+                    className={`badge cursor-pointer border ${
+                      factors.includes(factor.slug)
+                        ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                        : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                    }`}
+                  >
+                    {factor.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <label className="label block">
+              Note
+              <textarea
+                className="input mt-1 min-h-20"
+                value={note}
+                maxLength={500}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                className="btn btn-sm"
+                type="submit"
+                disabled={busy || valence == null}
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
+              {onCancel ? (
+                <button
+                  className="btn-ghost btn-sm"
+                  type="button"
+                  disabled={busy}
+                  onClick={onCancel}
+                >
+                  Cancel
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </Disclosure>
+
+        {error ? (
+          <p className="text-xs text-rose-600" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </fieldset>
     </form>
   );
 }

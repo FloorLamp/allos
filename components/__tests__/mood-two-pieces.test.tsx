@@ -272,21 +272,94 @@ describe("the mood domain's two pieces", () => {
     }
   );
 
-  it("does not let Save race a one-tap quick write", async () => {
-    let release!: () => void;
+  it("freezes the whole dated statement until a delayed write rolls back", async () => {
+    let rejectWrite!: () => void;
+    enqueueReply = "closed";
     logMoodReply = () =>
-      new Promise((resolve) => {
-        release = () => resolve({ ok: true });
+      new Promise((_resolve, reject) => {
+        rejectWrite = () => reject(new TypeError("Failed to fetch"));
       });
-    render(<MoodForm days={[EMPTY]} showCalm={false} />);
+    render(<MoodForm days={[EMPTY, LOGGED]} showCalm />);
     fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }));
+
+    const otherDay = screen.getByTestId("quick-mood-day-1");
+    const energy5 = screen.getByRole("button", { name: "Energy: 5" });
+    const calm5 = screen.getByRole("button", { name: "Calm: 5" });
+    const work = screen.getByRole("button", { name: "Work" });
+    const note = screen.getByLabelText("Note") as HTMLTextAreaElement;
+    for (const control of [otherDay, energy5, calm5, work, note]) {
+      expect(control.matches(":disabled")).toBe(true);
+    }
+    otherDay.click();
+    energy5.click();
+    calm5.click();
+    work.click();
+    note.focus();
+    expect(document.activeElement).not.toBe(note);
     fireEvent.submit(screen.getByTestId("mood-form"));
 
     expect(posted.logMood).toHaveLength(1);
-    release();
-    await waitFor(() => expect(toasts).toContain("Logged Good · Today"));
-    expect(posted.logMood).toHaveLength(1);
+    expect(otherDay.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 3" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(energy5.getAttribute("aria-pressed")).toBe("false");
+    expect(calm5.getAttribute("aria-pressed")).toBe("false");
+    expect(work.getAttribute("aria-pressed")).toBe("false");
+    expect(note.value).toBe("");
+
+    rejectWrite();
+    await waitFor(() =>
+      expect(toasts).toContain(
+        "This entry wasn't saved. Try again once you're back online."
+      )
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Good" })
+        .getAttribute("aria-pressed")
+    ).toBe("false");
+    expect(
+      screen.getByTestId("quick-mood-day-0").getAttribute("aria-pressed")
+    ).toBe("true");
+
+    // Once A settles, B may load only B's stored statement. Saving it proves A's
+    // rollback did not cross the date boundary or mix its detail state into B.
+    fireEvent.click(otherDay);
+    expect(
+      screen
+        .getByRole("button", { name: "Mood: Low" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "Energy: 3" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: "Social" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(note.value).toBe("long day");
+    logMoodReply = async () => ({ ok: true });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    );
+
+    expect(Object.fromEntries(posted.logMood[1])).toMatchObject({
+      date: LOGGED.date,
+      valence: "2",
+      energy: "3",
+      anxiety: "2",
+      factors: "social",
+      note: "long day",
+    });
+    expect(posted.logMood).toHaveLength(2);
   });
 
   it("uses the existing shared reading control for one-rating corrections", async () => {
