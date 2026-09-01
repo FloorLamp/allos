@@ -159,7 +159,7 @@ export const ONE_TAP_AFFORDANCES = {
     repeat: "idempotent",
     expectedInterval: "none",
     feedback: "outcome-toast",
-    why: "The recent-past day switcher's single dated tap (#3936): one (dose, day) inside DOSE_LOG_DATE_WINDOW_DAYS, resolved through the SAME scheduled cores markDoseTaken/markDoseSkipped a Telegram tap uses, which are idempotent on exactly that pair and refuse an out-of-window day. A separate id from `dose-status` for `dose-backfill`'s reason — this one names a day that may already have closed — and a separate id from `dose-backfill` because that offer writes the audited historical core and is online-only, while this is the ordinary scheduled resolution and queues.",
+    why: "A single dated dose tap (#3936, and since #4424 the day ledger's rows too): one (dose, day) inside DOSE_LOG_DATE_WINDOW_DAYS, through `setDoseStatusCore` — the same auth-blind writer `dose-status` reaches, which gates the day on `isDoseDateAccepted` and is idempotent on exactly that pair. This row used to say the write was markDoseTaken/markDoseSkipped; those are the RESOLVE-ONLY twins the sheet's list posted before it mounted the tri-state, and the bulk row below still posts them. A separate id from `dose-status` for `dose-backfill`'s reason — this one names a day that may already have closed — and a separate id from `dose-backfill` because that offer writes the audited historical core and is online-only, while this is the ordinary scheduled resolution and queues.",
   },
   "dose-day-stack": {
     repeat: "idempotent",

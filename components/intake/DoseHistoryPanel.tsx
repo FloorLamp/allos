@@ -133,18 +133,28 @@ export default function DoseHistoryPanel({
   const stampLoggedVia = useLoggedViaStamp();
   const ledger = useOptimisticLedger("dose-backfill");
 
-  const doseOptions = doses.map((dose) => ({
-    id: dose.id,
-    label:
-      formatMedicationDoseLine({
+  // This panel stands on ONE item, so the form gets a one-element list and renders no
+  // picker — the same form the cross-item doors mount with several.
+  const formItems = [
+    {
+      id: itemId,
+      name: itemName,
+      asNeeded,
+      courseBound,
+      doses: doses.map((dose) => ({
+        id: dose.id,
+        label:
+          formatMedicationDoseLine({
+            amount: dose.amount,
+            product,
+            timeOfDay: dose.time_of_day,
+            asNeeded,
+            timeFormat: formatPrefs.timeFormat,
+          }) || "Dose",
         amount: dose.amount,
-        product,
-        timeOfDay: dose.time_of_day,
-        asNeeded,
-        timeFormat: formatPrefs.timeFormat,
-      }) || "Dose",
-    amount: dose.amount,
-  }));
+      })),
+    },
+  ];
 
   // An offer may never promise what the core would refuse (#1505), so the days are
   // clipped to the same bounds the form's date field is clipped to before any of them
@@ -325,15 +335,11 @@ export default function DoseHistoryPanel({
       ) : null}
       {canWrite && backfill?.kind === "form" ? (
         <HistoricalDoseForm
-          itemId={itemId}
-          itemName={itemName}
-          doses={doseOptions}
+          items={formItems}
           minDate={minDate}
           maxDate={maxDate}
           initialDate={backfill.date}
           defaultTime={defaultTime}
-          asNeeded={asNeeded}
-          courseBound={courseBound}
           onDone={() => setBackfill(null)}
         />
       ) : null}
@@ -348,14 +354,10 @@ export default function DoseHistoryPanel({
             rowTestId={() => "dose-history-row"}
             renderEditForm={(entry, done) => (
               <HistoricalDoseForm
-                itemId={itemId}
-                itemName={itemName}
-                doses={doseOptions}
+                items={formItems}
                 minDate={minDate}
                 maxDate={maxDate}
                 defaultTime={defaultTime}
-                asNeeded={asNeeded}
-                courseBound={courseBound}
                 editing={{
                   logId: entry.id,
                   doseId: entry.doseId,

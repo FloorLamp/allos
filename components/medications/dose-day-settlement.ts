@@ -10,45 +10,24 @@ import {
 } from "@/components/useWritePipeline";
 import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 
-type DoseStatus = "taken" | "skipped";
 type DoseRowSettlement = {
   note: (doseId: number, text: string) => void;
   resolved: (doseIds: readonly number[]) => void;
 };
 
-// ONE DATED-DOSE WRITE OWNER (#4316). The quick sheet and Day ledger compose
-// different row chrome around the same two writes; neither restates their pipeline,
-// offline admission, action, settlement, or captured-row behavior.
+// ONE DATED-DOSE BULK WRITE OWNER (#4316). The quick sheet and the Day ledger compose
+// different chrome around the same whole-stack "Take all"; neither restates its
+// pipeline, action or settlement. THE SINGLE-ROW ARM LEFT WITH #4424's DOSE LEG — both
+// surfaces used to reach a dose row through here and draw their own buttons around it,
+// and the row control is `DoseStatusControl` now, on any day inside the write window.
 export function useDoseDayResolution({
   date,
   bulkFailureMessage,
   note,
   resolved,
 }: { date: string; bulkFailureMessage: string } & DoseRowSettlement) {
-  const single = useWritePipeline("dose-day");
   const bulk = useWritePipeline("dose-day-stack");
   const row = { note, resolved };
-
-  async function resolveOne(doseId: number, status: DoseStatus) {
-    const outcome = await single.run({
-      key: `${doseId}->${status}`,
-      fields: { date, status, dose_ids: String(doseId) },
-      action: resolveDayDoses,
-      settle: (result) => settleDayDoses(result, status, row),
-      failureMessage: "Couldn't update this dose. Try again.",
-      offline: () => ({
-        kind: "capture",
-        flow: status === "taken" ? "dose" : "skip-dose",
-        date,
-        payload: { doseId },
-        keptMessage:
-          status === "taken"
-            ? "Dose saved offline — will sync when you reconnect."
-            : "Skip saved offline — will sync when you reconnect.",
-      }),
-    });
-    if (outcome === "captured") resolved([doseId]);
-  }
 
   function resolveAll(doseIds: readonly number[]) {
     void bulk.run({
@@ -61,10 +40,7 @@ export function useDoseDayResolution({
   }
 
   return {
-    resolveOne,
     resolveAll,
-    singleBlocked: (doseId: number, status: DoseStatus) =>
-      single.blocked(`${doseId}->${status}`),
     bulkBlocked: (doseIds: readonly number[]) =>
       bulk.blocked(doseIds.join(",")),
   };
