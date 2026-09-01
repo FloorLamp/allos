@@ -150,6 +150,28 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
 });
 
 describe("the quick-log dose sheet's day switcher (#3936)", () => {
+  it("queues a past-day take without inventing an administration instant", async () => {
+    vi.clearAllMocks();
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    mocks.enqueue.mockResolvedValue("kept");
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
+    const day = screen.getByTestId("quick-entry-dose-day");
+    const creatine = within(day)
+      .getAllByRole("listitem")
+      .find((row) => within(row).queryByText("Creatine"));
+    expect(creatine).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(within(creatine!).getByTestId("dose-take"));
+    });
+
+    expect(mocks.setDoseStatus).not.toHaveBeenCalled();
+    expect(mocks.enqueue).toHaveBeenCalledWith("dose", "2026-08-27", {
+      doseId: DAILY_DOSE,
+    });
+  });
+
   it("offers exactly the days the server sent, today first", () => {
     renderSheet();
     const labels = within(screen.getByTestId("quick-entry-dose-day-toggle"))

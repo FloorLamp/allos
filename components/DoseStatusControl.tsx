@@ -231,17 +231,18 @@ export default function DoseStatusControl({
             message: "You're offline — reconnect to change a logged dose.",
           };
         const flow = target === "taken" ? "dose" : "skip-dose";
+        const capturedDate = date ?? localDate(tappedAt);
         return {
           kind: "capture",
           flow,
           // THE ROW'S DAY, NOT THE TAP'S: a past-day capture replays against the day
           // it names.
-          date: date ?? localDate(tappedAt),
-          // The server validates the stamp; a skip records no intake time, so it
-          // carries none.
+          date: capturedDate,
+          // A tap on today's row states an administration instant. A past-day row
+          // states only that day's status, so it must stay untimed on replay.
           payload: {
             doseId,
-            ...(flow === "dose"
+            ...(flow === "dose" && capturedDate === localDate(tappedAt)
               ? { clientTakenAt: tappedAt.toISOString() }
               : {}),
           },
