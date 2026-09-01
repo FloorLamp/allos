@@ -9,7 +9,12 @@ import { db, nowTime, today } from "./db";
 import { writeTx } from "./db";
 import type { LoggedVia } from "./logged-via";
 import { shiftDateStr, zonedDateParts } from "./date";
-import { TAP_REACH, isPastWriteAccepted } from "./log-manifest";
+import {
+  PRACTICE_LIVE_TAP,
+  PRACTICE_SESSION_LOG,
+  TAP_REACH,
+  isPastWriteAccepted,
+} from "./log-manifest";
 import { now, sqlNow } from "./clock";
 import {
   burstFrom,
@@ -186,6 +191,8 @@ export function logPracticeSession(
     return { kind: "logged", count, date };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const logPracticeSessionDeclares = PRACTICE_SESSION_LOG;
 
 // DAY-IDEMPOTENT practice logging — the offline queue's replay path (#2908, owner
 // decision 3), and nothing else.
@@ -235,6 +242,7 @@ export function logPracticeSessionForDay(
         { kind: "invalid-date" };
   });
 }
+export const logPracticeSessionForDayDeclares = PRACTICE_SESSION_LOG;
 
 export function updatePracticeSession(
   profileId: number,
@@ -427,6 +435,7 @@ export function startLivePracticeSession(
       : { kind: "invalid-date" as const };
   });
 }
+export const startLivePracticeSessionDeclares = PRACTICE_LIVE_TAP;
 
 // END the running session. The second tap of the two-tap window, so it must COMPLETE
 // the row it is about — including the ordinary evening practice that runs past local
@@ -478,6 +487,7 @@ export function endLivePracticeSession(
       : { kind: "not-live" as const };
   });
 }
+export const endLivePracticeSessionDeclares = PRACTICE_LIVE_TAP;
 
 export function logFinishedPracticeSession(
   profileId: number,
@@ -565,6 +575,7 @@ export function logFinishedPracticeSession(
     });
   });
 }
+export const logFinishedPracticeSessionDeclares = PRACTICE_SESSION_LOG;
 
 // Log a session against a practice frequency TARGET id (#1259): resolve the target's
 // practice NAME under profile scope, then log for TODAY.
@@ -572,13 +583,14 @@ export function logFinishedPracticeSession(
 // snapshot contract — the message may be stale) — nothing is written. The `date` is the
 // profile-local today (the tap's day).
 //
-// TELEGRAM IS THE CALLER, AND IT IS THE ONE THAT NEEDS A RESOLVER. This was also the
-// Upcoming web action's one-tap statement until #4424 ruling 7: that row mounts the
-// shared control now, which posts a practice NAME resolved server-side beside the
-// target read, so the web has nothing left to resolve here. A chat callback carries an
-// id and no day, which is what keeps this function. Omitted `startTime` stamps the tap
-// — the session is happening now. Telegram's explicit Done acknowledgement uses
-// `logFinishedPracticeByTargetId` below instead.
+// NOTHING CALLS THIS TODAY, and the derived cores column is what surfaced it (#4614).
+// It was the Upcoming web action's one-tap statement until #4424 ruling 7 moved that
+// row onto the shared control, which posts a practice NAME resolved server-side; and
+// Telegram — named here as the caller that remained — taps `pdone`, which is an
+// explicit Done acknowledgement and reaches `logFinishedPracticeByTargetId` below.
+// Whether a door with no caller is deleted or given the caller it was written for is
+// #4564's question, so the declaration below keeps it in the column meanwhile.
+// Omitted `startTime` stamps the tap — the session is happening now.
 export function logPracticeByTargetId(
   profileId: number,
   targetId: number,
@@ -602,6 +614,7 @@ export function logPracticeByTargetId(
     { notifyMessageId: notifyMessageId ?? null }
   );
 }
+export const logPracticeByTargetIdDeclares = PRACTICE_SESSION_LOG;
 
 // Telegram's Done button is a just-finished statement, not the "happening now" one the
 // resolver above makes. Telegram shows no duration, so the only honest write is
@@ -629,6 +642,7 @@ export function logFinishedPracticeByTargetId(
     );
   });
 }
+export const logFinishedPracticeByTargetIdDeclares = PRACTICE_SESSION_LOG;
 
 // Delete one logged session by id (a correction). Profile-scoped so a leaked id no-ops.
 //
