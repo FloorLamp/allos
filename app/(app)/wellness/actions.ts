@@ -137,10 +137,7 @@ export async function endPracticeLive(
   formData: FormData
 ): Promise<PracticeLiveEndOutcome> {
   const profileId = await gateItemProfile(formData);
-  const outcome = endLivePracticeSession(
-    profileId,
-    Number(formData.get("id"))
-  );
+  const outcome = endLivePracticeSession(profileId, Number(formData.get("id")));
   if (outcome.kind === "ended") revalidatePracticeSurfaces();
   return outcome;
 }

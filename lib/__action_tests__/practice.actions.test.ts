@@ -408,7 +408,6 @@ describe("logPractice action (#1259)", () => {
         .get(profile.id)
     ).toBeUndefined();
   });
-
 });
 
 // ── THE SUBJECT, RE-GATED SERVER-SIDE (#4424 ruling 4 + ruling 7) ───────────────
@@ -435,7 +434,11 @@ describe("practice writes gate the ROW's profile (#4424 ruling 7)", () => {
       .all(profileId) as { id: number; live: number }[];
 
   const VERBS = [
-    { name: "logPractice", post: () => ({ practice: "Breathwork" }), fn: logPractice },
+    {
+      name: "logPractice",
+      post: () => ({ practice: "Breathwork" }),
+      fn: logPractice,
+    },
     {
       name: "startPracticeLive",
       post: () => ({ practice: "Breathwork" }),

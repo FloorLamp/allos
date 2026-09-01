@@ -151,7 +151,8 @@ export default function LogPracticeButton({
   // starting the ACTING profile's would be the cross-profile leak the ruling exists to
   // close. Absent on a single-subject mount, which posts a byte-identical body.
   const subject = (fd: FormData): FormData => {
-    if (subjectProfileId != null) fd.set("profile_id", String(subjectProfileId));
+    if (subjectProfileId != null)
+      fd.set("profile_id", String(subjectProfileId));
     return fd;
   };
   const tz = useTimezone();

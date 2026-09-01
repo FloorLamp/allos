@@ -61,14 +61,21 @@ vi.mock("@/app/(app)/wellness/actions", () => ({
   },
   endPracticeLive: async (fd: FormData) => {
     record("endPracticeLive")(fd);
-    return { kind: "ended" as const, session: {}, count: 1, date: "2026-08-20" };
+    return {
+      kind: "ended" as const,
+      session: {},
+      count: 1,
+      date: "2026-08-20",
+    };
   },
 }));
 const toasts: string[] = [];
 vi.mock("@/components/Toast", () => ({
   useToast: () => (text: string) => toasts.push(text),
 }));
-vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => mocks.confirm }));
+vi.mock("@/components/ConfirmDialog", () => ({
+  useConfirm: () => mocks.confirm,
+}));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: mocks.enqueue }),
 }));
@@ -172,9 +179,7 @@ describe("PracticeSessionForm is ONE form for add and for edit", () => {
   it("draws the same fields in both modes and differs only in seed and action", async () => {
     openForm();
     const addFields = fieldSignature();
-    const addSeed = (
-      screen.getByLabelText("Start") as HTMLInputElement
-    ).value;
+    const addSeed = (screen.getByLabelText("Start") as HTMLInputElement).value;
     await save("Log session");
     const added = payload("logPractice");
 
@@ -205,13 +210,16 @@ describe("PracticeSessionForm is ONE form for add and for edit", () => {
   it.each([
     ["add", undefined],
     ["edit", ROW],
-  ] as const)("draws the picker in %s mode when the mount hands several", (_mode, row) => {
-    openForm(row, ["Sauna", "Breathwork"]);
-    expect(screen.getByTestId("practice-form-picker")).toBeTruthy();
-    cleanup();
-    openForm(row, ["Sauna"]);
-    expect(screen.queryByTestId("practice-form-picker")).toBeNull();
-  });
+  ] as const)(
+    "draws the picker in %s mode when the mount hands several",
+    (_mode, row) => {
+      openForm(row, ["Sauna", "Breathwork"]);
+      expect(screen.getByTestId("practice-form-picker")).toBeTruthy();
+      cleanup();
+      openForm(row, ["Sauna"]);
+      expect(screen.queryByTestId("practice-form-picker")).toBeNull();
+    }
+  );
 
   // THE END IS STATEABLE AT EVERY MOUNT, which is the behaviour four spellings cost.
   // The `/history` door and that record row each stated a START and no end, so a window

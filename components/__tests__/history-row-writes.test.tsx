@@ -405,12 +405,12 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     // `<li key={row.id}>`, so opening a second row unmounts the first and there is no
     // instance to reuse. A `key` on the form itself was tried, reverted, and is not
     // what makes this pass.
-    expect(
-      (screen.getByLabelText("Date") as HTMLInputElement).value
-    ).toBe("2026-08-19");
-    expect(
-      (screen.getByLabelText("Start") as HTMLInputElement).value
-    ).toBe("18:40");
+    expect((screen.getByLabelText("Date") as HTMLInputElement).value).toBe(
+      "2026-08-19"
+    );
+    expect((screen.getByLabelText("Start") as HTMLInputElement).value).toBe(
+      "18:40"
+    );
   });
 
   it.each(["kg", "lb"] as const)(

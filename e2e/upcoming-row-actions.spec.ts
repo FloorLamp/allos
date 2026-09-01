@@ -122,7 +122,9 @@ test("the practice row logs through the shared control, with the duration the de
     );
 
     await page.goto("/upcoming");
-    const row = page.locator(`[data-testid="upcoming-item-practice:${targetId}"]`);
+    const row = page.locator(
+      `[data-testid="upcoming-item-practice:${targetId}"]`
+    );
     await expect(row).toHaveCount(1);
 
     // THE SHARED CONTROL, by its own marker — the wellness card, the protocol rows and
@@ -140,21 +142,22 @@ test("the practice row logs through the shared control, with the duration the de
     // THE STORE, not the toast: what the deleted door wrote was a session with a null
     // duration whatever the reader had in mind, so the assertion is the column.
     await expect
-      .poll(() =>
-        (
-          db
-            .prepare(
-              `SELECT duration_min FROM practice_logs
+      .poll(
+        () =>
+          (
+            db
+              .prepare(
+                `SELECT duration_min FROM practice_logs
                 WHERE profile_id = 1 AND practice = ?`
-            )
-            .get(name) as { duration_min: number | null } | undefined
-        )?.duration_min ?? null
+              )
+              .get(name) as { duration_min: number | null } | undefined
+          )?.duration_min ?? null
       )
       .toBe(35);
   } finally {
-    db.prepare("DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?").run(
-      name
-    );
+    db.prepare(
+      "DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+    ).run(name);
     if (targetId)
       db.prepare("DELETE FROM frequency_targets WHERE id = ?").run(targetId);
     db.close();

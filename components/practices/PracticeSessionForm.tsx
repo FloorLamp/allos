@@ -5,10 +5,7 @@ import DateField from "@/components/DateField";
 import InlineError from "@/components/InlineError";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
-import {
-  editPracticeSession,
-  logPractice,
-} from "@/app/(app)/wellness/actions";
+import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
 
 // THE PRACTICE DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.practice.pieces.form`. `row` absent posts the log core; `row` present

@@ -31,11 +31,7 @@ import {
   practiceSpellingsFor,
   samePractice,
 } from "../practice";
-import type {
-  FrequencyTarget,
-  LivePracticeSession,
-  PracticeLog,
-} from "../types";
+import type { FrequencyTarget, PracticeLog } from "../types";
 import type { FrequencyPace } from "../frequency-targets";
 import { pageCount, pageOffset } from "../pagination";
 import {
@@ -119,44 +115,6 @@ function resolvedSpellings(
   spellings?: readonly string[]
 ): readonly string[] {
   return spellings ?? getPracticeSpellings(profileId, practice);
-}
-
-// The profile's RUNNING sessions, by practice identity (#3143). No day filter, for the
-// reason getWellnessPractices states: a session that crossed local midnight is still
-// running, and the abandonment sweep is what closes it, not a day comparison.
-//
-// Exported because two surfaces mount the same control over it — the quick sheet's
-// practice rows and Upcoming's (#4424 ruling 7) — and a second spelling of "is one
-// running?" is how one of them ends up offering Start beside a live session.
-export function getLivePracticeSessionsByIdentity(
-  profileId: number
-): Map<string, LivePracticeSession> {
-  const rows = db
-    .prepare(
-      `SELECT id, practice, date, start_time
-         FROM practice_logs
-        WHERE profile_id = ? AND live = 1
-        ORDER BY id DESC`
-    )
-    .all(profileId) as {
-    id: number;
-    practice: string;
-    date: string;
-    start_time: string;
-  }[];
-  return new Map(
-    rows.flatMap((row) => {
-      const identity = practiceIdentity(row.practice);
-      return identity
-        ? [
-            [
-              identity,
-              { id: row.id, date: row.date, startTime: row.start_time },
-            ] as const,
-          ]
-        : [];
-    })
-  );
 }
 
 export function getPracticeDayCount(
@@ -604,7 +562,34 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
-  const liveByIdentity = getLivePracticeSessionsByIdentity(profileId);
+  // No day filter, for the reason getWellnessPractices states: a session that crossed
+  // local midnight is still running, and the sweep is what closes an abandoned one.
+  const liveRows = db
+    .prepare(
+      `SELECT id, practice, date, start_time
+         FROM practice_logs
+        WHERE profile_id = ? AND live = 1
+        ORDER BY id DESC`
+    )
+    .all(profileId) as {
+    id: number;
+    practice: string;
+    date: string;
+    start_time: string;
+  }[];
+  const liveByIdentity = new Map(
+    liveRows.flatMap((row) => {
+      const identity = practiceIdentity(row.practice);
+      return identity
+        ? [
+            [
+              identity,
+              { id: row.id, date: row.date, startTime: row.start_time },
+            ] as const,
+          ]
+        : [];
+    })
+  );
 
   const seen = new Set<string>();
   const out: TrackedPractice[] = [];
