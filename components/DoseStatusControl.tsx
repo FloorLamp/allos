@@ -73,6 +73,7 @@ export default function DoseStatusControl({
   compact = false,
   profileId,
   date,
+  itemName,
   onSettled,
 }: {
   doseId: number;
@@ -96,6 +97,13 @@ export default function DoseStatusControl({
    */
   date?: string;
   /**
+   * WHICH DOSE THIS IS, for the accessible name (#2615 item 2). A list of several dose
+   * rows otherwise announces "Mark taken" N times, which is what the quick sheet's own
+   * buttons carried before they became mounts of this control. Absent where the row's
+   * own heading already says it (the medication card, the supplement row).
+   */
+  itemName?: string;
+  /**
    * What the ROW does with the answer, where the row is a LIST of what a day still owes
    * rather than a standing record: the quick sheet drops a resolved row and closes when
    * nothing is left, and the ledger's due list does the same. Absent on a standing row,
@@ -111,12 +119,18 @@ export default function DoseStatusControl({
   // The shared client write pipeline (#3276): it stamps the surface, decides online vs
   // capture, says the sentence, and settles the one-tap ledger. This control declares
   // what a dose resolution means; it hand-wires none of that choreography.
-  // WHICH AFFORDANCE THIS TAP IS (lib/one-tap.ts). A dated tap is `dose-day` — "the
-  // recent-past day switcher's single dated tap … a day that may already have closed"
-  // — and today's is `dose-status`. Two registry rows because a census reading them
-  // must be able to see the dated write; one control, because the person taps the same
-  // circle either way.
-  const pipeline = useWritePipeline(date ? "dose-day" : "dose-status");
+  // WHICH AFFORDANCE THIS TAP IS (lib/one-tap.ts). A dated tap is `dose-day` — "a day
+  // that may already have closed" — and today's is `dose-status`. Two registry rows
+  // because a census reading them must be able to see the dated write; ONE control,
+  // because the person taps the same circle either way.
+  //
+  // BOTH HOOKS RUN AND THE DAY PICKS BETWEEN THEM, rather than one hook over a computed
+  // id: `lib/__tests__/one-tap-call-sites.test.ts` refuses a first argument it cannot
+  // read, correctly — "an id the scan cannot read is an id nobody can census" — and the
+  // hook order has to be stable anyway.
+  const todayTap = useWritePipeline("dose-status");
+  const datedTap = useWritePipeline("dose-day");
+  const pipeline = date == null ? todayTap : datedTap;
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -173,6 +187,10 @@ export default function DoseStatusControl({
       fields: {
         dose_id: String(doseId),
         status: target,
+        // THE STATE THIS CONTROL WAS SHOWING (#280). From a clear dose the write is a
+        // resolution and may not overwrite a day another surface has since resolved;
+        // from a state the person could see, the flip is exactly what they asked for.
+        from: state,
         // Omitted on a today mount so its post stays byte-identical.
         ...(date != null ? { date } : {}),
         // #858/#1373: target the row's own profile so a caregiver confirms a household
@@ -245,6 +263,10 @@ export default function DoseStatusControl({
     if (target === "taken") settleConfirm();
   }
 
+  // The visible verb stays short; the accessible name says WHICH dose when the row
+  // does not (#2615 item 2).
+  const named = (verb: string) => (itemName ? `${verb} — ${itemName}` : verb);
+
   const takeClass =
     variant === "circle"
       ? `tap-target flex h-(--control-box) w-(--control-box) shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
@@ -295,7 +317,7 @@ export default function DoseStatusControl({
         data-settling={settling ? "true" : "false"}
         className={`${takeClass}${settling ? " motion-settle" : ""}`}
         aria-pressed={isTaken}
-        aria-label={isTaken ? "Mark not taken" : "Mark taken"}
+        aria-label={named(isTaken ? "Mark not taken" : "Mark taken")}
         data-testid="dose-take"
       >
         <IconCheck
@@ -312,7 +334,7 @@ export default function DoseStatusControl({
         disabled={busy}
         className={skipClass}
         aria-pressed={isSkipped}
-        aria-label={isSkipped ? "Undo skip" : "Skip this dose"}
+        aria-label={named(isSkipped ? "Undo skip" : "Skip this dose")}
         data-testid="dose-skip"
       >
         <IconPlayerTrackNext

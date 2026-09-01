@@ -223,8 +223,8 @@ export default function QuickDoseList({
                 taken={false}
                 skipped={false}
                 variant="pill"
-                compact
                 label="Mark taken"
+                itemName={dose.title}
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);
                   else
@@ -353,7 +353,7 @@ function PastDayDoses({
                     skipped={false}
                     variant="pill"
                     compact
-                    label={dose.name}
+                    itemName={dose.name}
                     onSettled={(result) => {
                       if (result.ok) onResolved([dose.doseId]);
                       else onNote(dose.doseId, result.error);

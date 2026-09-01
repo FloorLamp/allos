@@ -330,6 +330,7 @@ export default function DayLedger({
         <DoseStatusControl
           doseId={dose.doseId}
           date={date}
+          itemName={dose.name}
           taken={false}
           skipped={false}
           variant="circle"
@@ -455,6 +456,7 @@ export default function DayLedger({
             <DoseStatusControl
               doseId={row.doseId}
               date={date}
+              itemName={row.name}
               taken={row.status === "taken"}
               skipped={row.status === "skipped"}
               variant="circle"

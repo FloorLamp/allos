@@ -6,7 +6,7 @@ import { localDate } from "@/lib/offline/queue";
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   enqueue: vi.fn(),
-  markTaken: vi.fn(),
+  setDoseStatus: vi.fn(),
 }));
 
 // #3936. The switcher's job is to say what the accepted window IS, so the guards below
@@ -35,15 +35,10 @@ vi.mock("@/components/useOptimisticLedger", () => ({
     }) => op.settle(await op.write()),
   }),
 }));
-vi.mock("@/app/(app)/upcoming/actions", () => ({
-  markTaken: mocks.markTaken,
-}));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   resolveDayDoses: vi.fn(),
+  setDoseStatus: mocks.setDoseStatus,
 }));
-
-import { resolveDayDoses } from "@/app/(app)/nutrition/intake-actions";
-const resolveDayDosesMock = vi.mocked(resolveDayDoses);
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -97,6 +92,12 @@ function renderSheet() {
   );
 }
 
+// EVERY ROW IN THIS SHEET IS A `DoseStatusControl` (#4424 ruling 3), on today and on
+// the switched-to days alike. Before that this file's today row posted `markTaken`
+// through a "Mark taken" button and its past rows posted `resolveDayDoses` through an
+// icon pair — one list, two write paths, two spellings of the row. The single tap is
+// `setDoseStatus` now; the whole-stack row below is still `resolveDayDoses`, which is
+// the bulk offer and not a row control.
 describe("today's quick dose uses the shared offline contract (#3272)", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -107,11 +108,13 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
     renderSheet();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Mark taken — Creatine" })
+      );
     });
     const after = Date.now();
 
-    expect(mocks.markTaken).not.toHaveBeenCalled();
+    expect(mocks.setDoseStatus).not.toHaveBeenCalled();
     const [kind, date, payload] = mocks.enqueue.mock.calls[0]!;
     expect({ kind, doseId: payload.doseId }).toEqual({
       kind: "dose",
@@ -126,14 +129,19 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
   });
 
   it("keeps the typed online refusal and does not queue it", async () => {
-    mocks.markTaken.mockResolvedValue({
-      ok: true,
-      outcome: "already-skipped",
+    // The action's own answer for a day that already stands SKIPPED, which the
+    // resolve-only rule is what produces: the control was showing CLEAR, so the write
+    // may resolve and may not overwrite (#280).
+    mocks.setDoseStatus.mockResolvedValue({
+      ok: false,
+      error: "Not logged — this dose is marked skipped",
     });
     renderSheet();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Mark taken" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Mark taken — Creatine" })
+      );
     });
 
     expect(mocks.enqueue).not.toHaveBeenCalled();
@@ -218,21 +226,7 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
 // correctly logged.
 describe("resolving several doses in quick succession (#3936)", () => {
   it("keeps every resolved row gone, not just the last one", async () => {
-    resolveDayDosesMock.mockImplementation(async (fd: FormData) => {
-      const ids = String(fd.get("dose_ids"))
-        .split(",")
-        .map(Number)
-        .filter(Boolean);
-      return {
-        ok: true as const,
-        date: "2026-08-27",
-        doses: ids.map((doseId) => ({
-          doseId,
-          name: `dose ${doseId}`,
-          outcome: "logged" as const,
-        })),
-      };
-    });
+    mocks.setDoseStatus.mockResolvedValue({ ok: true });
 
     renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
@@ -259,19 +253,8 @@ describe("resolving several doses in quick succession (#3936)", () => {
 // Resolving it on one day must not resolve it on the others.
 describe("one schedule row on several days is several occurrences", () => {
   beforeEach(() => {
-    resolveDayDosesMock.mockImplementation(async (fd: FormData) => ({
-      ok: true as const,
-      date: String(fd.get("date")),
-      doses: String(fd.get("dose_ids"))
-        .split(",")
-        .map(Number)
-        .filter(Boolean)
-        .map((doseId) => ({
-          doseId,
-          name: `dose ${doseId}`,
-          outcome: "logged" as const,
-        })),
-    }));
+    vi.clearAllMocks();
+    mocks.setDoseStatus.mockResolvedValue({ ok: true });
   });
 
   it("logging yesterday's dose leaves TODAY's identical dose still due", async () => {
@@ -319,17 +302,10 @@ describe("one schedule row on several days is several occurrences", () => {
   });
 
   it("a refusal earned on one day does not render under another day's row", async () => {
-    resolveDayDosesMock.mockImplementation(async (fd: FormData) => ({
-      ok: true as const,
-      date: String(fd.get("date")),
-      doses: [
-        {
-          doseId: DAILY_DOSE,
-          name: "Creatine",
-          outcome: "already-skipped" as const,
-        },
-      ],
-    }));
+    mocks.setDoseStatus.mockResolvedValue({
+      ok: false,
+      error: "Not logged — this dose is marked skipped",
+    });
     renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Yesterday" }));
     await act(async () => {

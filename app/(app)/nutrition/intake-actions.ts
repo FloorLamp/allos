@@ -107,6 +107,7 @@ import {
   type CadenceKind,
   type DoseSchedule,
 } from "@/lib/intake-cadence";
+import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { getDoseScheduleVersions } from "@/lib/queries";
 import {
   formError,
@@ -1281,12 +1282,28 @@ export async function updateIntakeItem(
 // the control the dose is resolved when nothing was written. Every reachable tap still
 // answers ok — the control is only rendered for an active, non-retired dose — so this
 // changes what a FORGED post is told, not what a real one sees.
-function doseStatusResult(outcome: DoseStatusOutcome): FormResult {
+function doseStatusResult(
+  outcome: DoseStatusOutcome,
+  target: DoseStatusTarget
+): FormResult {
   switch (outcome) {
     case "stale-dose":
       return formError("That dose is no longer scheduled.");
     case "inactive":
       return formError("That item is paused.");
+    // THE DAY WAS ALREADY RESOLVED, THE OTHER WAY (#280). Only reachable from a
+    // resolve-only tap — a control that was showing CLEAR — and the honest answer is
+    // the status that actually persists, in the words every other dose surface uses,
+    // rather than a confirm of an action that wrote nothing. Asked-for and found
+    // agreeing is not a refusal: the dose is where the tap wanted it.
+    case "already-taken":
+      return target === "taken"
+        ? formOk()
+        : formError(doseConfirmMessage("already-taken").text);
+    case "already-skipped":
+      return target === "skipped"
+        ? formOk()
+        : formError(doseConfirmMessage("already-skipped").text);
     default:
       return formOk();
   }
@@ -1344,10 +1361,16 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
     target,
     // The tri-state check-off renders on the Nutrition/Medications pages, the day
     // ledger's rows and the quick-log sheet's dose list, all posting THIS action.
-    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+    // THE STATE THE CONTROL WAS SHOWING, and it decides whether this write may
+    // overwrite (#280). From a CLEAR dose the tap is a resolution and nothing more:
+    // a row in a list of what a day still owes renders clear whether or not another
+    // device has since resolved it. Absent — a caller that does not render a state —
+    // keeps the explicit set this action has always performed.
+    String(formData.get("from") ?? "") === "clear" && target !== "clear"
   );
   revalidateIntake();
-  return doseStatusResult(outcome);
+  return doseStatusResult(outcome, target);
 }
 
 // ── Recent-past dose catch-up (#3936) ───────────────────────────────────────────
@@ -1741,15 +1764,16 @@ export async function toggleTaken(formData: FormData): Promise<FormResult> {
       "SELECT status FROM intake_item_logs WHERE dose_id = ? AND date = ?"
     )
     .get(doseId, date) as { status: DoseStatusTarget } | undefined;
+  const target = existing?.status === "taken" ? "clear" : "taken";
   const outcome = setDoseStatusCore(
     profile.id,
     doseId,
     date,
-    existing?.status === "taken" ? "clear" : "taken",
+    target,
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   revalidateIntake();
-  return doseStatusResult(outcome);
+  return doseStatusResult(outcome, target);
 }
 
 export type SetItemActiveResult =
