@@ -167,9 +167,10 @@ interface ScheduledDoseRow {
 
 // The profile's collision-free short labels, keyed by item id. Both intake builders
 // call this over the SAME set — every item the profile owns, from one getIntakeItems
-// read — so the Upcoming chip, the household confirm row and the quick-log sheet can
+// read — so the Upcoming chip, the Upcoming due-dose row and the quick-log sheet can
 // never call one item by two different names, and no two items can share one label on
-// a control whose tap writes a dose.
+// a control whose tap writes a dose. (The household card's confirm row was a fourth
+// consumer until #1463 §1; that card renders no dose control now.)
 function shortLabelsById(
   items: readonly ReturnType<typeof getIntakeItems>[number][]
 ): Map<number, string> {

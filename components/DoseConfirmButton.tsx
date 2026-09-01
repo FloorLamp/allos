@@ -20,9 +20,10 @@ import type {
 // typed outcome and never confirmed unconditionally (the #280 rule, the same
 // rendering the quick-entry dose list and the Telegram tap already do).
 //
-// The server parent passes the action (each surface keeps its own gate: the
-// household confirm re-checks write access on the CARD's profile, the hero on the
-// acting one) plus the hidden id fields; this component only renders the answer:
+// The server parent passes the action (each surface keeps its own gate: Upcoming's rows
+// re-check write access on the ROW's profile through `gateItemProfile`, the dashboard
+// hero on the acting one) plus the hidden id fields; this component only renders the
+// answer:
 // a refusal — item paused, dose retired, dose standing as skipped — toasts in the
 // error tone and the row stays, because it is still due; a success toasts the
 // outcome's own wording ("Dose logged" / "Already logged as taken").

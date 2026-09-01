@@ -1047,8 +1047,9 @@ function itemSuppression(
 // caller owns anyway: its wrapper and its testid.
 //
 // The write is `DoseConfirmButton`, the dose domain's shared row control for rows that
-// list what is still OWED — the same component the dashboard attention row and the
-// household card's due row mount. No bespoke chip was minted for either surface: F's
+// list what is still OWED — the same component the dashboard attention row mounts (and
+// the household card's due row did, until #1463 §1 made that card a summary and ceded
+// cross-profile confirms to this page). No bespoke chip was minted for either surface: F's
 // chip grammar is `SubmitActionChip`, which IS `Button type="submit"`, and so is this,
 // so both runs are one box with one 44px target.
 //
@@ -1515,9 +1516,10 @@ function Row({
           {/* THE DOSE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), beside the practice
               one. This row used to hand-roll the confirm as a `RowAction` chip that
               re-spelled `markTaken`'s typed outcome into a toast — a third copy of
-              what `DoseConfirmButton` already is on the dashboard attention row and
-              the household card's due row, and the same class of row: it lists what
-              is still OWED, so the write unmounts it. Like the practice control it
+              what `DoseConfirmButton` already is on the dashboard attention row, and
+              the same class of row: it lists what is still OWED, so the write unmounts
+              it. (The household card's due row was a third such mount until #1463 §1
+              removed it; this row is where that capability went.) Like the practice control it
               stays INLINE at every width — RowActionChips folds SECONDARY actions,
               and a domain's row control is not one. No `undoAction`: this page has no
               inverse wired, and the control's honest default is to offer none rather

@@ -11,9 +11,9 @@
 //     disambiguation still names cross-profile items — this layer only adds the
 //     self emphasis).
 //   • A login WITH an own-profile names the subject on any write whose EFFECTIVE
-//     TARGET is not that profile — a household card confirming a dose for someone
-//     else, a form logging to a switched-in other profile, the live workout editor
-//     when the acting profile isn't the login's own.
+//     TARGET is not that profile — an Upcoming multi-view row confirming a dose for
+//     someone else, a form logging to a switched-in other profile, the live workout
+//     editor when the acting profile isn't the login's own.
 //
 // Pure (no DB, no React) so the whole matrix is unit-tested without a request.
 
