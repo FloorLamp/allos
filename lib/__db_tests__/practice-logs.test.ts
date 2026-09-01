@@ -1068,16 +1068,19 @@ describe("a just-finished tap states the day it was tapped on", () => {
     });
   });
 
+  // THE TELEGRAM DOOR, which is where this was reachable: Done ✅ has no End button
+  // beside it, so a second row would double-log the day AND leave the lifecycle open.
   it("ends the open live session instead of opening a second one", () => {
     const pid = makeProfile("finished-while-live");
     setTimezone(pid, "UTC");
+    const target = practiceTarget(pid, "Sauna", 3, null);
     vi.setSystemTime(new Date("2026-09-01T12:00:00Z"));
     const started = startLivePracticeSession(pid, "Sauna", "page");
     expect(started.kind).toBe("started");
 
     vi.setSystemTime(new Date("2026-09-01T12:30:00Z"));
     expect(
-      logFinishedPracticeSession(pid, "Sauna", "telegram-nudge", 15)
+      logFinishedPracticeByTargetId(pid, target, "telegram-nudge")
     ).toMatchObject({ kind: "logged", count: 1, date: "2026-09-01" });
     const rows = getPracticeSessions(pid, "Sauna");
     expect(rows).toHaveLength(1);
@@ -1087,6 +1090,28 @@ describe("a just-finished tap states the day it was tapped on", () => {
       duration_min: 30,
       live: 0,
     });
+  });
+
+  it("writes its own session when the open row turns out to be abandoned", () => {
+    const pid = makeProfile("finished-while-stale");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-09-01T02:00:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-09-01T12:00:00Z")); // ten hours later
+    expect(logFinishedPracticeSession(pid, "Sauna", "page", 15)).toMatchObject({
+      kind: "logged",
+      date: "2026-09-01",
+    });
+    const rows = getPracticeSessions(pid, "Sauna");
+    expect(rows).toHaveLength(2);
+    // The abandoned row keeps exactly what was observed; the tap states its own window.
+    expect(rows.map((row) => [row.start_time, row.end_time, row.live])).toEqual(
+      [
+        ["11:45", "12:00", 0],
+        ["02:00", null, 0],
+      ]
+    );
   });
 });
 

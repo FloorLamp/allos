@@ -517,9 +517,14 @@ export function logFinishedPracticeSession(
     const open = openPracticeSession(profileId, name);
     if (open) {
       const ended = endLivePracticeSession(profileId, open.id);
-      return ended.kind === "ended"
-        ? { kind: "logged" as const, count: ended.count, date: ended.date }
-        : { kind: "invalid-date" as const };
+      if (ended.kind === "ended")
+        return {
+          kind: "logged" as const,
+          count: ended.count,
+          date: ended.date,
+        };
+      // The open row turned out to be abandoned — End has closed it — so this tap is
+      // an ordinary just-finished statement rather than the second half of a lifecycle.
     }
     return logPracticeSession(profileId, name, end.date, loggedVia, {
       startTime: start && start.date === end.date ? start.hhmm : null,
