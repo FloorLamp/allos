@@ -3,6 +3,7 @@ import { type Locator, type Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import { loginAs } from "./nav";
 import {
+  awaitHydrated,
   expectNoClippedContent,
   followLink,
   hydratedClick,
@@ -552,6 +553,7 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     const release = () =>
       page.evaluate(() => window.__releaseChartMenuFrames());
 
+    await awaitHydrated(trigger);
     await hold();
     await trigger.focus();
     await page.keyboard.press("ArrowDown");
@@ -567,6 +569,17 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
       .locator("#sleep")
       .evaluate((element) => element.scrollIntoView({ block: "start" }));
     await expect(trigger).toHaveAttribute("aria-label", /Sleep/);
+    await hold();
+    await trigger.evaluate((element) => element.focus({ preventScroll: true }));
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByTestId("chart-jump-weight")).toBeFocused();
+    await page.keyboard.press("Home");
+    await release();
+    await expect(page.getByTestId("chart-jump-weight")).toBeFocused();
+
+    // With no intervening menu command, the deferred open focus still replaces
+    // the host's first-item default with the chart active at open time.
+    await page.keyboard.press("Escape");
     await hold();
     await trigger.evaluate((element) => element.focus({ preventScroll: true }));
     await page.keyboard.press("ArrowDown");
