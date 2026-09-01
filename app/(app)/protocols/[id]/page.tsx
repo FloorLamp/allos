@@ -78,7 +78,7 @@ export default async function ProtocolDetailPage(props: {
 
   const units = getUnitPrefs(login.id);
   const todayStr = today(profile.id);
-  closeAbandonedPracticeSessions(profile.id, todayStr);
+  closeAbandonedPracticeSessions(profile.id);
   const { comparison, options } = getProtocolOutcomePickerData(
     profile.id,
     protocol,
@@ -158,9 +158,7 @@ export default async function ProtocolDetailPage(props: {
       : null;
   const liveSession =
     practice?.scopeKind === "practice"
-      ? (protocolPracticeSessions.find(
-          (session) => session.live === 1 && session.date === todayStr
-        ) ?? null)
+      ? (protocolPracticeSessions.find((session) => session.live === 1) ?? null)
       : null;
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
   const ongoing = protocol.end_date == null;

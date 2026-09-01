@@ -889,3 +889,179 @@ describe("live practice sessions (#3143)", () => {
     });
   });
 });
+
+// ---- The edges the lifecycle still loses (#3143 review round two) -----------
+//
+// Every case here was executed against `origin/main` at 1fb0be27 before the fix and is
+// the reason the behaviour above changed. The westward-zone case and the two burst
+// barriers already hold on main and are pinned there, so they are not repeated.
+describe("a live session survives the edges of its own day", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("completes a session that crosses local midnight, on the day it started", () => {
+    const pid = makeProfile("live-midnight");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T23:50:00Z"));
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
+    // Ending is what the second tap MEANS. An evening practice that runs past
+    // midnight is the ordinary case, not an abandonment.
+    expect(endLivePracticeSession(pid, started.session.id)).toMatchObject({
+      kind: "ended",
+      date: "2026-08-31",
+      session: {
+        date: "2026-08-31",
+        start_time: "23:50",
+        end_time: "00:10",
+        duration_min: 20,
+        live: 0,
+      },
+    });
+  });
+
+  it("keeps the End affordance reachable on both surfaces after midnight", () => {
+    const pid = makeProfile("live-midnight-surfaces");
+    setTimezone(pid, "UTC");
+    practiceTarget(pid, "Sauna", 3, null);
+    vi.setSystemTime(new Date("2026-08-31T23:50:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
+    // The sweep every page gather runs FIRST must spare it: twenty minutes old is a
+    // session, whatever day label it carries.
+    expect(closeAbandonedPracticeSessions(pid)).toBe(0);
+    const asOf = "2026-09-01";
+    // Both surfaces render the End button from `liveSession`. A row that answers
+    // `ended` but shows no End button is a lifecycle nobody can finish.
+    expect(getWellnessPractices(pid, asOf)[0].liveSession).toMatchObject({
+      date: "2026-08-31",
+      startTime: "23:50",
+    });
+    expect(getTrackedPractices(pid, asOf)[0].liveSession).toMatchObject({
+      date: "2026-08-31",
+      startTime: "23:50",
+    });
+  });
+
+  // The BOUND, which is what lets the two fixes above be safe: once the day
+  // comparison stops refusing, only a plausibility limit stands between a forgotten
+  // Start and a fabricated multi-day session.
+  it("abandons a session left running past the plausibility bound", () => {
+    const pid = makeProfile("live-stranded");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-30T12:00:00Z"));
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    // 28.5 hours later — the shape that self-healed into a 1710-minute session.
+    vi.setSystemTime(new Date("2026-08-31T16:30:00Z"));
+    expect(endLivePracticeSession(pid, started.session.id)).toEqual({
+      kind: "not-live",
+    });
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-08-30",
+      start_time: "12:00",
+      end_time: null,
+      duration_min: null,
+      live: 0,
+    });
+  });
+});
+
+describe("a just-finished tap states the day it was tapped on", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("files a post-midnight tap on today, not on the day the derived start lands", () => {
+    const pid = makeProfile("finished-midnight");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-09-01T00:20:00Z"));
+    expect(logFinishedPracticeSession(pid, "Sauna", "page", 45)).toMatchObject({
+      kind: "logged",
+      date: "2026-09-01",
+      count: 1,
+    });
+    expect(getPracticeDayCount(pid, "Sauna", "2026-09-01")).toBe(1);
+    expect(getPracticeDayCount(pid, "Sauna", "2026-08-31")).toBe(0);
+    // The only OBSERVED instant is the end. A start that would land on another day
+    // cannot be stated by a row that carries one date, so it is not invented.
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-09-01",
+      start_time: null,
+      end_time: "00:20",
+      duration_min: 45,
+    });
+  });
+
+  it("still writes the derived window when it fits inside the tap's own day", () => {
+    const pid = makeProfile("finished-same-day");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-09-01T12:20:00Z"));
+    expect(logFinishedPracticeSession(pid, "Sauna", "page", 45)).toMatchObject({
+      kind: "logged",
+      date: "2026-09-01",
+    });
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-09-01",
+      start_time: "11:35",
+      end_time: "12:20",
+      duration_min: 45,
+    });
+  });
+
+  // THE TELEGRAM DOOR, which is where this was reachable: Done ✅ has no End button
+  // beside it, so a second row would double-log the day AND leave the lifecycle open.
+  it("ends the open live session instead of opening a second one", () => {
+    const pid = makeProfile("finished-while-live");
+    setTimezone(pid, "UTC");
+    const target = practiceTarget(pid, "Sauna", 3, null);
+    vi.setSystemTime(new Date("2026-09-01T12:00:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-09-01T12:30:00Z"));
+    expect(
+      logFinishedPracticeByTargetId(pid, target, "telegram-nudge")
+    ).toMatchObject({ kind: "logged", count: 1, date: "2026-09-01" });
+    const rows = getPracticeSessions(pid, "Sauna");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      start_time: "12:00",
+      end_time: "12:30",
+      duration_min: 30,
+      live: 0,
+    });
+  });
+
+  it("writes its own session when the open row turns out to be abandoned", () => {
+    const pid = makeProfile("finished-while-stale");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-09-01T02:00:00Z"));
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+
+    vi.setSystemTime(new Date("2026-09-01T12:00:00Z")); // ten hours later
+    expect(logFinishedPracticeSession(pid, "Sauna", "page", 15)).toMatchObject({
+      kind: "logged",
+      date: "2026-09-01",
+    });
+    // The abandoned row keeps exactly what was observed; the tap states its own window.
+    expect(
+      getPracticeSessions(pid, "Sauna").map((row) => [
+        row.start_time,
+        row.end_time,
+        row.live,
+      ])
+    ).toEqual([
+      ["11:45", "12:00", 0],
+      ["02:00", null, 0],
+    ]);
+  });
+});
