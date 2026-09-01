@@ -567,9 +567,7 @@ test("the cross-practice day-history aligns its frozen labels at first paint (#3
           ...row.querySelectorAll<HTMLElement>("[data-matrix-col] > span"),
         ].filter((cell) => {
           const box = cell.getBoundingClientRect();
-          const overlap =
-            Math.min(labelBox.right, box.right) -
-            Math.max(labelBox.left, box.left);
+          const overlap = Math.min(labelBox.right, box.right) - box.left;
           return overlap > 0.5 && overlap < box.width - 0.5;
         });
         return {
