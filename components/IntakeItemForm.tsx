@@ -550,20 +550,24 @@ export default function IntakeItemForm({
       bottlesForKindDoor(bottles, lockedKind),
       picked
     );
+    const selection = bottle ? itemSeedFromPool(bottle).name : picked;
     if (bottle) {
       onPickSupply(bottle);
+    }
+
+    const supplementEntry = CATALOG_BY_NAME.get(selection.toLowerCase());
+    if (
+      supplementEntry &&
+      ((bottle && lockedKind === "supplement") || !getMedicationInfo(selection))
+    ) {
+      setName(selection);
+      seedFromCatalog(selection, supplementEntry);
       return;
     }
 
-    const supplementEntry = CATALOG_BY_NAME.get(picked.toLowerCase());
-    if (supplementEntry && !getMedicationInfo(picked)) {
-      setName(picked);
-      seedFromCatalog(picked, supplementEntry);
-      return;
-    }
-
-    const resolved = resolveMedicationPick(picked, query);
-    const generic = resolved.name || picked;
+    const resolutionQuery = bottle ? undefined : query;
+    const resolved = resolveMedicationPick(selection, resolutionQuery);
+    const generic = bottle ? selection : resolved.name || selection;
     setName(generic);
     setProduct("");
     if (resolved.brand) setBrand(resolved.brand);
