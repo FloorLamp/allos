@@ -8,10 +8,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setWeekMode } from "@/lib/settings";
+import { setTimezone, setWeekMode } from "@/lib/settings";
 import {
   logPracticeSession,
+  updatePracticeSession,
   logPracticeByTargetId,
+  logFinishedPracticeByTargetId,
+  logFinishedPracticeSession,
+  startLivePracticeSession,
+  endLivePracticeSession,
+  closeAbandonedPracticeSessions,
+  getPracticeUsualDuration,
   inferPracticeSchedule,
   getPracticeDayCount,
   getPracticeSessions,
@@ -520,13 +527,48 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(inferPracticeSchedule(tapped, "Breathwork").hour).toBe(7);
   });
 
-  it("stamps the Telegram Done ✅ tap too — it was starving the nudge it feeds", () => {
+  it("keeps Upcoming start-only and records Telegram Done as end-only", () => {
     const pid = makeProfile("quick-time-telegram");
     const tid = practiceTarget(pid, "Red light therapy", 3, null);
     expect(logPracticeByTargetId(pid, tid, "page")).toMatchObject({
       kind: "logged",
     });
-    expect(rows(pid).map((r) => r.start_time)).toEqual(["07:05"]);
+    // A stored usual duration exists, but Telegram never displayed it. Its callback
+    // therefore cannot use that hidden value to invent a start.
+    logPracticeSession(
+      pid,
+      "Red light therapy",
+      shiftDateStr(today(pid), -1),
+      "page",
+      {
+        durationMin: 25,
+      }
+    );
+    expect(
+      logFinishedPracticeByTargetId(pid, tid, "telegram-command")
+    ).toMatchObject({ kind: "logged" });
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT start_time, end_time, logged_via FROM practice_logs
+              WHERE profile_id = ? ORDER BY id`
+          )
+          .all(pid) as {
+          start_time: string | null;
+          end_time: string | null;
+          logged_via: string | null;
+        }[]
+      ).map((r) => ({
+        start: r.start_time,
+        end: r.end_time,
+        via: r.logged_via,
+      }))
+    ).toEqual([
+      { start: "07:05", end: null, via: "page" },
+      { start: null, end: null, via: "page" },
+      { start: null, end: "07:05", via: "telegram-command" },
+    ]);
   });
 
   it("writes the duration the quick path supplies, and prefills the NEXT tap from it", () => {
@@ -542,17 +584,18 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     logPracticeSession(pid, "Sauna", t, "page", { durationMin: 20 });
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(20);
 
-    // Tap two: the prefill arrives at 20, the user steps it to 25 and logs. The NEXT
-    // prefill must be 25 — the value WRITTEN, not the one that was merely shown.
+    // A tie is resolved by the newest recorded duration.
     logPracticeSession(pid, "Sauna", t, "page", { durationMin: 25 });
     expect(rows(pid).map((r) => r.duration_min)).toEqual([20, 25]);
     expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(25);
 
-    // Tap three: the user steps the stepper off the bottom and logs without one.
-    // Blank stays blank — clearing is a decision the next prefill honours, not a
-    // gap the last non-null value quietly fills back in.
+    // A duration-less newest row does not erase the recorded usual.
     logPracticeSession(pid, "Sauna", t, "page", { durationMin: null });
-    expect(getTrackedPractices(pid)[0].previousDurationMin).toBeNull();
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(25);
+
+    // Once 20 has the most votes it becomes the usual despite a newer 25.
+    logPracticeSession(pid, "Sauna", t, "page", { durationMin: 20 });
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(20);
   });
 
   it("folds the prefill across an identity's spellings and stays profile-scoped", () => {
@@ -576,6 +619,24 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(18);
   });
 
+  it("uses one full-history usual-duration vote after more than 50 logs", () => {
+    const pid = makeProfile("usual-full-history");
+    practiceTarget(pid, "Sauna", 3, null);
+    const t = today(pid);
+    for (let i = 0; i < 26; i += 1)
+      logPracticeSession(pid, "Sauna", shiftDateStr(t, -2), "page", {
+        durationMin: 10,
+      });
+    for (let i = 0; i < 25; i += 1)
+      logPracticeSession(pid, "sauna", shiftDateStr(t, -1), "page", {
+        durationMin: 20,
+      });
+
+    expect(getPracticeUsualDuration(pid, "Sauna")).toBe(10);
+    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(10);
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(10);
+  });
+
   it("leaves the Wellness card's own prefill reading the same value", () => {
     const pid = makeProfile("quick-duration-card");
     const t = today(pid);
@@ -587,5 +648,244 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
       getTrackedPractices(pid)[0].previousDurationMin
     );
     expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(30);
+  });
+});
+
+describe("live practice sessions (#3143)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("starts once, returns the open row on a second start, and ends from two taps", () => {
+    const pid = makeProfile("live-window");
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started).toMatchObject({
+      kind: "started",
+      count: 1,
+      date: "2026-08-31",
+      session: { date: "2026-08-31", startTime: "12:00" },
+    });
+    expect(startLivePracticeSession(pid, "sauna", "page")).toMatchObject({
+      kind: "already-live",
+      session: { id: started.kind === "started" ? started.session.id : -1 },
+    });
+
+    vi.setSystemTime(new Date("2026-08-31T12:37:00Z"));
+    const ended =
+      started.kind === "started"
+        ? endLivePracticeSession(pid, started.session.id)
+        : { kind: "not-live" as const };
+    expect(ended).toMatchObject({
+      kind: "ended",
+      session: {
+        start_time: "12:00",
+        end_time: "12:37",
+        duration_min: 37,
+        live: 0,
+        derived_window: 1,
+      },
+    });
+    expect(
+      started.kind === "started"
+        ? endLivePracticeSession(pid, started.session.id)
+        : null
+    ).toEqual({ kind: "not-live" });
+  });
+
+  it("closes a carried-over live row as start-only without fabricating values", () => {
+    const pid = makeProfile("live-rollover");
+    const started = startLivePracticeSession(pid, "Meditation", "page");
+    expect(started.kind).toBe("started");
+    vi.setSystemTime(new Date("2026-09-01T00:05:00Z"));
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    const [row] = getPracticeSessions(pid, "Meditation");
+    expect(row).toMatchObject({
+      date: "2026-08-31",
+      start_time: "12:00",
+      end_time: null,
+      duration_min: null,
+      live: 0,
+    });
+  });
+
+  it("keeps a notes-only live edit open, but changing its start abandons lifecycle", () => {
+    const pid = makeProfile("live-edit");
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    expect(
+      updatePracticeSession(pid, started.session.id, {
+        date: "2026-08-31",
+        startTime: "12:00",
+        endTime: null,
+        durationMin: null,
+        notes: "still running",
+      })
+    ).toMatchObject({ kind: "updated", session: { live: 1 } });
+
+    expect(
+      updatePracticeSession(pid, started.session.id, {
+        date: "2026-08-31",
+        startTime: "11:55",
+        endTime: null,
+        durationMin: null,
+        notes: "corrected start",
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { live: 0, start_time: "11:55", end_time: null },
+    });
+    expect(endLivePracticeSession(pid, started.session.id)).toEqual({
+      kind: "not-live",
+    });
+
+    const moved = startLivePracticeSession(pid, "Breathwork", "page");
+    expect(moved.kind).toBe("started");
+    if (moved.kind !== "started") return;
+    expect(
+      updatePracticeSession(pid, moved.session.id, {
+        date: "2026-08-30",
+        startTime: "11:55",
+        endTime: null,
+        durationMin: null,
+        notes: null,
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { date: "2026-08-30", live: 0, end_time: null },
+    });
+
+    const cleared = startLivePracticeSession(pid, "Meditation", "page");
+    expect(cleared.kind).toBe("started");
+    if (cleared.kind !== "started") return;
+    expect(
+      updatePracticeSession(pid, cleared.session.id, {
+        date: "2026-08-31",
+        startTime: null,
+        endTime: null,
+        durationMin: null,
+        notes: null,
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { start_time: null, live: 0, end_time: null },
+    });
+  });
+
+  it("abandons a live row from a different local day after a westward zone change", () => {
+    const pid = makeProfile("live-westward");
+    setTimezone(pid, "Pacific/Kiritimati");
+    vi.setSystemTime(new Date("2026-08-31T12:30:00Z")); // Sep 1 at UTC+14
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started).toMatchObject({ kind: "started", date: "2026-09-01" });
+
+    setTimezone(pid, "Pacific/Honolulu"); // Aug 31 at UTC-10
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-09-01",
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+  });
+
+  it("derives elapsed duration from instants across a DST clock jump", () => {
+    const pid = makeProfile("live-dst");
+    setTimezone(pid, "America/New_York");
+    vi.setSystemTime(new Date("2026-03-08T06:50:00Z")); // 01:50 EST
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started).toMatchObject({
+      kind: "started",
+      date: "2026-03-08",
+      session: { startTime: "01:50" },
+    });
+
+    vi.setSystemTime(new Date("2026-03-08T07:10:00Z")); // 03:10 EDT
+    expect(
+      started.kind === "started"
+        ? endLivePracticeSession(pid, started.session.id)
+        : null
+    ).toMatchObject({
+      kind: "ended",
+      date: "2026-03-08",
+      session: {
+        start_time: "01:50",
+        end_time: "03:10",
+        duration_min: 20,
+        live: 0,
+      },
+    });
+
+    expect(
+      logFinishedPracticeSession(pid, "Breathwork", "page", 30)
+    ).toMatchObject({ kind: "logged", date: "2026-03-08" });
+    expect(getPracticeSessions(pid, "Breathwork")[0]).toMatchObject({
+      date: "2026-03-08",
+      start_time: "01:40",
+      end_time: "03:10",
+      duration_min: 30,
+      derived_window: 1,
+    });
+
+    const repeated = makeProfile("live-dst-repeated-hour");
+    setTimezone(repeated, "America/New_York");
+    vi.setSystemTime(new Date("2026-11-01T05:50:00Z")); // 01:50 EDT
+    const repeatedStart = startLivePracticeSession(repeated, "Sauna", "page");
+    vi.setSystemTime(new Date("2026-11-01T06:20:00Z")); // 01:20 EST
+    expect(
+      repeatedStart.kind === "started"
+        ? endLivePracticeSession(repeated, repeatedStart.session.id)
+        : null
+    ).toMatchObject({
+      kind: "ended",
+      date: "2026-11-01",
+      session: {
+        start_time: "01:50",
+        end_time: "01:20",
+        duration_min: 30,
+        live: 0,
+      },
+    });
+  });
+
+  it.each([
+    [25, "11:35", "12:00", 25],
+    [null, null, "12:00", null],
+  ])(
+    "Just finished derives only from a visible duration (%s)",
+    (duration, start, end, storedDuration) => {
+      const pid = makeProfile(`finished-${duration ?? "blank"}`);
+      expect(
+        logFinishedPracticeSession(pid, "Breathwork", "page", duration)
+      ).toMatchObject({ kind: "logged" });
+      const [row] = getPracticeSessions(pid, "Breathwork");
+      expect(row).toMatchObject({
+        start_time: start,
+        end_time: end,
+        duration_min: storedDuration,
+        live: 0,
+      });
+    }
+  );
+
+  it("derives a quick-sheet window from the earlier end the user stated", () => {
+    const pid = makeProfile("finished-earlier");
+    expect(
+      logFinishedPracticeSession(pid, "Sauna", "quick-log", 25, null, {
+        date: "2026-08-31",
+        time: "07:05",
+      })
+    ).toMatchObject({ kind: "logged" });
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-08-31",
+      start_time: "06:40",
+      end_time: "07:05",
+      duration_min: 25,
+      derived_window: 1,
+    });
   });
 });

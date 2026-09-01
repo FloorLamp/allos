@@ -5,6 +5,7 @@ import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import type { ProtocolPractice } from "@/lib/queries/protocols";
+import type { LivePracticeSession } from "@/lib/types";
 import { protocolLogAction } from "@/lib/protocol-log-action";
 import {
   DOSE_ACTION_LABEL,
@@ -21,6 +22,7 @@ export default function ProtocolLogButton({
   atCeiling = false,
   today,
   defaultDurationMin = null,
+  liveSession = null,
   showDetails = false,
   inlineDuration = false,
   usualSessionDay = false,
@@ -34,6 +36,7 @@ export default function ProtocolLogButton({
   // The acting profile's today (YYYY-MM-DD) — see LogPracticeButton.
   today: string;
   defaultDurationMin?: number | null;
+  liveSession?: LivePracticeSession | null;
   showDetails?: boolean;
   // Render the inline duration stepper on the practice scope (#2204, owner ruling).
   // This was the LAST one-tap practice log that silently discarded the duration: the
@@ -67,6 +70,7 @@ export default function ProtocolLogButton({
         atCeiling={atCeiling}
         today={today}
         defaultDurationMin={defaultDurationMin}
+        liveSession={liveSession}
         showDetails={showDetails}
         inlineDuration={inlineDuration}
         usualSessionDay={usualSessionDay}

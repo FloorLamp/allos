@@ -208,6 +208,7 @@ export default function PracticeCard({
         atCeiling={practice.atCeiling}
         today={today}
         defaultDurationMin={practice.previousDurationMin}
+        liveSession={practice.liveSession}
         usualSessionDay={practice.usuallyToday}
         // Both controls, by owner ruling (#2204). `showDetails` keeps the expanded
         // form for the things only it can say — a past date, a corrected time,

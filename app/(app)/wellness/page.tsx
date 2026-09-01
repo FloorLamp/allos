@@ -18,7 +18,10 @@ import PracticeCard from "./PracticeCard";
 import DayHistory from "@/components/DayHistory";
 import PracticeBackfillLauncher from "@/components/practices/PracticeBackfillLauncher";
 import { daysBetweenDateStr, isRealIsoDate, shiftDateStr } from "@/lib/date";
-import { PRACTICE_LOG_DATE_WINDOW_DAYS } from "@/lib/practice-log";
+import {
+  closeAbandonedPracticeSessions,
+  PRACTICE_LOG_DATE_WINDOW_DAYS,
+} from "@/lib/practice-log";
 import { historyHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +32,7 @@ export default async function WellnessPage(props: {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
+  closeAbandonedPracticeSessions(profile.id, todayStr);
   const weekStart = getWeekStart(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const practices = getWellnessPractices(profile.id, todayStr, weekStart);
@@ -104,10 +108,6 @@ export default async function WellnessPage(props: {
         <PracticeBackfillLauncher
           items={practices.map((practice) => ({
             name: practice.name,
-            todayCount: practice.sessions.filter(
-              (session) => session.date === todayStr
-            ).length,
-            atCeiling: practice.atCeiling,
             defaultDurationMin: practice.previousDurationMin,
           }))}
           today={todayStr}

@@ -52,22 +52,27 @@ export function rhythmMinDates(weeks: number): number {
   return Math.max(2, Math.ceil(weeks * 0.4));
 }
 
-// The most common valid start hour among `times`, or null when none parses. Ties
-// keep the FIRST hour to reach the top count in input order — the same first-max
-// discipline the workout inference has always had, so extracting it changed no
-// answer. Callers that need determinism order their rows before calling.
-export function modalHour(times: readonly (string | null)[]): number | null {
-  const counts = new Map<number, number>();
-  for (const t of times) {
-    if (!t) continue;
-    const h = Number(t.slice(0, 2));
-    if (Number.isInteger(h) && h >= 0 && h <= 23)
-      counts.set(h, (counts.get(h) ?? 0) + 1);
-  }
-  let hour: number | null = null;
+// The most common value, with ties kept by input order. Readers put newest rows
+// first when "most recent wins" is their tie-break.
+export function modalValue<T>(values: readonly T[]): T | null {
+  const counts = new Map<T, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  let answer: T | null = null;
   let best = 0;
-  for (const [h, c] of counts) if (c > best) ((best = c), (hour = h));
-  return hour;
+  for (const [value, count] of counts)
+    if (count > best) ((best = count), (answer = value));
+  return answer;
+}
+
+// The most common valid start hour among `times`, or null when none parses.
+export function modalHour(times: readonly (string | null)[]): number | null {
+  return modalValue(
+    times.flatMap((time) => {
+      if (!time) return [];
+      const hour = Number(time.slice(0, 2));
+      return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? [hour] : [];
+    })
+  );
 }
 
 // The core: the workout inference's exact shape (#558) over caller-supplied rows.
