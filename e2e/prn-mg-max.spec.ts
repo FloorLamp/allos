@@ -132,9 +132,9 @@ test("the over-max finding fires on summed milligrams and states the mg basis", 
     await expect(finding).toContainText(`${OTC_NAME} — over your daily max`);
     // Milligram copy — summed exposure vs the mg/day ceiling, both members
     // named, and NEVER a dose-count framing (the basis is stated, #1854).
-    await expect(finding).toContainText("2400 mg logged today");
+    await expect(finding).toContainText("2400 mg logged in 24h");
     await expect(finding).toContainText(
-      "most conservative confirmed max of 1200 mg per day"
+      "most conservative confirmed max of 1200 mg per 24h"
     );
     await expect(finding).toContainText(RX_NAME);
     await expect(finding).not.toContainText("doses logged");

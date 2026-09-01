@@ -417,3 +417,90 @@ describe("SymptomLogBar mounts both pieces", () => {
     expect(payload("temperature", 1).time).toBe("07:15");
   });
 });
+
+// ONE DAY CONTEXT PER SURFACE (#4691). The bar renders a Today/Yesterday toggle and
+// then bound three things to three different days: the severity taps followed it, the
+// temperature fold hard-set the primary date under a comment that said so, and the
+// staged-sentence composite split the difference. The claim is a RELATIONSHIP — what
+// the fold DISPLAYS is what it WRITES — so it is asserted through the control's own
+// rendered day and the posted `date` together, on both sides of the toggle.
+describe("the day the bar shows is the day it writes (#4691)", () => {
+  function toggledBar(): void {
+    render(
+      <SymptomLogBar
+        date={TODAY}
+        altDate={FOUND_DAY}
+        initial={{}}
+        initialAlt={{}}
+        initialNotes={{}}
+        symptoms={PICKER_SYMPTOMS}
+        customNames={[]}
+        suggestActivateIllness={false}
+        showTemperature
+        temperatureUnit="F"
+        timeZone="UTC"
+        profileId={SUBJECT}
+        showTitle={false}
+      />
+    );
+  }
+
+  async function openTemp(value: string): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("temp-quick-input"), {
+      target: { value },
+    });
+  }
+
+  async function saveTemp(): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-save"))
+    );
+  }
+
+  it.each([
+    ["primary", TODAY],
+    ["alt", FOUND_DAY],
+  ])("the temperature fold on %s writes that day", async (side, day) => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId(`symptom-day-${side}`))
+    );
+    await openTemp("101.4");
+    // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
+    // draws it as text rather than a picker and the pair rule holds by construction.
+    // (Both fixture days are in the past, so neither renders as "Today" here.)
+    expect(screen.getByTestId("temp-quick-date").textContent).toContain(day);
+    // …and what it WRITES is that same day.
+    await saveTemp();
+    expect(payload("temperature").date).toBe(day);
+  });
+
+  it("switching days re-anchors the stated reading time instead of carrying it over", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "19:10" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).value
+    ).toBe("");
+  });
+
+  it("a confirmed sentence lands on the day the bar is standing on", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await openTemp("99.2");
+    await saveTemp();
+    expect(payload("temperature").date).toBe(FOUND_DAY);
+  });
+});

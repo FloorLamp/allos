@@ -59,10 +59,22 @@ test.describe("Illness round 3 (#859)", () => {
 
     // Item 2: once a fever-range reading exists, a compact school-return status
     // joins the latest temperature and medication row (after router.refresh()).
+    // With NOTHING measured since that 104.5 the status says exactly that (#4685) —
+    // a countdown here would be counting the minutes since the fever as fever-free.
     const feverFreeStatus = page.getByTestId("school-return-status");
     await expect(feverFreeStatus).toBeVisible();
-    await expect(feverFreeStatus).toContainText(/Fever-free \d+h\/\d+h/i);
+    await expect(feverFreeStatus).toContainText(/No reading since/i);
+    await expect(feverFreeStatus).not.toContainText(/Fever-free/i);
     await expect(feverFreeStatus).toHaveClass(/text-slate-500/);
+
+    // …and the converse, from the same surface: a NORMAL reading is the evidence the
+    // clock starts on, so the countdown appears the moment one is logged.
+    await openTempEntry(bar);
+    await bar.getByTestId("temp-quick-unit").selectOption("F");
+    await bar.getByTestId("temp-quick-input").fill("98.4");
+    await bar.getByTestId("temp-quick-save").click();
+    await expect(page.getByText(/Temperature logged/i).first()).toBeVisible(); // first-ok: the newest toast for this write — order-agnostic
+    await expect(feverFreeStatus).toContainText(/Fever-free \d+h\/\d+h/i);
     const latestReadings = page.getByTestId("episode-latest-readings");
     await expect(
       latestReadings.getByTestId("school-return-status")
