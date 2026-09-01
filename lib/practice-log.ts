@@ -271,13 +271,13 @@ export function updatePracticeSession(
         : null;
     const notes = input.notes?.trim() || null;
     // An ordinary edit cannot open a lifecycle row. It may preserve one only while
-    // the row is still on the profile's today, still has its start, and still has no
-    // stated end. Supplying an end, clearing the start, or moving the row to another
-    // day is an explicit completion/abandonment statement, so keeping `live = 1`
-    // would leave an unendable or ended row offering "End session".
+    // the row stays on its original day, still has its start, and still has no stated
+    // end. Supplying an end, clearing the start, or moving the row to another day is
+    // an explicit completion/abandonment statement, so keeping `live = 1` would leave
+    // an unendable or ended row offering "End session".
     const live =
       current.live === 1 &&
-      input.date === today(profileId) &&
+      input.date === current.date &&
       startTime === current.start_time &&
       startTime != null &&
       endTime == null &&
