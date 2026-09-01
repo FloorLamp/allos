@@ -136,6 +136,10 @@ const VOCABULARY = {
     { key: "nicotine", label: "Nicotine" },
     { key: "cannabis", label: "Cannabis" },
   ],
+  symptoms: [
+    { key: "headache", label: "Headache" },
+    { key: "cough", label: "Cough" },
+  ],
   weightUnit: "lb" as const,
   usual: [] as UsualOffer[],
 };

@@ -5,7 +5,6 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import {
   IconX,
   IconPlus,
-  IconNote,
   IconChevronDown,
   IconChartBar,
 } from "@tabler/icons-react";
@@ -20,10 +19,7 @@ import {
 import Combobox from "@/components/Combobox";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
-import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
-import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import NotesText from "@/components/NotesText";
 import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
@@ -32,9 +28,6 @@ import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
 import {
   logSymptom,
-  lowerSymptom,
-  setSymptomNote,
-  removeSymptom,
   logTemperature,
   activateIllnessForSymptoms,
   suggestSymptomsFromText,
@@ -43,6 +36,7 @@ import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 import type { AppRoute } from "@/lib/hrefs";
 import Link from "next/link";
 import SymptomSeverityControl from "@/components/illness/SymptomSeverityControl";
+import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import Button from "@/components/Button";
 import IconButton from "@/components/IconButton";
 
@@ -162,9 +156,6 @@ export default function SymptomLogBar({
   }));
   const [customDraft, setCustomDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  // The logged row whose note input is open, or null.
-  const [noteEditing, setNoteEditing] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
   const [, startTransition] = useTransition();
   const toast = useToast();
   const ledger = useOptimisticLedger<number>("symptom-severity");
@@ -434,127 +425,6 @@ export default function SymptomLogBar({
       },
       onError: () => {
         toast("Couldn't log that symptom — try again.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-    });
-  }
-
-  // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
-  // lowers, calls the narrow lower action, and reconciles. Preserves the day's note.
-  async function lower(key: string, severity: number) {
-    const prev = severities[key] ?? 0;
-    if (severity >= prev) return;
-    await ledger.tap({
-      key: `${key}:${prev}->${severity}`,
-      from: prev,
-      optimistic: severity,
-      commit: (value) => setSeverity(key, value),
-      write: () => {
-        const fd = new FormData();
-        fd.set("symptom", key);
-        fd.set("severity", String(severity));
-        fd.set("date", activeDate);
-        return lowerSymptom(withTarget(fd));
-      },
-      settle: (res) => {
-        if (res.ok) return { kind: "adopt", value: res.severity };
-        toast(res.error || "Couldn't lower that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-      onError: () => {
-        toast("Couldn't lower that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-    });
-  }
-
-  async function saveNote(key: string, value: string) {
-    const prev = notes[key] ?? "";
-    setNote(key, value);
-    setNoteEditing(null);
-    const fd = new FormData();
-    fd.set("symptom", key);
-    fd.set("date", activeDate);
-    fd.set("note", value);
-    const res = await setSymptomNote(withTarget(fd));
-    if (!res.ok) {
-      setNote(key, prev);
-      toast(res.error || "Couldn't save that note.", { tone: "error" });
-    }
-  }
-
-  // The × is a one-tap delete that used to reach OFF-DB — it unlinked the day's photo
-  // FILES — with no confirm and nothing to take it back (#2124). It stays one tap,
-  // deliberately: for a symptom chip a confirm on every clear is the wrong tax, and
-  // undo-after-the-fact is the calmer contract. So the capture the action now returns
-  // gets a toast whose Undo restores the row, its photo rows and their files, and puts
-  // the chip back where it was.
-  //
-  // No token means nothing was deleted (the day was already clear) — a plain
-  // confirmation then, never an Undo that would restore nothing.
-  function offerUndo(
-    key: string,
-    undoId: number | null,
-    prevSeverity: number,
-    prevNote: string
-  ) {
-    if (undoId == null) return;
-    toast("Symptom removed.", {
-      duration: UNDO_TOAST_MS,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          void (async () => {
-            const { ok } = await undoDelete(undoId);
-            if (!ok) {
-              toast("Couldn’t undo — it may have expired.", { tone: "error" });
-              return;
-            }
-            // Put the chip back at the severity the row was restored with, and its
-            // note with it — the restore re-inserted the captured row verbatim, so the
-            // local state that named it is exactly right again.
-            setSeverity(key, prevSeverity);
-            if (prevNote) setNote(key, prevNote);
-            toast("Restored.");
-          })();
-        },
-      },
-    });
-  }
-
-  async function clear(key: string) {
-    const prev = severities[key] ?? 0;
-    const prevNote = notes[key] ?? "";
-    setNote(key, "");
-    if (noteEditing === key) setNoteEditing(null);
-    const restoreNote = () => {
-      if (prevNote) setNote(key, prevNote);
-    };
-    await ledger.tap({
-      key: `${key}:${prev}->clear`,
-      from: prev,
-      optimistic: 0,
-      commit: (value) => setSeverity(key, value),
-      write: () => {
-        const fd = new FormData();
-        fd.set("symptom", key);
-        fd.set("date", activeDate);
-        return removeSymptom(withTarget(fd));
-      },
-      settle: (res) => {
-        // The × has no authoritative number to adopt — the row is gone — so the
-        // optimistic zero stands and only a refusal puts the day back.
-        if (res.ok) {
-          offerUndo(key, res.undoId ?? null, prev, prevNote);
-          return { kind: "keep" };
-        }
-        restoreNote();
-        toast(res.error || "Couldn't remove that symptom.", { tone: "error" });
-        return { kind: "rollback" };
-      },
-      onError: () => {
-        restoreNote();
-        toast("Couldn't remove that symptom.", { tone: "error" });
         return { kind: "rollback" };
       },
     });
@@ -967,7 +837,6 @@ export default function SymptomLogBar({
             if (!r) return null;
             const sev = severities[key] ?? 0;
             const note = notes[key] ?? "";
-            const editingNote = noteEditing === key;
             return (
               <li
                 key={key}
@@ -979,84 +848,20 @@ export default function SymptomLogBar({
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
-                  {/* `gap-3` is the reach floor (#3938). */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <SymptomSeverityControl
-                      symptomLabel={r.label}
-                      value={sev}
-                      testIdPrefix={`symptom-${key}-sev`}
-                      onChange={(severity) => {
-                        if (severity < sev) void lower(key, severity);
-                        else void tap(key, severity);
-                      }}
-                    />
-                    <IconButton
-                      type="button"
-                      data-testid={`symptom-${key}-note-toggle`}
-                      label={`${note ? "Edit" : "Add"} note for ${r.label}`}
-                      pressed={editingNote}
-                      tone={note ? "brand" : "neutral"}
-                      onClick={() => {
-                        if (editingNote) setNoteEditing(null);
-                        else {
-                          setNoteDraft(note);
-                          setNoteEditing(key);
-                        }
-                      }}
-                    >
-                      <IconNote className="h-3.5 w-3.5" />
-                    </IconButton>
-                    <IconButton
-                      type="button"
-                      data-testid={`symptom-${key}-clear`}
-                      label={`Clear ${r.label}`}
-                      disabled={sev <= 0}
-                      onClick={() => clear(key)}
-                    >
-                      <IconX className="h-3.5 w-3.5" />
-                    </IconButton>
-                  </div>
-                </div>
-
-                {editingNote && (
-                  <form
-                    className="mt-1 flex items-center gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void saveNote(key, noteDraft);
-                    }}
-                  >
-                    <input
-                      data-testid={`symptom-${key}-note-input`}
-                      autoFocus
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      onBlur={() => {
-                        if (noteDraft !== (notes[key] ?? ""))
-                          void saveNote(key, noteDraft);
-                        else setNoteEditing(null);
-                      }}
-                      placeholder="Note (e.g. worse at night)…"
-                      maxLength={500}
-                      className="input flex-1 text-sm"
-                    />
-                    <Button
-                      type="submit"
-                      data-testid={`symptom-${key}-note-save`}
-                    >
-                      Save
-                    </Button>
-                  </form>
-                )}
-
-                {!editingNote && note && (
-                  <NotesText
-                    data-testid={`symptom-${key}-note`}
-                    as="p"
-                    notes={note}
-                    className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3). The bar owns which
+                      rows are logged; the control owns what each one's taps write. */}
+                  <SymptomRowControl
+                    symptom={key}
+                    label={r.label}
+                    date={activeDate}
+                    severity={sev}
+                    note={note}
+                    subjectProfileId={profileId}
+                    episodeId={episodeId}
+                    onSeverity={(value) => setSeverity(key, value)}
+                    onNote={(value) => setNote(key, value)}
                   />
-                )}
+                </div>
               </li>
             );
           })}

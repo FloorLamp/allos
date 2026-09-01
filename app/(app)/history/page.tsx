@@ -57,7 +57,7 @@ import {
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
-import { PICKER_SYMPTOMS } from "@/lib/symptoms";
+import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { isTaskConfigured } from "@/lib/ai-resolve";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
@@ -497,16 +497,22 @@ export default async function HistoryPage(props: {
   // one. Each list is a shared reader the kind's own surface already uses — no fifth
   // derivation of "what can this profile log".
   // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
-  // life records are created on their domain surfaces, and the two remaining Logs kinds
-  // are not declared either: sleep arrives from an integration and is corrected at its
-  // source, and a symptom is quick-logged — the day view mounts the bar that does it.
+  // life records are created on their domain surfaces, and sleep arrives from an
+  // integration and is corrected at its source.
+  //
+  // SYMPTOM ONLY WHERE THE BAR IS NOT (#4424 ruling 2). A symptom is quick-logged and
+  // the day view mounts the bar that does it — but a reader filtered to `?kind=symptom`
+  // is standing on no day, so that argument covered a view the bar never reaches: the
+  // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
     kind === "practice" ||
     kind === "substance" ||
     kind === "body"
       ? kind
-      : null;
+      : kind === "symptom" && day == null
+        ? kind
+        : null;
   const addVocabulary =
     canWrite && addKind
       ? {
@@ -520,6 +526,20 @@ export default async function HistoryPage(props: {
                   key,
                   label: substanceDef(key).label,
                 }))
+              : [],
+          // THE SAME VOCABULARY THE BAR OFFERS, in the same ranked order (#857): this
+          // profile's history first, then the curated catalog, then its own customs.
+          // Free text still logs — `logSymptomCore` is the one place a custom key is
+          // minted, so the door never has to guess one.
+          symptoms:
+            addKind === "symptom"
+              ? [
+                  ...new Set([
+                    ...getSymptomLogOrder(actingProfileId),
+                    ...PICKER_SYMPTOMS.map((entry) => entry.slug),
+                    ...getCustomSymptomNames(actingProfileId),
+                  ]),
+                ].map((key) => ({ key, label: symptomLabel(key) }))
               : [],
           weightUnit: getUnitPrefs(loginId).weightUnit,
           // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
@@ -541,7 +561,9 @@ export default async function HistoryPage(props: {
       ? addVocabulary.practices.length > 0
       : addKind === "substance"
         ? addVocabulary.substances.length > 0
-        : true
+        : addKind === "symptom"
+          ? addVocabulary.symptoms.length > 0
+          : true
     : kind === "dose" && loggable.length > 0;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
@@ -965,7 +987,6 @@ export default async function HistoryPage(props: {
               {HISTORY_LOG_KINDS.filter(
                 (candidate) =>
                   candidate !== "sleep" &&
-                  candidate !== "symptom" &&
                   (presentKinds.length === 0 ||
                     presentKinds.includes(candidate))
               ).map((candidate) => (
