@@ -97,10 +97,8 @@ test("pull-to-refresh answers honestly and stays top-only", async ({
     await page.goto("/history");
     let fail = true;
     await page.route("**/*", (route) => {
-      const headers = route.request().headers();
-      return fail && headers.rsc && !headers["next-router-prefetch"]
-        ? route.abort("failed")
-        : route.fallback();
+      if (fail && route.request().headers().rsc) return route.abort("failed");
+      return route.fallback();
     });
 
     const indicator = page.getByTestId(INDICATOR);
@@ -109,9 +107,8 @@ test("pull-to-refresh answers honestly and stays top-only", async ({
 
     await pullDown(page, 200);
     await expect(indicator).toHaveAttribute("data-state", "failed");
-    await expect(indicator).toContainText(
-      "Couldn't refresh — still showing earlier data."
-    );
+    const failedCopy = "Couldn't refresh — still showing earlier data.";
+    await expect(indicator).toContainText(failedCopy);
 
     // A real pull from the top: past the arming threshold (the classifier halves
     // finger travel, so 200px of drag is comfortably armed).

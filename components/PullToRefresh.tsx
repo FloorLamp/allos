@@ -10,7 +10,6 @@ import {
   classifyPull,
   indicatorPresentation,
   overlayOwnsViewport,
-  shouldRefresh,
   type PullState,
 } from "@/lib/pull-to-refresh";
 
@@ -57,11 +56,8 @@ function bodyScrollLocked(): boolean {
   return document.body.style.overflow === "hidden";
 }
 
-function renderedAt(): string {
-  return document.querySelector<HTMLElement>("main[data-rendered-at]")!.dataset
-    .renderedAt!;
-}
-
+const renderedAt = () =>
+  document.querySelector("main")!.getAttribute("data-rendered-at")!;
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
 // they are what the e2e spec asserts against, since "did router.refresh() get
 // called" is otherwise invisible from the outside. `data-refreshes` counts
@@ -97,13 +93,11 @@ export default function PullToRefresh() {
     beforeRefresh.current = null;
     setState({ kind: renderedAt() !== before ? "updated" : "failed" });
   }, [pending]);
-
   useEffect(() => {
     if (state.kind !== "updated") return;
     const timer = window.setTimeout(() => setState({ kind: "idle" }), 1500);
     return () => window.clearTimeout(timer);
   }, [state.kind]);
-
   useEffect(() => {
     if (!enabled) return;
     // Keep the overscroll inside the page so the gesture can't chain out to the
@@ -145,16 +139,14 @@ export default function PullToRefresh() {
       setState(next);
     };
     const onEnd = () => {
+      const refresh = armed.current;
       start.current = null;
       armed.current = false;
-      setState((current) => {
-        if (shouldRefresh(current)) {
-          setRefreshes((n) => n + 1);
-          beforeRefresh.current = renderedAt();
-          startTransition(() => router.refresh());
-        }
-        return { kind: "idle" };
-      });
+      setState({ kind: "idle" });
+      if (!refresh) return;
+      setRefreshes((n) => n + 1);
+      beforeRefresh.current = renderedAt();
+      startTransition(() => router.refresh());
     };
 
     // Passive: the gesture never calls preventDefault (overscroll-behavior above

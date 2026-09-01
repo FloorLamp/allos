@@ -112,16 +112,17 @@ export interface PullInput {
   deltaX: number;
 }
 
-export type PullGestureState =
+export type PullState =
   // Not a pull-to-refresh gesture. The component shows nothing and a release
   // does nothing.
   | { kind: "idle" }
   // A pull in progress, below the arming threshold: releasing snaps back.
   | { kind: "pulling"; distance: number; progress: number }
   // Past the threshold: releasing refreshes.
-  | { kind: "armed"; distance: number; progress: number };
-export type PullState =
-  PullGestureState | { kind: "updated" } | { kind: "failed" };
+  | { kind: "armed"; distance: number; progress: number }
+  | { kind: "updated" }
+  | { kind: "failed" };
+type PullGestureState = Exclude<PullState, { kind: "updated" | "failed" }>;
 
 // Classify the gesture so far. Pure and total; `progress` is 0..1 against the
 // arming threshold, for the indicator's rotation/opacity.
@@ -174,12 +175,10 @@ export function indicatorPresentation(
   pending: boolean,
   reduceMotion: boolean
 ): IndicatorPresentation {
-  const message =
-    state.kind === "updated"
-      ? "Updated"
-      : state.kind === "failed"
-        ? "Couldn't refresh — still showing earlier data."
-        : null;
+  let message: string | null = null;
+  if (state.kind === "updated") message = "Updated";
+  if (state.kind === "failed")
+    message = "Couldn't refresh — still showing earlier data.";
   const active = state.kind !== "idle";
   const committed = state.kind === "armed" || pending || message !== null;
 
@@ -194,13 +193,10 @@ export function indicatorPresentation(
 
   // Mid-refresh the gesture is already released, so there is no finger to track:
   // the indicator holds at half travel until the transition settles.
-  const gesture = state.kind === "pulling" || state.kind === "armed";
-  const distance = gesture
-    ? state.distance
-    : pending || message
-      ? PTR_MAX_PX / 2
-      : 0;
-  const progress = gesture ? state.progress : pending || message ? 1 : 0;
+  const settled = pending || message !== null;
+  const distance =
+    "distance" in state ? state.distance : settled ? PTR_MAX_PX / 2 : 0;
+  const progress = "progress" in state ? state.progress : settled ? 1 : 0;
   return {
     translateY: distance,
     opacity: progress,

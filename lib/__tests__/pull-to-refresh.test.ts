@@ -205,7 +205,6 @@ describe("indicatorPresentation", () => {
       message: "Couldn't refresh — still showing earlier data.",
     });
   });
-
   it("tracks the finger while pulling", () => {
     const style = indicatorPresentation(HALF_PULL, false, false);
     expect(style.translateY).toBe(HALF_PULL.distance);
