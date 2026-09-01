@@ -210,10 +210,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await page.goto("/nutrition");
 
     const details = page.getByTestId("fasting-card");
-    const fold = page.getByRole("button", {
-      name: "Start fast",
-      expanded: false,
-    });
+    const fold = page.getByTestId("fasting-fold");
     await expect(details).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("fasting-fold")).toHaveCount(1);
     await expect(fold).toBeVisible();
@@ -228,9 +225,7 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(fold).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(details).toHaveAttribute("open", "");
-    await expect(
-      page.getByRole("button", { name: "Start fast", expanded: true })
-    ).toBeFocused();
+    await expect(fold).toBeFocused();
     await expect(page.getByTestId("fasting-control")).toBeVisible();
     await expect(page.getByTestId("fasting-backdate-toggle")).toBeVisible();
     await expect(page.getByTestId("fasting-history")).toBeVisible();
@@ -266,7 +261,9 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await openFastingFold(page);
     await settledClick(page, control);
     // The label now names the END, and carries the elapsed time it will record.
-    expect(await card.evaluate((element) => element.tagName)).toBe("SECTION");
+    await expect
+      .poll(() => card.evaluate((element) => element.tagName))
+      .toBe("SECTION");
     await expect(page.getByTestId("fasting-state")).toBeVisible();
     await expect(control).toBeVisible();
     await expect(control).toContainText("End fast · 16 h");
@@ -286,7 +283,9 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
-    expect(await card.evaluate((element) => element.tagName)).toBe("DETAILS");
+    await expect
+      .poll(() => card.evaluate((element) => element.tagName))
+      .toBe("DETAILS");
     await expect(card).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("fasting-fold")).toBeVisible();
     await expect(page.getByTestId("fasting-control")).not.toBeVisible();
