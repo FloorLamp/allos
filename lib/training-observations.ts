@@ -435,8 +435,10 @@ export function repsProgressing(points: readonly E1rmPoint[]): boolean {
 }
 
 // Plateaued lifts: established series whose windowed e1RM is flat. `today` windows
-// each series to the trailing PLATEAU_WINDOW_DAYS. Alphabetical for deterministic
-// ordering across surfaces. `upcomingDeload` (#741), when the routine's deload week
+// each series to the trailing PLATEAU_WINDOW_DAYS. Most recently trained first
+// (#4069) — the cap downstream truncates on this order, and a stall on the lift
+// someone trained this week is the one worth telling them about; the letter it
+// starts with is not a relevance signal. `upcomingDeload` (#741), when the routine's deload week
 // is ≤2 weeks out, swaps the ad-hoc "drop the load ~10%" advice for a pointer at
 // that scheduled light week — SAME finding identity (key/legacyKey/title), only the
 // detail copy changes, so a dismissal carries across the phrasing.
@@ -446,7 +448,7 @@ export function detectPlateaus(
   upcomingDeload: UpcomingDeload | null = null
 ): TrainingObservation[] {
   const cutoffAgo = PLATEAU_WINDOW_DAYS;
-  const out: TrainingObservation[] = [];
+  const out: { obs: TrainingObservation; lastTrained: string }[] = [];
   for (const s of series) {
     // An ASSISTED movement raises no plateau (#1922). The finding's whole content is
     // "your load stopped rising, drop it ~10% and rebuild" — advice that reads
@@ -477,19 +479,31 @@ export function detectPlateaus(
     const equipment = s.equipment ?? null;
     const detail = plateauFindingDetail(s.exercise, upcomingDeload, equipment);
     out.push({
-      kind: "plateau",
-      key: plateauSignalKey(s.exercise, levelAnchor, equipmentId),
-      legacyKey: plateauLegacyKey(s.exercise, equipmentId),
-      title: `${plateauSubject(s.exercise, equipment)} has plateaued`,
-      detail,
-      exercise: s.exercise,
-      equipmentId,
+      lastTrained: windowed.reduce((a, p) => (p.date > a ? p.date : a), ""),
+      obs: {
+        kind: "plateau",
+        key: plateauSignalKey(s.exercise, levelAnchor, equipmentId),
+        legacyKey: plateauLegacyKey(s.exercise, equipmentId),
+        title: `${plateauSubject(s.exercise, equipment)} has plateaued`,
+        detail,
+        exercise: s.exercise,
+        equipmentId,
+      },
     });
   }
-  // Alphabetical for deterministic ordering, then by key so two load contexts of ONE
-  // movement (same display name) keep a stable order too (#1610).
-  return out.sort(
-    (a, b) =>
-      a.exercise!.localeCompare(b.exercise!) || a.key.localeCompare(b.key)
-  );
+  // Most recently trained first (#4069). Ties keep the pre-ruling stable order —
+  // alphabetical, then by key so two load contexts of ONE movement (same display
+  // name) stay stable too (#1610) — so determinism survives the re-pointing.
+  return out
+    .sort(
+      (a, b) =>
+        (a.lastTrained < b.lastTrained
+          ? 1
+          : a.lastTrained > b.lastTrained
+            ? -1
+            : 0) ||
+        a.obs.exercise!.localeCompare(b.obs.exercise!) ||
+        a.obs.key.localeCompare(b.obs.key)
+    )
+    .map((x) => x.obs);
 }

@@ -122,6 +122,10 @@ export interface DemotionCandidate {
   occurrences: number;
   takenDays: number;
   takenRate: number;
+  // How long the lapse has been running, in scheduled occurrences since the last one
+  // the profile followed through on (the whole window when they never did). The
+  // family's cap truncates on it (#4069 — longest lapsed first).
+  lapsedOccurrences: number;
 }
 
 // ---- Detection ------------------------------------------------------------
@@ -171,6 +175,12 @@ export function detectDemotionCandidate(
   const takenDays = occurrences.filter(isTaken).length;
   const takenRate = takenDays / occurrences.length;
   if (takenRate > DEMOTION_MAX_TAKEN_RATE) return null;
+  // Occurrences since the last follow-through — the whole window when there was
+  // none, since findLastIndex returns -1. Counted in occurrences rather than days so
+  // it reads in the same unit as the evidence above and makes no assumption about
+  // the strip's shape.
+  const lapsedOccurrences =
+    occurrences.length - 1 - occurrences.findLastIndex(isTaken);
 
   const pct = Math.round(takenRate * 100);
   const anchor = input.periodAnchor ?? "";
@@ -189,18 +199,27 @@ export function detectDemotionCandidate(
     occurrences: occurrences.length,
     takenDays,
     takenRate,
+    lapsedOccurrences,
   };
 }
 
-// Every demotion candidate across a profile's items, deterministic (by name, then
-// item id). The caller applies the shared findings-bus suppression filter.
+// Every demotion candidate across a profile's items, LONGEST LAPSED FIRST (#4069):
+// the family's cap truncates on this order, and the supplement someone stopped
+// taking longest ago is the one closest to being a `may` — the letter it starts with
+// is not a relevance signal. Ties keep the pre-ruling stable order (name, then item
+// id), so determinism survives. The caller applies the findings-bus suppression filter.
 export function detectDemotionCandidates(
   inputs: readonly DemotionInput[]
 ): DemotionCandidate[] {
   return inputs
     .map(detectDemotionCandidate)
     .filter((c): c is DemotionCandidate => c != null)
-    .sort((a, b) => a.name.localeCompare(b.name) || a.itemId - b.itemId);
+    .sort(
+      (a, b) =>
+        b.lapsedOccurrences - a.lapsedOccurrences ||
+        a.name.localeCompare(b.name) ||
+        a.itemId - b.itemId
+    );
 }
 
 // ---- The accept outcome ---------------------------------------------------

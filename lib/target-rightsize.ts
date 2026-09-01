@@ -266,15 +266,24 @@ export function detectRightSizeCandidate(
   };
 }
 
-// Every right-size candidate across a profile's targets, deterministic (by label,
-// then target id). The caller applies the shared findings-bus suppression filter.
+// Every right-size candidate across a profile's targets, FURTHEST FROM TARGET FIRST
+// (#4069) — the shortfall `floor - best`, in the target's own units. The family's cap
+// truncates on this order, and the floor someone is furthest under is the one most
+// worth re-sizing; the label's first letter is not a relevance signal. Ties keep the
+// pre-ruling stable order (label, then target id), so determinism survives. The
+// caller applies the shared findings-bus suppression filter.
 export function detectRightSizeCandidates(
   inputs: readonly RightSizeInput[]
 ): RightSizeCandidate[] {
   return inputs
     .map(detectRightSizeCandidate)
     .filter((c): c is RightSizeCandidate => c != null)
-    .sort((a, b) => a.label.localeCompare(b.label) || a.targetId - b.targetId);
+    .sort(
+      (a, b) =>
+        b.floor - b.best - (a.floor - a.best) ||
+        a.label.localeCompare(b.label) ||
+        a.targetId - b.targetId
+    );
 }
 
 // ---- The accept outcomes --------------------------------------------------
