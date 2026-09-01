@@ -9,8 +9,8 @@
 //     the marker is keyed by the administration id (the notify_last_* discipline).
 //   • It RE-ARMS only when a NEWER administration is logged (a new id ⇒ the marker no
 //     longer matches ⇒ eligible again).
-//   • It is SUPPRESSED once the day's count reaches the confirmed max (no "you can
-//     take more" past the label max).
+//   • It is SUPPRESSED once the CEILING WINDOW's count reaches the confirmed max (no
+//     "you can take more" past the label max).
 //
 // The opt-in + confirmed-fields gate lives in the gather query (getRedoseNoticeItems
 // only returns opted-in items with BOTH interval and max confirmed), so this function
@@ -24,7 +24,7 @@
 // ---- Over-max care finding (#798, #148 UL-warning shape applied to count/day) ----
 
 // The findings-bus namespace for the "over the confirmed daily max" care finding. A
-// per-item, count-per-day analogue of the dietary-limit (UL) warning: when today's
+// per-item analogue of the dietary-limit (UL) warning: when the ceiling window's
 // administrations EXCEED the user's confirmed max_daily_count, surface a dismissible
 // care-tier finding (Upcoming + dashboard placement). Registered on the
 // intake-surface dismiss guard so a dismiss silences it like any other finding.
@@ -36,12 +36,24 @@ import {
 
 export const PRN_MAX_PREFIX = "prn-max:";
 
-// ---- Day exposure: milligrams when known, administrations as the fallback ----
+// ---- THE CEILING WINDOW (issue #4686) ----
+// Every `maxDailyCount` / `maxDailyAmountMg` in the app is a public OTC Drug Facts
+// figure, and the label states it as a ROLLING 24-HOUR cap ("do not take more than 5
+// doses in 24 hours"), never as a calendar day. Judging it on the profile-local day was
+// more permissive than the label in exactly one place — across midnight — which is the
+// fevered-child-overnight case these counters exist for: three doses before midnight
+// read "3 of 5", the count reset to 0, and five more before the same hour next
+// afternoon put eight doses inside 24 hours with every surface reading calm. A
+// day-scoped count may still be RENDERED where a surface genuinely shows a day (the
+// "3 today · last 4:02pm" line); no ceiling judgment reads one.
+export const PRN_CEILING_WINDOW_HOURS = 24;
+
+// ---- Window exposure: milligrams when known, administrations as the fallback ----
 // (issue #1854). The family-wide counters (#1027) made "a dose" ambiguous: 200 mg
 // OTC ibuprofen and 800 mg Rx ibuprofen are the same ingredient but 4× the
 // exposure. The confirm-dose snapshot stamps the amount onto every log row, so
 // when a mg/day max is confirmed AND every administration's amount parses, the
-// day's exposure is the SUM of snapshotted milligrams; the confirmed count stays
+// window's exposure is the SUM of snapshotted milligrams; the confirmed count stays
 // the fallback basis. ONE computation — the over-max care finding, the med-card /
 // widget / Telegram status line, and the redose notice's ceiling all read this.
 
@@ -65,11 +77,11 @@ export function parseAmountMg(
   return value / 1000; // mcg/µg/ug
 }
 
-// The basis the day's PRN exposure was computed on. "mg" only when it is honest:
+// The basis the window's PRN exposure was computed on. "mg" only when it is honest:
 // a confirmed mg/day max AND (for the full-precision path) parseable amounts.
 export type PrnExposureBasis = "mg" | "count";
 
-export interface PrnDayExposure {
+export interface PrnWindowExposure {
   basis: PrnExposureBasis;
   // Summed milligrams (mg basis) or the administration count (count basis).
   total: number;
@@ -79,14 +91,14 @@ export interface PrnDayExposure {
   over: boolean;
   // At or over — the notice-suppression / "Max reached" ceiling.
   atMax: boolean;
-  // mg basis only: today's administrations whose snapshotted amount did NOT
+  // mg basis only: the window's administrations whose snapshotted amount did NOT
   // parse. Non-zero only on the lower-bound path (no count fallback existed), and
   // the copy must then say "at least". Always 0 on the count basis.
   unknownAmounts: number;
 }
 
-// Decide the day's exposure for one ingredient family. `amounts` are the
-// snapshotted amount strings of TODAY's taken administrations across the family;
+// Decide the window's exposure for one ingredient family. `amounts` are the
+// snapshotted amount strings of the window's taken administrations across the family;
 // the maxes are the most conservative CONFIRMED ceilings among members (null =
 // no member confirmed one). Basis selection, most honest first:
 //   1. mg — mg max confirmed and EVERY administration's amount parses.
@@ -96,11 +108,11 @@ export interface PrnDayExposure {
 //      (a lower bound past the ceiling is past the ceiling), with
 //      `unknownAmounts` carried so the copy never claims full precision.
 // Neither max confirmed ⇒ null (the #798 liability gate: no ceiling, no verdict).
-export function prnDayExposure(input: {
+export function prnWindowExposure(input: {
   amounts: (string | null)[];
   maxDailyAmountMg: number | null;
   maxDailyCount: number | null;
-}): PrnDayExposure | null {
+}): PrnWindowExposure | null {
   const mgMax =
     input.maxDailyAmountMg != null && input.maxDailyAmountMg > 0
       ? input.maxDailyAmountMg
@@ -137,8 +149,9 @@ export function prnDayExposure(input: {
 }
 
 // The stable dedupe/suppression key for an over-max finding: `prn-max:<itemId>`, keyed
-// on the AUTOINCREMENT item id (never recycles, #203). A new day's count resets the
-// UNDERLYING condition, but the key stays stable so a same-episode dismiss holds.
+// on the AUTOINCREMENT item id (never recycles, #203). Doses ageing out of the window
+// resolve the UNDERLYING condition, but the key stays stable so a same-episode dismiss
+// holds.
 export function prnMaxSignalKey(itemId: number): string {
   return `${PRN_MAX_PREFIX}${itemId}`;
 }
@@ -151,9 +164,8 @@ export interface RedoseWindowInput {
   // logged yet ⇒ not armed.
   latestAdministrationId: number | null;
   latestGivenAt: Date | null;
-  // Today's administration count in the profile's timezone (drives "N of M" + max
-  // suppression).
-  countToday: number;
+  // The ceiling window's administration count (drives "N of M" + max suppression).
+  count24h: number;
   now: Date;
   // The administration id the marker was last set to (notify_last_redose_<itemId>),
   // or null when never notified. Equal to latestAdministrationId ⇒ already fired for
@@ -162,30 +174,30 @@ export interface RedoseWindowInput {
   // The scheduler's observed cadence. It sizes two bounded attempt bands around the
   // instant the interval opens, so a restart cannot "catch up" on a weeks-old dose.
   tickMinutes: number;
-  // The day's amount-aware exposure (#1854), when the caller computed one. When
+  // The window's amount-aware exposure (#1854), when the caller computed one. When
   // present its ceiling REPLACES the count comparison: 3 × 800 mg is suppressed at
   // a 2400 mg/day max even though "3 of 6 doses" reads calm. Absent/null keeps the
   // count-basis suppression exactly as before.
-  exposure?: PrnDayExposure | null;
+  exposure?: PrnWindowExposure | null;
 }
 
 export type RedoseDecision =
   | {
       kind: "fire";
       administrationId: number;
-      countToday: number;
+      count24h: number;
       maxDailyCount: number;
       sinceHours: number;
       lastGivenAt: Date;
       // The exposure the ceiling was judged on (null ⇒ plain count), so the
       // notice body can phrase the SAME basis ("1200 of 2400 mg today").
-      exposure: PrnDayExposure | null;
+      exposure: PrnWindowExposure | null;
     }
   | { kind: "not-armed" } // no administration to arm the timer
   | { kind: "already-notified" } // one-shot already fired for the latest administration
   | { kind: "not-yet"; opensInHours: number } // interval hasn't elapsed
   | { kind: "missed-window" } // the opening + bounded retry bands are both past
-  | { kind: "suppressed-max" }; // day's count has reached the confirmed max
+  | { kind: "suppressed-max" }; // the window's count has reached the confirmed max
 
 // Hours elapsed between two instants (may be fractional).
 function hoursBetween(from: Date, to: Date): number {
@@ -228,12 +240,12 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   if (elapsed < input.minIntervalHours) {
     return { kind: "not-yet", opensInHours: input.minIntervalHours - elapsed };
   }
-  // Window is open. Suppress at/over the confirmed daily ceiling (label max) — no
+  // Window is open. Suppress at/over the confirmed 24h ceiling (label max) — no
   // marker is written, so a later administration (new id) re-evaluates cleanly.
   // With an amount-aware exposure (#1854) the ceiling is ITS verdict (mg when
   // known); otherwise the plain count comparison stands.
   const exposure = input.exposure ?? null;
-  if (exposure ? exposure.atMax : input.countToday >= input.maxDailyCount) {
+  if (exposure ? exposure.atMax : input.count24h >= input.maxDailyCount) {
     return { kind: "suppressed-max" };
   }
   if (
@@ -244,7 +256,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   return {
     kind: "fire",
     administrationId: latestAdministrationId,
-    countToday: input.countToday,
+    count24h: input.count24h,
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
     lastGivenAt: latestGivenAt,
@@ -269,24 +281,24 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // items with both confirmed.
 export interface RedoseStatus {
   open: boolean; // the minimum interval has elapsed since the last administration
-  atMax: boolean; // today's exposure has reached the confirmed ceiling (false when unset)
-  countToday: number;
+  atMax: boolean; // the window's exposure reached the ceiling (false when unset)
+  count24h: number;
   maxDailyCount: number | null; // null ⇒ no confirmed count ceiling
   sinceHours: number; // hours since the last administration
   opensInHours: number; // hours until the window opens (0 when already open)
-  // The day's amount-aware exposure (#1854), when one was computable — the "N of
+  // The window's amount-aware exposure (#1854), when one was computable — the "N of
   // M" fragment then reads milligrams and atMax is ITS verdict. null keeps the
   // plain count fragment/ceiling.
-  exposure: PrnDayExposure | null;
+  exposure: PrnWindowExposure | null;
 }
 
 export function redoseWindowStatus(input: {
   minIntervalHours: number;
   maxDailyCount: number | null;
   latestGivenAt: Date | null;
-  countToday: number;
+  count24h: number;
   now: Date;
-  exposure?: PrnDayExposure | null;
+  exposure?: PrnWindowExposure | null;
 }): RedoseStatus | null {
   if (!input.latestGivenAt) return null;
   const elapsed = hoursBetween(input.latestGivenAt, input.now);
@@ -296,8 +308,8 @@ export function redoseWindowStatus(input: {
     open,
     atMax: exposure
       ? exposure.atMax
-      : input.maxDailyCount != null && input.countToday >= input.maxDailyCount,
-    countToday: input.countToday,
+      : input.maxDailyCount != null && input.count24h >= input.maxDailyCount,
+    count24h: input.count24h,
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
     opensInHours: open ? 0 : input.minIntervalHours - elapsed,
@@ -324,7 +336,7 @@ export function effectiveMaxDailyCount(
 // which is how "the interval alone answers when the next dose is OK" quietly
 // became three subtly different gates. Returns null when there is no confirmed
 // interval or nothing has been administered: no window to report, so the caller
-// falls back to the plain day count and NEVER invents a ceiling.
+// falls back to the plain window count and NEVER invents a ceiling.
 export function prnQuickLogRedoseStatus(
   med: {
     minIntervalHours: number | null;
@@ -332,10 +344,10 @@ export function prnQuickLogRedoseStatus(
     familyCount: number;
     familyLastGivenAt: string | null;
     familyMaxDailyCount: number | null;
-    // The family's amount-aware day exposure (#1854), computed by the ONE
+    // The family's amount-aware window exposure (#1854), computed by the ONE
     // getMedicationFamilyStates gather; null when no ceiling is confirmed (or on
     // a legacy caller), which keeps the count basis exactly as before.
-    familyExposure?: PrnDayExposure | null;
+    familyExposure?: PrnWindowExposure | null;
   },
   now: Date
 ): RedoseStatus | null {
@@ -347,7 +359,7 @@ export function prnQuickLogRedoseStatus(
       med.familyMaxDailyCount
     ),
     latestGivenAt: parseUtcSql(med.familyLastGivenAt),
-    countToday: med.familyCount,
+    count24h: med.familyCount,
     now,
     exposure: med.familyExposure ?? null,
   });

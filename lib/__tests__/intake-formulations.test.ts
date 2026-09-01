@@ -8,7 +8,7 @@ import {
   pediatricContextLine,
 } from "@/lib/intake-formulations";
 import { prnDefaultsFor } from "@/lib/prn-defaults";
-import { parseAmountMg, prnDayExposure } from "@/lib/prn-redose";
+import { parseAmountMg, prnWindowExposure } from "@/lib/prn-redose";
 import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // The formulation chip row (#3216 decision 2). One ingredient is several products;
@@ -88,10 +88,10 @@ describe("intake formulation row (#3216)", () => {
     // silently becomes a dose count, which is the one thing #1854 exists to stop.
     const ceilings = { maxDailyAmountMg: 1200, maxDailyCount: 4 };
     expect(
-      prnDayExposure({ amounts: ["240 mg", "240 mg"], ...ceilings })?.basis
+      prnWindowExposure({ amounts: ["240 mg", "240 mg"], ...ceilings })?.basis
     ).toBe("mg");
     expect(
-      prnDayExposure({
+      prnWindowExposure({
         amounts: ["7.5 mL (240 mg)", "7.5 mL (240 mg)"],
         ...ceilings,
       })?.basis

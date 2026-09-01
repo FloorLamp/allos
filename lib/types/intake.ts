@@ -151,7 +151,7 @@ export interface IntakeItem {
   // user-CONFIRMED mg/day ceiling for the item's active ingredient, alongside the
   // count form above. When confirmed AND every one of today's family
   // administrations carries a parseable snapshotted mg amount, the PRN safety
-  // counters compare summed milligrams instead of counting rows (prnDayExposure);
+  // counters compare summed milligrams instead of counting rows (prnWindowExposure);
   // the count remains the fallback basis. NULL = not confirmed → never used.
   max_daily_amount_mg: number | null;
   redose_notice: number;

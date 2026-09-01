@@ -62,7 +62,8 @@ function redoseLogToken(): string {
 // Send any due PRN redose notices for one profile. Returns whether a send failed (so
 // the tick can aggregate into its exit code). Never throws for an ordinary send
 // failure. `now` is the tick's instant (injectable for tests); interval elapsed is a
-// pure duration, while the day count/max reset in the profile's timezone (date).
+// pure duration, and the ceiling count is the trailing 24h the label states (#4686).
+// `date` remains the profile-local day the tick is running for.
 export async function runRedoseNotices(
   profileId: number,
   profileName: string,
@@ -76,7 +77,7 @@ export async function runRedoseNotices(
   // The #1027 ingredient-family state: the interval clock is armed by the FAMILY's
   // latest administration (an OTC ibuprofen dose holds the Rx item's notice until
   // the interval clears from THAT dose), the count totals the family's
-  // administrations, and the max is the most conservative confirmed max among
+  // administrations in the ceiling window, and the max is the most conservative among
   // members. The per-item one-shot marker semantics are unchanged — the notice
   // still belongs to this item, keyed by the arming administration id (a sibling's
   // id works identically: ids are ledger-global and never recycle).
@@ -88,7 +89,7 @@ export async function runRedoseNotices(
     const arming = fam ?? {
       // A notice item is always an active med, so it's always in the family map;
       // this per-item fallback only guards a race with a just-paused item.
-      ...getRedoseArmingState(profileId, item.id, date),
+      ...getRedoseArmingState(profileId, item.id),
       latestItemId: null as number | null,
       latestItemName: null as string | null,
       minConfirmedMax: null as number | null,
@@ -108,7 +109,7 @@ export async function runRedoseNotices(
       maxDailyCount: effectiveMax,
       latestAdministrationId: arming.latestId,
       latestGivenAt: parseUtcSql(arming.latestGivenAt),
-      countToday: arming.countToday,
+      count24h: arming.count24h,
       now,
       notifiedAdministrationId,
       tickMinutes,
@@ -129,10 +130,10 @@ export async function runRedoseNotices(
       product: item.product,
       sinceHours: decision.sinceHours,
       lastClock: formatGivenAtNoticeTime(tz, arming.latestGivenAt, date),
-      countToday: decision.countToday,
+      count24h: decision.count24h,
       maxDailyCount: decision.maxDailyCount,
       // The same basis the ceiling was judged on (#1854): the body reads
-      // "1200 of 2400 mg today" when milligrams are known.
+      // "1200 of 2400 mg in 24h" when milligrams are known.
       exposure: decision.exposure,
       // When a same-ingredient SIBLING's dose armed the clock (#1027), the body
       // names it — "8h since Ibuprofen OTC" — instead of implying this item.

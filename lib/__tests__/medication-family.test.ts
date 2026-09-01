@@ -266,7 +266,7 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
       ...base,
       latestAdministrationId: 77, // the sibling's ledger row
       latestGivenAt: new Date("2026-07-19T11:00:00Z"),
-      countToday: 2,
+      count24h: 2,
     });
     expect(d.kind).toBe("not-yet");
   });
@@ -276,7 +276,7 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
       ...base,
       latestAdministrationId: 78,
       latestGivenAt: new Date("2026-07-19T04:00:00Z"), // interval elapsed
-      countToday: 3, // combined across items = min confirmed max
+      count24h: 3, // combined across items = min confirmed max
     });
     expect(d.kind).toBe("suppressed-max");
   });
@@ -288,12 +288,12 @@ describe("redoseNoticeDecision over family-derived inputs (#1027)", () => {
       ...base,
       latestAdministrationId: 79, // the unconfirmed sibling's row
       latestGivenAt: new Date("2026-07-19T05:00:00Z"),
-      countToday: 1,
+      count24h: 1,
     });
     expect(d.kind).toBe("fire");
     if (d.kind === "fire") {
       expect(d.administrationId).toBe(79);
-      expect(d.countToday).toBe(1);
+      expect(d.count24h).toBe(1);
     }
   });
 });

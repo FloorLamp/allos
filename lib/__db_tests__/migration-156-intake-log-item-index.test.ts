@@ -137,6 +137,6 @@ describe("the (item_id, best administration instant) index", () => {
       itemId
     );
     expect(state?.latestId).toBe(newestId);
-    expect(state?.countToday).toBe(30);
+    expect(state?.count24h).toBe(30);
   });
 });

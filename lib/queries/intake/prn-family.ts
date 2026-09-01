@@ -32,7 +32,13 @@ import {
   familyDisplayLabel,
   type MedicationFamily,
 } from "../../medication-family";
-import { prnDayExposure, type PrnDayExposure } from "../../prn-redose";
+import {
+  prnWindowExposure,
+  PRN_CEILING_WINDOW_HOURS,
+  type PrnWindowExposure,
+} from "../../prn-redose";
+import { now as clockNow } from "../../clock";
+import { utcInstant } from "../../date";
 import { bestKnownInstant } from "../../row-instants";
 import type { IntakeObligation } from "../../types";
 
@@ -52,23 +58,27 @@ export interface MedFamilyState {
   latestGivenAt: string | null;
   latestItemId: number | null;
   latestItemName: string | null;
-  // Today's combined taken count across all members (profile-local `date`).
-  countToday: number;
+  // Combined taken count across all members inside the CEILING WINDOW — the
+  // trailing 24 hours (#4686), which is the basis the label figures it is compared
+  // against are stated on ("no more than 5 doses in 24 hours"). NOT a calendar day:
+  // the midnight reset was more permissive than the label in exactly the
+  // fevered-child-overnight case this counter exists for.
+  count24h: number;
   // The most conservative confirmed max_daily_count among members, or null when no
   // member carries one.
   minConfirmedMax: number | null;
   // The most conservative confirmed max_daily_amount_mg among members (#1854), or
   // null when no member carries one.
   minConfirmedMaxMg: number | null;
-  // The snapshotted amount of each of today's taken administrations across the
-  // family (the confirm-dose snapshot invariant is what makes this summable).
-  amountsToday: (string | null)[];
-  // The day's amount-aware exposure verdict (#1854): summed milligrams when the
+  // The snapshotted amount of each administration in the window across the family
+  // (the confirm-dose snapshot invariant is what makes this summable).
+  amounts24h: (string | null)[];
+  // The window's amount-aware exposure verdict (#1854): summed milligrams when the
   // mg ceiling applies and amounts parse, the administration count as the
   // fallback, null when NO ceiling is confirmed. THE one computation every
   // counter surface (over-max finding, card/widget/Telegram line, redose-notice
   // ceiling) formats over.
-  exposure: PrnDayExposure | null;
+  exposure: PrnWindowExposure | null;
 }
 
 interface FamilyMemberRow {
@@ -151,9 +161,15 @@ export function redoseWindowState(
 }
 
 // Family safety state for every ACTIVE medication item, keyed by ITEM id (one
-// shared state object per family). `date` is the profile-local day the count
-// resets on. Two small queries per family (latest arming administration +
-// today's combined count), profile-scoped through the parent-item JOIN.
+// shared state object per family). Two small queries per family (latest arming
+// administration + the ceiling window's combined count), profile-scoped through the
+// parent-item JOIN.
+//
+// `date` no longer bounds the count (#4686) — the ceiling window is the trailing 24
+// hours, taken from the clock seam below. It stays as the profile-local day the
+// CALLER is rendering, and as the memo key: both lifetimes are one render or one
+// tick, so freezing the window's endpoint across them is the same freeze every other
+// read in that scope already has.
 //
 // MEMOIZED ON BOTH LIFETIMES (#2111). Every cross-item PRN counter is a formatter over
 // this ONE state, and a surface that renders several of them used to pay for the whole
@@ -186,6 +202,15 @@ export const getMedicationFamilyStates = snapshotCached(
   getMedicationFamilyStatesForRequest
 );
 
+// The trailing ceiling window's opening instant, in the canonical stored shape —
+// shared with the per-item arming fallback in ./adherence so the two cannot drift
+// (#4686).
+export function prnCeilingWindowStart(): string {
+  return utcInstant(
+    new Date(clockNow().getTime() - PRN_CEILING_WINDOW_HOURS * 3_600_000)
+  );
+}
+
 function getMedicationFamilyStatesUncached(
   profileId: number,
   date: string
@@ -208,18 +233,25 @@ function getMedicationFamilyStatesUncached(
       )
       .get(profileId, ...ids) as
       { id: number; administeredAt: string; itemId: number } | undefined;
-    // Today's taken administrations WITH their snapshotted amounts — the count is
-    // the row count, and the amounts feed the amount-aware exposure (#1854).
-    const todaysLogs = db
+    // The CEILING WINDOW's taken administrations WITH their snapshotted amounts —
+    // the count is the row count, and the amounts feed the amount-aware exposure
+    // (#1854). Compared through `strftime` rather than as strings because the
+    // administration instant is whichever of the two columns the row has, and
+    // `strftime` reads both stored shapes identically.
+    const windowLogs = db
       .prepare(
         `SELECT l.amount AS amount
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.date = ? AND l.status = 'taken'`
+            AND l.status = 'taken'
+            AND strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
+                >= strftime('%s', ?)`
       )
-      .all(profileId, ...ids, date) as { amount: string | null }[];
-    const amountsToday = todaysLogs.map((l) => l.amount);
+      .all(profileId, ...ids, prnCeilingWindowStart()) as {
+      amount: string | null;
+    }[];
+    const amounts24h = windowLogs.map((l) => l.amount);
 
     const confirmedMaxes = family.members
       .map((m) => m.max_daily_count)
@@ -244,12 +276,12 @@ function getMedicationFamilyStatesUncached(
       latestItemName: latest
         ? (family.members.find((m) => m.id === latest.itemId)?.name ?? null)
         : null,
-      countToday: amountsToday.length,
+      count24h: amounts24h.length,
       minConfirmedMax,
       minConfirmedMaxMg,
-      amountsToday,
-      exposure: prnDayExposure({
-        amounts: amountsToday,
+      amounts24h,
+      exposure: prnWindowExposure({
+        amounts: amounts24h,
         maxDailyAmountMg: minConfirmedMaxMg,
         maxDailyCount: minConfirmedMax,
       }),

@@ -6,7 +6,7 @@ import {
   prnMaxSignalKey,
   PRN_MAX_PREFIX,
   parseAmountMg,
-  prnDayExposure,
+  prnWindowExposure,
 } from "@/lib/prn-redose";
 
 // The arming administration was given at a fixed instant; `now` is offset from it.
@@ -18,7 +18,7 @@ const base = {
   maxDailyCount: 4,
   latestAdministrationId: 42,
   latestGivenAt: GIVEN,
-  countToday: 1,
+  count24h: 1,
   now: hoursAfter(6),
   notifiedAdministrationId: null as number | null,
   tickMinutes: 5,
@@ -30,7 +30,7 @@ describe("redoseNoticeDecision — one-shot window", () => {
     expect(d.kind).toBe("fire");
     if (d.kind === "fire") {
       expect(d.administrationId).toBe(42);
-      expect(d.countToday).toBe(1);
+      expect(d.count24h).toBe(1);
       expect(d.maxDailyCount).toBe(4);
     }
   });
@@ -65,10 +65,10 @@ describe("redoseNoticeDecision — one-shot window", () => {
   });
 
   it("SUPPRESSED at the confirmed daily max (window open but count reached)", () => {
-    expect(redoseNoticeDecision({ ...base, countToday: 4 }).kind).toBe(
+    expect(redoseNoticeDecision({ ...base, count24h: 4 }).kind).toBe(
       "suppressed-max"
     );
-    expect(redoseNoticeDecision({ ...base, countToday: 5 }).kind).toBe(
+    expect(redoseNoticeDecision({ ...base, count24h: 5 }).kind).toBe(
       "suppressed-max"
     );
   });
@@ -109,7 +109,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
         minIntervalHours: 6,
         maxDailyCount: 4,
         latestGivenAt: null,
-        countToday: 0,
+        count24h: 0,
         now: GIVEN,
       })
     ).toBeNull();
@@ -120,7 +120,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       minIntervalHours: 6,
       maxDailyCount: 4,
       latestGivenAt: GIVEN,
-      countToday: 2,
+      count24h: 2,
       now: hoursAfter(3),
     })!;
     expect(closed.open).toBe(false);
@@ -131,7 +131,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       minIntervalHours: 6,
       maxDailyCount: 4,
       latestGivenAt: GIVEN,
-      countToday: 4,
+      count24h: 4,
       now: hoursAfter(7),
     })!;
     expect(open.open).toBe(true);
@@ -148,7 +148,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       minIntervalHours: 6,
       maxDailyCount: null,
       latestGivenAt: GIVEN,
-      countToday: 1,
+      count24h: 1,
       now: hoursAfter(1),
     })!;
     expect(before).not.toBeNull();
@@ -161,7 +161,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       minIntervalHours: 6,
       maxDailyCount: null,
       latestGivenAt: GIVEN,
-      countToday: 9,
+      count24h: 9,
       now: hoursAfter(7),
     })!;
     expect(after.open).toBe(true);
@@ -175,7 +175,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
         minIntervalHours: 6,
         maxDailyCount: null,
         latestGivenAt: null,
-        countToday: 0,
+        count24h: 0,
         now: GIVEN,
       })
     ).toBeNull();
@@ -237,10 +237,10 @@ describe("parseAmountMg", () => {
   });
 });
 
-describe("prnDayExposure — basis selection (#1854)", () => {
+describe("prnWindowExposure — basis selection (#1854)", () => {
   it("mg basis when the mg max is confirmed and every amount parses (3 × 800 mg vs 1200 mg/day)", () => {
     expect(
-      prnDayExposure({
+      prnWindowExposure({
         amounts: ["800 mg", "800 mg", "800 mg"],
         maxDailyAmountMg: 1200,
         maxDailyCount: 6,
@@ -256,7 +256,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
   });
 
   it("mg basis stays calm when the milligrams are under the ceiling a count would have tripped", () => {
-    const e = prnDayExposure({
+    const e = prnWindowExposure({
       amounts: ["200 mg", "200 mg", "200 mg", "200 mg", "200 mg"],
       maxDailyAmountMg: 1200,
       maxDailyCount: 4, // 5 rows would be over on the count basis
@@ -265,7 +265,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
   });
 
   it("count fallback when an amount does not parse and a count max exists", () => {
-    const e = prnDayExposure({
+    const e = prnWindowExposure({
       amounts: ["800 mg", "1 tablet"],
       maxDailyAmountMg: 1200,
       maxDailyCount: 1,
@@ -281,7 +281,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
   });
 
   it("count basis when no mg max is confirmed", () => {
-    const e = prnDayExposure({
+    const e = prnWindowExposure({
       amounts: ["800 mg", "800 mg"],
       maxDailyAmountMg: null,
       maxDailyCount: 4,
@@ -290,7 +290,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
   });
 
   it("mg lower bound when there is NO count fallback: known sum judged, unknowns counted", () => {
-    const e = prnDayExposure({
+    const e = prnWindowExposure({
       amounts: ["800 mg", "800 mg", "1 tablet"],
       maxDailyAmountMg: 1200,
       maxDailyCount: null,
@@ -306,7 +306,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
   });
 
   it("atMax without over at exactly the ceiling", () => {
-    const e = prnDayExposure({
+    const e = prnWindowExposure({
       amounts: ["600 mg", "600 mg"],
       maxDailyAmountMg: 1200,
       maxDailyCount: null,
@@ -316,14 +316,14 @@ describe("prnDayExposure — basis selection (#1854)", () => {
 
   it("keeps the over-max gate null with no confirmed ceiling (#4254)", () => {
     expect(
-      prnDayExposure({
+      prnWindowExposure({
         amounts: ["800 mg"],
         maxDailyAmountMg: null,
         maxDailyCount: null,
       })
     ).toBeNull();
     expect(
-      prnDayExposure({
+      prnWindowExposure({
         amounts: ["800 mg"],
         maxDailyAmountMg: 0,
         maxDailyCount: 0,
@@ -333,7 +333,7 @@ describe("prnDayExposure — basis selection (#1854)", () => {
 
   it("an empty day on the mg basis is 0 of max", () => {
     expect(
-      prnDayExposure({ amounts: [], maxDailyAmountMg: 1200, maxDailyCount: 6 })
+      prnWindowExposure({ amounts: [], maxDailyAmountMg: 1200, maxDailyCount: 6 })
     ).toMatchObject({ basis: "mg", total: 0, over: false, atMax: false });
   });
 });
@@ -342,8 +342,8 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   it("suppresses at the mg ceiling although the count reads calm", () => {
     const d = redoseNoticeDecision({
       ...base,
-      countToday: 3, // < maxDailyCount 4 — the pre-#1854 gate would fire
-      exposure: prnDayExposure({
+      count24h: 3, // < maxDailyCount 4 — the pre-#1854 gate would fire
+      exposure: prnWindowExposure({
         amounts: ["800 mg", "800 mg", "800 mg"],
         maxDailyAmountMg: 1200,
         maxDailyCount: 4,
@@ -353,14 +353,14 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   });
 
   it("fires under the mg ceiling although the count would have suppressed, and carries the exposure", () => {
-    const exposure = prnDayExposure({
+    const exposure = prnWindowExposure({
       amounts: ["200 mg", "200 mg", "200 mg", "200 mg"],
       maxDailyAmountMg: 2400,
       maxDailyCount: 4,
     });
     const d = redoseNoticeDecision({
       ...base,
-      countToday: 4, // == maxDailyCount — the count gate would suppress
+      count24h: 4, // == maxDailyCount — the count gate would suppress
       exposure,
     });
     expect(d.kind).toBe("fire");
@@ -368,14 +368,14 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   });
 
   it("a null exposure keeps the count gate exactly as before", () => {
-    const d = redoseNoticeDecision({ ...base, countToday: 4, exposure: null });
+    const d = redoseNoticeDecision({ ...base, count24h: 4, exposure: null });
     expect(d.kind).toBe("suppressed-max");
   });
 });
 
 describe("redoseWindowStatus × exposure (#1854)", () => {
   it("atMax follows the exposure verdict and the exposure rides the status", () => {
-    const exposure = prnDayExposure({
+    const exposure = prnWindowExposure({
       amounts: ["800 mg", "800 mg", "800 mg"],
       maxDailyAmountMg: 1200,
       maxDailyCount: 6,
@@ -384,7 +384,7 @@ describe("redoseWindowStatus × exposure (#1854)", () => {
       minIntervalHours: 6,
       maxDailyCount: 6,
       latestGivenAt: GIVEN,
-      countToday: 3,
+      count24h: 3,
       now: hoursAfter(7),
       exposure,
     })!;

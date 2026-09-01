@@ -14,18 +14,26 @@
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
+import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
-import { utcSqlString } from "@/lib/date";
+import { parseUtcSql, shiftDateStr, utcSqlString } from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
 import {
   collectUpcoming,
   dismissFinding,
   getFindingSuppressions,
   getMedicationFamilyStates,
+  getPrnMedicationsForQuickLog,
   getPrnOverMaxItems,
 } from "@/lib/queries";
 import { activeFindings } from "@/lib/findings";
-import { prnMaxSignalKey, PRN_MAX_PREFIX } from "@/lib/prn-redose";
+import {
+  prnMaxSignalKey,
+  prnQuickLogRedoseStatus,
+  redoseNoticeDecision,
+  PRN_MAX_PREFIX,
+} from "@/lib/prn-redose";
+import { redoseCardLabel } from "@/lib/redose-format";
 import { SUPPRESSION_DISPLAY_PREFIXES } from "@/lib/suppression-display";
 import { buildMedicationDuplicationFindings } from "@/lib/rule-findings";
 import {
@@ -494,5 +502,94 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
       date
     );
     expect(after).toEqual([]);
+  });
+});
+
+// ── The ceiling window is the trailing 24 HOURS (#4686) ───────────────────────
+//
+// Every `maxDailyCount` in the app is a public Drug Facts figure that reads "no more
+// than N doses IN 24 HOURS", and the gather judged it on the profile-local calendar
+// DAY. The two disagree only across midnight — which is the fevered-child-overnight
+// case this cockpit exists for — so the fixture below is the one shape that separates
+// them: five doses inside 17 hours, three of them before midnight.
+describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", () => {
+  // 09:16 on the tier's frozen day (the reported screenshot's own clock), so last
+  // night's doses are hours old and still inside the label's 24-hour cap.
+  const MORNING = new Date(
+    `${TIER_FROZEN_INSTANT.toISOString().slice(0, 10)}T09:16:00.000Z`
+  );
+
+  function seedAcetaminophen(p: number) {
+    return seedMed(p, "Acetaminophen", {
+      amount: "500 mg",
+      redoseNotice: 1,
+      minInterval: 4,
+      maxDaily: 5,
+    });
+  }
+
+  function cardLabel(profileId: number, now: Date): string | null {
+    const med = getPrnMedicationsForQuickLog(profileId)[0]!;
+    return redoseCardLabel(prnQuickLogRedoseStatus(med, now), 1);
+  }
+
+  it("the screenshot's own case: last evening's dose still counts this morning", () => {
+    vi.setSystemTime(MORNING);
+    const p = newProfile("Win24Screenshot");
+    const med = seedAcetaminophen(p);
+    const yesterday = shiftDateStr(today(p), -1);
+    // 19:15 last night — 14h before 09:16, well inside 24h.
+    logAdmin(med.itemId, med.doseId, yesterday, 14.02, MORNING, "500 mg");
+
+    const state = getMedicationFamilyStates(p, today(p)).get(med.itemId)!;
+    expect(state.count24h).toBe(1);
+    expect(cardLabel(p, MORNING)).toContain("1 of 5 in 24h");
+  });
+
+  it("five doses spanning midnight inside 24h reach the ceiling", () => {
+    vi.setSystemTime(MORNING);
+    const p = newProfile("Win24Ceiling");
+    const med = seedAcetaminophen(p);
+    const t = today(p);
+    const y = shiftDateStr(t, -1);
+    // 16:00 / 20:00 / 23:45 yesterday, then 01:00 / 04:00 — five doses in 17.3h.
+    const sequence: [string, number][] = [
+      [y, 17.27],
+      [y, 13.27],
+      [y, 9.52],
+      [t, 8.27],
+      [t, 5.27],
+    ];
+    let latestId = 0;
+    for (const [day, hoursAgo] of sequence)
+      latestId = logAdmin(med.itemId, med.doseId, day, hoursAgo, MORNING, "500 mg");
+
+    const state = getMedicationFamilyStates(p, t).get(med.itemId)!;
+    expect(state.count24h).toBe(5);
+    expect(state.exposure).toMatchObject({
+      basis: "count",
+      total: 5,
+      max: 5,
+      atMax: true,
+    });
+
+    // The notice's ceiling: the interval (4h) cleared five hours ago, so the ONLY
+    // thing standing between this profile and a sixth "you may redose" is the max.
+    expect(
+      redoseNoticeDecision({
+        minIntervalHours: 4,
+        maxDailyCount: 5,
+        latestAdministrationId: latestId,
+        latestGivenAt: parseUtcSql(state.latestGivenAt),
+        count24h: state.count24h,
+        now: MORNING,
+        notifiedAdministrationId: null,
+        tickMinutes: 60,
+        exposure: state.exposure,
+      }).kind
+    ).toBe("suppressed-max");
+
+    // …and every card/quick-log/Telegram surface reads the same window.
+    expect(cardLabel(p, MORNING)).toBe("Max reached · 5 of 5 in 24h");
   });
 });

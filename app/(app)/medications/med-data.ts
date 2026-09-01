@@ -364,7 +364,7 @@ export function loadMedicationsData(
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
-    const famCount = fam?.countToday ?? admins.length;
+    const famCount = fam?.count24h ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
@@ -377,7 +377,7 @@ export function loadMedicationsData(
           fam?.minConfirmedMax
         ),
         latestGivenAt: parseUtcSql(famLast),
-        countToday: famCount,
+        count24h: famCount,
         now: nowInstant,
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.
