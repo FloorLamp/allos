@@ -141,29 +141,25 @@ function setMoodCheckinState(
   }
 }
 
-test("a mood check-in at its opening minute is actionable in Now", async ({
+test("a mood check-in crosses from read-only Ahead to actionable Now at its opening minute", async ({
   page,
 }) => {
-  const profile = await createProfileViaFamily(page, "checkinpause");
-  setMoodCheckinState(profile, 5, moodOpeningTimes().exact);
+  const aheadProfile = await createProfileViaFamily(page, "checkinahead");
+  setMoodCheckinState(aheadProfile, 0, moodOpeningTimes().oneMinuteLater);
   await page.goto("/");
 
-  const mood = dashboardCandidatePrefix(page, "checkin.mood");
-  await expect(mood).toBeVisible();
-  await expect(mood).toHaveAttribute("data-lane", "now");
-  await expect(mood).toContainText("Daily reminders are paused.");
-  await expect(mood.getByRole("button")).not.toHaveCount(0);
-});
+  const aheadMood = dashboardCandidatePrefix(page, "checkin.mood");
+  await expect(aheadMood).toBeVisible();
+  await expect(aheadMood).toHaveAttribute("data-lane", "ahead");
+  await expect(aheadMood.getByRole("button")).toHaveCount(0);
 
-test("a mood check-in one minute before opening is read-only in Ahead", async ({
-  page,
-}) => {
-  const profile = await createProfileViaFamily(page, "checkinahead");
-  setMoodCheckinState(profile, 0, moodOpeningTimes().oneMinuteLater);
+  const openProfile = await createProfileViaFamily(page, "checkinpause");
+  setMoodCheckinState(openProfile, 5, moodOpeningTimes().exact);
   await page.goto("/");
 
-  const mood = dashboardCandidatePrefix(page, "checkin.mood");
-  await expect(mood).toBeVisible();
-  await expect(mood).toHaveAttribute("data-lane", "ahead");
-  await expect(mood.getByRole("button")).toHaveCount(0);
+  const openMood = dashboardCandidatePrefix(page, "checkin.mood");
+  await expect(openMood).toBeVisible();
+  await expect(openMood).toHaveAttribute("data-lane", "now");
+  await expect(openMood).toContainText("Daily reminders are paused.");
+  await expect(openMood.getByRole("button")).not.toHaveCount(0);
 });

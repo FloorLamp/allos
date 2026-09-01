@@ -77,13 +77,12 @@ import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
 import { MedicalValue } from "@/components/ui";
-import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
-import { LoggedViaField } from "@/components/LoggedViaSurface";
+import { removeSymptom } from "@/app/(app)/symptom-actions";
+import SymptomForm from "@/components/illness/SymptomForm";
 import {
   deleteCycleAction,
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
-import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 import {
   statedHhmm,
@@ -419,15 +418,6 @@ export default function HistoryRows({
           // core in lib/symptom-log-write.ts takes exactly this pair.
           fd.set("symptom", edit.symptom);
           fd.set("date", row.date);
-          // AND THE SUBJECT AGAIN, UNDER THE OTHER SHIPPED SPELLING. `removeSymptom`
-          // is a symptom-BAR action (#858) as well as this row's delete, and the bar
-          // posts its cross-profile target as `profileId`; every other action this
-          // component posts reads `profile_id` through `gateItemProfile`. Both gate
-          // the same requireProfileWriteAccess(target), so this line is a field name
-          // and not a second authorization path — without it the delete would fall
-          // back to the acting profile while the Edit beside it corrected the row's
-          // own member.
-          fd.set("profileId", String(row.profileId));
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
           });
@@ -660,58 +650,27 @@ export default function HistoryRows({
           />
         );
       case "symptom":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // The symptom is half the row's ADDRESS rather than a field, so the mount hands
+        // the row's own and the picker collapses; it stamps `profile_id` itself, like
+        // the dose and substance forms above, so it does not run through `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("symptom", edit.symptom);
-                fd.set("date", row.date);
-                const outcome = await editSymptom(fd);
-                return outcome.ok
-                  ? { ok: true }
-                  : { ok: false, error: outcome.error };
-              })
-            }
-          >
-            {/* `setSymptomSeverityCore` reads `logged_via` off the post (#3087), so
-                this form has to say which surface it is — without it every correction
-                made here would be stamped with the `page` fallback and the provenance
-                ledger would show the dashboard bar's word for a record-page edit. */}
-            <LoggedViaField />
-            {/* NO DATE FIELD, and that is the store's shape rather than an omission:
-                `symptom_logs` is UNIQUE(profile_id, date, symptom), so moving a
-                symptom-day to another date is a delete plus a re-log, not an edit —
-                and `setSymptomSeverityCore` would silently upsert onto whatever day
-                it was handed, merging two days' worst severities into one. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Severity
-              <select
-                name="severity"
-                defaultValue={edit.severity}
-                className="input mt-1 w-full"
-              >
-                {SYMPTOM_SEVERITY_LEVELS.map((level) => (
-                  <option key={level.value} value={level.value}>
-                    {severityLabelFor(edit.symptom, level.value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/* `setSymptomSeverityCore` stores the note it is handed, so the field has
-                to be here — the same rewrite-everything contract the practice and
-                substance forms above carry, and the same silent data loss without it. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Note
-              <input
-                type="text"
-                name="note"
-                defaultValue={edit.note ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <SymptomForm
+            symptoms={[{ key: edit.symptom, label: row.title }]}
+            date={row.date}
+            row={{
+              symptom: edit.symptom,
+              date: row.date,
+              severity: edit.severity,
+              note: edit.note ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
         );
       case "cycle":
         return (

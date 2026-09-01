@@ -29,7 +29,7 @@ describe("buildSupplementWeeklyAdherence", () => {
     expect(result.days[1]).toMatchObject({
       intended: 4,
       pending: 3,
-      state: "pending",
+      state: "partial",
     });
   });
 
@@ -57,7 +57,7 @@ describe("buildSupplementWeeklyAdherence", () => {
       pct: 100,
       skipped: 1,
     });
-    expect(result.days.map((day) => day.state)).toEqual(["taken", "taken"]);
+    expect(result.days.map((day) => day.state)).toEqual(["partial", "taken"]);
   });
 
   it("distinguishes missed, skipped, and not-due days", () => {
@@ -96,5 +96,45 @@ describe("buildSupplementWeeklyAdherence", () => {
       pct: 0,
       skipped: 2,
     });
+  });
+
+  it("shares dose-day precedence and reserves pending for the trailing day", () => {
+    const result = buildSupplementWeeklyAdherence([
+      {
+        date: "2026-07-23",
+        due: 0,
+        taken: 0,
+        skipped: 0,
+        isToday: false,
+      },
+      {
+        date: "2026-07-24",
+        due: 1,
+        taken: 0,
+        skipped: 0,
+        isToday: true,
+      },
+      {
+        date: "2026-07-25",
+        due: 3,
+        taken: 2,
+        skipped: 1,
+        isToday: false,
+      },
+      {
+        date: "2026-07-26",
+        due: 1,
+        taken: 0,
+        skipped: 0,
+        isToday: false,
+      },
+    ]);
+
+    expect(result.days.map((day) => day.state)).toEqual([
+      "na",
+      "missed",
+      "partial",
+      "pending",
+    ]);
   });
 });

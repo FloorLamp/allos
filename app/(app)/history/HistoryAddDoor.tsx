@@ -24,6 +24,7 @@ import {
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { logPractice } from "@/app/(app)/wellness/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
+import SymptomForm from "@/components/illness/SymptomForm";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { FOOD_GROUPS } from "@/lib/food-groups";
@@ -75,6 +76,7 @@ const KIND_LABEL = {
   practice: "Log a practice",
   substance: "Log a use",
   body: "Log a reading",
+  symptom: "Log a symptom",
 } as const;
 
 export type HistoryAddKind = keyof typeof KIND_LABEL;
@@ -85,6 +87,11 @@ export interface HistoryAddVocabulary {
   practices: string[];
   /** This profile's substance keys, with the label its record prints. */
   substances: { key: string; label: string }[];
+  /**
+   * The symptom vocabulary this profile picks from — the curated catalog plus its own
+   * customs, in the order its history ranks them (#857). Empty for every other kind.
+   */
+  symptoms: { key: string; label: string }[];
   /** The login's weight unit — what the value the reader types is in. */
   weightUnit: WeightUnit;
   /**
@@ -166,6 +173,7 @@ export default function HistoryAddDoor({
 
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
+  if (kind === "symptom" && vocabulary.symptoms.length === 0) return null;
 
   function close(): void {
     setOpen(false);
@@ -452,6 +460,26 @@ export default function HistoryAddDoor({
             substances={vocabulary.substances}
             date={date}
             maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
+        );
+      case "symptom":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The day view's own
+        // symptom card mounts the tap BAR, which is why this kind had no door at all —
+        // but a reader filtered to `?kind=symptom` is standing on no day, so the record
+        // could show symptom rows and correct them while offering no way to add one.
+        // The domain's form is that way, with the found day in hand.
+        //
+        // NO `dateField`: the store is UNIQUE(profile_id, date, symptom) and the form
+        // says so — the day is the door's, not a field inside it.
+        return (
+          <SymptomForm
+            symptoms={vocabulary.symptoms}
+            date={date}
             onSaved={() => {
               close();
               router.refresh();

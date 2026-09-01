@@ -9,6 +9,7 @@ import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
+import TemperatureField from "@/components/vitals/TemperatureField";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -912,30 +913,15 @@ export default function MeasurementsQuickAdd({
         label={TREND_METRIC_META.temperature.title}
         htmlFor="m-temperature"
       >
-        <UnitToggle
-          name="temp_unit"
-          label={`${TREND_METRIC_META.temperature.title} unit`}
-          options={["F", "C"]}
-          optionLabels={{ F: "°F", C: "°C" }}
-          value={tempUnitDetection.unit}
-          onChange={(v) => tempUnitDetection.chooseUnit(v === "C" ? "C" : "F")}
-        >
-          <input
-            id="m-temperature"
-            type="number"
-            step="0.1"
-            name="temperature"
-            onChange={(event) =>
-              tempUnitDetection.readValue(event.target.value)
-            }
-            className="input pr-16"
-          />
-        </UnitToggle>
-        {tempUnitDetection.detectedUnit && (
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Detected °{tempUnitDetection.detectedUnit} from the reading.
-          </p>
-        )}
+        {/* THE DOMAIN'S ONE TEMPERATURE FIELD (#4424 ruling 5) — the symptom bar's
+            illness mounts compose this same component, so a reading typed there and
+            one typed here are the same field rather than two arrangements of it. */}
+        <TemperatureField
+          id="m-temperature"
+          testIdPrefix="m-temp"
+          detection={tempUnitDetection}
+          unitLabel={`${TREND_METRIC_META.temperature.title} unit`}
+        />
       </Field>
     ),
     // The night's two clocks (#1851) — ONE reading typed as two times, the same
