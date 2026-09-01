@@ -21,8 +21,8 @@ import {
 import { useActiveProfileId } from "./ActiveProfileProvider";
 import {
   markUnsavedWork,
+  type DiscardableUnsavedWorkEntry,
   type ResumePointer,
-  type UnsavedWorkEntry,
 } from "@/lib/offline/unsaved-work";
 import { useLatestRef } from "./useLatestRef";
 import { takeResumeContinuationFor } from "./resume-continuation";
@@ -344,6 +344,7 @@ export function useFormDraft<E = undefined>({
         shouldPersistDraft({ currentSig: sig, initialSig: baseline });
 
       const el = scopeRef?.current ?? formRef?.current ?? null;
+      entryRef.current.owner = el;
       if (!ownsUnsavedMarker && el) {
         el.setAttribute("data-unsaved", dirty ? "true" : "false");
       }
@@ -415,6 +416,18 @@ export function useFormDraft<E = undefined>({
     });
   }, [active, profileId, formKey, recordId, snapshot, syncUnsavedWork]);
 
+  const dropDraft = useCallback(async () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const k = keyRef.current;
+    offeredRef.current = null;
+    setOffer(null);
+    if (k) markUnsavedWork(k, false);
+    if (k) await deleteDraft(k);
+  }, []);
+
   // Cancel the debounce, write, and say what should be reopened on the other side.
   // A rejection here is what stops the reload: `captureUnsavedWork` answers
   // `{ ok: false }` and the tab stays exactly where it is.
@@ -427,10 +440,13 @@ export function useFormDraft<E = undefined>({
     return { formKey, recordId: recordId ?? null, live };
   }, [write, formKey, recordId, live]);
   const captureRef = useLatestRef(capture);
+  const dropDraftRef = useLatestRef(dropDraft);
   // A stable entry whose callback is always the CURRENT mount's: the registry holds
   // it across re-renders, and a stale closure would flush a form that is gone.
-  const entryRef = useRef<UnsavedWorkEntry>({
+  const entryRef = useRef<DiscardableUnsavedWorkEntry>({
     capture: () => captureRef.current(),
+    owner: null,
+    discard: () => dropDraftRef.current(),
   });
 
   const schedule = useCallback(() => {
@@ -632,21 +648,13 @@ export function useFormDraft<E = undefined>({
   }, [write]);
 
   const clear = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    const k = keyRef.current;
-    offeredRef.current = null;
-    setOffer(null);
-    if (k) markUnsavedWork(k, false);
+    void dropDraft();
     // Re-baseline: after a successful save the form on screen IS the saved state,
     // so nothing is dirty until the user edits again.
     const snap = snapshot();
     initialSigRef.current = draftSig(snap.fields, snap.extra);
     syncUnsavedWork(initialSigRef.current);
-    if (k) void deleteDraft(k);
-  }, [snapshot, syncUnsavedWork]);
+  }, [dropDraft, snapshot, syncUnsavedWork]);
 
   const discard = useCallback(() => {
     const k = keyRef.current;

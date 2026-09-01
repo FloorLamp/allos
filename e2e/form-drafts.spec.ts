@@ -544,12 +544,20 @@ test("the supplement form answers for itself, and Escape asks before discarding 
     await expect(confirm).toBeVisible();
     await hydratedClick(page, confirm.getByRole("button", { name: "Discard" }));
     await expect(addCard).toHaveCount(0);
+    await expect
+      .poll(
+        async () =>
+          (await draftRows(page)).filter((r) => r.key.includes(":supplement:"))
+            .length
+      )
+      .toBe(0);
 
     // AND THE OTHER HALF OF THE RULING, which is what keeps the confirm from becoming
     // a click-through: a dialog holding nothing unsaved keeps today's behaviour —
     // one Escape, closed, no question.
     await page.getByTestId("supplement-add-toggle").click();
     const reopened = page.getByRole("dialog", { name: "Add supplement" });
+    await expect(reopened.getByTestId("draft-restore-banner")).toHaveCount(0);
     await expect(reopened.getByTestId("intake-item-form")).toHaveAttribute(
       "data-unsaved",
       "false"

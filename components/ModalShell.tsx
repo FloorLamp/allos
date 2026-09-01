@@ -4,6 +4,7 @@ import { useCallback, useRef } from "react";
 import BottomSheet, { type SheetPresentation } from "./BottomSheet";
 import { useOptionalConfirm } from "./ConfirmDialog";
 import { useUnsavedInputWithin } from "./DirtyFormRegistry";
+import { discardUnsavedWorkWithin } from "@/lib/offline/unsaved-work";
 import type { OverlaySize } from "./overlay";
 
 // The app's dialog host — now a THIN WRAPPER over the one responsive dialog
@@ -40,7 +41,7 @@ import type { OverlaySize } from "./overlay";
 //     above — plus the explicit Close control a card needs (a sheet has its drag
 //     handle and its scrim; a centred card has neither).
 //   * A DECLARED SIZE instead of a `className` width (see OverlaySize).
-//   * The dirty-discard guard below.
+//   * The dirty-discard guard below, including its owned local draft.
 //
 // ── Discarding a dirty form (issue #2774, consequence B) ─────────────────────
 //
@@ -176,8 +177,12 @@ export default function ModalShell({
       confirmLabel: "Discard",
       cancelLabel: "Keep editing",
       danger: true,
-    }).then((ok) => {
-      if (ok) onClose();
+    }).then(async (ok) => {
+      if (!ok) return;
+      if (panelRef.current) {
+        await discardUnsavedWorkWithin(panelRef.current);
+      }
+      onClose();
     });
     // REFUSED, for now. The dialog is staying open behind the confirm, so the
     // panel must come back to rest — without this a flick leaves the form parked

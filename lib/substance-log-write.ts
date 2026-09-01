@@ -18,7 +18,7 @@
 // milestone/streak machinery stays structurally blind to the domain.
 
 import { today, writeTx } from "./db";
-import { isPastWriteAccepted } from "./log-manifest";
+import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { now as clockNow } from "./clock";
 import { substanceDayCounter } from "./day-counter-ledger-db";
 import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
@@ -68,6 +68,8 @@ export function logSubstanceUnitCore(
     return { kind: "logged", units, substance };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const logSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;
 
 // Undo one use of a substance on a day: decrement the day's row and drop it when
 // it would hit zero, so a fully-undone day leaves no stray row (the
@@ -83,3 +85,4 @@ export function undoSubstanceUnitCore(
     return { kind: "undone", units, substance };
   });
 }
+export const undoSubstanceUnitCoreDeclares = SUBSTANCE_USE_WRITE;

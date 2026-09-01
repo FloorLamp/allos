@@ -8,6 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
 import {
   expectControlBoxHeight,
   openDashboardAll,
@@ -232,7 +233,22 @@ test("Show everything remembers its open state on this device", async ({
     await page.goto("/");
     const details = page.getByTestId("dashboard-all");
     await expect(details).not.toHaveAttribute("open", "");
+
+    // THE UX CENSUS'S OWN SELECTOR, RESOLVED ON THE RENDERED PAGE (#3366/#1510).
+    // `lib/__tests__/ux-census-routes.test.ts` proves the marker it names is still
+    // written somewhere in the tree; only a real DOM can say the selector reaches
+    // the toggle. Between them they close the gap that left this fold registered
+    // under a testid #4480 had removed, with the census silently taking no expanded
+    // shot of the tail for a day. Read from the registry, so a re-aim is covered.
+    const censusToggle = page.locator(
+      DISCLOSURE_EXPANSIONS.find((e) => e.route === "/")!.closedToggle
+    );
+    await expect(censusToggle).toHaveCount(1);
+
     await openDashboardAll(page);
+    // …and it stops matching once open, which is what makes the expansion pass
+    // terminate instead of clicking the same control eighty times.
+    await expect(censusToggle).toHaveCount(0);
     await page.addInitScript(() => {
       const state = window as typeof window & {
         __dashboardAllOpenAtFirstFrame?: boolean;
