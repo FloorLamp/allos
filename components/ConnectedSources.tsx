@@ -228,7 +228,7 @@ function HealthyRow({ source }: { source: ConnectedSource }) {
         )}
       </span>
       <span
-        className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
         data-testid={`source-trailing-${source.id}`}
       >
         {source.latest && (
