@@ -10,33 +10,23 @@ import {
   undoSubstanceUnitAction,
 } from "@/app/(app)/medical/substance-use/actions";
 
-// THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3) — the unit tap, its undo,
-// and the #998 cap verdict that must stand beside them. It is what
-// `LOG_MANIFEST.substance.pieces.rowControl` names.
+// THE SUBSTANCE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), named by
+// `LOG_MANIFEST.substance.pieces.rowControl`: the unit tap, its undo and the #998 cap
+// verdict. The record's card and the quick-log sheet's row both mount it.
 //
-// WHY THE CAP LINE IS PART OF THE CONTROL AND NOT OF ITS HOSTS. The manifest excludes
-// this domain from the offline queue for exactly one reason (#3279): "the card renders
-// the week count and the cap verdict beside the button, and a queued unit would leave
-// that safety readout silently understating". That argument is about the TAP, so the
-// verdict travels with the tap rather than with whichever page happens to draw it — a
-// second tap surface that forgot to render it would re-open the hole the exclusion
-// closes. `capProgress` is null for a profile that set no target, and null renders
-// NOTHING: no "no cap set", no dash. The opt-in boundary is structural
-// (docs/internals/substances.md) — do not add a flag re-answering it.
+// THE CAP LINE BELONGS TO THE CONTROL, NOT ITS HOSTS. The manifest excludes this domain
+// from the offline queue for exactly one reason (#3279) — the verdict renders beside
+// the button and a queued unit would leave that safety readout understating — so the
+// verdict travels with the TAP, and a second tap surface cannot forget to draw it.
+// `capProgress` is null for a profile that set no target, and null renders NOTHING: no
+// "no cap set", no dash, no placeholder. That boundary is structural
+// (docs/internals/substances.md); do not add a flag re-asking it. `cap: 0` is the other
+// state and DOES render — an opted-in target of zero is a target.
 //
-// ONE FIELD SET AT EVERY MOUNT (#4424 class C: folds may collapse, fields may not
-// vanish per mount). The quick-log sheet's row used to offer a log and no undo, so a
-// mis-tap there had to be corrected on another page; both taps are here now, under the
-// SAME `substance-unit` one-tap ledger whose registry entry already says what a second
-// tap means — additive, cooldown feedback, never a confirm.
-//
-// `weekCount` IS OPTIONAL BECAUSE ONLY SOME MOUNTS KNOW IT. The substance card is
-// rendered from the week state and can say "nothing has been logged, so there is
-// nothing to undo"; the sheet's row is built from a different read and cannot. Undefined
-// therefore means "unknown", and the tap is offered rather than disabled on a guess —
-// the undo core is idempotent, so the worst case is a no-op. Every write answers with
-// the post-write count, so after the first tap the control knows it whatever it was
-// handed.
+// ONE FIELD SET AT EVERY MOUNT (#4424 class C): the sheet's row offered no undo.
+// `weekCount` is optional because only the card's read knows it; undefined means
+// unknown, so the tap is offered rather than disabled on a guess (undo is idempotent),
+// and every write answers with the post-write count.
 export default function SubstanceUnitControl({
   substance,
   weekCount,
@@ -59,9 +49,8 @@ export default function SubstanceUnitControl({
   async function tap(kind: "log" | "undo"): Promise<void> {
     setError(null);
     // #2007: additive substance taps never confirm — several a day is the use case.
-    // The ledger's short inert window after success absorbs an accidental double click
-    // and then clears; undo carries its own key, so a correction straight after a log
-    // is not absorbed by it.
+    // The ledger's inert window absorbs an accidental double click; undo carries its
+    // own key, so a correction straight after a log is not absorbed by it.
     await ledger.tap({
       key: kind,
       write: () => {
@@ -97,7 +86,9 @@ export default function SubstanceUnitControl({
           onClick={() => void tap("log")}
           data-testid={`${testIdPrefix}-log-${substance}`}
         >
-          {ledger.pending("log") ? "Logging…" : substanceDef(substance).logLabel}
+          {ledger.pending("log")
+            ? "Logging…"
+            : substanceDef(substance).logLabel}
         </button>
         <button
           type="button"

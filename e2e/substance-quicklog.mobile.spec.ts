@@ -257,7 +257,9 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
     const sheet = await openLogSheet(page);
     const row = await showLogRow(sheet, "log-substance");
     await row.click();
-    const capLine = page.getByTestId(`quick-entry-substance-cap-progress-${NAME}`);
+    const capLine = page.getByTestId(
+      `quick-entry-substance-cap-progress-${NAME}`
+    );
     await expect(capLine).toBeVisible({ timeout: 15_000 });
     await expect(capLine).toContainText("7");
     // Calm and factual, like every other rendering of this one line.

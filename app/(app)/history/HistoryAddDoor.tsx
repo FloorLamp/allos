@@ -62,17 +62,13 @@ import type { WeightUnit } from "@/lib/settings";
 // time field stays empty and emits null, so a backfill that states nothing still
 // states nothing, which is the behaviour phase 1 was protecting.
 //
-// TWO KINDS KEEP A BARE DATE, and neither is an oversight:
-//   • SUBSTANCE — `substance_daily_totals` is a DAY TOTAL. It has a `recorded_at`
-//     (when the use was logged) and no event instant at all, which is why the record
-//     renders these rows date-only and sinks them below the day's timed ones. A time
-//     field here would collect a statement with nowhere to be stored.
-//   • BODY — `body_metrics.occurred_at` exists (migration 165, #2235) and the write
-//     core takes it, but `addBodyMetric` deliberately states no time, and its
-//     find-then-write CLEARS the column on an empty submission while leaving it alone
-//     for a time-blind one. Choosing between those is a decision about the body
-//     domain's write contract, not about this door, so it is raised rather than
-//     guessed at here.
+// BODY KEEPS A BARE DATE, and that is not an oversight: `body_metrics.occurred_at`
+// exists (migration 165, #2235) and the write core takes it, but `addBodyMetric`
+// deliberately states no time, and its find-then-write CLEARS the column on an empty
+// submission while leaving it alone for a time-blind one. Choosing between those is a
+// decision about the body domain's write contract, not about this door. SUBSTANCE is
+// date-only in the SCHEMA (`substance_daily_totals` is a day total with no event
+// instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
@@ -301,9 +297,8 @@ export default function HistoryAddDoor({
     );
   }
 
-  // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
-  // time hidden: a control rendered without half of itself is a variant, and these two
-  // kinds are date-only in the SCHEMA rather than by presentation choice.
+  // BODY's field, and still `DateField` rather than a `WhenControl` with its time
+  // hidden: a control rendered without half of itself is a variant.
   const dateField = (
     <label className="text-xs text-slate-500 dark:text-slate-400">
       Date
@@ -449,11 +444,9 @@ export default function HistoryAddDoor({
           </form>
         );
       case "substance":
-        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The door had spelled its
-        // own substance form — with a bare "Amount" that meant drinks on one row and
-        // uses on the next — and this mounts the domain's one form instead, with the
-        // day the reader was looking at in hand. The refusal, the toast and the
-        // re-read stay the door's, so every kind still resolves in place.
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance
+        // form — with the bare "Amount" — is deleted and the domain's one form mounts
+        // with the found day in hand. The close and re-read stay the door's.
         return (
           <SubstanceForm
             substances={vocabulary.substances}

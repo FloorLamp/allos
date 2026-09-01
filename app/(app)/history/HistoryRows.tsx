@@ -639,12 +639,9 @@ export default function HistoryRows({
         );
       }
       case "substance":
-        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1) — the same component
-        // the record's add door and the substance card mount, seeded from this row and
-        // posting the correction action under that core's own bounds. The subject is
-        // the ROW's profile, spelled once and re-gated by `gateItemProfile`, exactly as
-        // the dose form above does it; this branch therefore does not run through
-        // `post()`, which stamps the same field for the hand-rolled forms.
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // It stamps the ROW's profile itself, like the dose form above, so it does not
+        // run through `post()`.
         return (
           <SubstanceForm
             substances={[{ key: edit.substance, label: row.title }]}

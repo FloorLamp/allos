@@ -480,13 +480,9 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "substance" },
     },
     pieces: {
-      // #4424's substance leg. `SubstanceForm` is the one form for add AND
-      // full-statement edit — the record's add door, the record row's correction and
-      // the substance card's add and edit all mount it — and its amount field carries
-      // the substance's own unit word, which is where #4211's "unlabeled substance
-      // amount" went. `SubstanceUnitControl` is the one row control: the tap, its undo
-      // and the #998 cap verdict, mounted on the card and in the quick-log sheet, so
-      // the readout the offline exclusion below is argued from travels with the tap.
+      // #4424's substance leg. `SubstanceForm` is add AND full-statement edit at every
+      // mount, with the unit-labelled amount (#4211); `SubstanceUnitControl` carries the
+      // tap, its undo, and the cap verdict the exclusion above is argued from.
       form: { kind: "shared", component: "SubstanceForm" },
       rowControl: { kind: "shared", component: "SubstanceUnitControl" },
     },

@@ -192,9 +192,7 @@ export default function ConsumptionSection({
         </OverflowMenu>
       </div>
 
-      {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), carrying the tap, its undo and
-          the cap verdict that must stand beside them. The quick-log sheet mounts the
-          same component, so neither surface can drift from the other. */}
+      {/* The domain's one row control (#4424), also mounted by the quick-log sheet. */}
       <SubstanceUnitControl
         substance={substance}
         weekCount={weekCount}

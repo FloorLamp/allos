@@ -79,13 +79,10 @@ export type SubstanceHistoryDeleteResult =
   | { kind: "not-found"; undoId: null; error: string };
 
 // THE CAP VERDICT RIDES THE WRITE (#998/#3279, #4424's substance leg). The tap
-// surfaces render `capProgressLine` beside the button, and the manifest's
-// offline exclusion is argued from exactly that — a safety readout that must not
-// silently understate. The FORM surfaces had none: a correction made on the record
-// could take somebody over their weekly cap and say nothing anywhere. Derived AFTER
-// the write, so it describes the state the write produced, and null for a profile
-// that opted into no target (`substanceCapStatus` is produced only where a target
-// row exists).
+// surfaces render it beside the button — the offline exclusion below is argued from
+// that readout — and the FORM surfaces had none, so a correction could take somebody
+// past their weekly cap in silence. Derived AFTER the write, and null for a profile
+// that set no target.
 export type SubstanceHistoryWriteResult = SubstanceHistoryMutationOutcome & {
   readonly capProgress?: string | null;
 };

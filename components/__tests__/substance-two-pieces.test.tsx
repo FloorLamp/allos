@@ -1,4 +1,10 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
@@ -126,9 +132,8 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
   it("draws the same fields in both modes and differs only in seed and action", async () => {
     openForm();
     const addFields = fieldSignature();
-    const addSeed = (
-      screen.getByLabelText(/^Amount/) as HTMLInputElement
-    ).value;
+    const addSeed = (screen.getByLabelText(/^Amount/) as HTMLInputElement)
+      .value;
     await save("Add");
     const added = payload("add");
 
@@ -192,8 +197,9 @@ describe("SubstanceForm is ONE form for add and for edit", () => {
 
   it("gives two substances with different unit words two different labels", () => {
     openForm(undefined, "alcohol");
-    const drinks = screen.getByLabelText(/^Amount/).closest("label")!
-      .textContent;
+    const drinks = screen
+      .getByLabelText(/^Amount/)
+      .closest("label")!.textContent;
     cleanup();
     openForm(undefined, "nicotine");
     const uses = screen.getByLabelText(/^Amount/).closest("label")!.textContent;

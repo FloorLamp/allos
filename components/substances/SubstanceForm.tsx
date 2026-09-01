@@ -5,50 +5,34 @@ import DateField from "@/components/DateField";
 import InlineError from "@/components/InlineError";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
-import {
-  MAX_SUBSTANCE_ENTRY_AMOUNT,
-  substanceDef,
-} from "@/lib/substance-use";
+import { MAX_SUBSTANCE_ENTRY_AMOUNT, substanceDef } from "@/lib/substance-use";
 import {
   addSubstanceDailyTotalAction,
   updateSubstanceDailyTotalAction,
 } from "@/app/(app)/medical/substance-use/actions";
 
-// THE SUBSTANCE DOMAIN'S ONE FORM (#4424 ruling 1), serving ADD and FULL-STATEMENT
-// EDIT. It replaces three spellings — the `/history` add door's own, the record row's
-// correction, and the substance card's add/edit pair — and it is what
-// `LOG_MANIFEST.substance.pieces.form` names, so a mount that reached for a deleted
-// spelling fails `tsc` rather than a census test.
+// THE SUBSTANCE DOMAIN'S ONE FORM (#4424 ruling 1), named by
+// `LOG_MANIFEST.substance.pieces.form`, replacing the `/history` add door's spelling,
+// that record row's correction and the substance card's add/edit pair. `row` absent
+// posts the log action; `row` present seeds from that row and posts the correction
+// action under its core's bounds. ONE layout — the mode decides seed and action only.
 //
-// ONE LAYOUT, TWO MODES. `row` absent posts `addSubstanceDailyTotalCore`'s action;
-// `row` present seeds every field from that row and posts the correction action under
-// that core's own bounds and audit. There is no second form: the fields below are
-// rendered once and the mode decides only the SEED and the ACTION.
+// THE AMOUNT CARRIES ITS UNIT (#4211, absorbed here): "Amount" alone means standard
+// drinks on one row and uses on the next.
 //
-// THE AMOUNT CARRIES ITS UNIT (#4211, absorbed by #4424). The door's copy asked for a
-// bare "Amount", which on a nicotine row means uses and on an alcohol row means
-// standard drinks — the same number meaning two things. The label names the substance's
-// own unit word, so deleting `unitPlural` from it is a visible change and not a
-// cosmetic one.
+// THE SUBSTANCE IS PART OF THE ROW'S ADDRESS, not a field a correction may move —
+// `updateSubstanceDailyTotalCore` finds its row by (id, profile, substance) — so a
+// mount that can choose hands the list, one that cannot hands a single entry and its
+// picker collapses away. The key posts from state either way.
 //
-// THE SUBSTANCE IS PART OF THE ROW'S ADDRESS, not a field a correction may move:
-// `updateSubstanceDailyTotalCore` finds its row by (id, profile, substance), so an edit
-// offers exactly the substance it was seeded with. A mount that can choose (the record's
-// add door, where a profile tracks several) hands the whole list; a mount that cannot
-// hands one and the picker collapses away rather than rendering a select with a single
-// option — the door's own "a picker with nothing to pick is worse than no control"
-// rule. Either way the key is posted from state, so the wire shape is identical.
-//
-// THE SUBJECT IS OPTIONAL AND SPELLED ONCE (ruling 4): absent means the acting profile,
-// present posts `profile_id` and is re-gated server-side by `gateItemProfile`. The form
-// never relaxes a gate; it only names who the row belongs to.
+// THE SUBJECT IS OPTIONAL AND SPELLED ONCE (ruling 4): absent is the acting profile,
+// present posts `profile_id` and is re-gated by `gateItemProfile`.
 
 export interface SubstanceChoice {
   key: string;
   label: string;
 }
 
-/** The row a full-statement edit is seeded from and posts back to. */
 export interface SubstanceEntryRow {
   id: number;
   substance: string;
@@ -72,18 +56,15 @@ export default function SubstanceForm({
   /** The day in hand (ruling 2). A seeded row's own date wins. */
   date: string;
   maxDate: string;
-  /** Absent: add. Present: edit, seeded from the row. */
   row?: SubstanceEntryRow;
-  /** Absent: the acting profile. Present: re-gated server-side. */
   subjectProfileId?: number;
   onSaved: () => void;
   onCancel: () => void;
   testId?: string;
 }) {
   const toast = useToast();
-  // WHICH SURFACE THIS WRITE CAME FROM (#3087), read off the region rather than
-  // asserted here: the same form renders on the record, in the card's modal and in a
-  // row's disclosure, and the action cannot know which.
+  // WHICH SURFACE THIS WRITE CAME FROM (#3087), read off the region: one form renders
+  // on the record, in the card's modal and in a row, and the action cannot know which.
   const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,11 +97,9 @@ export default function SubstanceForm({
       return;
     }
     setError(null);
-    // THE CAP VERDICT RIDES THE SAVE, at every mount (#998/#3279). The tap surfaces
-    // render it beside the button; the form surfaces had no readout at all, so a
-    // correction that took somebody over their weekly cap said nothing anywhere. The
-    // action derives it after the write, so what is announced is the state the write
-    // actually produced — and a profile with no cap has none, and hears nothing.
+    // THE CAP VERDICT RIDES THE SAVE, at every mount (#998/#3279): the tap surfaces
+    // render it beside the button and the form surfaces had no readout at all. Derived
+    // by the action AFTER the write, and null for a profile that set no cap.
     toast(
       [row ? "Corrected." : "Added to the record.", result.capProgress]
         .filter(Boolean)
@@ -175,8 +154,7 @@ export default function SubstanceForm({
         />
       </label>
       {/* The action stores what it reads, so a form without this field would silently
-          clear a note the person wrote — the rewrite-everything contract the record's
-          other correction forms carry. */}
+          clear a note somebody wrote. */}
       <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
         Notes
         <textarea
@@ -199,13 +177,10 @@ export default function SubstanceForm({
   );
 }
 
-// The refusals the two cores answer with, in the person's words. One copy for both
-// modes, because both post through `historyInput` and reach the same outcomes.
-function refusal(kind: string): string {
-  if (kind === "invalid-date") return "Enter a valid date.";
-  if (kind === "invalid-amount")
-    return `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`;
-  if (kind === "date-conflict")
-    return "An entry already exists for that date. Edit it instead.";
-  return "Couldn't save that entry.";
-}
+// The refusals both modes reach: one copy, because both post through `historyInput`.
+const REFUSALS: Record<string, string> = {
+  "invalid-date": "Enter a valid date.",
+  "invalid-amount": `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`,
+  "date-conflict": "An entry already exists for that date. Edit it instead.",
+};
+const refusal = (kind: string) => REFUSALS[kind] ?? "Couldn't save that entry.";
