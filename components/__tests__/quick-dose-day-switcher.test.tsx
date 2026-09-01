@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import { localDate } from "@/lib/offline/queue";
 
 const mocks = vi.hoisted(() => ({
@@ -147,10 +148,40 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
     );
     expect(screen.getByTestId(`quick-entry-dose-${DAILY_DOSE}`)).toBeTruthy();
   });
+
+  it("keeps the tap instant when the explicit profile day differs from the browser day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T12:00:00.000Z"));
+    try {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      mocks.enqueue.mockResolvedValue("kept");
+      render(
+        <DoseStatusControl
+          doseId={DAILY_DOSE}
+          date={TODAY}
+          taken={false}
+          skipped={false}
+          variant="pill"
+        />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("dose-take"));
+      });
+
+      const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+      expect(flow).toBe("dose");
+      expect(date).toBe(TODAY);
+      expect(localDate(new Date(payload.clientTakenAt))).toBe("2026-08-29");
+      expect(date).not.toBe(localDate(new Date(payload.clientTakenAt)));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("the quick-log dose sheet's day switcher (#3936)", () => {
-  it("queues a past-day take without inventing an administration instant", async () => {
+  it("queues a past-day take for profile-local normalization on replay", async () => {
     vi.clearAllMocks();
     vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
     mocks.enqueue.mockResolvedValue("kept");
@@ -167,9 +198,11 @@ describe("the quick-log dose sheet's day switcher (#3936)", () => {
     });
 
     expect(mocks.setDoseStatus).not.toHaveBeenCalled();
-    expect(mocks.enqueue).toHaveBeenCalledWith("dose", "2026-08-27", {
-      doseId: DAILY_DOSE,
-    });
+    const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
+    expect(flow).toBe("dose");
+    expect(date).toBe("2026-08-27");
+    expect(payload.doseId).toBe(DAILY_DOSE);
+    expect(payload.clientTakenAt).toBeTruthy();
   });
 
   it("offers exactly the days the server sent, today first", () => {

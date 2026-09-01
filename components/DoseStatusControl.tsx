@@ -238,11 +238,14 @@ export default function DoseStatusControl({
           // THE ROW'S DAY, NOT THE TAP'S: a past-day capture replays against the day
           // it names.
           date: capturedDate,
-          // A tap on today's row states an administration instant. A past-day row
-          // states only that day's status, so it must stay untimed on replay.
+          // Always carry the tap instant. This component has the row's PROFILE-local
+          // day but only the browser's clock — it cannot decide whether those two
+          // calendars call the instant today. Replay owns that comparison in the
+          // profile timezone: a matching day keeps the instant; a mismatched past-day
+          // row becomes deliberately untimed.
           payload: {
             doseId,
-            ...(flow === "dose" && capturedDate === localDate(tappedAt)
+            ...(flow === "dose"
               ? { clientTakenAt: tappedAt.toISOString() }
               : {}),
           },

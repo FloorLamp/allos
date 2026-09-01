@@ -230,12 +230,13 @@ decrement), while a retired dose, a paused item, the OTHER resolution already
 standing, or an entry that outlived the `isDoseDateAccepted` window is
 dead-lettered into the queue's review panel with its own reason instead of being
 reported as synced. A replayed confirm carries the CAPTURED tap instant
-(`clientTakenAt`) and stamps it as `recorded_at` — the untrusted client clock
-validated by the pure `resolveQueuedTakenAt` (not future beyond
-`GIVEN_AT_FUTURE_SKEW_MS`, and its profile-local date must be the log row's own
-day), falling back to the replay instant when unusable, since a skewed phone
-clock must cost the minute and never the dose log. The amount snapshot still
-comes from the dose row at replay, per the snapshot-on-confirm rule. **Dueness
+(`clientTakenAt`) for `occurred_at` — the client cannot infer a profile-local day
+from the browser calendar. Replay compares that untrusted instant with the row in
+the profile timezone: a matching day survives even when it replays after midnight;
+a mismatched explicit past-day row is deliberately untimed. A row that is still
+profile-today falls back to the replay instant when the clock is unusable, since a
+skewed phone clock must cost the minute and never the dose log. The amount snapshot
+still comes from the dose row at replay, per the snapshot-on-confirm rule. **Dueness
 for workout-conditioned items keys on the PREDICTED training day, not "was a
 workout logged" (#558):** `isDueOn` takes an optional `predictedWorkoutDay`
 (from `isPredictedWorkoutDay`/`inferWorkoutSchedule` — the same cadence the
