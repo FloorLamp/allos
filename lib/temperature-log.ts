@@ -26,7 +26,7 @@
 // keys on value+unit), giving the fever curve — keyed by real instants now.
 
 import { db, today, writeTx } from "./db";
-import { isPastWriteAccepted } from "./log-manifest";
+import { BODY_READING_WRITE, isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import { round } from "./units";
 import { utcInstant } from "./date";
@@ -183,6 +183,8 @@ export function logTemperatureCore(
     };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const logTemperatureCoreDeclares = BODY_READING_WRITE;
 
 // Correct one existing temperature reading without turning the episode UI into a
 // general medical-record editor. The canonical identity and profile ownership are

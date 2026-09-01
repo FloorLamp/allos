@@ -13,7 +13,7 @@
 import { instantNow } from "./clock";
 import type { LoggedVia } from "./logged-via";
 import { db, today, writeTx } from "./db";
-import { isPastWriteAccepted } from "./log-manifest";
+import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { isRealIsoDate } from "./date";
 import { captureDelete } from "./undo-delete-db";
 import {
@@ -152,6 +152,8 @@ export function addSubstanceDailyTotalCore(
     return { kind: "added" as const, id: Number(info.lastInsertRowid) };
   });
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const addSubstanceDailyTotalCoreDeclares = SUBSTANCE_USE_WRITE;
 
 export function updateSubstanceDailyTotalCore(
   profileId: number,
