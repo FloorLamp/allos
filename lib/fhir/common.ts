@@ -8,8 +8,9 @@ import type {
 import { fhirSourceTime, type SourceTime } from "../source-time";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 import { isColonDurationUnit, normalizeDurationValue } from "../duration-value";
+import { UserFacingError } from "../user-error-copy";
 
-export class FhirError extends Error {}
+export class FhirError extends UserFacingError {}
 
 // A FHIR `date` / `dateTime` / `instant` → what the resource ACTUALLY said, at its own
 // grain (issue #2243). This used to be `v.slice(0, 10)`, so an `effectiveDateTime` of

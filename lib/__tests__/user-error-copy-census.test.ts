@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript-api";
+import { CdaError } from "@/lib/cda/constants";
+import { FhirError } from "@/lib/fhir/common";
+import { SmartHealthCardError } from "@/lib/smart-health-card";
+import { UserFacingError, userErrorCopy } from "@/lib/user-error-copy";
 import { rawErrorCopySites } from "@/lib/user-error-copy-census";
+import { ZipIndexError } from "@/lib/zip-index";
 
 // #3198's guard: a caught error's own text may not reach a returned or persisted
 // user-facing string. The rule itself lives in lib/user-error-copy-census.ts so it
@@ -132,6 +138,73 @@ function walk(target: string): string[] {
   }
   return out;
 }
+
+const PARSER_ERRORS = new Set([
+  "CdaError",
+  "FhirError",
+  "SmartHealthCardError",
+  "ZipIndexError",
+]);
+
+function parserErrorMessages(): { site: string; literal: boolean }[] {
+  const messages: { site: string; literal: boolean }[] = [];
+  for (const full of walk(path.join(REPO, "lib"))) {
+    const rel = path.relative(REPO, full).split(path.sep).join("/");
+    if (rel.includes("__tests__") || rel.includes(".test.")) continue;
+    const source = ts.createSourceFile(
+      rel,
+      fs.readFileSync(full, "utf8"),
+      ts.ScriptTarget.Latest,
+      true
+    );
+    function visit(node: ts.Node): void {
+      if (
+        ts.isNewExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        PARSER_ERRORS.has(node.expression.text)
+      ) {
+        const message = node.arguments?.[0];
+        const line =
+          source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        messages.push({
+          site: `${rel}:${line}`,
+          literal:
+            message !== undefined &&
+            (ts.isStringLiteral(message) ||
+              ts.isNoSubstitutionTemplateLiteral(message)),
+        });
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  return messages;
+}
+
+describe("parser errors are reader-authored copy", () => {
+  it("uses the shared typed boundary for every parser family", () => {
+    for (const ErrorType of [
+      CdaError,
+      FhirError,
+      SmartHealthCardError,
+      ZipIndexError,
+    ]) {
+      const error = new ErrorType("This import needs a different file.");
+      expect(error).toBeInstanceOf(UserFacingError);
+      expect(userErrorCopy(error, { doing: "import this file" })).toBe(
+        "This import needs a different file."
+      );
+    }
+  });
+
+  it("keeps every parser error message literal and interpolation-free", () => {
+    const messages = parserErrorMessages();
+    expect(messages).toHaveLength(28);
+    expect(
+      messages.filter(({ literal }) => !literal).map(({ site }) => site)
+    ).toEqual([]);
+  });
+});
 
 function scanned(): { rel: string; text: string }[] {
   const files: { rel: string; text: string }[] = [];

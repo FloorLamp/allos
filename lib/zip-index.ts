@@ -16,8 +16,9 @@
 // Same limits and same unsupported set as lib/zip.ts: no Zip64, no encryption.
 
 import zlib from "node:zlib";
+import { UserFacingError } from "./user-error-copy";
 
-export class ZipIndexError extends Error {}
+export class ZipIndexError extends UserFacingError {}
 
 const EOCD_SIG = 0x06054b50;
 const CEN_SIG = 0x02014b50;
@@ -132,5 +133,5 @@ export function inflateEntry(raw: Buffer, method: number): Buffer {
       );
     }
   }
-  throw new ZipIndexError(`Unsupported ZIP compression method ${method}.`);
+  throw new ZipIndexError("Unsupported ZIP compression method.");
 }
