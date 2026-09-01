@@ -23,7 +23,6 @@ import {
   intermittentRunsLabel,
   needsAttention,
   observedSuccessCadenceMinutes,
-  pluralRunNoun,
   sourceStanding,
   runWindowNorm,
   standingBadge,
@@ -37,9 +36,12 @@ import {
   type OutboundStanding,
   type SourceStanding,
   type SyncEventFacts,
-  type SyncRunNoun,
 } from "@/lib/integrations/source-state";
 import { truncatedSyncDetails } from "@/lib/integrations/sync-details";
+import {
+  pluralRunNoun,
+  type SyncRunNoun,
+} from "@/lib/integrations/sync-run-vocabulary";
 
 // The instant every fixture below is measured against, and the shape the sync ledger
 // actually stores ('YYYY-MM-DDTHH:MM:SSZ', #2205 / migration 163).

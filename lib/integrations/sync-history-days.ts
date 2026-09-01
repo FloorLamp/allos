@@ -1,10 +1,9 @@
 import { dateStrInTz, parseUtcSql } from "../date";
 import { isTruncatedSyncEvent, parseSyncEventDetails } from "./sync-details";
-import { pluralRunNoun } from "./source-state";
+import { pluralRunNoun, type SyncRunNoun } from "./sync-run-vocabulary";
 import type {
   StatusTone,
   SyncEventFacts,
-  SyncRunNoun,
   SyncVocabulary,
 } from "./source-state";
 
