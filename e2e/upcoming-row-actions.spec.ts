@@ -19,12 +19,17 @@ import { practiceIdentity } from "@/lib/practice";
 //   2. a preventive row renders exactly one, and that one menu still offers BOTH
 //      halves (the overrides and snooze/dismiss) — the merge, not a deletion,
 //
-// Fixture policy (#868): these are READ-ONLY assertions over the shared seeded
-// profile — they open a menu and press Escape, and never write. So they take no
+// Fixture policy (#868): the composition assertions are READ-ONLY over the shared
+// seeded profile — they open a menu and press Escape, and never write. So they take no
 // exact counts of shared rows (a neighbour spec marks preventive items done or
 // overrides them) and never name a single catalog rule: every assertion is
 // either per-row, a lower bound, or "any preventive row". Deliberately NOT a
-// dedicated fixture profile: these assertions do not need another persisted subject.
+// dedicated fixture profile: those assertions do not need another persisted subject.
+//
+// THE PRACTICE-ROW CASE AT THE BOTTOM DOES WRITE, and it owns its subject: the row it
+// drives only exists while a weekly practice floor is unmet, so it seeds that target
+// itself and removes it and its session again. It touches no row the assertions above
+// count.
 
 async function openUpcoming(page: Page): Promise<Locator> {
   await page.goto("/upcoming");
