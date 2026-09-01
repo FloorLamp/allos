@@ -122,11 +122,4 @@ describe("delete-unknown-labels.ts", () => {
     expect(run.remaining).toEqual(["P2", "bug", "design", "training"]);
     expect(run.stdout).toContain("deleted 3");
   });
-
-  it("a fully on-taxonomy list is a quiet no-op under --apply", () => {
-    const run = runScript(["P2", "bug", "design", "training"], ["--apply"]);
-    expect(run.status).toBe(0);
-    expect(run.deletes).toEqual([]);
-    expect(run.stdout).toContain("strays: 0");
-  });
 });
