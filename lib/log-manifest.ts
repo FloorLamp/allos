@@ -410,26 +410,23 @@ export const LOG_MANIFEST = {
       sheet: { kind: "covered", via: "log-mood" },
       palette: { kind: "covered", via: ["log-mood"] },
       telegram: { kind: "covered", via: ["mood"] },
-      history: {
-        kind: "excluded",
-        reason:
-          "`HISTORY_LOG_KINDS` has no mood row: the check-in store is store-private under the #992 sensitivity contract, and giving the record a mood kind is a decision about that contract rather than about the kind registry.",
-        ref: "#4427",
-      },
+      history: { kind: "covered", via: "mood" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`QuickMoodCheckin` is a declared HALF-form — the expand fields exist on one mount and not the others — so mood has no single form serving add and full-statement edit.",
-        ref: "#4427",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The readings table's value cell is the row-control-grade edit and the dashboard card's faces are the tap; neither is a shared control any surface can mount.",
-        ref: "#4427",
-      },
+      // THE FORM CELL'S COUNT WAS STALE IN BOTH DIRECTIONS (#4427). The optional
+      // Energy/Calm/factors/note fields had ZERO current logging mounts: the retired
+      // dashboard card once drew them, while `QuickMoodCheckin` only carried stored
+      // values through its one-tap payload. `SleepMoodEditDialog` likewise corrected
+      // valence while preserving the hidden remainder. `MoodForm` owns the complete
+      // statement now and is mounted by quick entry and the record's add/edit doors.
+      //
+      // THE ROW-CONTROL CELL WAS ALSO STALE. The dashboard faces it cited retired
+      // with the dashboard becoming a door; metric-detail mood rows already mounted
+      // `ReadingValueControl`, inherited from body exactly as body's cell promised.
+      // The record keeps the feed-row precedent from #3958: its exclusive ⋯ opens the
+      // shared full form, with no third inline control.
+      form: { kind: "shared", component: "MoodForm" },
+      rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
     cores: ["upsertMoodLog"],

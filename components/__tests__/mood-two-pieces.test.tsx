@@ -157,9 +157,7 @@ describe("the mood domain's two pieces", () => {
         weightUnit="kg"
       />
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Reading actions for 2026-08-20" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Reading actions/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Reading value"), {
       target: { value: "4" },

@@ -17,6 +17,7 @@ import {
   IconFlame,
   IconFlask2,
   IconMoon,
+  IconMoodSmile,
   IconPill,
   IconRipple,
   IconRun,
@@ -79,6 +80,7 @@ import {
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
+import MoodForm from "@/components/mood/MoodForm";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -177,6 +179,7 @@ const KIND_GLYPH: Record<HistoryKind, TablerIcon> = {
   dose: IconPill,
   food: IconApple,
   practice: IconRipple,
+  mood: IconMoodSmile,
   substance: IconFlame,
   body: IconScaleOutline,
   sleep: IconMoon,
@@ -392,6 +395,13 @@ export default function HistoryRows({
             deletedMessage: "Reading removed",
           });
           break;
+        case "mood":
+          fd.set("kind", "mood");
+          fd.set("target", edit.target);
+          await undoable(deleteMetricReading, fd, {
+            deletedMessage: "Check-in removed",
+          });
+          break;
         case "symptom":
           // (date, symptom) IS the address — `symptom_logs` is UNIQUE on it and every
           // core in lib/symptom-log-write.ts takes exactly this pair.
@@ -600,6 +610,31 @@ export default function HistoryRows({
             }}
             subjectProfileId={row.profileId}
             onSaved={done}
+            onCancel={done}
+          />
+        );
+      case "mood":
+        // THE DOMAIN'S ONE FORM, seeded with the whole stored statement. The shared
+        // reading control remains the one-field correction on metric-detail rows;
+        // this record row's exclusive ⋯ opens the full form and no third control.
+        return (
+          <MoodForm
+            days={[
+              {
+                date: row.date,
+                mood: {
+                  valence: edit.valence,
+                  energy: edit.energy,
+                  anxiety: edit.anxiety,
+                  factors: edit.factors,
+                  notes: edit.notes,
+                },
+              },
+            ]}
+            showCalm={edit.calmRelevant}
+            subjectProfileId={row.profileId}
+            dateReach="dated"
+            onDone={done}
             onCancel={done}
           />
         );

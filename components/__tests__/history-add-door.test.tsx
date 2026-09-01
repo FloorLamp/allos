@@ -69,6 +69,12 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
     return { kind: "added" };
   },
 }));
+vi.mock("@/app/(app)/mood-actions", () => ({
+  logMood: async (fd: FormData) => {
+    record("logMood")(fd);
+    return { ok: true };
+  },
+}));
 // THE MEASUREMENTS ACTION, not a body-shaped one (#4424 ruling 2): the body kind
 // mounts the domain's one form, so the door's write is the same action the quick-log
 // sheet and the Trends panel post.
@@ -80,6 +86,19 @@ vi.mock("@/app/(app)/trends/measurement-actions", () => ({
 }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: async () => "kept" }),
+}));
+vi.mock("@/components/useOptimisticLedger", () => ({
+  useOptimisticLedger: () => ({
+    tap: async (spec: {
+      optimistic: number;
+      commit: (value: number) => void;
+      write: () => Promise<unknown>;
+      settle: (value: unknown) => unknown;
+    }) => {
+      spec.commit(spec.optimistic);
+      spec.settle(await spec.write());
+    },
+  }),
 }));
 // #4118's pair: the composed write the one-tap posts, and the dated offer read the
 // door consults when its date field moves. `offerReads` records every day asked about
@@ -193,6 +212,8 @@ const VOCABULARY = {
     { key: "cough", label: "Cough" },
   ],
   measurements: MEASUREMENTS,
+  moodDay: { date: FOUND_DAY, mood: null },
+  moodShowCalm: true,
   usual: [] as UsualOffer[],
   doseItems: [
     {
@@ -234,6 +255,28 @@ function only(action: string): Record<string, string> {
 }
 
 describe("the record's Add door posts to the domain's own create action", () => {
+  it("mounts the full mood form on the found day", async () => {
+    open("mood");
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "clear afternoon" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Mood: Good" }))
+    );
+    expect(only("logMood")).toMatchObject({
+      date: FOUND_DAY,
+      date_reach: "dated",
+      valence: "4",
+      energy: "4",
+      factors: "work",
+      note: "clear afternoon",
+    });
+    expect(refreshed).toHaveLength(1);
+  });
+
   it("keeps the dose form on its chosen day and resets it for a second save", async () => {
     open("dose");
     const chosenDay = "2026-08-17";

@@ -108,6 +108,12 @@ vi.mock("@/app/(app)/trends/reading-actions", () => ({
     return { undoId: 1 };
   },
 }));
+vi.mock("@/app/(app)/mood-actions", () => ({
+  logMood: async (fd: FormData) => {
+    record("logMood")(fd);
+    return { ok: true };
+  },
+}));
 
 // HistoryRows also renders symptom and cycle branches, but this suite owns the five
 // domains above. Do not load two unrelated Server Action and DB graphs for rows that
@@ -152,6 +158,9 @@ vi.mock("@/components/FormatPrefsProvider", () => ({
 }));
 vi.mock("@/components/TimezoneProvider", () => ({
   useTimezone: () => "UTC",
+}));
+vi.mock("@/components/OfflineQueueProvider", () => ({
+  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
 }));
 
 beforeEach(() => {
@@ -759,6 +768,35 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       "Save",
     ],
     [
+      "mood",
+      row({
+        id: "mood:8",
+        kind: "mood",
+        title: "Mood",
+        edit: {
+          kind: "mood",
+          target: "mood:8:valence",
+          valence: 4,
+          energy: 3,
+          anxiety: 2,
+          factors: ["social"],
+          notes: "steady enough",
+          calmRelevant: true,
+        },
+      }),
+      "logMood",
+      {
+        date: "2026-08-18",
+        valence: "4",
+        energy: "3",
+        anxiety: "2",
+        factors: "social",
+        note: "steady enough",
+        date_reach: "dated",
+      },
+      "Save",
+    ],
+    [
       // THE KIND THE MATRIX SKIPPED, and the one carrying a VALUE rather than a null.
       // Dose submits through the domain's own `HistoricalDoseForm` — button "Save
       // changes", not "Save" — so it sat outside this table while its two cases
@@ -916,6 +954,26 @@ describe("the record's ⋯ posts to the domain's own action", () => {
       }),
       "deleteMetricReading",
       { kind: "weight", target: "body_metrics:3:weight_kg" },
+    ],
+    [
+      "mood",
+      row({
+        id: "mood:8",
+        kind: "mood",
+        title: "Mood",
+        edit: {
+          kind: "mood",
+          target: "mood:8:valence",
+          valence: 4,
+          energy: 3,
+          anxiety: 2,
+          factors: ["social"],
+          notes: "steady enough",
+          calmRelevant: true,
+        },
+      }),
+      "deleteMetricReading",
+      { kind: "mood", target: "mood:8:valence" },
     ],
   ] as const)(
     "%s deletes by the ids its own action parses",

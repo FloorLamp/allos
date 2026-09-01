@@ -86,12 +86,16 @@ export default function MoodForm({
   days,
   showCalm,
   subjectProfileId,
+  dateReach = "tap",
   onDone,
+  onCancel,
 }: {
   days: readonly MoodFormDay[];
   showCalm: boolean;
   subjectProfileId?: number;
+  dateReach?: "tap" | "dated";
   onDone?: () => void;
+  onCancel?: () => void;
 }) {
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
@@ -144,6 +148,7 @@ export default function MoodForm({
     if (next.notes) fd.set("note", next.notes);
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
+    fd.set("date_reach", dateReach);
     return fd;
   }
 
@@ -349,13 +354,25 @@ export default function MoodForm({
               onChange={(event) => setNote(event.target.value)}
             />
           </label>
-          <button
-            className="btn btn-sm"
-            type="submit"
-            disabled={busy || valence == null}
-          >
-            {busy ? "Saving…" : "Save"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="btn btn-sm"
+              type="submit"
+              disabled={busy || valence == null}
+            >
+              {busy ? "Saving…" : "Save"}
+            </button>
+            {onCancel ? (
+              <button
+                className="btn-ghost btn-sm"
+                type="button"
+                disabled={busy}
+                onClick={onCancel}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
         </div>
       </Disclosure>
 

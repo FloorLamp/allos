@@ -29,9 +29,11 @@ import {
   getDaylightOutdoorMinutesByDay,
   getIntakeDoses,
   getIntakeItems,
+  getMoodOnDate,
   getSymptomLogOrder,
   getSymptomNotesOnDate,
   getSymptomSeveritiesOnDate,
+  isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
 import { getTimelineDates } from "@/lib/timeline";
@@ -508,6 +510,7 @@ export default async function HistoryPage(props: {
     kind === "food" ||
     kind === "dose" ||
     kind === "practice" ||
+    kind === "mood" ||
     kind === "substance" ||
     kind === "body"
       ? kind
@@ -560,6 +563,11 @@ export default async function HistoryPage(props: {
             actingProfileId,
             day ?? todayStr
           ),
+          moodDay: {
+            date: day ?? todayStr,
+            mood: getMoodOnDate(actingProfileId, day ?? todayStr),
+          },
+          moodShowCalm: isAnxietyScaleRelevant(actingProfileId),
           // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
           // door's first paint is the server's answer rather than a flash of nothing;
           // the door re-reads through `usualRoutineOffersOn` when its date field moves.

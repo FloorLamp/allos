@@ -34,6 +34,7 @@ import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
+import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -80,6 +81,7 @@ const KIND_LABEL = {
   food: "Log food",
   dose: "Log past dose",
   practice: "Log a practice",
+  mood: "Log a check-in",
   substance: "Log a use",
   body: "Log a reading",
   symptom: "Log a symptom",
@@ -112,6 +114,9 @@ export interface HistoryAddVocabulary {
    * door and the sheet cannot offer different field sets for one form.
    */
   measurements: MeasurementsQuickEntry;
+  /** The record day's full check-in seed and the canonical Calm relevance verdict. */
+  moodDay: MoodFormDay;
+  moodShowCalm: boolean;
   /**
    * The composed "your usual <window>" offers standing on the day being read (#4118),
    * one per window, seeded server-side. Empty for every kind but `food`, for a day
@@ -452,6 +457,19 @@ export default function HistoryAddDoor({
             date={date}
             maxDate={maxDate}
             onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
+        );
+      case "mood":
+        return (
+          <MoodForm
+            days={[vocabulary.moodDay]}
+            showCalm={vocabulary.moodShowCalm}
+            dateReach="dated"
+            onDone={() => {
               close();
               router.refresh();
             }}
