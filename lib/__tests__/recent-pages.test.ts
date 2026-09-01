@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { TRACKED_PAGES, trackedPageFor } from "@/lib/recent-pages";
+import { describe, expect, it, vi } from "vitest";
+import {
+  RETIRED_PAGE_VISITS_KEY,
+  TRACKED_PAGES,
+  clearRetiredPageVisits,
+  trackedPageFor,
+} from "@/lib/recent-pages";
 
 // The route → page-name registry (issue #1416, section E3).
 //
@@ -60,5 +65,14 @@ describe("the tracked-page allowlist", () => {
       expect(page.label.trim().length).toBeGreaterThan(0);
     }
     expect(hrefs).toContain("/wellness");
+  });
+});
+
+describe("the retired visit tally", () => {
+  it("can only be removed", () => {
+    const removeItem = vi.fn();
+    clearRetiredPageVisits({ removeItem });
+    expect(removeItem).toHaveBeenCalledOnce();
+    expect(removeItem).toHaveBeenCalledWith(RETIRED_PAGE_VISITS_KEY);
   });
 });
