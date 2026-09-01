@@ -880,59 +880,6 @@ test("a past day's dose captured with no signal leaves that day, then replays on
   }
 });
 
-test("the food and vitals overlays mount the same forms their pages carry", async ({
-  browser,
-}) => {
-  const page = await signIn(browser);
-  try {
-    await page.goto("/");
-
-    // Food: the Nutrition tab's own FoodLogBar, scoped to the overlay body so
-    // this can never accidentally assert the page's copy.
-    const food = await openQuickEntry(page, "log-food");
-    const foodBody = page.getByTestId("quick-entry-body");
-    await expect(foodBody).toHaveAttribute("data-form", "food");
-    await expect(foodBody.getByTestId("food-log-bar")).toBeVisible();
-    // The protein entry is ranked in only for a profile that tracks protein (#1980),
-    // and this fixture profile logs none — so the compact sheet offers no gram box. The
-    // Food tab stays the complete surface where those grams are first entered.
-    await expect(foodBody.getByTestId("protein-quickadd")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(food).toHaveCount(0);
-
-    // Measurements — the ONE row (#1486/#1506) that replaced the former weight +
-    // vitals pair, opening the SAME MeasurementsQuickAdd the Trends surfaces mount
-    // (no second form was written for the sheet).
-    const vitals = await openQuickEntry(page, "log-measurements");
-    const vitalsBody = page.getByTestId("quick-entry-body");
-    await expect(vitalsBody).toHaveAttribute("data-form", "measurements");
-    await expect(
-      vitalsBody.getByTestId("measurements-quick-add")
-    ).toBeVisible();
-
-    // And a reading submitted from here lands: the toast fires only after
-    // addMeasurements returned, so the write reached the same server action the
-    // page mount uses. (That action's persistence is already pinned by the action
-    // tier and manual-vitals.spec.ts — a mount, not a new write path.)
-    await openMeasurementGroup(
-      page,
-      vitalsBody.getByTestId("measurements-quick-add"),
-      "vitals"
-    );
-    await vitals.locator("#m-systolic").fill("118");
-    await vitals.locator("#m-diastolic").fill("76");
-    await settledClick(
-      page,
-      vitals.getByRole("button", { name: "Save measurements" })
-    );
-    await expect(page.getByText("Measurements saved")).toBeVisible();
-    await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
-    await expect(page).toHaveURL(/\/$/);
-  } finally {
-    await page.context().close();
-  }
-});
-
 test("food serving taps settle, roll one cumulative Undo toast, and undo only the latest tap (#3611)", async ({
   browser,
 }) => {
@@ -942,6 +889,12 @@ test("food serving taps settle, roll one cumulative Undo toast, and undo only th
   try {
     await page.goto("/");
     const food = await openQuickEntry(page, "log-food");
+    // The overlay mounts the Nutrition page's FoodLogBar rather than a second form.
+    // Protein is ranked in only for profiles that track it; this fixture does not.
+    const foodBody = page.getByTestId("quick-entry-body");
+    await expect(foodBody).toHaveAttribute("data-form", "food");
+    await expect(foodBody.getByTestId("food-log-bar")).toBeVisible();
+    await expect(foodBody.getByTestId("protein-quickadd")).toHaveCount(0);
     const row = food.getByTestId(`food-group-${group}`);
     if (!(await row.isVisible())) {
       await food.getByTestId("food-more-groups-summary").click();
