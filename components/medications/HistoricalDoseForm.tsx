@@ -20,10 +20,9 @@ export interface HistoricalDoseOption {
 }
 
 /**
- * One item a past dose may be logged against, with everything the form's copy and
- * bounds depend on. The form takes a LIST and owns the picker: choosing the item is
- * part of stating a past dose wherever the mount does not already stand on one item,
- * and it was spelled twice — once in the dose ledger's backfill slot and once in the
+ * One item a past dose may be logged against. The form takes a LIST and owns the
+ * picker: choosing the item is part of stating a past dose wherever the mount does not
+ * already stand on one, and it was spelled twice — the record door's launcher and the
  * Supplements tab's card — with the option list built two ways.
  */
 export interface HistoricalDoseItem {
@@ -70,10 +69,7 @@ export default function HistoricalDoseForm({
   tz: tzProp,
   onDone,
 }: {
-  /**
-   * The items this mount may log against, in the order it wants them offered. One
-   * item renders no picker at all, which is every correcting and per-item mount.
-   */
+  /** In the order the mount wants them offered; one item renders no picker. */
   items: HistoricalDoseItem[];
   minDate?: string;
   maxDate: string;
@@ -124,9 +120,8 @@ export default function HistoricalDoseForm({
     editing?.amount ?? initialDose?.amount ?? ""
   );
 
-  // SWITCHING THE ITEM RESETS THE DOSE AND ITS AMOUNT, in the one place that knows
-  // both changed. The two wrappers this replaced remounted the whole form on a `key`
-  // to get it, which also threw away the date the reader had already chosen.
+  // SWITCHING THE ITEM RESETS THE DOSE AND ITS AMOUNT. The two wrappers this replaced
+  // remounted the form on a `key` for that, throwing away the chosen date with it.
   function pickItem(nextId: number): void {
     const next = items.find((candidate) => candidate.id === nextId);
     if (!next) return;
@@ -187,10 +182,9 @@ export default function HistoricalDoseForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {!editing && items.length > 1 ? (
           <div>
-            {/* Named for what it selects rather than "Item": on the dose ledger this
-                sits beside that page's own item FILTER, and two controls whose
-                accessible name is just "Item" are indistinguishable to a screen
-                reader and to a spec. */}
+            {/* Named for what it selects rather than "Item": a record filtered by
+                item renders its own control, and two named "Item" are
+                indistinguishable to a screen reader and to a spec. */}
             <label className="label" htmlFor="historical-dose-item">
               Item to log against
             </label>

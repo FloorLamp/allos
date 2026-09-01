@@ -1291,11 +1291,9 @@ function doseStatusResult(
       return formError("That dose is no longer scheduled.");
     case "inactive":
       return formError("That item is paused.");
-    // THE DAY WAS ALREADY RESOLVED, THE OTHER WAY (#280). Only reachable from a
-    // resolve-only tap — a control that was showing CLEAR — and the honest answer is
-    // the status that actually persists, in the words every other dose surface uses,
-    // rather than a confirm of an action that wrote nothing. Asked-for and found
-    // agreeing is not a refusal: the dose is where the tap wanted it.
+    // THE DAY WAS ALREADY RESOLVED, THE OTHER WAY (#280) — only reachable from a
+    // resolve-only tap. The honest answer is the status that persists, in the words
+    // every other dose surface uses. Asked-for and found agreeing is not a refusal.
     case "already-taken":
       return target === "taken"
         ? formOk()
@@ -1313,13 +1311,10 @@ function doseStatusResult(
 // write path (taken / skipped / clear). #232
 //
 // THE DAY IS OPTIONAL AND BOUNDED BY THE OFFER (#4424). Absent it is the profile's
-// today, which is every mount that stands on today. Present it is checked against
-// `doseLogDays(localToday)` — the SAME upper-bound rule `resolveDayDoses` below
-// applies to its own date, off the same constant — so this action can never write a
-// day the day switcher would not offer, and a forged POST cannot reach TOMORROW
-// through the ±2 window `isDoseDateAccepted` allows a late Telegram tap. Widening it
-// means widening `TAP_REACH["dose-status"]`, which is coupled to Telegram pointer
-// retention (lib/log-manifest.ts) and would strand live keyboards.
+// today. Present it is checked against `doseLogDays(localToday)` — the same upper-bound
+// rule `resolveDayDoses` below applies, off the same constant — so a forged POST cannot
+// reach TOMORROW through the ±2 the core allows a late Telegram tap. Widening it means
+// widening `TAP_REACH["dose-status"]`, coupled to pointer retention.
 //
 // Cross-profile (#858/#1373): a multi-view Medications board confirms a household
 // member's scheduled dose without switching the acting profile — the board posts an
@@ -1362,11 +1357,10 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
     // The tri-state check-off renders on the Nutrition/Medications pages, the day
     // ledger's rows and the quick-log sheet's dose list, all posting THIS action.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-    // THE STATE THE CONTROL WAS SHOWING, and it decides whether this write may
-    // overwrite (#280). From a CLEAR dose the tap is a resolution and nothing more:
-    // a row in a list of what a day still owes renders clear whether or not another
-    // device has since resolved it. Absent — a caller that does not render a state —
-    // keeps the explicit set this action has always performed.
+    // THE STATE THE CONTROL WAS SHOWING, which decides whether this may overwrite
+    // (#280): a row in a list of what a day still owes renders CLEAR whether or not
+    // another device resolved it since, so from clear the tap may only resolve. Absent
+    // — a caller rendering no state — keeps the explicit set this action always did.
     String(formData.get("from") ?? "") === "clear" && target !== "clear"
   );
   revalidateIntake();

@@ -23,7 +23,10 @@ import {
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
-import { doseOptionsFor, type DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
+import {
+  doseOptionsFor,
+  type DoseLedgerItem,
+} from "@/components/intake/dose-ledger-entry";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
@@ -411,12 +414,10 @@ export default function HistoryAddDoor({
           </form>
         );
       case "dose":
-        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind was the
-        // one door that already opened a form in place, but through
-        // `DoseBackfillLauncher` — a wrapper that owned its own toggle, its own item
-        // picker and NO day: it opened on today whatever day the reader was standing
-        // on, which is the context every other kind here was given back. The launcher
-        // is deleted and the domain's one form mounts with the found day in hand.
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind already
+        // opened a form in place, but through `DoseBackfillLauncher` — its own toggle,
+        // its own item picker, and NO day: it opened on today whatever day the reader
+        // stood on. The launcher is deleted and the one form mounts with the day.
         return (
           <HistoricalDoseForm
             items={vocabulary.doseItems.map((item) => ({

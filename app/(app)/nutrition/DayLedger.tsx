@@ -335,7 +335,9 @@ export default function DayLedger({
           skipped={false}
           variant="circle"
           onSettled={(result) =>
-            result.ok ? markResolved([dose.doseId]) : note(dose.doseId, result.error)
+            result.ok
+              ? markResolved([dose.doseId])
+              : note(dose.doseId, result.error)
           }
         />
       </li>

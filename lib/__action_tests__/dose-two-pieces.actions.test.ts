@@ -136,7 +136,9 @@ describe("a tap made against a clear control may resolve, never overwrite (#280)
 
   it("says which status actually persists rather than confirming what was asked", async () => {
     const { doseId } = actor();
-    await setDoseStatus(fd({ dose_id: doseId, status: "skipped", from: "clear" }));
+    await setDoseStatus(
+      fd({ dose_id: doseId, status: "skipped", from: "clear" })
+    );
 
     const result = await setDoseStatus(
       fd({ dose_id: doseId, status: "taken", from: "clear" })
@@ -150,7 +152,9 @@ describe("a tap made against a clear control may resolve, never overwrite (#280)
 
   it("still lets a control that shows the state overwrite it, which is the tri-state", async () => {
     const { profileId, doseId } = actor();
-    await setDoseStatus(fd({ dose_id: doseId, status: "taken", from: "clear" }));
+    await setDoseStatus(
+      fd({ dose_id: doseId, status: "taken", from: "clear" })
+    );
 
     const flip = await setDoseStatus(
       fd({ dose_id: doseId, status: "skipped", from: "taken" })

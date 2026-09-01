@@ -144,33 +144,36 @@ describe("one dose form, add and edit, one layout (#4424 ruling 1)", () => {
         amount: "2.5 g",
       },
     },
-  ])("$mode posts $action from the one form", async ({ editing, action, expected }) => {
-    render(
-      <HistoricalDoseForm
-        items={[CREATINE]}
-        initialDate={YESTERDAY}
-        maxDate={TODAY}
-        defaultTime="08:00"
-        editing={editing}
-        onDone={vi.fn()}
-      />
-    );
+  ])(
+    "$mode posts $action from the one form",
+    async ({ editing, action, expected }) => {
+      render(
+        <HistoricalDoseForm
+          items={[CREATINE]}
+          initialDate={YESTERDAY}
+          maxDate={TODAY}
+          defaultTime="08:00"
+          editing={editing}
+          onDone={vi.fn()}
+        />
+      );
 
-    expect(screen.getByTestId("historical-dose-form")).toBeTruthy();
-    await submitForm();
+      expect(screen.getByTestId("historical-dose-form")).toBeTruthy();
+      await submitForm();
 
-    expect(
-      action === "logHistoricalDose"
-        ? mocks.logHistoricalDose
-        : mocks.updateHistoricalDose
-    ).toHaveBeenCalledTimes(1);
-    expect(
-      action === "logHistoricalDose"
-        ? mocks.updateHistoricalDose
-        : mocks.logHistoricalDose
-    ).not.toHaveBeenCalled();
-    expect(fields()).toMatchObject(expected);
-  });
+      expect(
+        action === "logHistoricalDose"
+          ? mocks.logHistoricalDose
+          : mocks.updateHistoricalDose
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        action === "logHistoricalDose"
+          ? mocks.updateHistoricalDose
+          : mocks.logHistoricalDose
+      ).not.toHaveBeenCalled();
+      expect(fields()).toMatchObject(expected);
+    }
+  );
 
   // THE PICKER IS THE FORM'S. It was spelled twice — the record door's launcher and the
   // Supplements tab's card — each building the option list its own way, so a door could
@@ -233,7 +236,12 @@ function ledgerGroups(): LedgerGroup[] {
       servings: 0,
       doses: 1,
       rows: [
-        { kind: "due", id: "due:Morning", bucket: "Morning", doses: [DUE_DOSE] },
+        {
+          kind: "due",
+          id: "due:Morning",
+          bucket: "Morning",
+          doses: [DUE_DOSE],
+        },
         {
           kind: "dose",
           id: "dose:55",
@@ -354,7 +362,9 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
             slots: [
               {
                 bucket: "Morning",
-                doses: [{ doseId: 41, name: "Creatine", detail: "5 g", stack: null }],
+                doses: [
+                  { doseId: 41, name: "Creatine", detail: "5 g", stack: null },
+                ],
               },
             ],
           },
@@ -381,7 +391,11 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
     });
 
     const sent = fields();
-    expect(sent).toMatchObject({ dose_id: "41", status: "taken", from: "clear" });
+    expect(sent).toMatchObject({
+      dose_id: "41",
+      status: "taken",
+      from: "clear",
+    });
     // The day is the ROW's, and today's row states none — the same post it always made.
     expect(sent.date).toBe(date);
   });
