@@ -399,9 +399,12 @@ describe("the record's ⋯ posts to the domain's own action", () => {
     await act(async () =>
       fireEvent.click(screen.getByTestId("history-row-edit"))
     );
-    // KEYED ON THE ROW, which is what makes this pass: the form's fields are
-    // uncontrolled, so a reused instance would keep the first row's DOM values however
-    // the seed prop changed.
+    // THE REMOUNT IS THE LIST'S, not the form's — measured rather than assumed. The
+    // form's fields are uncontrolled, so a REUSED instance would keep the first row's
+    // DOM values however its seed prop changed; the editing row renders as its own
+    // `<li key={row.id}>`, so opening a second row unmounts the first and there is no
+    // instance to reuse. A `key` on the form itself was tried, reverted, and is not
+    // what makes this pass.
     expect(
       (screen.getByLabelText("Date") as HTMLInputElement).value
     ).toBe("2026-08-19");

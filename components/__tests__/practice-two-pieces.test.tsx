@@ -247,10 +247,10 @@ describe("PracticeSessionForm is ONE form for add and for edit", () => {
   // stamp the filing minute onto a day that is not today.
   it("posts an empty start rather than none when the reader states no time", async () => {
     openForm();
-    const added = payload;
     await save("Log session");
-    expect(added("logPractice").start_time).toBe("");
-    expect("start_time" in added("logPractice")).toBe(true);
+    const added = payload("logPractice");
+    expect(added.start_time).toBe("");
+    expect("start_time" in added).toBe(true);
   });
 });
 
@@ -303,10 +303,12 @@ describe("the subject is spelled once, on every write either piece makes", () =>
   // target profile, so a captured session would land on the acting one — and the count
   // must not move either, since it is the control's claim that the session landed.
   it("goes online for a subject's tap instead of capturing it offline", async () => {
-    const online = Object.getOwnPropertyDescriptor(
-      window.navigator,
-      "onLine"
-    );
+    // `onLine` lives on Navigator.PROTOTYPE, so there is no own descriptor to put back
+    // — the restore is a DELETE, and getting that wrong leaves every later test in this
+    // file running offline. It would not have reddened them (a subject's tap goes
+    // online anyway), which is exactly why the leak is worth spelling out here.
+    const own = Object.getOwnPropertyDescriptor(window.navigator, "onLine");
+    expect(own, "navigator.onLine has an own descriptor now").toBeUndefined();
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       get: () => false,
@@ -336,7 +338,8 @@ describe("the subject is spelled once, on every write either piece makes", () =>
       await waitFor(() => expect(mocks.enqueue).toHaveBeenCalledTimes(1));
       expect(posted.logPractice ?? []).toHaveLength(0);
     } finally {
-      if (online) Object.defineProperty(window.navigator, "onLine", online);
+      Reflect.deleteProperty(window.navigator, "onLine");
+      expect(window.navigator.onLine).toBe(true);
     }
   });
 });

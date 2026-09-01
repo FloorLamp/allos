@@ -555,11 +555,9 @@ export default function HistoryRows({
         // so a window stated in the expanded form could be corrected only on the
         // Wellness card; the shared form states both. It stamps `profile_id` itself,
         // like the dose, substance and symptom forms, so it does not run through
-        // `post()`. KEYED on the row: the fields are uncontrolled, so a second row
-        // opened after a cancelled first must remount to reseed.
+        // `post()`.
         return (
           <PracticeSessionForm
-            key={row.id}
             practices={[row.title]}
             today={maxDateFor(row)}
             date={row.date}
