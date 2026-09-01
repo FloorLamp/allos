@@ -936,34 +936,7 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
     await expectInView(page, 2);
   }
 
-  test("single-view renders ONE board with no subject header (byte-identical structure)", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MVMEDS,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/medications");
-    // The acting (self) medication renders. No multi-view board WRAPPERS / headers and
-    // no leading strip in single-view — the byte-identical bar (one board, no header).
-    await expect(
-      page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
-    ).toBeVisible();
-    await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
-    await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
-    // Its own dose check-off control is live (write on the acting profile).
-    await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
-    // The read-only member's med is NOT in view.
-    await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
-      0
-    );
-
-    await page.context().close();
-  });
-
-  test("multi-view stacks a board per member behind the leading strip; the read-only board is view-only", async ({
+  test("single-view stays plain, then multi-view stacks writable and read-only boards", async ({
     browser,
   }) => {
     test.slow();
@@ -972,33 +945,38 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
       username: E2E_LOGIN_MVMEDS,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      await page.goto("/medications");
+      // The acting medication renders without multi-view wrappers or a leading strip.
+      await expect(
+        page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
+      ).toBeVisible();
+      await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
+      await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
+      await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
+      await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
+        0
+      );
 
-    await toggleIntoView(page, roId);
-    // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/medications");
-    await expectInView(page, 2);
+      await toggleIntoView(page, roId);
+      // Re-navigation proves the selected view-set persists on the session.
+      await page.goto("/medications");
+      await expectInView(page, 2);
+      await expect(page.getByTestId("med-today-everyone")).toBeVisible();
 
-    // The merged "Today across everyone" strip leads the page.
-    await expect(page.getByTestId("med-today-everyone")).toBeVisible();
-
-    // One board per in-view member, acting (self) first.
-    const selfBoard = page.getByTestId(`med-board-${selfId}`);
-    const roBoard = page.getByTestId(`med-board-${roId}`);
-    await expect(selfBoard).toBeVisible();
-    await expect(roBoard).toBeVisible();
-
-    // The read-only member's board wears the RO badge and shows NO dose-confirm control.
-    await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
-    await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
-    // Its medication still renders (read).
-    await expect(
-      roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
-    ).toBeVisible();
-
-    // The acting (write) board keeps its live dose-confirm control.
-    await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
-
-    await page.context().close();
+      const selfBoard = page.getByTestId(`med-board-${selfId}`);
+      const roBoard = page.getByTestId(`med-board-${roId}`);
+      await expect(selfBoard).toBeVisible();
+      await expect(roBoard).toBeVisible();
+      await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
+      await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
+      await expect(
+        roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
+      ).toBeVisible();
+      await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+    } finally {
+      await page.context().close();
+    }
   });
 });
 
