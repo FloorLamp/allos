@@ -419,15 +419,6 @@ export default function HistoryRows({
           // core in lib/symptom-log-write.ts takes exactly this pair.
           fd.set("symptom", edit.symptom);
           fd.set("date", row.date);
-          // AND THE SUBJECT AGAIN, UNDER THE OTHER SHIPPED SPELLING. `removeSymptom`
-          // is a symptom-BAR action (#858) as well as this row's delete, and the bar
-          // posts its cross-profile target as `profileId`; every other action this
-          // component posts reads `profile_id` through `gateItemProfile`. Both gate
-          // the same requireProfileWriteAccess(target), so this line is a field name
-          // and not a second authorization path — without it the delete would fall
-          // back to the acting profile while the Edit beside it corrected the row's
-          // own member.
-          fd.set("profileId", String(row.profileId));
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
           });

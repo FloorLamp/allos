@@ -339,11 +339,12 @@ export default function SymptomLogBar({
   const severities = severitiesByDate[activeDate] ?? {};
   const notes = notesByDate[activeDate] ?? {};
 
-  // Stamp the cross-profile target (issue #858) onto every write, when this bar is a
+  // Stamp the cross-profile subject (issue #858) onto every write, when this bar is a
   // illness Now cockpit for a non-active profile. A no-op on the default mounts (profileId
-  // undefined), which write the session's active profile.
+  // undefined), which write the session's active profile. ONE SPELLING, `profile_id`
+  // (#4424 ruling 4) — the same field every record row posts and `gateItemProfile` reads.
   const withTarget = (fd: FormData): FormData => {
-    if (profileId != null) fd.set("profileId", String(profileId));
+    if (profileId != null) fd.set("profile_id", String(profileId));
     if (episodeId != null) fd.set("episodeId", String(episodeId));
     // WHICH SURFACE (#3087). This bar is mounted on the dashboard, on the Timeline,
     // on the Cycles page and inside the illness cockpit's panels — one component,
