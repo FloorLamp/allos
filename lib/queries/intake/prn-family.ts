@@ -165,11 +165,10 @@ export function redoseWindowState(
 // administration + the ceiling window's combined count), profile-scoped through the
 // parent-item JOIN.
 //
-// `date` no longer bounds the count (#4686) — the ceiling window is the trailing 24
-// hours, taken from the clock seam below. It stays as the profile-local day the
-// CALLER is rendering, and as the memo key: both lifetimes are one render or one
-// tick, so freezing the window's endpoint across them is the same freeze every other
-// read in that scope already has.
+// NO DAY ARGUMENT (#4686). This state used to take the profile-local day its count
+// reset on; the ceiling window is the trailing 24 hours the label states, so there is
+// no day here to pass, to key on, or to get wrong. The window's endpoint is the clock
+// seam, frozen for a render or a tick exactly like every other read in that scope.
 //
 // MEMOIZED ON BOTH LIFETIMES (#2111). Every cross-item PRN counter is a formatter over
 // this ONE state, and a surface that renders several of them used to pay for the whole
@@ -178,8 +177,8 @@ export function redoseWindowState(
 // two or three times (redose notice, the digest's over-max item, the quick-log
 // gather) — where `cache()` is identity.
 //
-//   • `cache()` — collapses the per-render fan-out, the #2094 shape, keyed
-//     (profileId, date) as primitives so identity actually matches.
+//   • `cache()` — collapses the per-render fan-out, the #2094 shape, keyed on the
+//     profile id as a primitive so identity actually matches.
 //   • `tickCached` — the same collapse for the tick, whose scope
 //     `scripts/notify.ts` opens per profile (lib/tick-cache.ts).
 //
@@ -192,13 +191,13 @@ export function redoseWindowState(
 const getMedicationFamilyStatesForRequest = cache(
   tickCached(
     "getMedicationFamilyStates",
-    (profileId: number, date: string) => `${profileId}:${date}`,
+    (profileId: number) => String(profileId),
     getMedicationFamilyStatesUncached
   )
 );
 export const getMedicationFamilyStates = snapshotCached(
   "intake.medication-family-states",
-  (profileId: number, date: string) => `${profileId}:${date}`,
+  (profileId: number) => String(profileId),
   getMedicationFamilyStatesForRequest
 );
 
@@ -212,8 +211,7 @@ export function prnCeilingWindowStart(): string {
 }
 
 function getMedicationFamilyStatesUncached(
-  profileId: number,
-  date: string
+  profileId: number
 ): Map<number, MedFamilyState> {
   const out = new Map<number, MedFamilyState>();
   for (const family of getActiveMedicationFamilies(profileId)) {

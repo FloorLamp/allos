@@ -847,12 +847,12 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
-    const before = getRedoseArmingState(p, itemId, date);
+    const before = getRedoseArmingState(p, itemId);
     expect(before.latestGivenAt).toContain("10:00");
 
     // Moving the administration event moves the safety clock without changing row id.
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
-    const after = getRedoseArmingState(p, itemId, date);
+    const after = getRedoseArmingState(p, itemId);
     expect(after.latestGivenAt).toContain("14:00");
     expect(after.latestId).toBe(before.latestId);
 
@@ -886,7 +886,7 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     // Asserting the absence of "14:00" instead reds for the minute the real clock
     // spells it, because the fallback value is that clock (#3180).
     updateHistoricalDose(p, itemId, logId, date, null, null);
-    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).toBe(
+    expect(getRedoseArmingState(p, itemId).latestGivenAt).toBe(
       logRow(logId).recorded_at
     );
   });

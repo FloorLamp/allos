@@ -81,7 +81,7 @@ export async function runRedoseNotices(
   // members. The per-item one-shot marker semantics are unchanged — the notice
   // still belongs to this item, keyed by the arming administration id (a sibling's
   // id works identically: ids are ledger-global and never recycle).
-  const families = getMedicationFamilyStates(profileId, date);
+  const families = getMedicationFamilyStates(profileId);
 
   let failed = false;
   for (const item of items) {

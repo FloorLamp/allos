@@ -742,7 +742,7 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     const { profileId, otcItemId } = seedFamilyProfile("TickFamLifetime");
     const date = today(profileId);
     const first = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(profileId).get(otcItemId)
     );
     expect(first?.count24h).toBe(2);
 
@@ -753,12 +753,12 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     logAdministration(otcItemId, dose.id, date, 0, "200 mg");
 
     const second = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(profileId).get(otcItemId)
     );
     expect(second?.count24h).toBe(3);
     // And with no scope at all, every read is fresh.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.count24h
+      getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
     ).toBe(3);
   });
 
@@ -778,16 +778,16 @@ describe("a tick scope's memo cannot outlive its tick", () => {
 
     await runInTickScope(async () => {
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.count24h
+        getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
       ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.count24h
+        getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.count24h
+      getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
     ).toBe(3);
   });
 

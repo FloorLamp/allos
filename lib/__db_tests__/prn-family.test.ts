@@ -156,7 +156,7 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     logAdmin(otc.itemId, otc.doseId, date, 8, now);
     const rxAdmin = logAdmin(rx.itemId, rx.doseId, date, 1, now);
 
-    const states = getMedicationFamilyStates(p, date);
+    const states = getMedicationFamilyStates(p);
     const state = states.get(otc.itemId)!;
     expect(state).toBeTruthy();
     expect(states.get(rx.itemId)!.familyKey).toBe(state.familyKey);
@@ -165,7 +165,7 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     // combined count spans both items.
     expect(state.latestId).toBe(rxAdmin);
     expect(state.latestItemId).toBe(rx.itemId);
-    expect(state.countToday).toBe(2);
+    expect(state.count24h).toBe(2);
     expect(state.minConfirmedMax).toBe(4);
   });
 
@@ -173,7 +173,7 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     const p = newProfile("FamUnrelated");
     seedIbuprofenPair(p);
     const other = seedMed(p, "Acetaminophen");
-    const states = getMedicationFamilyStates(p, today(p));
+    const states = getMedicationFamilyStates(p);
     expect(states.get(other.itemId)!.memberIds).toEqual([other.itemId]);
   });
 });
@@ -261,7 +261,7 @@ describe("family over-max care finding (#1027)", () => {
     expect(up!.detail).toContain("across");
     expect(up!.detail).toContain("Ibuprofen 800 mg");
     // The copy states the basis actually used (#1854): doses, not milligrams.
-    expect(up!.detail).toContain("5 doses logged today");
+    expect(up!.detail).toContain("5 doses logged in 24h");
   });
 
   it("a solo item keeps the exact pre-#1027 behavior", () => {
@@ -315,7 +315,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     for (const h of [10, 6, 2])
       logAdmin(rx.itemId, rx.doseId, date, h, now, "800 mg");
 
-    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    const state = getMedicationFamilyStates(p).get(otc.itemId)!;
     expect(state.minConfirmedMaxMg).toBe(1200);
     expect(state.exposure).toMatchObject({
       basis: "mg",
@@ -340,8 +340,8 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     expect(up.domain).toBe("prn-max");
     // End-to-end copy: milligram basis stated, both members named, never a
     // dose-count framing.
-    expect(up.detail).toContain("2400 mg logged today");
-    expect(up.detail).toContain("max of 1200 mg per day");
+    expect(up.detail).toContain("2400 mg logged in 24h");
+    expect(up.detail).toContain("max of 1200 mg per 24h");
     expect(up.detail).toContain("Ibuprofen 800 mg");
     expect(up.detail).not.toContain("doses logged");
   });
@@ -358,7 +358,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     for (const h of [12, 10, 8, 5, 2])
       logAdmin(otc.itemId, otc.doseId, date, h, now, "200 mg");
 
-    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    const state = getMedicationFamilyStates(p).get(otc.itemId)!;
     expect(state.exposure).toMatchObject({
       basis: "mg",
       total: 1000,
@@ -386,8 +386,8 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     const up = collectUpcoming(p, date).find(
       (u) => u.key === prnMaxSignalKey(otc.itemId)
     )!;
-    expect(up.detail).toContain("5 doses logged today");
-    expect(up.detail).not.toContain("mg logged today");
+    expect(up.detail).toContain("5 doses logged in 24h");
+    expect(up.detail).not.toContain("mg logged in 24h");
   });
 
   it("mg lower bound when NO count fallback exists: known amounts already past the ceiling read 'at least'", () => {
@@ -414,7 +414,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     const up = collectUpcoming(p, date).find(
       (u) => u.key === prnMaxSignalKey(otc.itemId)
     )!;
-    expect(up.detail).toContain("At least 1600 mg logged today");
+    expect(up.detail).toContain("At least 1600 mg logged in 24h");
     expect(up.detail).toContain("1 dose had no recorded amount");
   });
 });
@@ -484,12 +484,12 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
     const date = today(p);
     logAdmin(a1.itemId, a1.doseId, date, 8, now);
     const arming = logAdmin(a2.itemId, a2.doseId, date, 1, now);
-    const state = getMedicationFamilyStates(p, date).get(a3.itemId)!;
+    const state = getMedicationFamilyStates(p).get(a3.itemId)!;
     expect(state.memberIds.sort()).toEqual(
       [a1.itemId, a2.itemId, a3.itemId].sort()
     );
     expect(state.latestId).toBe(arming);
-    expect(state.countToday).toBe(2);
+    expect(state.count24h).toBe(2);
     expect(state.minConfirmedMax).toBe(6);
 
     // A dismissal recorded against the family key (as before the copy change)
@@ -541,7 +541,7 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     // 19:15 last night — 14h before 09:16, well inside 24h.
     logAdmin(med.itemId, med.doseId, yesterday, 14.02, MORNING, "500 mg");
 
-    const state = getMedicationFamilyStates(p, today(p)).get(med.itemId)!;
+    const state = getMedicationFamilyStates(p).get(med.itemId)!;
     expect(state.count24h).toBe(1);
     expect(cardLabel(p, MORNING)).toContain("1 of 5 in 24h");
   });
@@ -564,7 +564,7 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     for (const [day, hoursAgo] of sequence)
       latestId = logAdmin(med.itemId, med.doseId, day, hoursAgo, MORNING, "500 mg");
 
-    const state = getMedicationFamilyStates(p, t).get(med.itemId)!;
+    const state = getMedicationFamilyStates(p).get(med.itemId)!;
     expect(state.count24h).toBe(5);
     expect(state.exposure).toMatchObject({
       basis: "count",

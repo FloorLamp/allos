@@ -133,10 +133,14 @@ describe("the (item_id, best administration instant) index", () => {
   });
 
   it("still finds the SAME arming administration — an index changes cost, not answers", () => {
-    const state = getMedicationFamilyStates(profileId, today(profileId)).get(
+    const state = getMedicationFamilyStates(profileId).get(
       itemId
     );
     expect(state?.latestId).toBe(newestId);
-    expect(state?.count24h).toBe(30);
+    // All 30 rows carry today's `date` while their instants are spread one per day
+    // back — so the ceiling window (#4686) holds exactly the newest, sitting on the
+    // 24h boundary the window includes. The day-scoped count said 30 and would have
+    // called a month-old ledger a month's worth of doses taken today.
+    expect(state?.count24h).toBe(1);
   });
 });

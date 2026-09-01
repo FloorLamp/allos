@@ -326,7 +326,7 @@ export function loadMedicationsData(
   // FAMILY's latest administration / combined count / most conservative confirmed
   // max (an OTC ibuprofen dose holds the Rx item's "Redose OK"); the day label
   // stays the item's OWN administrations.
-  const familyStates = getMedicationFamilyStates(profileId, todayStr);
+  const familyStates = getMedicationFamilyStates(profileId);
   const prnInfoFor = (
     s: IntakeItem
   ): {

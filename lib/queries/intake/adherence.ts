@@ -1803,7 +1803,7 @@ export function getPrnOverMaxItems(
 ): PrnOverMaxItem[] {
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
-  const states = getMedicationFamilyStates(profileId, date);
+  const states = getMedicationFamilyStates(profileId);
   // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
   // the active PRN-configured meds once (profile-scoped). Either ceiling form
   // (count or mg/day, #1854) makes an item "configured".
@@ -1927,7 +1927,7 @@ function getPrnQuickLogItems(
     | "familyExposure"
     | "familyMemberCount"
   >[];
-  const families = getMedicationFamilyStates(profileId, date);
+  const families = getMedicationFamilyStates(profileId);
   return rows.map((r) => {
     const fam = families.get(r.id);
     return {
