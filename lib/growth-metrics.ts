@@ -1,10 +1,9 @@
-// Pure, age-aware MEMBERSHIP for the Trends → Overview → body census (no DB, no React) —
+// Pure MEMBERSHIP for the Trends → Overview → body census (no DB, no React) —
 // unit-tested in lib/__tests__/growth-metrics.test.ts. For a growth-tracked profile,
-// HEIGHT is the priority datapoint and body fat % is not tracked, so the body census
-// charts height (and head circumference for the very young) and drops the body-fat
-// chart/tile. Adults keep weight + body fat. Keeping this a pure decision function
-// lets both the Body section and the Overview metric tiles (which body measures to
-// show) share one age rule.
+// HEIGHT is the priority datapoint, so the body census charts height (and head
+// circumference for the very young). Body composition is governed by the two rules
+// below — entry by life stage, display by data presence (#4147). Keeping these pure
+// lets the Body section, the Overview tiles and every entry surface share one answer.
 //
 // #1490 took the ORDER half away: the growth-percentile card leading the stack for a
 // child is now the life-stage signal of the tab's one card ranker
@@ -22,8 +21,8 @@
 import { isGrowthTracked } from "./life-stage";
 
 // Re-export so body-census consumers and tests read the one shared predicate. The
-// growth-led presentation (layout order, body-fat drop, growth card, quick-add) all
-// key on this single line.
+// growth-led presentation (layout order, composition entry, growth card, quick-add)
+// all key on this single line.
 export { isGrowthTracked, GROWTH_CHART_MAX_AGE } from "./life-stage";
 
 // Head circumference is a pediatric-only measure. The WHO head-circ-for-age chart
@@ -53,13 +52,34 @@ export function showGrowthQuickAdd(
   return isGrowthTracked(ageYears);
 }
 
-// Body fat % is a body-composition measure we don't surface for a growing profile —
-// for a growth-tracked age it's de-prioritized out of the Body charts, Overview
-// tiles, AND (issue #493) the entry field and history column, so "not tracked" is
-// consistent across every interactive surface. The raw data export keeps the column
-// (a complete-record contract, distinct from the app's display choice).
-export function showBodyFat(ageYears: number | null | undefined): boolean {
+// ── Body composition for a growing profile: two rules, not one (#4147) ───────
+//
+// #493 hid body fat % from a growth-tracked profile everywhere at once — charts,
+// tiles, entry field, history column — which was one rule doing two jobs. #4132
+// exposed it by adding lean and bone mass ungated, so a child's form offered two
+// numbers off a DEXA report while the third was deliberately absent.
+//
+// ENTRY is a life-stage question. Manual composition entry — body fat %, lean mass,
+// bone mass — is closed for a growth-tracked profile as a CLASS: the app never
+// prompts a child's profile for a composition figure. A caregiver holding a real
+// report uploads it instead; document import already extracts every composition
+// number on the page (lib/medical-extract/prompt.ts). Adults are untouched.
+export function showCompositionEntry(
+  ageYears: number | null | undefined
+): boolean {
   return !isGrowthTracked(ageYears);
+}
+
+// DISPLAY is a data question. A figure the family's own report states was never
+// protected by being hidden, so composition values show wherever they exist. What
+// #493's hiding still governs is the NO-DATA state: no empty chart slot, no
+// affordance offering a number this profile has never had and cannot type in. Its
+// export contract is untouched — the raw export keeps the column either way.
+export function showBodyFatDisplay(
+  ageYears: number | null | undefined,
+  hasData: boolean
+): boolean {
+  return hasData || showCompositionEntry(ageYears);
 }
 
 // The body-composition trend charts that the Body section should render for a
@@ -76,18 +96,23 @@ export interface BodyChartPlan {
   keys: BodyChartKey[];
 }
 
-// Decide WHICH body-composition charts a profile gets from its age. For a
-// growth-tracked profile, height is charted (with head circ for the very young) and
-// body fat is dropped entirely; an adult / unknown age keeps weight + body fat.
+// Decide WHICH body-composition charts a profile gets. Life stage adds the growth
+// pair (height, and head circ for the very young); body fat follows the display rule
+// above. `hasBodyFat` is asked of the caller because this module is pure — the
+// section already holds the series it would otherwise read twice.
 export function planBodyCharts(input: {
   ageYears: number | null | undefined;
   ageMonths: number | null | undefined;
+  hasBodyFat: boolean;
 }): BodyChartPlan {
-  if (!isGrowthTracked(input.ageYears)) {
-    return { keys: ["weight", "bodyfat", "resting_hr"] };
+  const keys: BodyChartKey[] = [];
+  if (isGrowthTracked(input.ageYears)) {
+    keys.push("height");
+    if (showHeadCircEntry(input.ageMonths)) keys.push("head_circumference");
   }
-  const keys: BodyChartKey[] = ["height"];
-  if (showHeadCircEntry(input.ageMonths)) keys.push("head_circumference");
-  keys.push("weight", "resting_hr");
+  keys.push("weight");
+  if (showBodyFatDisplay(input.ageYears, input.hasBodyFat))
+    keys.push("bodyfat");
+  keys.push("resting_hr");
   return { keys };
 }

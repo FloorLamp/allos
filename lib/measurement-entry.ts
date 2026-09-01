@@ -13,15 +13,18 @@ export type MeasurementEntryMetric =
   // the whole ruling rests on, and it applies at every life stage.
   | "waist-circ"
   // The four #1851 closed: charted and imported, but with no way to type them in.
-  // All ungated — a counted breathing rate, a DEXA report and a day's water apply
-  // at every life stage.
+  // A counted breathing rate and a day's water are ungated like the tape above; lean
+  // and bone mass are NOT, because they are body composition — the same class as body
+  // fat %, off the same DEXA report, and gated with it since #4147.
   | "respiratory-rate"
   | "lean-mass"
   | "bone-mass"
   | "hydration";
 
 export interface MeasurementEntryGates {
-  showBodyFat: boolean;
+  // Manual body-composition entry: body fat %, lean mass, bone mass, as one class
+  // (#4147). Composition for a growth-tracked profile arrives by document import.
+  showCompositionEntry: boolean;
   showGrowth: boolean;
   showHeadCirc: boolean;
 }
@@ -32,7 +35,8 @@ export function isMeasurementEntryAllowed(
   metric: MeasurementEntryMetric,
   gates: MeasurementEntryGates
 ): boolean {
-  if (metric === "body-fat") return gates.showBodyFat;
+  if (metric === "body-fat" || metric === "lean-mass" || metric === "bone-mass")
+    return gates.showCompositionEntry;
   if (metric === "hrv") return !gates.showGrowth;
   if (metric === "head-circ") return gates.showHeadCirc;
   return true;

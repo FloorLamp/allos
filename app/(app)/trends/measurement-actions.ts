@@ -229,9 +229,11 @@ export async function addMeasurements(
       }) || wrote;
   }
 
-  // 5. Lean mass / bone mass / hydration (metric_samples) — ungated like the waist
-  //    tape above, and for the same reason: a DEXA report and a day's water apply
-  //    at every life stage (#1851).
+  // 5. Lean mass / bone mass / hydration (metric_samples). The day's water is ungated
+  //    like the waist tape above; lean and bone mass are NOT, since #4147 — they are
+  //    body composition off the same DEXA reading as the body-fat figure, and the form
+  //    gates all three off a growth-tracked profile as one class. Gated in the FORM
+  //    only, exactly as body fat has been since #493.
   if (filled("lean_mass") || filled("bone_mass") || filled("hydration")) {
     wrote =
       insertComposition(profile.id, date, {

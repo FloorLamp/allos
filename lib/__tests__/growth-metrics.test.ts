@@ -4,7 +4,8 @@ import {
   GROWTH_CHART_MAX_AGE,
   showHeadCircEntry,
   showGrowthQuickAdd,
-  showBodyFat,
+  showCompositionEntry,
+  showBodyFatDisplay,
   planBodyCharts,
 } from "@/lib/growth-metrics";
 
@@ -43,60 +44,108 @@ describe("showHeadCircEntry", () => {
   });
 });
 
-describe("showGrowthQuickAdd / showBodyFat", () => {
+describe("showGrowthQuickAdd / composition entry and display", () => {
   it("growth quick-add mirrors isGrowthTracked", () => {
     expect(showGrowthQuickAdd(3)).toBe(true);
     expect(showGrowthQuickAdd(19)).toBe(true);
     expect(showGrowthQuickAdd(40)).toBe(false);
   });
-  it("body fat is hidden for a growth-tracked age, shown for adults/unknown", () => {
-    expect(showBodyFat(3)).toBe(false);
-    expect(showBodyFat(19)).toBe(false);
-    expect(showBodyFat(20)).toBe(true);
-    expect(showBodyFat(40)).toBe(true);
-    expect(showBodyFat(null)).toBe(true);
+
+  // ENTRY is the life-stage half, and it now governs the whole composition class
+  // rather than body fat alone (#4147): the app never prompts a growth-tracked
+  // profile for body fat, lean mass or bone mass. Adults are unchanged.
+  it("closes manual composition entry for a growth-tracked age only", () => {
+    expect(showCompositionEntry(3)).toBe(false);
+    expect(showCompositionEntry(19)).toBe(false);
+    expect(showCompositionEntry(20)).toBe(true);
+    expect(showCompositionEntry(40)).toBe(true);
+    expect(showCompositionEntry(null)).toBe(true);
   });
+
+  // DISPLAY is the data half. #493 hid body fat from a growing profile
+  // unconditionally; that hiding now governs the NO-DATA state only, so an imported
+  // DEXA figure shows on the child's own profile. The adult column is the control
+  // that this narrowing did not widen into "adults lose their empty affordance".
+  it.each([
+    { age: 8, hasData: false, shown: false },
+    { age: 8, hasData: true, shown: true },
+    { age: 19, hasData: false, shown: false },
+    { age: 19, hasData: true, shown: true },
+    { age: 40, hasData: false, shown: true },
+    { age: 40, hasData: true, shown: true },
+    { age: null, hasData: false, shown: true },
+  ])(
+    "shows body fat for age $age with data=$hasData → $shown",
+    ({ age, hasData, shown }) => {
+      expect(showBodyFatDisplay(age, hasData)).toBe(shown);
+    }
+  );
 });
 
 describe("planBodyCharts", () => {
-  it("keeps the adult membership including body fat", () => {
-    expect(planBodyCharts({ ageYears: 40, ageMonths: 480 })).toEqual({
+  // Life stage decides the growth pair; data decides body fat (#4147). The
+  // no-data column is the one that moved: it used to be the ONLY answer for a
+  // growth-tracked profile, and the has-data column below is the narrowing.
+  it.each([
+    {
+      what: "an adult",
+      ageYears: 40 as number | null,
+      ageMonths: 480 as number | null,
+      hasBodyFat: false,
       keys: ["weight", "bodyfat", "resting_hr"],
-    });
-  });
-
-  it("treats unknown age as an adult", () => {
-    expect(planBodyCharts({ ageYears: null, ageMonths: null })).toEqual({
+    },
+    {
+      what: "an unknown age, treated as an adult",
+      ageYears: null,
+      ageMonths: null,
+      hasBodyFat: false,
       keys: ["weight", "bodyfat", "resting_hr"],
-    });
-  });
-
-  it("charts height + head circ for an infant and drops body fat", () => {
-    expect(planBodyCharts({ ageYears: 1, ageMonths: 18 })).toEqual({
+    },
+    {
+      what: "exactly 20, past the chart ceiling",
+      ageYears: 20,
+      ageMonths: 240,
+      hasBodyFat: false,
+      keys: ["weight", "bodyfat", "resting_hr"],
+    },
+    {
+      what: "an infant with no composition reading",
+      ageYears: 1,
+      ageMonths: 18,
+      hasBodyFat: false,
       keys: ["height", "head_circumference", "weight", "resting_hr"],
-    });
-  });
-
-  it("charts height (no head circ) for an older child", () => {
-    expect(planBodyCharts({ ageYears: 10, ageMonths: 120 })).toEqual({
+    },
+    {
+      what: "an infant whose imported DEXA gave one",
+      ageYears: 1,
+      ageMonths: 18,
+      hasBodyFat: true,
+      keys: ["height", "head_circumference", "weight", "bodyfat", "resting_hr"],
+    },
+    {
+      what: "an older child with no reading (no head circ either)",
+      ageYears: 10,
+      ageMonths: 120,
+      hasBodyFat: false,
       keys: ["height", "weight", "resting_hr"],
-    });
-  });
-
-  it("keeps the growth-tracked membership for an 18–19-year-old (#492)", () => {
-    expect(planBodyCharts({ ageYears: 18, ageMonths: 216 })).toEqual({
+    },
+    {
+      what: "an older child with a reading",
+      ageYears: 10,
+      ageMonths: 120,
+      hasBodyFat: true,
+      keys: ["height", "weight", "bodyfat", "resting_hr"],
+    },
+    {
+      what: "an 18–19-year-old, still growth-tracked (#492)",
+      ageYears: 18,
+      ageMonths: 216,
+      hasBodyFat: false,
       keys: ["height", "weight", "resting_hr"],
+    },
+  ])("charts $what", ({ ageYears, ageMonths, hasBodyFat, keys }) => {
+    expect(planBodyCharts({ ageYears, ageMonths, hasBodyFat })).toEqual({
+      keys,
     });
-  });
-
-  it("returns the adult membership at exactly 20 (past the chart ceiling)", () => {
-    expect(planBodyCharts({ ageYears: 20, ageMonths: 240 })).toEqual({
-      keys: ["weight", "bodyfat", "resting_hr"],
-    });
-  });
-
-  it("never includes body fat for a growth-tracked profile", () => {
-    const plan = planBodyCharts({ ageYears: 8, ageMonths: 96 });
-    expect(plan.keys).not.toContain("bodyfat");
   });
 });
