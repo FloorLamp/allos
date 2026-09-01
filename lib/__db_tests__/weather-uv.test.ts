@@ -407,7 +407,7 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       // set `partial` to the raw caught message, so the amber Review line read
       // "…the daily forecast/air-quality half failed (NOT NULL constraint failed:
       // weather_days.date)". The SQLite vocabulary goes to log.error; the reason
-      // stays a fragment in the same register as "air-quality fetch failed (400)".
+      // stays a fragment in the same register as the fetch half's own clause.
       expect(ev.details ?? "").toContain(
         weatherPartialWarning("the daily rows couldn't be saved")
       );
@@ -420,6 +420,11 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
     // every run since the daily half shipped — and the Review line said "the next run
     // re-fetches it" every one of those times. That sentence was written for #2567's
     // load-shedding window, where the next run genuinely does fix it.
+    // The plain-language clause the real source now hands over for a refused
+    // air-quality half — the SAME text whichever status caused it (#3639), which is
+    // why the two cases below can share one constant and differ only in the tail.
+    const AIR_HALF_LINE = "the air-quality data didn't come back";
+
     it("a 4xx partial says it will KEEP failing; a 5xx keeps the retry promise", async () => {
       const failWith = (status: number): WeatherSource => ({
         id: "fixture",
@@ -428,11 +433,13 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
         },
         async fetchDaily() {
           // The shape openMeteoFetchDaily returns when its air-quality half alone
-          // failed: the weather rows stand, the partial carries its status.
+          // failed: the weather rows stand, the partial names the missing half in
+          // plain language, and the STATUS travels beside it unrendered (#3639) —
+          // which is the whole input to the tail decision under test.
           return {
             ok: true,
             rows: [],
-            partial: `air-quality fetch failed (${status})`,
+            partial: AIR_HALF_LINE,
             partialStatus: status,
           };
         },
@@ -444,11 +451,11 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
         latestEvent(deterministic).details ?? null
       )!.warnings[0];
       expect(badLine).toBe(
-        weatherPartialWarning("air-quality fetch failed (400)", {
-          deterministic: true,
-        })
+        weatherPartialWarning(AIR_HALF_LINE, { deterministic: true })
       );
       expect(badLine).not.toMatch(/the next run re-fetches it/);
+      // The status decided the tail and never appeared (#3639).
+      expect(badLine).not.toMatch(/\b400\b/);
 
       const transient = newProfile("weather-partial-5xx");
       await runWeatherSync(transient, failWith(503));
@@ -456,10 +463,9 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
         latestEvent(transient).details ?? null
       )!.warnings[0];
       // #2567's case is untouched: a load-shed IS fixed by the next run.
-      expect(okLine).toBe(
-        weatherPartialWarning("air-quality fetch failed (503)")
-      );
+      expect(okLine).toBe(weatherPartialWarning(AIR_HALF_LINE));
       expect(okLine).toMatch(/the next run re-fetches it/);
+      expect(okLine).not.toMatch(/\b503\b/);
     });
   });
 
@@ -596,28 +602,41 @@ describe("runWeatherSync — idempotent hourly cache (#1172)", () => {
       expect(row!.pollen_weed).toBe(0);
     });
 
-    it("if the ceiling MOVES again, the sync event says so in the vendor's own words", async () => {
-      // The half of #3007 that cost the most: eight production runs recorded only
-      // `air-quality fetch failed (400)`, so the cause needed a hand-run curl. Here
-      // the host has pulled its horizon in to 3 days counting today, which the clamp
-      // does not know about — the request is refused, and the operator-visible
-      // Review line now carries the sentence that names the new ceiling.
+    it("if the ceiling MOVES again, the LOG says so in the vendor's own words", async () => {
+      // The half of #3007 that cost the most: eight production runs recorded only a
+      // bare status, so the cause needed a hand-run curl. Here the host has pulled its
+      // horizon in to 3 days counting today, which the clamp does not know about — the
+      // request is refused, and the sentence naming the new ceiling is written where
+      // whoever is fixing this looks. #3639 moved it OFF the Review line, which is a
+      // person's surface: that line keeps the plain clause and the honest tail, and
+      // this test pins BOTH halves so neither can be quietly dropped.
       const today = new Date().toISOString().slice(0, 10);
       const ceiling = shift(today, 2);
       const state = stubOpenMeteo(today, 3);
       const p = newProfile("weather-aqi-drift");
 
-      const res = (await runWeatherSync(
-        p,
-        openMeteoSource
-      )) as WeatherSyncResult;
+      const logged: string[] = [];
+      const spy = vi
+        .spyOn(console, "error")
+        .mockImplementation((...args: unknown[]) => {
+          logged.push(args.map(String).join(" "));
+        });
+      let res: WeatherSyncResult;
+      try {
+        res = (await runWeatherSync(p, openMeteoSource)) as WeatherSyncResult;
+      } finally {
+        spy.mockRestore();
+      }
 
       expect(state.airRejections).toBe(1);
-      const warning = parseSyncEventDetails(newestEvent(p).details ?? null)!
-        .warnings[0];
-      expect(warning).toContain(
+      expect(logged.join("\n")).toContain(
         `Parameter 'end_date' is out of allowed range from 2013-01-01 to ${ceiling}`
       );
+      const warning = parseSyncEventDetails(newestEvent(p).details ?? null)!
+        .warnings[0];
+      expect(warning).toContain("air-quality");
+      expect(warning).not.toContain("Parameter 'end_date'");
+      expect(warning).not.toMatch(/\b400\b/);
       // The status still decides the tail, and a 400 will not fix itself.
       expect(warning).not.toMatch(/the next run re-fetches it/);
       // Still a partial, never a failed run: the weather half landed.

@@ -69,23 +69,32 @@ export interface WeatherFetchResult {
   error?: string;
 }
 
-// What a source returns for the DAILY request. Same graceful-failure shape.
-export interface DailyFetchResult {
-  ok: boolean;
-  rows: DailyWeatherRow[];
-  status?: number;
-  error?: string;
-  // Set when the weather half succeeded but the air-quality half did not: the rows are
-  // still usable (temperature/pressure predicates work), pollen/AQI are simply absent.
-  // A partial is NOT a sync failure — it degrades, it does not fail (the graceful-
-  // degradation posture the whole weather feature is built on).
-  partial?: string;
-  // The HTTP status behind `partial`, when there was one (0 = network error/timeout,
-  // absent = the partial came from somewhere other than a response). The sync reads it
-  // to tell a DETERMINISTIC failure from a transient one: a 4xx will fail identically
-  // on the next run, so promising a re-fetch would be false (#3007).
-  partialStatus?: number;
-}
+// What a source returns for the DAILY request. Same graceful-failure shape, as a UNION
+// rather than a bag of optionals: a failure ALWAYS carries the line the sync shows and
+// the status it judges recurrence by, so the sync needs no fallback branch — and the
+// one it used to have printed a status code on the card (#3639).
+export type DailyFetchResult =
+  | {
+      ok: true;
+      rows: DailyWeatherRow[];
+      // Set when the weather half succeeded but the air-quality half did not: the rows
+      // are still usable (temperature/pressure predicates work), pollen/AQI are simply
+      // absent. A partial is NOT a sync failure — it degrades, it does not fail (the
+      // graceful-degradation posture the whole weather feature is built on).
+      partial?: string;
+      // The HTTP status behind `partial`, when there was one (0 = network error/
+      // timeout, absent = the partial came from somewhere other than a response). The
+      // sync reads it to tell a DETERMINISTIC failure from a transient one: a 4xx
+      // fails identically next run, so promising a re-fetch would be false (#3007).
+      // Never rendered (#3639).
+      partialStatus?: number;
+    }
+  | {
+      ok: false;
+      rows: DailyWeatherRow[];
+      status: number;
+      error: string;
+    };
 
 // The swappable source contract. `fetchHourly` returns the hourly UV + irradiance
 // series for a coarse location over [startDate, endDate] (YYYY-MM-DD, inclusive) in the
@@ -629,11 +638,16 @@ function stripLocation(text: string): string {
 // with `{"error":true,"reason":"Parameter 'end_date' is out of allowed range from
 // 2013-01-01 to 2026-08-22"}` — one sentence that names the parameter, the rule and
 // the current ceiling. Discarding it (#3007) is why eight production runs recorded
-// only `air-quality fetch failed (400)` and the cause needed a hand-run curl. A
-// horizon that moves again should say so on its own.
+// only a bare status and the cause needed a hand-run curl. A horizon that moves again
+// should say so on its own.
 //
-// The read is bounded (REASON_MAX_READ_CHARS) and the raw fallback is scrubbed of
-// the home location (stripLocation) — see both above.
+// IT GOES TO `log.error`, NEVER TO A SURFACE (#3639): it is a diagnosis, and the card
+// is for the person whose pollen data is missing.
+//
+// The read is bounded (REASON_MAX_READ_CHARS) and the raw fallback is scrubbed of the
+// home location (stripLocation) — see both above. That scrub is load-bearing for the
+// log destination as much as it was for the card: home location must never be written
+// to any log (lib/settings/location.ts).
 async function failureReason(res: Response): Promise<string | undefined> {
   let body: string;
   try {
@@ -657,39 +671,38 @@ async function failureReason(res: Response): Promise<string | undefined> {
   return stripLocation(body).slice(0, REASON_MAX_CHARS) || undefined;
 }
 
-// One spelling of "this request failed, and here is what the other end said".
+// What a failed half says ON A PERSON'S SURFACE — FRAGMENTS, because
+// `weatherPartialWarning` interpolates them beside "the daily forecast/air-quality
+// half failed (…)", the register the write half's "the daily rows couldn't be saved"
+// already uses.
 //
-// Status 0 is this module's marker for "the request THREW — there was no HTTP
-// response at all" (a DNS failure, a TLS error, the timeout). It is spelled in words
-// because the bare `(0)` told a reader nothing, and since #3592 it is the line a
-// thrown daily/air-quality fetch actually shows: the throw's own text is logged, not
-// rendered.
-function fetchFailureLine(
-  label: string,
-  failure: { status: number; reason?: string }
-): string {
-  const status = failure.status === 0 ? "no response" : String(failure.status);
-  return `${label} failed (${status})${
-    failure.reason ? `: ${failure.reason}` : ""
-  }`;
-}
+// NO STATUS AND NO UPSTREAM BODY (#3639): both used to be interpolated here and both
+// rendered on the card. The status still TRAVELS — `partialStatus` decides whether the
+// warning promises a re-fetch — it is simply never printed. Hence one line per half
+// and no branch on it: a refusal, a 5xx and a timeout are one thing to the reader, and
+// the only distinction they can act on is the warning's own tail.
+const AIR_QUALITY_FAILURE_LINE = "the air-quality data didn't come back";
+const DAILY_FAILURE_LINE = "the daily forecast didn't come back";
 
 // A JSON GET with the shared timeout, returning the parsed body or a failure. Never
 // throws — every weather fetch degrades rather than breaking the sync.
+//
+// A REJECTION IS DIAGNOSED IN THE LOG AND NOWHERE ELSE (#3639): the status and the
+// host's explanation are written here, and only the status travels back, for the
+// recurrence question. The hourly half already worked this way (#3618).
 async function getJson(
   label: string,
   url: string
-): Promise<
-  { ok: true; json: unknown } | { ok: false; status: number; reason?: string }
-> {
+): Promise<{ ok: true; json: unknown } | { ok: false; status: number }> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!res.ok)
-      return {
-        ok: false,
+    if (!res.ok) {
+      log.error(`${label} rejected`, {
         status: res.status,
         reason: await failureReason(res),
-      };
+      });
+      return { ok: false, status: res.status };
+    }
     return { ok: true, json: await res.json() };
   } catch (err) {
     // NO `error` FIELD ANY MORE (#3592). It used to carry the throw's own text, and
@@ -740,9 +753,9 @@ export async function openMeteoFetchDaily(
       ok: false,
       rows: [],
       status: weather.status,
-      // Same rule as the air half: whatever the host said about the rejection
-      // travels with the failure instead of being reduced to a status code.
-      error: fetchFailureLine("daily fetch", weather),
+      // Same rule as the air half: the person is told which half is missing, and the
+      // status and the host's sentence stay in the log getJson just wrote.
+      error: DAILY_FAILURE_LINE,
     };
   }
   const weatherRows = parseOpenMeteoDaily(weather.json);
@@ -766,7 +779,7 @@ export async function openMeteoFetchDaily(
     return {
       ok: true,
       rows: weatherRows,
-      partial: fetchFailureLine("air-quality fetch", air),
+      partial: AIR_QUALITY_FAILURE_LINE,
       partialStatus: air.status,
     };
   }
