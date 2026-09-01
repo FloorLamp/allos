@@ -5,6 +5,8 @@ import { mergeMemberTimelines } from "@/lib/timeline-multi";
 import { HISTORY_LOG_KINDS } from "@/lib/history-format";
 import { setLoginSetting } from "@/lib/settings";
 import { logFoodServingCore } from "@/lib/food-log-write";
+import { logBristolStool } from "@/lib/offline/writes";
+import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { ALCOHOL_FOOD_GROUP } from "@/lib/substance-use";
 
 // THE RECORD'S GATHER (#3958 phase 1). What the pure tier cannot reach: whose rows
@@ -1077,5 +1079,68 @@ describe("a practice session's window reaches the day's intraday events (#3142)"
     expect(filtered.dayEvents.filter((e) => e.category === "practice")).toEqual(
       []
     );
+  });
+});
+
+// ── STOOL JOINS THE RECORD (#4433) ─────────────────────────────────────────
+//
+// The kind's whole absence was one shape: a movement was visible on the Trends dot
+// strip and correctable nowhere. What only the real schema can prove here is the GRAIN
+// — `metric_samples` files a Bristol reading at instant grain, so a day's three
+// movements are three record rows carrying three clocks, not one collapsed line — and
+// that the row hands the ⋯ an address the correction and the delete can actually use.
+describe("stool rows on the record", () => {
+  it("lists each movement with its own clock, and earns its chip", () => {
+    const p = profile("history stool");
+    const loginId = login();
+    expect(logBristolStool(p, YESTERDAY, 2, "08:12").wrote).toBe(true);
+    expect(logBristolStool(p, YESTERDAY, 6, "19:40").wrote).toBe(true);
+
+    const gather = gatherHistoryLog(p, { loginId, limit: 200 });
+    const stool = gather.rows.filter((r) => r.kind === "stool");
+    expect(stool.map((r) => r.sortTime)).toEqual(["19:40", "08:12"]);
+    // The clock renders BARE, not "logged 19:40": a tap states "the moment IS now"
+    // and the fold states a minute, so both write the observation's own instant and
+    // there is no filing-time fallback to qualify. (24h is this login's default pref;
+    // the meridiem style is the page's, and is not what this asserts.)
+    expect(stool.map((r) => r.clockKind)).toEqual(["stated", "stated"]);
+    expect(stool[0].clock).toBe("19:40");
+    expect(stool.map((r) => r.title)).toEqual([
+      "Type 6 — Mushy",
+      "Type 2 — Lumpy",
+    ]);
+    // Plain, like the food groups and substances beside it — the Trends panel is one
+    // page-level destination every stool row would have shared (#4045 §5).
+    expect(stool.every((r) => r.href === null)).toBe(true);
+    expect(gather.presentKinds).toContain("stool");
+  });
+
+  it("hands the row an address, and the type is the only field a correction moves", () => {
+    const p = profile("history stool edit");
+    const loginId = login();
+    logBristolStool(p, YESTERDAY, 3, "08:12");
+    const stored = db
+      .prepare(
+        `SELECT id FROM metric_samples WHERE profile_id = ? AND metric = ?`
+      )
+      .get(p, BRISTOL_STOOL_METRIC) as { id: number };
+
+    const [row] = gatherHistoryLog(p, { loginId, limit: 200 }).rows.filter(
+      (r) => r.kind === "stool"
+    );
+    expect(row.edit).toEqual({ kind: "stool", rowId: stored.id, type: 3 });
+  });
+
+  it("earns no chip for a profile whose only samples are another metric's", () => {
+    const p = profile("history stool absent");
+    const loginId = login();
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+         VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, 82)`
+    ).run(p, YESTERDAY, `${YESTERDAY}T07:00:00`, `${YESTERDAY}T07:00:00`);
+
+    const gather = gatherHistoryLog(p, { loginId, limit: 200 });
+    expect(gather.presentKinds).not.toContain("stool");
+    expect(gather.rows.some((r) => r.kind === "stool")).toBe(false);
   });
 });

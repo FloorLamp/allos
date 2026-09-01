@@ -33,6 +33,8 @@ import {
   getBristolReadings,
 } from "@/lib/queries/bristol-stool";
 import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
+import { deleteMetricRow, updateMetricRow } from "@/lib/metric-readings";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import { FROZEN_WALL_TIME_UTC } from "./frozen-clock";
 
 // Profiles here take the instance-default timezone, so profile-local is UTC.
@@ -245,5 +247,104 @@ describe("logBristolStool — a stated time is judged (#4425)", () => {
     expect(getBristolReadings(profileId, date, date)).toEqual([
       { date, type: 6 },
     ]);
+  });
+});
+
+// THE SHARED DATE INVARIANT (#4425 / #4433). "Windows bind offers, not domains": the
+// core takes ANY REAL PAST DAY and never the future, and the sheet's tap is bounded
+// where the OFFER is (`TAP_REACH["stool-form"]` is `today`), not here. What only the
+// real schema can prove is that the accepted backfill actually lands on the day it
+// names rather than on the day it was written.
+describe("logBristolStool — any real past day, never the future", () => {
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+  it.each([
+    ["a week back", -7, true],
+    ["yesterday", -1, true],
+    ["today", 0, true],
+    ["tomorrow", 1, false],
+  ])("%s (%s days out) → wrote=%s", (_label, offset, wrote) => {
+    const date = day(offset);
+    expect(logBristolStool(profileId, date, 4)).toEqual({ wrote });
+    expect(rows().map((r) => r.date)).toEqual(wrote ? [date] : []);
+  });
+});
+
+// THE RECORD'S CORRECTION AND DELETE (#4433). Stool takes no write core of its own for
+// either: a Bristol reading IS a `metric_samples` row, so `app/(app)/stool-actions.ts`
+// addresses it through the shared reading contract, which is where the #133 edit lock,
+// the #507/#508 tombstone and the #2642 undo capture already live. This proves the
+// target the actions build reaches exactly this row and nothing beside it.
+describe("a logged movement is correctable and deletable (#4433)", () => {
+  const target = (id: number) =>
+    ({ store: "metric_samples", id, metric: BRISTOL_STOOL_METRIC }) as const;
+
+  const onlyRow = () =>
+    db
+      .prepare(
+        `SELECT id, value FROM metric_samples
+          WHERE profile_id = ? AND metric = ? ORDER BY id`
+      )
+      .all(profileId, BRISTOL_STOOL_METRIC) as { id: number; value: number }[];
+
+  it("corrects the mis-tapped type in place, leaving the instant alone", () => {
+    const date = today(profileId);
+    logBristolStool(profileId, date, 3, "08:12");
+    const [row] = onlyRow();
+
+    expect(updateMetricRow(profileId, target(row.id), 4)).toEqual({ ok: true });
+    // ONE row still, at the same instant: a correction moves the type and nothing
+    // else, which is why the form offers no time field (the key IS the instant).
+    expect(rows()).toEqual([
+      { date, started_at: `${date}T08:12:00`, value: 4 },
+    ]);
+  });
+
+  it("deletes with an undo token, and the undo puts the reading back", () => {
+    const date = today(profileId);
+    logBristolStool(profileId, date, 6, "19:40");
+    const [row] = onlyRow();
+
+    const outcome = deleteMetricRow(profileId, target(row.id));
+    expect(outcome.ok).toBe(true);
+    expect(outcome.undoId).toBeTypeOf("number");
+    expect(rows()).toEqual([]);
+
+    expect(restoreDeletedRow(profileId, outcome.undoId!)).toBe(true);
+    expect(rows()).toEqual([
+      { date, started_at: `${date}T19:40:00`, value: 6 },
+    ]);
+  });
+
+  it("refuses a target naming another metric's row", () => {
+    const date = today(profileId);
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
+         VALUES (?, 'manual', 'waist_circumference_cm', ?, ?, ?, 82)`
+    ).run(profileId, date, `${date}T07:00:00`, `${date}T07:00:00`);
+    const waist = db
+      .prepare(
+        `SELECT id FROM metric_samples
+          WHERE profile_id = ? AND metric = 'waist_circumference_cm'`
+      )
+      .get(profileId) as { id: number };
+
+    expect(deleteMetricRow(profileId, target(waist.id))).toEqual({
+      ok: false,
+      undoId: null,
+    });
+    expect(updateMetricRow(profileId, target(waist.id), 4)).toEqual({
+      ok: false,
+      error: "not-found",
+    });
+    // The waist row is untouched — the guard is the metric in the target, not luck.
+    expect(
+      db
+        .prepare(
+          `SELECT value FROM metric_samples WHERE id = ? AND profile_id = ?`
+        )
+        .get(waist.id, profileId)
+    ).toEqual({ value: 82 });
   });
 });
