@@ -7,23 +7,25 @@ import { medicationList, medicationRow } from "./med-card-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 
-// IA split (#746): supplements folded into the Nutrition → Supplements tab,
-// medications became a standalone Medical-group page. (The retired combined intake route was
-// removed outright in #1635 and 404s.) This spec proves all three surfaces:
-//   1. Nutrition is a URL-driven Food | Supplements umbrella
+// IA split (#746): supplements folded into the Nutrition umbrella, medications became
+// a standalone Medical-group page. (The retired combined intake route was removed
+// outright in #1635 and 404s.) The umbrella's tabs read Day | Manage since #3987 —
+// date-shaped on one, configuration-shaped on the other. This spec proves all three
+// surfaces:
+//   1. Nutrition is a URL-driven Day | Manage umbrella
 //   2. /medications renders the medication cards + add form
-//   3. an INFANT profile (Food-logging gated off) can still reach the Supplements
-//      tab — infant supplements are real (vitamin D drops) — while the Food tab
-//      shows the calm note.
+//   3. an INFANT profile (Food-logging gated off) can still reach Manage — infant
+//      supplements are real (vitamin D drops) — while the Day tab shows the calm
+//      note and the food-preferences card drops out on the same life-stage gate.
 
 function dbPath(): string {
   return workerDbPath();
 }
 
-test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
+test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
   page,
 }) => {
-  // Default tab is Food — the serving logger.
+  // Default tab is Day — the one ledger, and the serving logger under it.
   await page.goto("/nutrition");
   await expect(
     page.getByText(
@@ -31,17 +33,19 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
       { exact: true }
     )
   ).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Food" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Supplements" })).toBeVisible();
+  // DAY | MANAGE (#3987 phase 2). The words are the tabs' — the `?tab=` values stay
+  // `food`/`supplements`, which is the deep-link vocabulary the rest of the app spells.
+  await expect(page.getByRole("tab", { name: "Day" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Manage" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Supplements" })).toHaveCount(0);
   await expect(page.getByTestId("nutrition-workspace-card")).toHaveCount(0);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // Switch to Supplements — the schedule workspace + status render, and the
-  // URL is deep-linkable. The tab is a NavTabs Next <Link>, so followLink rides
-  // out the pre-hydration swallow (#889 sweep).
+  // Switch to Manage — the stack renders and the URL is deep-linkable. The tab is a
+  // NavTabs Next <Link>, so followLink rides out the pre-hydration swallow (#889).
   await followLink(
     page,
-    page.getByRole("tab", { name: "Supplements" }),
+    page.getByRole("tab", { name: "Manage" }),
     /tab=supplements/
   );
   await expect(page.getByTestId("situations-bar")).toHaveCount(0);
@@ -124,8 +128,13 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   // name/dose/time path in a modal, with advanced metadata behind a disclosure.
   const addCard = page.getByTestId("add-supplement-card");
   const addButton = addCard.getByTestId("supplement-add-toggle");
-  await expect(addButton).toHaveClass(/\bbtn\b/);
-  await expect(addButton).not.toHaveClass(/\bbtn-primary\b/);
+  // THE ONE PRIMARY ACTION ON THIS SURFACE (#3987/#3982): the typed Button's primary
+  // variant, not a hand-rolled `btn btn-sm` — so the paint, the box and the focus ring
+  // are the primitive's, and the admission rule ("at most one per surface") is
+  // checkable. It is the only one here.
+  await expect(addButton).toHaveAttribute("data-button-control", "");
+  await expect(addButton).toHaveClass(/\bbutton-control-primary\b/);
+  expect(await page.locator("main .button-control-primary").count()).toBe(1);
   await expect(addButton.getByText("Add supplement")).toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "Add supplement" })
@@ -158,34 +167,38 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
     page.getByRole("heading", { name: "Time slots", level: 3 })
   ).toHaveCount(0);
 
-  // Secondary coaching uses the same stable modal pattern as Food's lab suggestions.
-  const suggestionBadge = page.getByTestId("supplement-suggestions-badge");
-  await expect(suggestionBadge).toHaveAttribute(
-    "data-variant",
-    "insight-launcher"
-  );
-  await expect(suggestionBadge).toHaveAttribute("aria-haspopup", "dialog");
-  await expect(suggestionBadge).not.toHaveAttribute("aria-expanded", /.*/);
-  const sidebar = page.getByTestId("supplement-sidebar-surface");
-  const sidebarBefore = await sidebar.boundingBox();
-  expect(sidebarBefore).not.toBeNull();
-  await suggestionBadge.click();
-  const suggestionsDialog = page.getByRole("dialog", {
-    name: "Suggestions",
-  });
+  // SUGGESTIONS ARE ROWS, NOT A BADGE THAT OPENS A DIALOG (#3987 phase 2). Pending
+  // ones only, each carrying the origin badge that says which half wrote it — a
+  // curated claim and a generated one must never look alike (#2378) — with the
+  // AI-origin explainer stated ONCE for the surface (#3970) and reachable by tap
+  // rather than by hover (#3375).
+  const suggestions = page.getByTestId("supplement-suggestions");
+  await expect(suggestions).toBeVisible();
+  await expect(page.getByTestId("supplement-suggestions-badge")).toHaveCount(0);
+  await expect(suggestions.getByTestId("generated-origin-help")).toHaveCount(1);
   await expect(
-    suggestionsDialog.getByTestId("supplement-suggestions-panel")
+    suggestions
+      .locator('[data-testid^="curated-supplement-suggestion-"]')
+      .first() // first-ok: any curated row proves the origin split renders; the claim is about the shape
   ).toBeVisible();
-  const sidebarWhileOpen = await sidebar.boundingBox();
-  expect(sidebarWhileOpen).not.toBeNull();
-  expect(sidebarWhileOpen!.x).toBeCloseTo(sidebarBefore!.x, 0);
-  expect(sidebarWhileOpen!.y).toBeCloseTo(sidebarBefore!.y, 0);
-  expect(sidebarWhileOpen!.width).toBeCloseTo(sidebarBefore!.width, 0);
-  expect(sidebarWhileOpen!.height).toBeCloseTo(sidebarBefore!.height, 0);
-  await suggestionsDialog.getByRole("button", { name: "Close" }).click();
+
+  // …and the safety layer sits below the stack rather than above it, which is the
+  // whole of #3892's intent transferred here: still on the page, still full height,
+  // just no longer spending the first screen (#2385).
+  const insightsSection = page.getByTestId("supplement-insights");
+  const stackBox = await page.getByTestId("supplement-stack").boundingBox();
+  const insightsSectionBox = await insightsSection.boundingBox();
+  expect(stackBox).not.toBeNull();
+  expect(insightsSectionBox).not.toBeNull();
+  expect(stackBox!.y).toBeLessThan(insightsSectionBox!.y);
+  // rda-adequacy-calcium is the same seeded finding mobile-density-sweep pins on this
+  // route, so this names a fact about the shared seed that is already checked twice.
+  await expect(
+    insightsSection.getByTestId("rda-adequacy-calcium")
+  ).toBeVisible();
 
   // Back to Food (NavTabs Next <Link> → followLink, #889 sweep).
-  await followLink(page, page.getByRole("tab", { name: "Food" }), /tab=food/);
+  await followLink(page, page.getByRole("tab", { name: "Day" }), /tab=food/);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 });
 
@@ -271,9 +284,8 @@ test("supplement suggestion provenance stays visually bounded", async ({
     );
 
     await page.goto("/nutrition?tab=supplements");
-    await page.getByTestId("supplement-suggestions-badge").click();
     const suggestion = page
-      .getByRole("dialog", { name: "Suggestions" })
+      .getByTestId("supplement-suggestions")
       .locator("div.rounded-lg")
       .filter({ hasText: name });
     await expect(suggestion).toBeVisible();
@@ -323,11 +335,12 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     ).run(generatedName);
 
     await page.goto("/nutrition?tab=supplements");
-    await page.getByTestId("supplement-suggestions-badge").click();
-    const dialog = page.getByRole("dialog", { name: "Suggestions" });
+    // The suggestions are a SECTION on the page now, not a modal (#3987 phase 2);
+    // the scope this names is the surface, which is what "once per surface" means.
+    const panel = page.getByTestId("supplement-suggestions");
 
     // The curated card: badged Curated, naming the flagged biomarker, with no dose.
-    const curated = dialog.getByTestId("curated-supplement-suggestion-folate");
+    const curated = panel.getByTestId("curated-supplement-suggestion-folate");
     await expect(curated).toBeVisible();
     await expect(curated).toHaveAttribute("data-origin", "curated");
     await expect(curated.getByTestId("suggestion-origin-badge")).toHaveText(
@@ -347,10 +360,10 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
       curated.getByRole("button", { name: CURATED_SENTENCE, exact: true })
     ).toHaveCount(0);
     await expect(
-      dialog.getByRole("button", { name: CURATED_SENTENCE, exact: true })
+      panel.getByRole("button", { name: CURATED_SENTENCE, exact: true })
     ).toHaveCount(1);
     await expect(curated.getByTestId("curated-origin-help")).toHaveCount(0);
-    const curatedHelp = dialog.getByTestId("curated-origin-help");
+    const curatedHelp = panel.getByTestId("curated-origin-help");
     await expect(curatedHelp).toHaveCount(1);
     await curatedHelp.click();
     await expect(page.getByRole("tooltip")).toContainText(
@@ -361,7 +374,7 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
     await expect(curated).toContainText("Folic acid");
 
     // The AI card: same panel, badged Generated.
-    const generated = dialog
+    const generated = panel
       .locator('[data-origin="generated"]')
       .filter({ hasText: generatedName });
     await expect(generated).toBeVisible();
@@ -374,10 +387,10 @@ test("a curated supplement suggestion is visibly distinct from a generated one (
       generated.getByRole("button", { name: GENERATED_SENTENCE, exact: true })
     ).toHaveCount(0);
     await expect(
-      dialog.getByRole("button", { name: GENERATED_SENTENCE, exact: true })
+      panel.getByRole("button", { name: GENERATED_SENTENCE, exact: true })
     ).toHaveCount(1);
     await expect(generated.getByTestId("generated-origin-help")).toHaveCount(0);
-    const generatedHelp = dialog.getByTestId("generated-origin-help");
+    const generatedHelp = panel.getByTestId("generated-origin-help");
     await expect(generatedHelp).toHaveCount(1);
     await generatedHelp.click();
     await expect(page.getByRole("tooltip")).toContainText(
@@ -492,9 +505,7 @@ test.describe("infant supplements stay reachable (#746)", () => {
   });
   test.afterAll(cleanupBaby);
 
-  test("the Food tab is gated but the Supplements tab works", async ({
-    page,
-  }) => {
+  test("the Day tab is gated but Manage works", async ({ page }) => {
     await switchProfile(page, BABY);
     try {
       // Food tab: the calm infant note, no serving logger.
@@ -508,6 +519,10 @@ test.describe("infant supplements stay reachable (#746)", () => {
       await expect(
         page.getByTestId("intake-item-name").filter({ hasText: BABY_SUPP })
       ).toBeVisible();
+      // The food-preferences card rides the SAME life-stage gate the Settings copy
+      // does (#975/#1462): the adult food-group catalog means nothing here, while
+      // the stack above it does.
+      await expect(page.getByTestId("food-preferences-card")).toHaveCount(0);
     } finally {
       // Restore the default active profile for any following spec.
       await switchProfile(page, "admin");

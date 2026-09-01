@@ -155,7 +155,7 @@ export default function EditableSupplementRow({
     <>
       <div
         data-testid="supplement-row"
-        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg! px-3! py-3! shadow-none! ${
+        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-3! py-3! shadow-none! ${
           !s.active ? "opacity-50" : ""
         } ${menuOpen ? "relative z-20" : ""}`}
       >

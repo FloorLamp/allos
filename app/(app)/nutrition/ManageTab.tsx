@@ -1039,7 +1039,10 @@ export default async function ManageTab({
             {rdaAdequacy.length > 0 && (
               <div className="mb-4 space-y-2" data-testid="rda-adequacy">
                 {rdaAdequacy.map((a) => {
-                  const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
+                  const foods = foodSourcesForDriNutrient(
+                    a.key,
+                    excludedGroups
+                  );
                   return (
                     <FindingCard
                       key={a.key}
