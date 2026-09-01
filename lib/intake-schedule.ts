@@ -10,7 +10,9 @@ import type {
   IntakeObligation,
 } from "./types";
 import {
+  cadenceLabel,
   cadenceOn,
+  doseCadenceLabel,
   doseOnDay,
   doseScheduleAsOf,
   unrecordedScheduleChangeOn,
@@ -622,6 +624,32 @@ export function escalatesOnMiss(item: Pick<IntakeItem, "obligation">): boolean {
 // on demand and are never described as PRN.
 export function isOnDemand(item: Pick<IntakeItem, "obligation">): boolean {
   return item.obligation === "may";
+}
+
+// WHAT A MANAGEMENT ROW SAYS ABOUT *WHEN* (#3987).
+//
+// The Manage stack is a flat list, so no bucket heading states the row's time for it
+// any more — the row states its own. Three cases and there is no fourth, which is why
+// this returns the flag as well as the words: an on-demand item is taken when it is
+// needed ("Anytime", and it never renders as Due on the Day ledger); an item entered
+// without a time of day is not scheduled at all, and folds; everything else names its
+// bucket. The calendar rule (#1602) rides along wherever there is one, so
+// "Evening · Every other day" and "Morning · Mon/Wed/Fri" read as one phrase.
+export function stackSchedule(
+  item: Pick<IntakeItem, "obligation"> & ItemCadence,
+  dose: DoseCadence
+): { scheduled: boolean; label: string } {
+  const rule = [cadenceLabel(item), doseCadenceLabel(dose)].filter(
+    (part): part is string => part != null
+  );
+  const say = (lead: string) => [lead, ...rule].join(" · ");
+  if (isOnDemand(item)) return { scheduled: true, label: say("Anytime") };
+  if (!(dose.time_of_day ?? "").trim())
+    return { scheduled: false, label: say("Not scheduled") };
+  return {
+    scheduled: true,
+    label: say(TIME_BUCKET_LABELS[timeBucket(dose.time_of_day ?? null)]),
+  };
 }
 
 // Tailwind accent for the obligation badge / row accent.

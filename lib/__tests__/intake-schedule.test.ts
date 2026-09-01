@@ -10,6 +10,7 @@ import {
   parseDosage,
   obligationClass,
   spreadDoseTimes,
+  stackSchedule,
   timeBucket,
   timeBucketHasArrived,
   TIME_BUCKET_LABELS,
@@ -555,4 +556,59 @@ describe("workoutDaySubtitleLabel (#747)", () => {
     expect(workoutDaySubtitleLabel(null, true)).toBe("Workout day");
     expect(workoutDaySubtitleLabel(null, false)).toBe("Rest day");
   });
+});
+
+// THE MANAGE ROW'S SCHEDULE (#3987 phase 2). Three cases and no fourth, which is why
+// the flag and the words come out of ONE call: the list splits on `scheduled` and the
+// row prints `label`, so they cannot disagree about which side a row is on.
+//
+// The lead word is the BUCKET, through the same `timeBucket` the Day ledger groups by,
+// so a slot spelled a dozen ways ("breakfast", "morning", "wake") reads as one word on
+// both tabs. A `time_of_day` that maps to no bucket therefore reads "Anytime" — the
+// app's existing word for an unbucketed slot, which an on-demand item also carries.
+describe("stackSchedule", () => {
+  it.each([
+    // obligation, cadence, time_of_day, weekdays -> scheduled, label
+    ["should", {}, "morning", null, true, "Morning"],
+    ["must", {}, "dinner", null, true, "Evening"],
+    ["must", {}, "before sleep", null, true, "Bedtime"],
+    // On demand is "Anytime" whether or not it has a slot: it is never owed, so it
+    // never renders as Due on the Day ledger and never folds as unscheduled here.
+    ["may", {}, "morning", null, true, "Anytime"],
+    ["may", {}, null, null, true, "Anytime"],
+    // No slot and not on demand: the fold.
+    ["should", {}, null, null, false, "Not scheduled"],
+    ["should", {}, "   ", null, false, "Not scheduled"],
+    // The calendar rule rides along, item-level then dose-level.
+    [
+      "should",
+      { cadence_kind: "interval", cadence_interval_days: 2 },
+      "breakfast",
+      null,
+      true,
+      "Morning · Every other day",
+    ],
+    ["should", {}, "morning", "1,3,5", true, "Morning · Mon/Wed/Fri"],
+    [
+      "should",
+      { cadence_kind: "interval", cadence_interval_days: 2 },
+      null,
+      null,
+      false,
+      "Not scheduled · Every other day",
+    ],
+  ] as const)(
+    "%s item at %o / %s / %s -> scheduled=%s, %s",
+    (obligation, cadence, timeOfDay, weekdays, scheduled, label) => {
+      expect(
+        stackSchedule(
+          { obligation, ...cadence },
+          {
+            time_of_day: timeOfDay,
+            weekdays,
+          }
+        )
+      ).toEqual({ scheduled, label });
+    }
+  );
 });

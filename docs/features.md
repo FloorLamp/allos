@@ -1298,7 +1298,7 @@ log fast (#1980). Every catalog group stays one disclosure away (#559).
 **One ledger states the day (#3987).** Servings and supplement doses interleave in
 Morning / Midday / Evening groups — one physical morning, one list, where the page
 used to draw the same facts as meal cards, a logged-today list, and a separate
-schedule on the Supplements tab. Doses written by one composed tap collapse to a
+schedule on the Manage tab. Doses written by one composed tap collapse to a
 single expandable row; a partly-answered routine says "4 of 6" rather than a bare
 tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
 every dose it will write and writes only the ones the day still owes. That due
@@ -1319,6 +1319,23 @@ which — since a correction deliberately preserves the tap instant — need not
 the serving you just moved there. Both write the ledger row and the day counter
 in one transaction, dropping the counter row at zero — and the row-scoped removal
 offers an **Undo** toast that puts both back.
+
+**Manage holds everything the day is not (#3987).** The umbrella's second tab is
+`Day | Manage`: the stack, one line per dose — name, amount, when it is taken
+("Evening · Every other day", "Anytime" for an on-demand item), and a refill note
+where one can be computed. An item entered without a time of day is grouped under
+**Not scheduled (N)**; a held item wears its **Held — <situation> active** badge;
+paused items fold below. Everything that is a statement about a stack rather than
+about a day sits under it: the upper-limit and RDA notes, the interaction and
+pharmacogenomic warnings, the obligation check, the adherence patterns, and the
+pending **Suggestions** with the Curated / Generated badge that says which half
+wrote each one. Dietary preferences — the pattern preset and the never-suggest
+list — are a card here rather than a modal on the day. The safety notes render
+BELOW the stack rather than above it, and nothing was dropped, folded or capped
+— only reordered. #3892 measured the old order at 430×932: the schedule began at
+y=1619, so no supplement was inside the first screen. On the same viewport the
+first stack row now sits at y=92, asserted in
+`e2e/logged-event-row.mobile.spec.ts`.
 
 **When you ate is captured, and correctable (#2019).** A Telegram tap's declared
 contract is "I'm eating now", so the tap instant is recorded as a real eating time
@@ -2691,7 +2708,7 @@ fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — cov
 only the things you have actually committed to. A quiet week says nothing at all;
 the taken/due count stays alongside as supporting detail.
 
-Supplements live under **Nutrition → Supplements**; medications have their own
+Supplements live under **Nutrition → Manage**; medications have their own
 **Medications** surface. They intentionally share one intake model so dose
 history, reminders, interactions, and refill logic cannot disagree across two
 stores. Cross-kind interaction and pharmacogenomic warnings render on both
@@ -2716,7 +2733,7 @@ its current count into that pool.
 Like the **Equipment** registry, the cabinet is a registry of physical objects and
 is reached from the surfaces that use it rather than from the sidebar: a
 **Medicine cabinet** link — showing the bottle count once you have any ("3 shared
-bottles") — sits in the **Medications** and **Nutrition → Supplements** headers and
+bottles") — sits in the **Medications** and **Nutrition → Manage** headers and
 in the **Household** header, a linked item's refill section offers "See all shared
 bottles", and a linked item's shared-bottle chip opens it directly. It has no
 navigation row of its own; visiting it highlights **Medications** in the sidebar,

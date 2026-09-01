@@ -63,7 +63,6 @@ import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
-import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
 import { usualFoodOffer } from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
@@ -177,7 +176,6 @@ export default function FoodLogBar({
   days,
   groupsBySlot,
   proteinRankBySlot,
-  excludedGroups,
   usualBySlot,
   slot,
   slotBoundaries,
@@ -199,9 +197,6 @@ export default function FoodLogBar({
   // AFTER them rather than dropping it, because direct grams have no other entry point
   // and a cold start must not be a dead end (#559).
   proteinRankBySlot?: Record<FoodSlot, number | null>;
-  // Profile-scoped food groups excluded from suggestions. Edited in-place through
-  // the modal rather than navigating away from the meal being logged.
-  excludedGroups: string[];
   // The groups this profile logs in each window nearly every time it logs that window
   // at all (#2380) — the HABITUAL set, share-descending, cap-direction groups already
   // removed server-side. A window under the declared gate is an empty list, which
@@ -301,7 +296,6 @@ export default function FoodLogBar({
   // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
   // them apart, so the mounting declares itself and this stamps every post with it.
   const stampLoggedVia = useLoggedViaStamp();
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
   // Optimistic daily totals and meal-slot counts live in the parent date context:
   // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
@@ -2011,18 +2005,13 @@ export default function FoodLogBar({
   return (
     <div>
       <IntakeContextBar
-        purpose="food-log"
         ledgerDoor={ledgerDoor}
         today={today}
         days={days}
         value={activeDate}
         onChange={setActiveDate}
         context={{ label: activeSlot, value: activeSlot }}
-        status={{ kind: "servings", count: dayTotal }}
-        action={{
-          kind: "food-preferences",
-          onActivate: () => setPreferencesOpen(true),
-        }}
+        servings={dayTotal}
       />
       <div data-testid="food-log-bar" className="space-y-5">
         {/* THE DAY, STATED ONCE (#3987). The Meals cards and the LOGGED-TODAY list
@@ -2270,34 +2259,6 @@ export default function FoodLogBar({
         </section>
         {nutrientSummary}
       </div>
-      {preferencesOpen && (
-        <ModalShell
-          title="Dietary preferences"
-          onClose={() => setPreferencesOpen(false)}
-        >
-          <div className="min-h-0 overflow-y-auto pr-1">
-            <DietaryPreferencesForm
-              excluded={excludedGroups}
-              groups={groupsBySlot[FOOD_SLOTS[0]].map((group) => ({
-                slug: group.slug,
-                name: group.name,
-                tier: group.tier,
-              }))}
-              embedded
-            />
-          </div>
-          <div className="mt-4 flex justify-end border-t border-black/10 pt-3 dark:border-white/10">
-            <button
-              type="button"
-              data-testid="food-preferences-done"
-              onClick={() => setPreferencesOpen(false)}
-              className="btn"
-            >
-              Done
-            </button>
-          </div>
-        </ModalShell>
-      )}
       {editing && draft && (
         <ModalShell
           title="Correct this serving"
