@@ -224,7 +224,7 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
     },
   ],
   [
-    "components/quick-entry/QuickMoodCheckin.tsx",
+    "components/mood/MoodForm.tsx",
     {
       mounts: false,
       why:
