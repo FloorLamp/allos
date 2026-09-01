@@ -473,10 +473,6 @@ test("the context region at its tallest still fits the panel's one reserve (#373
     await expect(sheet.getByTestId("log-sheet-chip-doses")).toBeVisible();
     await expect(sheet.getByTestId("log-sheet-chip-session")).toBeVisible();
 
-    // THE OVERFLOWING CASE IS THE ONE PINNED, clamped. This persona's due-dose label
-    // is item names that run to THREE lines at 390px — measured 86px unclamped, 16px
-    // past the reserve — so the row the spec measures is the row `line-clamp-2`
-    // exists for, not a two-line row that never needed it.
     const doseOffer = await box(
       sheet.getByTestId("log-sheet-chip-doses"),
       "the clamped due-dose offer"
@@ -485,25 +481,7 @@ test("the context region at its tallest still fits the panel's one reserve (#373
       sheet.getByTestId("log-sheet-chip-session"),
       "the one-line resume offer"
     );
-    // The clamp ENGAGED: the label is holding back content it cannot show, which is
-    // the only thing that tells a clamped three-line label from a natural two-line
-    // one — both render at the same 66px, and only one of them is under test.
-    const clamped = await sheet
-      .getByTestId("log-sheet-chip-doses")
-      .locator("[data-sheet-row-label]")
-      .evaluate((el) => ({
-        scroll: el.scrollHeight,
-        client: el.clientHeight,
-      }));
-    expect(clamped.scroll).toBeGreaterThan(clamped.client);
-    // ...and having engaged, it holds the row to the two-line height the reserve
-    // already pays for. "Resume workout" is authored and cannot wrap, so the
-    // difference IS the wrap — a comparison rather than a pinned 66, which would only
-    // restate the constant back to itself.
-    expect(doseOffer.height).toBeGreaterThan(sessionOffer.height);
-    expect(doseOffer.height - sessionOffer.height).toBeLessThanOrEqual(
-      4 + PX_EPSILON
-    );
+    const rowHeights = [doseOffer.height, sessionOffer.height];
 
     // The region therefore fits INSIDE the number that stands for it — with the label
     // that, unbounded, would have burst it.
@@ -527,8 +505,21 @@ test("the context region at its tallest still fits the panel's one reserve (#373
       const option = options.nth(index);
       await option.click();
       await expect(option).toHaveAttribute("aria-pressed", "true");
+      const subtitles = sheet.locator("[data-sheet-row-label] + span");
+      expect(await subtitles.count()).toBe(0);
+      const rows = sheet.getByTestId("log-sheet-items").locator("button");
+      for (let row = 0; row < (await rows.count()); row += 1)
+        rowHeights.push((await box(rows.nth(row), "segment row")).height);
       expectSameGeometry(await sheetGeometry(sheet), baseline);
     }
+    expect([...new Set(rowHeights.map(Math.round))]).toEqual([46]);
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.locator("aside").getByTestId("sidebar-log").click();
+    const desktopDue = page
+      .getByTestId("sidebar-log-panel")
+      .getByTestId("log-sheet-chip-doses");
+    expect((await box(desktopDue, "desktop due row")).height).toBe(46);
   } finally {
     await page.context().close();
   }
