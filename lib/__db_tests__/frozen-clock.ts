@@ -16,9 +16,14 @@
 //
 // ALLOS_TEST_NOW IS NOT RETIRED, it is demoted to what only it can do: reach ACROSS
 // PROCESSES. The e2e suite pins a separately spawned Next server with it, and no
-// in-process timer fake can. Here it is honoured as the freeze's instant when the
-// environment sets one, which is what makes the two conventions agree instead of
-// diverging — and it is how the hostile-date matrix in the pull request was run.
+// in-process timer fake can. What this tier deliberately does NOT do is take its
+// instant from an ambient one. Tried and measured, because it looks like the
+// consistent thing to do: `now()` checks the env var BEFORE it falls back to Date, so
+// an ambient value silently outranks a spec's own `vi.setSystemTime` and the seam and
+// Date diverge in exactly the files that pin themselves most carefully — 16 files and
+// 104 tests of the tier, against 0 with the same instant applied here. To run the tier
+// at some other instant, change the constant below; that moves the fake Date, which is
+// the thing every spec here reads through.
 //
 // TIMERS STAY REAL. `toFake: ["Date"]` fakes the clock and nothing else, so
 // setTimeout, promises and Playwright-style waiting behave exactly as before. What a
@@ -35,9 +40,16 @@
 // inventing a new one. The DATE tracks the real calendar on purpose: SQLite's own
 // `datetime('now')` reads the real clock and no JS fake can reach it, so a fixed
 // calendar day would drift away from every raw SQL stamp a little further each day.
+//
+// AND LATE IS ALSO WHAT KEEPS THAT UNREACHABLE SQL CLOCK CLOSE. The gap between this
+// instant and SQL's is `23:45 minus the hour the run started`, so it is at worst 15
+// minutes NEGATIVE and otherwise positive. The sign is what matters: a run of the tier
+// with this constant set to `00:05:00.000Z` — a ~12h negative gap — reds 8 files and 31
+// tests, mostly token and session expiries seeded in JS and judged against SQL's clock,
+// while the same magnitude of POSITIVE gap reds none of them. A midday constant would
+// sit in the middle of the harmful half.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
-import { clockOverride } from "../clock";
 
 // The frozen wall time, on whatever the current UTC day is.
 export const FROZEN_WALL_TIME_UTC = "23:45:00.000Z";
@@ -47,35 +59,23 @@ export function frozenInstantForDay(day: string): Date {
   return new Date(`${day}T${FROZEN_WALL_TIME_UTC}`);
 }
 
-// Captured ONCE per worker process, before anything fakes Date, so a run that
-// straddles real midnight cannot hand two files in the same worker different days.
-const DEFAULT_FROZEN = frozenInstantForDay(
+/**
+ * The instant this tier freezes at. Captured ONCE per worker process, before anything
+ * fakes Date, so a run that straddles real midnight cannot hand two files in the same
+ * worker different days.
+ */
+export const TIER_FROZEN_INSTANT = frozenInstantForDay(
   new Date().toISOString().slice(0, 10)
 );
 
-/**
- * The instant this tier freezes at: the environment's ALLOS_TEST_NOW when it names a
- * parseable one (same contract lib/clock.ts documents — a typo falls back rather than
- * pinning the epoch), otherwise the current UTC day at {@link FROZEN_WALL_TIME_UTC}.
- */
-export function tierFrozenInstant(): Date {
-  const override = clockOverride();
-  if (override) {
-    const d = new Date(override);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return DEFAULT_FROZEN;
-}
-
 function freeze(): void {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(tierFrozenInstant());
+  vi.setSystemTime(TIER_FROZEN_INSTANT);
 }
 
 // beforeAll so a spec's own `beforeAll` fixtures are seeded on the frozen clock;
 // beforeEach so a spec that moves the clock in one test starts the next one back at
-// the tier's instant. Re-reading the instant each time is what lets a spec pin
-// ALLOS_TEST_NOW in its own `beforeAll` and have Date follow it.
+// the tier's instant rather than carrying that test's instant into the next.
 beforeAll(freeze);
 beforeEach(freeze);
 

@@ -12,10 +12,10 @@ import { today } from "@/lib/db";
 import {
   FROZEN_WALL_TIME_UTC,
   frozenInstantForDay,
-  tierFrozenInstant,
+  TIER_FROZEN_INSTANT,
 } from "./frozen-clock";
 
-const FROZEN = tierFrozenInstant();
+const FROZEN = TIER_FROZEN_INSTANT;
 
 describe("the db/action tiers freeze the clock (#4509)", () => {
   // The seam and raw Date are the two conventions the tree had, and the whole point
