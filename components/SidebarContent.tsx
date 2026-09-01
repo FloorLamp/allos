@@ -30,6 +30,7 @@ import {
   clearProfileToastsForLogout,
   restoreToastProfileAfterFailedLogout,
 } from "@/components/Toast";
+import { clearRetiredPageVisits } from "@/lib/recent-pages";
 
 // ── THE LOGOUT'S FAILURE RELAY, AT MODULE SCOPE ON PURPOSE (#3605) ───────────────────
 //
@@ -196,6 +197,17 @@ export default function SidebarContent({
   onNavigate?: () => void;
   onClose?: () => void;
 }) {
+  // Frequent's reader and writer are gone (#4102), but browsers that used it can
+  // still carry the old tally. Clear that retired per-device state on the next
+  // authenticated shell load; blocked storage costs only the cleanup.
+  useEffect(() => {
+    try {
+      clearRetiredPageVisits(window.localStorage);
+    } catch {
+      // localStorage can be blocked by browser policy.
+    }
+  }, []);
+
   const logoutButtonRef = useRef<HTMLButtonElement>(null);
   const activeProfileIdRef = useRef(active.id);
   useEffect(() => {

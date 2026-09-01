@@ -751,14 +751,14 @@ describe("live practice sessions (#3143)", () => {
     expect(
       updatePracticeSession(pid, moved.session.id, {
         date: "2026-08-30",
-        startTime: "11:55",
+        startTime: "12:00",
         endTime: null,
         durationMin: null,
         notes: null,
       })
     ).toMatchObject({
       kind: "updated",
-      session: { date: "2026-08-30", live: 0, end_time: null },
+      session: { date: "2026-08-30", start_time: "12:00", live: 0 },
     });
 
     const cleared = startLivePracticeSession(pid, "Meditation", "page");
@@ -924,6 +924,37 @@ describe("a live session survives the edges of its own day", () => {
         end_time: "00:10",
         duration_min: 20,
         live: 0,
+      },
+    });
+  });
+
+  it("keeps a notes-only edit live after local midnight", () => {
+    const pid = makeProfile("live-midnight-notes");
+    setTimezone(pid, "UTC");
+    vi.setSystemTime(new Date("2026-08-31T23:50:00Z"));
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started.kind).toBe("started");
+    if (started.kind !== "started") return;
+
+    vi.setSystemTime(new Date("2026-09-01T00:05:00Z"));
+    expect(
+      updatePracticeSession(pid, started.session.id, {
+        date: "2026-08-31",
+        startTime: "23:50",
+        endTime: null,
+        durationMin: null,
+        notes: "still running",
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: {
+        date: "2026-08-31",
+        start_time: "23:50",
+        end_time: null,
+        duration_min: null,
+        notes: "still running",
+        live: 1,
+        derived_window: 1,
       },
     });
   });

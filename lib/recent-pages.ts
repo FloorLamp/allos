@@ -34,6 +34,17 @@ export interface TrackedPage {
   label: string;
 }
 
+// The visit tally is retired, but an upgraded browser can still carry the old
+// value. Keep only this tombstone until every active device has loaded the new
+// shell: it can DELETE the retired state and can never read or write it.
+export const RETIRED_PAGE_VISITS_KEY = "allos:page-visits:v1";
+
+export function clearRetiredPageVisits(storage: {
+  removeItem(key: string): void;
+}): void {
+  storage.removeItem(RETIRED_PAGE_VISITS_KEY);
+}
+
 // Mirrors the nav's top-level destinations (components/Nav.tsx) plus the Medical
 // group's leaves. Adding a nav leaf here is optional; omitting one means the
 // dashboard has no name for that route, which is a throw and not a silent gap.
