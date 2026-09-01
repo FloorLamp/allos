@@ -627,7 +627,6 @@ export default async function FoodTab({
               days={mealDays}
               groupsBySlot={groupsBySlot}
               proteinRankBySlot={proteinRankBySlot}
-              excludedGroups={excludedGroups}
               usualBySlot={usualBySlot}
               slot={slot}
               // The same boundaries the tallies derive windows from, so the correction

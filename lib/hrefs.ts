@@ -59,12 +59,15 @@ export type AppRoute = Route;
 // Intake (supplements / medications) surface seam (issue #746)
 // --------------------------------------------------------------------------
 
-// The Nutrition umbrella's deep-linkable tabs (#746): Food is the default (no
-// query), Supplements is the former combined supplement surface folded in as a
-// tab. Source of truth for the union — the page parses `?tab=`, so a tab rename
-// is one edit and every caller of `nutritionTabHref` is re-checked by the
-// compiler (typedRoutes validates the `/nutrition` path but NOT the `?tab=`
-// value — this union does, mirroring dataSectionHref).
+// The Nutrition umbrella's deep-linkable tabs (#746). Source of truth for the
+// union — the page parses `?tab=`, so every caller of `nutritionTabHref` is
+// re-checked by the compiler (typedRoutes validates the `/nutrition` path but NOT
+// the `?tab=` value — this union does, mirroring dataSectionHref).
+//
+// These are URL VALUES, not labels: the tabs read `Day | Manage` (#3987) and the
+// words live in components/tab-first-pages.ts. `food` is the Day ledger,
+// `supplements` the Manage surface — the spelling every stored notification link,
+// finding actionHref and cabinet deep link already carries.
 export const NUTRITION_TABS = ["food", "supplements"] as const;
 export type NutritionTab = (typeof NUTRITION_TABS)[number];
 

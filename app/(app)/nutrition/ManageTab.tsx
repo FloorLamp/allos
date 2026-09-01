@@ -77,7 +77,7 @@ import {
   getWeekStart,
   getProfileAge,
 } from "@/lib/settings";
-import { isTrainingRelevant } from "@/lib/life-stage";
+import { isFoodLoggingRelevant, isTrainingRelevant } from "@/lib/life-stage";
 import { formatWeekdayDate } from "@/lib/format-date";
 import { weekWindow } from "@/lib/week-window";
 import type { SupplementAdherenceDayInput } from "@/lib/supplement-weekly-adherence";
@@ -104,6 +104,7 @@ import {
   WORKOUT_CONDITIONS,
   obligationClass,
   heldBySituation,
+  stackSchedule,
 } from "@/lib/intake-schedule";
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { IntakeItem, IntakeDose } from "@/lib/types";
@@ -126,7 +127,6 @@ import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggesti
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import AdherenceFindings from "./AdherenceFindings";
 import DemotionSuggestions from "./DemotionSuggestions";
-import SupplementInsightBadges from "./SupplementInsightBadges";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { SectionCreateHeader } from "@/components/CreateAction";
 import SupplementWeeklyAdherence from "@/components/SupplementWeeklyAdherence";
@@ -141,6 +141,8 @@ import {
 } from "./intake-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
+import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
+import { FOOD_GROUPS } from "@/lib/food-groups";
 import HistoricalDoseLauncher from "@/components/intake/HistoricalDoseLauncher";
 import { isHistoricalDoseDateAccepted } from "@/lib/dose-log-window";
 import Disclosure from "@/components/Disclosure";
@@ -152,12 +154,15 @@ interface Item {
   dose: IntakeDose;
 }
 
-// The Supplements tab of the Nutrition umbrella (#746): the former combined surface's
-// supplement half — context-aware scheduling, stack UL/RDA + cross-kind interaction/PGx
-// warnings, a slot-filterable schedule, compact coaching disclosures, and modal
-// add/edit flows. A self-contained async server component rendered by the tabbed
-// nutrition page.
-export default async function SupplementsTab({
+// THE MANAGE TAB of the Nutrition umbrella (#3987 phase 2, was the Supplements tab).
+//
+// Everything on this page is configuration-shaped, which is the whole split: what a
+// day HELD is the Day ledger's, one tab over, and no fact is stated on both. So this
+// is the stack you keep — one line per dose, with its schedule, its refill and its ⋯ —
+// the safety layer over it, the suggestions waiting on you, and the food preferences
+// that shape what gets suggested. A self-contained async server component rendered by
+// the tabbed nutrition page; the `?tab=` value stays `supplements` (lib/hrefs.ts).
+export default async function ManageTab({
   supplyId = 0,
   backfillDate,
 }: {
@@ -166,9 +171,12 @@ export default async function SupplementsTab({
   backfillDate?: string;
 }) {
   const { login, profile } = await requireSession();
-  const activityScheduleAvailable = isTrainingRelevant(
-    getProfileAge(profile.id)
-  );
+  const profileAge = getProfileAge(profile.id);
+  const activityScheduleAvailable = isTrainingRelevant(profileAge);
+  // The same life-stage gate the Settings copy uses: the adult food-group catalog is
+  // meaningless for an infant, while supplements (vitamin D drops) are not — so this
+  // tab stays reachable and the preferences card is what drops out (#975/#1462).
+  const foodPreferencesRelevant = isFoodLoggingRelevant(profileAge);
   // The medicine-cabinet door (#1522) counts over the caller's WHOLE accessible set,
   // not the acting profile: a shared bottle is household-scoped and has no kind of
   // its own, so this tab and Medications show the same number and land on the same
@@ -686,9 +694,18 @@ export default async function SupplementsTab({
   // day-shaped chrome (day switcher, slot filter, taken counter, keep-apart notices)
   // went with the schedule, and the keep-apart notices moved to the ledger's due rows
   // rather than being dropped.
-  const scheduledItems = activeSupplementItems
+  const listedItems = activeSupplementItems
     .filter((item) => !isHeld(item.supplement))
     .sort((a, b) => compareDoseDay(doseEntry(a), doseEntry(b)));
+  // The split the Manage list makes, and the ONLY one it makes: an item with a slot,
+  // and an item without. `stackSchedule` answers both the flag and the words, so the
+  // list and the row can never disagree about which side a row is on.
+  const scheduledItems = listedItems.filter(
+    (item) => stackSchedule(item.supplement, item.dose).scheduled
+  );
+  const unscheduledItems = listedItems.filter(
+    (item) => !stackSchedule(item.supplement, item.dose).scheduled
+  );
   const secondarySchedule = (
     <>
       {heldItems.length > 0 && (
@@ -873,328 +890,19 @@ export default async function SupplementsTab({
               invalidRequestedDate={!acceptedBackfillDate}
             />
           ) : null}
-          {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
-          the profile's own data, NOT a manual toggle — rendered distinctly and NON-
-          toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
-          only the DERIVED contribution for today. The same lines appear on the
-          check-in disclosure + digest. */}
-          {(derivedLines.poorSleep ||
-            derivedLines.period ||
-            derivedLines.weather.length > 0) && (
-            <div
-              className="-mt-2 mb-4 space-y-1"
-              data-testid="derived-situations"
-            >
-              {derivedLines.poorSleep && (
-                <div
-                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                  data-testid="derived-poor-sleep"
-                >
-                  <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                    Auto
-                  </span>
-                  <span>{derivedLines.poorSleep}</span>
-                  {showPoorSleepOverride && (
-                    <form
-                      action={async () => {
-                        "use server";
-                        await dismissDerivedPoorSleep();
-                      }}
-                    >
-                      <SubmitActionChip data-testid="derived-poor-sleep-override">
-                        Not today
-                      </SubmitActionChip>
-                    </form>
-                  )}
-                </div>
-              )}
-              {derivedLines.period && (
-                <div
-                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                  data-testid="derived-period"
-                >
-                  <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                    Auto
-                  </span>
-                  <span>{derivedLines.period}</span>
-                </div>
-              )}
-              {derivedLines.weather.map((line) => (
-                <div
-                  key={line}
-                  className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
-                  data-testid="derived-weather"
-                >
-                  <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                    Auto
-                  </span>
-                  <span>{line}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
-          that toggling a situation changed the shape of the due dose list, counted
-          from the SAME dueness computation the list uses (never a second count). */}
-          {situationActivationLine(countSituationalDue(intakeItems, ctx)) && (
-            <p
-              className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="situation-activation"
-            >
-              {situationActivationLine(countSituationalDue(intakeItems, ctx))}
-            </p>
-          )}
-
-          {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
-          active illness/injury condition, so it isn't a second manual toggle. */}
-          {bridgeSuggestions.length > 0 && (
-            <div
-              className="mb-4 flex flex-wrap items-center gap-2"
-              data-testid="situation-bridge"
-            >
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Suggested from your conditions:
-              </span>
-              {bridgeSuggestions.map((sit) => (
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await toggleSituation(fd);
-                  }}
-                  key={sit}
-                >
-                  <input type="hidden" name="situation" value={sit} />
-                  <SubmitActionChip data-testid={`situation-bridge-${sit}`}>
-                    + {sit}
-                  </SubmitActionChip>
-                </form>
-              ))}
-            </div>
-          )}
-
-          {/* Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its
-          lead window suggests activating Pre-surgery — the consented producer for the
-          #1296 pause. The chip carries what it will do ("Surgery scheduled … — activate
-          Pre-surgery? N items will be held"). Dismissible per-procedure. */}
-          {surgeryBridge.map((card) => {
-            const { suggestion: sug, activateSituation, heldCount } = card;
-            const dateLabel = sug.scheduledDate;
-            const isPre = sug.phase === "pre";
-            const copy = isPre
-              ? `Surgery scheduled ${dateLabel} — activate ${activateSituation}?${
-                  heldCount > 0
-                    ? ` ${heldCount} item${heldCount === 1 ? "" : "s"} will be held.`
-                    : ""
-                }`
-              : `Surgery date ${dateLabel} passed — ${
-                  sug.presurgeryActive
-                    ? `clear ${BUILTIN_PRESURGERY_SITUATION}${
-                        heldCount > 0
-                          ? ` (${heldCount} item${heldCount === 1 ? "" : "s"} resume)`
-                          : ""
-                      }? `
-                    : ""
-                }Activate ${activateSituation}?`;
-            return (
-              <div
-                key={card.dismissKey}
-                className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand-400 p-2 dark:border-brand-700"
-                data-testid={`surgery-bridge-${sug.phase}-${sug.visitId}`}
-              >
-                <span className="text-xs text-slate-600 dark:text-slate-300">
-                  {copy}
-                </span>
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await activateSurgerySituation(fd);
-                  }}
-                >
-                  <input
-                    type="hidden"
-                    name="situation"
-                    value={activateSituation}
-                  />
-                  <SubmitActionChip
-                    data-testid={`surgery-bridge-activate-${sug.visitId}`}
-                  >
-                    Activate {activateSituation}
-                  </SubmitActionChip>
-                </form>
-                {!isPre && sug.presurgeryActive && (
-                  <form
-                    action={async (fd) => {
-                      "use server";
-                      await clearSurgerySituation(fd);
-                    }}
-                  >
-                    <input
-                      type="hidden"
-                      name="situation"
-                      value={BUILTIN_PRESURGERY_SITUATION}
-                    />
-                    <SubmitActionChip
-                      data-testid={`surgery-bridge-clear-${sug.visitId}`}
-                    >
-                      Clear {BUILTIN_PRESURGERY_SITUATION}
-                    </SubmitActionChip>
-                  </form>
-                )}
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await dismissSurgeryBridge(fd);
-                  }}
-                >
-                  <input type="hidden" name="key" value={card.dismissKey} />
-                  <SubmitActionChip
-                    data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
-                  >
-                    Dismiss
-                  </SubmitActionChip>
-                </form>
-              </div>
-            );
-          })}
-
-          {/* Stack-total UL warnings (issue #148) */}
-          {ulWarnings.length > 0 && (
-            <div className="mb-4 space-y-2" data-testid="ul-warnings">
-              {ulWarnings.map((w) => (
-                <FindingCard
-                  key={w.key}
-                  testid={`ul-warning-${w.key}`}
-                  tone="amber"
-                  title={ulWarningTitle(w)}
-                  detail={ulWarningDetail(
-                    w,
-                    w.conditionCaveat,
-                    w.formulationNote
-                  )}
-                  evidence={`From: ${ulWarningEvidence(w)}`}
-                  dismissKey={dietaryLimitSignalKey(w.key)}
-                  dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
-          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
-          {rdaAdequacy.length > 0 && (
-            <div className="mb-4 space-y-2" data-testid="rda-adequacy">
-              {rdaAdequacy.map((a) => {
-                const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
-                return (
-                  <FindingCard
-                    key={a.key}
-                    testid={`rda-adequacy-${a.key}`}
-                    tone="slate"
-                    icon={false}
-                    title={rdaAdequacyTitle(a)}
-                    detail={rdaAdequacyDetail(a)}
-                    evidence={`From: ${rdaAdequacyEvidence(a)}`}
-                    dismissKey={rdaAdequacySignalKey(a.key)}
-                    dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
-                  >
-                    {foods.length > 0 && (
-                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-                        Food sources: {foods.join("; ")}.
-                      </p>
-                    )}
-                  </FindingCard>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Obligation demotion suggestions (#1505): `must`/`should` supplements that have
-          gone sustainedly untaken, offered for the `may` obligation. Calm and hideable —
-          accepting is the user's own obligation write, never the system's. */}
-          {demotionFindings.length > 0 && (
-            <div className="mb-4">
-              <DemotionSuggestions findings={demotionFindings} />
-            </div>
-          )}
-
-          {/* IntakeItem-related interaction warnings. Cross-kind findings also render on
-          Medications with the same dedupeKey, so dismissing either twin silences both.
-          Medication-only interaction and PGx findings stay on Medications. */}
-          <IntakeWarnings
-            interactionWarnings={interactionWarnings}
-            pgxWarnings={pgxWarnings}
-            coverage={safetyCoverage}
-          />
-
-          {supplementItems.length === 0 ? (
-            <div
-              data-testid="supplement-workspace"
-              className="grid gap-6 lg:grid-cols-[1fr_320px]"
-            >
-              <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
-              <aside
-                data-testid="supplement-sidebar"
-                className="min-w-0 self-start"
-              >
-                <div
-                  data-testid="supplement-sidebar-surface"
-                  className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
-                >
-                  <section className="p-4">
-                    <h2 className="mb-3 section-label">Insights</h2>
-                    <SupplementInsightBadges
-                      patternCount={adherenceFindings.length}
-                      suggestionCount={
-                        suggestions.length + curatedSuggestions.length
-                      }
-                      patterns={
-                        <AdherenceFindings findings={adherenceFindings} />
-                      }
-                      suggestions={suggestionPanel}
-                    />
-                  </section>
-                  <section className="p-4">
-                    <SectionCreateHeader
-                      title="Manage"
-                      action={
-                        <>
-                          <SharedSuppliesLink count={cabinetCount} />
-                          {/* The EMPTY branch keeps its door here: with no
-                              supplements there is no schedule to hang it on, and
-                              this page is short. The populated branch — the long
-                              one the owner scrolled — is the one that moved. */}
-                          <LedgerDoorLink
-                            href={historyHref({
-                              kind: "dose",
-                              class: "supplement",
-                            })}
-                            label="Dose history"
-                            testId="dose-ledger-link"
-                          />
-                        </>
-                      }
-                      createAction={{
-                        kind: "supplement",
-                        control: (
-                          <AddSupplementModal
-                            {...addSupplementModal}
-                            conditions={purposeConditions}
-                            biomarkers={purposeBiomarkers}
-                          />
-                        ),
-                      }}
-                    />
-                  </section>
-                </div>
-              </aside>
-            </div>
-          ) : (
-            <div
-              data-testid="supplement-workspace"
-              className="grid gap-6 lg:grid-cols-[1fr_320px]"
-            >
-              <div data-testid="intake-schedule" className="min-w-0">
+          {/* THE STACK COMES FIRST (#3987 phase 2, carrying #3892's intent). This page
+            used to open with roughly 1,600px of findings, so on a phone nothing the
+            page is NAMED for was on the first screen. The findings did not earn that
+            position by being urgent — they earned it by being written first. They are
+            all still here, below, at full height and undismissed by this change
+            (#2385): what moved is the order, and the measurement that proves it is the
+            y of the first stack row at 430px, stated in the PR. */}
+          <div
+            data-testid="supplement-workspace"
+            className="grid gap-6 lg:grid-cols-[1fr_320px]"
+          >
+            <div data-testid="intake-schedule" className="min-w-0 space-y-6">
+              <div>
                 <SectionCreateHeader
                   title="Your stack"
                   action={
@@ -1209,10 +917,18 @@ export default async function SupplementsTab({
                   }
                   createAction={{
                     kind: "supplement",
-                    control: <AddSupplementModal {...addSupplementModal} />,
+                    control: (
+                      <AddSupplementModal
+                        {...addSupplementModal}
+                        conditions={purposeConditions}
+                        biomarkers={purposeBiomarkers}
+                      />
+                    ),
                   }}
                 />
-                {scheduledItems.length > 0 ? (
+                {supplementItems.length === 0 ? (
+                  <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
+                ) : scheduledItems.length > 0 ? (
                   <div data-testid="supplement-stack" className="space-y-3">
                     {scheduledItems.map((item) => renderRow(item))}
                   </div>
@@ -1223,47 +939,350 @@ export default async function SupplementsTab({
                     message="Nothing scheduled. Add a supplement, or see today's doses on the Day ledger."
                   />
                 )}
+                {/* NOT SCHEDULED (#3987): an item entered without a time of day. It is
+                  a real part of the stack and it is not a day question — it simply has
+                  no slot — so it folds under its own count rather than sitting in the
+                  scheduled list pretending to a time it does not have. */}
+                {unscheduledItems.length > 0 && (
+                  <Disclosure className="mt-4">
+                    <summary className="cursor-pointer section-label">
+                      Not scheduled ({unscheduledItems.length})
+                    </summary>
+                    <div
+                      data-testid="supplement-unscheduled"
+                      className="mt-2 space-y-3"
+                    >
+                      {unscheduledItems.map((item) => renderRow(item))}
+                    </div>
+                  </Disclosure>
+                )}
                 <div className="mt-6 space-y-4">{secondarySchedule}</div>
               </div>
-              <aside
-                data-testid="supplement-sidebar"
-                className="min-w-0 self-start"
-              >
-                <div
-                  data-testid="supplement-sidebar-surface"
-                  className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+              {/* FOOD PREFERENCES, ABSORBED (#3987). They were a modal behind an icon
+                on the Food tab — configuration reached from the day, which is the
+                split this redesign exists to end. They are the same form and the same
+                write; only the door changed. The Settings copy stays: this is the
+                surface you are on when you notice a suggestion you do not want. */}
+              {foodPreferencesRelevant && (
+                <section
+                  data-testid="food-preferences-card"
+                  className="card space-y-3"
                 >
+                  <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                    Food preferences
+                  </h2>
+                  <DietaryPreferencesForm
+                    excluded={excludedGroups}
+                    groups={FOOD_GROUPS.map((group) => ({
+                      slug: group.slug,
+                      name: group.name,
+                      tier: group.tier,
+                    }))}
+                    embedded
+                  />
+                </section>
+              )}
+            </div>
+            <aside
+              data-testid="supplement-sidebar"
+              className="min-w-0 self-start"
+            >
+              <div
+                data-testid="supplement-sidebar-surface"
+                className="band divide-y divide-(--divider) overflow-hidden rounded-xl border border-(--border) bg-surface shadow-xs"
+              >
+                {supplementItems.length > 0 && (
                   <SupplementWeeklyAdherence
                     days={weeklyAdherenceDays}
                     labels={weeklyAdherenceLabels}
                   />
-                  <section className="p-4">
-                    <h2 className="mb-3 section-label">Insights</h2>
-                    <SupplementInsightBadges
-                      patternCount={adherenceFindings.length}
-                      suggestionCount={
-                        suggestions.length + curatedSuggestions.length
-                      }
-                      patterns={
-                        <AdherenceFindings findings={adherenceFindings} />
-                      }
-                      suggestions={suggestionPanel}
-                    />
-                  </section>
-                  <section className="p-4">
-                    <h2 className="mb-3 section-label">Manage</h2>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <SharedSuppliesLink count={cabinetCount} />
-                    </div>
-                  </section>
-                </div>
-              </aside>
-            </div>
-          )}
+                )}
+                <section className="p-4">
+                  <h2 className="mb-3 section-label">Manage</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <SharedSuppliesLink count={cabinetCount} />
+                  </div>
+                </section>
+              </div>
+            </aside>
+          </div>
 
-          {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-            <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-          ) : null}
+          {/* THE SAFETY LAYER, BELOW THE STACK AND NOT HIDDEN (#3892's intent, #2385).
+            Every finding that used to open the page renders here at full width and
+            full height — none is folded, capped or counted-and-collapsed. */}
+          <section data-testid="supplement-insights" className="mt-6 space-y-4">
+            <h2 className="section-label">Insights</h2>
+            {/* Stack-total UL warnings (issue #148) */}
+            {ulWarnings.length > 0 && (
+              <div className="mb-4 space-y-2" data-testid="ul-warnings">
+                {ulWarnings.map((w) => (
+                  <FindingCard
+                    key={w.key}
+                    testid={`ul-warning-${w.key}`}
+                    tone="amber"
+                    title={ulWarningTitle(w)}
+                    detail={ulWarningDetail(
+                      w,
+                      w.conditionCaveat,
+                      w.formulationNote
+                    )}
+                    evidence={`From: ${ulWarningEvidence(w)}`}
+                    dismissKey={dietaryLimitSignalKey(w.key)}
+                    dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
+            amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
+            {rdaAdequacy.length > 0 && (
+              <div className="mb-4 space-y-2" data-testid="rda-adequacy">
+                {rdaAdequacy.map((a) => {
+                  const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
+                  return (
+                    <FindingCard
+                      key={a.key}
+                      testid={`rda-adequacy-${a.key}`}
+                      tone="slate"
+                      icon={false}
+                      title={rdaAdequacyTitle(a)}
+                      detail={rdaAdequacyDetail(a)}
+                      evidence={`From: ${rdaAdequacyEvidence(a)}`}
+                      dismissKey={rdaAdequacySignalKey(a.key)}
+                      dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
+                    >
+                      {foods.length > 0 && (
+                        <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                          Food sources: {foods.join("; ")}.
+                        </p>
+                      )}
+                    </FindingCard>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Obligation demotion suggestions (#1505): `must`/`should` supplements that have
+            gone sustainedly untaken, offered for the `may` obligation. Calm and hideable —
+            accepting is the user's own obligation write, never the system's. */}
+            {demotionFindings.length > 0 && (
+              <div className="mb-4">
+                <DemotionSuggestions findings={demotionFindings} />
+              </div>
+            )}
+
+            {/* IntakeItem-related interaction warnings. Cross-kind findings also render on
+            Medications with the same dedupeKey, so dismissing either twin silences both.
+            Medication-only interaction and PGx findings stay on Medications. */}
+            <IntakeWarnings
+              interactionWarnings={interactionWarnings}
+              pgxWarnings={pgxWarnings}
+              coverage={safetyCoverage}
+            />
+            <AdherenceFindings findings={adherenceFindings} />
+            {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+              <IntakeSafetyScope coverage={safetyCoverage} />
+            ) : null}
+            {/* Why the stack looks the way it does today: the derived contexts that
+              hold or release items, and the situations a condition or a scheduled
+              surgery suggests. Configuration-shaped, so it is on this tab; secondary
+              to the safety layer, so it is below it. */}
+            {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
+            the profile's own data, NOT a manual toggle — rendered distinctly and NON-
+            toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
+            only the DERIVED contribution for today. The same lines appear on the
+            check-in disclosure + digest. */}
+            {(derivedLines.poorSleep ||
+              derivedLines.period ||
+              derivedLines.weather.length > 0) && (
+              <div
+                className="-mt-2 mb-4 space-y-1"
+                data-testid="derived-situations"
+              >
+                {derivedLines.poorSleep && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="derived-poor-sleep"
+                  >
+                    <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                      Auto
+                    </span>
+                    <span>{derivedLines.poorSleep}</span>
+                    {showPoorSleepOverride && (
+                      <form
+                        action={async () => {
+                          "use server";
+                          await dismissDerivedPoorSleep();
+                        }}
+                      >
+                        <SubmitActionChip data-testid="derived-poor-sleep-override">
+                          Not today
+                        </SubmitActionChip>
+                      </form>
+                    )}
+                  </div>
+                )}
+                {derivedLines.period && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="derived-period"
+                  >
+                    <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                      Auto
+                    </span>
+                    <span>{derivedLines.period}</span>
+                  </div>
+                )}
+                {derivedLines.weather.map((line) => (
+                  <div
+                    key={line}
+                    className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="derived-weather"
+                  >
+                    <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                      Auto
+                    </span>
+                    <span>{line}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
+            that toggling a situation changed the shape of the due dose list, counted
+            from the SAME dueness computation the list uses (never a second count). */}
+            {situationActivationLine(countSituationalDue(intakeItems, ctx)) && (
+              <p
+                className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="situation-activation"
+              >
+                {situationActivationLine(countSituationalDue(intakeItems, ctx))}
+              </p>
+            )}
+
+            {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
+            active illness/injury condition, so it isn't a second manual toggle. */}
+            {bridgeSuggestions.length > 0 && (
+              <div
+                className="mb-4 flex flex-wrap items-center gap-2"
+                data-testid="situation-bridge"
+              >
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Suggested from your conditions:
+                </span>
+                {bridgeSuggestions.map((sit) => (
+                  <form
+                    action={async (fd) => {
+                      "use server";
+                      await toggleSituation(fd);
+                    }}
+                    key={sit}
+                  >
+                    <input type="hidden" name="situation" value={sit} />
+                    <SubmitActionChip data-testid={`situation-bridge-${sit}`}>
+                      + {sit}
+                    </SubmitActionChip>
+                  </form>
+                ))}
+              </div>
+            )}
+
+            {/* Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its
+            lead window suggests activating Pre-surgery — the consented producer for the
+            #1296 pause. The chip carries what it will do ("Surgery scheduled … — activate
+            Pre-surgery? N items will be held"). Dismissible per-procedure. */}
+            {surgeryBridge.map((card) => {
+              const { suggestion: sug, activateSituation, heldCount } = card;
+              const dateLabel = sug.scheduledDate;
+              const isPre = sug.phase === "pre";
+              const copy = isPre
+                ? `Surgery scheduled ${dateLabel} — activate ${activateSituation}?${
+                    heldCount > 0
+                      ? ` ${heldCount} item${heldCount === 1 ? "" : "s"} will be held.`
+                      : ""
+                  }`
+                : `Surgery date ${dateLabel} passed — ${
+                    sug.presurgeryActive
+                      ? `clear ${BUILTIN_PRESURGERY_SITUATION}${
+                          heldCount > 0
+                            ? ` (${heldCount} item${heldCount === 1 ? "" : "s"} resume)`
+                            : ""
+                        }? `
+                      : ""
+                  }Activate ${activateSituation}?`;
+              return (
+                <div
+                  key={card.dismissKey}
+                  className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand-400 p-2 dark:border-brand-700"
+                  data-testid={`surgery-bridge-${sug.phase}-${sug.visitId}`}
+                >
+                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                    {copy}
+                  </span>
+                  <form
+                    action={async (fd) => {
+                      "use server";
+                      await activateSurgerySituation(fd);
+                    }}
+                  >
+                    <input
+                      type="hidden"
+                      name="situation"
+                      value={activateSituation}
+                    />
+                    <SubmitActionChip
+                      data-testid={`surgery-bridge-activate-${sug.visitId}`}
+                    >
+                      Activate {activateSituation}
+                    </SubmitActionChip>
+                  </form>
+                  {!isPre && sug.presurgeryActive && (
+                    <form
+                      action={async (fd) => {
+                        "use server";
+                        await clearSurgerySituation(fd);
+                      }}
+                    >
+                      <input
+                        type="hidden"
+                        name="situation"
+                        value={BUILTIN_PRESURGERY_SITUATION}
+                      />
+                      <SubmitActionChip
+                        data-testid={`surgery-bridge-clear-${sug.visitId}`}
+                      >
+                        Clear {BUILTIN_PRESURGERY_SITUATION}
+                      </SubmitActionChip>
+                    </form>
+                  )}
+                  <form
+                    action={async (fd) => {
+                      "use server";
+                      await dismissSurgeryBridge(fd);
+                    }}
+                  >
+                    <input type="hidden" name="key" value={card.dismissKey} />
+                    <SubmitActionChip
+                      data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
+                    >
+                      Dismiss
+                    </SubmitActionChip>
+                  </form>
+                </div>
+              );
+            })}
+          </section>
+
+          {/* SUGGESTIONS AS ROWS (#3987), not a badge that opens a dialog. Pending
+            ones only — an accepted suggestion is a stack row and a dismissed one is
+            gone — each carrying the origin badge that says whether a human-reviewed
+            map or a model wrote it (#2378), with the explainer stated once per
+            surface rather than once per row (#3970) and reachable by tap (#3375). */}
+          <section data-testid="supplement-suggestions" className="mt-6">
+            <h2 className="mb-3 section-label">Suggestions</h2>
+            {suggestionPanel}
+          </section>
         </div>
       </IntakeOptionsProvider>
     </SituationOptionsProvider>
