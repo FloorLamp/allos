@@ -21,8 +21,6 @@ import MobilityLogBar from "./MobilityLogBar";
 //     (#482: trained ≠ mobilized), computed only from mobility sessions.
 // Kept a plain component import so any future OverviewSection restructure is a one-line
 // splice.
-const COVERAGE_DAYS = 7;
-
 export default async function MobilitySection({
   profileId,
   today,
@@ -31,7 +29,7 @@ export default async function MobilitySection({
   today: string;
 }) {
   const session = getMobilitySession(profileId, today);
-  const coverage = getMobilityCoverage(profileId, today, COVERAGE_DAYS);
+  const coverage = getMobilityCoverage(profileId, today);
   const coverageMax = coverage.reduce((m, r) => Math.max(m, r.days), 0);
 
   // Deficit→habit suggestions (#840 phase 2): the SAME pure computation the coaching
@@ -126,8 +124,8 @@ export default async function MobilitySection({
           Region coverage
         </h4>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          Days each region was mobilized over the last {COVERAGE_DAYS} days —
-          separate from strength coverage (mobilized ≠ trained).
+          Days each region was mobilized this week — separate from strength
+          coverage (mobilized ≠ trained).
         </p>
         <ul className="mt-3 space-y-2" data-testid="mobility-coverage">
           {coverage.map((row) => (
