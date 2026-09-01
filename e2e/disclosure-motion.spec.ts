@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { test, expect } from "./fixtures";
-import { hydratedClick } from "./helpers";
+import { awaitHydrated, hydratedClick } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import {
@@ -92,15 +92,22 @@ function resetDashboardAllOffer(): void {
 const MORE_GROUPS = '[data-testid="food-more-groups"]';
 const MORE_GROUPS_SUMMARY = '[data-testid="food-more-groups-summary"]';
 
-test("a disclosure grows open rather than snapping, and settles inside the band", async ({
+test("a disclosure animates without delaying its content or controls", async ({
   page,
 }) => {
   // 430px: the phone width the issue names, where these folds open into a long list
   // and the snap was a full-height jump with the reader's finger still on the summary.
   await page.setViewportSize({ width: 430, height: 900 });
   await page.goto("/nutrition");
-  await expect(page.locator(MORE_GROUPS)).toBeVisible();
-  await expect(page.locator(MORE_GROUPS)).not.toHaveAttribute("open", "");
+  const more = page.locator(MORE_GROUPS);
+  await awaitHydrated(more);
+  await expect(more).not.toHaveAttribute("open", "");
+
+  const visibleControls = () =>
+    more
+      .locator("button, a[href], input, select, textarea")
+      .evaluateAll((els) => els.filter((el) => el.checkVisibility()).length);
+  expect(await visibleControls()).toBe(0);
 
   // 30 frames is ~500ms at 60fps and more on a loaded box — comfortably past the
   // 200ms token either way, so the last samples are the settled height whatever the
@@ -116,7 +123,8 @@ test("a disclosure grows open rather than snapping, and settles inside the band"
     `heights while opening: ${opening.join(",")}`
   ).toBeGreaterThan(0);
   expect(opening.at(-1)).toBeGreaterThan(opening[0]);
-  await expect(page.locator(MORE_GROUPS)).toHaveAttribute("open", "");
+  await expect(more).toHaveAttribute("open", "");
+  expect(await visibleControls()).toBeGreaterThan(0);
 
   // And closing is the same motion in reverse — the half a JS-driven collapse
   // usually gets wrong, because the element has to stay open while it shrinks.
@@ -131,7 +139,42 @@ test("a disclosure grows open rather than snapping, and settles inside the band"
     `heights while closing: ${closing.join(",")}`
   ).toBeGreaterThan(0);
   expect(closing.at(-1)).toBeLessThan(closing[0]);
-  await expect(page.locator(MORE_GROUPS)).not.toHaveAttribute("open", "");
+  await expect(more).not.toHaveAttribute("open", "");
+
+  // Opening is one state: the content becomes readable in the same task as `open`
+  // flips, rather than one rendering opportunity later through a discrete
+  // content-visibility transition.
+  const onClickFrame = await page.evaluate(
+    ([sel, summarySel]) => {
+      const el = document.querySelector<HTMLDetailsElement>(sel as string)!;
+      const trigger = document.querySelector<HTMLElement>(
+        summarySel as string
+      )!;
+      const heading = () => el.querySelector<HTMLElement>("h3");
+      const before = heading()?.innerText.trim().length ?? 0;
+      trigger.click();
+      const kid = heading();
+      return {
+        before,
+        open: el.open,
+        contentVisibility: getComputedStyle(el, "::details-content")
+          .contentVisibility,
+        innerTextLength: kid?.innerText.trim().length ?? 0,
+        visible: kid?.checkVisibility({ contentVisibilityAuto: true }) ?? false,
+      };
+    },
+    [MORE_GROUPS, MORE_GROUPS_SUMMARY] as const
+  );
+  expect(onClickFrame.before).toBe(0);
+  expect(onClickFrame.open).toBe(true);
+  expect(onClickFrame.contentVisibility, JSON.stringify(onClickFrame)).not.toBe(
+    "hidden"
+  );
+  expect(
+    onClickFrame.innerTextLength,
+    JSON.stringify(onClickFrame)
+  ).toBeGreaterThan(0);
+  expect(onClickFrame.visible, JSON.stringify(onClickFrame)).toBe(true);
 
   // The band is the doctrine's, not this spec's: the token is the single source and
   // the unit tier pins it to the stylesheet. Asserted here so a re-timing that
@@ -152,7 +195,7 @@ test("reduced motion opens the panel instantly, and schedules no keyframe", asyn
   try {
     await page.setViewportSize({ width: 430, height: 900 });
     await page.goto("/nutrition");
-    await expect(page.locator(MORE_GROUPS)).toBeVisible();
+    await awaitHydrated(page.locator(MORE_GROUPS));
 
     const samples = await heightsWhileOpening(
       page,
@@ -255,89 +298,4 @@ test("a remembered-open disclosure is open on the first painted frame and never 
   } finally {
     await page.context().close();
   }
-});
-
-test("an opened disclosure has its contents on the same frame `open` flips", async ({
-  page,
-}) => {
-  // THE CI RED ON e2e/imaging.spec.ts, as its own property. `content-visibility` is a
-  // DISCRETE property, and a discrete transition's value is applied by the animation
-  // machinery at the browser's next RENDERING OPPORTUNITY — not when the property
-  // changes. So while `content-visibility` was in the OPENING transition, `details.open`
-  // was already true while `::details-content` was still `content-visibility: hidden`:
-  // the contents were in the DOM, `innerText` was EMPTY, and the subtree was out of the
-  // accessibility tree. Measured on this tree at the time: 855 a11y nodes on the click
-  // frame against 1,327 once the fold settled.
-  //
-  // That is not a test-timing problem and it may not be waited out. A reader who taps a
-  // fold and a spec that reads one are the same case, and 45 spec files open a converted
-  // disclosure and read it with no wait at all. So the assertion is the strict one: read
-  // it SYNCHRONOUSLY, in the same task as the click, with no frame in between. `open`
-  // and the contents are one state or the guard has not been written.
-  await page.setViewportSize({ width: 430, height: 900 });
-  await page.goto("/nutrition");
-  await expect(page.locator(MORE_GROUPS)).toBeVisible();
-
-  const onClickFrame = await page.evaluate(
-    ([sel, summarySel]) => {
-      const el = document.querySelector<HTMLDetailsElement>(sel as string)!;
-      const summary = document.querySelector<HTMLElement>(
-        summarySel as string
-      )!;
-      const heading = () => el.querySelector<HTMLElement>("h3");
-      const before = heading()?.innerText.trim().length ?? 0;
-      summary.click();
-      const kid = heading();
-      return {
-        before,
-        open: el.open,
-        contentVisibility: getComputedStyle(el, "::details-content")
-          .contentVisibility,
-        innerTextLength: kid?.innerText.trim().length ?? 0,
-        // `contentVisibilityAuto: true` makes this answer the a11y question too: a
-        // subtree skipped for content-visibility is not in the accessibility tree.
-        visible: kid?.checkVisibility({ contentVisibilityAuto: true }) ?? false,
-      };
-    },
-    [MORE_GROUPS, MORE_GROUPS_SUMMARY] as const
-  );
-
-  // The converse in the same block: closed, the same reading is empty and invisible —
-  // so this cannot pass on a tree where the contents were simply always readable.
-  expect(onClickFrame.before).toBe(0);
-  expect(onClickFrame.open).toBe(true);
-  expect(onClickFrame.contentVisibility, JSON.stringify(onClickFrame)).not.toBe(
-    "hidden"
-  );
-  expect(
-    onClickFrame.innerTextLength,
-    JSON.stringify(onClickFrame)
-  ).toBeGreaterThan(0);
-  expect(onClickFrame.visible, JSON.stringify(onClickFrame)).toBe(true);
-});
-
-test("a collapsed disclosure keeps its controls out of the tab order", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  const more = page.locator(MORE_GROUPS);
-  await expect(more).toBeVisible();
-  await expect(more).not.toHaveAttribute("open", "");
-
-  // `Collapse`'s guarantee, inherited: a collapsed panel whose buttons are still
-  // tabbable is a keyboard trap you cannot see. The native element does this for the
-  // disclosure, and the animation must not have re-mounted the content outside it.
-  const hidden = await more
-    .locator("button, a[href], input, select, textarea")
-    .evaluateAll((els) => els.filter((el) => el.checkVisibility()).length);
-  expect(hidden).toBe(0);
-
-  await page.locator(MORE_GROUPS_SUMMARY).click();
-  await expect(more).toHaveAttribute("open", "");
-  const shown = await more
-    .locator("button, a[href], input, select, textarea")
-    .evaluateAll((els) => els.filter((el) => el.checkVisibility()).length);
-  // The converse, in the same commit: an absence assertion that passes on a tree
-  // where the panel simply has no controls proves nothing.
-  expect(shown).toBeGreaterThan(0);
 });
