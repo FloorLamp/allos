@@ -192,6 +192,37 @@ test.describe("the household card is a status board, not an action surface", () 
     await expect(page.getByTestId("household-dose-aggregate")).toHaveCount(0);
   });
 
+  // THE OVERFLOW LINE'S DESTINATION (#1463 §1, delta 1). `/timeline` is gone and
+  // #1329 took `?subject=` out of the URL grammar, so a member's day is reachable only
+  // by switching to them first — the control posts the member and the action resolves
+  // their day server-side. Driven on the ACTING profile's own card, so the switch this
+  // asserts is a no-op for the session and no neighbour inherits a moved pointer.
+  //
+  // The seed gives profile 1 far more than four changes in the window, so the control
+  // is unconditionally present; a seed that went quiet fails here loudly rather than
+  // letting the assertion pass on an absent control (probed with
+  // `ALLOS_DB_PATH=<worker db> npx tsx` over collectRecentChanges at sinceDays 7:
+  // profile 1 reported overflow=36).
+  test("the digest's overflow line lands on that member's own day", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/household");
+    const ownCard = page.locator(
+      '[data-testid="household-card"][data-profile-id="1"]'
+    );
+    const more = ownCard.getByTestId("household-digest-more");
+    await expect(more).toBeVisible();
+    await expect(more).toHaveText(/^\+\d+ more this week$/);
+
+    await more.click();
+    await page.waitForURL(/\/history\?day=\d{4}-\d{2}-\d{2}/, {
+      timeout: 20_000,
+    });
+    // It is the DAY view it landed on, not the record's default listing.
+    await expect(page.getByTestId("app-content-container")).toBeVisible();
+  });
+
   test("the attention count links out to Upcoming rather than acting here", async ({
     page,
   }) => {
