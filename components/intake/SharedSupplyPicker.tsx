@@ -1,20 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import DestinationLink from "@/components/DestinationLink";
 import {
-  listSharedSupplyOptions,
   createPoolAction,
   linkItemAction,
   unlinkItemAction,
 } from "@/app/(app)/supplies/actions";
 import { SUPPLIES_HREF } from "@/lib/hrefs";
-import {
-  bottleLabel,
-  bottlesForKindDoor,
-  type SupplyOption,
-} from "@/lib/supply-product";
-import type { IntakeItemKind } from "@/lib/types/intake";
+import { bottleLabel, type SupplyOption } from "@/lib/supply-product";
 import { useResettableState } from "@/components/useResettableState";
 
 // The "Shared supply" control (#1374), rendered inside the refill block of BOTH intake
@@ -36,90 +30,35 @@ import { useResettableState } from "@/components/useResettableState";
 export default function SharedSupplyPicker({
   itemId,
   itemName,
-  kind,
+  options,
   supplyId,
   supplyName,
-  initialSupply = null,
   onPickSupply,
 }: {
   itemId?: number;
   itemName: string;
-  // The item's kind — the form's locked kind, the same value that already scopes the
-  // name combobox's bottle rows. Required, not defaulted: an unfiltered list is the
-  // #3315 bug, so a caller that cannot say which kind it owns must not compile.
-  kind: IntakeItemKind;
-  supplyId: number | null;
+  options: SupplyOption[];
+  supplyId: string;
   supplyName: string | null;
-  // CREATE mode only (#1705): the bottle this form was opened from, e.g. the cabinet's
-  // "Add for another person". Preselected and pre-seeded.
-  initialSupply?: SupplyOption | null;
-  // CREATE mode only: hands the chosen bottle to the item form so it can prefill the
-  // product fields it owns the inputs for.
   onPickSupply?: (supply: SupplyOption | null) => void;
 }) {
-  const [options, setOptions] = useState<SupplyOption[]>(
-    initialSupply ? [initialSupply] : []
-  );
-  const [loaded, setLoaded] = useState(false);
-  const initialChoice =
-    supplyId != null
-      ? String(supplyId)
-      : initialSupply
-        ? String(initialSupply.id)
-        : "";
+  const initialChoice = supplyId;
   // In edit mode the saved item/link tuple owns this local draft. Create mode uses
   // one stable key so its seeded bottle remains entirely user-controlled.
   const savedLinkKey = itemId
-    ? `${itemId}:${supplyId ?? ""}:${supplyName ?? ""}`
+    ? `${itemId}:${supplyId}:${supplyName ?? ""}`
     : "create";
   const [choice, setChoice] = useResettableState(initialChoice, savedLinkKey);
-  const [savedChoice, setSavedChoice] = useResettableState(
-    supplyId != null ? String(supplyId) : "",
-    savedLinkKey
-  );
-  const [activeSupplyName, setActiveSupplyName] = useResettableState(
-    supplyName,
-    savedLinkKey
-  );
   const [newName, setNewName] = useState(itemName);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  // WHICH BOTTLES THIS ITEM MAY DRAW FROM (#3315). The rule and its reasoning live in
-  // lib/supply-product.ts beside #3270's, because the kind-locked door asks the same
-  // question — a bottle has no kind of its own, so what is compared is the kind its
-  // MEMBERS lend, and a bottle nobody links yet is offered everywhere.
-  //
-  // The currently linked bottle is kept whatever it lends. Without it, an item already
-  // on a mixed bottle would open its own picker with the link missing and no way to
-  // unlink.
-  const offered = useMemo(() => {
-    const fits = bottlesForKindDoor(options, kind);
-    const linked = options.find((o) => o.id === supplyId);
-    return linked && !fits.some((f) => f.id === linked.id)
-      ? [linked, ...fits]
-      : fits;
-  }, [options, kind, supplyId]);
-
-  useEffect(() => {
-    if (loaded) return;
-    let live = true;
-    void listSharedSupplyOptions().then((opts) => {
-      if (!live) return;
-      setOptions(opts);
-      setLoaded(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, [loaded]);
-
   // CREATE mode (#1705). No item exists yet, so there is nothing to link and no action to
   // call: the chosen bottle rides on the item form's OWN submit as `supply_id`, and the
   // pick is handed up so the form can seed the product fields from it.
   if (!itemId) {
-    const picked = offered.find((o) => String(o.id) === choice) ?? null;
+    const picked = options.find((o) => String(o.id) === choice) ?? null;
     return (
       <div
         data-testid="shared-supply-picker"
@@ -132,7 +71,6 @@ export default function SharedSupplyPicker({
           Draw this item from a bottle the household already shares — the bottle
           keeps the count for everyone linked to it.
         </p>
-        <input type="hidden" name="supply_id" value={choice} />
         <select
           id="shared-supply-new-item"
           className="input max-w-xs"
@@ -141,11 +79,11 @@ export default function SharedSupplyPicker({
           onChange={(e) => {
             const next = e.target.value;
             setChoice(next);
-            onPickSupply?.(offered.find((o) => String(o.id) === next) ?? null);
+            onPickSupply?.(options.find((o) => String(o.id) === next) ?? null);
           }}
         >
           <option value="">Not shared</option>
-          {offered.map((o) => (
+          {options.map((o) => (
             <option key={o.id} value={String(o.id)}>
               {bottleLabel(o)}
             </option>
@@ -189,25 +127,14 @@ export default function SharedSupplyPicker({
 
         const supply = res.supply;
         if (supply) {
-          const nextChoice = String(supply.id);
-          setOptions((current) =>
-            [
-              ...current.filter((option) => option.id !== supply.id),
-              supply,
-            ].sort((a, b) => a.name.localeCompare(b.name))
-          );
-          setChoice(nextChoice);
-          setSavedChoice(nextChoice);
-          setActiveSupplyName(supply.name);
+          onPickSupply?.(supply);
           setSuccess(
             appliedChoice === "__new__"
               ? `Created and linked “${supply.name}”.`
               : `Linked to “${supply.name}”.`
           );
         } else {
-          setChoice("");
-          setSavedChoice("");
-          setActiveSupplyName(null);
+          onPickSupply?.(null);
           setSuccess("Shared supply removed.");
         }
       } catch {
@@ -215,7 +142,7 @@ export default function SharedSupplyPicker({
       }
     });
   };
-  const changed = choice === "__new__" || choice !== savedChoice;
+  const changed = choice === "__new__" || choice !== supplyId;
 
   return (
     <div
@@ -230,14 +157,14 @@ export default function SharedSupplyPicker({
         Shared supply
       </label>
       <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-        {activeSupplyName
-          ? `This item draws from the shared bottle “${activeSupplyName}”. Everyone linked to it decrements one count.`
+        {supplyName
+          ? `This item draws from the shared bottle “${supplyName}”. Everyone linked to it decrements one count.`
           : "Link this item to a bottle the household shares, so every taker's doses decrement one count."}
       </p>
       {/* The natural "see all bottles" exit (#1522). Only once a pool is actually
         linked: with nothing shared there is no cabinet to walk out to, and the select
         below is the way IN. The cabinet has no nav row — this is one of its doors. */}
-      {activeSupplyName && (
+      {supplyName && (
         <p className="mb-2 text-xs">
           <DestinationLink
             href={SUPPLIES_HREF}
@@ -261,7 +188,7 @@ export default function SharedSupplyPicker({
           }}
         >
           <option value="">Not shared</option>
-          {offered.map((o) => (
+          {options.map((o) => (
             <option key={o.id} value={String(o.id)}>
               {bottleLabel(o)}
             </option>
