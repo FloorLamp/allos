@@ -128,20 +128,39 @@ export default function OverflowMenu({
   const close = () => {
     onOpenChange(false);
   };
+  // THE MENU CLOSES ON THE TAP, NOT ON THE RESPONSE (#2641 gap 2).
+  //
+  // Every tap-shaped write behind a kebab — snooze, dismiss, the preventive
+  // overrides, a goal's status, retire/restore, a trend tile's reorder — used to
+  // hold the panel open, spinning over the row it acts on, for the whole round
+  // trip AND its revalidations. That is the one place in the app where the answer
+  // to "did my tap land?" was a control that had not moved yet, and it is the
+  // same defect `StarButton` fixed for the star.
+  //
+  // Closing first is the optimistic paint the MENU can honestly make: the panel is
+  // a transient surface, and dismissing it claims only that the tap was taken, not
+  // that the write succeeded. The outcome still arrives in full — a typed refusal
+  // toasts its own error, a throw toasts the failure sentence — so nothing is
+  // confirmed unconditionally (the inline-action rule, #2133) and the deploy-skew
+  // classification each action returns is untouched.
+  //
+  // WHAT WOULD SHOW IT WRONG: a refusal that leaves no trace because the panel it
+  // would have been reported in is gone. It cannot: the toast is raised from this
+  // component, which outlives the panel, and `OverflowMenuSubmitItem`'s pending
+  // state was never the thing carrying the refusal.
   const runAction: MenuHelpers["runAction"] = async (action, fd, message) => {
+    close();
     let result: MenuActionResult;
     try {
       result = await action(fd);
     } catch {
       // An uncaught menu-action throw used to escalate to the route error
-      // boundary (issue #477) — close the menu and toast the failure instead.
-      close();
+      // boundary (issue #477) — toast the failure instead.
       toast("Couldn't complete that action. Try again.", {
         tone: "error",
       });
       return;
     }
-    close();
     // A typed refusal is rendered, never papered over with the success message —
     // the inline-action rule (#2133).
     if (result && result.ok === false) {
