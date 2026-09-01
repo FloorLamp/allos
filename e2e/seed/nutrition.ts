@@ -648,14 +648,14 @@ export function seedLogSheetReserve(): void {
 
   // THE OFFER LABEL IS USER DATA, AND THAT IS THE TERM THE RESERVE HAS TO COVER.
   // `dueDoseChipLabel` prints "Due: <first two item names> +N", so the row's height is
-  // decided by names the profile chose — and the ledger's own "Creatine, Collagen"
-  // fits one line, which would leave the reserve's wrap allowance proved against the
+  // not decided by names the profile chose — and the ledger's own "Creatine, Collagen"
+  // fits one line, which would leave its truncation proved against the
   // case that never needed it. Renamed HERE rather than in the shared ledger, whose
   // other profile asserts those names exactly.
   //
   // LENGTH IS THE FIXTURE, and it is the OVERFLOWING length on purpose: this label
   // runs to three lines unclamped (measured 86px, 16px past the reserve), so what the
-  // persona renders is the case `line-clamp-2` exists for and the spec can assert the
+  // persona renders is the case `truncate` exists for and the spec can assert the
   // clamp engaged rather than assert a row that never needed one.
   const rename = db.prepare(
     `UPDATE intake_items SET name = ? WHERE profile_id = ? AND name = ?`
