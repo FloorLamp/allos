@@ -23,7 +23,7 @@ import {
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
-    await page.getByTestId("food-more-groups-summary").click();
+    await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
     await expect(row).toBeVisible();
   }
 }
@@ -69,30 +69,37 @@ test.describe("protein quick-add hydration (#4399)", () => {
   });
 });
 
-test("a food serving tapped offline queues, then syncs exactly once on reconnect (#1596)", async ({
+test("food serving and protein grams queue together offline, then each sync exactly once (#1596)", async ({
   page,
   context,
 }) => {
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "nuts_seeds");
+  const quickAdd = page.getByTestId("protein-quickadd");
+  await expect(quickAdd).toBeVisible();
 
-  // The server-rendered baseline for this meal slot today.
+  // Server-rendered baselines for the meal slot and protein total today.
   const count = page.getByTestId("count-nuts_seeds");
-  const before = Number((await count.textContent())?.trim() || "0");
+  const servingBefore = Number((await count.textContent())?.trim() || "0");
+  const total = page.getByTestId("protein-quickadd-total");
+  const proteinBefore = Number(
+    ((await total.textContent()) ?? "").match(/(\d+)g today/)?.[1] ?? "0"
+  );
 
-  // The kitchen-moment: connection gone at the instant of the tap.
+  // The kitchen-moment: connection gone while both quick captures are made.
   await context.setOffline(true);
   await hydratedClick(page, page.getByTestId("log-nuts_seeds"));
 
   // Queued, not failed: the toast + pending badge, with the optimistic count
   // standing in for the server total.
-  await expect(
-    page.getByText("Saved offline — will sync when you reconnect.")
-  ).toBeVisible();
+  const offlineNotices = page.getByText(
+    "Saved offline — will sync when you reconnect."
+  );
+  await expect(offlineNotices).toHaveCount(1);
   const badge = page.getByTestId("offline-queue-badge");
   await expect(badge).toHaveText(/1 queued offline/);
-  await expect(count).toHaveText(String(before + 1));
+  await expect(count).toHaveText(String(servingBefore + 1));
 
   // The undo "−" is deliberately online-only (a decrement is not a capture): an
   // offline tap rolls back with an honest message rather than pretending.
@@ -100,59 +107,30 @@ test("a food serving tapped offline queues, then syncs exactly once on reconnect
   await expect(
     page.getByText("You're offline — removing a serving needs a connection.")
   ).toBeVisible();
-  await expect(count).toHaveText(String(before + 1));
+  await expect(count).toHaveText(String(servingBefore + 1));
   await expect(badge).toHaveText(/1 queued offline/);
 
-  // Reconnect → the "online" event triggers the replay.
+  await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
+  await hydratedClick(page, page.getByTestId("protein-quickadd-add"));
+  await expect(offlineNotices).toHaveCount(2);
+  await expect(badge).toHaveText(/2 queued offline/);
+  await expect(total).toHaveText(`${proteinBefore + 30}g today`);
+
+  // One reconnect flushes both action kinds.
   await context.setOffline(false);
-  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
+  await expect(page.getByText(/Synced 2 offline entr/)).toBeVisible();
   await expect(badge).toHaveCount(0);
 
-  // Durable server truth after a reload (which re-runs the on-load flush against
-  // the drained queue): exactly ONE more serving than the baseline.
+  // Durable server truth after a reload (which also re-runs the on-load flush
+  // against the drained queue): one serving and 30 g, never duplicates.
   await page.reload();
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "nuts_seeds");
   await expect(page.getByTestId("count-nuts_seeds")).toHaveText(
-    String(before + 1)
+    String(servingBefore + 1)
   );
-  await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
-});
-
-test("protein grams added offline queue, then sync exactly once on reconnect (#1596)", async ({
-  page,
-  context,
-}) => {
-  await page.goto("/nutrition");
-  const quickAdd = page.getByTestId("protein-quickadd");
-  await expect(quickAdd).toBeVisible();
-
-  // The server-rendered baseline ("Ng today").
-  const total = page.getByTestId("protein-quickadd-total");
-  const before = Number(
-    ((await total.textContent()) ?? "").match(/(\d+)g today/)?.[1] ?? "0"
-  );
-
-  await context.setOffline(true);
-  await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
-  await hydratedClick(page, page.getByTestId("protein-quickadd-add"));
-
-  await expect(
-    page.getByText("Saved offline — will sync when you reconnect.")
-  ).toBeVisible();
-  const badge = page.getByTestId("offline-queue-badge");
-  await expect(badge).toHaveText(/1 queued offline/);
-  await expect(total).toHaveText(`${before + 30}g today`);
-
-  await context.setOffline(false);
-  await expect(page.getByText(/Synced 1 offline entr/)).toBeVisible();
-  await expect(badge).toHaveCount(0);
-
-  // Durable, exactly once: the reloaded (server-rendered) total moved by 30 —
-  // not 60, which is what a double-replay past the idempotency ledger would show.
-  await page.reload();
   await expect(page.getByTestId("protein-quickadd-total")).toHaveText(
-    `${before + 30}g today`
+    `${proteinBefore + 30}g today`
   );
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
@@ -166,7 +144,7 @@ test("protein grams added offline queue, then sync exactly once on reconnect (#1
   // one shard — the collision was always here, waiting on a grouping to reveal it.
   await settledClick(page, page.getByTestId("protein-quickadd-undo"));
   await expect(page.getByTestId("protein-quickadd-total")).toHaveText(
-    `${before}g today`
+    `${proteinBefore}g today`
   );
 });
 
