@@ -56,21 +56,3 @@ export default function TrendsSectionShell({
     </section>
   );
 }
-
-// The streamed placeholder the census shows until its own render arrives (#1644's
-// streaming acceptance criterion). Deliberately quiet and fixed-height-ish: it
-// holds the scroll position roughly where the census will land, so a `#body` link
-// followed during the stream doesn't jump when the content replaces it.
-export function TrendsSectionSkeleton({ label }: { label: string }) {
-  return (
-    <div
-      className="card animate-pulse"
-      data-testid="trends-section-loading"
-      data-section={label}
-    >
-      <div className="h-4 w-40 rounded-sm bg-slate-200 dark:bg-ink-800" />
-      <div className="mt-4 h-32 rounded-sm bg-slate-100 dark:bg-ink-850" />
-      <span className="sr-only">Loading {label}…</span>
-    </div>
-  );
-}

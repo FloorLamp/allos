@@ -106,7 +106,7 @@ test("the census streams below the head instead of blocking it", async ({
 
   // In the browser the streamed census settles into real, readable content.
   await page.goto("/trends");
-  await expect(page.getByTestId("trends-section-loading")).toHaveCount(0);
+  await expect(page.getByTestId("streamed-section-loading")).toHaveCount(0);
 });
 
 test("a stale ?tab=body bookmark lands on this surface, unredirected (#1635)", async ({

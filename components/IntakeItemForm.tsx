@@ -277,7 +277,7 @@ export default function IntakeItemForm({
     s?.condition ?? "daily"
   );
   const [obligation, setObligationState] = useState<IntakeObligation>(
-    s?.obligation ?? (lockedKind === "supplement" ? "should" : "must")
+    s?.obligation ?? affordances.defaultObligation
   );
   const [critical, setCritical] = useState(s?.critical === 1);
   const [escalateAfterMin, setEscalateAfterMin] = useState(
@@ -445,7 +445,7 @@ export default function IntakeItemForm({
   // One call site each for the two suggestion lists #846 found teaching wrong.
   const dosageOptions = useMemo(
     () =>
-      dosageOptionsFor(kind, {
+      dosageOptionsFor(affordances.dosageSource, {
         otcStrengths: prnDefaults
           ? [
               ...new Set([
@@ -456,9 +456,9 @@ export default function IntakeItemForm({
           : [],
         catalogDosages: catalogEntry?.dosages ?? [],
       }),
-    [kind, catalogEntry, prnDefaults]
+    [affordances.dosageSource, catalogEntry, prnDefaults]
   );
-  const brandOptions = brandOptionsFor(kind, {
+  const brandOptions = brandOptionsFor(affordances.catalogSource, {
     medicationBrands: brandNarrowing ?? catalogOptions.medicationBrands,
     supplementBrands: SUPPLEMENT_BRANDS,
   });
@@ -966,7 +966,7 @@ export default function IntakeItemForm({
     setProduct("");
     setStack("");
     setCondition("daily");
-    setObligationState(lockedKind === "supplement" ? "should" : "must");
+    setObligationState(affordances.defaultObligation);
     setCritical(false);
     setEscalateAfterMin("");
     setEscalateChatId("");
@@ -1011,13 +1011,13 @@ export default function IntakeItemForm({
   const nameOptions = useMemo(
     () => [
       ...(s ? [] : bottles.map(bottleOptionLabel)),
-      ...(lockedKind === "supplement"
-        ? catalogOptions.supplements
-        : lockedKind === "medication"
-          ? catalogOptions.medications
-          : [...catalogOptions.medications, ...catalogOptions.supplements]),
+      ...catalogOptions[
+        affordances.catalogSource === "supplement"
+          ? "supplements"
+          : "medications"
+      ],
     ],
-    [s, bottles, lockedKind, catalogOptions]
+    [s, bottles, catalogOptions, affordances.catalogSource]
   );
 
   const ingredientNames = useMemo(
@@ -1360,7 +1360,7 @@ export default function IntakeItemForm({
               </div>
             )}
             <CadenceEditor value={cadence} onChange={setCadence} />
-            {obligation === "may" && (
+            {affordances.redose && obligation === "may" && (
               <div
                 data-testid="redose-block"
                 className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
@@ -1552,7 +1552,7 @@ export default function IntakeItemForm({
         );
 
       case "prescription":
-        return (
+        return affordances.prescription ? (
           <div className="sm:col-span-2">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input
@@ -1621,10 +1621,10 @@ export default function IntakeItemForm({
               </div>
             )}
           </div>
-        );
+        ) : null;
 
       case "indication":
-        return (
+        return affordances.indication ? (
           <div className="sm:col-span-2">
             <label className="label" htmlFor={`med-indication-${fid}`}>
               For condition
@@ -1644,7 +1644,7 @@ export default function IntakeItemForm({
               ))}
             </select>
           </div>
-        );
+        ) : null;
 
       case "identity":
         return (
@@ -1662,7 +1662,7 @@ export default function IntakeItemForm({
                 placeholder={affordances.brandPlaceholder}
               />
             </div>
-            {!isMed && (
+            {affordances.stack && (
               <>
                 <div>
                   <label className="label" htmlFor={`intake-product-${fid}`}>
@@ -1769,7 +1769,7 @@ export default function IntakeItemForm({
         );
 
       case "composition":
-        return (
+        return affordances.composition ? (
           <div className="sm:col-span-2">
             {ingredients.length === 0 ? (
               <button
@@ -1788,7 +1788,7 @@ export default function IntakeItemForm({
               />
             )}
           </div>
-        );
+        ) : null;
 
       case "purpose":
         return (

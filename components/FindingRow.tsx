@@ -1,7 +1,11 @@
+"use client";
+
+import { useOptimistic } from "react";
 import { IconX } from "@tabler/icons-react";
 import DestinationLink from "@/components/DestinationLink";
 import type { Finding } from "@/lib/findings";
 import IconButton from "@/components/IconButton";
+import { useToast } from "@/components/Toast";
 
 // ONE finding row — title/detail, the optional evidence + action line, and the
 // dismiss button posting to the surface's own namespace-guarded server action.
@@ -12,6 +16,24 @@ import IconButton from "@/components/IconButton";
 // it must stay byte-identical to the flat cards elsewhere — same markup, same
 // dismiss affordance, same `dedupeKey` posted to the same bus (the AGENTS.md
 // "shared content component" rule; hand-mirrored row markup is exactly what drifts).
+//
+// ── The dismiss paints in the same frame (#2641 gap 2) ───────────────────────
+//
+// The row used to sit there unchanged for the whole round trip AND the two-to-five
+// route revalidations behind it, because the only thing a bare Server-Action form
+// moves is the submit button's own pending glyph. A dismiss is the clearest case in
+// the app of a tap whose destination state is known before the server answers: the
+// row goes away. So it goes away on the tap.
+//
+// AND IT CANNOT LIE, structurally — the same guarantee `StarButton` documents. The
+// hidden state is `useOptimistic` OVER the server's own render, not state of its
+// own, so it lives exactly as long as the form action's transition. If the write
+// refused (every surface's action guards its own dedupeKey namespace and returns
+// without writing when the key is not its own), the revalidated render still
+// contains this finding, the optimistic value falls away, and the row COMES BACK —
+// which is the visible revert the inline-action rule asks for. A throw is reported
+// as a toast on top of that, because a dropped request is not a refusal and the
+// deploy-skew classification upstream must not read as "dismissed".
 export default function FindingRow({
   finding: f,
   dismissAction,
@@ -32,6 +54,11 @@ export default function FindingRow({
   // which is what every other surface posts.
   dismissKey?: string;
 }) {
+  const toast = useToast();
+  const [dismissed, showDismissed] = useOptimistic(false);
+
+  if (dismissed) return null;
+
   return (
     <li
       data-testid={itemTestid}
@@ -62,8 +89,19 @@ export default function FindingRow({
           )}
         </div>
       </div>
-      {/* Dismiss through the shared findings-bus suppression store (#39/#45). */}
-      <form action={dismissAction}>
+      {/* Dismiss through the shared findings-bus suppression store (#39/#45). Still a
+          form-owned submit: the optimistic hide rides React's own action transition,
+          so the submit event the e2e lost-click contract reads (#3359) survives. */}
+      <form
+        action={async (fd) => {
+          showDismissed(true);
+          try {
+            await dismissAction(fd);
+          } catch {
+            toast("Couldn't dismiss that. Try again.", { tone: "error" });
+          }
+        }}
+      >
         <input
           type="hidden"
           name="dedupe_key"

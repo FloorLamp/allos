@@ -207,6 +207,8 @@ automation:
   token-authed `.ics` feed directly
   (**Data → Import → Calendar feed**),
   giving appointment cards and native "time to leave" automations.
-- **Emergency card on a wall panel** — an HA webpage/iframe card pointing at
-  Allos's public share link (`/share/*`). Anyone at the panel can read it —
-  that's the point of an emergency card.
+- **Emergency card on a wall panel** — open Allos's public share link
+  (`/share/*`) in a browser tab or a panel action that navigates to it. Do not
+  use an HA webpage/iframe card: `/share/*` keeps `frame-ancestors 'none'`, and
+  its refusal is silent, so the browser substitutes its own page. Anyone at the
+  panel can read the public link — that's the point of an emergency card.

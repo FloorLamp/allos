@@ -237,10 +237,12 @@ instance before release:
      button on the nightstand → HA automation → `POST /dose`. Tap the box as you
      take it (per-dose tags; the outcome union answers a stale/duplicate tap
      safely).
-   - **Emergency card on a wall panel** — an HA webpage/iframe card pointing at
-     the existing public share link (`/share/*`); the recipe carries a one-line
-     PHI-posture note (anyone at the panel can read it — that is the point of an
-     emergency card).
+   - **Emergency card on a wall panel** — open the existing public share link
+     (`/share/*`) in a browser tab or a panel action that navigates to it. Do not
+     use a webpage/iframe card: `/share/*` keeps `frame-ancestors 'none'`, and
+     its refusal is silent, so the browser substitutes its own page. Anyone at
+     the panel can read the public link — that is the point of an emergency
+     card.
 
 ## Testing
 
