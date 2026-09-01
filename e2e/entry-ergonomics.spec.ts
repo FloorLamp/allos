@@ -958,7 +958,7 @@ test("the command palette offers 'Repeat last activity' when history exists (#33
   await page.keyboard.press("Escape");
 });
 
-test("weight steppers bump a set's load by the lift-appropriate increment (#337)", async ({
+test("strength set controls step, clamp, and toggle without losing their phone geometry (#337/#338/#1524)", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
@@ -1081,39 +1081,28 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
   await hydratedClick(page, stepTargets[1]);
   await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
 
-  await page.keyboard.press("Escape");
-});
-
-test("the reps stepper steps DOWN as well as up, clamped at 0 (#1524)", async ({
-  page,
-}) => {
-  await page.goto("/training?tab=log");
-
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Add activity" })
-    .click();
-
   // Weight and RPE were symmetric (− and +) from the start; reps shipped with only
   // a +, so a mis-tapped rep count could only be fixed by editing the field by hand.
-  await pickActivity(page, "Barbell Bench Press");
-  const reps = page.getByTestId("set1-reps-stepper").locator("input");
-  const up = page.getByLabel("Add a rep").first(); // first-ok: the first set's add-rep control on the card this test just opened — order-agnostic
-  const down = page.getByLabel("Decrease reps").first(); // first-ok: the first set's decrease-reps control on the card this test just opened — order-agnostic
-
-  await up.click();
-  await up.click();
-  await expect(reps).toHaveValue("2");
-  await down.click();
-  await expect(reps).toHaveValue("1");
+  await hydratedClick(page, stepTargets[3]);
+  await hydratedClick(page, stepTargets[3]);
+  await expect(repsInput).toHaveValue("2");
+  await hydratedClick(page, stepTargets[2]);
+  await expect(repsInput).toHaveValue("1");
   // Clamped at 0: the field empties rather than going negative, and staying at the
   // floor is a no-op.
-  await down.click();
-  await expect(reps).toHaveValue("");
-  await down.click();
-  await expect(reps).toHaveValue("");
+  await hydratedClick(page, stepTargets[2]);
+  await expect(repsInput).toHaveValue("");
+  await hydratedClick(page, stepTargets[2]);
+  await expect(repsInput).toHaveValue("");
 
-  // Reps only — the set stays half-filled, so nothing auto-saves; no cleanup.
+  // Each set carries a light "W" warmup toggle (default off). Toggling flips its
+  // aria-pressed state — the flag excludes the set from volume/target/records.
+  const warmup = page.getByTestId("set1-warmup");
+  await expect(warmup).toHaveAttribute("aria-pressed", "false");
+  await hydratedClick(page, warmup);
+  await expect(warmup).toHaveAttribute("aria-pressed", "true");
+
+  // Reps returned to empty, so the set stays half-filled and nothing auto-saves.
   await page.keyboard.press("Escape");
 });
 
@@ -1146,29 +1135,6 @@ test("the bilateral (per-side) reps stepper steps down too (#1524)", async ({
   await downs.first().click(); // first-ok: same per-side pair — the left side's control
   await expect(left.locator("input")).toHaveValue("");
 
-  await page.keyboard.press("Escape");
-});
-
-test("a set row has a warmup toggle that flips its pressed state (#338)", async ({
-  page,
-}) => {
-  await page.goto("/training?tab=log");
-
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Add activity" })
-    .click();
-
-  await pickActivity(page, "Barbell Bench Press");
-
-  // Each set carries a light "W" warmup toggle (default off). Toggling flips its
-  // aria-pressed state — the flag excludes the set from volume/target/records.
-  const warmup = page.getByTestId("set1-warmup");
-  await expect(warmup).toHaveAttribute("aria-pressed", "false");
-  await warmup.click();
-  await expect(warmup).toHaveAttribute("aria-pressed", "true");
-
-  // Only the flag was toggled on an empty set, so nothing auto-saves — no cleanup.
   await page.keyboard.press("Escape");
 });
 
