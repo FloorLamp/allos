@@ -110,6 +110,12 @@ test("Nutrition is a Day | Manage tab umbrella (#746/#3987)", async ({
     "Must"
   );
   await expect(mustRow.getByTestId("adherence-summary")).toBeVisible();
+  // A MANAGEMENT ROW STATES ITS OWN SCHEDULE (#3987 phase 2). The bucket heading that
+  // used to say it for the row went with the daily schedule in phase 1, so a stack
+  // that could not say when anything is taken would be a silent capability loss.
+  await expect(mustRow.getByTestId("supplement-row-schedule")).toHaveText(
+    "Evening"
+  );
   // NO DAY CONTROL ON A MANAGEMENT ROW (#3987): resolving today's dose is the Day
   // ledger's, and this row is what the item IS. The row action that remains is the
   // ⋯ menu, and it still sits to the right of the name.
