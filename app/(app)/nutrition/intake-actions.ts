@@ -1282,11 +1282,9 @@ export async function updateIntakeItem(
 // the control the dose is resolved when nothing was written. Every reachable tap still
 // answers ok — the control is only rendered for an active, non-retired dose — so this
 // changes what a FORGED post is told, not what a real one sees.
-// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280). A dose surface renders
-// what actually happened through `doseConfirmMessage`, the one formatter every dose
-// path answers through — an off-cadence confirm names the schedule (#1602), an
-// idempotent repeat says so — and a bare `{ ok: true }` flattens all of that into a
-// confirm the write may not have earned. `ok` means "the request was understood".
+// THE ANSWER CARRIES THE OUTCOME, NOT JUST `ok` (#2039/#280), because a dose surface
+// renders what happened through `doseConfirmMessage` — an off-cadence confirm names
+// the schedule (#1602) — and `{ ok: true }` flattens that into an unearned confirm.
 export type DoseStatusResult =
   { ok: true; outcome: DoseStatusOutcome } | { ok: false; error: string };
 
@@ -1294,10 +1292,9 @@ function doseStatusResult(
   outcome: DoseStatusOutcome,
   target: DoseStatusTarget
 ): DoseStatusResult {
-  // Reachable only from a resolve-only tap — a control that was showing CLEAR. Where
-  // the day already stands the OTHER way the tap wrote nothing, so it is a refusal in
-  // the words every dose surface uses; where it agrees, the dose is where the tap
-  // wanted it and an idempotent repeat is not a refusal.
+  // The already-* pair is reachable only from a resolve-only tap. Contradicted, the
+  // tap wrote nothing and it is a refusal; agreeing, the dose is where the tap wanted
+  // it and an idempotent repeat is not one.
   const contradicted =
     (outcome === "already-taken" && target !== "taken") ||
     (outcome === "already-skipped" && target !== "skipped");

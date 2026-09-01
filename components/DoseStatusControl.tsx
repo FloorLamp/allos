@@ -22,14 +22,11 @@ import {
 } from "@/components/medications/dose-action-styles";
 
 // Tri-state dose check-off (issue #232), and THE dose domain's one row control (#4424
-// ruling 3): one dose is taken, deliberately skipped, or clear. Every row that hosts a
-// dose write control mounts this — the medication card, the supplement row, the day
-// ledger's due and logged rows, the quick sheet's list.
-//
-// IT TAKES A DAY, WHICH IS WHAT MADE THE ROW ONE CONTROL. The ledger picked between
-// this and a hand-rolled Take/Skip pair on `isToday`, and the sheet spelled two more,
-// because `setDoseStatus` stamped today and nothing else could reach yesterday. The
-// day is the row's now, so a past day gained the CLEAR it never had.
+// ruling 3): taken, deliberately skipped, or clear, on every row that hosts a dose
+// write control — medication card, supplement row, the ledger's due and logged rows,
+// the quick sheet's list. IT TAKES A DAY, which is what made the row one control: the
+// ledger picked between this and a hand-rolled pair on `isToday` and the sheet spelled
+// two more, because `setDoseStatus` stamped today and nothing could reach yesterday.
 //
 // Online every transition calls the setDoseStatus Server Action with an explicit
 // target, which keeps on-hand supply in lock-step (only crossing the taken
@@ -90,28 +87,21 @@ export default function DoseStatusControl({
   // seam), so it's never queued.
   profileId?: number;
   /**
-   * The profile-local day this row stands on; absent means today. Beyond `doseLogDays`
-   * the action refuses, so a surface past the window offers no control at all (the
-   * ledger's `doseWritable`).
+   * The day this row stands on; absent means today. Past `doseLogDays` the action
+   * refuses, so a surface beyond the window offers no control (`doseWritable`).
    */
   date?: string;
   /**
-   * WHICH DOSE THIS IS, for the accessible name (#2615 item 2) — a list of dose rows
-   * otherwise announces "Mark taken" N times. Absent where the row's own heading says
-   * it (the medication card, the supplement row).
+   * WHICH DOSE, for the accessible name (#2615 item 2) — a list of dose rows otherwise
+   * announces "Mark taken" N times. Absent where the row's own heading says it.
    */
   itemName?: string;
-  /**
-   * What the ROW does with the answer, where the row LISTS what a day still owes: the
-   * sheet drops a resolved row and closes when nothing is left. Absent on a standing
-   * row, which re-renders from the revalidated server state.
-   */
+  /** What the ROW does with the answer; absent on a row that just re-renders. */
   onSettled?: (result: DoseStatusResult) => void;
   /**
    * Whether the surface REMOVES this row when the write lands. The control becoming its
-   * done state is the receipt (#2654), so a row that stays says nothing — but the quick
-   * sheet drops a resolved row and closes when the day is empty, which unmounts the
-   * receipt the write just earned. There the outcome is spoken instead.
+   * done state is the receipt (#2654), so a row that stays says nothing — the sheet
+   * drops a resolved row, unmounting the receipt, so there the outcome is spoken.
    */
   rowLeaves?: boolean;
 }) {
@@ -124,9 +114,9 @@ export default function DoseStatusControl({
   // capture, says the sentence, and settles the one-tap ledger. This control declares
   // what a dose resolution means; it hand-wires none of that choreography.
   // WHICH AFFORDANCE THIS TAP IS (lib/one-tap.ts): `dose-day` for a stated day,
-  // `dose-status` for today. Two registry rows so a census can see the dated write; one
-  // control, because the person taps the same circle either way. Both hooks run and the
-  // day picks — `one-tap-call-sites.test.ts` refuses an id it cannot read as a literal.
+  // `dose-status` for today — two registry rows so a census can see the dated write.
+  // Both hooks run and the day picks: `one-tap-call-sites.test.ts` refuses an id it
+  // cannot read as a literal.
   const todayTap = useWritePipeline("dose-status");
   const datedTap = useWritePipeline("dose-day");
   const pipeline = date == null ? todayTap : datedTap;

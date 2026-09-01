@@ -21,19 +21,15 @@ export interface HistoricalDoseOption {
 
 /**
  * One item a past dose may be logged against. The form takes a LIST and owns the
- * picker: choosing the item is part of stating a past dose wherever the mount does not
- * already stand on one, and it was spelled twice — the record door's launcher and the
- * Supplements tab's card — with the option list built two ways.
+ * picker, which was spelled twice — the record door's launcher and the Supplements
+ * tab's card — with the option list built two ways.
  */
 export interface HistoricalDoseItem {
   id: number;
   name: string;
   doses: HistoricalDoseOption[];
   asNeeded: boolean;
-  /**
-   * Whether this item's history is bounded by a medication course. False for an item
-   * that keeps no courses (every supplement), whose backfill may reach any past date.
-   */
+  /** Bounded by a medication course? False for an item that keeps none (supplements). */
   courseBound: boolean;
 }
 
@@ -182,9 +178,8 @@ export default function HistoricalDoseForm({
       <div className="grid gap-3 sm:grid-cols-2">
         {!editing && items.length > 1 ? (
           <div>
-            {/* Named for what it selects rather than "Item": a record filtered by
-                item renders its own control, and two named "Item" are
-                indistinguishable to a screen reader and to a spec. */}
+            {/* Named for what it selects rather than "Item": a record filtered by item
+                renders its own control, and two named "Item" are indistinguishable. */}
             <label className="label" htmlFor="historical-dose-item">
               Item to log against
             </label>
