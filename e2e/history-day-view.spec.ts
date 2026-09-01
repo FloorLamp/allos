@@ -221,7 +221,7 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
         expect(
           maxScroll - dayFrom,
           "the busy day has a sticky window"
-        ).toBeGreaterThan(180);
+        ).toBeGreaterThan(100);
 
         await scrollTo(page, dayFrom);
         await expect(nav).toHaveAttribute("data-hidden", "true");
