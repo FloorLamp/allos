@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { pageDeclaresUnrecoverableWork } from "../DirtyFormRegistry";
+import * as unsavedWork from "@/lib/offline/unsaved-work";
 
 // `pageDeclaresUnrecoverableWork()` — the DOM half of the #3371 reload gate, and the
 // first customer of the component tier (#3446).
@@ -20,6 +21,30 @@ import { pageDeclaresUnrecoverableWork } from "../DirtyFormRegistry";
 function page(html: string): void {
   document.body.innerHTML = html;
 }
+
+afterEach(unsavedWork.resetUnsavedWork);
+
+it("discards only registered dirty drafts owned by the dismissed subtree", async () => {
+  const root = document.body.appendChild(document.createElement("section"));
+  const owned = root.appendChild(document.createElement("form"));
+  const elsewhere = document.body.appendChild(document.createElement("form"));
+  const discarded = vi.fn(async () => {});
+  const refused = vi.fn(async () => {});
+  const released = vi.fn(async () => {});
+  const entry = (owner: Node, discard: () => Promise<void>) => ({
+    capture: async () => null,
+    owner,
+    discard,
+  });
+  unsavedWork.markUnsavedWork("owned", true, entry(owned, discarded));
+  unsavedWork.markUnsavedWork("elsewhere", true, entry(elsewhere, refused));
+  unsavedWork.markUnsavedWork("released", true, entry(owned, released));
+  unsavedWork.markUnsavedWork("released", false);
+  await unsavedWork.discardUnsavedWorkWithin(root);
+  expect(discarded).toHaveBeenCalledOnce();
+  expect(refused).not.toHaveBeenCalled();
+  expect(released).not.toHaveBeenCalled();
+});
 
 describe("pageDeclaresUnrecoverableWork (#3371 declaration axis)", () => {
   it("is silent on a page that declares nothing", () => {
