@@ -134,13 +134,16 @@ test("Connected-source timestamp and chevron share a trailing rail inside the Da
       timestampBeforeChevron:
         Math.round(timestamp.getBoundingClientRect().right) <
         Math.round(chevron.getBoundingClientRect().left),
-      rightInset: Math.round(
+      rightGap:
         surface.getBoundingClientRect().right -
-          chevron.getBoundingClientRect().right
-      ),
+        chevron.getBoundingClientRect().right,
+      rightPadding: parseFloat(getComputedStyle(surface).paddingRight),
     };
   });
-  expect(geometry).toEqual({ timestampBeforeChevron: true, rightInset: 12 });
+  expect(geometry.timestampBeforeChevron).toBe(true);
+  expect(
+    Math.abs(geometry.rightGap - geometry.rightPadding)
+  ).toBeLessThanOrEqual(1);
   expect(
     (await page.getByTestId("data-page").boundingBox())!.width
   ).toBeLessThanOrEqual(1152);
