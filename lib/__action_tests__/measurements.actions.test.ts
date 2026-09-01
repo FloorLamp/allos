@@ -28,7 +28,7 @@ import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { saveFitnessTest } from "@/app/(app)/training/fitness-actions";
-import { getProteinAdequacy } from "@/lib/queries";
+import { getMetricDailyTotals, getProteinAdequacy } from "@/lib/queries";
 import { actAs, createLogin, createProfile, seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -481,12 +481,17 @@ describe("the cadence rule: functional-fitness markers moved, storage did not", 
 // was stored.
 
 describe("addMeasurements — the #1851 manual-entry gaps", () => {
-  it("stores the new fields canonically and corrects water instead of accumulating", async () => {
+  it("stores composition canonically and adds each glass to synced water", async () => {
     const { profile } = seedActor();
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, started_at, ended_at, value)
+       VALUES (?, 'health-connect', 'hydration_l', ?, ?, ?, 2.5)`
+    ).run(profile.id, DATE, `${DATE}T00:00:00`, `${DATE}T23:59:59`);
     await addMeasurements(
       fd({
         date: DATE,
-        hydration: "2.4",
+        hydration: "0.5",
         lean_mass: "130",
         lean_mass_unit: "lb",
         bone_mass: "2.9",
@@ -495,7 +500,6 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
       })
     );
 
-    expect(sampleValue(profile.id, "hydration_l")).toBe(2.4);
     // 130 lb is 58.97 kg — the number the chart, the passport and the protein
     // band all read. Storing 130 here would be the whole bug.
     expect(sampleValue(profile.id, "lean_mass_kg")).toBe(58.97);
@@ -509,17 +513,19 @@ describe("addMeasurements — the #1851 manual-entry gaps", () => {
     });
     expect(revalidate).toHaveBeenCalled();
 
-    // Water is a daily total. Re-entry corrects the single point rather than
-    // accumulating another 0.7 litres onto the existing 2.4.
+    process.env.ALLOS_TEST_NOW = "2026-05-20T09:01:00.000Z";
     await addMeasurements(fd({ date: DATE, hydration: "0.7" }));
-    expect(sampleValue(profile.id, "hydration_l")).toBe(0.7);
+    process.env.ALLOS_TEST_NOW = PINNED_NOW;
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ? AND metric = 'hydration_l'"
+          "SELECT value FROM metric_samples WHERE profile_id = ? AND metric = 'hydration_l' AND source = 'manual' ORDER BY started_at"
         )
-        .get(profile.id)
-    ).toEqual({ n: 1 });
+        .all(profile.id)
+    ).toEqual([{ value: 0.5 }, { value: 0.7 }]);
+    expect(getMetricDailyTotals(profile.id, "hydration_l")).toEqual([
+      { date: DATE, value: 3.7 },
+    ]);
   });
 
   it("moves the protein band onto the lean basis a hand-entered DEXA figure gives it", async () => {
