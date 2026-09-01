@@ -112,24 +112,18 @@ export default async function TrainingPage(props: {
         }
       >
         {/* THE HEAD DOES NOT WAIT ON THE TAB (#2641 gap 1, the Trends pattern).
-            Everything above this line is cheap — one session read and one age
-            read — while the selected section is the hub's whole query load
-            (Overview alone runs ~25 of them). Streaming the panel is what makes
-            a tap on Training paint the page's name, its four tabs and its header
-            action immediately instead of holding the previous page for the
-            destination's full render. The tabs are LINKS, so the shell is
-            usable, not decorative: you can switch surface before the first one
-            has arrived.
-
-            The placeholder is one card because the panel's own first element is
-            one card, and nothing renders below it — a section that lands taller
-            grows the page downward, past the fold, rather than moving anything
-            the reader is looking at. That is the #2531/#2399 height rule applied
-            to a pending state: reserve what you know, never a spinner in a void.
+            Everything above this line is two cheap reads; the selected section is
+            the hub's whole query load. The tabs are LINKS, so what flushes first
+            is usable rather than decorative — you can change surface before the
+            first one has arrived.
 
             NOT a route-level `loading.tsx` (#530): that judgment — a content-less
-            shell is worse than nothing — is exactly why this boundary sits BELOW
-            the header and the tab strip rather than above them. */}
+            shell is worse than nothing — is exactly why the boundary sits BELOW
+            the header and the strip, and why the fallback is a card at the height
+            the panel's own first card lands at rather than a spinner in a void
+            (#2531/#2399, carried across to a pending state). Nothing renders under
+            it, so a taller section grows the page downward instead of moving
+            anything the reader is looking at. */}
         <Suspense fallback={<PendingSection label={activeTabLabel} />}>
           <StreamedSection>{activeSection}</StreamedSection>
         </Suspense>
