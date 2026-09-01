@@ -429,9 +429,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
           )
         ).rejects.toThrow();
         await expect(
-          kind.removeFn(
-            fd({ ...kind.remove(id), profile_id: target.id })
-          )
+          kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }))
         ).rejects.toThrow();
         expect(kind.read(id, target.id, DATE)).toEqual(before);
         expect(kind.present(id, target.id, DATE)).toBe(true);
@@ -454,9 +452,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       );
       expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
 
-      await kind.removeFn(
-        fd({ ...kind.remove(id), profile_id: target.id })
-      );
+      await kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }));
       expect(kind.present(id, target.id, DATE)).toBe(false);
     });
   });
