@@ -284,8 +284,8 @@ export const LOG_MANIFEST = {
     statedTime: {
       kind: "none",
       reason:
-        "A session is a DAY's fact plus a duration: `practice_logs` carries no event instant, and the duration answers 'how long', never 'at what minute'. A time field here would collect a statement with nowhere to be stored — the `/history` door makes the same call for substance rows.",
-      ref: "#2908",
+        "No quick door collects a stated instant — but not for the reason this row used to give. `practice_logs` DOES carry one now (#3142's `start_time`/`end_time`, written by every tap: the tap instant, a live Start, a just-finished end), so 'a statement with nowhere to be stored' is simply false. What survives is the conclusion: the app STAMPS the tap and nobody STATES it. The quick-log sheet's 'Happened earlier?' control, which did collect one, is absent here and its restoration is parked on #3273; the expanded `PracticeSessionForm` is the door that takes a stated window, and it is not a quick door.",
+      ref: "#3143",
     },
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
@@ -298,7 +298,7 @@ export const LOG_MANIFEST = {
       form: {
         kind: "unconverged",
         reason:
-          "`LogPracticeButton` carries three incompatible field sets across four mounts, and `app/(app)/upcoming/PracticeLogButton.tsx` fronts a SECOND write core (`logUpcomingPractice`) with no duration and no confirm. #4424 ruling 7 deletes the parallel core; this row flips with it.",
+          "CONVERGING, not converged (#3143). The expanded form is one `PracticeSessionForm` mounted by both `LogPracticeButton` and `PracticeBackfillLauncher` — the extraction #4424 ruling 1 asks for — so the field sets are no longer three. What still blocks the flip is the second write core: `app/(app)/upcoming/PracticeLogButton.tsx` fronts `logUpcomingPractice` with no duration and no confirm. #4424 ruling 7 deletes it; this row flips with it.",
         ref: "#4424",
       },
       rowControl: {
@@ -309,7 +309,20 @@ export const LOG_MANIFEST = {
       },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logPracticeSession", "logPracticeSessionForDay"],
+    // Seven doors, not two. #3143 added the lifecycle and the just-finished intent, and
+    // `logPracticeByTargetId` was already missing: the test on this column is that a
+    // SURFACE calls it (#4425), and every name here has one — the wellness action's two
+    // intents, the two live-lifecycle actions, the offline replay, the Upcoming row, and
+    // Telegram's Done. Correction and delete are not listed, matching every sibling row.
+    cores: [
+      "logPracticeSession",
+      "logPracticeSessionForDay",
+      "logPracticeByTargetId",
+      "logFinishedPracticeSession",
+      "logFinishedPracticeByTargetId",
+      "startLivePracticeSession",
+      "endLivePracticeSession",
+    ],
   },
 
   mood: {

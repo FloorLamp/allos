@@ -65,10 +65,11 @@ const DOSE_CORRECTION_STMT = hoistedStatement(
 
 // TWO SHAPES, ONE QUESTION. A practice row's stated anchor is its start — except a
 // Telegram just-finished acknowledgement, whose tap stated its END and whose chips move
-// that end (`getRecentPracticeTaps`). The `edited` mark answers the first shape and not
-// the second, because a chip deliberately leaves a chat row's derived window unmarked
-// (see `restampPracticeLogsCore`); for that shape the anchor moving off the tap IS the
-// correction, which is what the comparison below measures.
+// that end (`getRecentPracticeTaps`). The `edited` mark answers the first shape only:
+// on the second it is the correction burst's own exclusion test, so a chip must leave
+// it alone (`restampPracticeLogsCore` says why) and this probe cannot lean on it. For
+// that shape the END having moved off the tap IS the correction, which is what the
+// comparison below measures — so a chat correction still retires the hint.
 const PRACTICE_CORRECTION_STMT = hoistedStatement(
   `SELECT date, start_time, end_time, logged_via, edited, created_at
      FROM practice_logs

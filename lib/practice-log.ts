@@ -834,12 +834,20 @@ export function restampPracticeLogsCore(
             : null;
         if (start && start.date !== row.date)
           return { kind: "crosses-day" as const };
-        // `edited` UNCHANGED on a chat row, and this is what makes the exclusion above
-        // survive its own feature: the predicate reads `edited` as "somebody restated
-        // this window", and a chip does not — it moves the tap's own end and re-derives
-        // the same duration around it. Marking it would eject the row from the burst
-        // the chip just moved, taking the statement of record with it (#3010) and
-        // stopping repeat taps composing (#2206), both of which have cases below.
+        // `edited` UNCHANGED on a chat row, and this is an ASYMMETRY taken deliberately
+        // rather than a principle: a chip DOES choose this row's end (the `practimeat`
+        // picker states an absolute hour through `statedHourInstant`), so "the chip
+        // never restates" is not true and is not the argument.
+        //
+        // The argument is that `edited` is the exclusion above, and marking it here
+        // would eject the row from the burst the chip just moved — taking the statement
+        // of record with it (#3010) and stopping repeat taps composing (#2206). Both
+        // are pinned: `practice-time-correction.test.ts`'s "redraws after a chip write"
+        // goes red on the marking spelling, and so does the compose case in
+        // `practice-logs.test.ts`. The cost is named and paid in two places: a chat row
+        // a chip corrected carries no `edited` mark in the history, and
+        // `hasCorrectedPracticeTime` reads its END rather than that mark so the
+        // correction still reaches the hint's retirement gate.
         targets.set(id, {
           start: start?.hhmm ?? null,
           end: local.hhmm,
