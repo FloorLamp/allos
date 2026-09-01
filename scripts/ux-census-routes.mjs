@@ -152,6 +152,14 @@ export const DYNAMIC_ROUTES = [
 /** @type {DisclosureExpansion[]} */
 export const DISCLOSURE_EXPANSIONS = [
   {
+    // #3672: the resting Food tab deliberately shows only the idle fasting door;
+    // the companion capture opens it so the start controls and history remain visible
+    // to the census while a running fast continues to render unfolded by construction.
+    route: "/nutrition",
+    label: "Food tab idle fasting controls and history",
+    closedToggle: 'details:not([open]) > [data-testid="fasting-fold"]',
+  },
+  {
     // The Clinical results catalog: every panel group (Vitamins, Lipids, …) collapses by
     // default, hiding the per-analyte rows where identity splits show.
     route: "/results/clinical-results",

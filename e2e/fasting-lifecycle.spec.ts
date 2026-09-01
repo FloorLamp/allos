@@ -202,10 +202,49 @@ test.describe("the fasting lifecycle (#2756)", () => {
   test.beforeEach(clearFasts);
   test.afterAll(clearFasts);
 
+  test("the idle phone fold reveals its controls and history by keyboard", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 430, height: 844 });
+    seedFast(agoInstant(24), agoInstant(8));
+    await page.goto("/nutrition");
+
+    const details = page.getByTestId("fasting-card");
+    const fold = page.getByTestId("fasting-fold");
+    await expect(details).not.toHaveAttribute("open", "");
+    await expect(page.getByTestId("fasting-fold")).toHaveCount(1);
+    await expect(fold).toBeVisible();
+    expect(
+      await fold.evaluate((element) => element.getBoundingClientRect().height)
+    ).toBeGreaterThanOrEqual(44);
+    await expect(page.getByTestId("fasting-control")).not.toBeVisible();
+    await expect(page.getByTestId("fasting-backdate-toggle")).not.toBeVisible();
+    await expect(page.getByTestId("fasting-history")).not.toBeVisible();
+
+    await fold.focus();
+    await expect(fold).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(details).toHaveAttribute("open", "");
+    await expect(fold).toBeFocused();
+    await expect(page.getByTestId("fasting-control")).toBeVisible();
+    await expect(page.getByTestId("fasting-backdate-toggle")).toBeVisible();
+    await expect(page.getByTestId("fasting-history")).toBeVisible();
+    await expect(page.getByTestId("fasting-control")).toHaveAttribute(
+      "data-button-control",
+      ""
+    );
+    await expect(page.getByTestId("fasting-backdate-toggle")).toHaveAttribute(
+      "data-button-control",
+      ""
+    );
+  });
+
   test("start and end, with the label naming the write at each step", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 430, height: 844 });
     await page.goto("/nutrition");
+    const card = page.getByTestId("fasting-card");
     const control = page.getByTestId("fasting-control");
     await expect(control).toHaveText("Start fast");
     // THE COLLAPSED FOLD IS THE IDLE STATEMENT (#3672): the sentence "No fast
@@ -222,6 +261,11 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await openFastingFold(page);
     await settledClick(page, control);
     // The label now names the END, and carries the elapsed time it will record.
+    await expect
+      .poll(() => card.evaluate((element) => element.tagName))
+      .toBe("SECTION");
+    await expect(page.getByTestId("fasting-state")).toBeVisible();
+    await expect(control).toBeVisible();
     await expect(control).toContainText("End fast · 16 h");
     // THE FIELD BELONGS TO ONE WRITE. The instant has been CONSUMED, so the disclosure
     // closes and the value is gone. Left in place it would be submitted as the next
@@ -239,6 +283,12 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
     await expect(page.getByTestId("fasting-control")).toHaveText("Start fast");
+    await expect
+      .poll(() => card.evaluate((element) => element.tagName))
+      .toBe("DETAILS");
+    await expect(card).not.toHaveAttribute("open", "");
+    await expect(page.getByTestId("fasting-fold")).toBeVisible();
+    await expect(page.getByTestId("fasting-control")).not.toBeVisible();
     // And the completed fast is in the history, with the day-attribution rule stated.
     // Exactly one row, because the spec OWNS the `fasts` table for profile 1 and
     // cleared it before this test — so nothing has to disambiguate a row here.
@@ -246,6 +296,8 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(page.getByTestId("fasting-card")).toContainText(
       "A fast counts for the day it ends"
     );
+    await openFastingFold(page);
+    await expect(page.getByTestId("fasting-history-row")).toBeVisible();
   });
 
   test("a fast seeded 16 h ago renders its elapsed time in the control", async ({
