@@ -67,6 +67,9 @@ import type { IntegrationId } from "./types/integrations";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getSymptomPhotosInRange } from "./symptom-photo-write";
 import { symptomLabel, severityLabelFor } from "./symptoms";
+import { getMoodLogs, getMoodOnDate, hasMoodLogs } from "./queries/mood";
+import { isAnxietyScaleRelevant } from "./queries/mood-anxiety";
+import { MOOD_FACTORS, anxietyDisplaySlot, moodLabel } from "./mood";
 import { listCyclePeriods } from "./cycle-store";
 import { cycleDayOnDate, FLOW_LABELS, isFlowLevel } from "./cycle";
 import { formatClockValue } from "./format-date";
@@ -76,6 +79,9 @@ import type { TimelineCategory } from "./timeline-format";
 // A window with no lower bound. The record outlives retirement — a dose taken years
 // ago still happened — so the floor is a floor, not a default range.
 const ISO_FLOOR = "0001-01-01";
+const MOOD_FACTOR_LABEL = new Map(
+  MOOD_FACTORS.map((factor) => [factor.slug, factor.label])
+);
 
 export interface HistoryGatherOptions {
   /** The login whose display preferences format every clock on the page. */
@@ -195,6 +201,7 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
     .prepare("SELECT 1 FROM practice_logs WHERE profile_id = ? LIMIT 1")
     .get(profileId);
   if (practice != null) out.push("practice");
+  if (hasMoodLogs(profileId)) out.push("mood");
   if (
     !isMinor(getProfileAge(profileId)) &&
     getAllSubstanceDailyTotals(profileId).length > 0
@@ -538,6 +545,56 @@ export function gatherHistoryLog(
           },
         });
       }
+    }
+  }
+
+  // ── MOOD ────────────────────────────────────────────────────────────────
+  // ONE ROW PER PROFILE-LOCAL DAY. A check-in states no instant (#992), so it is a
+  // date-only record and its full statement stays together: valence, the optional
+  // Energy and Calm scales, factors and note. The same row payload seeds MoodForm;
+  // none of those fields is carried through a valence-only correction any more.
+  if (wants(opts, "mood")) {
+    const moodRows = opts.day
+      ? [getMoodOnDate(profileId, opts.day)].filter((row) => row != null)
+      : getMoodLogs(profileId, since === ISO_FLOOR ? undefined : since)
+          .filter((row) => row.date <= until)
+          .reverse();
+    if (moodRows.length > limit) truncated = true;
+    const calmRelevant =
+      moodRows.length > 0 && isAnxietyScaleRelevant(profileId);
+    for (const row of moodRows.slice(0, limit)) {
+      rows.push({
+        id: `mood:${row.id}`,
+        kind: "mood",
+        profileId,
+        tz,
+        date: row.date,
+        ...historyClockFields(null, "logged", prefs),
+        title: "Mood",
+        href: metricDetailHref("mood"),
+        detail: detailSegment([
+          `${moodLabel(row.valence)} (${row.valence}/5)`,
+          row.energy == null ? null : `Energy ${row.energy}/5`,
+          row.anxiety == null
+            ? null
+            : `Calm ${anxietyDisplaySlot(row.anxiety)}/5`,
+          row.factors
+            .map((factor) => MOOD_FACTOR_LABEL.get(factor) ?? factor)
+            .join(", "),
+          row.notes,
+        ]),
+        media: 0,
+        edit: {
+          kind: "mood",
+          target: `mood:${row.id}:valence`,
+          valence: row.valence,
+          energy: row.energy,
+          anxiety: row.anxiety,
+          factors: row.factors,
+          notes: row.notes,
+          calmRelevant,
+        },
+      });
     }
   }
 

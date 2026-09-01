@@ -1269,7 +1269,7 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     const dashboardUrl = page.url();
 
     const overlay = await openQuickEntry(page, "log-mood");
-    const checkin = overlay.getByTestId("quick-mood-checkin");
+    const checkin = overlay.getByTestId("mood-form");
     await expect(checkin).toBeVisible();
     const moodChoices = Array.from({ length: 5 }, (_, index) =>
       checkin.getByTestId(`quick-mood-tap-${index + 1}`)
@@ -1290,6 +1290,13 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     await yesterdayChip.click();
     await expect(yesterdayChip).toHaveAttribute("aria-pressed", "true");
 
+    // The tap and the full statement are one form. Fill details before choosing the
+    // valence and prove the one-tap submission carries every visible answer with it.
+    await checkin.getByText("Details").click();
+    await checkin.getByRole("button", { name: "Energy: 3" }).click();
+    await checkin.getByRole("button", { name: "Work" }).click();
+    await checkin.getByLabel("Note").fill("clear afternoon");
+
     // One tap writes and closes the sheet (a check-in is a transaction with an
     // end); you are still on the dashboard.
     await settledClick(page, checkin.getByTestId("quick-mood-tap-4"));
@@ -1303,10 +1310,25 @@ test("the mood row logs a check-in in place — and 'Yesterday' backfills the mi
     try {
       const rows = db
         .prepare(
-          "SELECT date, valence FROM mood_logs WHERE profile_id = ? ORDER BY date"
+          `SELECT date, valence, energy, factors, notes
+             FROM mood_logs WHERE profile_id = ? ORDER BY date`
         )
-        .all(shellProfileId()) as { date: string; valence: number }[];
-      expect(rows).toEqual([{ date: yesterdayDate, valence: 4 }]);
+        .all(shellProfileId()) as {
+        date: string;
+        valence: number;
+        energy: number | null;
+        factors: string | null;
+        notes: string | null;
+      }[];
+      expect(rows).toEqual([
+        {
+          date: yesterdayDate,
+          valence: 4,
+          energy: 3,
+          factors: '["work"]',
+          notes: "clear afternoon",
+        },
+      ]);
     } finally {
       db.close();
     }

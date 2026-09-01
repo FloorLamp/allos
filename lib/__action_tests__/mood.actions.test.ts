@@ -47,6 +47,7 @@ describe("logMood — one-tap + expanded save", () => {
     expect(revalidate).toHaveBeenCalledWith("/");
     expect(revalidate).toHaveBeenCalledWith("/trends");
     expect(revalidate).toHaveBeenCalledWith("/sleep");
+    expect(revalidate).toHaveBeenCalledWith("/history");
   });
 
   it("a same-day re-log UPDATES the one row (idempotent per profile+date)", async () => {
@@ -117,6 +118,28 @@ describe("logMood — one-tap + expanded save", () => {
     expect(count.c).toBe(0);
   });
 
+  it("gates and writes the subject named by a record-row form", async () => {
+    const login = createLogin();
+    const acting = createProfile("mood-subject-acting", login.id);
+    const subject = createProfile("mood-subject-row", login.id);
+    actAs(login, acting);
+    const date = today(subject.id);
+    await logMood(
+      fd({
+        profile_id: subject.id,
+        date,
+        date_reach: "dated",
+        valence: 5,
+        energy: 4,
+      })
+    );
+    expect(getMoodOnDate(acting.id, date)).toBeNull();
+    expect(getMoodOnDate(subject.id, date)).toMatchObject({
+      valence: 5,
+      energy: 4,
+    });
+  });
+
   it("a submitted check-in re-arms an auto-paused reminder", async () => {
     const login = createLogin();
     const profile = createProfile("mood-rearm", login.id);
@@ -174,6 +197,18 @@ describe("logMood — the #2128 backfill window", () => {
     const res = await logMood(fd({ date: tooOld, valence: 3 }));
     expect(res).toEqual({ ok: false, error: MOOD_DATE_OUT_OF_WINDOW_ERROR });
     expect(getMoodOnDate(profile.id, tooOld)).toBeNull();
+  });
+
+  it("lets the record's dated form correct or add any real past day", async () => {
+    const login = createLogin();
+    const profile = createProfile("mood-record-date", login.id);
+    actAs(login, profile);
+    const old = shiftDateStr(today(profile.id), -40);
+    const res = await logMood(
+      fd({ date: old, date_reach: "dated", valence: 4 })
+    );
+    expect(res).toEqual({ ok: true });
+    expect(getMoodOnDate(profile.id, old)?.valence).toBe(4);
   });
 
   it("refuses a future date — backfill is past-only", async () => {

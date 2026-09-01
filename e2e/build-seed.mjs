@@ -196,7 +196,10 @@ function copyOne(src, dest) {
   let res = spawnSync("cp", ["-a", "--reflink=auto", src, dest], {
     encoding: "utf8",
   });
-  if (res.status !== 0 && /reflink/i.test(res.stderr || "")) {
+  if (
+    res.status !== 0 &&
+    /reflink|illegal option|unrecognized option/i.test(res.stderr || "")
+  ) {
     res = spawnSync("cp", ["-a", src, dest], { encoding: "utf8" });
   }
   if (res.status !== 0) {

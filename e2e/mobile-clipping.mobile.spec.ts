@@ -749,7 +749,7 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     {
       id: "log-mood",
       label: "mood",
-      ready: (sheet) => sheet.getByTestId("quick-mood-checkin"),
+      ready: (sheet) => sheet.getByTestId("mood-form"),
     },
     {
       id: "log-period",
