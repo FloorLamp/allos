@@ -72,6 +72,9 @@ describe("STATEFUL_WRITE_TABLES against the migrated schema (#1893)", () => {
       // could mint a second concurrent winner or finalize a claim no channel
       // earned.
       "notify_post_workout_claims",
+      // #3143: live is the session lifecycle. Starting, rolling over, and ending must
+      // share the profile-scoped core that preserves one live practice per identity.
+      "practice_logs",
       // #2135: end_date's three-state machine (ongoing / resumable / expired) — the
       // pure eligibility was already shared with the control; the WRITE half is now a
       // core with an in-transaction re-read and typed refusals.

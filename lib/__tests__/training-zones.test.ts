@@ -164,6 +164,20 @@ describe("activityWindow", () => {
     ).toEqual({ start: "2026-07-01T23:00", end: "2026-07-02T00:30" });
   });
 
+  it("uses a positive duration for a minute-rounded equal start and end", () => {
+    expect(
+      activityWindow({
+        date: "2026-03-11",
+        start_time: "09:00",
+        end_time: "09:00",
+        duration_min: 1,
+      })
+    ).toEqual({
+      start: "2026-03-11T09:00",
+      end: "2026-03-11T09:01",
+    });
+  });
+
   it("returns null with no start time (can't be windowed)", () => {
     expect(
       activityWindow({

@@ -123,6 +123,13 @@ export const STATEFUL_WRITE_TABLES: readonly StatefulWriteTable[] = [
     why: "#2135: `end_date` is a THREE-state machine — NULL is ongoing, a recent date is resumable, an old one is expired and the honest move is a new run — and the states were already named once in the pure protocolReopenEligibility, which ProtocolControls renders its Resume/Run again offer from. The WRITE half was the gap: end and resume read the row with getProtocol OUTSIDE the writeTx they then wrote in, swapped with a bare `id = ? AND profile_id = ?` UPDATE that could not refuse, and answered in English strings. lib/protocol-lifecycle.ts now owns both transitions on the cycles shape — in-transaction re-read, CAS on the expected prior end date, typed already-ended / already-ongoing / expired / invalid / not-found — and inverts the protocol's SITUATION activation inside the same transaction, because a protocol reading \"ended\" while its situation stays active keeps firing situational supplements for a block the user has stopped. Column-narrowed: name/notes/outcome/equipment/practice-link edits are ordinary last-write-wins form writes, and DELETE is not a state transition (deleteProtocol carries its own side-state under the row-ops rule). The create INSERT, the run-again INSERT and the edit form's absolute window write are allowlisted in the scan with their justifications.",
   },
   {
+    table: "practice_logs",
+    columns: ["live"],
+    cores: ["lib/practice-log.ts"],
+    offerState: "liveSession",
+    why: "#3143: `live` distinguishes an open Start-now lifecycle from a complete start-only statement. lib/practice-log.ts owns start, end, and local-day abandonment with typed already-live/not-live refusals; a raw flip could create a second open session or fabricate completion state. Column-narrowed because ordinary session logs, imports, corrections, and deletes remain additive or form-level writes.",
+  },
+  {
     table: "routines",
     columns: ["active"],
     cores: ["lib/routines.ts"],

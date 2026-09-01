@@ -448,6 +448,90 @@ describe("buildIntradayModel — practice sessions", () => {
     });
   });
 
+  it("draws today's live session as a running block through now", () => {
+    const model = buildIntradayModel(
+      input({
+        nowMinute: 20 * 60 + 10,
+        events: [
+          practiceEvent("practice:live", {
+            ...win("19:00", null, null),
+            live: true,
+          }),
+        ],
+      })
+    );
+    expect(model!.blocks[0]).toMatchObject({
+      startMinute: 19 * 60,
+      endMinute: 20 * 60 + 10,
+      running: true,
+    });
+    expect(model!.ticks).toEqual([]);
+  });
+
+  it("uses elapsed minutes for derived DST windows and repeated-hour live rows", () => {
+    const completed = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent("practice:spring", {
+            ...win("01:50", "03:10", 20),
+            derived_duration: true,
+          }),
+        ],
+      })
+    );
+    expect(completed!.blocks[0]).toMatchObject({
+      startMinute: 110,
+      endMinute: 130,
+      running: false,
+    });
+
+    const repeatedHour = buildIntradayModel(
+      input({
+        nowMinute: 80,
+        events: [
+          practiceEvent("practice:fall-live", {
+            ...win("01:50", null, null),
+            live: true,
+            derived_duration: true,
+            elapsed_min: 30,
+          }),
+        ],
+      })
+    );
+    expect(repeatedHour!.blocks[0]).toMatchObject({
+      startMinute: 110,
+      endMinute: 140,
+      running: true,
+    });
+    expect(repeatedHour!.ticks).toEqual([]);
+  });
+
+  it("draws an end-only acknowledgement as a tick at its observed end", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [practiceEvent("practice:end-only", win(null, "12:05", null))],
+      })
+    );
+    expect(model!.blocks).toEqual([]);
+    expect(model!.ticks[0]).toMatchObject({ minute: 12 * 60 + 5 });
+  });
+
+  it("falls back to the honest start tick when a live row is no longer today", () => {
+    const model = buildIntradayModel(
+      input({
+        nowMinute: null,
+        events: [
+          practiceEvent("practice:abandoned", {
+            ...win("19:00", null, null),
+            live: true,
+          }),
+        ],
+      })
+    );
+    expect(model!.blocks).toEqual([]);
+    expect(model!.ticks[0]).toMatchObject({ minute: 19 * 60 });
+  });
+
   // THE WINDOW'S OWN START WINS OVER `sortTime`, and this is the discriminating
   // case: a practice row's `sortTime` is `bestKnownInstant`, which falls back to the
   // FILING clock. A tick taken from it would draw the session at the minute it was

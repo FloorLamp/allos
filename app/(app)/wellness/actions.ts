@@ -7,7 +7,10 @@ import { gateItemProfile } from "../gate-item";
 import { today } from "@/lib/db";
 import {
   deletePracticeSession,
+  endLivePracticeSession,
+  logFinishedPracticeSession,
   logPracticeSession,
+  startLivePracticeSession,
   updatePracticeSession,
 } from "@/lib/practice-log";
 import {
@@ -21,6 +24,8 @@ import {
   formOk,
   type FormResult,
   type PracticeLogOutcome,
+  type PracticeLiveEndOutcome,
+  type PracticeLiveStartOutcome,
   type PracticeSessionMutationOutcome,
 } from "@/lib/types";
 
@@ -61,6 +66,23 @@ export async function logPractice(
   const practice = String(formData.get("practice") ?? "").trim();
   if (!practice) return { kind: "invalid-date" };
   const date = String(formData.get("date") ?? "").trim() || today(profile.id);
+  if (formData.get("intent") === "finished") {
+    const outcome = logFinishedPracticeSession(
+      profile.id,
+      practice,
+      parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+      optionalNumber(formData, "duration_min"),
+      null,
+      formData.has("end_time")
+        ? {
+            date,
+            time: String(formData.get("end_time") ?? "").trim(),
+          }
+        : undefined
+    );
+    if (outcome.kind === "logged") revalidatePracticeSurfaces();
+    return outcome;
+  }
   const outcome = logPracticeSession(
     profile.id,
     practice,
@@ -80,6 +102,32 @@ export async function logPractice(
     }
   );
   if (outcome.kind === "logged") revalidatePracticeSurfaces();
+  return outcome;
+}
+
+export async function startPracticeLive(
+  formData: FormData
+): Promise<PracticeLiveStartOutcome> {
+  const { profile } = await requireWriteAccess();
+  const practice = String(formData.get("practice") ?? "").trim();
+  const outcome = startLivePracticeSession(
+    profile.id,
+    practice,
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+  );
+  if (outcome.kind === "started") revalidatePracticeSurfaces();
+  return outcome;
+}
+
+export async function endPracticeLive(
+  formData: FormData
+): Promise<PracticeLiveEndOutcome> {
+  const { profile } = await requireWriteAccess();
+  const outcome = endLivePracticeSession(
+    profile.id,
+    Number(formData.get("id"))
+  );
+  if (outcome.kind === "ended") revalidatePracticeSurfaces();
   return outcome;
 }
 

@@ -509,14 +509,14 @@ export default function IntradayChart({
           const name = blockName.get(w.key);
           const block = (
             <>
-              <title>{`${w.title} · ${clock(w.startMinute)}–${clock(w.endMinute)}`}</title>
+              <title>{`${w.title} · ${clock(w.startMinute)}–${clock(w.endMinute)}${w.running ? " · running" : ""}`}</title>
               <rect
                 x={layout.left}
                 y={geo.workTop}
                 width={layout.width}
                 height={geo.workH}
                 rx={3}
-                fill={chartSeries.brand}
+                fill={w.running ? chartSeries.amber : chartSeries.brand}
                 opacity={0.3}
               />
               <rect
@@ -526,8 +526,9 @@ export default function IntradayChart({
                 height={geo.workH}
                 rx={3}
                 fill="none"
-                stroke={chartSeries.brand}
+                stroke={w.running ? chartSeries.amber : chartSeries.brand}
                 strokeWidth={0.8}
+                strokeDasharray={w.running ? chartDash.annotation : undefined}
               />
               {layout.showIcon && (
                 <svg
@@ -536,7 +537,9 @@ export default function IntradayChart({
                   width={layout.iconSize}
                   height={layout.iconSize}
                   viewBox="0 0 24 24"
-                  style={{ color: chartSeries.brand }}
+                  style={{
+                    color: w.running ? chartSeries.amber : chartSeries.brand,
+                  }}
                 >
                   <ActivityIcon
                     type={w.iconType ?? "activity"}
@@ -563,7 +566,12 @@ export default function IntradayChart({
             </>
           );
           return (
-            <g key={w.key} data-testid="intraday-block" data-title={w.title}>
+            <g
+              key={w.key}
+              data-testid="intraday-block"
+              data-title={w.title}
+              data-running={w.running ? "true" : undefined}
+            >
               {w.href ? (
                 // Progressive enhancement: the anchor IS the pre-hydration and
                 // no-JS behavior (tap scrolls to the feed entry). Once hydrated,

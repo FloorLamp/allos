@@ -137,7 +137,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
       { kind: "typed field", testId: "m-time", repairable: false },
     ],
   },
-  // THE QUICK-LOG SHEET'S TWO "Happened earlier?" DISCLOSURES (#3273). They are
+  // THE STOOL SHEET'S "Happened earlier?" DISCLOSURE (#3273). It is
   // `btn-ghost btn-sm` and carry no `.tap-target`, so the `/nutrition` sweep further
   // down is structurally unable to see them and no other entry here names them — two
   // new phone controls outside the standing census is the gap #3938 exists to close.
@@ -973,27 +973,41 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-    const extended = page.locator(".tap-target:visible");
-    // A sweep over nothing is green and says nothing — the same discipline the
-    // family sweep above keeps.
-    expect(await extended.count()).toBeGreaterThan(0);
-
-    const tooSmall = await extended.evaluateAll(
+    // Measure visibility and geometry from the SAME rendered snapshot. A locator
+    // `:visible` filter and a later `evaluateAll` can straddle a responsive/details
+    // transition on repeat runs, leaving controls that are now display:none in the
+    // selected set with a 0px box. Zero-area controls are not rendered controls; a
+    // visible undersized one still has positive area and remains in `tooSmall`.
+    const measured = await page.locator(".tap-target").evaluateAll(
       (els, minimum) =>
-        els
-          .map((el) => ({
-            what:
-              el.getAttribute("data-testid") ??
-              el.getAttribute("aria-label") ??
-              (el.textContent ?? "").trim().slice(0, 30),
-            height: el.getBoundingClientRect().height,
-          }))
-          .filter((b) => b.height < minimum),
+        els.reduce(
+          (result, el) => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return result;
+            result.visibleCount += 1;
+            if (rect.height >= minimum) return result;
+            result.tooSmall.push({
+              what:
+                el.getAttribute("data-testid") ??
+                el.getAttribute("aria-label") ??
+                (el.textContent ?? "").trim().slice(0, 30),
+              height: rect.height,
+            });
+            return result;
+          },
+          {
+            visibleCount: 0,
+            tooSmall: [] as { what: string; height: number }[],
+          }
+        ),
       TAP_TARGET_MIN_RENDERED_PX
     );
+    // A sweep over nothing is green and says nothing — the same discipline the
+    // family sweep above keeps.
+    expect(measured.visibleCount).toBeGreaterThan(0);
 
     expect(
-      tooSmall,
+      measured.tooSmall,
       `A \`.tap-target\` control renders under ${TAP_TARGET_MIN_RENDERED_PX}px at ${PHONE.width}px. The ` +
         `overlay adds a fixed 2x${TAP_TARGET_INSET_PX}px, so below that it lands short of the ` +
         `${TAP_FLOOR_PX}px floor while carrying the class that claims it. Give the ` +
