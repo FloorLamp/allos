@@ -698,7 +698,6 @@ function PanelGroupHeader({
   );
 }
 
-// The rows a group is currently showing. A fetched page replaces the server slice.
 function groupRows(
   group: BoundedPanelGroup<ClinicalResultTableObservation>,
   loaded: Map<PanelId, ClinicalResultPanelPage>
@@ -842,7 +841,6 @@ export default function ClinicalResultsTable({
       );
   };
 
-  // Opening a group that arrived without results fetches its first bounded page.
   const toggleGroup = (
     group: BoundedPanelGroup<ClinicalResultTableObservation>
   ) => {
@@ -1041,7 +1039,7 @@ export default function ClinicalResultsTable({
                           >
                             {state.loading.has(group.panel)
                               ? "Loading clinical results…"
-                              : "Couldn’t load that page. Try again"}
+                              : "Couldn’t load that page. Try again."}
                           </button>
                         )}
                       </Td>
