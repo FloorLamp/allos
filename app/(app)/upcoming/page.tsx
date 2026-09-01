@@ -1083,18 +1083,13 @@ function itemSuppression(
 //
 // The write is `DoseConfirmButton` — the dose domain's ONE row control for rows that
 // list what is still OWED (#4424 ruling 3), the same component the dashboard attention
-// row and the household card's due row mount, posting the same `markTaken` with its
-// typed-outcome toast. The chip GRAMMAR is F's, which is why this is not a new
-// component: `SubmitActionChip` is `Button type="submit"`, and `DoseConfirmButton`
-// renders exactly that, so the offer chips and the due-dose chips are the same box
-// with the same paint and the same 44px target — no bespoke chip was minted for
-// either.
+// row and the household card's due row mount. No bespoke chip was minted for it: F's
+// chip grammar is `SubmitActionChip`, which IS `Button type="submit"`, and so is this,
+// so the offer chips and the due-dose chips are one box with one 44px target.
 //
 // The name is the CONTROL form (#2858): a chip run wraps, and "Coenzyme Q10 · 100 mg"
-// spends its width on a word the reader already reads as "CoQ10". The full record name
-// is the accessible name and a sibling disclosure; a medication is never shortened
-// (the resolver's own gate). The visible text is a noun, so the accessible name says
-// what the tap DOES as well as which dose it does it to.
+// spends its width on a word the reader already reads as "CoQ10". The visible text is
+// a noun, so the accessible name has to say what the tap DOES as well as to what.
 function DoseChip({
   item,
   actionVisible,
@@ -1109,10 +1104,9 @@ function DoseChip({
   // redundant title/aria copy of its own visible text.
   const fullLabel =
     label === chipText(item.title) ? undefined : chipText(item.title);
-  // No write affordance (no dose to log, or a read-only-granted member's row) ⇒ the
-  // dose is still PRESENT and still one tap from its item, exactly as an offer with no
-  // affordance is. A chip that logs nothing and goes nowhere would make a folded row
-  // look like a deleted one, which is the fold's one forbidden outcome.
+  // No write affordance (no dose to log, a read-only-granted member's row) ⇒ the dose
+  // is still present and still one tap from its item, exactly as an offer with none is:
+  // a chip that logs nothing and goes nowhere would make a folded row look deleted.
   if (!actionVisible || item.doseId == null) {
     return (
       <DestinationActionLink href={item.href} aria-label={fullLabel ?? label}>
