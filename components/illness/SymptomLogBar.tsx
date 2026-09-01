@@ -1,7 +1,7 @@
 "use client";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import {
   IconX,
   IconPlus,
@@ -24,14 +24,12 @@ import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import NotesText from "@/components/NotesText";
-import { round, fmtTemp } from "@/lib/units";
-import { zonedDateParts } from "@/lib/date";
-import {
-  resolveTemperatureUnit,
-  toCanonicalTempF,
-  temperatureRangeError,
-} from "@/lib/vitals-input";
+import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
+import TemperatureField from "@/components/vitals/TemperatureField";
+import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { statedHhmm } from "@/lib/stated-time";
 import {
   logSymptom,
   lowerSymptom,
@@ -173,12 +171,19 @@ export default function SymptomLogBar({
 
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const [tempOpen, setTempOpen] = useState(false);
-  const [tempValue, setTempValue] = useState("");
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
-  const tempUnit = tempUnitDetection.unit;
-  // Reading time (#800/#843): seeded to the target profile's current local minute when
-  // the disclosure opens; the user can still adjust it for an earlier reading.
-  const [tempTime, setTempTime] = useState("");
+  // Reading time (#800/#843) through the shared control, which is what retires this
+  // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
+  // card's primary date, so the control renders it as text and offers only the clock —
+  // and its invariant 3 replaces the old seeded-now field: an untouched time states
+  // NOTHING and the action stamps the profile's current minute, which is what a
+  // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
+  // still one tap away, on the same absolute-local terms every other statement uses.
+  const tempZone = useTimezone();
+  const [tempWhen, setTempWhen] = useState<WhenValue>(() => ({
+    date,
+    statedAt: null,
+  }));
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
@@ -280,44 +285,28 @@ export default function SymptomLogBar({
   function toggleTemperatureEntry() {
     const opening = !tempOpen;
     setTempOpen(opening);
-    if (opening) {
-      setPickerOpen(false);
-      if (tempTime === "") {
-        const zone =
-          timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-        setTempTime(zonedDateParts(zone, new Date()).hhmm);
-      }
-    }
+    if (opening) setPickerOpen(false);
   }
 
-  async function logTemp() {
-    const raw = Number(tempValue);
-    if (tempValue.trim() === "" || !Number.isFinite(raw)) {
-      setTempError("Enter a temperature.");
-      return;
-    }
-    const resolvedUnit = resolveTemperatureUnit(raw, tempUnit);
-    const rangeErr = temperatureRangeError(
-      round(toCanonicalTempF(raw, resolvedUnit), 1)
-    );
-    if (rangeErr) {
-      setTempError(rangeErr);
-      return;
-    }
-    setTempError(null);
-    setTempPending(true);
-    const fd = new FormData();
-    fd.set("temperature", tempValue);
-    fd.set("temp_unit", tempUnit);
+  // NO CLIENT RANGE CHECK. `logTemperatureCore` runs `temperatureRangeError` over the
+  // same canonical °F this would have computed and answers with that exact sentence, so
+  // the second copy could only ever disagree with the one that decides.
+  async function logTemp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fd = new FormData(form);
     // The reading is "now" for today (the card's primary date), never the alt day.
     fd.set("date", date);
-    if (tempTime.trim() !== "") fd.set("time", tempTime);
+    const hhmm = statedHhmm(tempWhen.statedAt, timeZone ?? tempZone);
+    if (hhmm) fd.set("time", hhmm);
+    setTempError(null);
+    setTempPending(true);
     const res = await logTemperature(withTarget(fd));
     setTempPending(false);
     if (res.ok) {
-      setTempValue("");
+      form.reset();
       tempUnitDetection.reset();
-      setTempTime("");
+      setTempWhen({ date, statedAt: null });
       setTempOpen(false);
       toast(
         `Temperature logged: ${fmtTemp(res.degF, temperatureUnit)}${
@@ -896,80 +885,50 @@ export default function SymptomLogBar({
       )}
 
       {showTemperature && tempOpen && (
-        <div
+        <form
           id="temp-quick-entry"
           data-testid="temp-quick-entry"
+          onSubmit={(event) => void logTemp(event)}
           className="subpanel-inset-sm mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
         >
           <label className="label mb-1 block" htmlFor="temp-quick-input">
             Temperature
           </label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <div className="col-span-2 flex min-w-0 gap-2 sm:col-span-1">
-              <input
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-40 flex-1">
+              {/* THE VITALS FORM'S FIELD (#4424 ruling 5), not a second drawing of it. */}
+              <TemperatureField
                 id="temp-quick-input"
-                data-testid="temp-quick-input"
-                type="number"
-                step="0.1"
-                inputMode="decimal"
+                testIdPrefix="temp-quick"
+                detection={tempUnitDetection}
+                unitLabel="Temperature unit"
+                required
                 autoFocus
-                value={tempValue}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setTempValue(value);
-                  tempUnitDetection.readValue(value);
-                  if (tempError) setTempError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void logTemp();
-                  }
-                }}
-                placeholder="Thermometer reading"
-                className="input min-w-0 flex-1"
               />
-              <select
-                data-testid="temp-quick-unit"
-                aria-label="Temperature unit"
-                value={tempUnit}
-                onChange={(e) =>
-                  tempUnitDetection.chooseUnit(
-                    e.target.value === "C" ? "C" : "F"
-                  )
-                }
-                className="input w-auto"
-              >
-                <option value="F">°F</option>
-                <option value="C">°C</option>
-              </select>
             </div>
-            <input
-              data-testid="temp-quick-time"
-              type="time"
-              aria-label="Reading time"
-              value={tempTime}
-              onChange={(e) => setTempTime(e.target.value)}
-              className="input min-w-0 w-full"
+            <WhenControl
+              mode="state"
+              grain="minute"
+              value={tempWhen}
+              onChange={setTempWhen}
+              tz={timeZone}
+              // ONE DAY, the card's primary date: a reading is filed against the day
+              // the bar is standing on, so the control renders it as text and the pair
+              // rule holds with nothing to enforce.
+              minDate={date}
+              maxDate={date}
+              timeLabel="Reading time"
+              testId="temp-quick"
             />
             <button
-              type="button"
+              type="submit"
               data-testid="temp-quick-save"
               disabled={tempPending}
-              onClick={() => void logTemp()}
               className="btn btn-sm"
             >
               {tempPending ? "Logging…" : "Log temp"}
             </button>
           </div>
-          {tempUnitDetection.detectedUnit && (
-            <p
-              data-testid="temp-unit-detected"
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-            >
-              Detected °{tempUnitDetection.detectedUnit} from the reading.
-            </p>
-          )}
           {tempError && (
             <p
               role="alert"
@@ -979,7 +938,7 @@ export default function SymptomLogBar({
               {tempError}
             </p>
           )}
-        </div>
+        </form>
       )}
 
       {/* Picker guidance stays with the expanded picker instead of occupying the

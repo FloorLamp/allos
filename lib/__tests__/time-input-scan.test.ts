@@ -41,14 +41,8 @@ const HANDROLLED_ALLOW = new Map<
   // HistoricalDoseForm.tsx and EpisodeTimeline.tsx left the list with #2228's
   // write half: both adopt the shared control (backfill = state + timeRequired,
   // amend = correct with "Not stated" reachable).
-  [
-    "components/illness/SymptomLogBar.tsx",
-    {
-      count: 1,
-      kind: "event",
-      reason: "temperature reading time on the symptom bar; migrates on touch",
-    },
-  ],
+  // SymptomLogBar.tsx left it on the touch its own entry named (#4424 ruling 5): the
+  // temperature reading time is WhenControl's now, day-fixed to the card's date.
   [
     "components/practices/PracticeSessionForm.tsx",
     {
