@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { logMood } from "@/app/(app)/mood-actions";
 import Disclosure from "@/components/Disclosure";
 import MoodValencePicker from "@/components/MoodValencePicker";
@@ -13,7 +13,6 @@ import {
   MOOD_FACTORS,
   anxietyDisplaySlot,
   anxietyStoredValue,
-  moodBackfillLabel,
   moodLabel,
 } from "@/lib/mood";
 import {
@@ -31,6 +30,7 @@ export interface MoodFormValue {
 
 export interface MoodFormDay {
   date: string;
+  label: string;
   mood: MoodFormValue | null;
 }
 
@@ -80,13 +80,17 @@ function ScaleRow({
 }
 
 // The mood domain's ONE form (#4424): one-tap valence and the full daily statement
-// share the same state, payload, offline capture and optional write subject. A single
-// day is edit mode; several days are the quick logger's dated add surface.
+// share the same state, payload, offline capture and optional write subject. The
+// mounting context declares whether a rating is a quick write or local edit state;
+// history add is deliberately a single dated day that remains quick-entry capable.
 export default function MoodForm({
   days,
   showCalm,
   subjectProfileId,
   dateReach = "tap",
+  mode = "quick",
+  repeatAfterSave = false,
+  onSaved,
   onDone,
   onCancel,
 }: {
@@ -94,6 +98,9 @@ export default function MoodForm({
   showCalm: boolean;
   subjectProfileId?: number;
   dateReach?: "tap" | "dated";
+  mode?: "quick" | "edit";
+  repeatAfterSave?: boolean;
+  onSaved?: () => void;
   onDone?: () => void;
   onCancel?: () => void;
 }) {
@@ -113,6 +120,8 @@ export default function MoodForm({
   const [note, setNote] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [entryVersion, setEntryVersion] = useState(0);
+  const writing = useRef(false);
 
   const day = days[selected];
 
@@ -136,6 +145,37 @@ export default function MoodForm({
       factors,
       notes: note.trim() || null,
     };
+  }
+
+  function beginWrite(): boolean {
+    if (writing.current) return false;
+    writing.current = true;
+    setBusy(true);
+    return true;
+  }
+
+  function endWrite(): void {
+    writing.current = false;
+    setBusy(false);
+  }
+
+  function resetEntry(): void {
+    setValence(null);
+    setEnergy(null);
+    setAnxiety(null);
+    setFactors([]);
+    setNote("");
+    setError(null);
+    // A second identical rating is a second history entry attempt, not a double tap
+    // on the first ledger key. Give each cleared form its own write identity.
+    setEntryVersion((current) => current + 1);
+  }
+
+  function complete(target: MoodFormDay, nextValence: number): void {
+    toast(`Logged ${moodLabel(nextValence)} · ${target.label}`);
+    onSaved?.();
+    if (repeatAfterSave) resetEntry();
+    else onDone?.();
   }
 
   function payload(target: MoodFormDay, next: MoodFormValue): FormData {
@@ -169,14 +209,19 @@ export default function MoodForm({
     ) {
       return "not-offline";
     }
-    const kept = await enqueue("mood", target.date, {
-      valence: next.valence,
-      energy: next.energy,
-      anxiety: next.anxiety,
-      factors: next.factors,
-      note: next.notes,
-    });
-    if (!kept) {
+    let outcome: "kept" | "closed" | "failed";
+    try {
+      outcome = await enqueue("mood", target.date, {
+        valence: next.valence,
+        energy: next.energy,
+        anxiety: next.anxiety,
+        factors: next.factors,
+        note: next.notes,
+      });
+    } catch {
+      outcome = "failed";
+    }
+    if (outcome !== "kept") {
       toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
       return "refused";
     }
@@ -188,42 +233,47 @@ export default function MoodForm({
     setError(null);
     const target = day;
     if (!target) return;
+    if (mode === "edit") {
+      // A correction is one statement and has one commit point. Its rating is local
+      // form state until Save, just like Energy, Calm, factors and the note.
+      setValence(nextValence);
+      return;
+    }
+    if (!beginWrite()) return;
     const next = draft(nextValence);
-    void ledger.tap({
-      key: `${target.date}:${nextValence}`,
-      from: valence,
-      optimistic: nextValence,
-      commit: setValence,
-      write: () => logMood(payload(target, next)),
-      settle: (result) => {
-        if (!result.ok) {
-          setError(result.error);
-          return { kind: "rollback" };
-        }
-        toast(
-          `Logged ${moodLabel(nextValence)} · ${moodBackfillLabel(selected)}`
-        );
-        onDone?.();
-        return { kind: "keep" };
-      },
-      onError: async (err) => {
-        const queued = await queueIfOffline(err, target, next);
-        if (queued === "queued") {
-          onDone?.();
+    void ledger
+      .tap({
+        key: `${target.date}:${nextValence}:${entryVersion}`,
+        from: valence,
+        optimistic: nextValence,
+        commit: setValence,
+        write: () => logMood(payload(target, next)),
+        settle: (result) => {
+          if (!result.ok) {
+            setError(result.error);
+            return { kind: "rollback" };
+          }
+          complete(target, nextValence);
           return { kind: "keep" };
-        }
-        if (queued === "not-offline")
-          setError("Couldn't save that check-in — try again.");
-        return undefined;
-      },
-    });
+        },
+        onError: async (err) => {
+          const queued = await queueIfOffline(err, target, next);
+          if (queued === "queued") {
+            complete(target, nextValence);
+            return { kind: "keep" };
+          }
+          if (queued === "not-offline")
+            setError("Couldn't save that check-in — try again.");
+          return { kind: "rollback" };
+        },
+      })
+      .finally(endWrite);
   }
 
   async function save(): Promise<void> {
-    if (!day || valence == null || busy) return;
+    if (!day || valence == null || !beginWrite()) return;
     const target = day;
     const next = draft(valence);
-    setBusy(true);
     setError(null);
     try {
       const result = await logMood(payload(target, next));
@@ -231,15 +281,14 @@ export default function MoodForm({
         setError(result.error);
         return;
       }
-      toast("Check-in saved.");
-      onDone?.();
+      complete(target, valence);
     } catch (err) {
       const queued = await queueIfOffline(err, target, next);
-      if (queued === "queued") onDone?.();
+      if (queued === "queued") complete(target, valence);
       else if (queued === "not-offline")
         setError("Couldn't save that check-in — try again.");
     } finally {
-      setBusy(false);
+      endWrite();
     }
   }
 
@@ -276,7 +325,7 @@ export default function MoodForm({
                   : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
               }`}
             >
-              {moodBackfillLabel(index)}
+              {entry.label}
             </button>
           ))}
         </div>

@@ -280,6 +280,50 @@ function only(action: string): Record<string, string> {
 }
 
 describe("the record's ⋯ posts to the domain's own action", () => {
+  it("keeps mood changes local until one Save posts the complete statement", async () => {
+    await openEdit([
+      row({
+        id: "mood:8",
+        kind: "mood",
+        title: "Mood",
+        edit: {
+          kind: "mood",
+          target: "mood:8:valence",
+          valence: 4,
+          energy: 3,
+          anxiety: 2,
+          factors: ["social"],
+          notes: "steady enough",
+          calmRelevant: true,
+        },
+      }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Mood: Great" }));
+    fireEvent.click(screen.getByText("Details"));
+    fireEvent.click(screen.getByRole("button", { name: "Energy: 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.change(screen.getByLabelText("Note"), {
+      target: { value: "recovered" },
+    });
+    expect(posted.logMood).toBeUndefined();
+
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    );
+
+    const sent = only("logMood");
+    expect(sent).toMatchObject({
+      date: "2026-08-18",
+      valence: "5",
+      energy: "4",
+      anxiety: "2",
+      note: "recovered",
+      date_reach: "dated",
+      profile_id: String(ACTING),
+    });
+    expect(posted.logMood).toHaveLength(1);
+  });
+
   it("practice sends the STORED session time, never the clock its row fell back to", async () => {
     // The shape the defect lived in: a quick-path tick with NO stated time, whose row
     // therefore carries the record chain's minute and says "logged" about it.

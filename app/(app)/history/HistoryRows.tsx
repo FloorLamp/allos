@@ -81,6 +81,7 @@ import {
 } from "@/app/(app)/medical/cycles/actions";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
 import MoodForm from "@/components/mood/MoodForm";
+import { formatMonthDay } from "@/lib/format-date";
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -622,6 +623,7 @@ export default function HistoryRows({
             days={[
               {
                 date: row.date,
+                label: formatMonthDay(row.date, prefs),
                 mood: {
                   valence: edit.valence,
                   energy: edit.energy,
@@ -634,6 +636,7 @@ export default function HistoryRows({
             showCalm={edit.calmRelevant}
             subjectProfileId={row.profileId}
             dateReach="dated"
+            mode="edit"
             onDone={done}
             onCancel={done}
           />

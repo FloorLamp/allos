@@ -31,7 +31,7 @@ import {
   type TrackedPractice,
   type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { MOOD_LOG_DATE_WINDOW_DAYS } from "@/lib/mood";
+import { MOOD_LOG_DATE_WINDOW_DAYS, moodBackfillLabel } from "@/lib/mood";
 import { doseLogDays } from "@/lib/dose-log-window";
 import { TIME_BUCKETS, type TimeBucket } from "@/lib/intake-schedule";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -216,6 +216,7 @@ export type QuickEntryData =
       form: "mood";
       days: {
         date: string;
+        label: string;
         mood: {
           valence: number;
           energy: number | null;
@@ -437,6 +438,7 @@ export async function loadQuickEntry(
         const logged = getMoodOnDate(profile.id, day);
         return {
           date: day,
+          label: moodBackfillLabel(offset),
           mood: logged
             ? {
                 valence: logged.valence,
