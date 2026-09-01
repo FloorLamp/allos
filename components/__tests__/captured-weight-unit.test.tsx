@@ -165,11 +165,13 @@ async function driveRowMenu(unit: WeightUnit): Promise<void> {
   );
   fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
   fireEvent.click(screen.getByTestId("body-history-edit-weight_kg"));
-  fireEvent.change(screen.getByTestId("body-metric-edit-value"), {
+  // The dialog is a wrapper around the domain's shared row control since #4424
+  // ruling 3, so it is driven by that control's own field and button.
+  fireEvent.change(screen.getByLabelText("Reading value"), {
     target: { value: "82" },
   });
   await act(async () =>
-    fireEvent.click(screen.getByTestId("body-metric-edit-save"))
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
   );
 }
 

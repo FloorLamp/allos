@@ -105,8 +105,14 @@ function refusedMessage(
 //     time are one field for the same reason.
 //
 // ── Progressive disclosure: three groups, one open ───────────────────────────
-// Thirteen always-empty boxes to collect the one or two readings someone actually
-// took is what the copy already argues against. Exactly one group is open on mount,
+// SEVENTEEN always-empty boxes to collect the one or two readings someone actually
+// took is what the copy already argues against. (This comment said THIRTEEN, which was
+// the count before #1850, #1851 and #2322 added peak flow, the bed/wake pair,
+// respiratory rate, lean and bone mass, hydration and the waist tape. `LOG_MANIFEST`
+// inherited the stale figure and #4424's body leg corrected both. The form DEFINES
+// nineteen fields — the eighteen in `field` below plus Notes — and renders seventeen at
+// either life stage, since the growth pair swaps in exactly as body fat and HRV swap
+// out; `components/__tests__/body-two-pieces.test.tsx` asserts the pair.) Exactly one group is open on mount,
 // chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
