@@ -432,6 +432,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     gate: "gateItemProfile",
   },
   {
+    file: "app/(app)/mood-actions.ts",
+    fn: "logMood",
+    why: "record add/correction (#4424/#4009): quick entry falls back to the acting-profile gate, while a mood row posts its subject through gateItemProfile() → requireProfileWriteAccess(rowProfileId); the date bound and upsert both use the profile that gate returns",
+    gate: "gateItemProfile",
+  },
+  {
     file: "app/(app)/medical/substance-use/actions.ts",
     fn: "updateSubstanceDailyTotalAction",
     why: "record correction (#4009): corrects the ROW's substance day via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the isMinor age gate and the today() bound are asked of the SUBJECT, matching the gate lib/history.ts applies to the read",

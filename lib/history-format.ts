@@ -49,6 +49,7 @@ export const HISTORY_LOG_KINDS = [
   "dose",
   "food",
   "practice",
+  "mood",
   "substance",
   "body",
   "sleep",
@@ -124,6 +125,7 @@ export const HISTORY_KIND_LABELS: Record<HistoryKind, string> = {
   dose: "Doses",
   food: "Food",
   practice: "Practices",
+  mood: "Mood",
   substance: "Substances",
   body: "Body",
   sleep: "Sleep",
@@ -183,6 +185,7 @@ const ROLLUP_NOUNS: Partial<Record<HistoryKind, [string, string]>> = {
   dose: ["dose", "doses"],
   food: ["serving", "servings"],
   practice: ["practice", "practices"],
+  mood: ["check-in", "check-ins"],
   substance: ["substance", "substances"],
   body: ["reading", "readings"],
   symptom: ["symptom", "symptoms"],
@@ -244,6 +247,16 @@ export type HistoryRowEdit =
       substance: string;
       amount: number;
       notes: string | null;
+    }
+  | {
+      kind: "mood";
+      target: string;
+      valence: number;
+      energy: number | null;
+      anxiety: number | null;
+      factors: string[];
+      notes: string | null;
+      calmRelevant: boolean;
     }
   | { kind: "body"; target: string; slug: string; value: number; unit: string }
   | {
