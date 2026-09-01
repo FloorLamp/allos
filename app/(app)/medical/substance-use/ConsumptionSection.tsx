@@ -2,7 +2,6 @@
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useState, type FormEvent } from "react";
-import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import NotesText from "@/components/NotesText";
 import OverflowMenu, {
@@ -13,8 +12,9 @@ import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { useToast } from "@/components/Toast";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import InlineError from "@/components/InlineError";
+import SubstanceForm from "@/components/substances/SubstanceForm";
+import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 import { EmptyState } from "@/components/ui";
 import {
   formatDateWithYear,
@@ -23,30 +23,16 @@ import {
 } from "@/lib/format-date";
 import type { SubstanceDailyTotal, SubstanceTrendWeek } from "@/lib/queries";
 import {
-  MAX_SUBSTANCE_ENTRY_AMOUNT,
   MAX_WEEKLY_CAP,
   substanceDef,
   type SubstanceKey,
 } from "@/lib/substance-use";
 import {
-  addSubstanceDailyTotalAction,
   clearSubstanceTargetAction,
   deleteSubstanceDailyTotalAction,
-  logSubstanceUnitAction,
   setSubstanceTargetAction,
-  undoSubstanceUnitAction,
-  updateSubstanceDailyTotalAction,
 } from "./actions";
 import Disclosure from "@/components/Disclosure";
-
-function mutationError(kind: string): string {
-  if (kind === "invalid-date") return "Enter a valid date.";
-  if (kind === "invalid-amount")
-    return `Enter an amount between 1 and ${MAX_SUBSTANCE_ENTRY_AMOUNT}.`;
-  if (kind === "date-conflict")
-    return "An entry already exists for that date. Edit it instead.";
-  return "Couldn't save that entry.";
-}
 
 export default function ConsumptionSection({
   substance,
@@ -73,13 +59,8 @@ export default function ConsumptionSection({
 }) {
   const def = substanceDef(substance);
   const confirm = useConfirm();
-  const toast = useToast();
-  // The shared one-tap ledger (#2041): this surface has no optimistic count to move —
-  // the week figure re-renders from the action's revalidation — so the cooldown IS its
-  // feedback design (#2007 layer 1), which is exactly what the registry records.
-  const ledger = useOptimisticLedger("substance-unit");
   // The Records page's own consumption section — declared, not assumed (#3087):
-  // `QuickSubstanceList` posts the same action from the quick-log sheet.
+  // the shared pieces post the same actions from the quick-log sheet and the record.
   const stampLoggedVia = useLoggedViaStamp();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,34 +74,6 @@ export default function ConsumptionSection({
     fd.set("substance", substance);
     for (const [key, value] of Object.entries(extra ?? {})) fd.set(key, value);
     return fd;
-  }
-
-  async function runOneTap(kind: "log" | "undo") {
-    if (pending) return;
-    setError(null);
-    // #2007: additive substance taps never confirm — several a day is the use case.
-    // The ledger's short inert window after success absorbs an accidental queued or
-    // double click and then silently clears; an undo carries its own key, so a
-    // correction straight after a log is not absorbed by it.
-    await ledger.tap({
-      key: kind,
-      write: () =>
-        kind === "log"
-          ? logSubstanceUnitAction(withSubstance())
-          : undoSubstanceUnitAction(withSubstance()),
-      settle: (result) => {
-        if (!result.ok) {
-          setError(result.error);
-          // Nothing was written, so the tap stays immediately retryable.
-          return { kind: "rollback" };
-        }
-        return { kind: "keep" };
-      },
-      onError: () => {
-        setError("Couldn't update that entry.");
-        return { kind: "rollback" };
-      },
-    });
   }
 
   async function saveCap(event: FormEvent<HTMLFormElement>) {
@@ -151,47 +104,6 @@ export default function ConsumptionSection({
     const result = await clearSubstanceTargetAction(withSubstance());
     setPending(false);
     if (!result.ok) setError(result.error);
-  }
-
-  async function addEntry(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    // STAMPED like every other post from this section (#3567). It was correct only
-    // because the action's fallback and this section's actual surface happened to be
-    // the same word — true while it is on a page, silently wrong the day it renders
-    // inside a region. `withSubstance` above already stamps; these two did not.
-    const fd = stampLoggedVia(new FormData(event.currentTarget));
-    fd.set("substance", substance);
-    const result = await addSubstanceDailyTotalAction(fd);
-    setPending(false);
-    if (result.kind !== "added") {
-      setError(mutationError(result.kind));
-      return;
-    }
-    setError(null);
-    setAddOpen(false);
-    toast("Entry added.");
-  }
-
-  async function editEntry(
-    event: FormEvent<HTMLFormElement>,
-    entry: SubstanceDailyTotal,
-    done: () => void
-  ) {
-    event.preventDefault();
-    setPending(true);
-    const fd = stampLoggedVia(new FormData(event.currentTarget));
-    fd.set("substance", substance);
-    fd.set("id", String(entry.id));
-    const result = await updateSubstanceDailyTotalAction(fd);
-    setPending(false);
-    if (result.kind !== "updated") {
-      setError(mutationError(result.kind));
-      return;
-    }
-    setError(null);
-    done();
-    toast("Entry updated.");
   }
 
   const historyColumns: EntryHistoryColumn<SubstanceDailyTotal>[] = [
@@ -239,18 +151,6 @@ export default function ConsumptionSection({
             {weekCount === 1 ? def.countSingular : def.countPlural} logged this
             week.
           </p>
-          {capProgress ? (
-            <p
-              className={`mt-1 text-sm ${
-                capAttention
-                  ? "font-medium text-amber-700 dark:text-amber-300"
-                  : "text-slate-500 dark:text-slate-400"
-              }`}
-              data-testid={`substance-cap-progress-${substance}`}
-            >
-              {capProgress}
-            </p>
-          ) : null}
         </div>
         <OverflowMenu
           itemName={def.label}
@@ -292,44 +192,29 @@ export default function ConsumptionSection({
         </OverflowMenu>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={pending || ledger.blocked("log")}
-          onClick={() => void runOneTap("log")}
-          data-testid={`substance-log-${substance}`}
-          className="btn"
-        >
-          {ledger.pending("log") ? "Logging…" : def.logLabel}
-        </button>
-        <button
-          type="button"
-          disabled={pending || ledger.blocked("undo") || weekCount === 0}
-          onClick={() => void runOneTap("undo")}
-          data-testid={`substance-undo-${substance}`}
-          className="btn-ghost"
-        >
-          Undo today
-        </button>
-        <button
-          type="button"
-          className="btn-ghost text-sm"
-          data-testid={`substance-history-add-${substance}`}
-          onClick={() => {
-            setError(null);
-            setAddOpen(true);
-          }}
-        >
-          Add for another day
-        </button>
-      </div>
+      {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3), carrying the tap, its undo and
+          the cap verdict that must stand beside them. The quick-log sheet mounts the
+          same component, so neither surface can drift from the other. */}
+      <SubstanceUnitControl
+        substance={substance}
+        weekCount={weekCount}
+        capProgress={capProgress}
+        capAttention={capAttention}
+        testIdPrefix="substance"
+      />
+      <button
+        type="button"
+        className="btn-ghost btn-sm self-start"
+        data-testid={`substance-history-add-${substance}`}
+        onClick={() => setAddOpen(true)}
+      >
+        Add for another day
+      </button>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {def.unitNote}
       </p>
 
-      {error ? (
-        <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
-      ) : null}
+      <InlineError>{error}</InlineError>
 
       <div>
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -367,25 +252,21 @@ export default function ConsumptionSection({
                 `substance-history-delete-${substance}-${entry.id}`
               }
               renderEditForm={(entry, done) => (
-                <form
-                  className="grid gap-3 sm:grid-cols-2"
-                  onSubmit={(event) => void editEntry(event, entry, done)}
-                >
-                  <HistoryFields entry={entry} defaultDate={defaultDate} />
-                  <div className="flex gap-2 sm:col-span-2">
-                    <button
-                      type="submit"
-                      className="btn"
-                      disabled={pending}
-                      data-testid={`substance-history-save-${substance}`}
-                    >
-                      {pending ? "Saving…" : "Save"}
-                    </button>
-                    <button type="button" className="btn-ghost" onClick={done}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                <SubstanceForm
+                  substances={[{ key: substance, label: def.label }]}
+                  date={entry.date}
+                  maxDate={defaultDate}
+                  row={{
+                    id: entry.id,
+                    substance,
+                    date: entry.date,
+                    amount: entry.amount,
+                    notes: entry.notes,
+                  }}
+                  onSaved={done}
+                  onCancel={done}
+                  testId={`substance-history-edit-form-${substance}`}
+                />
               )}
               confirmDelete={() => ({
                 title: `Delete ${def.label.toLowerCase()} entry?`,
@@ -434,35 +315,14 @@ export default function ConsumptionSection({
           onClose={() => setAddOpen(false)}
           size="sm"
         >
-          <form
-            className="grid gap-3 sm:grid-cols-2"
-            onSubmit={(event) => void addEntry(event)}
-            data-testid={`substance-history-add-form-${substance}`}
-          >
-            <HistoryFields defaultDate={defaultDate} />
-            {error ? (
-              <p className="text-sm text-rose-600 sm:col-span-2 dark:text-rose-400">
-                {error}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2 sm:col-span-2">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setAddOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn"
-                disabled={pending}
-                data-testid={`substance-history-add-save-${substance}`}
-              >
-                {pending ? "Adding…" : "Add entry"}
-              </button>
-            </div>
-          </form>
+          <SubstanceForm
+            substances={[{ key: substance, label: def.label }]}
+            date={defaultDate}
+            maxDate={defaultDate}
+            onSaved={() => setAddOpen(false)}
+            onCancel={() => setAddOpen(false)}
+            testId={`substance-history-add-form-${substance}`}
+          />
         </ModalShell>
       ) : null}
 
@@ -515,50 +375,5 @@ export default function ConsumptionSection({
         </ModalShell>
       ) : null}
     </section>
-  );
-}
-
-function HistoryFields({
-  entry,
-  defaultDate,
-}: {
-  entry?: SubstanceDailyTotal;
-  defaultDate: string;
-}) {
-  return (
-    <>
-      <label className="text-sm">
-        Date
-        <DateField
-          name="date"
-          defaultValue={entry?.date ?? defaultDate}
-          max={defaultDate}
-          required
-          inputClassName="mt-1 w-full"
-        />
-      </label>
-      <label className="text-sm">
-        Amount
-        <input
-          type="number"
-          name="amount"
-          min={1}
-          max={MAX_SUBSTANCE_ENTRY_AMOUNT}
-          step={1}
-          defaultValue={entry?.amount ?? 1}
-          required
-          className="input mt-1 w-full"
-        />
-      </label>
-      <label className="text-sm sm:col-span-2">
-        Notes
-        <textarea
-          name="notes"
-          rows={3}
-          defaultValue={entry?.notes ?? ""}
-          className="input mt-1 w-full"
-        />
-      </label>
-    </>
   );
 }

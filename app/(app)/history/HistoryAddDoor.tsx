@@ -23,7 +23,7 @@ import {
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { logPractice } from "@/app/(app)/wellness/actions";
-import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import SubstanceForm from "@/components/substances/SubstanceForm";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { FOOD_GROUPS } from "@/lib/food-groups";
@@ -449,46 +449,22 @@ export default function HistoryAddDoor({
           </form>
         );
       case "substance":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The door had spelled its
+        // own substance form — with a bare "Amount" that meant drinks on one row and
+        // uses on the next — and this mounts the domain's one form instead, with the
+        // day the reader was looking at in hand. The refusal, the toast and the
+        // re-read stay the door's, so every kind still resolves in place.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await addSubstanceDailyTotalAction(fd);
-                return outcome.kind === "added"
-                  ? null
-                  : "Couldn't save that entry.";
-              })
-            }
-          >
-            {dateField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Substance
-              <select name="substance" className="input mt-1 w-full">
-                {vocabulary.substances.map((substance) => (
-                  <option key={substance.key} value={substance.key}>
-                    {substance.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={1}
-                className="input mt-1 w-full"
-                required
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={vocabulary.substances}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "body":
         return (

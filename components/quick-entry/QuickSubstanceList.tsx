@@ -1,9 +1,6 @@
 "use client";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useState } from "react";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
-import { logSubstanceUnitAction } from "@/app/(app)/medical/substance-use/actions";
+import SubstanceUnitControl from "@/components/substances/SubstanceUnitControl";
 
 export interface QuickSubstanceRow {
   key: string;
@@ -13,7 +10,7 @@ export interface QuickSubstanceRow {
   capProgress: string | null;
 }
 
-// The quick-entry overlay's SUBSTANCE form (issue #3327).
+// The quick-entry overlay's SUBSTANCE row (issue #3327).
 //
 // ── Why this row exists at all, given the argument against it ─────────────────
 //
@@ -42,12 +39,14 @@ export interface QuickSubstanceRow {
 // `cap: 0` is the OTHER state and does render: an opted-in target of zero — Dry
 // January, a quit target — is a target, and its line says so.
 //
-// ── One write path, a second mounting context ─────────────────────────────────
+// ── One control, a second mounting context (#4424 ruling 3) ───────────────────
 //
-// The taps post the SAME `logSubstanceUnitAction` the Substance use page's card posts,
-// under the SAME `substance-unit` one-tap ledger id, whose registry entry already says
-// what a second tap means here: additive, cooldown feedback, never a confirm. Several
-// uses a day is the use case. There is no overlay copy of the write.
+// The row IS `SubstanceUnitControl`, the domain's one row control, exactly as the
+// Substance use page's card mounts it — same taps, same `substance-unit` one-tap
+// ledger, same cap line, same failure channel. This list owns only the row chrome and
+// the substance's name; there is no overlay copy of the write and no longer an overlay
+// copy of the tap. Undo arrived with the shared control: the sheet used to offer a log
+// and no undo, so a mis-tap had to be carried to another page to correct.
 //
 // ── The sheet stays open after a tap ──────────────────────────────────────────
 //
@@ -60,84 +59,29 @@ export default function QuickSubstanceList({
 }: {
   substances: QuickSubstanceRow[];
 }) {
-  const ledger = useOptimisticLedger("substance-unit");
-  // The quick-log sheet is this list's only mounting today, and it says so through
-  // the surface its host declares rather than by asserting it here (#3087).
-  const stampLoggedVia = useLoggedViaStamp();
-  const [error, setError] = useState<string | null>(null);
-
-  async function log(key: string) {
-    setError(null);
-    await ledger.tap({
-      key,
-      write: () => {
-        const fd = stampLoggedVia(new FormData());
-        fd.set("substance", key);
-        return logSubstanceUnitAction(fd);
-      },
-      settle: (result) => {
-        if (!result.ok) {
-          setError(result.error);
-          // Nothing was written, so the tap stays immediately retryable.
-          return { kind: "rollback" };
-        }
-        return { kind: "keep" };
-      },
-      onError: () => {
-        setError("Couldn't log that.");
-        return { kind: "rollback" };
-      },
-    });
-  }
-
   return (
-    <div className="space-y-2">
-      <ul
-        data-testid="quick-entry-substance-list"
-        className="flex flex-col gap-2"
-      >
-        {substances.map((substance) => (
-          <li
-            key={substance.key}
-            data-testid={`quick-entry-substance-${substance.key}`}
-            className="rounded-lg border border-(--border) bg-surface px-3 py-2.5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                {substance.label}
-              </span>
-              <button
-                type="button"
-                className="btn"
-                disabled={ledger.blocked(substance.key)}
-                onClick={() => void log(substance.key)}
-                data-testid={`quick-entry-substance-log-${substance.key}`}
-              >
-                {ledger.pending(substance.key)
-                  ? "Logging…"
-                  : substance.logLabel}
-              </button>
-            </div>
-            {substance.capProgress ? (
-              <p
-                className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-                data-testid={`quick-entry-substance-cap-${substance.key}`}
-              >
-                {substance.capProgress}
-              </p>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      {error ? (
-        <p
-          role="alert"
-          className="text-sm text-rose-600 dark:text-rose-400"
-          data-testid="quick-entry-substance-error"
+    <ul
+      data-testid="quick-entry-substance-list"
+      className="flex flex-col gap-2"
+    >
+      {substances.map((substance) => (
+        <li
+          key={substance.key}
+          data-testid={`quick-entry-substance-${substance.key}`}
+          className="rounded-lg border border-(--border) bg-surface px-3 py-2.5"
         >
-          {error}
-        </p>
-      ) : null}
-    </div>
+          <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            {substance.label}
+          </span>
+          <div className="mt-1.5">
+            <SubstanceUnitControl
+              substance={substance.key}
+              capProgress={substance.capProgress}
+              testIdPrefix="quick-entry-substance"
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

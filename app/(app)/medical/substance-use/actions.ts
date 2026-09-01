@@ -17,6 +17,7 @@ import {
   substanceDef,
   substanceLabel,
   substanceNameError,
+  capProgressLine,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   MAX_SUBSTANCE_ENTRY_AMOUNT,
@@ -76,6 +77,26 @@ export type SubstanceLogResult =
 export type SubstanceHistoryDeleteResult =
   | { kind: "deleted"; undoId: number }
   | { kind: "not-found"; undoId: null; error: string };
+
+// THE CAP VERDICT RIDES THE WRITE (#998/#3279, #4424's substance leg). The tap
+// surfaces render `capProgressLine` beside the button, and the manifest's
+// offline exclusion is argued from exactly that — a safety readout that must not
+// silently understate. The FORM surfaces had none: a correction made on the record
+// could take somebody over their weekly cap and say nothing anywhere. Derived AFTER
+// the write, so it describes the state the write produced, and null for a profile
+// that opted into no target (`substanceCapStatus` is produced only where a target
+// row exists).
+export type SubstanceHistoryWriteResult = SubstanceHistoryMutationOutcome & {
+  readonly capProgress?: string | null;
+};
+
+function capProgressAfterWrite(
+  profileId: number,
+  substance: SubstanceKey
+): string | null {
+  const week = getSubstanceWeekState(profileId, substance);
+  return week.status ? capProgressLine(week.status, substance) : null;
+}
 
 function revalidateSubstanceUse() {
   revalidateRoute("/records/specialty/substance-use");
@@ -344,7 +365,7 @@ function historyInput(
 // store; the auth-blind core dispatches from the validated substance catalog.
 export async function addSubstanceDailyTotalAction(
   formData: FormData
-): Promise<SubstanceHistoryMutationOutcome> {
+): Promise<SubstanceHistoryWriteResult> {
   const { profile } = await requireWriteAccess();
   if (isMinor(getProfileAge(profile.id))) return { kind: "not-found" };
   const parsed = historyInput(formData, today(profile.id));
@@ -359,13 +380,18 @@ export async function addSubstanceDailyTotalAction(
     parsed,
     webOrigin(formData)
   );
-  if (outcome.kind === "added") revalidateSubstanceUse();
-  return outcome;
+  if (outcome.kind !== "added") return outcome;
+  revalidateSubstanceUse();
+  return {
+    kind: "added",
+    id: outcome.id,
+    capProgress: capProgressAfterWrite(profile.id, parsed.substance),
+  };
 }
 
 export async function updateSubstanceDailyTotalAction(
   formData: FormData
-): Promise<SubstanceHistoryMutationOutcome> {
+): Promise<SubstanceHistoryWriteResult> {
   // THE ROW'S PROFILE, NOT THE ACTING ONE (#4009 item 1 / #2106): `/history`'s
   // `?view=everyone` posts the row's own `profile_id`, and `gateItemProfile` gates it
   // through requireProfileWriteAccess — reachable AND write, redirect otherwise —
@@ -392,8 +418,13 @@ export async function updateSubstanceDailyTotalAction(
     parsed,
     webOrigin(formData)
   );
-  if (outcome.kind === "updated") revalidateSubstanceUse();
-  return outcome;
+  if (outcome.kind !== "updated") return outcome;
+  revalidateSubstanceUse();
+  return {
+    kind: "updated",
+    id: outcome.id,
+    capProgress: capProgressAfterWrite(profileId, parsed.substance),
+  };
 }
 
 export async function deleteSubstanceDailyTotalAction(
