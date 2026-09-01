@@ -166,7 +166,7 @@ export const DISCLOSURE_EXPANSIONS = [
     label: "clinical results catalog panel groups",
     closedToggle:
       '[data-testid="clinical-result-panel-toggle"][aria-expanded="false"]',
-    loadMore: '[data-testid="clinical-result-panel-load-all"]',
+    loadMore: '[data-testid="clinical-result-panel-pager-row"]',
   },
   {
     // THE DASHBOARD'S ONE FOLD, and the census's only picture of the tail (#3366).

@@ -5,6 +5,8 @@ import { requireWriteAccess } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { dismissFinding } from "@/lib/queries";
 import { parsePanelId } from "@/lib/biomarker-panels";
+import { PANEL_ROW_LIMIT } from "@/lib/biomarker-panel-groups";
+import { clampPage, pageCount, pageOffset } from "@/lib/pagination";
 import {
   clinicalResultIndexRows,
   clinicalResultPanelRows,
@@ -69,16 +71,36 @@ export async function dismissTrajectory(formData: FormData): Promise<void> {
 export async function loadClinicalResultPanelRows(input: {
   panel: string;
   searchParams: ClinicalResultsSearchParams;
+  page?: number;
 }): Promise<
-  | { ok: true; rows: ClinicalResultTableObservation[] }
-  | { ok: false; error: string }
+  ({ ok: true } & ClinicalResultPanelPage) | { ok: false; error: string }
 > {
   const scope = await requireScope();
   const panel = parsePanelId(input.panel);
   if (!panel) return { ok: false, error: "Unknown panel." };
   const filters = parseClinicalResultFilters(input.searchParams ?? {});
   const rows = clinicalResultIndexRows(scope, filters);
+  const panelRows = clinicalResultPanelRows(rows, panel);
+  const limit = PANEL_ROW_LIMIT;
+  const page = Math.min(
+    clampPage(input.page ?? 1),
+    pageCount(panelRows.length, limit)
+  );
+  const offset = pageOffset(page, limit);
   // Plain serializable records: prepareTableObservations rebuilds every row as a new
   // object, so no better-sqlite3 row proxy crosses back to the client.
-  return { ok: true, rows: clinicalResultPanelRows(rows, panel) };
+  return {
+    ok: true,
+    rows: panelRows.slice(offset, offset + limit),
+    page,
+    limit,
+    total: panelRows.length,
+  };
+}
+
+export interface ClinicalResultPanelPage {
+  rows: ClinicalResultTableObservation[];
+  page: number;
+  limit: number;
+  total: number;
 }
