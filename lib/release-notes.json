@@ -268,6 +268,62 @@
           "category": "Training",
           "title": "Training paints its header and tabs before the rest of the page is ready",
           "issues": [2641]
+        },
+        {
+          "pr": 4687,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Adding a medicine, a supplement or an as-needed item offers the same controls",
+          "issues": []
+        },
+        {
+          "pr": 4689,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "The Home Assistant share-link guidance is correct",
+          "issues": []
+        },
+        {
+          "pr": 4695,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Drawer links no longer point at pages that were retired",
+          "issues": []
+        },
+        {
+          "pr": 4698,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Picking a shared bottle keeps your choice while you log",
+          "issues": []
+        },
+        {
+          "pr": 4699,
+          "kind": "fix",
+          "category": "General",
+          "title": "When AI features are not set up, every screen says so the same way",
+          "issues": []
+        },
+        {
+          "pr": 4701,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Logging a practice reports its result the same way everywhere",
+          "issues": []
+        },
+        {
+          "pr": 4702,
+          "kind": "feature",
+          "category": "Household",
+          "title": "The household card shows what changed this week for each person",
+          "issues": [1463]
+        },
+        {
+          "pr": 4702,
+          "kind": "security",
+          "category": "Household",
+          "title": "Mood check-ins stay off shared household surfaces",
+          "issues": [1463]
         }
       ]
     },
