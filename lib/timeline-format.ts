@@ -98,6 +98,11 @@ export interface TimelineEvent {
     end_time: string | null;
     duration_min: number | null;
     live?: boolean;
+    // A #3143 lifecycle/just-finished window whose bounds came from elapsed
+    // minutes. These rows prefer duration over disagreeing DST wall clocks.
+    derived_duration?: boolean;
+    // Current elapsed minutes for a live row, computed from its absolute start tap.
+    elapsed_min?: number | null;
   };
 }
 

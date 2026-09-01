@@ -31,6 +31,16 @@ const PHONE_ONLY_CONTRACTS = [
 // The control box's own selector list, spelled once (#3938).
 const CONTROL_BOX_SELECTOR =
   ".chip-base, .btn, .btn-ghost, .btn-danger, .button-control, .input, [data-segmented-option]";
+const RANKING_UTILITIES = [
+  "band",
+  "bleed-none",
+  "card",
+  "card-quiet",
+  "card-delegated",
+  "card-gutter-standard",
+  "card-gutter-compact",
+  "card-gutter-action",
+] as const;
 
 function normalized(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -170,20 +180,18 @@ function declarationRanking(
 describe("compiled phone-only CSS proof (#3518/#3727)", () => {
   const source = fs.readFileSync(GLOBALS, "utf8");
   const names = contractNames(source);
-  const compiled = new Map<string, string>();
+  let compiledPhoneOnly: string;
+  let compiledRanking: string;
 
   beforeAll(async () => {
-    await Promise.all(
-      names.map(async (name) =>
-        compiled.set(name, await compile(source, [name]))
-      )
-    );
+    [compiledPhoneOnly, compiledRanking] = await Promise.all([
+      compile(source, names),
+      compile(source, RANKING_UTILITIES),
+    ]);
   });
 
   it("keeps every discovered utility strictly below sm in a real Tailwind compile", () => {
-    expect(
-      names.flatMap((name) => assertPhoneOnly(compiled.get(name)!, [name]))
-    ).toEqual(names);
+    expect(assertPhoneOnly(compiledPhoneOnly, names)).toEqual(names);
   });
 
   it("rejects a planted desktop declaration", async () => {
@@ -312,18 +320,9 @@ describe("compiled phone-only CSS proof (#3518/#3727)", () => {
     [".checkbox-control", "min-inline-size", false, "components", false],
   ] as const)(
     "%s { %s } below-sm=%s compiles into layer %s important=%s",
-    async (selector, property, belowSm, layer, important) => {
+    (selector, property, belowSm, layer, important) => {
       const found = declarationRanking(
-        await compile(source, [
-          "band",
-          "bleed-none",
-          "card",
-          "card-quiet",
-          "card-delegated",
-          "card-gutter-standard",
-          "card-gutter-compact",
-          "card-gutter-action",
-        ]),
+        compiledRanking,
         selector,
         property,
         belowSm

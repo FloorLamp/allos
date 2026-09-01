@@ -28,12 +28,14 @@ const jobs = [
   { id: 1, status: "processing", summary: null, error: null },
   { id: 2, status: "ready", summary: "3 workouts", error: null },
 ];
+const PROFILE_ID = 7;
 
 describe("readStatesEnvelope", () => {
   it("reads a well-formed envelope", () => {
     const observed = readStatesEnvelope(
       200,
-      { ok: true, states: jobs },
+      { ok: true, profileId: PROFILE_ID, states: jobs },
+      PROFILE_ID,
       isImportJobState
     );
     expect(observed).toEqual({ ok: true, states: jobs });
@@ -43,7 +45,12 @@ describe("readStatesEnvelope", () => {
     // The distinction that matters: an ANSWER of "no jobs" is fine and seeds an
     // empty map; a FAILURE that merely looks like one must not.
     expect(
-      readStatesEnvelope(200, { ok: true, states: [] }, isImportJobState)
+      readStatesEnvelope(
+        200,
+        { ok: true, profileId: PROFILE_ID, states: [] },
+        PROFILE_ID,
+        isImportJobState
+      )
     ).toEqual({ ok: true, states: [] });
   });
 
@@ -55,6 +62,7 @@ describe("readStatesEnvelope", () => {
         readStatesEnvelope(
           status,
           { ok: false, error: "auth" },
+          PROFILE_ID,
           isImportJobState
         )
       ).toEqual({ ok: false, reason: "http" });
@@ -70,13 +78,27 @@ describe("readStatesEnvelope", () => {
       [],
       { ok: false, error: "auth" },
       { ok: true },
+      { ok: true, profileId: "7", states: jobs },
       { ok: true, states: "none" },
     ]) {
-      expect(readStatesEnvelope(200, body, isImportJobState)).toEqual({
+      expect(
+        readStatesEnvelope(200, body, PROFILE_ID, isImportJobState)
+      ).toEqual({
         ok: false,
         reason: "shape",
       });
     }
+  });
+
+  it("refuses an answer for a different profile", () => {
+    expect(
+      readStatesEnvelope(
+        200,
+        { ok: true, profileId: PROFILE_ID + 1, states: jobs },
+        PROFILE_ID,
+        isImportJobState
+      )
+    ).toEqual({ ok: false, reason: "profile" });
   });
 
   it("refuses a well-shaped envelope carrying a malformed row", () => {
@@ -85,7 +107,12 @@ describe("readStatesEnvelope", () => {
     expect(
       readStatesEnvelope(
         200,
-        { ok: true, states: [jobs[0], { id: 3 }] },
+        {
+          ok: true,
+          profileId: PROFILE_ID,
+          states: [jobs[0], { id: 3 }],
+        },
+        PROFILE_ID,
         isImportJobState
       )
     ).toEqual({ ok: false, reason: "shape" });
@@ -95,7 +122,12 @@ describe("readStatesEnvelope", () => {
     // The import rows are not extraction rows: the same envelope must not pass
     // for the other endpoint's shape.
     expect(
-      readStatesEnvelope(200, { ok: true, states: jobs }, isExtractionState)
+      readStatesEnvelope(
+        200,
+        { ok: true, profileId: PROFILE_ID, states: jobs },
+        PROFILE_ID,
+        isExtractionState
+      )
     ).toEqual({ ok: false, reason: "shape" });
   });
 });

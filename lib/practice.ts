@@ -145,22 +145,13 @@ export function practiceDisplayName(input: {
 //   3. blank. The app does not invent a duration for a practice with no history and
 //      no declared default (#2204 constraint 2).
 //
-// HOW MANY SESSIONS VOTE. The answer is a habit's usual duration, not its whole
-// history, and every reader must take the same sample or two surfaces offering "one
-// question, one computation" answer differently: the card gathered every row while the
-// sheet's window function stopped at 50, so 26 ten-minute sessions under 25 twenty-
-// minute ones prefilled 10 on one and 20 on the other. It is also `getPracticeSessions`
-// default page, which is what the chat path already asked for.
-export const PRACTICE_DURATION_VOTE_LIMIT = 50;
-
-// `sessions` is newest-first, the order every practice reader already gathers in, and
-// only the first `PRACTICE_DURATION_VOTE_LIMIT` of them vote.
+// `sessions` is newest-first, the order every practice reader already gathers in.
 export function practiceDurationPrefill(
   sessions: readonly { duration_min: number | null }[],
   declaredDefaultMin: number | null = null
 ): number | null {
   const usual = modalValue(
-    sessions.slice(0, PRACTICE_DURATION_VOTE_LIMIT).flatMap((session) => {
+    sessions.flatMap((session) => {
       const value = session.duration_min;
       return value != null && Number.isFinite(value) && value > 0
         ? [Math.round(value)]

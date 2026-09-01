@@ -29,7 +29,6 @@ import {
   practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,
-  practiceDurationPrefill,
   samePractice,
 } from "../practice";
 import type { FrequencyTarget, PracticeLog } from "../types";
@@ -124,7 +123,9 @@ export function getPracticeDayCount(
   date: string,
   spellings?: readonly string[]
 ): number {
-  const values = resolvedSpellings(profileId, practice, spellings);
+  const values = [
+    ...new Set(resolvedSpellings(profileId, practice, spellings)),
+  ];
   if (values.length === 0) return 0;
   const row = db
     .prepare(
@@ -151,7 +152,8 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(values)})
@@ -160,6 +162,35 @@ export function getPracticeSessions(
         LIMIT ?`
     )
     .all(...args) as PracticeLog[];
+}
+
+// One canonical usual-duration vote over the identity's ENTIRE positive-duration
+// history. Every surface calls this query; no caller-specific recent-row cap can
+// change the winner after the 51st session. Ties go to the newest stored session in
+// the same ordering getPracticeSessions exposes.
+export function getPracticeUsualDuration(
+  profileId: number,
+  practice: string,
+  spellings?: readonly string[]
+): number | null {
+  const values = [
+    ...new Set(resolvedSpellings(profileId, practice, spellings)),
+  ];
+  if (values.length === 0) return null;
+  const row = db
+    .prepare(
+      `SELECT duration_min
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)})
+          AND duration_min IS NOT NULL AND duration_min > 0
+        GROUP BY duration_min
+        ORDER BY COUNT(*) DESC,
+                 MAX(date || ' ' || COALESCE(start_time, '99:99') || ' ' ||
+                     printf('%020d', id)) DESC
+        LIMIT 1`
+    )
+    .get(profileId, ...values) as { duration_min: number } | undefined;
+  return row?.duration_min ?? null;
 }
 
 // Cross-practice session rows for the record's gather (#3958; it served the deleted
@@ -207,7 +238,8 @@ export function getPracticeLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND ${where.join(" AND ")}
@@ -323,7 +355,8 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
+        `SELECT id, practice, date, start_time, end_time, live, derived_window,
+                correction_locked, duration_min, notes,
                 source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
@@ -369,7 +402,8 @@ export function getWellnessPractices(
   );
   const logs = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, live, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ?
@@ -420,7 +454,11 @@ export function getWellnessPractices(
         pace: targetProgress?.pace ?? "on-pace",
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
-        previousDurationMin: practiceDurationPrefill(item.sessions),
+        previousDurationMin: getPracticeUsualDuration(
+          profileId,
+          item.target?.scope_value ?? latest?.practice ?? "",
+          item.sessions.map((session) => session.practice)
+        ),
         // A LIVE ROW IS LIVE WHATEVER DAY IT STARTED ON. Filtering to `asOf` hid the
         // End button from the one session that most needs it — the evening practice
         // still running after local midnight. What retires a stale row is the
@@ -477,10 +515,9 @@ export interface TrackedPractice {
   // Sessions logged TODAY, folded across the identity's spellings — what the shared
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
-  // The quick sheet's inline duration stepper starts here (#2204) — `practiceDurationPrefill`
-  // over the identity's recent positive durations, the same pure resolution the
-  // Wellness card's expanded form uses. Null means blank: the sheet does not invent a
-  // duration for a practice with no duration history.
+  // The quick sheet's inline duration stepper starts here (#2204) — the canonical
+  // identity-wide usual-duration vote the Wellness card and protocol row also use.
+  // Null means blank: the sheet does not invent a duration without history.
   previousDurationMin: number | null;
   liveSession: { id: number; date: string; startTime: string } | null;
 }
@@ -524,45 +561,6 @@ export function getTrackedPractices(
     if (!identity) continue;
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
-
-  // The usual-duration vote is bounded per stored spelling, then folded by identity
-  // in JS because SQL cannot call practiceIdentity.
-  const durationRows = db
-    .prepare(
-      `SELECT practice, date, start_time, id, duration_min FROM (
-         SELECT practice, date, start_time, id, duration_min,
-                ROW_NUMBER() OVER (
-                  PARTITION BY practice
-                  ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC
-                ) AS rn
-           FROM practice_logs
-          WHERE profile_id = ?
-       ) WHERE rn <= 50`
-    )
-    .all(profileId) as {
-    practice: string;
-    date: string;
-    start_time: string | null;
-    id: number;
-    duration_min: number | null;
-  }[];
-  const durationsByIdentity = new Map<
-    string,
-    (typeof durationRows)[number][]
-  >();
-  // The recency key, in getPracticeSessions' own order: date, then the session start
-  // with its null-sorts-last sentinel, then the row id as the tiebreak.
-  const recency = (r: (typeof durationRows)[number]) =>
-    `${r.date} ${r.start_time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
-  for (const row of durationRows) {
-    const identity = practiceIdentity(row.practice);
-    if (!identity) continue;
-    const held = durationsByIdentity.get(identity) ?? [];
-    held.push(row);
-    durationsByIdentity.set(identity, held);
-  }
-  for (const rows of durationsByIdentity.values())
-    rows.sort((left, right) => recency(right).localeCompare(recency(left)));
 
   // No day filter, for the reason getWellnessPractices states: a session that crossed
   // local midnight is still running, and the sweep is what closes an abandoned one.
@@ -621,8 +619,9 @@ export function getTrackedPractices(
       // The SAME pure resolution the Wellness card's expanded form reads — one
       // question, one computation. A practice with no logs at all resolves through
       // the empty list rather than being special-cased here.
-      previousDurationMin: practiceDurationPrefill(
-        durationsByIdentity.get(identity) ?? []
+      previousDurationMin: getPracticeUsualDuration(
+        profileId,
+        target.scope_value
       ),
       liveSession: liveByIdentity.get(identity) ?? null,
     });
@@ -1113,11 +1112,8 @@ export interface PracticeTapRow extends TapEvent {
 //    stored usual duration supplied the derived window.
 //
 // 2b. A USER-STATED WINDOW IS NOT A TAP EITHER (#3142). Ended rows are admitted only
-//    while Telegram provenance says the callback derived the window AND `edited = 0`
-//    says nobody has since restated it. Provenance alone was the wrong test: it is
-//    immutable and the window is not, so a chat row hand-corrected in the form stayed
-//    correctable by a chip. The same predicate is repeated in
-//    `restampPracticeLogsCore`'s re-read.
+//    when immutable Telegram provenance says the callback derived them. The same
+//    predicate is repeated in `restampPracticeLogsCore`'s re-read.
 //
 // 3. A CHAT CORRECTION CARRIES A CHAT TAP ONLY (#4356). With `chatOnly`, immutable
 //    `logged_via` provenance keeps page and offline sessions on their own surfaces;
@@ -1148,9 +1144,10 @@ export function getRecentPracticeTaps(
         WHERE profile_id = ?
           AND created_at >= ?
           AND (start_time IS NOT NULL OR end_time IS NOT NULL)
-          AND (end_time IS NULL
-               OR (edited = 0
-                   AND logged_via IN ('telegram-nudge', 'telegram-command')))
+          AND (end_time IS NULL OR (
+            start_time IS NULL AND duration_min IS NULL AND correction_locked = 0
+            AND logged_via IN ('telegram-nudge', 'telegram-command')
+          ))
           AND live = 0
           AND external_id IS NULL
           AND (? = 0 OR logged_via IS NULL

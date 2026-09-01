@@ -121,7 +121,12 @@ describe("/api/jobs/* — background-job liveness for the toasters (#1878)", () 
     authState.session = null;
     const res = await getImports();
     expect(
-      readStatesEnvelope(res.status, await body(res), isImportJobState)
+      readStatesEnvelope(
+        res.status,
+        await body(res),
+        profileA,
+        isImportJobState
+      )
     ).toEqual({ ok: false, reason: "http" });
   });
 
@@ -132,6 +137,7 @@ describe("/api/jobs/* — background-job liveness for the toasters (#1878)", () 
     const observed = readStatesEnvelope(
       res.status,
       await body(res),
+      profileA,
       isImportJobState
     );
     if (!observed.ok) throw new Error("expected a well-formed envelope");
@@ -150,6 +156,7 @@ describe("/api/jobs/* — background-job liveness for the toasters (#1878)", () 
     const observed = readStatesEnvelope(
       res.status,
       await body(res),
+      profileA,
       isExtractionState
     );
     if (!observed.ok) throw new Error("expected a well-formed envelope");
@@ -167,6 +174,7 @@ describe("/api/jobs/* — background-job liveness for the toasters (#1878)", () 
     const observedJobs = readStatesEnvelope(
       jobs.status,
       await body(jobs),
+      profileB,
       isImportJobState
     );
     if (!observedJobs.ok) throw new Error("expected a well-formed envelope");
@@ -176,6 +184,7 @@ describe("/api/jobs/* — background-job liveness for the toasters (#1878)", () 
     const observedDocs = readStatesEnvelope(
       docs.status,
       await body(docs),
+      profileB,
       isExtractionState
     );
     if (!observedDocs.ok) throw new Error("expected a well-formed envelope");

@@ -155,6 +155,17 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ],
   },
   {
+    route: "/?quick=log-practice",
+    ready: "quick-entry-practice-list",
+    surfaces: [
+      {
+        kind: "btn-ghost disclosure",
+        testId: "practice-when-toggle",
+        repairable: true,
+      },
+    ],
+  },
+  {
     route: "/nutrition?tab=supplements",
     ready: "supplement-add-toggle",
     surfaces: [

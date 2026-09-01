@@ -57,6 +57,7 @@ import {
   getRecentPracticeTaps,
   logFinishedPracticeByTargetId,
   logPracticeSession,
+  updatePracticeSession,
 } from "@/lib/queries";
 import { restampPracticeLogsCore } from "@/lib/practice-log";
 import { inferPracticeSchedule } from "@/lib/queries";
@@ -373,6 +374,62 @@ describe("a stated window never joins a chip burst", () => {
       })
     ).toEqual({ kind: "restamped", count: 1 });
     expect(storedTime(id)).not.toBe(before);
+  });
+
+  it("independently excludes live rows from both the offer read and transaction reread", () => {
+    const pid = makeProfile("live-burst-barriers");
+    const t = today(pid);
+    logPracticeSession(pid, "Sauna", t, "page", {
+      startTime: "12:00",
+      live: true,
+      derivedWindow: true,
+    });
+    const live = lastLogId(pid);
+    expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+    expect(restampPracticeLogsCore(pid, live, () => new Date())).toEqual({
+      kind: "no-burst",
+    });
+
+    // Mutation controls: either barrier must be reading `live`, rather than the row
+    // being ineligible for some unrelated reason.
+    db.prepare("UPDATE practice_logs SET live = 0 WHERE id = ?").run(live);
+    expect(getRecentPracticeTaps(pid, clockNow()).map((row) => row.id)).toEqual(
+      [live]
+    );
+    expect(
+      restampPracticeLogsCore(
+        pid,
+        live,
+        (row) => new Date(new Date(row.statedAt!).getTime() - 5 * 60_000)
+      )
+    ).toEqual({ kind: "restamped", count: 1 });
+  });
+
+  it("an edited Telegram end stamp is excluded by both correction barriers", () => {
+    const pid = makeProfile("edited-chat-end");
+    const target = practiceTarget(pid, "Sauna");
+    logFinishedPracticeByTargetId(pid, target, "telegram-command");
+    const id = lastLogId(pid);
+    expect(getRecentPracticeTaps(pid, clockNow()).map((row) => row.id)).toEqual(
+      [id]
+    );
+    expect(
+      updatePracticeSession(pid, id, {
+        date: today(pid),
+        startTime: null,
+        endTime: "11:45",
+        durationMin: null,
+        notes: "corrected",
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { edited: 1, correction_locked: 1 },
+    });
+
+    expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+    expect(restampPracticeLogsCore(pid, id, () => new Date())).toEqual({
+      kind: "no-burst",
+    });
   });
 });
 

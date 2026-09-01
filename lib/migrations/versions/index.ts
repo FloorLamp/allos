@@ -223,6 +223,7 @@ import { migration as mNotifyOffersAutoincrement } from "./20260827-notify-offer
 import { migration as mRevokedSessionTombstones } from "./20260829-revoked-session-tombstones";
 import { migration as mPracticeSessionInterval } from "./20260830-practice-session-interval";
 import { migration as mLivePracticeSessions } from "./20260831-live-practice-sessions";
+import { migration as mPracticeDerivedWindows } from "./20260831-practice-derived-windows";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -455,6 +456,7 @@ export const MIGRATIONS: Migration[] = [
   mRevokedSessionTombstones,
   mPracticeSessionInterval,
   mLivePracticeSessions,
+  mPracticeDerivedWindows,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

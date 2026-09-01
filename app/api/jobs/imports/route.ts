@@ -35,7 +35,7 @@ export async function GET(): Promise<Response> {
     )
     .all(session.profile.id) as ImportJobState[];
   return Response.json(
-    { ok: true, states },
+    { ok: true, profileId: session.profile.id, states },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

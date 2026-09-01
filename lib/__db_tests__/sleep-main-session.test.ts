@@ -1154,6 +1154,73 @@ describe("duration-only manual sleep", () => {
 });
 
 describe("bedtime supplements on the Sleep page", () => {
+  it("expects unlogged nights after a backfilled dose existed, before its created_at (#4023)", () => {
+    const profileId = Number(
+      db
+        .prepare("INSERT INTO profiles (name) VALUES ('BackfilledBedtime')")
+        .run().lastInsertRowid
+    );
+    setTimezone(profileId, "UTC");
+    const end = today(profileId);
+    const proofDate = shiftDateStr(end, -4);
+    const beforeProof = shiftDateStr(end, -5);
+    const targetSleepDate = shiftDateStr(end, -3);
+    const targetWakeDay = shiftDateStr(end, -2);
+    upsertMetricSamples(
+      profileId,
+      [
+        session(
+          "sleep_min",
+          shiftDateStr(beforeProof, 1),
+          420,
+          `${beforeProof}T23:00:00Z`,
+          `${shiftDateStr(beforeProof, 1)}T06:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          targetWakeDay,
+          420,
+          `${targetSleepDate}T23:00:00Z`,
+          `${targetWakeDay}T06:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+
+    const createdAt = `${end} 09:00:00`;
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation, created_at)
+           VALUES (?, 'Reconciled magnesium', 1, 'supplement', 'daily', 'should', ?)`
+        )
+        .run(profileId, createdAt).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses
+             (item_id, amount, time_of_day, food_timing, sort, created_at)
+           VALUES (?, '1 cap', 'Before sleep', 'any', 0, ?)`
+        )
+        .run(itemId, createdAt).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, ?, ?, 'taken')`
+    ).run(doseId, itemId, proofDate);
+
+    const history = getSleepMoodData(profileId, 7).history;
+    expect(
+      history.find((row) => row.date === targetWakeDay)?.bedtimeSupplements
+    ).toMatchObject({ due: 1, taken: 0, state: "missed" });
+    expect(
+      history.find((row) => row.date === shiftDateStr(beforeProof, 1))
+        ?.bedtimeSupplements
+    ).toBeNull();
+  });
+
   it("joins due supplement doses to the actual sleep-start day", () => {
     const bedtimeProfileId = Number(
       db.prepare("INSERT INTO profiles (name) VALUES ('BedtimeSleep')").run()

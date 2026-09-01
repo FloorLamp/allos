@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState } from "react";
 import { IconCheck, IconChevronDown } from "@tabler/icons-react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import Button from "@/components/Button";
-import type { ChartChip } from "./ChartJumpChips";
 
 // Compact chart navigator for Trends → Overview → body census full-chart layout. The former
 // sticky chip row looked like a third tab level and spent horizontal/vertical
@@ -21,6 +20,15 @@ import type { ChartChip } from "./ChartJumpChips";
 // The clamp width before the panel has been measured, so its first paint is
 // already in the right place. Matches `min-w-44`.
 const MENU_WIDTH = 176;
+
+// One present-only chart anchor. It used to be declared by the sticky chip row
+// this menu replaced; that row was deleted in #4515, its last two importers
+// having been `import type` lines for exactly this interface, so it lives with
+// the only component that renders a chart anchor.
+export interface ChartChip {
+  id: string;
+  label: string;
+}
 
 export default function ChartJumpMenu({ items }: { items: ChartChip[] }) {
   const [active, setActive] = useState(items[0]?.id ?? "");

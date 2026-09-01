@@ -43,8 +43,10 @@
 // any of those as "the profile has no jobs" would replace the toaster's seed with
 // an empty map, and the next successful poll would re-announce every finished job
 // as freshly finished (#296, the same failure the transient-error path already
-// guards). So a failed observation is a TYPED refusal the caller retries, never
-// an empty result set.
+// guards). The response also names its profile: the session-table switch and the
+// client prop update are separate events, so an answer for either side of that
+// window must not be diffed or seeded on the other. Both failures are TYPED
+// refusals the caller retries, never an empty result set.
 
 /** The endpoints the two completion toasters poll. Route handlers, never actions. */
 export const IMPORT_JOB_STATES_ENDPOINT = "/api/jobs/imports";
@@ -77,8 +79,8 @@ export interface ExtractionState {
  */
 export type PollObservation<T> =
   | { ok: true; states: T[] }
-  /** `http` — the response was not a 200. `shape` — a 200 that was not the envelope. */
-  | { ok: false; reason: "http" | "shape" };
+  /** `profile` — the answer belongs to a different active profile. */
+  | { ok: false; reason: "http" | "shape" | "profile" };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
@@ -109,18 +111,23 @@ export function isExtractionState(v: unknown): v is ExtractionState {
 
 /**
  * THE decision, pure: turn an HTTP status plus an already-parsed body into an
- * observation. Anything that is not a 200 carrying `{ ok: true, states: [...] }`
- * of well-formed rows is a refusal — including a 200 whose body failed to parse
- * as JSON at all, which the caller passes in as `undefined`.
+ * observation. Anything that is not a 200 carrying
+ * `{ ok: true, profileId, states: [...] }` for the expected profile and with
+ * well-formed rows is a refusal — including a 200 whose body failed to parse as
+ * JSON at all, which the caller passes in as `undefined`.
  */
 export function readStatesEnvelope<T>(
   status: number,
   body: unknown,
+  expectedProfileId: number,
   isState: (v: unknown) => v is T
 ): PollObservation<T> {
   if (status !== 200) return { ok: false, reason: "http" };
   if (!isRecord(body) || body.ok !== true)
     return { ok: false, reason: "shape" };
+  if (typeof body.profileId !== "number") return { ok: false, reason: "shape" };
+  if (body.profileId !== expectedProfileId)
+    return { ok: false, reason: "profile" };
   const { states } = body;
   if (!Array.isArray(states)) return { ok: false, reason: "shape" };
   if (!states.every(isState)) return { ok: false, reason: "shape" };
@@ -135,6 +142,7 @@ export function readStatesEnvelope<T>(
  */
 export async function observeStates<T>(
   endpoint: string,
+  expectedProfileId: number,
   isState: (v: unknown) => v is T
 ): Promise<PollObservation<T>> {
   let status: number;
@@ -150,5 +158,5 @@ export async function observeStates<T>(
   } catch {
     return { ok: false, reason: "http" };
   }
-  return readStatesEnvelope(status, body, isState);
+  return readStatesEnvelope(status, body, expectedProfileId, isState);
 }

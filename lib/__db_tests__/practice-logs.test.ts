@@ -18,6 +18,7 @@ import {
   startLivePracticeSession,
   endLivePracticeSession,
   closeAbandonedPracticeSessions,
+  getPracticeUsualDuration,
   inferPracticeSchedule,
   getPracticeDayCount,
   getPracticeSessions,
@@ -28,9 +29,6 @@ import {
   dismissFinding,
 } from "@/lib/queries";
 import { getTimelinePage } from "@/lib/timeline";
-import { getRecentPracticeTaps } from "@/lib/queries/wellness";
-import { hasCorrectedAnyTime } from "@/lib/queries/correction-history";
-import { restampPracticeLogsCore } from "@/lib/practice-log";
 import {
   behindPractices,
   buildPracticeReminder,
@@ -50,19 +48,6 @@ function makeProfile(name: string): number {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
   );
-}
-
-// The duration on the row a write just appended, by insert order — the derived window
-// sorts by its START, which for a just-finished row is earlier than the taps above it.
-function newestDuration(profileId: number): number | null {
-  return (
-    db
-      .prepare(
-        `SELECT duration_min FROM practice_logs
-          WHERE profile_id = ? ORDER BY id DESC LIMIT 1`
-      )
-      .get(profileId) as { duration_min: number | null }
-  ).duration_min;
 }
 
 function practiceTarget(
@@ -548,6 +533,17 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(logPracticeByTargetId(pid, tid, "page")).toMatchObject({
       kind: "logged",
     });
+    // A stored usual duration exists, but Telegram never displayed it. Its callback
+    // therefore cannot use that hidden value to invent a start.
+    logPracticeSession(
+      pid,
+      "Red light therapy",
+      shiftDateStr(today(pid), -1),
+      "page",
+      {
+        durationMin: 25,
+      }
+    );
     expect(
       logFinishedPracticeByTargetId(pid, tid, "telegram-command")
     ).toMatchObject({ kind: "logged" });
@@ -570,6 +566,7 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
       }))
     ).toEqual([
       { start: "07:05", end: null, via: "page" },
+      { start: null, end: null, via: "page" },
       { start: null, end: "07:05", via: "telegram-command" },
     ]);
   });
@@ -622,33 +619,22 @@ describe("quick-path practice logs carry duration and time (#2204)", () => {
     expect(getTrackedPractices(mine)[0].previousDurationMin).toBe(18);
   });
 
-  // The Telegram default resolved AT THE LIVE PATH, which is the only place it is
-  // resolved: the standalone `practiceUsualDurationForTarget` re-implemented this
-  // body twenty lines above its only caller and was reachable from nothing else.
-  it("derives Telegram's window from the usual duration, under profile scope", () => {
-    const mine = makeProfile("telegram-usual-mine");
-    const theirs = makeProfile("telegram-usual-theirs");
-    const mineTarget = practiceTarget(mine, "Sauna", 3, null);
-    const theirTarget = practiceTarget(theirs, "Sauna", 3, null);
-    const t = today(mine);
-    logPracticeSession(mine, "Sauna", t, "page", { durationMin: 20 });
-    logPracticeSession(mine, "sauna", t, "page", { durationMin: 20 });
-    logPracticeSession(mine, "Sauna", t, "page", { durationMin: 30 });
-    logPracticeSession(theirs, "Sauna", t, "page", { durationMin: 45 });
+  it("uses one full-history usual-duration vote after more than 50 logs", () => {
+    const pid = makeProfile("usual-full-history");
+    practiceTarget(pid, "Sauna", 3, null);
+    const t = today(pid);
+    for (let i = 0; i < 26; i += 1)
+      logPracticeSession(pid, "Sauna", shiftDateStr(t, -2), "page", {
+        durationMin: 10,
+      });
+    for (let i = 0; i < 25; i += 1)
+      logPracticeSession(pid, "sauna", shiftDateStr(t, -1), "page", {
+        durationMin: 20,
+      });
 
-    expect(
-      logFinishedPracticeByTargetId(mine, mineTarget, "telegram-command")
-    ).toMatchObject({ kind: "logged" });
-    expect(newestDuration(mine)).toBe(20);
-    expect(
-      logFinishedPracticeByTargetId(theirs, theirTarget, "telegram-command")
-    ).toMatchObject({ kind: "logged" });
-    expect(newestDuration(theirs)).toBe(45);
-    // A leaked target id from another profile writes nothing at all.
-    expect(
-      logFinishedPracticeByTargetId(mine, theirTarget, "telegram-command")
-    ).toEqual({ kind: "stale-target" });
-    expect(getPracticeSessions(mine, "Sauna")).toHaveLength(4);
+    expect(getPracticeUsualDuration(pid, "Sauna")).toBe(10);
+    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(10);
+    expect(getTrackedPractices(pid)[0].previousDurationMin).toBe(10);
   });
 
   it("leaves the Wellness card's own prefill reading the same value", () => {
@@ -698,6 +684,7 @@ describe("live practice sessions (#3143)", () => {
         end_time: "12:37",
         duration_min: 37,
         live: 0,
+        derived_window: 1,
       },
     });
     expect(
@@ -723,7 +710,7 @@ describe("live practice sessions (#3143)", () => {
     });
   });
 
-  it("keeps a notes-only live edit open, then closes an explicitly ended edit", () => {
+  it("keeps a notes-only live edit open, but changing its start abandons lifecycle", () => {
     const pid = makeProfile("live-edit");
     const started = startLivePracticeSession(pid, "Sauna", "page");
     expect(started.kind).toBe("started");
@@ -732,7 +719,7 @@ describe("live practice sessions (#3143)", () => {
     expect(
       updatePracticeSession(pid, started.session.id, {
         date: "2026-08-31",
-        startTime: "11:55",
+        startTime: "12:00",
         endTime: null,
         durationMin: null,
         notes: "still running",
@@ -743,13 +730,13 @@ describe("live practice sessions (#3143)", () => {
       updatePracticeSession(pid, started.session.id, {
         date: "2026-08-31",
         startTime: "11:55",
-        endTime: "12:10",
-        durationMin: 15,
-        notes: "finished by edit",
+        endTime: null,
+        durationMin: null,
+        notes: "corrected start",
       })
     ).toMatchObject({
       kind: "updated",
-      session: { live: 0, end_time: "12:10", duration_min: 15 },
+      session: { live: 0, start_time: "11:55", end_time: null },
     });
     expect(endLivePracticeSession(pid, started.session.id)).toEqual({
       kind: "not-live",
@@ -788,6 +775,24 @@ describe("live practice sessions (#3143)", () => {
     });
   });
 
+  it("abandons a live row from a different local day after a westward zone change", () => {
+    const pid = makeProfile("live-westward");
+    setTimezone(pid, "Pacific/Kiritimati");
+    vi.setSystemTime(new Date("2026-08-31T12:30:00Z")); // Sep 1 at UTC+14
+    const started = startLivePracticeSession(pid, "Sauna", "page");
+    expect(started).toMatchObject({ kind: "started", date: "2026-09-01" });
+
+    setTimezone(pid, "Pacific/Honolulu"); // Aug 31 at UTC-10
+    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-09-01",
+      live: 0,
+      end_time: null,
+      duration_min: null,
+    });
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
+  });
+
   it("derives elapsed duration from instants across a DST clock jump", () => {
     const pid = makeProfile("live-dst");
     setTimezone(pid, "America/New_York");
@@ -823,6 +828,7 @@ describe("live practice sessions (#3143)", () => {
       start_time: "01:40",
       end_time: "03:10",
       duration_min: 30,
+      derived_window: 1,
     });
 
     const repeated = makeProfile("live-dst-repeated-hour");
@@ -865,13 +871,30 @@ describe("live practice sessions (#3143)", () => {
       });
     }
   );
+
+  it("derives a quick-sheet window from the earlier end the user stated", () => {
+    const pid = makeProfile("finished-earlier");
+    expect(
+      logFinishedPracticeSession(pid, "Sauna", "quick-log", 25, null, {
+        date: "2026-08-31",
+        time: "07:05",
+      })
+    ).toMatchObject({ kind: "logged" });
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
+      date: "2026-08-31",
+      start_time: "06:40",
+      end_time: "07:05",
+      duration_min: 25,
+      derived_window: 1,
+    });
+  });
 });
 
-// ---- The lifecycle's edges (#3143 review round) ----------------------------
+// ---- The edges the lifecycle still loses (#3143 review round two) -----------
 //
-// Every case here was executable against the pre-fix tree and is the reason the
-// behaviour above changed. They share one fixture shape — a profile in a named zone,
-// a frozen instant, two taps — so the table is the difference between them.
+// Every case here was executed against `origin/main` at 1fb0be27 before the fix and is
+// the reason the behaviour above changed. The westward-zone case and the two burst
+// barriers already hold on main and are pinned there, so they are not repeated.
 describe("a live session survives the edges of its own day", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -907,14 +930,13 @@ describe("a live session survives the edges of its own day", () => {
     setTimezone(pid, "UTC");
     practiceTarget(pid, "Sauna", 3, null);
     vi.setSystemTime(new Date("2026-08-31T23:50:00Z"));
-    const started = startLivePracticeSession(pid, "Sauna", "page");
-    expect(started.kind).toBe("started");
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
 
     vi.setSystemTime(new Date("2026-09-01T00:10:00Z"));
-    const asOf = "2026-09-01";
-    // The sweep every page gather runs first must SPARE it: twenty minutes old is a
+    // The sweep every page gather runs FIRST must spare it: twenty minutes old is a
     // session, whatever day label it carries.
     expect(closeAbandonedPracticeSessions(pid)).toBe(0);
+    const asOf = "2026-09-01";
     // Both surfaces render the End button from `liveSession`. A row that answers
     // `ended` but shows no End button is a lifecycle nobody can finish.
     expect(getWellnessPractices(pid, asOf)[0].liveSession).toMatchObject({
@@ -927,34 +949,9 @@ describe("a live session survives the edges of its own day", () => {
     });
   });
 
-  it("derives the duration from the row's own start, not from its insert stamp", () => {
-    const pid = makeProfile("live-start-edit");
-    setTimezone(pid, "UTC");
-    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
-    const started = startLivePracticeSession(pid, "Sauna", "page");
-    expect(started.kind).toBe("started");
-    if (started.kind !== "started") return;
-    // The user corrects the start they actually began at, then ends.
-    expect(
-      updatePracticeSession(pid, started.session.id, {
-        date: "2026-08-31",
-        startTime: "07:00",
-        endTime: null,
-        durationMin: null,
-        notes: null,
-      })
-    ).toMatchObject({ kind: "updated", session: { live: 1 } });
-
-    vi.setSystemTime(new Date("2026-08-31T12:30:00Z"));
-    const ended = endLivePracticeSession(pid, started.session.id);
-    // THE WINDOW AND THE DURATION ARE ONE STATEMENT: `activityWindow` and the
-    // intraday chart read the window, every other reader reads the number.
-    expect(ended).toMatchObject({
-      kind: "ended",
-      session: { start_time: "07:00", end_time: "12:30", duration_min: 330 },
-    });
-  });
-
+  // The BOUND, which is what lets the two fixes above be safe: once the day
+  // comparison stops refusing, only a plausibility limit stands between a forgotten
+  // Start and a fabricated multi-day session.
   it("abandons a session left running past the plausibility bound", () => {
     const pid = makeProfile("live-stranded");
     setTimezone(pid, "UTC");
@@ -968,57 +965,13 @@ describe("a live session survives the edges of its own day", () => {
     expect(endLivePracticeSession(pid, started.session.id)).toEqual({
       kind: "not-live",
     });
-    const [row] = getPracticeSessions(pid, "Sauna");
-    expect(row).toMatchObject({
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
       date: "2026-08-30",
       start_time: "12:00",
       end_time: null,
       duration_min: null,
       live: 0,
     });
-  });
-
-  // The `live = 0` halves of the burst predicate, which the mutation round found
-  // unobserved: a running session is not a tap, in the reader and in the write.
-  it("keeps a running session out of the correction burst, both halves", () => {
-    const pid = makeProfile("live-not-a-tap");
-    setTimezone(pid, "UTC");
-    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
-    const started = startLivePracticeSession(pid, "Sauna", "page");
-    expect(started.kind).toBe("started");
-    if (started.kind !== "started") return;
-    expect(getRecentPracticeTaps(pid, new Date()).map((tap) => tap.id)).toEqual(
-      []
-    );
-    expect(
-      restampPracticeLogsCore(pid, started.session.id, () => new Date())
-    ).toEqual({ kind: "no-burst" });
-    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
-      start_time: "12:00",
-      live: 1,
-    });
-  });
-
-  it("closes a live row stranded in the future by a westward zone edit", () => {
-    const pid = makeProfile("live-zone-edit");
-    setTimezone(pid, "Asia/Tokyo");
-    vi.setSystemTime(new Date("2026-08-31T15:30:00Z")); // 2026-09-01 00:30 in Tokyo
-    const started = startLivePracticeSession(pid, "Sauna", "page");
-    expect(started).toMatchObject({
-      kind: "started",
-      session: { date: "2026-09-01", startTime: "00:30" },
-    });
-    if (started.kind !== "started") return;
-
-    // Same instant, new zone: the row is now dated in the FUTURE relative to the
-    // profile's local day, which the day-comparison sweep could not see.
-    setTimezone(pid, "America/Los_Angeles");
-    expect(closeAbandonedPracticeSessions(pid)).toBe(1);
-    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
-    const [row] = getPracticeSessions(pid, "Sauna").filter(
-      (session) => session.id === started.session.id
-    );
-    expect(row).toMatchObject({ live: 0, end_time: null, duration_min: null });
   });
 });
 
@@ -1031,7 +984,6 @@ describe("a just-finished tap states the day it was tapped on", () => {
   it("files a post-midnight tap on today, not on the day the derived start lands", () => {
     const pid = makeProfile("finished-midnight");
     setTimezone(pid, "UTC");
-    const target = practiceTarget(pid, "Sauna", 3, null);
     vi.setSystemTime(new Date("2026-09-01T00:20:00Z"));
     expect(logFinishedPracticeSession(pid, "Sauna", "page", 45)).toMatchObject({
       kind: "logged",
@@ -1040,11 +992,9 @@ describe("a just-finished tap states the day it was tapped on", () => {
     });
     expect(getPracticeDayCount(pid, "Sauna", "2026-09-01")).toBe(1);
     expect(getPracticeDayCount(pid, "Sauna", "2026-08-31")).toBe(0);
-    expect(target).toBeGreaterThan(0);
     // The only OBSERVED instant is the end. A start that would land on another day
     // cannot be stated by a row that carries one date, so it is not invented.
-    const [row] = getPracticeSessions(pid, "Sauna");
-    expect(row).toMatchObject({
+    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
       date: "2026-09-01",
       start_time: null,
       end_time: "00:20",
@@ -1075,8 +1025,7 @@ describe("a just-finished tap states the day it was tapped on", () => {
     setTimezone(pid, "UTC");
     const target = practiceTarget(pid, "Sauna", 3, null);
     vi.setSystemTime(new Date("2026-09-01T12:00:00Z"));
-    const started = startLivePracticeSession(pid, "Sauna", "page");
-    expect(started.kind).toBe("started");
+    expect(startLivePracticeSession(pid, "Sauna", "page").kind).toBe("started");
 
     vi.setSystemTime(new Date("2026-09-01T12:30:00Z"));
     expect(
@@ -1103,106 +1052,16 @@ describe("a just-finished tap states the day it was tapped on", () => {
       kind: "logged",
       date: "2026-09-01",
     });
-    const rows = getPracticeSessions(pid, "Sauna");
-    expect(rows).toHaveLength(2);
     // The abandoned row keeps exactly what was observed; the tap states its own window.
-    expect(rows.map((row) => [row.start_time, row.end_time, row.live])).toEqual(
-      [
-        ["11:45", "12:00", 0],
-        ["02:00", null, 0],
-      ]
-    );
-  });
-});
-
-describe("the card and the sheet answer one duration question", () => {
-  it("agrees past the vote's bound, where a single session cannot look", () => {
-    const pid = makeProfile("duration-vote-bound");
-    const t = today(pid);
-    practiceTarget(pid, "Sauna", 3, null);
-    // 26 ten-minute sessions under 25 twenty-minute ones: the older tens win a vote
-    // taken over EVERY row, the newer twenties win one bounded at 50.
-    for (let i = 0; i < 26; i += 1)
-      logPracticeSession(pid, "Sauna", shiftDateStr(t, -60 + i), "page", {
-        durationMin: 10,
-      });
-    for (let i = 0; i < 25; i += 1)
-      logPracticeSession(pid, "Sauna", shiftDateStr(t, -25 + i), "page", {
-        durationMin: 20,
-      });
-    expect(getWellnessPractices(pid)[0].previousDurationMin).toBe(
-      getTrackedPractices(pid)[0].previousDurationMin
-    );
-  });
-});
-
-describe("a hand-corrected window is the form's, whatever wrote the row (#3142)", () => {
-  it("drops an edited Telegram window out of the burst it was in", () => {
-    const pid = makeProfile("edited-window");
-    const t = today(pid);
-    const target = practiceTarget(pid, "Sauna", 3, null);
     expect(
-      logFinishedPracticeByTargetId(pid, target, "telegram-nudge")
-    ).toMatchObject({ kind: "logged" });
-    const id = Number(
-      (
-        db
-          .prepare(
-            "SELECT id FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
-          )
-          .get(pid) as { id: number }
-      ).id
-    );
-    // Untouched, it is a tap row: the chips own it.
-    expect(getRecentPracticeTaps(pid).map((tap) => tap.id)).toContain(id);
-
-    expect(
-      updatePracticeSession(pid, id, {
-        date: t,
-        startTime: "19:00",
-        endTime: "20:00",
-        durationMin: 60,
-        notes: null,
-      })
-    ).toMatchObject({ kind: "updated" });
-    // Stated by hand, so the form owns it — the reader and the write agree.
-    expect(getRecentPracticeTaps(pid).map((tap) => tap.id)).not.toContain(id);
-    expect(restampPracticeLogsCore(pid, id, () => new Date())).toEqual({
-      kind: "no-burst",
-    });
-    expect(getPracticeSessions(pid, "Sauna")[0]).toMatchObject({
-      start_time: "19:00",
-      end_time: "20:00",
-    });
-  });
-
-  // THE CONVERSE, and the reason the exclusion tests `edited` rather than setting it:
-  // a chip does not restate a chat row's window, so the row it just moved stays in its
-  // own burst — which is what keeps repeat taps composing (#2206) and keeps the
-  // statement of record on the message that produced it (#3010).
-  it("keeps a chip-corrected Telegram row in its burst, and retires the hint", () => {
-    const pid = makeProfile("chip-corrected-window");
-    const target = practiceTarget(pid, "Sauna", 3, null);
-    expect(
-      logFinishedPracticeByTargetId(pid, target, "telegram-nudge")
-    ).toMatchObject({ kind: "logged" });
-    const id = Number(
-      (
-        db
-          .prepare(
-            "SELECT id FROM practice_logs WHERE profile_id = ? ORDER BY id DESC LIMIT 1"
-          )
-          .get(pid) as { id: number }
-      ).id
-    );
-    const back15 = () =>
-      restampPracticeLogsCore(pid, id, (row) =>
-        row.statedAt ? new Date(Date.parse(row.statedAt) - 15 * 60_000) : null
-      );
-    expect(back15()).toEqual({ kind: "restamped", count: 1 });
-    expect(getRecentPracticeTaps(pid).map((tap) => tap.id)).toContain(id);
-    expect(back15()).toEqual({ kind: "restamped", count: 1 });
-    // The chat correction still reaches the cross-domain hint's retirement gate.
-    expect(hasCorrectedAnyTime(pid)).toBe(true);
+      getPracticeSessions(pid, "Sauna").map((row) => [
+        row.start_time,
+        row.end_time,
+        row.live,
+      ])
+    ).toEqual([
+      ["11:45", "12:00", 0],
+      ["02:00", null, 0],
+    ]);
   });
 });

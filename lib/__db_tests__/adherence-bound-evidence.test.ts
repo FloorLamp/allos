@@ -38,11 +38,11 @@
 //     notifications/intake.ts:280→:366; rule-findings.ts:1544→:1578 (this change).
 //   own unbounded MIN(l.date), hand-built — usual-routine.ts:249→:273. Correct: it
 //     draws no window, so it has nothing to union the lifetime half against.
-//   getIntakeLogsInRange — sleep.ts:423→:466, and NOT an instance of this defect: its
-//     index answers only window-local taken/skipped questions and its bound is
-//     `doseExistsSince`, the UN-widened one, by the deliberate #1972/#1973 rule that a
-//     logged night renders on the strength of its log alone. Whether that bound should
-//     widen too is a question about bedtime history, filed rather than settled here.
+//   getIntakeLogsInRange — sleep.ts:425→:468. Its index answers the window-local
+//     taken/skipped question AND widens the same existence bound: the owner ruling in
+//     #4023 accepts that an unlogged night after a backfilled proof can read as missed,
+//     so one item has one existence answer everywhere. #1972's separate protection of
+//     logged nights remains in bedtimeDoseDisposition.
 //
 // Runs via `npm run test:db` (vitest.db.config.ts).
 

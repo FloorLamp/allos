@@ -63,18 +63,8 @@ const DOSE_CORRECTION_STMT = hoistedStatement(
     LIMIT 1`
 );
 
-// TWO SHAPES, ONE QUESTION. A practice row's stated anchor is its start — except a
-// Telegram just-finished acknowledgement, whose tap stated its END and whose chips move
-// that end (`getRecentPracticeTaps`). The `edited` mark answers the first shape only:
-// on the second it is the correction burst's own exclusion test, so a chip must leave
-// it alone (`restampPracticeLogsCore` says why) and this probe cannot lean on it. For
-// that shape the END having moved off the tap IS the correction, which is what the
-// comparison below measures — so a chat correction still retires the hint.
 const PRACTICE_CORRECTION_STMT = hoistedStatement(
-  `SELECT date, start_time, end_time, logged_via, edited, created_at
-     FROM practice_logs
-    WHERE profile_id = ?
-      AND (start_time IS NOT NULL OR end_time IS NOT NULL)`
+  `SELECT date, start_time, created_at FROM practice_logs WHERE profile_id = ? AND edited = 1 AND start_time IS NOT NULL`
 );
 
 export function hasCorrectedFoodTime(profileId: number): boolean {
@@ -89,25 +79,12 @@ export function hasCorrectedPracticeTime(profileId: number): boolean {
   const tz = getTimezone(profileId);
   const rows = PRACTICE_CORRECTION_STMT.all(profileId) as Array<{
     date: string;
-    start_time: string | null;
-    end_time: string | null;
-    logged_via: string | null;
-    edited: number | null;
+    start_time: string;
     created_at: string;
   }>;
   return rows.some((row) => {
-    const chatFinished =
-      row.end_time != null &&
-      (row.logged_via === "telegram-nudge" ||
-        row.logged_via === "telegram-command");
-    if (!chatFinished && (row.edited !== 1 || row.start_time == null))
-      return false;
     const tap = recordInstant("practice_logs", row);
-    const stated = eventInstant(
-      "practice_logs",
-      chatFinished ? { ...row, start_time: row.end_time } : row,
-      tz
-    );
+    const stated = eventInstant("practice_logs", row, tz);
     if (!tap.known || !stated.known) return false;
     return (
       Math.abs(Date.parse(stated.at) - Date.parse(tap.at)) > CORRECTED_MARK_MS

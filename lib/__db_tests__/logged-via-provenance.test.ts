@@ -237,8 +237,9 @@ describe("the chat surfaces, driven through their real handlers", () => {
     await handleCallbackQuery(cq(`pdone:${p.profileId}:${nudged}:n1`));
     expect(practiceRow("lv nudge practice")?.logged_via).toBe("telegram-nudge");
     expect(practiceRow("lv nudge practice")).toMatchObject({
-      duration_min: 20,
+      start_time: null,
       end_time: expect.any(String),
+      duration_min: null,
     });
 
     await handleCallbackQuery(cq(`plog:${p.profileId}:${listed}:n2`));

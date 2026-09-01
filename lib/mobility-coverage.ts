@@ -53,7 +53,7 @@ function inWindow(date: string, today: string, windowDays: number): boolean {
 export function mobilityRegionDays(
   sessions: MobilitySessionInput[],
   today: string,
-  windowDays = 7
+  windowDays: number
 ): Map<MuscleRegion, Set<string>> {
   const out = new Map<MuscleRegion, Set<string>>();
   for (const s of sessions) {
@@ -77,7 +77,7 @@ export function mobilityRegionDays(
 export function mobilityMuscleDays(
   sessions: MobilitySessionInput[],
   today: string,
-  windowDays = 7
+  windowDays: number
 ): Map<MuscleId, Set<string>> {
   const out = new Map<MuscleId, Set<string>>();
   for (const s of sessions) {
@@ -122,7 +122,7 @@ const REGION_ORDER: MuscleRegion[] = [
 export function mobilityCoverageStrip(
   sessions: MobilitySessionInput[],
   today: string,
-  windowDays = 7
+  windowDays: number
 ): MobilityCoverageRow[] {
   const days = mobilityRegionDays(sessions, today, windowDays);
   return REGION_ORDER.map((region) => {

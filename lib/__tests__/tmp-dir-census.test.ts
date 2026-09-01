@@ -305,11 +305,6 @@ describe("the census walk reaches a planted offender", () => {
       stdio: ["ignore", "pipe", "pipe"],
     });
   };
-  const offenders = (): string[] =>
-    findRawTmpCallSites(scannedSources(base), ALLOWED)
-      .map((s) => s.file)
-      .sort();
-
   beforeAll(() => {
     execFileSync("git", ["init", "-q", base], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -322,55 +317,28 @@ describe("the census walk reaches a planted offender", () => {
     fs.rmSync(base, { recursive: true, force: true });
   });
 
-  it("reads the seeded corpus and finds nothing in it", () => {
-    expect(
-      scannedSources(base)
-        .map((s) => s.file)
-        .sort(),
-      "The walk did not read back the corpus this test wrote to disk. Every reading " +
-        "below would then be empty and they would all agree, which is the shape of a " +
-        "walk that has stopped walking — not of a passing test."
-    ).toEqual([...SEEDED_SOURCES].sort());
-    expect(offenders()).toEqual([]);
-  });
-
-  it("flags an offender planted in each scanned root", () => {
+  it("reads its corpus, then finds every planted root and extension", () => {
     // In a SUBDIRECTORY, so finding it also proves the walk recurses rather than
     // reading one directory's entries. The extension per root is the one that root
     // really holds — `components/__tests__/` is `.tsx`, `e2e/` helpers are `.mjs`,
     // and both were outside the census entirely until 2026-08-23.
-    const planted = [
+    const roots = [
       "lib/__tests__/__planted__/zz-planted.test.ts",
       "lib/__db_tests__/__planted__/zz-planted.test.ts",
       "lib/__action_tests__/__planted__/zz-planted.test.ts",
       "components/__tests__/__planted__/zz-planted.test.tsx",
       "e2e/__planted__/zz-planted.mjs",
     ];
-    for (const rel of planted) write(rel, OFFENDER);
-    track();
+    for (const rel of roots) write(rel, OFFENDER);
 
-    expect(
-      offenders(),
-      "The census did not see files written to disk inside its scanned roots. The " +
-        "matcher's own tests cannot tell you this: it is the WALK that failed — a " +
-        "root it does not enter, a subdirectory it does not recurse into, or an " +
-        "extension it no longer reads."
-    ).toEqual([...planted].sort());
-
-    // And the finding is additive, not a rewrite: removing the plants returns the
-    // corpus to clean, which is what makes the reading above mean something.
-    for (const rel of planted) fs.rmSync(path.join(base, rel));
-    track();
-    expect(offenders()).toEqual([]);
-  });
-
-  it("reads every extension that can carry the call", () => {
     // A LITERAL list, deliberately not derived from `SCANNED_EXTENSIONS` — a loop
     // over the constant shrinks with the constant and stays green, which is the
     // exact defect this whole block exists to close.
     const exts = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
-    const planted = exts.map((ext) => `lib/__tests__/__planted__/zz-ext${ext}`);
-    for (const rel of planted) write(rel, OFFENDER);
+    const extensions = exts.map(
+      (ext) => `lib/__tests__/__planted__/zz-ext${ext}`
+    );
+    for (const rel of extensions) write(rel, OFFENDER);
     // Same construct, in a file the runtime never loads. It must stay unread.
     write(
       "lib/__tests__/__planted__/zz-ext.json",
@@ -378,18 +346,19 @@ describe("the census walk reaches a planted offender", () => {
     );
     track();
 
+    const sources = scannedSources(base);
     expect(
-      offenders(),
-      "An extension the test tiers can execute is outside the census. A leak written " +
-        "into that file is invisible, and nothing turns red."
-    ).toEqual([...planted].sort());
-
-    fs.rmSync(path.join(base, "lib/__tests__/__planted__"), {
-      recursive: true,
-      force: true,
-    });
-    track();
-    expect(offenders()).toEqual([]);
+      sources.map((s) => s.file).sort(),
+      "The walk did not read every seeded, rooted, and executable-extension source " +
+        "written to its corpus, or it admitted fixture data that cannot carry a call."
+    ).toEqual([...SEEDED_SOURCES, ...roots, ...extensions].sort());
+    expect(
+      findRawTmpCallSites(sources, ALLOWED)
+        .map((s) => s.file)
+        .sort(),
+      "The census missed a planted root or executable extension, or reported a clean " +
+        "seed/data file as an offender."
+    ).toEqual([...roots, ...extensions].sort());
   });
 });
 

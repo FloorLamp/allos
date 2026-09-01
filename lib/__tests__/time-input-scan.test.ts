@@ -223,11 +223,8 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
   [
     "components/practices/LogPracticeButton.tsx",
     {
-      mounts: false,
-      why:
-        "THE #3143 COUNTER-CASE: Start now and Just finished are explicit " +
-        "tap-instant statements, while a past/corrected window belongs to the " +
-        "separate detailed backfill form rather than a third quick intent",
+      mounts: true,
+      why: '"Happened earlier?" states the end of Just finished (#3273/#3143)',
     },
   ],
   [
