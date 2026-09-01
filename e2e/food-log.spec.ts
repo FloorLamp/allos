@@ -210,7 +210,7 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   // last quick row. The overflow is sectioned by tier, so rank is read off the attribute
   // rather than off DOM order.
   const more = page.getByTestId("food-more-groups");
-  await more.getByTestId("food-more-groups-summary").click();
+  await hydratedClick(page, more.getByTestId("food-more-groups-summary"));
   const overflow = more.locator('li[data-testid^="food-group-"]');
   await expect(overflow.first()).toBeVisible(); // first-ok: the disclosure's own rows, opened by this test
   const overflowRanks = await ranksIn(overflow);
