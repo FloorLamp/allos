@@ -350,9 +350,10 @@ const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
 // EMPTY — the only sanctioned waitForTimeout is the IRREDUCIBLE bounded absence-of-effect
 // proof, now carried by a same-line `waitfortimeout-ok: <why>` marker at each site (the
-// training-log-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
-// 6s-idle-poll ghost-toast probes), so it's excluded from the count and the allowlist is
-// empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. A NEW unmarked waitForTimeout fails CI.
+// training-log-provenance 700ms-autosave-must-not-fire probes), so it's excluded from
+// the count and the allowlist is empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. The
+// profile-switch toaster polls became identifiable GETs in #1878/#4592, so that spec
+// awaits the responses directly. A NEW unmarked waitForTimeout fails CI.
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {};
 
 // Frozen .first() offenders (per-file counts, `first-ok`-marked lines excluded)
