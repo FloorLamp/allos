@@ -16,6 +16,15 @@
 // keep real time. The seam NEVER monkey-patches global Date; timers and the runtime
 // keep the real clock.
 //
+// THAT LAST SENTENCE IS ABOUT THE SEAM, NOT ABOUT EVERY TEST TIER, and reading it as
+// both is a mistake this file has already caused. In the db and action tiers vitest
+// fakes global Date — see lib/__db_tests__/frozen-clock.ts (#4509) — so a spec there
+// sees a frozen Date AND a seam that agrees with it, because `now()` falls through to
+// `new Date()` whenever the override is unset. The seam still patches nothing; what
+// changed is what it is falling through TO. This is why `vi.setSystemTime` is the way
+// to pin a clock inside a test process and ALLOS_TEST_NOW is the way to pin one across
+// processes: the fake moves both halves, the env var moves only this one.
+//
 // ALLOS_TEST_NOW is a TEST HOOK, not an operator knob — it is intentionally absent
 // from .env.example. A boot-time warning (see lib/migrations/boot-tasks.ts) makes a
 // misconfigured production instance loudly visible.
