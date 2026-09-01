@@ -10,6 +10,7 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
+import WeightField from "@/components/vitals/WeightField";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -700,16 +701,10 @@ export default function MeasurementsQuickAdd({
         label={TREND_METRIC_META.weight.title}
         htmlFor="m-weight"
       >
-        <UnitSuffix suffix={weightUnit}>
-          <input
-            id="m-weight"
-            type="number"
-            step="0.1"
-            min="0"
-            name="weight"
-            className="input pr-12"
-          />
-        </UnitSuffix>
+        {/* THE DOMAIN'S ONE WEIGHT FIELD (#4424 ruling 5) — the pediatric label
+            lookup composes this same component, so a weight typed there and one
+            typed here are the same field rather than two arrangements of it. */}
+        <WeightField id="m-weight" unit={weightUnit} />
       </Field>
     ),
     bodyFat: (

@@ -1,36 +1,97 @@
 "use client";
+import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IconScale } from "@tabler/icons-react";
-import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
+import DateField from "@/components/DateField";
+import WeightField from "@/components/vitals/WeightField";
+import { useToast } from "@/components/Toast";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
+import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import { toKg } from "@/lib/units";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 
-// The dosing-weight update embedded in the pediatric label lookup, and since #4424
-// ruling 2 it DEFINES NO FIELDS: it mounts the body domain's one form, narrowed to the
-// weight it needs. It used to draw its own weight input, its own "Measured on" date,
-// its own range guard and its own never-the-future check, and post `addBodyMetric` —
-// a fourth spelling of a weight entry, and one that stated no time at all, so a
-// caregiver who weighed a child at 7am filed a reading with no minute on it.
+// The dosing-weight update embedded in the pediatric label lookup. Since #4424 it
+// DEFINES NO FIELDS OF ITS OWN — the number is `WeightField`, the day is the shared
+// `DateField` — and it posts `addMeasurements`, the one action every body sitting goes
+// through. It used to draw its own weight input with the unit in its LABEL, its own
+// never-the-future check, and `addBodyMetric`: a fourth body write action carrying a
+// strict subset of the same submission, which ruling 7 deletes.
 //
-// WHAT IS LEFT HERE IS THE ONLY PART THAT IS ABOUT MEDICATION: the disclosure, and
-// re-deriving the dose band from the weight that was just written. The form hands the
-// sitting's own canonical kilograms to `onSaved`, so this does not read the number
-// back out of a field it no longer owns.
-//
-// IT IS NOT A NESTED FORM. This sits BELOW `IntakeItemForm`'s `</form>` — the mount is
-// a sibling of that form, not a child of it — which is what makes mounting a component
-// that renders its own `<form>` legal here. The old comment claiming otherwise
-// described a placement that has not been true.
+// IT CANNOT MOUNT THE FORM ITSELF, and that is ruling 2's "mounts the shared body-metric
+// FIELD" rather than a shortcut. This renders inside `IntakeItemForm`'s `<form>` (its
+// `renderPanel()` output is part of that element), so a component that draws its own
+// `<form>` would be a nested one — the submit is then inert and the caregiver watches a
+// Save do nothing. Measured: mounting `MeasurementsQuickAdd` here reddened
+// e2e/medication-prefill.spec.ts three times out of three with the form still on screen
+// and the value still in it. Hence `type="button"` controls, a ref instead of a
+// `<form>`'s FormData, and the field composed rather than the whole form.
 export default function PediatricWeightUpdate({
+  idPrefix,
   context,
   initiallyOpen = false,
   onSaved,
 }: {
+  idPrefix: string;
   context: PediatricFormContext;
   initiallyOpen?: boolean;
   onSaved: (next: PediatricFormContext) => void;
 }) {
+  const toast = useToast();
   const [open, setOpen] = useState(initiallyOpen);
+  const weightRef = useRef<HTMLInputElement>(null);
+  const [date, setDate] = useState(context.today);
+  // The dosing-weight update, on whichever surface renders the item form (#3087).
+  const stampLoggedVia = useLoggedViaStamp();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setError(null);
+    const weight = weightRef.current?.value ?? "";
+    // The same pure guard the shared form runs before it posts: the write cores skip an
+    // out-of-range number in silence, which on its own reads as a save.
+    const validationError = validateBodyMetricInput({
+      weight,
+      bodyFatPct: null,
+      restingHr: null,
+    });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const formData = stampLoggedVia(new FormData());
+    formData.set("date", date);
+    formData.set("weight", weight);
+    formData.set("weight_unit", context.weightUnit);
+    setPending(true);
+    let saved;
+    try {
+      saved = await addMeasurements(formData);
+    } catch {
+      setError("Couldn't update the weight. Try again.");
+      return;
+    } finally {
+      setPending(false);
+    }
+    // THE DAY BOUND IS THE ACTION'S NOW, not a second copy of it here (#4425): every
+    // body core refuses a day that has not happened, and this is that refusal reaching
+    // the caregiver instead of a Save that closes over nothing.
+    if (saved.dateRefused) {
+      setError("That date hasn't happened yet. Pick today or an earlier day.");
+      return;
+    }
+
+    onSaved({
+      ...context,
+      weightKg: toKg(Number(weight), context.weightUnit),
+      weightDate: date,
+    });
+    if (weightRef.current) weightRef.current.value = "";
+    setOpen(false);
+    toast("Weight updated");
+  }
 
   if (!open) {
     return (
@@ -47,30 +108,64 @@ export default function PediatricWeightUpdate({
   }
 
   return (
-    <div className="mt-2" data-testid="pediatric-weight-update">
-      <MeasurementsQuickAdd
-        defaultDate={context.today}
-        maxDate={context.today}
-        weightUnit={context.weightUnit}
-        metric={{ key: "weight", label: "Weight" }}
-        presentation="modal"
-        onSaved={(saved) => {
-          setOpen(false);
-          if (saved.weightKg == null) return;
-          onSaved({
-            ...context,
-            weightKg: saved.weightKg,
-            weightDate: saved.date,
-          });
-        }}
-      />
-      <button
-        type="button"
-        className="btn-ghost btn-sm mt-2"
-        onClick={() => setOpen(false)}
-      >
-        Cancel
-      </button>
+    <div
+      className="mt-2 grid gap-2 sm:grid-cols-2"
+      data-testid="pediatric-weight-update"
+    >
+      <div>
+        <label className="label" htmlFor={`${idPrefix}-weight`}>
+          Weight ({context.weightUnit})
+        </label>
+        <WeightField
+          id={`${idPrefix}-weight`}
+          unit={context.weightUnit}
+          inputRef={weightRef}
+          testId="pediatric-weight-input"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="label" htmlFor={`${idPrefix}-weight-date`}>
+          Measured on
+        </label>
+        <DateField
+          id={`${idPrefix}-weight-date`}
+          data-testid="pediatric-weight-date"
+          value={date}
+          onChange={setDate}
+          max={context.today}
+          required
+        />
+      </div>
+      <div className="flex items-center gap-1.5 sm:col-span-2">
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={pending}
+          onClick={() => void save()}
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost btn-sm"
+          disabled={pending}
+          onClick={() => {
+            setOpen(false);
+            setError(null);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      {error ? (
+        <p
+          role="alert"
+          className="text-xs text-rose-600 sm:col-span-2 dark:text-rose-400"
+        >
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

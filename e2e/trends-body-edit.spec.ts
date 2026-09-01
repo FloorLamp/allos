@@ -221,8 +221,11 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
     await expect(solo).toHaveCount(1);
     // The save above toasted into the bottom-right, where this table's actions column
     // and its portaled menu panel live — the DB read in between is far too fast to
-    // absorb the 6s auto-dismiss (#2861).
-    await dismissToast(page, "Weight updated.");
+    // absorb the 6s auto-dismiss (#2861). The sentence belongs to the shared row
+    // control since #4424 ruling 3, so it is the same one whichever surface corrected
+    // the reading — this dialog and the metric detail page used to round one write two
+    // ways ("Weight updated." here, "Reading updated." there).
+    await dismissToast(page, "Reading updated.");
     await hydratedClick(page, solo.getByTestId("overflow-menu-trigger"));
     await expect(page.getByTestId("body-history-edit-weight_kg")).toBeVisible();
     await expect(

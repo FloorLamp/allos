@@ -157,7 +157,7 @@ describe("one form, one field set (#4424 ruling 1)", () => {
   });
 });
 
-describe("the pediatric label lookup mounts that form (#4424 ruling 2)", () => {
+describe("the pediatric label lookup composes the shared field (#4424 ruling 2)", () => {
   const CONTEXT: PediatricFormContext = {
     ageMonths: 40,
     weightKg: null,
@@ -166,26 +166,39 @@ describe("the pediatric label lookup mounts that form (#4424 ruling 2)", () => {
     today: "2026-05-20",
   };
 
-  it("defines no fields of its own and hands back the sitting's canonical kg", async () => {
+  // IT CANNOT MOUNT THE WHOLE FORM, because it renders inside `IntakeItemForm`'s own
+  // `<form>` — so what it composes is the FIELD, and what it posts is the measurements
+  // action rather than a body-shaped one of its own. Both halves are asserted here:
+  // the field is the shared component (same `name`, same trailing unit, no unit in the
+  // input's own accessible name), and the payload reaches `addMeasurements`.
+  it("composes the shared field and posts the measurements action", async () => {
     const saved: PediatricFormContext[] = [];
     render(
       <PediatricWeightUpdate
+        idPrefix="ped"
         context={CONTEXT}
         initiallyOpen
         onSaved={(next) => saved.push(next)}
       />
     );
-    // The mount, not a copy: everything enterable here belongs to the shared form.
-    expect(screen.getByTestId("measurements-quick-add")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Weight"), {
+    // NOT A NESTED FORM: this host draws none, which is what makes its Save work
+    // inside the medication form it sits in.
+    expect(
+      screen.getByTestId("pediatric-weight-update").querySelector("form")
+    ).toBeNull();
+    fireEvent.change(screen.getByTestId("pediatric-weight-input"), {
       target: { value: "16.8" },
     });
     await act(async () =>
-      fireEvent.submit(screen.getByTestId("measurements-quick-add"))
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
     );
-    expect(posted.addMeasurements[0].get("weight")).toBe("16.8");
-    // The dose band is re-derived from what was WRITTEN, in canonical kilograms, so
-    // this host does not keep a second copy of the field to read the number back out.
+    const fd = posted.addMeasurements[0];
+    expect([fd.get("weight"), fd.get("weight_unit"), fd.get("date")]).toEqual([
+      "16.8",
+      "kg",
+      "2026-05-20",
+    ]);
+    // The dose band is re-derived from what was WRITTEN, in canonical kilograms.
     expect(saved).toEqual([
       { ...CONTEXT, weightKg: 16.8, weightDate: "2026-05-20" },
     ]);

@@ -186,22 +186,20 @@ test("a pediatric formulation persists from quick add to the medication list", a
     // dose to work the weight band, and the formulation is the chip row above it.
     await openFact(page, "dose", panel);
 
-    // The label lookup can record a fresh measurement in place. Since #4424 ruling 2 it
-    // MOUNTS THE BODY DOMAIN'S ONE FORM rather than drawing a fourth weight field of
-    // its own, narrowed to the weight it needs — so the field, the date and the Save
-    // are the measurements form's, it writes through `addMeasurements` in this login's
-    // preferred unit (kg for this fixture), and the recorded marker then moves to the
-    // new label band.
+    // The label lookup can record a fresh measurement in place. Since #4424 ruling 2 the
+    // number is the body domain's shared `WeightField` and the write is
+    // `addMeasurements` — the one action every body sitting posts — in this login's
+    // preferred unit (kg for this fixture); the recorded marker then moves to the new
+    // label band.
     await quickAdd.getByTestId("pediatric-weight-update-open").click();
     const weightUpdate = quickAdd.getByTestId("pediatric-weight-update");
+    await expect(weightUpdate.getByLabel("Weight (kg)")).toBeVisible();
+    await expect(weightUpdate.getByLabel("Measured on")).not.toHaveValue("");
+    await weightUpdate.getByLabel("Weight (kg)").fill("10");
+    await weightUpdate.getByRole("button", { name: "Save" }).click();
     await expect(
-      weightUpdate.getByTestId("measurements-quick-add")
+      page.getByText("Weight updated", { exact: true })
     ).toBeVisible();
-    await expect(weightUpdate.getByLabel("Weight")).toBeVisible();
-    await expect(weightUpdate.getByTestId("m-date")).not.toHaveValue("");
-    await weightUpdate.getByLabel("Weight").fill("10");
-    await weightUpdate.getByRole("button", { name: "Save weight" }).click();
-    await expect(page.getByText("Weight saved", { exact: true })).toBeVisible();
     await expect(weightUpdate).toHaveCount(0);
 
     // 10 kg ≈22 lb, below this committed label chart's first 24-lb band. This is a
@@ -235,10 +233,8 @@ test("a pediatric formulation persists from quick add to the medication list", a
     // exercise the resolved state as before.
     await quickAdd.getByTestId("pediatric-weight-update-open").click();
     const secondWeightUpdate = quickAdd.getByTestId("pediatric-weight-update");
-    await secondWeightUpdate.getByLabel("Weight").fill("16.8");
-    await secondWeightUpdate
-      .getByRole("button", { name: "Save weight" })
-      .click();
+    await secondWeightUpdate.getByLabel("Weight (kg)").fill("16.8");
+    await secondWeightUpdate.getByRole("button", { name: "Save" }).click();
     await expect(secondWeightUpdate).toHaveCount(0);
 
     // The formulation is a derived CHIP ROW beside the kind, not a select buried in

@@ -555,10 +555,16 @@ export const LOG_MANIFEST = {
     },
     pieces: {
       // #4424's body leg. `MeasurementsQuickAdd` is the form at every mount — the
-      // Trends panel, a metric detail page, the quick-log sheet, the record's add door
-      // and the pediatric label lookup — and `measurementsQuickEntry` is the ONE reader
-      // that answers what it needs on a given day, so a mount SPREADS that shape rather
-      // than listing seven props and quietly listing six.
+      // Trends panel, a metric detail page, the quick-log sheet and the record's add
+      // door — and `measurementsQuickEntry` is the ONE reader that answers what it
+      // needs on a given day, so a mount SPREADS that shape rather than listing seven
+      // props and quietly listing six.
+      //
+      // THE PEDIATRIC LABEL LOOKUP COMPOSES THE FIELD, NOT THE FORM, and that is ruling
+      // 2's own wording rather than a shortfall: it renders inside `IntakeItemForm`'s
+      // `<form>`, so a component drawing its own would be a nested one and its Save
+      // would be inert. It mounts `WeightField` — the `TemperatureField` precedent,
+      // ruling 5 — and posts `addMeasurements` like every other body door.
       //
       // ADD AND EDIT ARE ONE LAYOUT AND ALSO ONE ACTION here, which is stronger than
       // ruling 1 asks for: `insertBodyMetric` is find-then-write per day, so a sitting
@@ -574,9 +580,9 @@ export const LOG_MANIFEST = {
       // THIRD weight form, not the fourth: the count reached four by including the
       // one-field row edit, which ruling 3 classes as row-control-grade and which edits
       // any metric's value rather than a weight. The door's three measures,
-      // `PediatricWeightUpdate`'s field set and `addBodyMetric` — a fourth body write
-      // action carrying a strict subset of `addMeasurements` — are all deleted, and the
-      // palette posts the measurements action.
+      // `PediatricWeightUpdate`'s hand-drawn weight input and `addBodyMetric` — a fourth
+      // body write action carrying a strict subset of `addMeasurements` — are all
+      // deleted, and the palette posts the measurements action.
       //
       // THE ROW CONTROL HAD THREE IMPLEMENTATIONS, not the one the cell named: the
       // readings-table cell, `/history`'s `case "body"` correction form, and
