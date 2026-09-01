@@ -3,9 +3,6 @@ import {
   IconTrendingUp,
   IconMinus,
   IconPill,
-  IconAlarm,
-  IconCalendarEvent,
-  IconCheck,
   IconVirus,
   IconBarbell,
   IconChecklist,
@@ -22,11 +19,9 @@ import {
 } from "@/components/dashboard/HealthspanPillarPresentation";
 import type { PillarTone } from "@/lib/longevity-pillars";
 import type { AvatarProfile } from "@/components/Avatar";
-import DoseConfirmButton from "@/components/DoseConfirmButton";
 import {
   openProfileAction,
-  confirmDoseAction,
-  undoConfirmDoseAction,
+  openMemberDayAction,
   openMemberSetupAction,
   dismissMemberSetupAction,
 } from "@/app/(app)/household/actions";
@@ -35,44 +30,41 @@ import type {
   HouseholdSetupRow,
 } from "@/lib/household-setup";
 import type { FindingTone } from "@/lib/findings";
-import { aggregateLabel, planBandRender } from "@/lib/upcoming-aggregate";
-import type { UpcomingItem } from "@/lib/upcoming";
 import { fmtWeight } from "@/lib/units";
-import { subjectActionLabel } from "@/lib/own-profile";
-import { upcomingDueText } from "@/lib/upcoming";
-import { type DisplayFormatPrefs } from "@/lib/format-date";
-import type { HouseholdRollup } from "@/lib/queries";
+import type { RecentChangeRender } from "@/lib/recent-changes";
 import type { WeightUnit } from "@/lib/settings";
 import type { Adherence, GoalHighlight, WeightTrend } from "@/lib/household";
-import Disclosure from "@/components/Disclosure";
 
 // One compact, at-a-glance card per profile on the household dashboard (issue
-// #31). The header is a submit button bound to openProfileAction — one click
-// switches the session's active profile to this person and opens their dashboard —
-// while the actionable rollup below carries its OWN per-dose confirm forms
-// (confirmDoseAction) so a caregiver can check off a due dose for this profile
-// WITHOUT switching to it. Presentational only: the page assembles every value
-// (via the pure lib/household helpers + collectHouseholdRollup over per-profile
-// queries) and passes display-ready data; the confirm buttons only render when the
-// caller holds WRITE on this profile (the server action re-checks regardless).
+// #31), sharpened by #1463 into the family STATUS BOARD: status strip, then the
+// member's 7-day recent-changes digest, then one link out to where the work is done.
+// The header is a submit button bound to openProfileAction — one click switches the
+// session's active profile to this person and opens their dashboard.
+//
+// IN-APP ACTIONS ARE CEDED, NOT LOST (#1463 §1, owner-approved 2026-07-25). The card
+// used to carry per-dose confirm forms and the actionable rollup list; Upcoming
+// multi-view owns cross-profile in-app actions now (its rows carry the subject-gated
+// "Mark taken" over the same markDoseTaken), and #1459 owns the away-from-app dose
+// moment. A card is a summary, not a second action surface — so what stands here is
+// the attention COUNT and its link, not the rows.
+//
+// Presentational only: the page assembles every value (the pure lib/household helpers,
+// collectHouseholdRollup for the count, and collectRecentChanges for the digest) and
+// passes display-ready data.
 export interface HouseholdCardData {
   profile: AvatarProfile;
-  // The caller's access to THIS profile: gates whether quick-action buttons render.
+  // The caller's access to THIS profile: gates the setup row's dismiss.
   canWrite: boolean;
-  // The subject NAME to stamp on this card's write affordance ("Confirm — Mia"), or
-  // null when the write goes to the login's OWN profile / no own-profile is set
-  // (issue #1013). Resolved server-side (writeSubjectName over the scope's ownProfileId
-  // vs THIS card's profile) so a caregiver's dose confirm names the card's person,
-  // never the viewer.
-  subjectName: string | null;
-  // Today's attention items (due doses / low refills / next visit) for this profile.
-  rollup: HouseholdRollup;
-  // This profile's "today" (resolved in its timezone) — for the appointment due-text.
-  today: string;
-  // The VIEWING login's date shape (#964). The appointment due-text prints a calendar
-  // date once the visit is past this week (#2579-B), and a rendered date follows the
-  // reader's prefs — the profile owns the clock, the login owns the shape.
-  formatPrefs: DisplayFormatPrefs;
+  // The member's 7-DAY DIGEST, straight off the shipped collector (#1463 §2 /
+  // lib/recent-changes.ts) — already ranked, already capped, already masked, and
+  // already worded, because §3 puts masking inside the collector so no formatter can
+  // forget it. `lines` is the capped set with the "+N more this week" line appended
+  // LAST when `overflow > 0`, which is the only line this card turns into a link.
+  recent: RecentChangeRender;
+  // How many attention items this member has today (due doses + low refills + the
+  // soonest visit), counted off the SAME collectHouseholdRollup aggregation the card
+  // used to render as rows. Zero renders nothing.
+  attention: number;
   adherence: Adherence;
   // The pushed tier's state-change headline (#1505 part 3) — "Missed: Magnesium
   // (3 days)" — preformatted by the ONE shared `intakeDeltaLine` the morning digest
@@ -154,213 +146,89 @@ function Stat({
   );
 }
 
-// A single attention row: an icon, the item's title + optional detail, and an
-// optional trailing action (the dose confirm button).
-function AttentionRow({
-  Icon,
-  title,
-  titleFull,
-  detail,
-  action,
-  testid,
+// THE WEEK'S DIGEST (#1463 §1 item 2 / §2). Pure formatting over the shipped
+// collector: `lines` arrives ranked, capped and masked, so this renders it and adds
+// nothing. The card mints no wording of its own — the same rule that already sends
+// `intakeDeltaLine` here from the one shared formatter the morning digest renders.
+//
+// THE OVERFLOW LINE IS THE LAST ONE, and it is the only one that links. `renderRecentChanges`
+// appends "+N more this week" after the capped set precisely when `overflow > 0`, so
+// the split below reads the contract rather than re-deriving the cap.
+//
+// AND IT LINKS THROUGH A PROFILE SWITCH, not directly. #1329 took `?subject=` out of the
+// URL grammar for good — "reading a member's day means switching to them" — so a bare
+// `/history?day=` from this card would silently show the VIEWER's day instead of the
+// member's, failing in the reassuring direction. The form posts the member and nothing
+// else; `openMemberDayAction` resolves their day in THEIR timezone server-side.
+function RecentDigest({
+  recent,
+  profileId,
 }: {
-  Icon: typeof IconPill;
-  title: string;
-  // The unabbreviated form when `title` is a curated short name (#2858) — the
-  // value disclosed beside the truncating line, so the whole name is retrievable on
-  // a row that has no link of its own. Absent when the title is already complete.
-  titleFull?: string;
-  detail?: string | null;
-  action?: React.ReactNode;
-  testid?: string;
+  recent: RecentChangeRender;
+  profileId: number;
 }) {
+  const overflowing = recent.overflow > 0;
+  const shown = overflowing ? recent.lines.slice(0, -1) : recent.lines;
+  const overflowLine = overflowing ? recent.lines[recent.lines.length - 1] : null;
+
   return (
-    <div className="flex items-center gap-2" data-testid={testid}>
-      <Icon
-        className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-        stroke={1.75}
-        aria-hidden="true"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center text-sm font-medium text-slate-700 dark:text-slate-200">
-          <span className="truncate">{title}</span>
-          {titleFull ? <InfoTooltipIcon label={titleFull} /> : null}
+    <div
+      className="mt-4 space-y-1.5 border-t border-black/5 pt-3 dark:border-white/5"
+      data-testid="household-digest"
+    >
+      <div className="section-label">This week</div>
+      {shown.length === 0 ? (
+        // A quiet week says so once. The surface never manufactures news to fill
+        // space — the same rule the collector follows when it returns no lines.
+        <div
+          className="text-sm text-slate-500 dark:text-slate-400"
+          data-testid="household-digest-quiet"
+        >
+          Nothing new this week.
         </div>
-        {detail && (
-          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {detail}
+      ) : (
+        shown.map((line) => (
+          <div
+            key={line}
+            className="truncate text-sm text-slate-700 dark:text-slate-200"
+            data-testid="household-digest-line"
+          >
+            {line}
           </div>
-        )}
-      </div>
-      {action}
+        ))
+      )}
+      {overflowLine && (
+        <form action={openMemberDayAction}>
+          <input type="hidden" name="profileId" value={profileId} />
+          <button
+            type="submit"
+            data-testid="household-digest-more"
+            className="inline-flex items-center gap-1 text-xs text-link focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            {overflowLine}
+            <DestinationIndicator />
+          </button>
+        </form>
+      )}
     </div>
   );
 }
 
-// One due-dose row. Split out of Attention so the fold below can render exactly the
-// same row inside its disclosure — folding is a RENDERING decision and identity is
-// not (#1496/#1504), so the confirm form, its ids and its outcome toast are unchanged
-// on either side of the summary.
-//
-// THE DETAIL LINE NAMES THE SLOT (#2615 item 2). A caregiver's card listed "Omega-3"
-// / "600 mg" twice in a row, once for the morning dose and once for the evening one,
-// with two identical Confirm buttons — the label must include the attribute that
-// actually distinguishes otherwise identical choices, and this row already knew it:
-// `dueText` is the dose's own bucket ("Morning", "Evening", "Morning · Mondays"),
-// formatted by the ONE `timeBucket`/`cadenceLabel` pair the Upcoming row, the digest
-// and the reminder all use. It leads the line because it is the distinguishing half.
-function DueDoseRow({
-  item,
-  profileId,
-  canWrite,
-  subjectName,
-}: {
-  item: UpcomingItem;
-  profileId: number;
-  canWrite: boolean;
-  subjectName: string | null;
-}) {
-  const detail =
-    [item.dueText, item.detail].filter(Boolean).join(" · ") || null;
-  // A caregiver's card is a GLANCE at up to a dozen of these rows, each one an
-  // icon + a truncating name + a Confirm button in a card-width column, so the name
-  // here is the control form (#2858) — the abbreviation buys the slot name beside it
-  // room to survive the truncation. The record's full name stays in the shared
-  // disclosure and the confirm's accessible name below; a medication is never shortened.
-  const shortTitle = item.shortLabel ?? item.title;
+// "N need attention → Upcoming" (#1463 §1 item 3). The COUNT, not the rows: Upcoming
+// multi-view is where a caregiver acts on another member's dose, and this is the door
+// to it. An ordinary link — /upcoming is the viewer's own page and needs no profile
+// switch to be honest, because the multi-view rows carry their own subject chips.
+function AttentionLink({ attention }: { attention: number }) {
+  if (attention === 0) return null;
   return (
-    <AttentionRow
-      Icon={IconPill}
-      title={shortTitle}
-      titleFull={shortTitle === item.title ? undefined : item.title}
-      detail={detail}
-      testid="household-due-dose"
-      action={
-        canWrite && item.doseId != null ? (
-          // Confirm this dose for THIS profile without switching to it —
-          // the hidden profileId targets the action at the card's profile.
-          // Rendered through the shared outcome-toast confirm (#2106), so a
-          // refusal (item paused, dose retired) is said out loud instead of
-          // the row silently re-rendering unchanged.
-          <DoseConfirmButton
-            action={confirmDoseAction}
-            // Act → toast → Undo (#2642). The undo re-runs this card's OWN gate on the
-            // member's profile and refuses the moment the day's ledger is no longer the
-            // single row this confirm wrote, so a caregiver takes back their own tap and
-            // never a second caregiver's.
-            undoAction={undoConfirmDoseAction}
-            fields={{ profileId, dose_id: item.doseId }}
-            testid="household-confirm-dose"
-            // The visible label stays short; the accessible name carries the same
-            // distinguishing attributes the detail line just gained, so two confirms
-            // on one card are never announced identically.
-            ariaLabel={subjectActionLabel(
-              `Confirm ${[item.title, detail].filter(Boolean).join(" · ")}`,
-              subjectName
-            )}
-          >
-            <IconCheck className="h-3.5 w-3.5" stroke={2} aria-hidden="true" />
-            {subjectActionLabel("Confirm", subjectName)}
-          </DoseConfirmButton>
-        ) : null
-      }
-    />
-  );
-}
-
-function Attention({ data }: { data: HouseholdCardData }) {
-  const { profile, canWrite, rollup, today, subjectName, formatPrefs } = data;
-  const { dueDoses, lowRefills, nextAppointment } = rollup;
-  const nothing =
-    dueDoses.length === 0 && lowRefills.length === 0 && !nextAppointment;
-  // The SAME fold decision the Upcoming page's band makes (#1504, #2615 item 2):
-  // this list ran twelve dose rows unrolled on a card whose whole job is a glance,
-  // while the page-side equivalent folded. `planBandRender` is that one decision —
-  // safety-pinned rows lead and never fold, a class under AGGREGATE_MIN_ROWS renders
-  // individually exactly as before, and the aggregate takes the position of the first
-  // row it folded. Reused rather than re-derived, so "when does a dose list fold" has
-  // one answer.
-  const doseNodes = planBandRender(dueDoses);
-
-  return (
-    <div className="mt-4 space-y-2 border-t border-black/5 pt-3 dark:border-white/5">
-      <div className="section-label">Attention today</div>
-      {nothing ? (
-        <div
-          className="text-sm text-slate-500 dark:text-slate-400"
-          data-testid="household-all-clear"
-        >
-          Nothing needs attention.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {doseNodes.map((node) =>
-            node.node === "item" ? (
-              <DueDoseRow
-                key={node.item.key}
-                item={node.item}
-                profileId={profile.id}
-                canWrite={canWrite}
-                subjectName={subjectName}
-              />
-            ) : (
-              // A plain <details>: no persisted state, collapsed on every visit, and
-              // the count is never hidden — the ALWAYS-PRESENT contract, not an
-              // always-full one.
-              <Disclosure
-                key={`aggregate:${node.kind}`}
-                data-testid="household-dose-aggregate"
-              >
-                <summary
-                  data-testid="household-dose-aggregate-summary"
-                  className="flex cursor-pointer list-none items-center gap-2 rounded-md py-0.5 transition hover:bg-slate-50 dark:hover:bg-ink-850"
-                >
-                  <IconPill
-                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                    stroke={1.75}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                    {aggregateLabel(node.kind, node.items.length)} due
-                  </span>
-                  <span className="shrink-0 whitespace-nowrap text-xs font-medium text-brand-700 dark:text-brand-400">
-                    <span className="group-open:hidden">Show</span>
-                    <span className="hidden group-open:inline">Hide</span>
-                  </span>
-                </summary>
-                <div className="mt-2 space-y-2 border-l-2 border-black/5 pl-2 dark:border-white/10">
-                  {node.items.map((item) => (
-                    <DueDoseRow
-                      key={item.key}
-                      item={item}
-                      profileId={profile.id}
-                      canWrite={canWrite}
-                      subjectName={subjectName}
-                    />
-                  ))}
-                </div>
-              </Disclosure>
-            )
-          )}
-          {lowRefills.map((item) => (
-            <AttentionRow
-              key={item.key}
-              Icon={IconAlarm}
-              title={item.title}
-              detail={item.detail}
-              testid="household-low-refill"
-            />
-          ))}
-          {nextAppointment && (
-            <AttentionRow
-              Icon={IconCalendarEvent}
-              title={nextAppointment.title}
-              detail={upcomingDueText(nextAppointment, today, formatPrefs)}
-              testid="household-next-appointment"
-            />
-          )}
-        </div>
-      )}
+    <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/5">
+      <DestinationLink
+        href="/upcoming"
+        data-testid="household-attention-link"
+        className="inline-flex items-center gap-1 text-sm text-link"
+      >
+        {attention} {attention === 1 ? "needs" : "need"} attention
+      </DestinationLink>
     </div>
   );
 }
@@ -484,6 +352,8 @@ function Setup({
 export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
   const {
     profile,
+    recent,
+    attention,
     adherence,
     intakeDeltaLine,
     lastActivity,
@@ -674,11 +544,13 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
         </div>
       )}
 
-      <Attention data={data} />
+      <RecentDigest recent={recent} profileId={profile.id} />
 
-      {/* Setup health sits BELOW today's attention on purpose: "what needs doing today"
-      leads, and "why this member may never be told" is the standing structural note
-      under it. */}
+      <AttentionLink attention={attention} />
+
+      {/* Setup health sits BELOW the week and the attention door on purpose: what
+      happened and what needs doing lead, and "why this member may never be told" is
+      the standing structural note under it. */}
       {setup && (
         <Setup setup={setup} profile={profile} canWrite={data.canWrite} />
       )}
