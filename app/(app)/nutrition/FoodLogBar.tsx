@@ -2047,7 +2047,6 @@ export default function FoodLogBar({
             date={activeDate}
             groups={dayLedger.groupsByDate[activeDate] ?? []}
             doseWritable={dayLedger.doseWritableDates.includes(activeDate)}
-            isToday={activeDate === today}
             prefs={dayLedger.prefs}
             keepApart={activeDate === today ? dayLedger.keepApart : []}
             dayContext={activeDate === today ? dayLedger.dayContext : null}

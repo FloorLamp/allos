@@ -1,22 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { IconCheck, IconPlayerTrackNext, IconPlus } from "@tabler/icons-react";
-import Button from "@/components/Button";
+import { IconPlus } from "@tabler/icons-react";
+import DoseStatusControl from "@/components/DoseStatusControl";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
-import { useWritePipeline } from "@/components/useWritePipeline";
-import {
-  DOSE_ACTION_BRAND,
-  DOSE_ACTION_ICON,
-  DOSE_ACTION_NEUTRAL,
-} from "@/components/medications/dose-action-styles";
-import { doseConfirmMessage, doseResolved } from "@/lib/dose-outcome-text";
 import { dosesPhrase } from "@/lib/usual-routine";
 import { TIME_BUCKET_LABELS, type TimeBucket } from "@/lib/intake-schedule";
-import { localDate } from "@/lib/offline/queue";
-import { markTaken } from "@/app/(app)/upcoming/actions";
 import type {
   QuickEntryDose,
   QuickEntryPastDay,
@@ -28,18 +19,21 @@ import type {
 // switcher (#3936).
 //
 // It is a thin LIST over existing write paths, not a new one. Today's rows come from
-// the same `collectDueDosesNow` computation the context chip reads and confirm through
-// the EXISTING `markTaken` action — the same idempotent markDoseTaken the Upcoming
-// page's inline form, the dashboard atom and the Telegram tap all go through. Nothing
-// here logs a dose itself.
+// the same `collectDueDosesNow` computation the context chip reads. Nothing here logs
+// a dose itself and nothing here draws a dose control: every row mounts
+// `DoseStatusControl`, the domain's one row control (#4424 ruling 3).
 //
-// **It never unconditionally confirms.** `markTaken` returns markDoseTaken's typed
-// DoseTakenOutcome, and every branch is answered from it: a dose retired by a schedule
-// edit, an item since paused, or a dose already resolved as SKIPPED logs NOTHING, and
-// saying "Dose logged" there would be a false confirmation of a possibly-critical
-// medication (the #280 defect). The row only leaves the list when the outcome says a
-// taken log actually stands; otherwise it stays put with the honest message beside it,
-// because it is still due.
+// THE STRADDLE IS GONE. This file used to post `markTaken` for today and
+// `resolveDayDoses` for a day behind it, with a "Mark taken" button for the one and an
+// icon pair for the other — two write paths and two spellings of the row inside one
+// list, which is what the manifest cell named. Both are one mount now, and today's row
+// gains the skip and the way back that only the past day had.
+//
+// **It never unconditionally confirms.** A row leaves the list only when the write
+// says it wrote; a refusal — a dose retired by a schedule edit, an item since paused —
+// stays put with the honest message beside it, because it is still due. Saying "Dose
+// logged" there would be a false confirmation of a possibly-critical medication (the
+// #280 defect).
 //
 // ── THE DAY SWITCHER (#3936) ─────────────────────────────────────────────────
 //
@@ -79,9 +73,6 @@ export default function QuickDoseList({
   // switcher, and the missed day behind it, away with it.
   onDone: () => void;
 }) {
-  // The shared client write pipeline (#3276) — the same one DoseStatusControl runs, so
-  // today's row cannot drift from the tri-state control's contract again (#3272).
-  const pipeline = useWritePipeline("dose-status");
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
   // gather mid-list would reorder rows under the user's finger.
@@ -156,50 +147,6 @@ export default function QuickDoseList({
     if (!left) onDone();
   }, [resolved, doses, pastDays, today, onDone]);
 
-  async function confirm(dose: QuickEntryDose) {
-    const result = await pipeline.run({
-      key: occurrenceKey(today, dose.doseId),
-      fields: { dose_id: String(dose.doseId) },
-      action: markTaken,
-      // Never an unconditional confirm: `markTaken` returns markDoseTaken's typed
-      // outcome, and a dose retired, paused or already skipped logs NOTHING. The row
-      // only leaves the list when a taken log actually stands (#280).
-      settle: (result) => {
-        if (!result.ok)
-          return {
-            wrote: false,
-            announce: { message: result.error, tone: "error", undo: null },
-          };
-        const { text, tone } = doseConfirmMessage(result.outcome);
-        const resolvedNow = doseResolved(result.outcome);
-        if (resolvedNow) markResolved(today, [dose.doseId]);
-        else
-          setNotes((prev) => ({
-            ...prev,
-            [occurrenceKey(today, dose.doseId)]: text,
-          }));
-        return {
-          wrote: resolvedNow,
-          // NO UNDO, said out loud rather than left out: this row's inverse would have
-          // to un-resolve a dose the sheet has already dropped from the list, and
-          // whether that is a complete local inverse is the separate ruling in #2642.
-          announce: { message: text, tone, undo: null },
-        };
-      },
-      failureMessage: "Couldn't log that dose. Try again.",
-      offline: (tappedAt) => ({
-        kind: "capture",
-        flow: "dose",
-        date: localDate(tappedAt),
-        // The tap's own instant, captured before the online attempt, so a dead-spot
-        // confirm lands with the time the dose was taken (#1427).
-        payload: { doseId: dose.doseId, clientTakenAt: tappedAt.toISOString() },
-        keptMessage: "Dose saved offline — will sync when you reconnect.",
-      }),
-    });
-    if (result === "captured") markResolved(today, [dose.doseId]);
-  }
-
   const days = [
     { date: today, label: "Today" },
     ...pastDays.map((past) => ({ date: past.date, label: past.label })),
@@ -271,15 +218,22 @@ export default function QuickDoseList({
               <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                 {dose.dueText}
               </span>
-              <form
-                action={() => confirm(dose)}
-                className="shrink-0"
-                data-testid={`quick-entry-dose-form-${dose.doseId}`}
-              >
-                <Button type="submit" pendingLabel="…">
-                  Mark taken
-                </Button>
-              </form>
+              <DoseStatusControl
+                doseId={dose.doseId}
+                taken={false}
+                skipped={false}
+                variant="pill"
+                label="Mark taken"
+                rowLeaves
+                onSettled={(result) => {
+                  if (result.ok) markResolved(today, [dose.doseId]);
+                  else
+                    setNotes((prev) => ({
+                      ...prev,
+                      [occurrenceKey(today, dose.doseId)]: result.error,
+                    }));
+                }}
+              />
             </li>
           ))}
         </ul>
@@ -308,14 +262,13 @@ function PastDayDoses({
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
 }) {
-  const { resolveOne, resolveAll, singleBlocked, bulkBlocked } =
-    useDoseDayResolution({
-      date,
-      bulkFailureMessage:
-        "Something went wrong — reopen this sheet to see what was logged.",
-      note: onNote,
-      resolved: onResolved,
-    });
+  const { resolveAll, bulkBlocked } = useDoseDayResolution({
+    date,
+    bulkFailureMessage:
+      "Something went wrong — reopen this sheet to see what was logged.",
+    note: onNote,
+    resolved: onResolved,
+  });
 
   if (slots.length === 0) {
     return (
@@ -393,31 +346,20 @@ function PastDayDoses({
                       </span>
                     )}
                   </span>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    <button
-                      type="button"
-                      data-testid="dose-take"
-                      aria-label={`Mark ${dose.name} taken`}
-                      disabled={singleBlocked(dose.doseId, "taken")}
-                      onClick={() => void resolveOne(dose.doseId, "taken")}
-                      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_BRAND}`}
-                    >
-                      <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="dose-skip"
-                      aria-label={`Skip ${dose.name}`}
-                      disabled={singleBlocked(dose.doseId, "skipped")}
-                      onClick={() => void resolveOne(dose.doseId, "skipped")}
-                      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
-                    >
-                      <IconPlayerTrackNext
-                        className="h-3.5 w-3.5"
-                        stroke={2.5}
-                      />
-                    </button>
-                  </span>
+                  <DoseStatusControl
+                    doseId={dose.doseId}
+                    date={date}
+                    taken={false}
+                    skipped={false}
+                    variant="pill"
+                    compact
+                    itemName={dose.name}
+                    rowLeaves
+                    onSettled={(result) => {
+                      if (result.ok) onResolved([dose.doseId]);
+                      else onNote(dose.doseId, result.error);
+                    }}
+                  />
                 </li>
               ))}
             </ul>

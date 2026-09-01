@@ -495,9 +495,17 @@ export function setDoseStatusCore(
   doseId: number,
   date: string,
   target: DoseStatusTarget,
-  loggedVia: LoggedVia
+  loggedVia: LoggedVia,
+  // RESOLVE-ONLY, when the control was showing a CLEAR dose (#280, #4424). The
+  // tri-state's licence to overwrite comes from the person LOOKING at the state, so it
+  // does not extend to a clear the surface only believed in: a list of what a day owes
+  // renders every stale row clear, and a ✅ there would flip a skip made elsewhere. A
+  // flip or a clear off a state the person could see is unaffected.
+  resolveOnly = false
 ): DoseStatusOutcome {
-  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia);
+  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, {
+    resolveOnly,
+  });
 }
 
 // Take BACK the dose confirm a tap just made (#2642) — the inverse behind the act→undo
