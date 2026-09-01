@@ -1,9 +1,11 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "@/components/intake/SharedSupplyPicker";
-import IntakeItemForm from "@/components/IntakeItemForm";
+import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
+import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import CreateAction from "@/components/CreateAction";
 import { ToastProvider } from "@/components/Toast";
 
 // WHICH BOTTLES THE SHARED-SUPPLY PICKER OFFERS (#3315).
@@ -30,8 +32,8 @@ const BOTTLES: SupplyOption[] = [
   },
   {
     id: 22,
-    name: "Acetaminophen",
-    strength: "500 mg",
+    name: "Ibuprofen",
+    strength: "200 mg",
     form: "tablet",
     siblingKind: "medication",
   },
@@ -42,25 +44,16 @@ const BOTTLES: SupplyOption[] = [
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   lookupRxcui: vi.fn(async () => [
-    { rxcui: "161", name: "Acetaminophen", score: 100 },
+    { rxcui: "5640", name: "Ibuprofen", score: 100 },
   ]),
-  lookupRxcuiIngredients: vi.fn(async () => ["161"]),
-  restoreDose: vi.fn(),
+  lookupRxcuiIngredients: vi.fn(async () => ["5640"]),
 }));
 
-beforeAll(() => {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
-    DOMRect.fromRect({ width: 300, height: 40 })
-  );
-  vi.stubGlobal(
-    "ResizeObserver",
-    class ResizeObserver {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  );
-});
+class R {
+  observe() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", R);
 
 vi.mock("@/app/(app)/supplies/actions", () => ({
   listSharedSupplyOptions: vi.fn(async () => BOTTLES),
@@ -130,7 +123,7 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
         itemName="Vitamin D3"
         kind="supplement"
         supplyId={22}
-        supplyName="Acetaminophen"
+        supplyName="Ibuprofen"
       />
     );
     expect(await offeredBottleIds()).toEqual([22, 11, 33]);
@@ -139,13 +132,34 @@ describe("SharedSupplyPicker offers by the kind a bottle's members lend (#3315)"
 
 async function saveBottle(kind: "medication" | "supplement", name: string) {
   const action = vi.fn(async (_data: FormData) => ({ ok: true as const }));
+  const common = {
+    action,
+    allIntakeItems: [],
+    stackItems: [],
+    pgxVariants: [],
+  };
+  const supplement = <AddSupplementModal {...common} />;
+  const form =
+    kind === "medication" ? (
+      <MedicationAddWorkspace
+        {...common}
+        subtitle=""
+        age={null}
+        todayStr="2026-09-01"
+        conditions={[]}
+      />
+    ) : (
+      <CreateAction
+        declaration={{ kind: "supplement", control: supplement }}
+        housing="section"
+      />
+    );
   render(
     <ToastProvider>
-      <ConfirmProvider>
-        <IntakeItemForm action={action} kind={kind} todayStr="2026-09-01" />
-      </ConfirmProvider>
+      <ConfirmProvider>{form}</ConfirmProvider>
     </ToastProvider>
   );
+  fireEvent.click(screen.getByTestId(`${kind}-add-toggle`));
   const input = screen.getByRole("combobox", { name: "Name" });
   fireEvent.focus(input);
   const option = await screen.findByRole("option", {
@@ -161,23 +175,20 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
 
 describe("IntakeItemForm bottle picks (#4608)", () => {
   it("saves the product name and applies medication prefill", async () => {
-    const data = await saveBottle("medication", "Acetaminophen");
-    expect(Object.fromEntries(data)).toMatchObject({
-      name: "Acetaminophen",
-      rxcui: "161",
-      obligation: "may",
-      min_interval_hours: "4",
-      max_daily_count: "6",
-      supply_id: "22",
-    });
+    const data = await saveBottle("medication", "Ibuprofen");
+    expect(data.get("name")).toBe("Ibuprofen");
+    expect(data.get("rxcui")).toBe("5640");
+    expect(data.get("obligation")).toBe("may");
+    expect(data.get("min_interval_hours")).toBe("6");
+    expect(data.get("max_daily_count")).toBe("4");
+    expect(data.get("supply_id")).toBe("22");
   });
 
   it("keeps bottle strength while applying supplement catalog timing", async () => {
     const data = await saveBottle("supplement", "Vitamin D3");
-    expect(JSON.parse(String(data.get("doses")))[0]).toMatchObject({
-      amount: "5000 IU",
-      time_of_day: "Morning",
-    });
+    const [dose] = JSON.parse(String(data.get("doses")));
+    expect(dose.amount).toBe("5000 IU");
+    expect(dose.time_of_day).toBe("Morning");
     expect(data.get("supply_id")).toBe("11");
   });
 });
