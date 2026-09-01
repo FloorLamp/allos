@@ -261,10 +261,19 @@ export function outdoorPlanItems(profileId: number): UpcomingItem[] {
 // shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress (one
 // computation); age-neutral like the underlying practice log.
 export function practiceItems(profileId: number): UpcomingItem[] {
-  return getFrequencyTargetProgress(profileId)
+  const unmet = getFrequencyTargetProgress(profileId)
     .filter((p) => p.target.scope_kind === "practice")
-    .filter(isUnmetWeeklyTarget)
-    .map((p) => ({
+    .filter(isUnmetWeeklyTarget);
+  if (unmet.length === 0) return [];
+  // RESOLVED HERE, ONCE, BECAUSE THE ROW MOUNTS THE SHARED CONTROL (#4424 ruling 7).
+  // Upcoming's rows are frequency TARGETS and the control posts a practice NAME — so
+  // one of the two had to resolve, and it is this read, which already holds the target
+  // and is the only side that can also answer the day facts the control renders (the
+  // running count its re-log question names, the usual duration its stepper opens on).
+  // `logPracticeByTargetId` stays for Telegram, whose callback carries an id and no day.
+  const day = today(profileId);
+  const live = getLivePracticeSessionsByIdentity(profileId);
+  return unmet.map((p) => ({
       key: practiceSignalKey(p.target.id),
       domain: "practice" as const,
       title: p.target.scope_value,
@@ -272,7 +281,15 @@ export function practiceItems(profileId: number): UpcomingItem[] {
       href: "/wellness",
       dueDate: null,
       band: "week" as const,
-      practiceTargetId: p.target.id,
+      practiceLog: {
+        practice: p.target.scope_value,
+        todayCount: getPracticeDayCount(profileId, p.target.scope_value, day),
+        defaultDurationMin: getPracticeUsualDuration(
+          profileId,
+          p.target.scope_value
+        ),
+        liveSession: live.get(practiceIdentity(p.target.scope_value) ?? "") ?? null,
+      },
       // The practice scope's own weekly floor target (#2579-E), declared like its
       // trainingItems twin — one rule, one property, both builders.
       weeklyTarget: true,
@@ -280,7 +297,7 @@ export function practiceItems(profileId: number): UpcomingItem[] {
         p.per_week_max != null && p.per_week_max > p.per_week
           ? `${p.count}/${p.per_week}–${p.per_week_max} this week`
           : `${p.count}/${p.per_week} this week`,
-    }));
+  }));
 }
 
 // The daily-step afternoon presence (#1723 part 2). RIDE-THE-NAG, not a new send:
@@ -424,12 +441,17 @@ import {
   type FrequencyScopeKind,
 } from "../../frequency-targets";
 import { nutritionTabHref, type AppRoute } from "../../hrefs";
-import { practiceSignalKey } from "../../practice";
+import { practiceIdentity, practiceSignalKey } from "../../practice";
 import { getRoutineCycleStatus } from "../../routines";
 import type { DistanceUnit } from "../../settings";
 import type { UpcomingDomain, UpcomingItem } from "../../upcoming";
 import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
+import {
+  getLivePracticeSessionsByIdentity,
+  getPracticeDayCount,
+  getPracticeUsualDuration,
+} from "../wellness";
 import { getOutdoorPlans } from "../weather-training";
 import { getCarePlanItems } from "../clinical";
 import {

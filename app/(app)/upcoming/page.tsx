@@ -110,7 +110,7 @@ import {
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
-import PracticeLogButton from "./PracticeLogButton";
+import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
@@ -1254,7 +1254,7 @@ function Row({
     cta != null ||
     hasMenu ||
     actions.length > 0 ||
-    (actionVisible && item.practiceTargetId != null);
+    (actionVisible && item.practiceLog != null);
 
   return (
     <div
@@ -1367,10 +1367,23 @@ function Row({
               reasons={item.reasons}
             />
           )}
-          {actionVisible && item.practiceTargetId != null && (
-            <PracticeLogButton
-              targetId={item.practiceTargetId}
-              profileId={item.profileId}
+          {/* THE DOMAIN'S ONE ROW CONTROL (#4424 rulings 3 and 7). This row used to
+              front its own button and its own action, which logged with no duration,
+              no confirm and no live lifecycle — the shared control carries all three,
+              and the practice name it posts is resolved server-side beside the target
+              (see `practiceItems`). `compact` because the row is dense; the subject is
+              the ROW's, re-gated by `gateItemProfile` at the action. */}
+          {actionVisible && item.practiceLog != null && (
+            <LogPracticeButton
+              practice={item.practiceLog.practice}
+              todayCount={item.practiceLog.todayCount}
+              today={now}
+              defaultDurationMin={item.practiceLog.defaultDurationMin}
+              liveSession={item.practiceLog.liveSession}
+              inlineDuration
+              compact
+              primaryTone="neutral"
+              subjectProfileId={item.profileId}
             />
           )}
           <RowActionChips actions={actions} fold={hasMenu} />

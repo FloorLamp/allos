@@ -324,7 +324,10 @@ describe("practice Upcoming twin + pace-aware nudge (#1259)", () => {
     expect(item.domain).toBe("practice");
     expect(item.dueText).toBe("1/3–5 this week");
     expect(item.href).toBe("/wellness");
-    expect(item.practiceTargetId).toBe(tid);
+    // The row carries what the shared control needs to stand on it (#4424 ruling 7):
+    // the target's practice NAME, resolved here rather than posted as an id.
+    expect(item.practiceLog?.practice).toBe("Breathwork");
+    expect(item.practiceLog?.todayCount).toBe(1);
   });
 
   it("the nudge builder fires only when behind, and honors the suppression bus", () => {

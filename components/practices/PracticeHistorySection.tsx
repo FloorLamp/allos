@@ -34,6 +34,7 @@ export default function PracticeHistorySection({
       )}
       <PracticeSessionHistory
         sessions={sessions}
+        today={today}
         totalCount={sessionCount}
         emptyText={emptyText}
       />

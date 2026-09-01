@@ -68,10 +68,10 @@ export default function PracticeBackfillLauncher({
             <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
               <PracticeSessionForm
                 key={item.name}
-                practice={item.name}
+                practices={[item.name]}
                 today={today}
+                date={initialDate}
                 defaultDurationMin={item.defaultDurationMin}
-                initialDate={initialDate}
                 minDate={minDate}
                 maxDate={today}
               />
