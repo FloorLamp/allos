@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { SupplyOption } from "@/lib/supply-product";
 import SharedSupplyPicker from "@/components/intake/SharedSupplyPicker";
-import IntakeItemForm from "@/components/IntakeItemForm";
+import MedicationCard from "@/app/(app)/medications/MedicationCard";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -44,10 +44,11 @@ const BOTTLES: SupplyOption[] = [
 ];
 
 const TRACKED_MEDICATION = {
-  id: 7,
-  name: "Aspirin",
-  quantity_on_hand: 90,
-} as unknown as NonNullable<Parameters<typeof IntakeItemForm>[0]["item"]>;
+  medication: { id: 7, name: "Aspirin", quantity_on_hand: 90 },
+  courses: [],
+  sideEffects: [],
+  initialAction: "edit",
+} as unknown as Parameters<typeof MedicationCard>[0];
 
 const supplyActions = vi.hoisted(() => ({
   list: vi.fn(async () => BOTTLES),
@@ -55,6 +56,7 @@ const supplyActions = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
+  updateIntakeItem: vi.fn(async () => ({ ok: true })),
   lookupRxcui: vi.fn(async () => [
     { rxcui: "5640", name: "Ibuprofen", score: 100 },
   ]),
@@ -214,11 +216,7 @@ it("updates the supply fact after edit apply without changing item identity (#46
   render(
     <ToastProvider>
       <ConfirmProvider>
-        <IntakeItemForm
-          action={vi.fn(async () => ({ ok: true as const }))}
-          item={TRACKED_MEDICATION}
-          kind="medication"
-        />
+        <MedicationCard {...TRACKED_MEDICATION} />
       </ConfirmProvider>
     </ToastProvider>
   );
