@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import path from "node:path";
@@ -183,8 +184,29 @@ function findAgentFiles(dir: string, root = process.cwd()): string[] {
   });
 }
 
+function repositoryAgentFiles(): string[] {
+  return execFileSync(
+    "git",
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ":(glob)**/AGENTS.md",
+    ],
+    { cwd: process.cwd(), encoding: "utf8" }
+  )
+    .split("\0")
+    .filter(Boolean);
+}
+
 function guardedFiles(): string[] {
-  const agentFiles = findAgentFiles(process.cwd());
+  // Git already owns the source inventory. Asking its index includes tracked and
+  // untracked instructions without walking build outputs, dependencies or runtime
+  // data that cannot contribute a source instruction.
+  const agentFiles = repositoryAgentFiles();
   const orchestrationFiles = readdirSync(
     path.join(process.cwd(), "docs", "orchestration"),
     { withFileTypes: true }

@@ -27,7 +27,7 @@ function food(profileId: number, key: string, date: string, minute: number) {
 }
 
 describe("food and practice event-ledger completion (#3484)", () => {
-  it("rolls food and substance into separate per-day Timeline events with working filters", () => {
+  it("leaves food to its first-class rows while retaining substance summaries", () => {
     const owner = profile("ledger timeline owner");
     const stranger = profile("ledger timeline stranger");
     food(owner, "berries", "2026-08-20", 1);
@@ -54,22 +54,7 @@ describe("food and practice event-ledger completion (#3484)", () => {
     const substanceEvent = all.find(
       (event) => event.id === "substance:2026-08-20"
     );
-    expect(foodEvent).toMatchObject({
-      category: "food",
-      title: "3 servings logged",
-      // THE DAY ROLLUP'S DESTINATION (#3958). This href moved when the four ledger
-      // routes folded into `/history` — from a `from`/`to` WINDOW onto the day the
-      // rollup is actually about — and the only thing asserting it was
-      // `e2e/event-ledger-completion.spec.ts`, which the same change deleted. A
-      // destination whose one guard leaves in the commit that changes it is a dead
-      // link waiting to happen, so the claim lands here, beside the rollup itself,
-      // where it does not depend on a browser.
-      href: "/history?kind=food&day=2026-08-20",
-    });
-    expect(foodEvent?.detailItems).toEqual([
-      { label: "Berries", value: "2 servings" },
-      { label: "Leafy greens", value: "1 serving" },
-    ]);
+    expect(foodEvent).toBeUndefined();
     expect(substanceEvent).toMatchObject({
       category: "substance",
       title: "4 substance uses logged",
@@ -83,7 +68,7 @@ describe("food and practice event-ledger completion (#3484)", () => {
       getTimelineEvents(owner, { category: "food" }).map(
         (event) => event.category
       )
-    ).toEqual(["food"]);
+    ).toEqual([]);
     expect(
       getTimelineEvents(owner, { category: "substance" }).map(
         (event) => event.category

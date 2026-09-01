@@ -30,6 +30,17 @@ const record = (name: string) => (fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
+vi.mock("@/app/(app)/symptom-actions", () => ({
+  logSymptom: async (fd: FormData) => {
+    record("logSymptom")(fd);
+    return {
+      ok: true,
+      symptom: String(fd.get("symptom")),
+      severity: Number(fd.get("severity")),
+    };
+  },
+  editSymptom: async () => ({ ok: false, error: "the door never corrects" }),
+}));
 vi.mock("@/app/(app)/nutrition/actions", () => ({
   logFoodServing: async (fd: FormData) => {
     record("logFoodServing")(fd);
@@ -101,6 +112,15 @@ vi.mock("@/components/Toast", () => ({
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 
 beforeEach(() => {
+  // The symptom door's picker is the shared Combobox, which observes its own box.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   for (const key of Object.keys(posted)) delete posted[key];
   refreshed.length = 0;
   offerReads.length = 0;
@@ -135,6 +155,10 @@ const VOCABULARY = {
   substances: [
     { key: "nicotine", label: "Nicotine" },
     { key: "cannabis", label: "Cannabis" },
+  ],
+  symptoms: [
+    { key: "headache", label: "Headache" },
+    { key: "cough", label: "Cough" },
   ],
   weightUnit: "lb" as const,
   usual: [] as UsualOffer[],
@@ -184,6 +208,10 @@ describe("the record's Add door posts to the domain's own create action", () => 
       { substance: "nicotine", amount: "1" },
     ],
     ["body", "addBodyMetric", {}],
+    // THE DOMAIN'S OWN LOG CORE (#4424 ruling 2): the door is a date-context wrapper,
+    // so the symptom kind reaches `logSymptom` — the same action a tap on the bar
+    // posts — and never a door-shaped write of its own.
+    ["symptom", "logSymptom", { symptom: "Headache", severity: "1" }],
   ] as [HistoryAddKind, string, Record<string, string>][])(
     "%s writes on the day the reader was looking at, through %s",
     async (kind, action, fields) => {
@@ -197,6 +225,11 @@ describe("the record's Add door posts to the domain's own create action", () => 
       if (kind === "body") {
         fireEvent.change(screen.getByRole("spinbutton", { name: /weight/i }), {
           target: { value: "154" },
+        });
+      }
+      if (kind === "symptom") {
+        fireEvent.change(screen.getByRole("combobox", { name: "Symptom" }), {
+          target: { value: "Headache" },
         });
       }
       await submit(kind);
@@ -288,15 +321,32 @@ describe("the record's Add door posts to the domain's own create action", () => 
   // column
   // and body's action deliberately states none, so neither gets a time field, and the
   // absence assertion below is what stops this drifting into "all four eventually".
+  //
+  // AND THE TWO NOW STATE IT THROUGH DIFFERENT CONTROLS, which is why the locator is
+  // part of the table. Food keeps the door's `WhenControl`; the practice door mounts
+  // the domain's one form (#4424 ruling 2), whose start/end PAIR is the range shape
+  // `WhenControl` does not model and the reason it sits on the #2236 allowlist. The
+  // claim being made is the same one either way: an absolute wall clock reaches the
+  // action, and the day does not move under it.
   it.each([
-    ["food", "logFoodServing", "occurred_at"],
-    ["practice", "logPractice", "start_time"],
-  ] as [HistoryAddKind, string, string][])(
+    [
+      "food",
+      "logFoodServing",
+      "occurred_at",
+      () => screen.getByTestId("history-add-when-food-time"),
+    ],
+    [
+      "practice",
+      "logPractice",
+      "start_time",
+      () => screen.getByLabelText("Start"),
+    ],
+  ] as [HistoryAddKind, string, string, () => HTMLElement][])(
     "%s carries a stated time through to %s as %s",
-    async (kind, action, field) => {
+    async (kind, action, field, timeField) => {
       open(kind);
       await act(async () => {
-        fireEvent.change(screen.getByTestId(`history-add-when-${kind}-time`), {
+        fireEvent.change(timeField(), {
           target: { value: "07:15" },
         });
       });
@@ -536,12 +586,20 @@ describe("the composed usual on the add door", () => {
     }
   );
 
-  it("still says the plain sentence for the four per-item forms", async () => {
+  it("still says the plain sentence for the door's own per-item forms", async () => {
     // The converse at the OTHER end: `announce` is optional, so a form that writes one
     // row must keep the sentence it always had. Without this, moving the composed
     // bundle's answer into `submit` could have silently re-worded every door.
-    open("practice");
-    await submit("practice");
+    //
+    // FOOD, BECAUSE THE DOOR STILL OWNS ITS FORM. Three kinds mount their domain's own
+    // form now (#4424 ruling 2) and those answer in the domain's words — the practice
+    // door this case used to drive says "Logged past session", which is the shared
+    // form's sentence and is asserted where that form lives.
+    open("food");
+    fireEvent.change(screen.getByRole("combobox", { name: /food group/i }), {
+      target: { value: "leafy_greens" },
+    });
+    await submit("food");
     expect(toasts).toEqual(["Added to the record."]);
   });
 

@@ -132,6 +132,7 @@ export interface IntradayBlock {
   href: TimelineEvent["href"];
   clippedStart: boolean;
   clippedEnd: boolean;
+  running?: boolean;
 }
 
 export interface IntradayTick {
@@ -351,7 +352,35 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     if (EXCLUDED_TICK_CATEGORIES.has(event.category)) continue;
     const win = event.clockWindow;
     if (!win) continue;
-    const w = activityWindow(win);
+    const liveStart = win.live ? clockMinute(win.start_time) : null;
+    const running =
+      liveStart != null &&
+      input.nowMinute != null &&
+      (win.elapsed_min != null || input.nowMinute >= liveStart);
+    const runningEnd = running
+      ? Math.min(
+          MINUTES_IN_DAY,
+          Math.max(
+            liveStart! + 1,
+            win.elapsed_min != null
+              ? liveStart! + Math.max(1, win.elapsed_min)
+              : input.nowMinute!
+          )
+        )
+      : null;
+    const w = running
+      ? {
+          start: `${input.date}T${win.start_time}`,
+          end:
+            runningEnd === MINUTES_IN_DAY
+              ? `${shiftDateStr(input.date, 1)}T00:00`
+              : `${input.date}T${String(Math.floor(runningEnd! / 60)).padStart(2, "0")}:${String(runningEnd! % 60).padStart(2, "0")}`,
+        }
+      : activityWindow(
+          win.derived_duration && win.duration_min != null
+            ? { ...win, end_time: null }
+            : win
+        );
     if (w) {
       const startMinute = localStampMinute(input.date, w.start);
       const endMinute = localStampMinute(input.date, w.end);
@@ -369,10 +398,13 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
         iconTitle: event.iconTitle ?? null,
         iconSportNames: event.iconSportNames ?? null,
         href: event.href ?? null,
+        running,
       });
       continue;
     }
-    const minute = clockMinute(win.start_time);
+    // An end-only acknowledgement is a single observed instant. Draw its observed
+    // END as a tick; never drop it merely because the unknown start is null.
+    const minute = clockMinute(win.start_time ?? win.end_time);
     if (minute == null || minute < 0 || minute >= MINUTES_IN_DAY) continue;
     windowedEventIds.add(event.id);
     windowTicks.push({

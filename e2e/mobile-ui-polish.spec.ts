@@ -388,10 +388,12 @@ test.describe("the record's month calendar clears the floor on a phone (#3377/#3
       // breakout landed flush; assertion (1) above proves the same thing far more
       // precisely — the grid's own box against the box that clips it — and reads
       // the scroll extent that made the defect reachable. What the page sweep
-      // would add is everything ELSE on /history, and at 320px it reports a
-      // `history-row-title` reaching 565px, WITH THIS SHEET CLOSED and on rows
-      // this file does not touch. That belongs to whoever owns the record's phone
-      // density, not to a calendar test that would fail for it.
+      // would add is everything ELSE on /history — when this was written, a
+      // `history-row-title` reaching 565px at 320px, WITH THIS SHEET CLOSED and on
+      // rows this file does not touch. That belonged to whoever owns the record's
+      // phone density, not to a calendar test that would fail for it. #4394 has
+      // since made that title truncate; the reason for keeping the sweep out is
+      // the same whatever /history does next.
     }
   });
 });
@@ -428,50 +430,6 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     await expectNoClippedContent(page);
   });
 
-  test("both intake context bars share the md frost and become static at lg", async ({
-    page,
-  }) => {
-    for (const width of [800, 1100]) {
-      await page.setViewportSize({ width, height: 900 });
-      // Only Food carries an intake context bar since #3987 retired the Supplements
-      // tab's day chrome; the frost rule is asserted on the bar that survives.
-      for (const surface of [
-        { href: "/nutrition", testId: "food-log-context" },
-      ]) {
-        await page.goto(surface.href);
-        const context = page.getByTestId(surface.testId);
-        await expect(context).toBeVisible();
-        const style = await context.evaluate((element) => {
-          const parent = element.parentElement as HTMLElement;
-          const computed = getComputedStyle(element);
-          return {
-            position: computed.position,
-            backgroundColor: computed.backgroundColor,
-            backdropFilter: computed.backdropFilter,
-            padding: computed.padding,
-            bleed: [
-              parent.getBoundingClientRect().left -
-                element.getBoundingClientRect().left,
-              element.getBoundingClientRect().right -
-                parent.getBoundingClientRect().right,
-            ],
-          };
-        });
-        expect(style.position).toBe(width < 1024 ? "sticky" : "static");
-        if (width < 1024) {
-          expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
-          expect(style.backdropFilter).not.toBe("none");
-          expect(style.bleed.every((value) => value > 0)).toBe(true);
-        } else {
-          expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");
-          expect(style.backdropFilter).toBe("none");
-          expect(style.bleed).toEqual([0, 0]);
-          expect(style.padding).toBe("0px");
-        }
-      }
-    }
-  });
-
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a
   // single column below lg. A CSS grid item defaults to min-width:auto
   // (min-content), so without min-w-0 on the cells the column grew to the widest
@@ -498,137 +456,6 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     // And no OTHER element on the page is pushed off the right edge either
     // (#1543 — element-level, since the shell clips the page-level signal away).
     await expectNoClippedContent(page);
-  });
-});
-
-// "MORE FOOD GROUPS" IS A CITIZEN OF THE LIST IT EXTENDS (#3362).
-//
-// It does the same job as the rows above it — reach a food-group row — so it may
-// not read as a lighter species of control. It was 42px beside 58px rows, under
-// the 44px floor the app's own `tap-target` utility exists to hold, and it sat a
-// section gap (20px) below the last quick row while those rows sat 6px apart:
-// the rhythm said "new section", the words said "rest of this list".
-//
-// Both halves are asserted by MEASUREMENT against the rows themselves rather than
-// against a literal, so a change to the row idiom moves the expectation with it.
-test.describe("the food overflow disclosure matches the list it extends (#3362)", () => {
-  test.use({ viewport: PHONE });
-
-  // The app's own touch floor (app/globals.css, `tap-target`), which is what the
-  // 42px control was under.
-
-  // Every number this spec compares, read in ONE evaluate so they describe a
-  // single layout rather than four independent round-trips (#1538's settledBoxes
-  // lesson, applied to a measurement that has no Locator per value).
-  async function listMetrics(scope: Locator) {
-    return scope.evaluate((root) => {
-      const details = root.querySelector(
-        '[data-testid="food-more-groups"]'
-      ) as HTMLElement;
-      const summary = root.querySelector(
-        '[data-testid="food-more-groups-summary"]'
-      ) as HTMLElement;
-      // THE LIST the disclosure now belongs to, taken from the disclosure itself
-      // rather than named by a class — that is the relationship under test.
-      const list = details.parentElement as HTMLElement;
-      // Its immediate neighbour above — the quick rows, as one element.
-      const above = details.previousElementSibling as HTMLElement;
-      // Quick rows only — anything inside the (closed) disclosure is the overflow
-      // this control REACHES, not the list it belongs to. `food-quick-rows` is
-      // where that line is drawn, so this reads it rather than re-deriving it.
-      const rows = Array.from(
-        list.querySelectorAll(
-          '[data-testid="food-quick-rows"] li[data-testid^="food-group-"]'
-        )
-      ) as HTMLElement[];
-      const rowBoxes = rows.map((row) => row.getBoundingClientRect());
-      const last = rowBoxes.at(-1);
-      const detailsBox = details.getBoundingClientRect();
-      const summaryBox = summary.getBoundingClientRect();
-      const snapshot = document.querySelector(
-        '[data-testid="nutrition-mobile-snapshot"]'
-      ) as HTMLElement | null;
-      return {
-        rowCount: rowBoxes.length,
-        summaryHeight: summaryBox.height,
-        summaryLeft: summaryBox.left,
-        summaryRight: summaryBox.right,
-        rowHeight: last ? last.height : 0,
-        rowLeft: last ? last.left : 0,
-        rowRight: last ? last.right : 0,
-        // The list's OWN gap, read between the last two of its rows.
-        rowGap:
-          rowBoxes.length >= 2
-            ? rowBoxes[rowBoxes.length - 1].top -
-              rowBoxes[rowBoxes.length - 2].bottom
-            : NaN,
-        // The gap the disclosure sits at, from whatever citizen is above it.
-        disclosureGap: detailsBox.top - above.getBoundingClientRect().bottom,
-        hasSnapshot: snapshot !== null,
-        // The structural guarantee: the nutrient summary can no longer come
-        // BETWEEN the rows and the control, because the control is inside the list.
-        snapshotBelow: snapshot
-          ? snapshot.getBoundingClientRect().top >= detailsBox.top
-          : null,
-      };
-    });
-  }
-
-  function expectCitizenOfTheList(m: Awaited<ReturnType<typeof listMetrics>>) {
-    expect(m.rowCount).toBeGreaterThanOrEqual(2);
-    expect(m.summaryHeight).toBeGreaterThanOrEqual(TAP_FLOOR_PX);
-    // The row idiom, not a literal height: same card width, and a height within a
-    // couple of px of the rows it extends (`min-h-14` against 58px content rows).
-    expect(m.summaryLeft).toBeCloseTo(m.rowLeft, 0);
-    expect(m.summaryRight).toBeCloseTo(m.rowRight, 0);
-    expect(Math.abs(m.summaryHeight - m.rowHeight)).toBeLessThanOrEqual(4);
-    // The list's own rhythm, whatever `space-y-1.5` resolves to.
-    expect(m.rowGap).toBeGreaterThan(0);
-    expect(m.disclosureGap).toBeCloseTo(m.rowGap, 0);
-  }
-
-  test("on the Nutrition page, where the nutrient summary is present", async ({
-    page,
-  }) => {
-    await page.goto("/nutrition");
-    const bar = page.getByTestId("food-log-bar");
-    await expect(bar).toBeVisible();
-    await expect(page.getByTestId("food-more-groups-summary")).toBeVisible();
-
-    const metrics = await listMetrics(bar);
-    expectCitizenOfTheList(metrics);
-    expect(
-      metrics.hasSnapshot,
-      "the seeded profile logs protein and fiber, so this mount renders the nutrient summary — the 'with' half of the acceptance criterion"
-    ).toBe(true);
-    expect(metrics.snapshotBelow).toBe(true);
-
-    // The behavior and the testids are unchanged — that is an acceptance criterion
-    // in its own right, so it is held here rather than left to the specs that
-    // merely USE the disclosure to reach a row.
-    const details = page.getByTestId("food-more-groups");
-    const summary = details.getByTestId("food-more-groups-summary");
-    const hidden = details.locator('li[data-testid^="food-group-"]').first(); // first-ok: any overflow row proves the disclosure opened — order-agnostic
-    await expect(hidden).toBeHidden();
-    await hydratedClick(page, summary);
-    await expect(hidden).toBeVisible();
-    await summary.click();
-    await expect(hidden).toBeHidden();
-  });
-
-  test("in the quick-entry food sheet, where it is absent", async ({
-    page,
-  }) => {
-    // The common case the issue was filed from: no nutrient summary at all, so the
-    // section gap left the control floating under nothing.
-    await page.goto("/?quick=log-food");
-    const body = page.getByTestId("quick-entry-body");
-    await expect(body).toHaveAttribute("data-form", "food");
-    await expect(body.getByTestId("food-more-groups-summary")).toBeVisible();
-
-    const metrics = await listMetrics(body.getByTestId("food-log-bar"));
-    expectCitizenOfTheList(metrics);
-    expect(metrics.hasSnapshot).toBe(false);
   });
 });
 

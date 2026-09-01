@@ -160,7 +160,7 @@ export default function MediaInput({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraKnowledgeRef = useRef<CameraKnowledge>("unknown");
+  const cameraKnowledgeRef = useRef<CameraKnowledge>("unreadable");
   const permissionStateRef = useRef<PermissionState | null>(null);
   const hydrated = useHydrated();
   const compact = useCompactViewport();
@@ -251,9 +251,9 @@ export default function MediaInput({
     setStage({ kind: "chooser" });
   }, [attemptCamera, compact, cameraApplies]);
 
-  // Prime the ordering decision before it is needed. Permissions is best effort
-  // (Safari may not expose camera); the remembered last outcome is the portable
-  // fallback. A permission change updates the same cache.
+  // Prime the ordering decision before it is needed. Until Permissions answers,
+  // the state is unreadable and the chooser safely leads. A readable `prompt`
+  // restores phone-first ordering; remembered outcomes remain authoritative.
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(CAMERA_KNOWLEDGE_KEY);
@@ -280,6 +280,11 @@ export default function MediaInput({
             permissionStateRef.current = status.state;
             if (status.state === "granted") rememberCamera("granted");
             if (status.state === "denied") rememberCamera("denied");
+            if (
+              status.state === "prompt" &&
+              cameraKnowledgeRef.current === "unreadable"
+            )
+              cameraKnowledgeRef.current = "unknown";
           };
           update();
           status.onchange = update;

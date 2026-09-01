@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
+import { expectNoClippedContent } from "./helpers";
 
 // #1880/#2263: flapping is not failing, and what separates them is SILENCE. A
 // source alternating Failed/Refreshed with a recent success is `intermittent` — a
@@ -110,6 +111,53 @@ function clearFixture(): void {
 }
 
 test.afterAll(() => clearFixture());
+
+test("Connected-source timestamp and chevron share a trailing rail inside the Data page measure", async ({
+  page,
+}) => {
+  seedFlapping();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/data?section=review");
+
+  const healthy = page.getByTestId("sources-healthy");
+  const trailing = healthy.getByTestId(`source-trailing-${PROVIDER}`);
+  const timestamp = trailing.getByTestId("sync-timestamp-compact");
+  await expect(timestamp).toHaveCount(1);
+  await expect(trailing.locator("svg")).toHaveCount(1);
+  const timestampBeforeChevron = await trailing.evaluate((rail) => {
+    const timestamp = rail.querySelector<HTMLElement>(
+      '[data-testid="sync-timestamp-compact"]'
+    )!;
+    const chevron = rail.querySelector<SVGElement>("svg")!;
+    return (
+      (timestamp.compareDocumentPosition(chevron) &
+        Node.DOCUMENT_POSITION_FOLLOWING) !==
+      0
+    );
+  });
+  expect(timestampBeforeChevron).toBe(true);
+  await expect
+    .poll(async () => {
+      const rightGap = await trailing.evaluate((rail) => {
+        const chevron = rail.querySelector<SVGElement>("svg")!;
+        const surface = rail.parentElement!;
+        return (
+          surface.getBoundingClientRect().right -
+          chevron.getBoundingClientRect().right
+        );
+      });
+      return rightGap >= 10 && rightGap <= 14
+        ? "right gap is 10–14px"
+        : `right gap is ${rightGap}px`;
+    })
+    .toBe("right gap is 10–14px");
+  expect(
+    (await page.getByTestId("data-page").boundingBox())!.width
+  ).toBeLessThanOrEqual(1152);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoClippedContent(page);
+});
 
 test("a flapping source is amber Intermittent on all three surfaces and escalates nowhere", async ({
   page,

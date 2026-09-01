@@ -281,11 +281,21 @@ export const LOG_MANIFEST = {
   },
 
   practice: {
+    // WRONG, AND THE TYPE CANNOT SAY SO — flagged rather than asserted (#3143 review).
+    // `none` means "the row has no instant column to state into", and both halves of
+    // that are now false: `practice_logs` carries `start_time`/`end_time` (#3142), and
+    // the quick sheet's restored "Happened earlier?" states an END that
+    // `logFinishedPracticeSession` accepts. The truthful value would be `judged`, which
+    // the type requires a shared seam for — and practice validates its stated end
+    // inline instead of through `judgeStatedAt`. So `none` stays because it is the only
+    // representable value, not because it is the answer. Settle it by routing the
+    // stated end through the seam, or by giving the union an arm for a domain that
+    // judges its own; both are rulings, not edits.
     statedTime: {
       kind: "none",
       reason:
-        "A session is a DAY's fact plus a duration: `practice_logs` carries no event instant, and the duration answers 'how long', never 'at what minute'. A time field here would collect a statement with nowhere to be stored — the `/history` door makes the same call for substance rows.",
-      ref: "#2908",
+        "STALE — see the comment above. The original argument ('a time field here would collect a statement with nowhere to be stored') was true when written and is false now; the column exists, every tap writes it, and the sheet collects a stated end.",
+      ref: "#3143",
     },
     offline: { kind: "covered", flow: "practice" },
     surfaces: {
@@ -295,21 +305,69 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "practice" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`LogPracticeButton` carries three incompatible field sets across four mounts, and `app/(app)/upcoming/PracticeLogButton.tsx` fronts a SECOND write core (`logUpcomingPractice`) with no duration and no confirm. #4424 ruling 7 deletes the parallel core; this row flips with it.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "`PracticeSessionHistory` spells its own correction form and the compact `LogPracticeButton` is not yet the one row control every surface mounts.",
-        ref: "#4424",
-      },
+      // #4424's practice leg. `PracticeSessionForm` is add AND full-statement edit at
+      // every mount — the Wellness card's modal, the backfill launcher, the record's
+      // door, that record row's correction and the session history's ⋯.
+      //
+      // THIS CELL SAID THE FIELD SETS WERE "NO LONGER THREE" AND THAT THE FLIP WAS
+      // BLOCKED ON A SECOND WRITE CORE. Both were re-derived and both were wrong. #3143
+      // did extract one expanded form and give it two mounts, but FOUR hand-rolled
+      // spellings of the practice statement were live when this leg opened: that form,
+      // this history's own edit form (the same five fields again), the `/history`
+      // door's, and that record row's correction — the last two carrying four of the
+      // five, with no END, so a window stated in the expanded form was correctable on
+      // exactly one surface. And
+      // `logUpcomingPractice` was never a core — it reached `logPracticeSession`
+      // through `logPracticeByTargetId`, the resolver Telegram's Done shares — so
+      // ruling 7 deleted a DOOR, and the `cores` column below was already correct.
+      // The defects the cell named were all real: no duration, no confirm, its own
+      // gate, its own result shape.
+      //
+      // `LogPracticeButton` is the row control every practice row hosting a write
+      // control mounts: the Wellness card, the dashboard protocol rows, the quick
+      // sheet's rows and — since this leg — Upcoming's, which fronted its own button
+      // and its own action. That row gains the duration stepper, the same-day re-log
+      // confirm and the live lifecycle by mounting the shared one rather than by
+      // having them re-added to a copy.
+      //
+      // UPCOMING'S ROW DROPS ITS `stale-target` REFUSAL, deliberately (owner ruling,
+      // 2026-09-01, so nobody reads the loss as an oversight). The deleted door posted a
+      // target id and could refuse when that target had gone; the control posts a NAME.
+      // Practice logs are name-keyed and outlive their target, so that refusal guarded a
+      // stale POINTER — and this leg leaves no pointer to be stale. See `practiceItems`
+      // for why the row resolves rather than the control (lib/queries/upcoming/plans.ts).
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // ruling 3 itself rather than a gap — the precedent recorded on #4424 after the
+      // symptom leg: #3958 makes that row one line at every viewport with its trailing
+      // affordance EXCLUSIVE, so a full-statement edit behind the ⋯ is what ruling 3
+      // asks for there. `shared` means the domain has exactly ONE implementation and
+      // every row hosting a write control mounts it; mount count is not the test.
+      form: { kind: "shared", component: "PracticeSessionForm" },
+      rowControl: { kind: "shared", component: "LogPracticeButton" },
     },
     writeConventions: { kind: "convention" },
-    cores: ["logPracticeSession", "logPracticeSessionForDay"],
+    // Seven doors, not two. #3143 added the lifecycle and the just-finished intent, and
+    // `logPracticeByTargetId` was already missing: the test on this column is that a
+    // SURFACE calls it (#4425), and every name here has one — the wellness action's two
+    // intents, the two live-lifecycle actions, the offline replay, and Telegram's two
+    // target-keyed taps. Correction and delete are not listed, matching every sibling
+    // row.
+    //
+    // `logPracticeByTargetId` LOST ITS WEB CALLER AND KEPT ITS ROW (#4424 ruling 7).
+    // Upcoming's own button posted a target id; its row mounts the shared control now,
+    // which posts a practice NAME resolved server-side beside the target read. Telegram
+    // is the caller that remains, and it is the one that needs a resolver: a chat
+    // callback carries an id and no day.
+    cores: [
+      "logPracticeSession",
+      "logPracticeSessionForDay",
+      "logPracticeByTargetId",
+      "logFinishedPracticeSession",
+      "logFinishedPracticeByTargetId",
+      "startLivePracticeSession",
+      "endLivePracticeSession",
+    ],
   },
 
   mood: {
@@ -377,18 +435,31 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "symptom" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`SymptomLogBar` takes 21 props and hand-rolls its own temperature entry (a raw time input on the allowlist) instead of composing the vitals field; the `/history` row correction is a second spelling and posts the subject under a second name.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The severity-lower confirm is row-control-grade and lives inside the bar; `/history` symptom rows carry a correction form and no shared control.",
-        ref: "#4424",
-      },
+      // #4424's symptom leg. `SymptomForm` is add AND full-statement edit — the record's
+      // symptom door and that row's correction — with the day riding in from the mount,
+      // because the store is UNIQUE(profile_id, date, symptom) and a date FIELD would
+      // let a correction merge two days' worst severities into one.
+      //
+      // `SymptomRowControl` is everything a logged day can be corrected with WITHOUT
+      // restating it: the severity taps (a plain tap RAISES, a labelled chip below the
+      // current value posts the narrow lower), the note, and the clear with its undo.
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // ruling 3 itself rather than a gap: a full-statement edit opens the form in edit
+      // mode, which is what the ⋯ does. The feed row hosts no one-field inline edit
+      // because #3958 leaves it nowhere to go — that ruling makes the row one line at
+      // every viewport with the trailing affordance EXCLUSIVE (⋯ or ›, never both), and
+      // #4424 nowhere claims to override it. The day view's own card mounts the bar,
+      // whose rows are this control.
+      //
+      // THE CONTROL HAS ONE MOUNT TODAY — the bar — so read `shared` as "the domain has
+      // exactly one, and every symptom row hosting a write control mounts it", never as
+      // "mounted twice". The cell's complaint was that row-control-grade behaviour LIVED
+      // INSIDE the bar, and extracting it is the fix whether or not a second surface
+      // exists yet. A second one appears the day #4076's control slot reaches this
+      // domain, and it will not have to re-decide the raise/lower routing or the undo.
+      form: { kind: "shared", component: "SymptomForm" },
+      rowControl: { kind: "shared", component: "SymptomRowControl" },
     },
     writeConventions: { kind: "convention" },
     cores: [
@@ -480,18 +551,11 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "substance" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "The `/history` add door spells its own substance form with an unlabeled amount; the sheet's overlay is a third spelling beside the Medical page's.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The unit tap and the record's row correction share no control, and the cap-progress line rides only the former.",
-        ref: "#4424",
-      },
+      // #4424's substance leg. `SubstanceForm` is add AND full-statement edit at every
+      // mount, with the unit-labelled amount (#4211); `SubstanceUnitControl` carries the
+      // tap, its undo, and the cap verdict the exclusion above is argued from.
+      form: { kind: "shared", component: "SubstanceForm" },
+      rowControl: { kind: "shared", component: "SubstanceUnitControl" },
     },
     writeConventions: { kind: "convention" },
     cores: [

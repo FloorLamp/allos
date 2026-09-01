@@ -221,5 +221,7 @@
   "20260823-intake-item-purposes.ts": "c8ee9908ebe442e9b2c117136a09b0c7c36b376664b1b492002387247d255fb0",
   "20260827-notify-offers-autoincrement.ts": "e5a18dee30724a799d6d51a74567698630b9a8652bc188df5185f7bccc14c096",
   "20260829-revoked-session-tombstones.ts": "f3cf204355327555358b8f3404efaefe69439ad2b77b231945efea6928198f4c",
-  "20260830-practice-session-interval.ts": "5ee12809cdc5974deb128ee7cc7fce842256c337082433696ad81e389a19ef82"
+  "20260830-practice-session-interval.ts": "5ee12809cdc5974deb128ee7cc7fce842256c337082433696ad81e389a19ef82",
+  "20260831-live-practice-sessions.ts": "cfb0eac3772a4f91135b77b14f8f5f173dbb08c6910dc911e5c0ee8e6abf188a",
+  "20260831-practice-derived-windows.ts": "469549e99e8d59552940b067ec3f273f2a9b37e5cd7508bc9a898946cd2fff1b"
 }

@@ -19,9 +19,8 @@
 //
 // Every value is synthetic.
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
-import { now as clockNow } from "@/lib/clock";
 import { shiftDateStr } from "@/lib/date";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
@@ -32,27 +31,11 @@ import {
   type LedgerSelectionOutcome,
 } from "@/lib/day-ledger-edit";
 
-// AND THE CLOCK IS PINNED HERE, by this file, because the db tier does not pin it
-// (#4509). The last case states 23:59 on TODAY and asserts the gate REFUSES it, so it
-// is green all day and red for the five real minutes the skew tolerance covers — the
-// #3260 shape, in the direction nobody watches. The day is kept real and only the HOUR
-// is frozen: the fixtures reach back from `today()` and every stamp here is written
-// through the app clock, so a frozen calendar date would only drift away from SQL's own
-// `datetime('now')` for nothing.
-const PINNED_NOW = `${new Date().toISOString().slice(0, 10)}T12:00:00.000Z`;
-let priorNow: string | undefined;
-
-beforeAll(() => {
-  priorNow = process.env.ALLOS_TEST_NOW;
-  process.env.ALLOS_TEST_NOW = PINNED_NOW;
-});
-
-afterAll(() => {
-  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
-  else process.env.ALLOS_TEST_NOW = priorNow;
-});
-
 let unique = 0;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function newProfile(): number {
   return Number(
@@ -408,6 +391,8 @@ describe("Day-ledger selection edit — the bounds are the core's", () => {
   });
 
   it("refuses a time that has not happened yet, through each row's own gate", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00Z"));
     // TODAY, at 23:59 — a past day would accept it, and that difference is the point:
     // the refusal comes from judgeStatedAt / isHistoricalDoseTimeAccepted against the
     // server clock, not from a rule this batch invented.
@@ -420,9 +405,7 @@ describe("Day-ledger selection edit — the bounds are the core's", () => {
       profileId,
       itemId,
       doseId,
-      // The app clock, not the wall clock — the gate below judges against `clockNow()`,
-      // so a seed taken from `new Date()` would contradict the pin above.
-      clockNow(),
+      new Date(),
       null,
       false,
       "page"

@@ -31,7 +31,6 @@ import {
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import DateField from "@/components/DateField";
-import WhenControl from "@/components/WhenControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
   LOGGED_EVENT_LIST,
@@ -55,14 +54,9 @@ import {
   deleteFoodLogEvent,
   updateFoodLogEvent,
 } from "@/app/(app)/nutrition/actions";
-import {
-  editPracticeSession,
-  removePracticeSession,
-} from "@/app/(app)/wellness/actions";
-import {
-  deleteSubstanceDailyTotalAction,
-  updateSubstanceDailyTotalAction,
-} from "@/app/(app)/medical/substance-use/actions";
+import { removePracticeSession } from "@/app/(app)/wellness/actions";
+import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import SubstanceForm from "@/components/substances/SubstanceForm";
 import {
   deleteMetricReading,
   updateMetricReading,
@@ -79,29 +73,14 @@ import type { AppRoute } from "@/lib/hrefs";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
 import { MedicalValue } from "@/components/ui";
-import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
-import { LoggedViaField } from "@/components/LoggedViaSurface";
+import { removeSymptom } from "@/app/(app)/symptom-actions";
+import SymptomForm from "@/components/illness/SymptomForm";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import {
   deleteCycleAction,
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
-import { SYMPTOM_SEVERITY_LEVELS, severityLabelFor } from "@/lib/symptoms";
 import { FLOW_LABELS, FLOW_LEVELS } from "@/lib/cycle";
-import {
-  statedHhmm,
-  statedInstantOnDate,
-  type WhenValue,
-} from "@/lib/stated-time";
-
-const practiceWhenFor = (
-  row: HistoryRow,
-  statedTime: string | null
-): WhenValue => ({
-  date: row.date,
-  statedAt: statedTime
-    ? (statedInstantOnDate(row.date, statedTime, row.tz)?.toISOString() ?? null)
-    : null,
-});
 
 // THE RECORD'S ROWS (#3958 phase 1) — one line, at every viewport.
 //
@@ -133,6 +112,65 @@ const practiceWhenFor = (
 // is DRAWN, and the server decides whether the write LANDS — a forged submit naming a
 // profile this login cannot write is refused at the action, which is the half a
 // missing button could never prove.
+
+// WHICH CELL GIVES WAY, AND IN WHICH ORDER (#4394). The title was `shrink-0` with
+// nothing to truncate in, so a long one overflowed its cluster and was cut — no
+// ellipsis, no scroll — by `<main>`'s `overflow-x-clip`: 525px of title in a 236px
+// cluster at 320px, right edge at 565. Letting it truncate is half the answer. The
+// other half is that flex shrink is PROPORTIONAL, so a shrinking title takes its
+// share of the deficit beside the detail — while the grammar above says the DETAIL
+// is what gives way first. This weight keeps that order.
+//
+// A BIG FACTOR HERE, NOT A SMALL ONE ON THE TITLE, which is the non-obvious half: a
+// flex-shrink below 1 does not deprioritise an item, it caps the whole line's
+// shrink, so a `shrink-[0.01]` title moved 4px of a 438px deficit and stayed clipped.
+// `flex-1` here does the same job and was rejected: measured, it widens the
+// disclosure button's tap area to the row's whole leftover width.
+const DETAIL_GIVES_WAY_FIRST = "min-w-0 shrink-[999]";
+
+// THE TITLE'S FLOOR, SPELLED WHERE IT IS TRUE (#4394). The subject stays out of the
+// shrink negotiation above — `shrink-0`, because it says WHOSE line this is, and an
+// ellipsized subject is unreadable in a way a truncated title is not. That rule needs a
+// bound of a different KIND, and it cannot be spelled as a shrink factor at all: a
+// factor below 1 caps the whole line's shrink rather than deprioritising the item, and
+// 0 means never, with nothing in between.
+//
+// SO THE BOUND IS THE TITLE'S FLOOR, NOT THE SUBJECT'S SHARE. A share cannot state a
+// floor: the same percentage is a different budget on every cluster, and the clusters
+// differ on one page — at 320px the acting profile's row carries a ⋯ and is 162.6px
+// wide against the read-only member's 210.6px. A floor plus each mount's own furniture
+// is one rule said twice, so both mounts guarantee the same number.
+//
+// Uncapped and measured at 320px, the subject runs 421px of text inside a 210.6px
+// cluster and leaves the title 0px PAINTED: the row renders with no name at all. (A
+// 38-character member name does it, but the character count is the fragile way to say
+// so — it turns on trailing whitespace. Text wider than box is the quantity.)
+//
+// THE FLOOR IS 52px, AND IT IS WHERE TWO MEASURED BOUNDS MEET:
+//   * FURNITURE, worst case 12px at a row. The All view's cluster has a THIRD child,
+//     the detail cell. Under pressure it starves to exactly 0 — DETAIL_GIVES_WAY_FIRST
+//     doing its job — but its two gaps survive and the subject's ceiling does not pay
+//     for them, so the floor there is N − 12, not the N − 6 a two-cell row suggests.
+//   * THE CEILING, N ≤ 68.6 at a row. The narrowest cluster is 162.6px and the longest
+//     household name in the fixture is 94px of text, so a larger N ellipsizes a name
+//     that would otherwise have fitted. Measured: whole at 69, ellipsized at 72.
+//
+// So 52 is the largest floor the tightest row can guarantee while leaving TODAY'S REAL
+// HOUSEHOLD NAMES whole, with a character of headroom. It is not a law, and the shape
+// of the compromise should be visible: the cap IS `cluster − N`, so a band of names
+// between `cluster − N` and `cluster` fits and is ellipsized anyway. 94px is only the
+// longest name we are choosing to keep out of that band. A longer real name tightens
+// this, and whoever meets that should find the tension described rather than find it.
+//
+// WHAT IT BUYS: 7.6px off one row's title (65.6 → 58 on a dose row) for a guarantee at
+// BOTH mounts and on a view that never had one — the All view's row, and the rollup
+// line, whose label main paints at 0px today. That last one is a defect that already
+// ships, not a regression this fix has to avoid.
+//
+// TWO LITERALS RATHER THAN ONE CONSTANT PLUS ARITHMETIC, because Tailwind scans source
+// TEXT for candidates: a class name assembled at runtime is never compiled at all.
+const ROW_SUBJECT_CAP = "max-w-[calc(100%-64px)] truncate"; // 52 floor + 12 furniture
+const ROLLUP_SUBJECT_CAP = "max-w-[calc(100%-84px)] truncate"; // 52 floor + 32 furniture
 
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
@@ -258,7 +296,6 @@ export default function HistoryRows({
   const undoable = useUndoableDelete();
   const toast = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [practiceWhen, setPracticeWhen] = useState<WhenValue | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   // THE OPEN ROW, in client state rather than in the URL — and the split is a rule,
@@ -362,15 +399,6 @@ export default function HistoryRows({
           // core in lib/symptom-log-write.ts takes exactly this pair.
           fd.set("symptom", edit.symptom);
           fd.set("date", row.date);
-          // AND THE SUBJECT AGAIN, UNDER THE OTHER SHIPPED SPELLING. `removeSymptom`
-          // is a symptom-BAR action (#858) as well as this row's delete, and the bar
-          // posts its cross-profile target as `profileId`; every other action this
-          // component posts reads `profile_id` through `gateItemProfile`. Both gate
-          // the same requireProfileWriteAccess(target), so this line is a field name
-          // and not a second authorization path — without it the delete would fall
-          // back to the acting profile while the Edit beside it corrected the row's
-          // own member.
-          fd.set("profileId", String(row.profileId));
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
           });
@@ -521,169 +549,78 @@ export default function HistoryRows({
             {buttons}
           </form>
         );
-      case "practice": {
-        const when = practiceWhen ?? practiceWhenFor(row, edit.statedStart);
+      case "practice":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // This row's own correction stated a START and carried the END through hidden,
+        // so a window stated in the expanded form could be corrected only on the
+        // Wellness card; the shared form states both. It stamps `profile_id` itself,
+        // like the dose, substance and symptom forms, so it does not run through
+        // `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("id", String(edit.sessionId));
-                fd.set("date", when.date);
-                fd.set("start_time", statedHhmm(when.statedAt, row.tz));
-                // THE STATED END RIDES ALONG UNCHANGED (#3142).
-                // `editPracticeSession` REWRITES every field it reads, so omitting
-                // this one would silently clear a window the person stated in the
-                // expanded form — and this control states a START, not a range.
-                // Correcting an end stays on the practice card, where the full
-                // editor is.
-                fd.set("end_time", edit.statedEnd ?? "");
-                const outcome = await editPracticeSession(fd);
-                return outcome.kind === "updated"
-                  ? { ok: true }
-                  : { ok: false, error: "Couldn't save that session." };
-              })
-            }
-          >
-            <div className="sm:col-span-2">
-              <WhenControl
-                mode="correct"
-                grain="minute"
-                value={when}
-                onChange={setPracticeWhen}
-                tz={row.tz}
-                maxDate={maxDateFor(row)}
-                dateLabel="Date"
-                timeLabel="Time"
-                testId="history-practice-when"
-              />
-            </div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min={1}
-                defaultValue={edit.durationMin ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input
-                type="text"
-                name="notes"
-                defaultValue={edit.notes ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <PracticeSessionForm
+            practices={[row.title]}
+            today={maxDateFor(row)}
+            date={row.date}
+            maxDate={maxDateFor(row)}
+            row={{
+              id: edit.sessionId,
+              date: row.date,
+              startTime: edit.statedStart,
+              endTime: edit.statedEnd,
+              durationMin: edit.durationMin,
+              notes: edit.notes ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
         );
-      }
       case "substance":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // It stamps the ROW's profile itself, like the dose form above, so it does not
+        // run through `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("substance", edit.substance);
-                fd.set("id", String(edit.rowId));
-                const outcome = await updateSubstanceDailyTotalAction(fd);
-                return outcome.kind === "updated"
-                  ? { ok: true }
-                  : { ok: false, error: "Couldn't save that entry." };
-              })
-            }
-          >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Date
-              <DateField
-                name="date"
-                defaultValue={row.date}
-                max={maxDateFor(row)}
-                required
-                inputClassName="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={edit.amount}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {/* Same rewrite-everything contract as the practice edit above: the
-                action reads `notes` and stores what it finds, so a form without the
-                field would silently clear it. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input
-                type="text"
-                name="notes"
-                defaultValue={edit.notes ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={[{ key: edit.substance, label: row.title }]}
+            date={row.date}
+            maxDate={maxDateFor(row)}
+            row={{
+              id: edit.rowId,
+              substance: edit.substance,
+              date: row.date,
+              amount: edit.amount,
+              notes: edit.notes ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={done}
+            onCancel={done}
+          />
         );
       case "symptom":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // The symptom is half the row's ADDRESS rather than a field, so the mount hands
+        // the row's own and the picker collapses; it stamps `profile_id` itself, like
+        // the dose and substance forms above, so it does not run through `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("symptom", edit.symptom);
-                fd.set("date", row.date);
-                const outcome = await editSymptom(fd);
-                return outcome.ok
-                  ? { ok: true }
-                  : { ok: false, error: outcome.error };
-              })
-            }
-          >
-            {/* `setSymptomSeverityCore` reads `logged_via` off the post (#3087), so
-                this form has to say which surface it is — without it every correction
-                made here would be stamped with the `page` fallback and the provenance
-                ledger would show the dashboard bar's word for a record-page edit. */}
-            <LoggedViaField />
-            {/* NO DATE FIELD, and that is the store's shape rather than an omission:
-                `symptom_logs` is UNIQUE(profile_id, date, symptom), so moving a
-                symptom-day to another date is a delete plus a re-log, not an edit —
-                and `setSymptomSeverityCore` would silently upsert onto whatever day
-                it was handed, merging two days' worst severities into one. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Severity
-              <select
-                name="severity"
-                defaultValue={edit.severity}
-                className="input mt-1 w-full"
-              >
-                {SYMPTOM_SEVERITY_LEVELS.map((level) => (
-                  <option key={level.value} value={level.value}>
-                    {severityLabelFor(edit.symptom, level.value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/* `setSymptomSeverityCore` stores the note it is handed, so the field has
-                to be here — the same rewrite-everything contract the practice and
-                substance forms above carry, and the same silent data loss without it. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Note
-              <input
-                type="text"
-                name="note"
-                defaultValue={edit.note ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <SymptomForm
+            symptoms={[{ key: edit.symptom, label: row.title }]}
+            date={row.date}
+            row={{
+              symptom: edit.symptom,
+              date: row.date,
+              severity: edit.severity,
+              note: edit.note ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
         );
       case "cycle":
         return (
@@ -843,27 +780,33 @@ export default function HistoryRows({
                      control and one cue, and a row can never show both verbs. */
                   <DestinationLink
                     href={row.href}
-                    className="inline-flex shrink-0 items-center text-link"
+                    className="inline-flex min-w-0 items-center text-link"
                     data-testid="history-row-title"
                   >
-                    {row.title}
+                    {/* The ellipsis needs a BLOCK to happen in, and this `<a>` is a
+                        flex container (the primitive's own chevron), so `truncate`
+                        on the link would style a box that holds no text. */}
+                    <span className="min-w-0 truncate">{row.title}</span>
                   </DestinationLink>
                 ) : row.href ? (
                   <Link
                     href={row.href}
-                    className="shrink-0 text-link"
+                    className="min-w-0 truncate text-link"
                     data-testid="history-row-title"
                   >
                     {row.title}
                   </Link>
                 ) : (
-                  <span className="shrink-0" data-testid="history-row-title">
+                  <span
+                    className="min-w-0 truncate"
+                    data-testid="history-row-title"
+                  >
                     {row.title}
                   </span>
                 )}
                 {subject ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROW_SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subject}
@@ -890,7 +833,7 @@ export default function HistoryRows({
                     onClick={() =>
                       setOpenPanelId(openPanelId === row.id ? null : row.id)
                     }
-                    className="flex min-w-0 items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    className={`flex items-center gap-1 text-left text-xs font-normal text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 ${DETAIL_GIVES_WAY_FIRST}`}
                   >
                     <span
                       className="min-w-0 truncate"
@@ -908,7 +851,7 @@ export default function HistoryRows({
                   </button>
                 ) : row.detail ? (
                   <span
-                    className="min-w-0 truncate text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`truncate text-xs font-normal text-slate-500 dark:text-slate-400 ${DETAIL_GIVES_WAY_FIRST}`}
                     data-testid="history-row-detail"
                   >
                     {row.detail}
@@ -939,11 +882,6 @@ export default function HistoryRows({
                       data-testid="history-row-edit"
                       onClick={() => {
                         close();
-                        if (row.edit?.kind === "practice") {
-                          setPracticeWhen(
-                            practiceWhenFor(row, row.edit.statedStart)
-                          );
-                        }
                         setEditingId(row.id);
                       }}
                       className={MENU_ITEM}
@@ -1107,7 +1045,7 @@ export default function HistoryRows({
                 <span className="min-w-0 flex-1 truncate">{rollup.label}</span>
                 {subjectNames[rollup.profileId] ? (
                   <span
-                    className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400"
+                    className={`shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400 ${ROLLUP_SUBJECT_CAP}`}
                     data-testid="history-row-subject"
                   >
                     {subjectNames[rollup.profileId]}

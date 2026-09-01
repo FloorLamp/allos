@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 
 export interface PracticeBackfillItem {
   name: string;
-  todayCount: number;
-  atCeiling: boolean;
   defaultDurationMin: number | null;
 }
 
@@ -68,19 +66,14 @@ export default function PracticeBackfillLauncher({
           </label>
           {item && initialDate ? (
             <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
-              <LogPracticeButton
+              <PracticeSessionForm
                 key={item.name}
-                practice={item.name}
-                todayCount={item.todayCount}
-                atCeiling={item.atCeiling}
+                practices={[item.name]}
                 today={today}
+                date={initialDate}
                 defaultDurationMin={item.defaultDurationMin}
-                compact
-                showDetails
-                defaultDetailsOpen
-                initialDetailsDate={initialDate}
-                detailsMinDate={minDate}
-                detailsMaxDate={today}
+                minDate={minDate}
+                maxDate={today}
               />
             </div>
           ) : null}

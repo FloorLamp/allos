@@ -32,7 +32,11 @@ import {
   getSubstanceWeekState,
   getLoggedSubstanceKeys,
 } from "@/lib/queries";
-import { MAX_SUBSTANCE_NAME_LENGTH } from "@/lib/substance-use";
+import {
+  MAX_SUBSTANCE_NAME_LENGTH,
+  capProgressLine,
+  substanceCapStatus,
+} from "@/lib/substance-use";
 
 function scoreRow(profileId: number, canon: string) {
   return db
@@ -593,7 +597,13 @@ describe("substance consumption history actions (#2009)", () => {
         logged_via: "dashboard-widget",
       })
     );
-    expect(updated).toEqual({ kind: "updated", id: added.id });
+    // `capProgress` since #4424's substance leg — null here because this profile
+    // opted into no weekly cap. Its own test is below.
+    expect(updated).toEqual({
+      kind: "updated",
+      id: added.id,
+      capProgress: null,
+    });
     expect(getSubstanceWeekState(profile.id, "alcohol").count).toBe(3);
     const eventCount = db
       .prepare(
@@ -617,6 +627,57 @@ describe("substance consumption history actions (#2009)", () => {
       amount: 3,
       notes: "Corrected amount",
     });
+  });
+
+  // THE CAP VERDICT RIDES THE WRITE (#4424's substance leg, #998/#3279). The tap
+  // surfaces render `capProgressLine` beside the button and the manifest's offline
+  // exclusion is argued from exactly that readout; the FORM surfaces had none, so a
+  // correction that took somebody past their weekly cap said nothing anywhere. Bound
+  // to the shared line rather than to a sentence, so this stays a claim about WHICH
+  // state is described and not about wording.
+  it("answers an add and a correction with the cap verdict the write produced, and with none where no cap was set", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-history-cap", login.id);
+    actAs(login, profile);
+    const td = today(profile.id);
+    const verdict = (substance: "nicotine" | "cannabis") => {
+      const week = getSubstanceWeekState(profile.id, substance);
+      return week.target
+        ? capProgressLine(
+            substanceCapStatus(week.count, week.target.cap),
+            substance
+          )
+        : null;
+    };
+
+    // An absent cap is not an empty cap: nothing to understate, so nothing is said.
+    const uncapped = await addSubstanceDailyTotalAction(
+      fd({ substance: "nicotine", date: td, amount: "2" })
+    );
+    expect(uncapped).toMatchObject({ kind: "added", capProgress: null });
+    if (uncapped.kind !== "added") throw new Error("entry was not added");
+
+    await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "3" }));
+    const corrected = await updateSubstanceDailyTotalAction(
+      fd({
+        id: String(uncapped.id),
+        substance: "nicotine",
+        date: td,
+        amount: "5",
+      })
+    );
+    // THE STATE THE WRITE PRODUCED, not the one before it: 5 against a cap of 3.
+    expect(corrected).toMatchObject({ kind: "updated" });
+    expect(corrected.capProgress).toBe(verdict("nicotine"));
+    expect(corrected.capProgress).toContain("over your 3-use weekly cap");
+
+    await setSubstanceTargetAction(fd({ substance: "cannabis", cap: "7" }));
+    const added = await addSubstanceDailyTotalAction(
+      fd({ substance: "cannabis", date: td, amount: "2" })
+    );
+    expect(added).toMatchObject({ kind: "added" });
+    expect(added.capProgress).toBe(verdict("cannabis"));
+    expect(added.capProgress).toContain("2 of 7 this week.");
   });
 
   it("presents alcohol and non-food rows through one ordered shape with no store field", async () => {

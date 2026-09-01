@@ -27,6 +27,7 @@
 //   node scripts/orchestration/dispatch-brief.mjs resume <branch>
 //   node scripts/orchestration/dispatch-brief.mjs adopt <branch> \
 //     [--issues 123,456] [--task "one line"] [--e2e] [--port-base N]
+//   node scripts/orchestration/dispatch-brief.mjs claims <path>
 //
 // `new` prints a complete brief block (stdout) and appends a ledger entry.
 // `list` shows active dispatches with ages, flagging anything that has not
@@ -45,6 +46,11 @@
 // `resume` re-opens a closed dispatch: same failure mode as closing one and
 //   then messaging the agent back to life — the agent was live but invisible
 //   to the roster, so the restart drill would never have rescued it.
+// `claims` answers the one question a lane asks mid-run: is another active
+//   dispatch already working in this path? A brief's list of live lanes is
+//   written once and goes stale within minutes (#4473), so this reads the
+//   ledger and each active worktree instead. Exit 1 claimed, 0 clear, 3 CANNOT
+//   TELL — a worktree that is not on disk is never reported as clear.
 // `adopt` brings a dispatch that SKIPPED this script — an Agent-tool run —
 //   under the ledger and roster. Split-brain dispatch (2026-08-13): the tool
 //   path writes no roster entry, so the check-in screamed RESCUE NOW at a
@@ -198,10 +204,10 @@ function completedDurationsMs(rows) {
   return durations;
 }
 
-function git(args, { allowFail = false } = {}) {
+function git(args, { allowFail = false, cwd = repoRoot } = {}) {
   try {
     const options = {
-      cwd: repoRoot,
+      cwd,
       encoding: "utf8",
       timeout: 20_000,
       stdio: ["ignore", "pipe", "ignore"],
@@ -440,6 +446,16 @@ ${landingLines}
 - If the work turns out materially bigger than this brief implies, SAY SO and push a
   checkpoint before continuing — do not silently absorb a 15-file footprint that was
   briefed as a one-line registry edit.
+- ANY LIST OF OTHER LIVE LANES IN THIS BRIEF WENT STALE THE MOMENT IT WAS WRITTEN.
+  Lanes run one to two hours and are dispatched throughout; one named above may have
+  finished, and the one you are about to collide with may not have existed yet. So
+  before you touch a file outside your stated scope, ASK — the roster is on disk:
+      node scripts/orchestration/dispatch-brief.mjs claims <path>
+  It names any other active dispatch holding that path, or says CLEAR. A worktree it
+  cannot read is CANNOT TELL, not clear: take that to the orchestrator. #4473 was
+  filed because a lane checked the three lanes its brief named, saw no conflict, and
+  a fourth had been dispatched into that exact file since — it was stopped by
+  happening to ask, which is not a control.
 - Foreground ALL gates; never run_in_background for builds/tests; every wait is one
   blocking Bash call, chunked under the 10-minute tool cap. Pass an EXPLICIT
   \`timeout\` (e.g. 600000) to every gate invocation — foreground Bash caps at ~2
@@ -578,6 +594,24 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- A NUMBER IN PROSE MUST COME FROM A COMMAND YOU RAN, AND THE COMMAND GOES BESIDE
+  IT. A figure recalled from your own reasoning looks EXACTLY like one that came off
+  a shell, and prose carries no test — so a specific number in a comment, a commit
+  message or a PR body reads as though something checked it. Nothing did. Measured
+  2026-08-31, two lanes, both already pushed: a comment read "deleted in #4515 after
+  two years of rendering nowhere" — THIS CLONE IS SHALLOW, history begins two days
+  ago (\`git rev-parse --is-shallow-repository\` is true and \`git log --reverse\`
+  starts on 2026-08-29 — a COUNT would have drifted by the hour, the boundary does
+  not), so no command
+  in this container could produce "two years"; and a spec comment AND a PR body both
+  justified measuring painted pixels rather than boxes with "the nearest clipping
+  ancestor is 147px narrower than the screen", a figure the lane could not reproduce
+  in any configuration — the real values are 93 and 141, and 147 looks like a garbled
+  141. Both were plausible, both were durable, and one was already load-bearing for a
+  design argument. "Two years" is the worst shape of all, because it sounds like
+  institutional memory rather than a measurement. So: print the command next to the
+  figure, and if you cannot name one, WRITE NO NUMBER — a reader has no way to tell
+  the two kinds apart, and the next lane will quote yours as established fact.
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this
   container: every worktree shares one \`.git\`, so a SIBLING LANE's fetch moves
   \`refs/remotes/origin/main\` under you with no action of your own, and a two-dot diff
@@ -824,6 +858,16 @@ ${MIGRATION_LINES}
   So: scope every content check to the files you changed, and expect a deliberate
   quotation of the thing you removed. Both directions of this failure are the same
   bug — a check whose scope is wider or narrower than the question being asked.
+  AND A WIDE RESULT LOOKS LIKE A FINDING, which is why this one survives review.
+  Measured 2026-08-31, twice in one session: a lane hunting stale references ran
+  \`git grep -i "chips"\` over e2e/, got ~200 hits and learned NOTHING, because
+  "chips" is ubiquitous AND CORRECT here — fact chips, filter chips, subject chips,
+  range chips; the narrow \`git grep -niE "chart[- ]jump[- ]+chip"\` answered it in
+  one line. The same hour, another lane checked its gate logs for a sibling's output
+  with a \`gates3-*.log\` glob, got five foreign worktree names back, and had found
+  nothing at all — those were five OTHER lanes' correctly-named logs, and its own two
+  files were clean. Both wide results were alarming and both were empty. When a check
+  comes back loud, RE-ASK IT NARROWLY before you believe it or act on it.
   AND NEVER TRUST A BARE \`grep -c\`. A count is a claim stripped of its context, and
   two more ways it lies were measured on #3391 within one verification pass:
   a CASE mismatch (the phrase was there in screaming caps; the grep was lowercase, so
@@ -1681,9 +1725,9 @@ export function worktreeIdleMs(dir) {
 //
 // Read ONCE into a map: `list` wants this for every active dispatch, and asking
 // git per branch would re-parse the same output five times a check-in.
-function worktreePathsByBranch() {
+function worktreePathsByBranch(cwd = repoRoot) {
   const byBranch = new Map();
-  const out = git("worktree list --porcelain", { allowFail: true });
+  const out = git("worktree list --porcelain", { allowFail: true, cwd });
   if (!out) return byBranch;
   let current = null;
   for (const line of out.split("\n")) {
@@ -1697,6 +1741,169 @@ function worktreePathsByBranch() {
 
 function worktreeForBranch(branch) {
   return worktreePathsByBranch().get(branch) ?? null;
+}
+
+// --- file claims ------------------------------------------------------------
+//
+// IS ANYONE ELSE IN THIS FILE? (#4473)
+//
+// A brief names the other live lanes in a sentence written ONCE, at dispatch,
+// and lanes run for one to two hours — so every lane dispatched afterwards is
+// invisible to the one already running. `history-clock-brand-4452` checked the
+// three lanes its brief named before extending a brand into DayLedger.tsx, saw
+// no conflict, and was wrong: `write-pipeline-3276` had been dispatched into
+// that exact file in the meantime. It was stopped by ASKING the orchestrator,
+// and a lane happening to ask is not a control.
+//
+// The roster was on disk the whole time. This asks it instead.
+//
+// AND A WORKTREE IT CANNOT READ IS `unknown`, NEVER `clear`. A container
+// restart, a `done --keep` later cleaned up, a lane whose `git worktree add`
+// was denied — the ledger still holds the dispatch and there is nothing on disk
+// to inspect. Reported as clear that is a confident lie, which is the exact
+// failure this command exists to remove; reported as "cannot tell" it sends the
+// lane to ask, which is what it would have done anyway.
+//
+// AN ANSWER IS TRUE AT THE MOMENT IT RAN AND NO LONGER. This reads mutable
+// state — dirty trees, unpushed commits, a roster other agents are appending
+// to — so a lane that asks, thinks for twenty minutes and then edits is holding
+// a stale answer for the SAME reason the sentence in its brief was stale. Ask
+// again immediately before you write. Measured while this was being built: a
+// worktree read as holding ONE uncommitted file was read again minutes later
+// with a clean tree, because its lane had committed in between.
+//
+// AND `origin/main` IN A LANE'S WORKTREE CAN BE BEHIND, so the third walk can
+// report a path as held when main has since absorbed that very change. That
+// OVER-reports, which is the safe direction and not a bug to diagnose.
+//
+// THE UNIT IS THE FILE, DELIBERATELY. Two lanes editing different functions in
+// one file are reported as a collision, because a merge conflict is a
+// file-level fact and two lanes in one file should be sequenced whether or not
+// their hunks have met yet. Reporting line ranges would be more machinery
+// answering a question nobody asked.
+
+/** Two repo-relative paths overlap when either contains the other. */
+export const pathOverlaps = (a, b) =>
+  a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+/**
+ * Per-dispatch verdicts for one path. `changesFor` returns either the paths a
+ * dispatch is holding or the reason it could not be asked.
+ * @param {string} target repo-relative path
+ * @param {{ branch: string }[]} dispatches
+ * @param {(d: { branch: string }) => { paths: string[] } | { unknown: string }} changesFor
+ */
+export function fileClaims(target, dispatches, changesFor) {
+  return dispatches.map((d) => {
+    const found = changesFor(d);
+    if ("unknown" in found)
+      return { branch: d.branch, verdict: "unknown", why: found.unknown };
+    const hit = found.paths.find((p) => pathOverlaps(p, target));
+    return {
+      branch: d.branch,
+      verdict: hit ? "claimed" : "clear",
+      why: hit ?? null,
+    };
+  });
+}
+
+/** One answer for the caller: a claim outranks an unknown, and both outrank clear. */
+export const claimsVerdict = (rows) =>
+  rows.some((r) => r.verdict === "claimed")
+    ? "claimed"
+    : rows.some((r) => r.verdict === "unknown")
+      ? "unknown"
+      : "clear";
+
+/** Exit status per verdict — 2 stays the usage error every command here uses. */
+const CLAIMS_EXIT = { claimed: 1, unknown: 3, clear: 0 };
+
+// What a dispatch is HOLDING: everything in its worktree that is not in main —
+// uncommitted, committed-unpushed, and pushed-but-unlanded alike. The narrower
+// "uncommitted or unpushed" reading would call a lane's pushed branch clear, and
+// a pushed branch collides at merge exactly like a dirty tree does.
+function worktreeChanges(dir) {
+  if (!dir) return { unknown: "no worktree for this branch" };
+  if (!fs.existsSync(dir))
+    return { unknown: `worktree gone from disk (${dir})` };
+  // Three commands that each return PLAIN PATHS. `git status --porcelain` would
+  // answer the first two at once, and its two-column prefix is a trap here:
+  // `git()` above trims its output, so the leading space of an unstaged " M"
+  // disappears and every fixed-width slice is off by one on the first entry only
+  // — a parse that looks right and drops the file you asked about.
+  const opts = { cwd: dir, allowFail: true };
+  const out = [
+    git(["diff", "--name-only", "-z", "HEAD"], opts), // tracked, staged or not
+    git(["ls-files", "-z", "--others", "--exclude-standard"], opts), // untracked
+    git(["diff", "--name-only", "-z", "origin/main...HEAD"], opts), // unlanded
+  ];
+  if (out.some((o) => o === null))
+    return { unknown: `git could not read ${dir}` };
+  return { paths: out.flatMap((o) => o.split("\0").filter(Boolean)) };
+}
+
+function cmdClaims(argv) {
+  const [arg] = argv;
+  if (!arg) {
+    console.error("usage: dispatch-brief.mjs claims <path>");
+    process.exit(2);
+  }
+  // Asked of the repository you are standing in, so a lane can pass a path
+  // relative to its own worktree — every worktree shares one `.git`, so the
+  // roster it sees is the same one from anywhere in the tree.
+  const cwd = process.cwd();
+  const root = git(["rev-parse", "--show-toplevel"], { cwd, allowFail: true });
+  if (!root) {
+    console.error(
+      "dispatch-brief.mjs claims: run it from inside the repository."
+    );
+    process.exit(2);
+  }
+  const target = path.relative(root, path.resolve(cwd, arg));
+  if (!target || target.startsWith("..")) {
+    console.error(`dispatch-brief.mjs claims: ${arg} is outside ${root}.`);
+    process.exit(2);
+  }
+  // A DETACHED worktree gets the literal "HEAD" here, which matches no branch,
+  // so nothing is excluded and the caller's own dispatch comes back as `unknown`
+  // (git lists no worktree for its branch). That is the ALARM direction, not the
+  // false-clear one, and no lane runs detached — so this is left alone on
+  // purpose. Do not "fix" it by dropping the filter or by matching on worktree
+  // path: both trade an alarm nobody sees for a CLEAR that would be wrong, which
+  // is the one answer this command must never give.
+  const self = git(["rev-parse", "--abbrev-ref", "HEAD"], {
+    cwd,
+    allowFail: true,
+  });
+  const worktrees = worktreePathsByBranch(cwd);
+  const others = activeDispatches(readLedger()).filter(
+    (d) => d.branch !== self
+  );
+  const rows = fileClaims(target, others, (d) =>
+    worktreeChanges(worktrees.get(d.branch) ?? null)
+  );
+  const verdict = claimsVerdict(rows);
+
+  const claimed = rows.filter((r) => r.verdict === "claimed");
+  const unknown = rows.filter((r) => r.verdict === "unknown");
+  if (claimed.length) {
+    console.log(`CLAIMED  ${target}`);
+    for (const r of claimed)
+      console.log(`  ${r.branch}  holds ${r.why} (not in main)`);
+  }
+  if (unknown.length) {
+    console.log(
+      `CANNOT TELL  ${target} — these dispatches could not be read, which is NOT clear:`
+    );
+    for (const r of unknown) console.log(`  ${r.branch}  ${r.why}`);
+    console.log("  Ask the orchestrator before touching it.");
+  }
+  if (verdict === "clear") {
+    console.log(
+      `CLEAR  ${target} — ${rows.length} other active dispatch(es), all readable.`
+    );
+  }
+  process.exit(CLAIMS_EXIT[verdict]);
 }
 
 // --- progress ---------------------------------------------------------------
@@ -2286,9 +2493,10 @@ function main(argv) {
     else if (cmd === "done") cmdDone(rest);
     else if (cmd === "resume") cmdResume(rest);
     else if (cmd === "adopt") cmdAdopt(rest);
+    else if (cmd === "claims") cmdClaims(rest);
     else {
       console.error(
-        `unknown command: ${cmd} (expected new | list | brief | promote | update | done | resume | adopt)`
+        `unknown command: ${cmd} (expected new | list | brief | promote | update | done | resume | adopt | claims)`
       );
       process.exit(2);
     }

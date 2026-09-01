@@ -39,7 +39,7 @@ import {
   getSituationEvents,
   getFreeDays,
 } from "../settings";
-import { doseExistsSince, indexTakenByDose } from "../intake-adherence";
+import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
@@ -458,16 +458,18 @@ function bedtimeSupplementsByWakeDay(
       //     be doseAdherenceSince(), which folded `updated_at` in and so voided every
       //     night before any schedule edit — the erase-the-history reading of the
       //     invariant that #1973 replaced. A night before the dose existed still carries
-      //     no expectation; a night before it was merely EDITED is judged by the version
-      //     in force then, via doseDueOn below.
+      //     no expectation; a backfilled log is proof it existed before `created_at`,
+      //     matching every other adherence surface (#4023). A night before it was merely
+      //     EDITED is judged by the version in force then, via doseDueOn below.
       const disposition = bedtimeDoseDisposition({
         sleepDate,
         logged: resolved,
         isBedtimeDose: doseBucketOn(dose, sleepDate) === "Before sleep",
         isCurrentDose: item.active === 1 && dose.retired === 0,
-        adherenceSince: doseExistsSince(
+        adherenceSince: doseWindowSince(
           item.created_at,
           dose.created_at,
+          status,
           dayZone
         ),
       });

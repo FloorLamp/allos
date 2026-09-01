@@ -16,14 +16,15 @@ import { shiftDateStr } from "@/lib/date";
 import {
   deletePractice,
   editPracticeSession,
+  endPracticeLive,
   logPractice,
   removePracticeSession,
   savePractice,
+  startPracticeLive,
   untrackPractice,
 } from "@/app/(app)/wellness/actions";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { deleteProfile } from "@/app/(app)/settings/family/actions";
-import { logUpcomingPractice } from "@/app/(app)/upcoming/actions";
 import { getWellnessPractices } from "@/lib/queries/wellness";
 import { practiceSignalKey } from "@/lib/practice";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -407,27 +408,99 @@ describe("logPractice action (#1259)", () => {
         .get(profile.id)
     ).toBeUndefined();
   });
+});
 
-  it("Upcoming logs by stable target id and returns the core outcome", async () => {
-    const admin = createLogin({ role: "admin" });
-    const profile = createProfile("Upcoming");
-    actAs(admin, profile);
-    await savePractice(fd({ name: "Breathwork", per_week: 3 }));
-    const target = db
+// ── THE SUBJECT, RE-GATED SERVER-SIDE (#4424 ruling 4 + ruling 7) ───────────────
+//
+// Upcoming's multi-view rows mount the shared `LogPracticeButton`, so the three
+// actions it posts stopped resolving their subject from the SESSION and take the row's
+// `profile_id` through `gateItemProfile`. `logUpcomingPractice` — which spelled that
+// same two-branch gate inline behind its own button — is deleted with it.
+//
+// THE ACCEPTANCE IS THE REFUSAL, NOT THE ABSENCE (#4009's wording, and this leg is the
+// add-path twin of the record's correction table): a missing button is a claim about
+// the renderer, satisfied equally by a page that draws nothing and by an action that
+// would happily have written. So every case here builds the FormData a forged submit
+// would carry and calls the real action.
+//
+// AND THE THIRD ARM IS WHY THE FIRST TWO ARE NOT ENOUGH: a gate that refused every
+// cross-profile post would pass both refusals while having taken the capability away.
+describe("practice writes gate the ROW's profile (#4424 ruling 7)", () => {
+  const practiceRows = (profileId: number) =>
+    db
       .prepare(
-        `SELECT id FROM frequency_targets
-          WHERE profile_id = ? AND scope_kind = 'practice'`
+        "SELECT id, live FROM practice_logs WHERE profile_id = ? ORDER BY id"
       )
-      .get(profile.id) as { id: number };
+      .all(profileId) as { id: number; live: number }[];
 
-    const result = await logUpcomingPractice(
-      fd({ profile_id: profile.id, target_id: target.id })
+  const VERBS = [
+    {
+      name: "logPractice",
+      post: () => ({ practice: "Breathwork" }),
+      fn: logPractice,
+    },
+    {
+      name: "startPracticeLive",
+      post: () => ({ practice: "Breathwork" }),
+      fn: startPracticeLive,
+    },
+  ] as const;
+
+  it.each(VERBS)(
+    "$name refuses an ungranted and a read-only subject, writing nothing",
+    async ({ post, fn }) => {
+      const login = createLogin({ role: "member" });
+      const acting = createProfile("acting practice subject", login.id);
+      const ungranted = createProfile("ungranted practice subject");
+      const readOnly = createProfile("readonly practice subject");
+      db.prepare(
+        "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'read')"
+      ).run(login.id, readOnly.id);
+      actAs(login, acting);
+
+      for (const target of [ungranted, readOnly]) {
+        // requireProfileWriteAccess answers with redirect(), which throws
+        // NEXT_REDIRECT, so the action aborts before any core runs.
+        await expect(
+          fn(fd({ ...post(), profile_id: target.id }))
+        ).rejects.toThrow();
+        expect(practiceRows(target.id)).toHaveLength(0);
+        // AND NOT ON THE CAREGIVER EITHER: `logPracticeSession` is keyed on
+        // (profile, practice, day) rather than on a row id, so an action that ignored
+        // the posted subject would not fail to find anything — it would write the
+        // ACTING profile's own session and answer `logged`.
+        expect(practiceRows(acting.id)).toHaveLength(0);
+      }
+    }
+  );
+
+  it("lands a session, and its live lifecycle, on a WRITE-granted member's row", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("acting practice grant", login.id);
+    const member = createProfile("member practice grant", login.id);
+    actAs(login, acting);
+
+    expect(
+      await logPractice(fd({ practice: "Breathwork", profile_id: member.id }))
+    ).toEqual({ kind: "logged", count: 1, date: today(member.id) });
+    expect(practiceRows(member.id)).toHaveLength(1);
+    expect(practiceRows(acting.id)).toHaveLength(0);
+
+    const started = await startPracticeLive(
+      fd({ practice: "Sauna", profile_id: member.id })
     );
-    expect(result).toEqual({
-      ok: true,
-      outcome: { kind: "logged", count: 1, date: today(profile.id) },
-    });
-    expect(rows(profile.id)).toHaveLength(1);
+    expect(started.kind).toBe("started");
+    expect(practiceRows(member.id).filter((r) => r.live === 1)).toHaveLength(1);
+
+    // The END takes the same subject: `endLivePracticeSession` is (profile, id)
+    // scoped, so a session id gated to the acting profile would no-op rather than
+    // close the member's running row.
+    const liveId = practiceRows(member.id).find((r) => r.live === 1)!.id;
+    const ended = await endPracticeLive(
+      fd({ id: liveId, profile_id: member.id })
+    );
+    expect(ended.kind).toBe("ended");
+    expect(practiceRows(member.id).filter((r) => r.live === 1)).toHaveLength(0);
   });
 });
 

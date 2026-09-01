@@ -14,19 +14,13 @@ import {
   confirmPreventiveRecordDecision,
   dismissPreventiveRecordCandidate,
   markCarePlanItemDone,
-  logPracticeByTargetId,
 } from "@/lib/queries";
 import { snoozeUntil } from "@/lib/upcoming";
 import { isRealIsoDate } from "@/lib/date";
 import { carePlanDoneResult } from "@/lib/care-plan-upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore, settleFollowUpCore } from "@/lib/followup-write";
-import {
-  formError,
-  formOk,
-  type FormResult,
-  type PracticeLogOutcome,
-} from "@/lib/types";
+import { formError, formOk, type FormResult } from "@/lib/types";
 import { requireSession } from "@/lib/auth";
 import { dismissMultiviewHint } from "@/lib/settings";
 import { explainFinding } from "@/lib/explain-finding";
@@ -50,38 +44,6 @@ async function gateItemProfile(formData: FormData): Promise<number> {
   }
   const { profile } = await requireWriteAccess();
   return profile.id;
-}
-
-export type LogUpcomingPracticeResult =
-  { ok: true; outcome: PracticeLogOutcome } | { ok: false; error: string };
-
-export async function logUpcomingPractice(
-  formData: FormData
-): Promise<LogUpcomingPracticeResult> {
-  const requestedProfileId = Number(formData.get("profile_id"));
-  let pid: number;
-  if (requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    pid = requestedProfileId;
-  } else {
-    const { profile } = await requireWriteAccess();
-    pid = profile.id;
-  }
-  const targetId = Number(formData.get("target_id"));
-  if (!targetId) return { ok: false, error: "Couldn't find that practice." };
-  const outcome = logPracticeByTargetId(
-    pid,
-    targetId,
-    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
-  );
-  if (outcome.kind === "logged") {
-    revalidateRoute("/upcoming");
-    revalidateRoute("/wellness");
-    revalidateRoute("/longevity");
-    revalidateRoute("/history");
-    revalidateRoute("/");
-  }
-  return { ok: true, outcome };
 }
 
 // "Why is this flagged?" (issue #878, Phase 1). Narrate a finding's OWN reason payload

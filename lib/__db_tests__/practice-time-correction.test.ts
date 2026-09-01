@@ -55,8 +55,9 @@ import {
 import {
   getPracticeCorrectionBursts,
   getRecentPracticeTaps,
-  logPracticeByTargetId,
+  logFinishedPracticeByTargetId,
   logPracticeSession,
+  updatePracticeSession,
 } from "@/lib/queries";
 import { restampPracticeLogsCore } from "@/lib/practice-log";
 import { inferPracticeSchedule } from "@/lib/queries";
@@ -118,6 +119,16 @@ function storedTime(logId: number): string | null {
       start_time: string | null;
     }
   ).start_time;
+}
+
+function storedEndTime(logId: number): string | null {
+  return (
+    db
+      .prepare("SELECT end_time FROM practice_logs WHERE id = ?")
+      .get(logId) as {
+      end_time: string | null;
+    }
+  ).end_time;
 }
 
 function storedDate(logId: number): string {
@@ -364,6 +375,62 @@ describe("a stated window never joins a chip burst", () => {
     ).toEqual({ kind: "restamped", count: 1 });
     expect(storedTime(id)).not.toBe(before);
   });
+
+  it("independently excludes live rows from both the offer read and transaction reread", () => {
+    const pid = makeProfile("live-burst-barriers");
+    const t = today(pid);
+    logPracticeSession(pid, "Sauna", t, "page", {
+      startTime: "12:00",
+      live: true,
+      derivedWindow: true,
+    });
+    const live = lastLogId(pid);
+    expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+    expect(restampPracticeLogsCore(pid, live, () => new Date())).toEqual({
+      kind: "no-burst",
+    });
+
+    // Mutation controls: either barrier must be reading `live`, rather than the row
+    // being ineligible for some unrelated reason.
+    db.prepare("UPDATE practice_logs SET live = 0 WHERE id = ?").run(live);
+    expect(getRecentPracticeTaps(pid, clockNow()).map((row) => row.id)).toEqual(
+      [live]
+    );
+    expect(
+      restampPracticeLogsCore(
+        pid,
+        live,
+        (row) => new Date(new Date(row.statedAt!).getTime() - 5 * 60_000)
+      )
+    ).toEqual({ kind: "restamped", count: 1 });
+  });
+
+  it("an edited Telegram end stamp is excluded by both correction barriers", () => {
+    const pid = makeProfile("edited-chat-end");
+    const target = practiceTarget(pid, "Sauna");
+    logFinishedPracticeByTargetId(pid, target, "telegram-command");
+    const id = lastLogId(pid);
+    expect(getRecentPracticeTaps(pid, clockNow()).map((row) => row.id)).toEqual(
+      [id]
+    );
+    expect(
+      updatePracticeSession(pid, id, {
+        date: today(pid),
+        startTime: null,
+        endTime: "11:45",
+        durationMin: null,
+        notes: "corrected",
+      })
+    ).toMatchObject({
+      kind: "updated",
+      session: { edited: 1, correction_locked: 1 },
+    });
+
+    expect(getRecentPracticeTaps(pid, clockNow())).toEqual([]);
+    expect(restampPracticeLogsCore(pid, id, () => new Date())).toEqual({
+      kind: "no-burst",
+    });
+  });
 });
 
 describe("the chips never move a session to another day", () => {
@@ -417,50 +484,57 @@ describe("date + time compose through the profile's timezone", () => {
 });
 
 describe("a burst renders only on the message that produced it (#2264)", () => {
-  it("stamps the originating message on a nudge tap and binds the burst to it", async () => {
+  it("stamps the originating message on a nudge tap and binds the burst to it", () => {
     const pid = makeProfile("binding");
+    // Private to this profile instead of reusing a seeded chat/message coordinate.
+    // The shared DB project begins from a production-shaped template; colliding with
+    // one of its pointers would exercise ON CONFLICT replacement rather than the
+    // fresh delivered-message path this case is about.
+    const chatId = `5552875-${pid}`;
+    const messageId = 9_421_000;
     setTelegramBotConfig({
       telegramBotToken: "bot for tests 12",
       telegramMode: "poll",
     });
-    seedLoginTelegram(pid, "5552875");
+    seedLoginTelegram(pid, chatId);
     const targetId = practiceTarget(pid, "Sauna");
 
-    // The write path carries the pointer through, which is what the binding reads.
-    logPracticeByTargetId(pid, targetId, "page", null);
-    const unattributed = lastLogId(pid);
+    // A stamped row reports its message on the tap row the offer reads. The pointer is
+    // recorded through the real store, so the id is the one production would stamp.
+    // This is one delivered-message tap, not an unattributed tap immediately followed
+    // by the same Telegram action: the shared callback core deliberately deduplicates
+    // that second shape inside its double-tap window (#4582).
+    recordMessagePointer({
+      profileId: pid,
+      chatId,
+      messageId,
+      kind: "practice",
+      date: today(pid),
+      keyboard: [],
+    });
+    const messageRow = messagePointerIdAt(pid, chatId, messageId)!;
+    expect(messageRow).toBeGreaterThan(0);
+    expect(
+      logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", messageRow)
+    ).toMatchObject({ kind: "logged" });
+    const attributed = lastLogId(pid);
+
     expect(
       (
         db
           .prepare(
             "SELECT notify_message_id AS m FROM practice_logs WHERE id = ?"
           )
-          .get(unattributed) as { m: number | null }
+          .get(attributed) as { m: number | null }
       ).m
-    ).toBeNull();
-
-    // A stamped row reports its message on the tap row the offer reads. The pointer is
-    // recorded through the real store, so the id is the one production would stamp.
-    recordMessagePointer({
-      profileId: pid,
-      chatId: "5552875",
-      messageId: 4210,
-      kind: "practice",
-      date: today(pid),
-      keyboard: [],
-    });
-    const messageRow = messagePointerIdAt(pid, "5552875", 4210)!;
-    expect(messageRow).toBeGreaterThan(0);
-    logPracticeByTargetId(pid, targetId, "page", messageRow);
-    const attributed = lastLogId(pid);
+    ).toBe(messageRow);
 
     const taps = getRecentPracticeTaps(pid, clockNow());
     const byId = new Map(taps.map((t) => [t.id, t]));
     expect(byId.get(attributed)?.messageRef).toBe(messageRow);
-    expect(byId.get(unattributed)?.messageRef).toBeNull();
 
     // A message that is NOT the one the tap came from, and is not the newest live
-    // message of its domain, carries neither burst.
+    // message of its domain, carries no burst.
     expect(
       getPracticeCorrectionBursts(pid, clockNow(), {
         messageRef: messageRow + 999,
@@ -800,7 +874,8 @@ describe("the pace nudge's correction lifecycle, end to end", () => {
     );
 
     // The write landed.
-    expect(storedTime(lastLogId(pid))).toBe("00:15");
+    expect(storedTime(lastLogId(pid))).toBeNull();
+    expect(storedEndTime(lastLogId(pid))).toBe("00:15");
     expect(storedDate(lastLogId(pid))).toBe("2026-06-17");
     // R1: the chat was redrawn. A null rebuild that fell out of the handler left the
     // stale keyboard standing — 0 edits, and "🕐 Sauna 00:45" still on screen.

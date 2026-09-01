@@ -1,5 +1,5 @@
 import { test, expect } from "./fixtures";
-import { type Page } from "@playwright/test";
+import { type Locator, type Page, type Response } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -43,6 +43,45 @@ const TOAST_STRINGS = [
   "e2e-toastB: readings", // profile B's ready import-job toast body ("Extracted …")
 ];
 
+const POLL_PATHS = ["/api/jobs/extractions", "/api/jobs/imports"] as const;
+
+async function profileIdFromResponse(response: Response): Promise<number> {
+  const body = (await response.json()) as { profileId?: unknown };
+  expect(body.profileId).toEqual(expect.any(Number));
+  return body.profileId as number;
+}
+
+async function waitForProfilePolls(
+  page: Page,
+  expectedProfileId?: number
+): Promise<number> {
+  const profileIds = await Promise.all(
+    POLL_PATHS.map(async (path) => {
+      for (;;) {
+        const response = await page.waitForResponse(
+          (candidate) =>
+            new URL(candidate.url()).pathname === path &&
+            candidate.status() === 200
+        );
+        const profileId = await profileIdFromResponse(response);
+        if (expectedProfileId === undefined || profileId === expectedProfileId)
+          return profileId;
+      }
+    })
+  );
+  expect(profileIds[1]).toBe(profileIds[0]);
+  if (expectedProfileId !== undefined)
+    expect(profileIds[0]).toBe(expectedProfileId);
+  return profileIds[0];
+}
+
+async function switchControlProfileId(control: Locator): Promise<number> {
+  const testId = await control.getAttribute("data-testid");
+  const match = testId?.match(/^switch-to-(\d+)$/);
+  if (!match) throw new Error(`expected switch-to-<id>, received ${testId}`);
+  return Number(match[1]);
+}
+
 async function expectNoToasterOutput(page: Page) {
   for (const s of TOAST_STRINGS) {
     await expect(page.getByText(s, { exact: false })).toHaveCount(0);
@@ -72,50 +111,47 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_A_PROFILE
     );
-    // Give the toaster's first poll room to run (idle cadence is 6s), then confirm
-    // a clean baseline — no toasts from profile A's own terminal history either.
-    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
+    await waitForProfilePolls(page);
     await expectNoToasterOutput(page);
 
     // Switch to profile B, which has its OWN terminal document/job history. Pre-fix
     // this replayed as a toast per row; the fix reseeds silently.
     await page.getByTestId("profile-identity-bar").click();
-    await settledClick(
-      page,
-      page
-        .getByTestId("profile-switcher-panel")
-        // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
-        // this profile's row — the sibling "eye" view toggle also carries the name
-        // in its aria-label, so a getByRole name match would resolve both.
-        .locator('[data-testid^="switch-to-"]')
-        .filter({ hasText: TOAST_SWITCH_B_PROFILE })
-    );
+    const switchToB = page
+      .getByTestId("profile-switcher-panel")
+      // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
+      // this profile's row — the sibling "eye" view toggle also carries the name
+      // in its aria-label, so a getByRole name match would resolve both.
+      .locator('[data-testid^="switch-to-"]')
+      .filter({ hasText: TOAST_SWITCH_B_PROFILE });
+    const profileBId = await switchControlProfileId(switchToB);
+    const profileBPolls = waitForProfilePolls(page, profileBId);
+    await settledClick(page, switchToB);
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_B_PROFILE
     );
 
-    // Wait through a full idle poll cycle so a regressed build would have toasted.
-    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
+    await profileBPolls;
     await expectNoToasterOutput(page);
 
     // Switch back to profile A — its docs must not re-toast either (the "switching
     // back replays the spam for A" half of the bug).
     await page.getByTestId("profile-identity-bar").click();
-    await settledClick(
-      page,
-      page
-        .getByTestId("profile-switcher-panel")
-        // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
-        // this profile's row — the sibling "eye" view toggle also carries the name
-        // in its aria-label, so a getByRole name match would resolve both.
-        .locator('[data-testid^="switch-to-"]')
-        .filter({ hasText: TOAST_SWITCH_A_PROFILE })
-    );
+    const switchToA = page
+      .getByTestId("profile-switcher-panel")
+      // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
+      // this profile's row — the sibling "eye" view toggle also carries the name
+      // in its aria-label, so a getByRole name match would resolve both.
+      .locator('[data-testid^="switch-to-"]')
+      .filter({ hasText: TOAST_SWITCH_A_PROFILE });
+    const profileAId = await switchControlProfileId(switchToA);
+    const profileAPolls = waitForProfilePolls(page, profileAId);
+    await settledClick(page, switchToA);
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
       TOAST_SWITCH_A_PROFILE
     );
 
-    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
+    await profileAPolls;
     await expectNoToasterOutput(page);
   });
 });

@@ -24,6 +24,7 @@ const SAUNA: TrackedPractice = {
   pace: "on-pace",
   atCeiling: false,
   previousDurationMin: null,
+  liveSession: null,
 };
 
 // The populated branch's row control drags in the offline queue + confirm providers.

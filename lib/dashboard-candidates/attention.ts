@@ -70,7 +70,7 @@ export function attentionCandidates(
       item.actionLabel != null ||
       item.altAction != null ||
       item.doseId != null ||
-      item.practiceTargetId != null ||
+      item.practiceLog != null ||
       item.preventiveRuleKey != null ||
       item.bookHref != null ||
       item.carePlanItemId != null ||

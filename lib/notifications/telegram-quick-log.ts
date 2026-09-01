@@ -399,7 +399,7 @@ export async function handlePracticeDoneTap(
   // `plog:` is a tap on the on-demand `/practice` list. The distinction already exists
   // here for the correction ride-along, so provenance reads it rather than inventing a
   // second, subtly different way to ask the same question.
-  const outcome = logPracticeByTargetId(
+  const outcome = logFinishedPracticeByTargetId(
     profileId,
     token.targetId,
     messageKindIsPracticeNudge(cq.data) ? "telegram-nudge" : "telegram-command",
@@ -1374,7 +1374,7 @@ import {
   getSymptomLogOrder,
   logAdministration,
   logRedoseWindowAdministration,
-  logPracticeByTargetId,
+  logFinishedPracticeByTargetId,
 } from "../queries";
 import { practiceLogOutcomeText } from "../practice";
 import { getDigestTimeSuggestion } from "../queries/digest-time-suggestion";

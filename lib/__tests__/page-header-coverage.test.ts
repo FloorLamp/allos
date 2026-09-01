@@ -58,16 +58,6 @@ const EXEMPT: Record<string, string> = {
     "The dashboard: #1413 drops its header on mobile entirely (the Now strip leads), so it must not be pinned to one here.",
 };
 
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walk(full));
-    else if (entry.name === "page.tsx") out.push(full);
-  }
-  return out;
-}
-
 // Resolve an import specifier (`@/…` or a relative path) to a file in the repo.
 const IMPORT_RESOLUTION_CACHE = new Map<string, string | null>();
 
@@ -160,7 +150,8 @@ function ancestorLayouts(pageFile: string): string[] {
   return out.filter((l) => l !== path.join(APP_GROUP, "layout.tsx"));
 }
 
-const PAGES = walk(APP_GROUP).sort();
+const APP_TSX = walkTsx(APP_GROUP).sort();
+const PAGES = APP_TSX.filter((file) => path.basename(file) === "page.tsx");
 
 describe("every (app) page renders the shared PageHeader", () => {
   it("finds the app's pages (the scan itself is wired up)", () => {
@@ -200,14 +191,9 @@ describe("every (app) page renders the shared PageHeader", () => {
     expect(isRedirectOnly(read("training/page.tsx"))).toBe(false);
   });
 
-  it("keeps the exemption list honest (every entry still exists)", () => {
-    for (const rel of Object.keys(EXEMPT)) {
-      expect(fs.existsSync(path.join(APP_GROUP, rel))).toBe(true);
-    }
-  });
-
-  it("gives every exemption a written justification", () => {
+  it("keeps every exemption present and justified", () => {
     for (const [rel, why] of Object.entries(EXEMPT)) {
+      expect(fs.existsSync(path.join(APP_GROUP, rel))).toBe(true);
       expect(why.length, `${rel} needs a real reason`).toBeGreaterThan(40);
     }
   });
@@ -238,7 +224,7 @@ function walkTsx(dir: string): string[] {
 }
 
 describe("only the page's own h1 uses the page-title heading scale (#1449)", () => {
-  const FILES = [...walkTsx(APP_GROUP), ...walkTsx(COMPONENTS)].sort();
+  const FILES = [...APP_TSX, ...walkTsx(COMPONENTS)].sort();
 
   it("finds the app's components (the scan itself is wired up)", () => {
     expect(FILES.length).toBeGreaterThan(100);
@@ -251,18 +237,13 @@ describe("only the page's own h1 uses the page-title heading scale (#1449)", () 
     expect(offenders).toEqual([]);
   });
 
-  it("keeps the page-scale allowlist honest (every entry still exists and still qualifies)", () => {
-    for (const rel of Object.keys(H1_SCALE_OK)) {
+  it("keeps every page-scale allowance present, qualifying, and justified", () => {
+    for (const [rel, why] of Object.entries(H1_SCALE_OK)) {
       const full = path.join(REPO, rel);
       expect(fs.existsSync(full), `${rel} no longer exists`).toBe(true);
       // If the file stopped using page scale, drop it from the list rather than
       // leaving a stale exemption that would silently cover a future regression.
       expect(H1_SCALE.test(source(full)), rel).toBe(true);
-    }
-  });
-
-  it("gives every page-scale allowance a written justification", () => {
-    for (const [rel, why] of Object.entries(H1_SCALE_OK)) {
       expect(why.length, `${rel} needs a real reason`).toBeGreaterThan(40);
     }
   });

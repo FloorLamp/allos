@@ -44,6 +44,12 @@
 import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
+import {
+  checkRunsVerdict,
+  closedStatusDescription,
+  readinessVerdict,
+  receiptVerdict,
+} from "./merge-gate-core.mjs";
 helpGuard(process.argv, import.meta.url);
 
 const token = resolveReadToken();
@@ -171,19 +177,11 @@ const fail = (label) => {
   failures.push(label);
   console.log(`FAIL: ${label}`);
 };
-const closedStatusDescription = (failure) => {
-  const description = `gate CLOSED — ${failure.replace(/\s+/g, " ").trim()}`;
-  return description.length <= 140
-    ? description
-    : `${description.slice(0, 137)}...`;
-};
-
 console.log(`PR #${prNumber} head ${head.slice(0, 8)} (${pr.state})`);
 
-if (pr.state !== "open") fail(`PR is ${pr.merged ? "merged" : pr.state}`);
-if (pr.draft)
-  fail("PR is DRAFT — PRs open READY (environment.md §GitHub access)");
-else pass("PR is READY");
+const readiness = readinessVerdict(pr);
+for (const failure of readiness.failures) fail(failure);
+if (readiness.ready) pass("PR is READY");
 
 // The receipt: a stated-SHA review, because stating the SHA is what the
 // review contract requires — review.commit_id records where GitHub filed it,
@@ -199,52 +197,9 @@ else pass("PR is READY");
 // reviewer did not author the change. Where identities actually differ, the
 // identity check still stands — it is the stronger evidence when it exists.
 const reviews = paged(`repos/${repo}/pulls/${prNumber}/reviews`);
-const statesHead = (body) =>
-  [...(body ?? "").matchAll(/[0-9a-f]{8,40}/g)].some((m) =>
-    head.startsWith(m[0])
-  );
-const ASSERTS_INDEPENDENCE =
-  /\b(?:did not|didn'?t)\s+(?:author|write)\b|\bindependent(?:ly)?\s+review/i;
-const receiptShaped = (r) =>
-  ["COMMENTED", "APPROVED"].includes(r.state) && statesHead(r.body);
-const receipt = reviews.find(
-  (r) => r.user?.login !== pr.user?.login && receiptShaped(r)
-);
-const sharedReceipt = receipt
-  ? null
-  : reviews.find(
-      (r) =>
-        r.user?.login === pr.user?.login &&
-        receiptShaped(r) &&
-        ASSERTS_INDEPENDENCE.test(r.body ?? "")
-    );
-if (receipt)
-  pass(`exact-head receipt: ${receipt.user.login} states ${head.slice(0, 8)}`);
-else if (sharedReceipt)
-  pass(
-    `exact-head receipt (shared identity): ${sharedReceipt.user.login} states ` +
-      `${head.slice(0, 8)} and asserts they did not author the change`
-  );
-else {
-  const unasserted = reviews.find(
-    (r) => r.user?.login === pr.user?.login && receiptShaped(r)
-  );
-  const staleReceipt = reviews.find(
-    (r) =>
-      r.user?.login !== pr.user?.login && /[0-9a-f]{8,40}/.test(r.body ?? "")
-  );
-  fail(
-    unasserted
-      ? `a review by the PR's own account states ${head.slice(0, 8)} but does ` +
-          "not assert independence — on a shared identity the receipt must SAY " +
-          "the reviewer did not author the change (#4258); re-post the review " +
-          "with that statement"
-      : staleReceipt
-        ? `no receipt for ${head.slice(0, 8)} — the head changed since ` +
-          `${staleReceipt.user.login}'s review, which VOIDS it; re-review this head`
-        : "no exact-head receipt: no review states this head SHA"
-  );
-}
+const receipt = receiptVerdict(pr, reviews, head);
+if (receipt.ok) pass(receipt.message);
+else fail(receipt.message);
 
 const standing = reviews.filter(
   (r) => r.state === "CHANGES_REQUESTED" && r.user?.login !== pr.user?.login
@@ -264,27 +219,16 @@ for (let page = 1; ; page++) {
   all_runs.push(...batch.check_runs);
   if (all_runs.length >= fetched_count) break;
 }
-const check_runs = all_runs.filter((r) => r.name !== ignoreCheck);
-const total_count = check_runs.length;
-if (ignoreCheck && all_runs.length !== check_runs.length) {
+const checks = checkRunsVerdict(all_runs, ignoreCheck, head);
+if (checks.ignored) {
   console.log(`(ignoring check "${ignoreCheck}" — the gate's own wrapper)`);
 }
-const pending = check_runs.filter((r) => r.status !== "completed");
-const red = check_runs.filter(
-  (r) =>
-    r.status === "completed" &&
-    !["success", "neutral", "skipped"].includes(r.conclusion)
-);
-if (total_count === 0 || pending.length) {
-  console.log(
-    `CI INCOMPLETE on ${head.slice(0, 8)}: ${total_count} registered, ` +
-      `${pending.length} pending. Not a verdict — run ci-watch.mjs to settlement.`
-  );
+if (checks.kind === "incomplete") {
+  console.log(checks.message);
   process.exit(2);
 }
-if (red.length) {
-  fail(`red checks on this head: ${red.map((r) => r.name).join(", ")}`);
-} else pass(`all ${total_count} checks green on this head`);
+if (checks.kind === "fail") fail(checks.message);
+else pass(checks.message);
 
 const [owner, name] = repo.split("/");
 const threads = unresolvedThreads(owner, name);

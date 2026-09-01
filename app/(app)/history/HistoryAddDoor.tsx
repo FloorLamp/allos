@@ -22,8 +22,9 @@ import {
   usualRoutinePhrase,
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
-import { logPractice } from "@/app/(app)/wellness/actions";
-import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import SubstanceForm from "@/components/substances/SubstanceForm";
+import SymptomForm from "@/components/illness/SymptomForm";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { FOOD_GROUPS } from "@/lib/food-groups";
@@ -62,23 +63,20 @@ import type { WeightUnit } from "@/lib/settings";
 // time field stays empty and emits null, so a backfill that states nothing still
 // states nothing, which is the behaviour phase 1 was protecting.
 //
-// TWO KINDS KEEP A BARE DATE, and neither is an oversight:
-//   • SUBSTANCE — `substance_daily_totals` is a DAY TOTAL. It has a `recorded_at`
-//     (when the use was logged) and no event instant at all, which is why the record
-//     renders these rows date-only and sinks them below the day's timed ones. A time
-//     field here would collect a statement with nowhere to be stored.
-//   • BODY — `body_metrics.occurred_at` exists (migration 165, #2235) and the write
-//     core takes it, but `addBodyMetric` deliberately states no time, and its
-//     find-then-write CLEARS the column on an empty submission while leaving it alone
-//     for a time-blind one. Choosing between those is a decision about the body
-//     domain's write contract, not about this door, so it is raised rather than
-//     guessed at here.
+// BODY KEEPS A BARE DATE, and that is not an oversight: `body_metrics.occurred_at`
+// exists (migration 165, #2235) and the write core takes it, but `addBodyMetric`
+// deliberately states no time, and its find-then-write CLEARS the column on an empty
+// submission while leaving it alone for a time-blind one. Choosing between those is a
+// decision about the body domain's write contract, not about this door. SUBSTANCE is
+// date-only in the SCHEMA (`substance_daily_totals` is a day total with no event
+// instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
   practice: "Log a practice",
   substance: "Log a use",
   body: "Log a reading",
+  symptom: "Log a symptom",
 } as const;
 
 export type HistoryAddKind = keyof typeof KIND_LABEL;
@@ -89,6 +87,11 @@ export interface HistoryAddVocabulary {
   practices: string[];
   /** This profile's substance keys, with the label its record prints. */
   substances: { key: string; label: string }[];
+  /**
+   * The symptom vocabulary this profile picks from — the curated catalog plus its own
+   * customs, in the order its history ranks them (#857). Empty for every other kind.
+   */
+  symptoms: { key: string; label: string }[];
   /** The login's weight unit — what the value the reader types is in. */
   weightUnit: WeightUnit;
   /**
@@ -170,6 +173,7 @@ export default function HistoryAddDoor({
 
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
+  if (kind === "symptom" && vocabulary.symptoms.length === 0) return null;
 
   function close(): void {
     setOpen(false);
@@ -301,9 +305,8 @@ export default function HistoryAddDoor({
     );
   }
 
-  // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
-  // time hidden: a control rendered without half of itself is a variant, and these two
-  // kinds are date-only in the SCHEMA rather than by presentation choice.
+  // BODY's field, and still `DateField` rather than a `WhenControl` with its time
+  // hidden: a control rendered without half of itself is a variant.
   const dateField = (
     <label className="text-xs text-slate-500 dark:text-slate-400">
       Date
@@ -394,101 +397,60 @@ export default function HistoryAddDoor({
           </form>
         );
       case "practice":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own
+        // practice form — a start with no end, so a window it could state here was
+        // correctable only on the Wellness card — is deleted and the domain's one form
+        // mounts with the found day in hand. The close and re-read stay the door's.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await logPractice(fd);
-                return outcome.kind === "logged"
-                  ? null
-                  : "Couldn't log that session.";
-              })
-            }
-          >
-            {whenField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Practice
-              <select name="practice" className="input mt-1 w-full">
-                {vocabulary.practices.map((practice) => (
-                  <option key={practice}>{practice}</option>
-                ))}
-              </select>
-            </label>
-            {/* THE FIELD IS ALWAYS POSTED, AND ITS VALUE IS NOW THE READER'S.
-                `logPractice` reads PRESENCE, not value (#2204): an absent
-                `start_time` means "you have the clock" and would stamp the filing
-                instant onto a day that is not today, so this stays present
-                unconditionally. Its value is the wall clock WhenControl collected —
-                and an unstated time still resolves to "", which is the same honest
-                "this session has no minute" the door has always been able to say.
-                The field is `start_time` since #3142 renamed the column; posting the
-                old name would have left the presence gate unsatisfied and stamped
-                the tap instant over what the person actually said. NO `end_time`:
-                this door states a start, and a session's window is the expanded
-                form's to state. */}
-            <input
-              type="hidden"
-              name="start_time"
-              value={statedHhmm(when.statedAt, tz)}
-            />
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min={1}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <PracticeSessionForm
+            practices={vocabulary.practices}
+            // The door is bounded by today at every kind (see the header), so
+            // `maxDate` IS this profile's today — there is no second day to pass.
+            today={maxDate}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "substance":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance
+        // form — with the bare "Amount" — is deleted and the domain's one form mounts
+        // with the found day in hand. The close and re-read stay the door's.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await addSubstanceDailyTotalAction(fd);
-                return outcome.kind === "added"
-                  ? null
-                  : "Couldn't save that entry.";
-              })
-            }
-          >
-            {dateField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Substance
-              <select name="substance" className="input mt-1 w-full">
-                {vocabulary.substances.map((substance) => (
-                  <option key={substance.key} value={substance.key}>
-                    {substance.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={1}
-                className="input mt-1 w-full"
-                required
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={vocabulary.substances}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
+        );
+      case "symptom":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The day view's own
+        // symptom card mounts the tap BAR, which is why this kind had no door at all —
+        // but a reader filtered to `?kind=symptom` is standing on no day, so the record
+        // could show symptom rows and correct them while offering no way to add one.
+        // The domain's form is that way, with the found day in hand.
+        //
+        // NO `dateField`: the store is UNIQUE(profile_id, date, symptom) and the form
+        // says so — the day is the door's, not a field inside it.
+        return (
+          <SymptomForm
+            symptoms={vocabulary.symptoms}
+            date={date}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "body":
         return (

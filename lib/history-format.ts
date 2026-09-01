@@ -568,20 +568,22 @@ export function layoutHistoryDay(
   opts: { rollup: boolean }
 ): HistoryDayLayout {
   if (!opts.rollup) return { visible: [...rows], rollups: [] };
-  const visible: HistoryRow[] = [];
   const byMember = new Map<number, HistoryRow[]>();
   for (const row of rows) {
-    if (!HISTORY_ROLLUP_KINDS.includes(row.kind)) {
-      visible.push(row);
-      continue;
-    }
+    if (!HISTORY_ROLLUP_KINDS.includes(row.kind)) continue;
     const list = byMember.get(row.profileId);
     if (list) list.push(row);
     else byMember.set(row.profileId, [row]);
   }
+  const visible = rows.filter(
+    (row) =>
+      !HISTORY_ROLLUP_KINDS.includes(row.kind) ||
+      byMember.get(row.profileId)?.length === 1
+  );
   const rollups: HistoryRollup[] = [];
   for (const profileId of [...byMember.keys()].sort((a, b) => a - b)) {
     const group = byMember.get(profileId)!;
+    if (group.length === 1) continue;
     const counts = new Map<HistoryKind, number>();
     for (const row of group)
       counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);

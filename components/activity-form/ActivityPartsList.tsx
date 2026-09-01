@@ -695,10 +695,14 @@ export default function ActivityPartsList({
                   truncates), and How-to + reorder/remove form one second-row
                   toolbar with 44px targets. `sm:contents` dissolves that wrapper
                   from `sm` up, so the desktop header stays the single compact row
-                  it has always been. */}
+                  it has always been.
+
+                  It parks with `top-edge-safe` (#4515): the workspace overlay is
+                  the scroll container at the viewport, so a child pinned at zero
+                  pins under the phone's status bar — #4282 one layer in. */}
               <div
                 data-testid="part-header"
-                className="sticky top-0 z-10 -mx-1 flex flex-col gap-1 bg-surface/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:md:bg-transparent"
+                className="sticky top-edge-safe z-10 -mx-1 flex flex-col gap-1 bg-surface/95 px-1 py-1 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2 md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:md:bg-transparent"
               >
                 <div className="min-w-0 sm:flex-1">
                   <ActivityCombobox

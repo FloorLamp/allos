@@ -9,6 +9,7 @@ import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
+import TemperatureField from "@/components/vitals/TemperatureField";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -819,19 +820,6 @@ export default function MeasurementsQuickAdd({
         </UnitToggle>
       </Field>
     ),
-    // Water drunk today (#1851), in litres — the metric's own canonical and
-    // charted unit, so what is typed is what the chart plots.
-    //
-    // "TODAY" IS LOAD-BEARING, not a nicety. `hydration_l` is an ADDITIVE metric
-    // (lib/metric-buckets.ts names it so), and this field files ONE point row per
-    // day that re-entry CORRECTS — so a second glass typed later replaces the
-    // first rather than adding to it. Labelled "Water" alone, the natural reading
-    // is "log a glass", and the measured result of that reading is wrong twice
-    // over: two typed glasses (0.5 then 0.7) leave the day at 0.7, and on a
-    // profile that also syncs a bottle the typed value REPLACES the synced day
-    // (2.5 L → 0.3 L), because `manual` leads SOURCE_PREFERENCE and an additive
-    // metric elects one source per day. Naming the quantity the field actually
-    // holds is what makes both of those the right answer instead of a surprise.
     hydration: (
       <Field key="hydration" label="Water today" htmlFor="m-hydration">
         <UnitSuffix suffix={TREND_METRIC_META.hydration.unit.trim()}>
@@ -925,30 +913,15 @@ export default function MeasurementsQuickAdd({
         label={TREND_METRIC_META.temperature.title}
         htmlFor="m-temperature"
       >
-        <UnitToggle
-          name="temp_unit"
-          label={`${TREND_METRIC_META.temperature.title} unit`}
-          options={["F", "C"]}
-          optionLabels={{ F: "°F", C: "°C" }}
-          value={tempUnitDetection.unit}
-          onChange={(v) => tempUnitDetection.chooseUnit(v === "C" ? "C" : "F")}
-        >
-          <input
-            id="m-temperature"
-            type="number"
-            step="0.1"
-            name="temperature"
-            onChange={(event) =>
-              tempUnitDetection.readValue(event.target.value)
-            }
-            className="input pr-16"
-          />
-        </UnitToggle>
-        {tempUnitDetection.detectedUnit && (
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Detected °{tempUnitDetection.detectedUnit} from the reading.
-          </p>
-        )}
+        {/* THE DOMAIN'S ONE TEMPERATURE FIELD (#4424 ruling 5) — the symptom bar's
+            illness mounts compose this same component, so a reading typed there and
+            one typed here are the same field rather than two arrangements of it. */}
+        <TemperatureField
+          id="m-temperature"
+          testIdPrefix="m-temp"
+          detection={tempUnitDetection}
+          unitLabel={`${TREND_METRIC_META.temperature.title} unit`}
+        />
       </Field>
     ),
     // The night's two clocks (#1851) — ONE reading typed as two times, the same

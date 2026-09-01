@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const RIGHT_GLYPH =
   /(?:→|➜|➔|➡|⇒|⟶|›|»|⟩|❯|►|->|&(?:rarr|rightarrow);|&#(?:8594|8250|187);)\s*$/;
+const MAY_HAVE_RIGHT_CUE =
+  /Icon[A-Za-z0-9_]*(?:Arrow|Chevron|Caret)[A-Za-z0-9_]*Right|→|➜|➔|➡|⇒|⟶|›|»|⟩|❯|►|->|&(?:rarr|rightarrow);|&#(?:8594|8250|187);/;
 const RIGHT_ICON_FAMILY = /(?:Arrow|Chevron|Caret)/;
 const COMPOUND_DIRECTION = /(?:UpRight|DownRight|RightUp|RightDown)/;
 
@@ -123,9 +125,7 @@ describe("DestinationLink", () => {
   it("finds no raw rightward indicator inside next/link", () => {
     const findings = sourceFiles().flatMap((file) => {
       const source = fs.readFileSync(path.join(REPO, file), "utf8");
-      // The AST rule only visits locally imported next/link elements. Parsing
-      // cannot create that module specifier, so raw non-importers are irrelevant.
-      return source.includes("next/link")
+      return source.includes("next/link") && MAY_HAVE_RIGHT_CUE.test(source)
         ? handRolledIndicators(file, source)
         : [];
     });
@@ -144,6 +144,7 @@ describe("DestinationLink", () => {
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open ⟶</Link>;',
     'import Link from "next/link"; export const Bad = () => <Link href="/x">Open &#8594;</Link>;',
   ])("sees an ordinary raw bypass", (source) => {
+    expect(MAY_HAVE_RIGHT_CUE.test(source)).toBe(true);
     expect(handRolledIndicators("components/Bad.tsx", source)).not.toEqual([]);
   });
 

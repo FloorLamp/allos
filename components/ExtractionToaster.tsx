@@ -92,6 +92,7 @@ export default function ExtractionToaster({
       }
       const observed = await observeStates(
         EXTRACTION_STATES_ENDPOINT,
+        profileId,
         isExtractionState
       );
       if (!active) return;
@@ -100,7 +101,8 @@ export default function ExtractionToaster({
         // it with an empty map would make the next successful poll treat every
         // document as new (before === undefined) and re-toast finished ones. Retry
         // soon instead. Over `fetch` this covers the offline case, a 401 after the
-        // session lapsed, and a 200 whose body is not the envelope.
+        // session lapsed, a malformed envelope, or an answer for a profile that
+        // switched at a different point in the request/render sequence.
         timer = setTimeout(poll, 2000);
         return;
       }

@@ -172,13 +172,11 @@ which has no positive event to await in its place. The two frozen cases:
   assert not-`edited`; closing earlier lets a real bug pass green. Nothing to
   await — "the debounce elapsed with no POST" is exactly the absence being
   proven.
-- **Poll-cadence proof** (`profile-switch-toasts.spec.ts`, ×3): after a profile
-  switch, the doc/import toasters must NOT replay the new profile's terminal
-  history as ghost toasts. Waiting past the 6s idle poll cadence lets a
-  regressed build toast. The poll is a Server Action POST to the current route
-  (indistinguishable from any other POST), so a `waitForResponse` gate can't
-  reliably pick out "the toaster polled" — matching a generic POST would
-  reintroduce the very race the wait rules out.
+- **Former poll-cadence proof** (`profile-switch-toasts.spec.ts`): #1878 moved
+  both toaster polls from indistinguishable Server Action POSTs to dedicated GET
+  routes, and #4592 made each envelope identify its profile. The spec now awaits
+  those exact responses and then asserts no toast, so its old three 7s bounded
+  waits are gone.
 
 **The distinction from the banned use:** a settle `waitForTimeout` waits for a
 POSITIVE effect to LAND (an interaction took hold) — replace it with

@@ -2,7 +2,7 @@
 //
 // The illness Now group lets a caregiver log a household member's symptom / temperature / PRN
 // dose and end their episode WITHOUT switching the acting profile. The bar/control post an
-// explicit `profileId`; the action then gates on the TARGET via requireProfileWriteAccess
+// explicit subject; the action then gates on the TARGET via requireProfileWriteAccess
 // (the #31 cross-profile gate) instead of the active-profile requireWriteAccess. This tier
 // pins that gate: a GRANTED member writes the target's rows; an UNGRANTED (or read-only)
 // member is refused before any write. Auth is mocked (harness), the DB is real.
@@ -105,7 +105,7 @@ describe("cross-profile symptom writes (#858)", () => {
   it("logs a symptom for a granted household member without switching", async () => {
     const { kid, home } = household();
     const res = await logSymptom(
-      fd({ symptom: "cough", severity: 2, profileId: kid.id })
+      fd({ symptom: "cough", severity: 2, profile_id: kid.id })
     );
     expect(res.ok).toBe(true);
     expect(symptomCount(kid.id, "cough")).toBe(1);
@@ -116,7 +116,7 @@ describe("cross-profile symptom writes (#858)", () => {
   it("refuses a symptom write to an ungranted profile", async () => {
     const { stranger } = household();
     await expect(
-      logSymptom(fd({ symptom: "cough", severity: 2, profileId: stranger.id }))
+      logSymptom(fd({ symptom: "cough", severity: 2, profile_id: stranger.id }))
     ).rejects.toThrow(/not accessible/);
     expect(symptomCount(stranger.id, "cough")).toBe(0);
   });
@@ -124,12 +124,12 @@ describe("cross-profile symptom writes (#858)", () => {
   it("refuses a cross-profile write on a read-only grant", async () => {
     const { readonly } = household();
     await expect(
-      logSymptom(fd({ symptom: "cough", severity: 2, profileId: readonly.id }))
+      logSymptom(fd({ symptom: "cough", severity: 2, profile_id: readonly.id }))
     ).rejects.toThrow(/read-only/);
     expect(symptomCount(readonly.id, "cough")).toBe(0);
   });
 
-  it("still writes the ACTIVE profile when no profileId is posted", async () => {
+  it("still writes the ACTIVE profile when no subject is posted", async () => {
     const { home } = household();
     const res = await logSymptom(fd({ symptom: "cough", severity: 1 }));
     expect(res.ok).toBe(true);
@@ -141,7 +141,7 @@ describe("cross-profile temperature writes (#858)", () => {
   it("logs a temperature for a granted member", async () => {
     const { kid } = household();
     const res = await logTemperature(
-      fd({ temperature: 101.2, temp_unit: "F", profileId: kid.id })
+      fd({ temperature: 101.2, temp_unit: "F", profile_id: kid.id })
     );
     expect(res.ok).toBe(true);
     expect(tempCount(kid.id)).toBe(1);
@@ -151,7 +151,7 @@ describe("cross-profile temperature writes (#858)", () => {
     const { stranger } = household();
     await expect(
       logTemperature(
-        fd({ temperature: 101.2, temp_unit: "F", profileId: stranger.id })
+        fd({ temperature: 101.2, temp_unit: "F", profile_id: stranger.id })
       )
     ).rejects.toThrow(/not accessible/);
     expect(tempCount(stranger.id)).toBe(0);

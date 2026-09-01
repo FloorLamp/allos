@@ -4,7 +4,7 @@
 
 import { db, today as profileToday } from "../db";
 import { now as clockNow } from "../clock";
-import { utcSqlString } from "../date";
+import { shiftDateStr, utcSqlString } from "../date";
 import { eventInstant, recordInstant } from "../row-instants";
 import { getTimezone } from "../settings";
 import {
@@ -29,7 +29,6 @@ import {
   practiceDisplayName,
   practiceIdentity,
   practiceSpellingsFor,
-  practiceDurationPrefill,
   samePractice,
 } from "../practice";
 import type { FrequencyTarget, PracticeLog } from "../types";
@@ -68,6 +67,7 @@ export interface WellnessPractice {
   sessionCount: number;
   lastUsed: string | null;
   previousDurationMin: number | null;
+  liveSession: { id: number; date: string; startTime: string } | null;
   // Whether `asOf` is one of this practice's inferred rhythm days (#2188). False
   // whenever the inference has no pattern (#558: unknown renders NOTHING — the
   // card's rhythm note simply doesn't exist). Predicted ≠ due (#1505): this
@@ -123,7 +123,9 @@ export function getPracticeDayCount(
   date: string,
   spellings?: readonly string[]
 ): number {
-  const values = resolvedSpellings(profileId, practice, spellings);
+  const values = [
+    ...new Set(resolvedSpellings(profileId, practice, spellings)),
+  ];
   if (values.length === 0) return 0;
   const row = db
     .prepare(
@@ -150,7 +152,8 @@ export function getPracticeSessions(
   args.push(boundedLimit);
   return db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND practice IN (${inClause(values)})
@@ -159,6 +162,35 @@ export function getPracticeSessions(
         LIMIT ?`
     )
     .all(...args) as PracticeLog[];
+}
+
+// One canonical usual-duration vote over the identity's ENTIRE positive-duration
+// history. Every surface calls this query; no caller-specific recent-row cap can
+// change the winner after the 51st session. Ties go to the newest stored session in
+// the same ordering getPracticeSessions exposes.
+export function getPracticeUsualDuration(
+  profileId: number,
+  practice: string,
+  spellings?: readonly string[]
+): number | null {
+  const values = [
+    ...new Set(resolvedSpellings(profileId, practice, spellings)),
+  ];
+  if (values.length === 0) return null;
+  const row = db
+    .prepare(
+      `SELECT duration_min
+         FROM practice_logs
+        WHERE profile_id = ? AND practice IN (${inClause(values)})
+          AND duration_min IS NOT NULL AND duration_min > 0
+        GROUP BY duration_min
+        ORDER BY COUNT(*) DESC,
+                 MAX(date || ' ' || COALESCE(start_time, '99:99') || ' ' ||
+                     printf('%020d', id)) DESC
+        LIMIT 1`
+    )
+    .get(profileId, ...values) as { duration_min: number } | undefined;
+  return row?.duration_min ?? null;
 }
 
 // Cross-practice session rows for the record's gather (#3958; it served the deleted
@@ -206,7 +238,8 @@ export function getPracticeLedgerPage(
   const boundedPage = Math.min(requestedPage, pageCount(total, boundedSize));
   const rows = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ? AND ${where.join(" AND ")}
@@ -322,7 +355,8 @@ export function getPracticeSession(
   return (
     (db
       .prepare(
-        `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+        `SELECT id, practice, date, start_time, end_time, live, derived_window,
+                correction_locked, duration_min, notes,
                 source, external_id, edited, created_at
            FROM practice_logs WHERE id = ? AND profile_id = ?`
       )
@@ -368,7 +402,8 @@ export function getWellnessPractices(
   );
   const logs = db
     .prepare(
-      `SELECT id, practice, date, start_time, end_time, duration_min, notes,
+      `SELECT id, practice, date, start_time, end_time, live, derived_window,
+              correction_locked, duration_min, notes,
               source, external_id, edited, created_at
          FROM practice_logs
         WHERE profile_id = ?
@@ -419,7 +454,25 @@ export function getWellnessPractices(
         pace: targetProgress?.pace ?? "on-pace",
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
-        previousDurationMin: practiceDurationPrefill(item.sessions),
+        previousDurationMin: getPracticeUsualDuration(
+          profileId,
+          item.target?.scope_value ?? latest?.practice ?? "",
+          item.sessions.map((session) => session.practice)
+        ),
+        // A LIVE ROW IS LIVE WHATEVER DAY IT STARTED ON. Filtering to `asOf` hid the
+        // End button from the one session that most needs it — the evening practice
+        // still running after local midnight. What retires a stale row is the
+        // abandonment sweep the page gathers run first, not this day comparison.
+        liveSession:
+          item.sessions
+            .filter(
+              (session) => session.live === 1 && session.start_time != null
+            )
+            .map((session) => ({
+              id: session.id,
+              date: session.date,
+              startTime: session.start_time!,
+            }))[0] ?? null,
         // The rhythm over the identity's own sessions — already gathered above, so
         // the aggregate infers in memory over the SAME rows the per-practice query
         // wrapper (inferPracticeSchedule) scans; the pure core is the one
@@ -462,12 +515,11 @@ export interface TrackedPractice {
   // Sessions logged TODAY, folded across the identity's spellings — what the shared
   // LogPracticeButton shows beside its tap so a second tap is informed, not accidental.
   todayCount: number;
-  // The quick sheet's inline duration stepper starts here (#2204) — `practiceDurationPrefill`
-  // over the identity's LAST LOGGED session, the same pure resolution the Wellness card's
-  // expanded form uses. Null means blank, and blank is a real answer: the sheet does not
-  // invent a duration for a practice with no history, or for one whose last session
-  // deliberately carried none.
+  // The quick sheet's inline duration stepper starts here (#2204) — the canonical
+  // identity-wide usual-duration vote the Wellness card and protocol row also use.
+  // Null means blank: the sheet does not invent a duration without history.
   previousDurationMin: number | null;
+  liveSession: { id: number; date: string; startTime: string } | null;
 }
 
 // The quick surfaces' practice list: one row per practice-scope frequency target.
@@ -510,44 +562,34 @@ export function getTrackedPractices(
     todayByIdentity.set(identity, (todayByIdentity.get(identity) ?? 0) + row.n);
   }
 
-  // The inline duration prefill's ingredient (#2204): ONE row per stored spelling —
-  // that spelling's newest session — folded to one row per identity in JS, exactly as
-  // the today-count fold above does (SQL cannot call practiceIdentity). Bounded by the
-  // number of distinct spellings, not by history, so the sheet still opens on two
-  // small reads. The ordering is byte-for-byte getPracticeSessions' own, COALESCE
-  // sentinel included, so "the last logged session" means the same row on every
-  // surface that asks.
-  const latestRows = db
+  // No day filter, for the reason getWellnessPractices states: a session that crossed
+  // local midnight is still running, and the sweep is what closes an abandoned one.
+  const liveRows = db
     .prepare(
-      `SELECT practice, date, start_time, id, duration_min FROM (
-         SELECT practice, date, start_time, id, duration_min,
-                ROW_NUMBER() OVER (
-                  PARTITION BY practice
-                  ORDER BY date DESC, COALESCE(start_time, '99:99') DESC, id DESC
-                ) AS rn
-           FROM practice_logs
-          WHERE profile_id = ?
-       ) WHERE rn = 1`
+      `SELECT id, practice, date, start_time
+         FROM practice_logs
+        WHERE profile_id = ? AND live = 1
+        ORDER BY id DESC`
     )
     .all(profileId) as {
+    id: number;
     practice: string;
     date: string;
-    start_time: string | null;
-    id: number;
-    duration_min: number | null;
+    start_time: string;
   }[];
-  const latestByIdentity = new Map<string, (typeof latestRows)[number]>();
-  // The recency key, in getPracticeSessions' own order: date, then the session start
-  // with its null-sorts-last sentinel, then the row id as the tiebreak.
-  const recency = (r: (typeof latestRows)[number]) =>
-    `${r.date} ${r.start_time ?? "99:99"} ${String(r.id).padStart(20, "0")}`;
-  for (const row of latestRows) {
-    const identity = practiceIdentity(row.practice);
-    if (!identity) continue;
-    const held = latestByIdentity.get(identity);
-    if (!held || recency(row) > recency(held))
-      latestByIdentity.set(identity, row);
-  }
+  const liveByIdentity = new Map(
+    liveRows.flatMap((row) => {
+      const identity = practiceIdentity(row.practice);
+      return identity
+        ? [
+            [
+              identity,
+              { id: row.id, date: row.date, startTime: row.start_time },
+            ] as const,
+          ]
+        : [];
+    })
+  );
 
   const seen = new Set<string>();
   const out: TrackedPractice[] = [];
@@ -577,9 +619,11 @@ export function getTrackedPractices(
       // The SAME pure resolution the Wellness card's expanded form reads — one
       // question, one computation. A practice with no logs at all resolves through
       // the empty list rather than being special-cased here.
-      previousDurationMin: practiceDurationPrefill(
-        latestByIdentity.has(identity) ? [latestByIdentity.get(identity)!] : []
+      previousDurationMin: getPracticeUsualDuration(
+        profileId,
+        target.scope_value
       ),
+      liveSession: liveByIdentity.get(identity) ?? null,
     });
   }
   return out.sort((left, right) =>
@@ -1063,14 +1107,13 @@ export interface PracticeTapRow extends TapEvent {
 //    filter is not redundant with it but a BOUND — without it, a day of untimed rows
 //    could fill the `LIMIT` and push the timed taps a chip is actually about out of the
 //    window. Between them, a null-time row never reaches a burst and no chip can touch
-//    it. `lib/__db_tests__/practice-time-correction.test.ts` pins that from the outside.
+//    it. The one exception is a Telegram just-finished acknowledgement: its END is the
+//    tap statement, so a correction moves that end while leaving start null unless a
+//    stored usual duration supplied the derived window.
 //
-// 2b. A SESSION CARRYING A STATED WINDOW IS NOT A TAP EITHER (#3142, owner decision).
-//    `end_time IS NOT NULL` means somebody used the expanded form and said when the
-//    session ended; the chips correct a TAP's fuzzy stamp, and the form owns
-//    corrections to a stated window. The same predicate is repeated in
-//    `restampPracticeLogsCore`'s re-read, so the burst the renderer bounds and the
-//    burst the write re-derives are the same set.
+// 2b. A USER-STATED WINDOW IS NOT A TAP EITHER (#3142). Ended rows are admitted only
+//    when immutable Telegram provenance says the callback derived them. The same
+//    predicate is repeated in `restampPracticeLogsCore`'s re-read.
 //
 // 3. A CHAT CORRECTION CARRIES A CHAT TAP ONLY (#4356). With `chatOnly`, immutable
 //    `logged_via` provenance keeps page and offline sessions on their own surfaces;
@@ -1095,12 +1138,17 @@ export function getRecentPracticeTaps(
   );
   const rows = db
     .prepare(
-      `SELECT id, practice, date, start_time, created_at, notify_message_id
+      `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
+              created_at, notify_message_id
          FROM practice_logs
         WHERE profile_id = ?
           AND created_at >= ?
-          AND start_time IS NOT NULL
-          AND end_time IS NULL
+          AND (start_time IS NOT NULL OR end_time IS NOT NULL)
+          AND (end_time IS NULL OR (
+            start_time IS NULL AND duration_min IS NULL AND correction_locked = 0
+            AND logged_via IN ('telegram-nudge', 'telegram-command')
+          ))
+          AND live = 0
           AND external_id IS NULL
           AND (? = 0 OR logged_via IS NULL
             OR logged_via IN ('telegram-nudge', 'telegram-command'))
@@ -1111,7 +1159,10 @@ export function getRecentPracticeTaps(
     id: number;
     practice: string;
     date: string;
-    start_time: string;
+    start_time: string | null;
+    end_time: string | null;
+    duration_min: number | null;
+    logged_via: string | null;
     created_at: string;
     notify_message_id: number | null;
   }[];
@@ -1122,7 +1173,21 @@ export function getRecentPracticeTaps(
     // resolve is DROPPED rather than guessed at: a burst is a set of rows a chip is
     // about to rewrite, and one it cannot read is one it must not touch.
     const tapAt = recordInstant("practice_logs", r);
-    const statedAt = eventInstant("practice_logs", r, tz);
+    // A just-finished Telegram row states its END at the tap. Corrections therefore
+    // move that end (and the derived start with it), while legacy start-only taps keep
+    // their start anchor. Expanded stated windows never enter this query.
+    const chatFinished =
+      r.end_time &&
+      (r.logged_via === "telegram-nudge" ||
+        r.logged_via === "telegram-command");
+    const endDate =
+      chatFinished && r.start_time && r.end_time! <= r.start_time
+        ? shiftDateStr(r.date, 1)
+        : r.date;
+    const anchor = chatFinished
+      ? { ...r, date: endDate, start_time: r.end_time }
+      : r;
+    const statedAt = eventInstant("practice_logs", anchor, tz);
     if (!tapAt.known || !statedAt.known) continue;
     out.push({
       id: r.id,

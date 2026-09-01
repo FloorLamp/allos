@@ -1,6 +1,7 @@
 // Pure decisions for the shared media form's camera option (#2182, #3286).
 
-export type CameraKnowledge = "unknown" | "granted" | "denied" | "failed";
+export type CameraKnowledge =
+  "unreadable" | "unknown" | "granted" | "denied" | "failed";
 
 /**
  * WHICH STAGE THE ADD-MEDIA DIALOG OPENS ON (#3286).
@@ -14,8 +15,9 @@ export type CameraKnowledge = "unknown" | "granted" | "denied" | "failed";
  * granted camera used to open onto camera-recovery instructions with a green
  * "Open camera" as the only primary, and the file path demoted to a sentence.
  *
- * A camera KNOWN to be denied or broken never leads, on any viewport — a dead
- * end is a dead end at 390px too.
+ * A camera KNOWN to be denied or broken never leads, on any viewport. Neither
+ * does one whose permission state cannot be read: the camera remains one tap
+ * away without making an unknowable first attempt the opening experience.
  */
 export function mediaStartStage(input: {
   hasGetUserMedia: boolean;
@@ -23,7 +25,11 @@ export function mediaStartStage(input: {
   compactViewport: boolean;
 }): "chooser" | "camera" {
   if (!input.hasGetUserMedia) return "chooser";
-  if (input.knowledge === "denied" || input.knowledge === "failed")
+  if (
+    input.knowledge === "unreadable" ||
+    input.knowledge === "denied" ||
+    input.knowledge === "failed"
+  )
     return "chooser";
   if (input.knowledge === "granted") return "camera";
   return input.compactViewport ? "camera" : "chooser";
