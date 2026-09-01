@@ -194,7 +194,9 @@ test("a pediatric formulation persists from quick add to the medication list", a
     // new label band.
     await quickAdd.getByTestId("pediatric-weight-update-open").click();
     const weightUpdate = quickAdd.getByTestId("pediatric-weight-update");
-    await expect(weightUpdate.getByTestId("measurements-quick-add")).toBeVisible();
+    await expect(
+      weightUpdate.getByTestId("measurements-quick-add")
+    ).toBeVisible();
     await expect(weightUpdate.getByLabel("Weight")).toBeVisible();
     await expect(weightUpdate.getByTestId("m-date")).not.toHaveValue("");
     await weightUpdate.getByLabel("Weight").fill("10");

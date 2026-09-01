@@ -34,7 +34,6 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
-
 // DB-tier gather tests for the school-return countdown (#859 item 2) and the
 // stale-open-episode nudge (#859 item 1) — the input layer the pure tier can't see.
 

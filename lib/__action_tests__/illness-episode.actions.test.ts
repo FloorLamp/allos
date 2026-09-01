@@ -53,7 +53,6 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
-
 // Make the acting profile currently sick with an ongoing Illness episode ROW; return id.
 function makeSick(profileId: number): number {
   resolveSituationId(profileId, "Illness"); // born illness_type=1

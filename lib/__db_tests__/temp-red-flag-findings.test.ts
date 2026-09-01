@@ -40,7 +40,6 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
-
 // #448 findings-builder fixture for the single-reading temperature red-flag builder
 // (issue #859 item 3). Seeds a realistic open illness episode + a logged reading and
 // asserts the end-to-end care-tier finding output — the input layer the pure tier

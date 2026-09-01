@@ -15,7 +15,15 @@
 //
 // Every value is synthetic (a fake HA webhook URL; no phones, no PHI).
 
-import { describe, it, expect, afterEach, vi, beforeAll, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  afterEach,
+  vi,
+  beforeAll,
+  afterAll,
+} from "vitest";
 import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,
@@ -48,7 +56,6 @@ afterAll(() => {
   if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
-
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-trf";
 

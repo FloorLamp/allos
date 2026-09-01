@@ -678,7 +678,8 @@ export default function MeasurementsQuickAdd({
     refreshSummaries();
     onSaved?.({
       date,
-      weightKg: body.weight == null ? null : toKg(Number(body.weight), weightUnit),
+      weightKg:
+        body.weight == null ? null : toKg(Number(body.weight), weightUnit),
     });
   }
 

@@ -60,7 +60,6 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
-
 let profileId: number;
 
 function newProfile(name: string): number {

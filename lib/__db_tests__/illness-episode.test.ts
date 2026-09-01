@@ -53,7 +53,6 @@ afterAll(() => {
   else process.env.ALLOS_TEST_NOW = priorNow;
 });
 
-
 function newProfile(name: string): number {
   const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)

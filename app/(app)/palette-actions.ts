@@ -74,6 +74,7 @@ export async function paletteQuickLog(
   // gate answering rather than a case a user can reach. It is asked anyway because
   // an unconditional confirm is what #232 forbids, and because the day this posts is
   // derived rather than constant.
-  if (saved.dateRefused) return { ok: false, message: "Couldn't log that weight." };
+  if (saved.dateRefused)
+    return { ok: false, message: "Couldn't log that weight." };
   return { ok: true, message: `Logged weight ${parsed.value} ${parsed.unit}.` };
 }
