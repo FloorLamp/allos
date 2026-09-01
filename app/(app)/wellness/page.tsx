@@ -32,7 +32,7 @@ export default async function WellnessPage(props: {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const todayStr = today(profile.id);
-  closeAbandonedPracticeSessions(profile.id, todayStr);
+  closeAbandonedPracticeSessions(profile.id);
   const weekStart = getWeekStart(profile.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const practices = getWellnessPractices(profile.id, todayStr, weekStart);

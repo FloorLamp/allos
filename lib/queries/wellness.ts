@@ -421,13 +421,14 @@ export function getWellnessPractices(
         sessionCount: item.sessions.length,
         lastUsed: latest?.date ?? null,
         previousDurationMin: practiceDurationPrefill(item.sessions),
+        // A LIVE ROW IS LIVE WHATEVER DAY IT STARTED ON. Filtering to `asOf` hid the
+        // End button from the one session that most needs it — the evening practice
+        // still running after local midnight. What retires a stale row is the
+        // abandonment sweep the page gathers run first, not this day comparison.
         liveSession:
           item.sessions
             .filter(
-              (session) =>
-                session.live === 1 &&
-                session.date === asOf &&
-                session.start_time != null
+              (session) => session.live === 1 && session.start_time != null
             )
             .map((session) => ({
               id: session.id,
@@ -563,14 +564,16 @@ export function getTrackedPractices(
   for (const rows of durationsByIdentity.values())
     rows.sort((left, right) => recency(right).localeCompare(recency(left)));
 
+  // No day filter, for the reason getWellnessPractices states: a session that crossed
+  // local midnight is still running, and the sweep is what closes an abandoned one.
   const liveRows = db
     .prepare(
       `SELECT id, practice, date, start_time
          FROM practice_logs
-        WHERE profile_id = ? AND live = 1 AND date = ?
+        WHERE profile_id = ? AND live = 1
         ORDER BY id DESC`
     )
-    .all(profileId, asOf) as {
+    .all(profileId) as {
     id: number;
     practice: string;
     date: string;
@@ -1110,8 +1113,11 @@ export interface PracticeTapRow extends TapEvent {
 //    stored usual duration supplied the derived window.
 //
 // 2b. A USER-STATED WINDOW IS NOT A TAP EITHER (#3142). Ended rows are admitted only
-//    when immutable Telegram provenance says the callback derived them. The same
-//    predicate is repeated in `restampPracticeLogsCore`'s re-read.
+//    while Telegram provenance says the callback derived the window AND `edited = 0`
+//    says nobody has since restated it. Provenance alone was the wrong test: it is
+//    immutable and the window is not, so a chat row hand-corrected in the form stayed
+//    correctable by a chip. The same predicate is repeated in
+//    `restampPracticeLogsCore`'s re-read.
 //
 // 3. A CHAT CORRECTION CARRIES A CHAT TAP ONLY (#4356). With `chatOnly`, immutable
 //    `logged_via` provenance keeps page and offline sessions on their own surfaces;
@@ -1142,7 +1148,9 @@ export function getRecentPracticeTaps(
         WHERE profile_id = ?
           AND created_at >= ?
           AND (start_time IS NOT NULL OR end_time IS NOT NULL)
-          AND (end_time IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
+          AND (end_time IS NULL
+               OR (edited = 0
+                   AND logged_via IN ('telegram-nudge', 'telegram-command')))
           AND live = 0
           AND external_id IS NULL
           AND (? = 0 OR logged_via IS NULL

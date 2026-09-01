@@ -18,7 +18,11 @@ import {
 } from "./correction-time";
 import { eventInstant, recordInstant } from "./row-instants";
 import { getTimezone } from "./settings";
-import { normalizePracticeName, practiceDurationPrefill } from "./practice";
+import {
+  normalizePracticeName,
+  practiceDurationPrefill,
+  PRACTICE_DURATION_VOTE_LIMIT,
+} from "./practice";
 import type {
   PracticeLogOutcome,
   PracticeLiveEndOutcome,
@@ -267,13 +271,15 @@ export function updatePracticeSession(
         : null;
     const notes = input.notes?.trim() || null;
     // An ordinary edit cannot open a lifecycle row. It may preserve one only while
-    // the row is still on the profile's today, still has its start, and still has no
-    // stated end. Supplying an end, clearing the start, or moving the row to another
-    // day is an explicit completion/abandonment statement, so keeping `live = 1`
-    // would leave an unendable or ended row offering "End session".
+    // the row stays on ITS OWN day, still has its start, and still has no stated end.
+    // Supplying an end, clearing the start, or moving the row to another day is an
+    // explicit completion/abandonment statement, so keeping `live = 1` would leave an
+    // unendable or ended row offering "End session". The day compared is the row's,
+    // not the profile's today: a session that crossed local midnight is still running
+    // and must survive a notes edit made after it.
     const live =
       current.live === 1 &&
-      input.date === today(profileId) &&
+      input.date === current.date &&
       startTime != null &&
       endTime == null
         ? 1
@@ -298,21 +304,81 @@ export function updatePracticeSession(
   });
 }
 
-// Close yesterday's unfinished lifecycle without inventing an end. Request gathers
-// that render the offer state call this first; the transition is idempotent.
-export function closeAbandonedPracticeSessions(
-  profileId: number,
-  localDay = today(profileId)
-): number {
-  return writeTx(
-    () =>
-      db
+// ── The live session's plausibility bound (#3143, the fasting shape) ────────────
+//
+// Past this many hours an open lifecycle stops reading as "in progress" and starts
+// reading as "you tapped Start and forgot", which is the same judgement
+// `FAST_STALE_HOURS` makes one domain over. Six hours is longer than any practice this
+// app is a logger for — a sauna, a meditation, a mobility block — and short enough that
+// a Start tapped in the evening is abandoned before the next morning's page load.
+//
+// IT IS MEASURED IN ELAPSED TIME, NOT IN DAY LABELS, and that is the whole correction.
+// #3143 worded abandonment as "left open past its profile-local day", which reads a
+// 23:50→00:10 evening practice — twenty minutes, and the ordinary case — as abandoned
+// while leaving a 28-hour-old row endable in the profile's own zone. Elapsed time
+// separates those two honestly, and it is also the ceiling on the duration `End`
+// derives, so the sweep and the write cannot disagree about what is still a session.
+export const LIVE_PRACTICE_STALE_HOURS = 6;
+
+// The live row's own start instant, composed through the profile's zone by the declared
+// reader — the same composition `getRecentPracticeTaps` and the correction core use, so
+// a row's start means one thing everywhere.
+function liveStartInstant(
+  tz: string,
+  row: { date: string; start_time: string | null }
+): Date | null {
+  const started = eventInstant("practice_logs", row, tz);
+  return started.known ? new Date(started.at) : null;
+}
+
+// Minutes this live row has been running at `at`, or null when it is no longer a
+// session the app will complete: its start cannot be read, its start has not happened
+// yet (a westward timezone edit strands the row in the future), or it has been open
+// past the bound above.
+function liveElapsedMin(
+  tz: string,
+  row: { date: string; start_time: string | null },
+  at: Date
+): number | null {
+  const startedAt = liveStartInstant(tz, row);
+  if (!startedAt) return null;
+  const minutes = (at.getTime() - startedAt.getTime()) / 60_000;
+  if (minutes < 0 || minutes > LIVE_PRACTICE_STALE_HOURS * 60) return null;
+  return minutes;
+}
+
+// Close an unfinished lifecycle without inventing an end. Request gathers that render
+// the offer state call this first; the transition is idempotent.
+//
+// The row keeps exactly what was observed — `live` cleared, no end, no duration — and
+// the rows it takes are the ones `liveElapsedMin` refuses: stranded in the future by a
+// zone edit, or open past the plausibility bound. A session that merely crossed local
+// midnight is NOT one of them.
+export function closeAbandonedPracticeSessions(profileId: number): number {
+  const tz = getTimezone(profileId);
+  const at = now();
+  return writeTx(() => {
+    const rows = db
+      .prepare(
+        `SELECT id, date, start_time FROM practice_logs
+          WHERE profile_id = ? AND live = 1`
+      )
+      .all(profileId) as {
+      id: number;
+      date: string;
+      start_time: string | null;
+    }[];
+    let closed = 0;
+    for (const row of rows) {
+      if (liveElapsedMin(tz, row, at) != null) continue;
+      closed += db
         .prepare(
-          `UPDATE practice_logs SET live = 0
-        WHERE profile_id = ? AND live = 1 AND date < ?`
+          `UPDATE practice_logs SET live = 0 WHERE id = ? AND profile_id = ?`
         )
-        .run(profileId, localDay).changes
-  );
+        .run(row.id, profileId).changes;
+    }
+    return closed;
+  });
 }
 
 function openPracticeSession(
@@ -344,7 +410,7 @@ export function startLivePracticeSession(
   return writeTx(() => {
     const localStart = zonedDateParts(getTimezone(profileId), now());
     const date = localStart.date;
-    closeAbandonedPracticeSessions(profileId, date);
+    closeAbandonedPracticeSessions(profileId);
     const existing = openPracticeSession(profileId, name);
     if (existing) return { kind: "already-live" as const, session: existing };
     const outcome = logPracticeSession(profileId, name, date, loggedVia, {
@@ -363,48 +429,70 @@ export function startLivePracticeSession(
   });
 }
 
+// END the running session. The second tap of the two-tap window, so it must COMPLETE
+// the row it is about — including the ordinary evening practice that runs past local
+// midnight, which the first cut swept as abandoned and then refused.
+//
+// THE ROW KEEPS THE DAY IT STARTED ON. `date` is where a session is filed and counted;
+// re-dating a 23:50 sauna to the small hours would move a logged day and, at a week
+// boundary, a frequency target's credit. The stamped `end_time` is simply earlier than
+// the start, which `activityWindow` already reads as the crossing it is.
+//
+// THE DURATION COMES FROM THE ROW'S OWN START, not from its insert stamp. The start is
+// what the row STATES — the first tap's instant, or a correction the user made to it —
+// so deriving from `created_at` produced a window and a number that contradicted each
+// other after a start edit (07:00→12:30 stored as 30 minutes). Both halves now come
+// from one quantity, computed as INSTANTS so a session across the spring DST jump is
+// twenty minutes rather than eighty.
 export function endLivePracticeSession(
   profileId: number,
   id: number
 ): PracticeLiveEndOutcome {
   return writeTx(() => {
-    // One instant answers both questions: its profile-local day/minute is what the
-    // row states, while its absolute distance from the start tap is the elapsed
-    // duration. Subtracting HH:MM values would turn a 20-minute session across the
-    // spring DST jump into 80 minutes (and loses the repeated hour in autumn).
     const endedAt = now();
-    const localEnd = zonedDateParts(getTimezone(profileId), endedAt);
-    const date = localEnd.date;
-    closeAbandonedPracticeSessions(profileId, date);
+    const tz = getTimezone(profileId);
     const current = getPracticeSession(profileId, id);
-    if (!current || current.live !== 1 || current.date !== date)
+    if (!current || current.live !== 1) return { kind: "not-live" as const };
+    const elapsed = liveElapsedMin(tz, current, endedAt);
+    if (elapsed == null) {
+      // Abandoned by the same rule the sweep applies, so a stale End tap closes the
+      // row rather than leaving it open for the next gather to find.
+      closeAbandonedPracticeSessions(profileId);
       return { kind: "not-live" as const };
-    const startTap = recordInstant("practice_logs", {
-      created_at: current.created_at,
-    });
-    const elapsedMs = startTap.known
-      ? endedAt.getTime() - new Date(startTap.at).getTime()
-      : -1;
-    const durationMin =
-      elapsedMs >= 0 ? Math.max(1, Math.round(elapsedMs / 60_000)) : null;
+    }
     const updated = updatePracticeSession(profileId, id, {
-      date,
+      date: current.date,
       startTime: current.start_time,
-      endTime: localEnd.hhmm,
-      durationMin,
+      endTime: zonedDateParts(tz, endedAt).hhmm,
+      durationMin: Math.max(1, Math.round(elapsed)),
       notes: current.notes,
     });
     return updated.kind === "updated"
       ? {
           kind: "ended" as const,
           session: updated.session,
-          count: getPracticeDayCount(profileId, current.practice, date),
-          date,
+          count: getPracticeDayCount(profileId, current.practice, current.date),
+          date: current.date,
         }
       : { kind: "not-live" as const };
   });
 }
 
+// "Just finished" — the tap states an END, and derives a start from a duration the user
+// saw. Every quick surface's finished intent, web and chat, comes through here.
+//
+// A JUST-FINISHED TAP WHILE A SESSION IS RUNNING ENDS THAT SESSION. Both taps are the
+// same statement ("that's done"), so a second row would double-log the day and leave
+// the lifecycle open — which is exactly what Telegram's Done did, on a surface with no
+// End button to recover with.
+//
+// IT FILES ON THE DAY IT WAS TAPPED. The end is the only instant this tap OBSERVED; the
+// start is arithmetic over a usual duration. Filing on the derived start's day put a
+// 00:20 tap on yesterday, so today's count did not move and at a week boundary the
+// target's credit landed in the previous week. A derived start that lands on another
+// day cannot be stated by a row that carries one date, so it is left null rather than
+// moved onto a day it did not happen on — the end-only shape #3143 already defines,
+// keeping its duration.
 export function logFinishedPracticeSession(
   profileId: number,
   practice: string,
@@ -412,6 +500,8 @@ export function logFinishedPracticeSession(
   durationMin: number | null,
   notifyMessageId?: number | null
 ): PracticeLogOutcome {
+  const name = normalizePracticeName(practice);
+  if (!name) return { kind: "invalid-date" };
   const endedAt = now();
   const tz = getTimezone(profileId);
   const end = zonedDateParts(tz, endedAt);
@@ -423,18 +513,21 @@ export function logFinishedPracticeSession(
     duration == null
       ? null
       : zonedDateParts(tz, new Date(endedAt.getTime() - duration * 60_000));
-  return logPracticeSession(
-    profileId,
-    practice,
-    start?.date ?? end.date,
-    loggedVia,
-    {
-      startTime: start?.hhmm ?? null,
+  return writeTx(() => {
+    const open = openPracticeSession(profileId, name);
+    if (open) {
+      const ended = endLivePracticeSession(profileId, open.id);
+      return ended.kind === "ended"
+        ? { kind: "logged" as const, count: ended.count, date: ended.date }
+        : { kind: "invalid-date" as const };
+    }
+    return logPracticeSession(profileId, name, end.date, loggedVia, {
+      startTime: start && start.date === end.date ? start.hhmm : null,
       endTime: end.hhmm,
       durationMin: duration,
       notifyMessageId: notifyMessageId ?? null,
-    }
-  );
+    });
+  });
 }
 
 // Log a session against a practice frequency TARGET id (#1259): resolve the target's
@@ -470,25 +563,6 @@ export function logPracticeByTargetId(
   );
 }
 
-// Resolve the Telegram button's default at tap time without putting health data in
-// callback payloads. The target lookup and every duration row are profile-scoped;
-// a leaked target id from another profile therefore reveals nothing.
-export function practiceUsualDurationForTarget(
-  profileId: number,
-  targetId: number
-): number | null {
-  const row = db
-    .prepare(
-      `SELECT scope_value FROM frequency_targets
-        WHERE id = ? AND profile_id = ? AND scope_kind = 'practice'`
-    )
-    .get(targetId, profileId) as { scope_value: string } | undefined;
-  if (!row) return null;
-  return practiceDurationPrefill(
-    getPracticeSessions(profileId, row.scope_value, 50)
-  );
-}
-
 // Telegram's Done button is a just-finished statement, not the Upcoming page's
 // "happening now" statement. Resolve the usual duration and write the derived window
 // under one IMMEDIATE transaction, so a concurrent target edit cannot pair one
@@ -508,8 +582,14 @@ export function logFinishedPracticeByTargetId(
       )
       .get(targetId, profileId) as { scope_value: string } | undefined;
     if (!row) return { kind: "stale-target" };
+    // The same bounded vote both web surfaces prefill from, so the duration Telegram
+    // derives a window with is the one the card and the sheet would have shown.
     const durationMin = practiceDurationPrefill(
-      getPracticeSessions(profileId, row.scope_value, 50)
+      getPracticeSessions(
+        profileId,
+        row.scope_value,
+        PRACTICE_DURATION_VOTE_LIMIT
+      )
     );
     return logFinishedPracticeSession(
       profileId,
@@ -622,9 +702,13 @@ export type PracticeRestampOutcome =
 // re-derives the same duration window. Without a duration, its start remains null.
 //
 // A SESSION CARRYING A USER-STATED WINDOW NEVER JOINS A BURST (#3142). The only ended
-// rows admitted here are Telegram quick acknowledgements, identified by their immutable
-// provenance. The same predicate is repeated in `getRecentPracticeTaps`, so the
-// renderer and the write always bound the same rows.
+// rows admitted are Telegram quick acknowledgements whose window is still the one the
+// TAP derived: `edited = 0`. Provenance alone was not that test — provenance is
+// immutable and a window is not, so a chat row hand-corrected in the form to
+// 19:00–20:00 stayed in the burst and a chip rewrote the statement the form owns. The
+// same predicate is repeated in `getRecentPracticeTaps`, so the renderer and the write
+// always bound the same rows; both halves are asserted in
+// lib/__db_tests__/practice-logs.test.ts.
 export function restampPracticeLogsCore(
   profileId: number,
   fromLogId: number,
@@ -646,11 +730,13 @@ export function restampPracticeLogsCore(
     const rows = db
       .prepare(
         `SELECT id, practice, date, start_time, end_time, duration_min, logged_via,
-                created_at, notify_message_id
+                edited, created_at, notify_message_id
            FROM practice_logs
           WHERE profile_id = ? AND id >= ?
             AND (start_time IS NOT NULL OR end_time IS NOT NULL)
-            AND (end_time IS NULL OR logged_via IN ('telegram-nudge', 'telegram-command'))
+            AND (end_time IS NULL
+                 OR (edited = 0
+                     AND logged_via IN ('telegram-nudge', 'telegram-command')))
             AND live = 0
             AND external_id IS NULL
           ORDER BY created_at, id
@@ -664,6 +750,7 @@ export function restampPracticeLogsCore(
       end_time: string | null;
       duration_min: number | null;
       logged_via: string | null;
+      edited: number | null;
       created_at: string;
       notify_message_id: number | null;
     }[];
@@ -708,7 +795,7 @@ export function restampPracticeLogsCore(
     // or a day boundary — refuses the whole burst.
     const targets = new Map<
       number,
-      { start: string | null; end: string | null }
+      { start: string | null; end: string | null; edited: number }
     >();
     const byIdEvent = new Map(events.map((e) => [e.id, e]));
     for (const id of burst.ids) {
@@ -742,27 +829,36 @@ export function restampPracticeLogsCore(
             : null;
         if (start && start.date !== row.date)
           return { kind: "crosses-day" as const };
+        // `edited` UNCHANGED on a chat row, and this is what makes the exclusion above
+        // survive its own feature: the predicate reads `edited` as "somebody restated
+        // this window", and a chip does not — it moves the tap's own end and re-derives
+        // the same duration around it. Marking it would eject the row from the burst
+        // the chip just moved, taking the statement of record with it (#3010) and
+        // stopping repeat taps composing (#2206), both of which have cases below.
         targets.set(id, {
           start: start?.hhmm ?? null,
           end: local.hhmm,
+          edited: row.edited ?? 0,
         });
       } else {
         targets.set(id, {
           start: local.hhmm,
           end: null,
+          edited: 1,
         });
       }
     }
 
     for (const [id, target] of targets) {
-      // `edited` is the same mark the expanded form's correction sets: a human has
-      // changed a value this app derived. These rows are never imported (the reader and
-      // the re-read both exclude `external_id`), so it protects nothing here — it is set
-      // because the two correction paths must agree about what a correction IS.
+      // On a start-only tap row `edited` is the same mark the expanded form's correction
+      // sets: a human has changed a value this app derived. These rows are never
+      // imported (the reader and the re-read both exclude `external_id`), so it protects
+      // nothing here — it is set because the two correction paths must agree about what
+      // a correction IS.
       db.prepare(
-        `UPDATE practice_logs SET start_time = ?, end_time = ?, edited = 1
+        `UPDATE practice_logs SET start_time = ?, end_time = ?, edited = ?
           WHERE id = ? AND profile_id = ?`
-      ).run(target.start, target.end, id, profileId);
+      ).run(target.start, target.end, target.edited, id, profileId);
     }
     return { kind: "restamped" as const, count: targets.size };
   });

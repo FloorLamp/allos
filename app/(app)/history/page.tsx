@@ -244,7 +244,7 @@ export default async function HistoryPage(props: {
   const scope = await requireScope();
   const { loginId, actingProfileId, viewIds } = scope;
   const todayStr = today(actingProfileId);
-  closeAbandonedPracticeSessions(actingProfileId, todayStr);
+  closeAbandonedPracticeSessions(actingProfileId);
   const prefs = getDisplayFormatPrefs(loginId);
 
   // A kind IMPLIES its family, so `?family=` only matters when no kind is named. Phase
