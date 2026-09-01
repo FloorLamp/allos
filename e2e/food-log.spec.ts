@@ -21,7 +21,7 @@ import { FOOD_QUICK_COUNT } from "@/lib/food-rank";
 async function revealFoodGroup(page: Page, slug: string) {
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
-    await page.getByTestId("food-more-groups-summary").click();
+    await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
     await expect(row).toBeVisible();
   }
 }
@@ -32,7 +32,7 @@ async function revealFoodGroup(page: Page, slug: string) {
 // Uses the shared authenticated storageState (the seeded profile already has food_daily_totals
 // rows from scripts/seed.ts).
 
-test("logging a serving shows in the day count and the weekly rollup, undo decrements (#579)", async ({
+test("logging updates the day count, header total, and weekly rollup; undo restores them (#579)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -43,10 +43,16 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
 
   const count = page.getByTestId("count-nuts_seeds");
   const before = Number((await count.textContent())?.trim() || "0");
+  const total = page.getByTestId("food-day-total");
+  await expect(total).toBeVisible();
+  const readTotal = async () =>
+    Number((await total.textContent())?.match(/\d+/)?.[0] ?? "0");
+  const totalBefore = await readTotal();
 
   // One tap → optimistic increment.
   await page.getByTestId("log-nuts_seeds").click();
   await expect(count).toHaveText(String(before + 1));
+  await expect.poll(readTotal).toBe(totalBefore + 1);
 
   // The weekly rollup (server-rendered) reflects the serving after refresh.
   await expect(page.getByTestId("food-weekly-rollup")).toBeVisible();
@@ -55,6 +61,7 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
   // Undo → decrement back (leave the fixture as found).
   await page.getByTestId("undo-nuts_seeds").click();
   await expect(count).toHaveText(String(before));
+  await expect.poll(readTotal).toBe(totalBefore);
 });
 
 test("button counts are labeled for the selected meal and day", async ({
@@ -416,23 +423,6 @@ test("logging a serving keeps the row order fixed (no reorder under the finger)"
 
   // Restore the fixture.
   await page.getByTestId("undo-other_vegetables").click();
-});
-
-test("the header shows today's total, ticking up on log and back on undo", async ({
-  page,
-}) => {
-  await page.goto("/nutrition");
-  await revealFoodGroup(page, "eggs");
-  const total = page.getByTestId("food-day-total");
-  await expect(total).toBeVisible();
-  const read = async () =>
-    Number((await total.textContent())?.match(/\d+/)?.[0] ?? "0");
-
-  const before = await read();
-  await page.getByTestId("log-eggs").click();
-  await expect.poll(read).toBe(before + 1);
-  await page.getByTestId("undo-eggs").click();
-  await expect.poll(read).toBe(before);
 });
 
 test.describe("the dense row keeps its anatomy on a phone (#3987)", () => {
