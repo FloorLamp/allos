@@ -387,12 +387,22 @@ export const LOG_MANIFEST = {
       // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
-      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Its two mounts —
-      // the dashboard attention row, the household card's due row — list what is still
-      // OWED, so the row is unmounted by its own write: the tri-state's receipt (#2654)
-      // cannot exist there and the answer has to be a toast carrying the inverse
-      // (#2642). One component, two gates, which the issue body names as the
-      // requirement. Folding it in would delete a documented undo with no ruling.
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Four mounts, on
+      // three surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
+      // attention row, the household card's due row, and — since #2579-D — both of
+      // Upcoming's, its banded due-dose row and the `DoseChip` its dose fold and its
+      // "Available to log" run share. This cell said TWO, and named only the first
+      // pair; that was true when it was written and #2579-D is what changed it.
+      //
+      // WHAT UNITES THEM IS THAT THE TRI-STATE'S RECEIPT (#2654) HAS NOWHERE TO LIVE,
+      // and #2579-D widened the reason rather than breaking it. On the first three the
+      // row lists what is still OWED, so the write UNMOUNTS it. On Upcoming's offer
+      // chips it does not — a `may` item is still offered after it is logged — but an
+      // offer has no per-day STATUS to state, so a control whose three states are
+      // taken/skipped/cleared for a scheduled day has nothing to say about it. Either
+      // way the answer has to be a toast carrying the inverse (#2642), which is this
+      // component. Folding it into the tri-state would delete a documented undo with no
+      // ruling, and would put a status on a row that has none.
       form: { kind: "shared", component: "HistoricalDoseForm" },
       rowControl: { kind: "shared", component: "DoseStatusControl" },
     },
