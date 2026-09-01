@@ -254,6 +254,10 @@ export default function DoseStatusControl({
         };
       },
     });
+    // A CAPTURE SETTLES THE ROW TOO. The pipeline runs `settle` only for a write that
+    // reached the server, so a queued tap would leave a resolved row sitting in a list
+    // of what the day still owes — with no second control to answer with until replay.
+    if (result === "captured") onSettled?.({ ok: true });
     if (result === "nothing") return;
     // A server write is authoritative, so the optimistic override is dropped and the
     // props take over; a capture has no revalidate behind it, so the override stands in

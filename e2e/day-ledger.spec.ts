@@ -403,7 +403,9 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
 
     await page.context().setOffline(true);
     // A plain click: the queue, rather than a Server Action response, settles this tap.
-    await row.getByTestId(`ledger-take-${doseId}`).click();
+    // The row's own shared control (#4424 ruling 3), which on a past day used to be a
+    // hand-rolled Take/Skip pair beside it.
+    await row.getByTestId("dose-take").click();
     await expect(
       page.getByText("Dose saved offline — will sync when you reconnect.")
     ).toBeVisible();
@@ -443,7 +445,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     await expect(row).toBeVisible();
 
     await page.context().setOffline(true);
-    await row.getByTestId(`ledger-skip-${doseId}`).click();
+    await row.getByTestId("dose-skip").click();
     await expect(
       page.getByText("Skip saved offline — will sync when you reconnect.")
     ).toBeVisible();

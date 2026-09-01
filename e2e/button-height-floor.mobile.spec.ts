@@ -94,7 +94,7 @@ const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
     ready: "history-filters",
     surfaces: [
       { kind: "chip", testId: "history-chip-all", repairable: true },
-      { kind: "btn-ghost", testId: "dose-ledger-add", repairable: true },
+      { kind: "btn-ghost", testId: "history-add-open-dose", repairable: true },
     ],
   },
   {
