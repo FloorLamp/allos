@@ -1,12 +1,17 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
+import StreamedSection, {
+  PendingSection,
+} from "@/components/StreamedSection";
 import TabFirstPage from "@/components/TabFirstPage";
 import { TRAINING_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { requireSession } from "@/lib/auth";
 import {
   parseTrainingTab,
   retiredTrainingTabTarget,
+  trainingTabStrip,
 } from "@/lib/training-tabs";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
@@ -42,6 +47,10 @@ export default async function TrainingPage(props: {
   if (retired) redirect(retired);
 
   const activeTab = parseTrainingTab(searchParams?.tab);
+  // The pending state names the tab the way the strip above it does, so the two
+  // never disagree about what is arriving.
+  const activeTabLabel =
+    trainingTabStrip().find((t) => t.id === activeTab)?.label ?? "Training";
   const requestedDate = one(searchParams?.date);
   const initialCreateDate =
     isRealIsoDate(requestedDate) && requestedDate <= today(profile.id)
@@ -104,7 +113,28 @@ export default async function TrainingPage(props: {
           </Link>
         }
       >
-        {activeSection}
+        {/* THE HEAD DOES NOT WAIT ON THE TAB (#2641 gap 1, the Trends pattern).
+            Everything above this line is cheap — one session read and one age
+            read — while the selected section is the hub's whole query load
+            (Overview alone runs ~25 of them). Streaming the panel is what makes
+            a tap on Training paint the page's name, its four tabs and its header
+            action immediately instead of holding the previous page for the
+            destination's full render. The tabs are LINKS, so the shell is
+            usable, not decorative: you can switch surface before the first one
+            has arrived.
+
+            The placeholder is one card because the panel's own first element is
+            one card, and nothing renders below it — a section that lands taller
+            grows the page downward, past the fold, rather than moving anything
+            the reader is looking at. That is the #2531/#2399 height rule applied
+            to a pending state: reserve what you know, never a spinner in a void.
+
+            NOT a route-level `loading.tsx` (#530): that judgment — a content-less
+            shell is worse than nothing — is exactly why this boundary sits BELOW
+            the header and the tab strip rather than above them. */}
+        <Suspense fallback={<PendingSection label={activeTabLabel} />}>
+          <StreamedSection>{activeSection}</StreamedSection>
+        </Suspense>
       </TabFirstPage>
     </PageContainer>
   );
