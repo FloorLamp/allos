@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { db } from "@/lib/db";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import {
   begin2fa,
   activate2fa,
@@ -45,7 +45,7 @@ describe("demo mode write guard", () => {
     actAs(login, profile, "write"); // even a (misconfigured) write grant is blocked
 
     await expect(
-      addBodyMetric(fd({ date: "2026-02-01", weight: 80 }))
+      addMeasurements(fd({ date: "2026-02-01", weight: 80 }))
     ).rejects.toThrow(/demo mode/i);
 
     expect(rowsFor(profile.id)).toHaveLength(0);
@@ -57,7 +57,7 @@ describe("demo mode write guard", () => {
     const profile = createProfile("demo-admin");
     actAs(login, profile, "write");
 
-    await addBodyMetric(fd({ date: "2026-02-02", weight: 81 }));
+    await addMeasurements(fd({ date: "2026-02-02", weight: 81 }));
 
     expect(rowsFor(profile.id)).toHaveLength(1);
   });
@@ -68,7 +68,7 @@ describe("demo mode write guard", () => {
     const profile = createProfile("normal-member", login.id);
     actAs(login, profile, "write");
 
-    await addBodyMetric(fd({ date: "2026-02-03", weight: 82 }));
+    await addMeasurements(fd({ date: "2026-02-03", weight: 82 }));
 
     expect(rowsFor(profile.id)).toHaveLength(1);
   });

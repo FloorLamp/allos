@@ -588,9 +588,10 @@ row written past it. The core does not drop the link, it declines the write.
 
 ### On the substrate, not beside it
 
-`recordReading` classifies through `classifyUpsert`, `recordReadings` bumps the
-split only through `tallyUpsert`, and the #133 lock is read only through
-`isEditLocked`. The lock holds out a **source-owned re-push** — a write stamped
+`recordReading` classifies through `classifyUpsert`, its CALLER bumps the split
+only through `tallyUpsert` — a plural `recordReadings` used to loop and tally, and
+#4564 found it had no non-test caller at all, so #4424's body leg deleted it — and
+the #133 lock is read only through `isEditLocked`. The lock holds out a **source-owned re-push** — a write stamped
 with an integration id or a `document:<id>` import stamp — and never the user's
 own correction: a person re-entering a value they previously fixed is not a sync,
 and refusing there would strand them.

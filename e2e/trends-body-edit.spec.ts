@@ -173,14 +173,18 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
 
     await hydratedClick(page, page.getByTestId("body-history-edit-weight_kg"));
     const dialog = page.getByTestId("body-metric-edit-dialog");
-    // It opens on the number the row shows, in the login's display unit.
-    await expect(dialog.getByTestId("body-metric-edit-value")).toHaveValue(
+    // The dialog is a WRAPPER around the body domain's one row control (#4424
+    // ruling 3) — the same `ReadingValueControl` the metric detail page's readings
+    // table and the record's body rows mount — so it is addressed by that control's
+    // own field and button rather than by markers this dialog used to own.
+    await expect(dialog.getByLabel("Reading value")).toHaveValue(
       String(WEIGHT_KG)
     );
-    await dialog
-      .getByTestId("body-metric-edit-value")
-      .fill(String(CORRECTED_KG));
-    await settledClick(page, dialog.getByTestId("body-metric-edit-save"));
+    await dialog.getByLabel("Reading value").fill(String(CORRECTED_KG));
+    await settledClick(
+      page,
+      dialog.getByRole("button", { name: "Save", exact: true })
+    );
     await expect(dialog).toHaveCount(0);
 
     // THE CLAIM: the weight is corrected in place and the row survives with the
@@ -217,8 +221,11 @@ test("corrects ONE measure of a body-metrics row and leaves the day's others alo
     await expect(solo).toHaveCount(1);
     // The save above toasted into the bottom-right, where this table's actions column
     // and its portaled menu panel live — the DB read in between is far too fast to
-    // absorb the 6s auto-dismiss (#2861).
-    await dismissToast(page, "Weight updated.");
+    // absorb the 6s auto-dismiss (#2861). The sentence belongs to the shared row
+    // control since #4424 ruling 3, so it is the same one whichever surface corrected
+    // the reading — this dialog and the metric detail page used to round one write two
+    // ways ("Weight updated." here, "Reading updated." there).
+    await dismissToast(page, "Reading updated.");
     await hydratedClick(page, solo.getByTestId("overflow-menu-trigger"));
     await expect(page.getByTestId("body-history-edit-weight_kg")).toBeVisible();
     await expect(

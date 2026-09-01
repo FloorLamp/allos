@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import DateField from "@/components/DateField";
 import WhenControl from "@/components/WhenControl";
 import { statedHhmm, type WhenValue } from "@/lib/stated-time";
 import { useTimezone } from "@/components/TimezoneProvider";
@@ -25,11 +24,10 @@ import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
-import { validateBodyMetricInput } from "@/lib/body-metric-input";
+import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
-import type { WeightUnit } from "@/lib/settings";
+import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
@@ -39,7 +37,7 @@ import type { WeightUnit } from "@/lib/settings";
 // pointed at `/trends/metric/weight`, as if a body reading were only ever a weight.
 //
 // NO SIXTH WRITE CORE. Each form below posts the domain's own create action —
-// `logFoodServing`, `logPractice`, `addSubstanceDailyTotalAction`, `addBodyMetric` —
+// `logFoodServing`, `logPractice`, `addSubstanceDailyTotalAction`, `addMeasurements` —
 // exactly as HistoryRows' correction forms post that domain's own update action. Each
 // one re-checks write access server-side, so the door is an affordance and never a gate.
 //
@@ -63,13 +61,14 @@ import type { WeightUnit } from "@/lib/settings";
 // time field stays empty and emits null, so a backfill that states nothing still
 // states nothing, which is the behaviour phase 1 was protecting.
 //
-// BODY KEEPS A BARE DATE, and that is not an oversight: `body_metrics.occurred_at`
-// exists (migration 165, #2235) and the write core takes it, but `addBodyMetric`
-// deliberately states no time, and its find-then-write CLEARS the column on an empty
-// submission while leaving it alone for a time-blind one. Choosing between those is a
-// decision about the body domain's write contract, not about this door. SUBSTANCE is
-// date-only in the SCHEMA (`substance_daily_totals` is a day total with no event
-// instant, #3327) and its own form now says so.
+// BODY NO LONGER KEEPS A BARE DATE, because it no longer keeps a form (#4424 ruling 2).
+// This door drew three of the domain's measures behind a `DateField` and posted
+// `addBodyMetric` — a fourth body write action that stated no time at all — while the
+// record above it fans every body measure onto the feed. It mounts the domain's ONE
+// form instead, which carries the whole field set, the sitting's optional Time through
+// the shared `WhenControl`, and `addMeasurements` with its never-the-future day bound.
+// SUBSTANCE is date-only in the SCHEMA (`substance_daily_totals` is a day total with no
+// event instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
@@ -92,8 +91,12 @@ export interface HistoryAddVocabulary {
    * customs, in the order its history ranks them (#857). Empty for every other kind.
    */
   symptoms: { key: string; label: string }[];
-  /** The login's weight unit — what the value the reader types is in. */
-  weightUnit: WeightUnit;
+  /**
+   * What the body domain's one form needs to stand on the day being read — the SAME
+   * reader the quick-log sheet's measurements overlay uses (#4424 ruling 2), so the
+   * door and the sheet cannot offer different field sets for one form.
+   */
+  measurements: MeasurementsQuickEntry;
   /**
    * The composed "your usual <window>" offers standing on the day being read (#4118),
    * one per window, seeded server-side. Empty for every kind but `food`, for a day
@@ -305,21 +308,6 @@ export default function HistoryAddDoor({
     );
   }
 
-  // BODY's field, and still `DateField` rather than a `WhenControl` with its time
-  // hidden: a control rendered without half of itself is a variant.
-  const dateField = (
-    <label className="text-xs text-slate-500 dark:text-slate-400">
-      Date
-      <DateField
-        name="date"
-        defaultValue={date}
-        max={maxDate}
-        required
-        inputClassName="mt-1 w-full"
-      />
-    </label>
-  );
-
   // The TIMED kinds' field, and the day and the minute come out of it together.
   // `mode="state"` because a backfill is an assertion rather than an amendment, and
   // `timeRequired` is false because stating a time is optional here — the record's own
@@ -453,59 +441,26 @@ export default function HistoryAddDoor({
           />
         );
       case "body":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The domain's one form,
+        // with the found day in hand — every measure the record's body rows print, not
+        // the three this door used to draw.
+        //
+        // IT STAYS OPEN AFTER A SAVE, which is the one behaviour this mount adds and
+        // the #4211 requirement absorbed into #4424: the form resets its own fields and
+        // keeps its date, so five readings backfilled onto one past day are five quick
+        // saves rather than five re-openings. `router.refresh()` is what puts each of
+        // them into the record the reader is standing in; `close()` is deliberately NOT
+        // called, and the form's own toast is the confirmation.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                // THE ACTION SILENTLY SKIPS an out-of-range number, so a reader who
-                // typed one would watch the door close over nothing. The same pure
-                // guard the two weight quick-adds run answers first.
-                const refusal = validateBodyMetricInput({
-                  weight: fd.get("weight") as string | null,
-                  bodyFatPct: fd.get("body_fat_pct") as string | null,
-                  restingHr: fd.get("resting_hr") as string | null,
-                });
-                if (refusal) return refusal;
-                await addBodyMetric(fd);
-                return null;
-              })
-            }
-          >
-            {dateField}
-            {/* EVERY BODY MEASURE THE RECORD SHOWS, not weight alone — `body_metrics`
-                holds three quantities per day and `bodyMetricMeasures` fans all three
-                onto the feed, so a door that took only a weight could not backfill two
-                thirds of the rows it sits above. `addBodyMetric` writes whichever
-                fields carry a value. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              {`Weight (${vocabulary.weightUnit})`}
-              <input
-                type="number"
-                step="any"
-                name="weight"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Body fat (%)
-              <input
-                type="number"
-                step="any"
-                name="body_fat_pct"
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Resting HR (bpm)
-              <input
-                type="number"
-                name="resting_hr"
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <MeasurementsQuickAdd
+            {...vocabulary.measurements}
+            presentation="modal"
+            // The record's `body` rows ARE `body_metrics` (`bodyMetricMeasures` fans
+            // weight, body fat and resting HR onto the feed), so the door opens on the
+            // group holding them rather than on the form's own default.
+            defaultGroup="body"
+            onSaved={() => router.refresh()}
+          />
         );
     }
   }
