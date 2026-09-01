@@ -29,10 +29,14 @@ import { db, today, writeTx } from "./db";
 import { isPastWriteAccepted } from "./log-manifest";
 import type { LoggedVia } from "./logged-via";
 import { round } from "./units";
-import { isRealIsoDate, utcInstant } from "./date";
+import { utcInstant } from "./date";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import { getTimezone } from "./settings";
-import { statedInstantOnDate } from "./stated-time";
+import { statedInstantOnDate, type StatedTimeRefusal } from "./stated-time";
+import {
+  resolveStatedOccurredAt,
+  type StatedOccurredAt,
+} from "./reading-writes";
 import {
   VITAL_CANONICAL,
   resolveTemperatureUnit,
@@ -49,29 +53,63 @@ import type { MedicalFlag } from "./types";
 //             reference-range flag ("high" for a fever).
 //   invalid — a malformed date, a non-numeric value, or an out-of-range temperature;
 //             nothing written. `error` is user-facing.
+//   logged  — ... and `statedTimeRefused` when a stated minute did NOT survive the
+//             acceptance gate (#4568). A NOTICE, never a failure: the reading landed on
+//             its own day, exactly as `insertBodyMetric`/`insertVitals` answer.
 export type TemperatureLogOutcome =
-  | { kind: "logged"; id: number; degF: number; flag: MedicalFlag | null }
+  | {
+      kind: "logged";
+      id: number;
+      degF: number;
+      flag: MedicalFlag | null;
+      statedTimeRefused?: StatedTimeRefusal;
+    }
   | { kind: "invalid"; error: string };
 
+// `updated` carries the same NOTICE its log sibling does, and for the same reason.
 export type TemperatureUpdateOutcome =
-  | { kind: "updated"; degF: number; flag: MedicalFlag | null }
+  | {
+      kind: "updated";
+      degF: number;
+      flag: MedicalFlag | null;
+      statedTimeRefused?: StatedTimeRefusal;
+    }
   | { kind: "missing" }
   | { kind: "invalid"; error: string };
 
 const TEMP = VITAL_CANONICAL.temperature;
 
-// The stated instant a profile-local "HH:MM" on `date` denotes, in the canonical
-// utcInstant shape — or null when no plausible time was stated (absence, never a
-// midnight anchor) or the wall time does not exist on that day (a DST gap).
+// The stated instant a profile-local "HH:MM" on `date` denotes — THROUGH THE DOMAIN'S
+// ONE ACCEPTANCE GATE (#4568). `LOG_MANIFEST.body` declares `statedTime: judged`, and
+// this resolver used to run `normalizeClockTime` alone: a SHAPE check, so a temperature
+// stated at 14:00 while it was 09:00 was stored as a fact about the future while its
+// five sibling body cores refused the same statement through `resolveStatedOccurredAt`.
+// The domain had two spellings of one question and the manifest asserted the answer
+// only one of them gave.
+//
+// `resolveStatedOccurredAt` is that one spelling (lib/reading-writes.ts) and it takes an
+// INSTANT, so the wall clock is anchored on its own day first — `statedInstantOnDate`,
+// which is DST-honest and returns null for a wall time that does not exist on that day.
+// A null anchor reaches the gate as an explicit "no time", which is what this resolver
+// has always answered for it.
+//
+// `refused` is present only when a statement was made and the gate discarded it; the
+// callers below decide what that COSTS, and they decide it differently on purpose
+// (lib/stated-time.ts's own rule: a log path keeps the row and drops the minute, a
+// correction path — where the statement is the submission — surfaces it).
 function statedOccurredAt(
   profileId: number,
   date: string,
   time: string | null | undefined
-): string | null {
+): StatedOccurredAt {
   const hhmm = normalizeClockTime(time);
-  if (!hhmm) return null;
+  if (!hhmm) return { value: null };
   const inst = statedInstantOnDate(date, hhmm, getTimezone(profileId));
-  return inst ? utcInstant(inst) : null;
+  return resolveStatedOccurredAt(
+    profileId,
+    date,
+    inst ? utcInstant(inst) : null
+  );
 }
 
 // Log one body-temperature reading into medical_records. Converts the entered value
@@ -103,8 +141,10 @@ export function logTemperatureCore(
   const rangeErr = temperatureRangeError(degF);
   if (rangeErr) return { kind: "invalid", error: rangeErr };
   // The stated reading time → the row's own event column (#2154). `notes` stays
-  // NULL: a note is a note now, never a smuggled clock.
-  const occurredAt = statedOccurredAt(profileId, date, time);
+  // NULL: a note is a note now, never a smuggled clock. A refused statement costs
+  // the minute and never the reading — the log-path half of the rule above.
+  const stated = statedOccurredAt(profileId, date, time);
+  const occurredAt = stated.value ?? null;
 
   return writeTx(() => {
     const info = db
@@ -134,7 +174,13 @@ export function logTemperatureCore(
         "SELECT flag FROM medical_records WHERE id = ? AND profile_id = ?"
       )
       .get(id, profileId) as { flag: MedicalFlag | null } | undefined;
-    return { kind: "logged" as const, id, degF, flag: row?.flag ?? null };
+    return {
+      kind: "logged" as const,
+      id,
+      degF,
+      flag: row?.flag ?? null,
+      ...(stated.refused ? { statedTimeRefused: stated.refused } : {}),
+    };
   });
 }
 
@@ -148,7 +194,12 @@ export function updateTemperatureCore(
   date: string,
   time?: string | null
 ): TemperatureUpdateOutcome {
-  if (!isRealIsoDate(date))
+  // THE SAME DAY BOUND ITS LOG SIBLING HOLDS (#4568). `logTemperatureCore` gained
+  // `isPastWriteAccepted` in #4425 and this correction door did not, so a shipped
+  // reading could still be edited ONTO a day that has not happened — the same
+  // log-versus-correction asymmetry #4463 closed for food. `isRealIsoDate` is folded
+  // into the shared predicate, which checks it first.
+  if (!isPastWriteAccepted(today(profileId), date))
     return { kind: "invalid", error: "Enter a valid date." };
   if (rawValue == null || !Number.isFinite(rawValue))
     return { kind: "invalid", error: "Enter a valid temperature." };
@@ -159,7 +210,18 @@ export function updateTemperatureCore(
   // occurred_at (resolved on the possibly-corrected date), an emptied field
   // clears it. `notes` is no longer written — a genuine note survives an edit
   // instead of being clobbered by the retired clock-in-notes convention.
-  const occurredAt = statedOccurredAt(profileId, date, time);
+  //
+  // A REFUSED MINUTE COSTS THE MINUTE, NOT THE CORRECTION — the LOG branch of
+  // lib/stated-time.ts's rule, because that rule's correction branch has a
+  // precondition this door does not meet. It reads "a correction path — WHERE THE
+  // STATEMENT IS THE WHOLE SUBMISSION — surfaces it as an error", and the submission
+  // here is a value AND a day AND a minute. Refusing all three over a stray clock is
+  // losing the serving to save the cosmetic half, which is the very trade the rule's
+  // first branch exists to prevent. The bad DAY above still refuses outright: that
+  // file's next paragraph calls an instant outside its own row's day corruption, and a
+  // wrong day is a different question from a wrong minute.
+  const stated = statedOccurredAt(profileId, date, time);
+  const occurredAt = stated.value ?? null;
 
   return writeTx((): TemperatureUpdateOutcome => {
     const owned = db
@@ -197,6 +259,11 @@ export function updateTemperatureCore(
       )
       .get(id, profileId, TEMP.canonical) as
       { flag: MedicalFlag | null } | undefined;
-    return { kind: "updated", degF, flag: row?.flag ?? null };
+    return {
+      kind: "updated",
+      degF,
+      flag: row?.flag ?? null,
+      ...(stated.refused ? { statedTimeRefused: stated.refused } : {}),
+    };
   });
 }

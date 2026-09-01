@@ -4,7 +4,7 @@
 //
 // WHY THIS IS NOT A UNIT TEST OF THE ENUM, and why the AC says it must not be. Three
 // of these four surfaces post the SAME Server Action — the dashboard's weigh-in
-// widget and the Trends page's add form both call `addBodyMetric`; the quick-log
+// widget and the Trends page's add form both call `addMeasurements`; the quick-log
 // sheet's dose list and the Upcoming page's inline confirm both call `markTaken`.
 // A unit test of the vocabulary would pass with every one of them landing in the same
 // bucket. The only thing that can tell them apart is the round trip: the mounting
@@ -28,7 +28,6 @@ import { saveSleepMoodEntry } from "@/app/(app)/sleep/actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { markTaken } from "@/app/(app)/upcoming/actions";
 import { logPractice } from "@/app/(app)/wellness/actions";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { POST as replayPost } from "@/app/api/offline-replay/route";
 
 function seat(name: string) {
@@ -186,7 +185,7 @@ describe("each web surface stores its OWN value, through its own real action", (
     fd.set("weight_unit", "kg");
     // What a control inside the dashboard's LoggedViaSurface region sets.
     fd.set(LOGGED_VIA_FIELD, "dashboard-widget");
-    await addBodyMetric(fd);
+    await addMeasurements(fd);
     const row = weightOrigin(profile.id, date);
     expect(row?.logged_via).toBe("dashboard-widget");
     // And `source` keeps its own meaning beside it: no importer produced this row.

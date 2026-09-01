@@ -10,6 +10,7 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
+import WeightField from "@/components/vitals/WeightField";
 import {
   measurementsSavedText,
   validateBodyMetricInput,
@@ -98,8 +99,14 @@ function refusedMessage(
 //     time are one field for the same reason.
 //
 // ── Progressive disclosure: three groups, one open ───────────────────────────
-// Thirteen always-empty boxes to collect the one or two readings someone actually
-// took is what the copy already argues against. Exactly one group is open on mount,
+// SEVENTEEN always-empty boxes to collect the one or two readings someone actually
+// took is what the copy already argues against. (This comment said THIRTEEN, which was
+// the count before #1850, #1851 and #2322 added peak flow, the bed/wake pair,
+// respiratory rate, lean and bone mass, hydration and the waist tape. `LOG_MANIFEST`
+// inherited the stale figure and #4424's body leg corrected both. The form DEFINES
+// nineteen fields — the eighteen in `field` below plus Notes — and renders seventeen at
+// either life stage, since the growth pair swaps in exactly as body fat and HRV swap
+// out; `components/__tests__/body-two-pieces.test.tsx` asserts the pair.) Exactly one group is open on mount,
 // chosen by where the person came from: the vitals card opens Vitals, Trends → Overview → body census
 // opens Body, a `?focus=`/`?new=` deep link opens the group holding its field, and
 // the quick-log sheet opens whatever this profile last wrote to (seeded to Vitals).
@@ -143,6 +150,14 @@ export interface MeasurementsQuickAddProps {
   // renders the Time EMPTY even when the date is today (#2053), with the
   // control's one-tap "Now" beside it.
   defaultStatedAt?: string | null;
+  /**
+   * The latest day this form may write, which is the day the write cores already
+   * bound it to (`isPastWriteAccepted`). Optional only because a mount that omits it
+   * still cannot write the future — `addMeasurements` answers `dateRefused` and the
+   * inline refusal below says so — but a bound the control ENFORCES beats one the
+   * submission discovers.
+   */
+  maxDate?: string;
   weightUnit: WeightUnit;
   // The viewer's login temperature-unit preference (#857) — seeds the temp entry
   // unit. Storage stays canonical °F.
@@ -155,7 +170,8 @@ export interface MeasurementsQuickAddProps {
   showGrowth?: boolean;
   showHeadCirc?: boolean;
   // Fired after a successful save so a MOUNTING CONTEXT can react — the quick-entry
-  // overlay closes itself, leaving the user where they were.
+  // overlay closes itself, the record's add door re-reads its feed, and the Trends
+  // page mounts simply reset and stay put.
   onSaved?: () => void;
   // Optional action for a standalone card mount.
   headerSlot?: ReactNode;
@@ -229,6 +245,7 @@ const UNCONTROLLED_VITAL_FIELDS = [
 export default function MeasurementsQuickAdd({
   defaultDate,
   defaultStatedAt = null,
+  maxDate,
   weightUnit,
   temperatureUnit = "F",
   showBodyFat = true,
@@ -670,16 +687,10 @@ export default function MeasurementsQuickAdd({
         label={TREND_METRIC_META.weight.title}
         htmlFor="m-weight"
       >
-        <UnitSuffix suffix={weightUnit}>
-          <input
-            id="m-weight"
-            type="number"
-            step="0.1"
-            min="0"
-            name="weight"
-            className="input pr-12"
-          />
-        </UnitSuffix>
+        {/* THE DOMAIN'S ONE WEIGHT FIELD (#4424 ruling 5) — the pediatric label
+            lookup composes this same component, so a weight typed there and one
+            typed here are the same field rather than two arrangements of it. */}
+        <WeightField id="m-weight" unit={weightUnit} />
       </Field>
     ),
     bodyFat: (
@@ -1155,6 +1166,7 @@ export default function MeasurementsQuickAdd({
           grain="minute"
           value={when}
           onChange={setWhen}
+          maxDate={maxDate}
           testId="m"
           dateLabel="Date"
           timeLabel="Time taken (optional)"

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -5,6 +6,7 @@ import { ToastProvider } from "@/components/Toast";
 import CuratedSupplementSuggestions from "@/components/CuratedSupplementSuggestions";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import ImportFeed from "@/components/ImportFeed";
+import RelativeTime from "@/components/RelativeTime";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
 import TrainingLogRow from "@/app/(app)/training/TrainingLogRow";
 import type { CuratedSupplementSuggestion } from "@/lib/supplement-suggest-curated";
@@ -209,5 +211,20 @@ describe("the absolute sync stamp lives on one surface (#4419 rule 1)", () => {
     const { container } = render(<SyncTimestamp value={SYNCED_AT} />);
     expect(container.textContent).toContain(SYNCED_ABSOLUTE);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+});
+
+describe("the absolute general stamp lives on one surface (#4530)", () => {
+  it("prints the stamp outright where the relative row is the detail surface", () => {
+    const { container } = render(<RelativeTime value={SYNCED_AT} />);
+    expect(container.textContent).toContain(SYNCED_ABSOLUTE);
+    expect(screen.queryByRole("button", { name: SYNCED_ABSOLUTE })).toBeNull();
+  });
+
+  it("keeps an integration issue relative-only when its settings page owns the stamp", () => {
+    const source = readFileSync("components/ReviewInbox.tsx", "utf8");
+    expect(source).toMatch(
+      /<SyncTimestamp\s+value=\{ev\.at\}\s+className="[^"]+"\s+relativeOnly\s+\/>/
+    );
   });
 });

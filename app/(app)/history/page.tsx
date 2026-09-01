@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { measurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 import PageContainer from "@/components/PageContainer";
@@ -550,7 +551,15 @@ export default async function HistoryPage(props: {
           // entirely retired keeps its history and takes no new rows.
           doseItems: addKind === "dose" ? loggable : [],
           doseDefaultTime: defaultTime,
-          weightUnit: getUnitPrefs(loginId).weightUnit,
+          // WHAT THE BODY DOMAIN'S ONE FORM NEEDS ON THE DAY BEING READ (#4424
+          // ruling 2) — the same reader the quick-log sheet's measurements overlay
+          // uses, asked for this day instead of today, so the door and the sheet
+          // cannot disagree about which fields a body sitting has.
+          measurements: measurementsQuickEntry(
+            loginId,
+            actingProfileId,
+            day ?? todayStr
+          ),
           // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
           // door's first paint is the server's answer rather than a flash of nothing;
           // the door re-reads through `usualRoutineOffersOn` when its date field moves.

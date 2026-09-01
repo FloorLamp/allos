@@ -14,7 +14,10 @@
 //   • the #133 edit lock is read ONLY through `isEditLocked`, and it holds out a
 //     SOURCE-OWNED re-push — never the user's own correction (see `recordReading`);
 //   • the inserted/updated/unchanged split is classified by `classifyUpsert` and bumped
-//     ONLY by `tallyUpsert`;
+//     ONLY by `tallyUpsert` — which a CALLER does, from the disposition `recordReading`
+//     answers with. A plural `recordReadings` used to loop and tally here; #4564 found
+//     it had no non-test caller anywhere, and a function nothing calls sitting in a
+//     list meant to name doors is how a list stops being read as a claim;
 //   • deletes go through `captureDelete`, which writes the #507/#508 re-import
 //     tombstone AND makes the delete undoable — one path, not two (#2123).
 //
@@ -28,8 +31,6 @@ import type { LoggedVia } from "./logged-via";
 import {
   classifyUpsert,
   isEditLocked,
-  tallyUpsert,
-  type UpsertCounts,
   type UpsertDisposition,
 } from "./integrations/sync-log";
 import { captureDelete } from "./undo-delete-db";
@@ -598,32 +599,6 @@ export function recordReading<U extends string>(
       }
     }
   });
-}
-
-/**
- * Record several readings and report the shared upsert accounting. The counts are bumped
- * ONLY through `tallyUpsert`, so a caller's inserted/updated/unchanged split is the same
- * split every sync reports.
- *
- * Every outcome is returned, `statedTimeRefused` included (#2363) — a batch does not get
- * to lose per-reading answers just because it also keeps a tally. There is no COUNT of
- * refusals here on purpose: a refusal is a notice about one statement, not a segment of
- * the dedup split, and folding it into `UpsertCounts` would put it in the accounting a
- * sync reports rather than in front of the person who made the statement.
- */
-export function recordReadings<U extends string>(
-  profileId: number,
-  inputs: readonly ReadingWriteInput<U>[],
-  counts: UpsertCounts
-): ReadingRecordOutcome[] {
-  const out: ReadingRecordOutcome[] = [];
-  for (const input of inputs) {
-    const outcome = recordReading(profileId, input);
-    out.push(outcome);
-    if (outcome.ok) tallyUpsert(counts, outcome.disposition);
-    else if (outcome.error === "edit-locked") counts.edited++;
-  }
-  return out;
 }
 
 // ---- The editability contract ---------------------------------------------

@@ -21,7 +21,7 @@ import {
   logBodyweight,
 } from "@/app/(app)/training/activity-actions";
 import { createGoal } from "@/app/(app)/training/goal-actions";
-import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { updateMetricReading } from "@/app/(app)/trends/reading-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { saveFitnessTest } from "@/app/(app)/training/fitness-actions";
@@ -265,7 +265,7 @@ describe("createGoal honors the submitted weight unit (issue #630)", () => {
 // this shape retired with #3366's tail write cards; the surviving quick surface is
 // app/(app)/trends/MeasurementsQuickAdd.tsx, which posts the same hidden
 // `weight_unit`. This is what carrying it BUYS.
-describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", () => {
+describe("the measurements action honors the submitted weight unit (issues #630, #2863)", () => {
   it.each([
     // typed under a (kg) label; 82 kg is 180.8 lb, so a pref-read write would have
     // stored 37.2 kg — the 2.2046× corruption the carried unit prevents.
@@ -282,7 +282,7 @@ describe("addBodyMetric honors the submitted weight unit (issues #630, #2863)", 
       );
       actAs(login, profile);
 
-      await addBodyMetric(
+      await addMeasurements(
         fd({ date: "2026-07-01", weight: typed, weight_unit: submitted })
       );
 

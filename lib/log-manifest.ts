@@ -593,6 +593,13 @@ export const LOG_MANIFEST = {
   },
 
   body: {
+    // TRUE OF ALL SIX CORES SINCE #4568. It was true of five: `logTemperatureCore` and
+    // `updateTemperatureCore` resolved through a file-private resolver that ran
+    // `normalizeClockTime` — a SHAPE check — so this cell asserted something false about
+    // one of them, which is what a domain-grain column risks whenever its cores are not
+    // one contract. Both temperature doors run `resolveStatedOccurredAt` now, and what a
+    // refusal COSTS still differs by door (log keeps the reading, correction refuses the
+    // submission) because that is lib/stated-time.ts's rule and not a second policy.
     statedTime: { kind: "judged", seam: "judgeStatedAt" },
     offline: {
       kind: "covered",
@@ -609,24 +616,65 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "body" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "THREE shapes with three field sets — a 13-field form, a 3-field door, a 1-field row edit — plus `PediatricWeightUpdate` as a fourth weight form and a palette path posting raw `insertBodyMetric` instead of the measurements action.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The readings-table value cell is the row-control-grade inline edit and is not a shared component; the dashboard Now rows carry no body control at all.",
-        ref: "#4424",
-      },
+      // #4424's body leg. `MeasurementsQuickAdd` is the form at every mount — the
+      // Trends panel, a metric detail page, the quick-log sheet and the record's add
+      // door — and `measurementsQuickEntry` is the ONE reader that answers what it
+      // needs on a given day, so a mount SPREADS that shape rather than listing seven
+      // props and quietly listing six.
+      //
+      // THE PEDIATRIC LABEL LOOKUP COMPOSES THE FIELD, NOT THE FORM, and that is ruling
+      // 2's own wording rather than a shortfall: it renders inside `IntakeItemForm`'s
+      // `<form>`, so a component drawing its own would be a nested one and its Save
+      // would be inert. It mounts `WeightField` — the `TemperatureField` precedent,
+      // ruling 5 — and posts `addMeasurements` like every other body door.
+      //
+      // ADD AND EDIT ARE ONE LAYOUT AND ALSO ONE ACTION here, which is stronger than
+      // ruling 1 asks for: `insertBodyMetric` is find-then-write per day, so a sitting
+      // resubmitted on a day that already has a row CORRECTS it. Edit mode is therefore
+      // the seed — `defaultStatedAt` off that day's own `occurred_at` — and nothing
+      // else. A reading's one-field correction is the row control below.
+      //
+      // THE CELL'S FIGURES DID NOT SURVIVE MEASUREMENT and are corrected here rather
+      // than inherited. The form defines NINETEEN fields (eighteen plus Notes) and
+      // renders SEVENTEEN at either life stage, not thirteen; the stale number traces
+      // to a comment in the form itself, written before #1850, #1851 and #2322 added
+      // seven more, and is fixed at that source too. `PediatricWeightUpdate` was the
+      // THIRD weight form, not the fourth: the count reached four by including the
+      // one-field row edit, which ruling 3 classes as row-control-grade and which edits
+      // any metric's value rather than a weight. The door's three measures,
+      // `PediatricWeightUpdate`'s hand-drawn weight input and `addBodyMetric` — a fourth
+      // body write action carrying a strict subset of `addMeasurements` — are all
+      // deleted, and the palette posts the measurements action.
+      //
+      // THE ROW CONTROL HAD THREE IMPLEMENTATIONS, not the one the cell named: the
+      // readings-table cell, `/history`'s `case "body"` correction form, and
+      // `BodyMetricRowMenu`'s modal — all three posting `updateMetricReading` with the
+      // same three fields. All three mount `ReadingValueControl` now, and it is the only
+      // thing in the tree that imports that action.
+      //
+      // MOOD'S LEG INHERITS THAT CONTROL RATHER THAN EXTRACTING A SECOND ONE (#4427).
+      // `/trends/metric/<slug>` charts mood and sleep beside the body measures, so a
+      // mood reading's value is corrected through this same component —
+      // `updateMetricRow` routes the mood store underneath it. Named here so that leg
+      // reads it as an inheritance in its own cell instead of finding a body-named
+      // control on its rows and drawing a fourth.
+      //
+      // THE DASHBOARD IS NOT A GAP. Its body rows are readouts with an `href`; the one
+      // body write control there is the setup-tier Vitals row's
+      // `DashboardQuickEntryAction`, which OPENS the form in the sheet and is ruling 2's
+      // mount rather than a second row control. So read `shared` as the symptom leg
+      // established it: the domain has exactly one control and every body row hosting a
+      // write control mounts it. Mount count is not the test.
+      form: { kind: "shared", component: "MeasurementsQuickAdd" },
+      rowControl: { kind: "shared", component: "ReadingValueControl" },
     },
     writeConventions: { kind: "convention" },
     // The five "Log measurements" cores plus the symptom bar's temperature door. One
     // submission fans out across the five by which fields it carries, so they are one
     // contract and all five hold `isPastWriteAccepted`; `recordReading` is the store
-    // under `insertVitals` and is not a door.
+    // under `insertVitals` and is not a door. Its plural `recordReadings` was in this
+    // list until #4425 and had no non-test caller at all (#4564); #4424's body leg
+    // deleted it, so the store layer is one function and this list is only doors.
     cores: [
       "insertBodyMetric",
       "insertVitals",
