@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import type { Locator, Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledClick, settledBoxes } from "./helpers";
+import {
+  dismissToast,
+  hydratedClick,
+  settledClick,
+  settledBoxes,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   expectDesktopRecordFormSubmit,
@@ -135,8 +140,7 @@ async function submitWithToast(
     expect(toast).toHaveCount(1, { timeout: 15_000 }),
     settledClick(page, button),
   ]);
-  await toast.getByRole("button", { name: "Dismiss" }).click();
-  await expect(toast).toHaveCount(0);
+  await dismissToast(page, message);
 }
 
 test.describe("Imaging studies — add → view → filter → edit → delete (#702)", () => {
