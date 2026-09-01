@@ -24,6 +24,8 @@ import {
 import type { MuscleRegion } from "../lifts";
 import { getLatestClinicalObservationByCanonical } from "./medical";
 import { getFrequencyTargets } from "./frequency-targets";
+import { weekWindowStartOn } from "./profile-week";
+import { daysBetweenDateStr } from "../date";
 
 // The day's mobility session (its logged move slugs + optional duration), or an empty
 // session when none exists yet.
@@ -34,9 +36,9 @@ export function getMobilitySession(
   return readMobilitySession(profileId, date);
 }
 
-// Recent mobility sessions as coverage inputs (date + move slugs); the caller applies the
-// exact rolling window (mobilityCoverageStrip). The 400-row cap bounds the scan for a
-// long history. Profile-scoped.
+// Recent mobility sessions as coverage inputs (date + move slugs); the caller applies
+// the profile's exact week window. The 400-row cap bounds the scan for a long history.
+// Profile-scoped.
 export function getRecentMobilitySessions(
   profileId: number
 ): MobilitySessionInput[] {
@@ -55,17 +57,17 @@ export function getRecentMobilitySessions(
   }));
 }
 
-// The mobility region-coverage strip for the trailing window (Training overview, #840
-// point 3). A SEPARATE view from strength trained-coverage (#482).
+// The mobility region-coverage strip for the profile's own week (Training overview,
+// #840 point 3). A SEPARATE view from strength trained-coverage (#482).
 export function getMobilityCoverage(
   profileId: number,
-  today: string,
-  windowDays = 7
+  today: string
 ): MobilityCoverageRow[] {
+  const weekStart = weekWindowStartOn(profileId, today);
   return mobilityCoverageStrip(
     getRecentMobilitySessions(profileId),
     today,
-    windowDays
+    (daysBetweenDateStr(weekStart, today) ?? 0) + 1
   );
 }
 

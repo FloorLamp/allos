@@ -196,7 +196,7 @@ function resolveFile(rel: string): string | null {
   return resolved;
 }
 
-type SourceFile = { file: string; src: string };
+type SourceFile = { file: string; src: string; imports?: string[] };
 
 const sourceTexts = new Map<string, string>();
 function sourceText(file: string): string {
@@ -208,11 +208,21 @@ function sourceText(file: string): string {
   return src;
 }
 
+const sourceImports = new Map<string, string[]>();
+function importsFor(file: string): string[] {
+  let imports = sourceImports.get(file);
+  if (imports === undefined) {
+    imports = importSpecifiers(sourceText(file));
+    sourceImports.set(file, imports);
+  }
+  return imports;
+}
+
 /** Reaches out of the trigger set, as `file → specifier`. */
 function uncoveredIn(files: Iterable<SourceFile>, set: TriggerSet): string[] {
   const out: string[] = [];
-  for (const { file, src } of files)
-    for (const spec of importSpecifiers(src)) {
+  for (const { file, src, imports } of files)
+    for (const spec of imports ?? importSpecifiers(src)) {
       const rel = resolveSpecifier(file, spec);
       if (!rel) continue;
       // Against the FILE where there is one: `@/middleware` is the single-file
@@ -234,8 +244,7 @@ function tierClosure(): string[] {
     const file = queue.pop()!;
     if (seen.has(file)) continue;
     seen.add(file);
-    const src = sourceText(file);
-    for (const spec of importSpecifiers(src)) {
+    for (const spec of importsFor(file)) {
       const rel = resolveSpecifier(file, spec);
       if (!rel) continue;
       const resolved = resolveFile(rel);
@@ -248,7 +257,8 @@ function tierClosure(): string[] {
 
 /** The closure with its text, read one file at a time rather than all at once. */
 function* tierSources(): Generator<SourceFile> {
-  for (const file of tierClosure()) yield { file, src: sourceText(file) };
+  for (const file of tierClosure())
+    yield { file, src: sourceText(file), imports: importsFor(file) };
 }
 
 describe("the test:db gate's trigger set", () => {
@@ -337,7 +347,7 @@ describe("the test:db gate's trigger set", () => {
     // reachable ONLY through a chain, so dropping transitivity would lose it.
     const directlyImported = new Set<string>();
     for (const seed of seeds)
-      for (const spec of importSpecifiers(sourceText(seed))) {
+      for (const spec of importsFor(seed)) {
         const rel = resolveSpecifier(seed, spec);
         const resolved = rel && resolveFile(rel);
         if (resolved) directlyImported.add(resolved);
