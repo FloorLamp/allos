@@ -132,8 +132,9 @@ test("Connected-source timestamp and chevron share a trailing rail inside the Da
     const surface = rail.parentElement!;
     return {
       timestampBeforeChevron:
-        Math.round(timestamp.getBoundingClientRect().right) <
-        Math.round(chevron.getBoundingClientRect().left),
+        (timestamp.compareDocumentPosition(chevron) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !==
+        0,
       rightGap:
         surface.getBoundingClientRect().right -
         chevron.getBoundingClientRect().right,
