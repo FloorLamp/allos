@@ -493,3 +493,20 @@ test("the drawer is viewport-bounded and its footer is reachable by scroll at 39
   await drawer.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
   await expect(footer).toBeInViewport({ ratio: 1 });
 });
+
+test("an upgraded browser drops the retired Frequent tally on load (#4102)", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() =>
+    localStorage.setItem("allos:page-visits:v1", '{"/history":{"n":9,"t":1}}')
+  );
+
+  await page.reload();
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => localStorage.getItem("allos:page-visits:v1"))
+    )
+    .toBeNull();
+});
