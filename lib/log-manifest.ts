@@ -549,10 +549,12 @@ export const LOG_MANIFEST = {
   },
 
   stool: {
-    // THE SECOND TENANT (#4425). Until this entry `logBristolStool` ran only
+    // THE SECOND TENANT (#4425). Until that entry `logBristolStool` ran only
     // `normalizeClockTime` — a SHAPE check — so "Happened earlier?" accepted 23:50
     // typed at 09:00, filing a bowel movement fourteen hours in the future on a row
-    // whose natural key IS its instant.
+    // whose natural key IS its instant. It has run `judgeStatedAt` since #4524, and
+    // #4433's remaining three legs — the record row, its correction and delete, and
+    // the dated door — landed on that.
     offline: { kind: "covered", flow: "stool" },
     surfaces: {
       sheet: { kind: "covered", via: "log-stool" },
@@ -568,32 +570,31 @@ export const LOG_MANIFEST = {
           "Sensitive by DELIVERY rather than by content: a chat message naming a bowel movement can surface on a lock screen or a shared device — the same reach-policy argument that keeps substance off this vocabulary — and a one-line `/stool 6` would drop the descriptions people actually pick against.",
         ref: "#2785",
       },
-      history: {
-        kind: "excluded",
-        reason:
-          "`HISTORY_LOG_KINDS` has no stool row, so a logged movement is visible on Trends and nowhere correctable. This is the missing-leg class rather than a decision against.",
-        ref: "#4433",
-      },
+      history: { kind: "covered", via: "stool" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "The seven-button picker in the quick-entry overlay is the only write mount; there is no form to open in edit mode because there is no correction path at all.",
-        ref: "#4433",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "No surface renders a stool ROW with an action — the Trends dot strip is a read — so the row control has nowhere to mount yet.",
-        ref: "#4433",
-      },
+      // #4424's stool leg. `StoolForm` is add AND full-statement edit — the record's
+      // "Log a movement" door, on any day it is standing on, and that row's correction.
+      //
+      // A CORRECTION MOVES THE TYPE AND NOTHING ELSE, which is the store's shape rather
+      // than a missing field: a Bristol reading's natural key IS its instant, so
+      // restating a minute UPSERTS onto the row and stating a different one forks it.
+      // The instant is half the row's address in the sense `symptom`'s (date, symptom)
+      // is, and a reading filed on the wrong day is a delete plus a re-log — both of
+      // which the record's ⋯ now offers.
+      //
+      // `StoolTypeControl` is the seven-icon tap over the day's running count. The cell
+      // it replaces was right that no ROW hosted an action; what it missed is that the
+      // tap surface itself was the row control, hand-rolling the ledger wiring, the
+      // offline decision and the announcement that #3276's pipeline owns.
+      form: { kind: "shared", component: "StoolForm" },
+      rowControl: { kind: "shared", component: "StoolTypeControl" },
     },
     writeConventions: {
       kind: "diverges",
       what: "Failure is TOAST-ONLY on a surface that has a field: the picker's \"Happened earlier?\" fold collects a stated time, and #3276's convention is that anything with fields answers inline as well.",
       reason:
-        "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). Recorded rather than fixed here: the refusal this issue teaches it to report rides the same toast, and moving the channel is #3276's pipeline work, not a window fix.",
+        "The seven icons are the affordance and the fold is optional, so the row was built as a tap row and kept a tap row's channel when the field arrived (#3273). STILL A DIVERGENCE AFTER THE CONVERGENCE: the control consumes `useWritePipeline` now, and that pipeline speaks ONE announcement channel (`say`, a toast) for every surface it serves — so the inline half is a change to the shared hook and to every consumer of it, not a stool edit. `StoolForm`, which is all field, answers inline.",
       ref: "#3276",
     },
   },

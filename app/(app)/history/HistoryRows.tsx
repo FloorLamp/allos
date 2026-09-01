@@ -29,6 +29,7 @@ import {
   IconVaccine,
   IconVirus,
   type TablerIcon,
+  IconPoo,
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
 import DateField from "@/components/DateField";
@@ -73,6 +74,8 @@ import TimelineFilterLink from "@/components/TimelineFilterLink";
 import DestinationLink from "@/components/DestinationLink";
 import { MedicalValue } from "@/components/ui";
 import { removeSymptom } from "@/app/(app)/symptom-actions";
+import { deleteStoolReading } from "@/app/(app)/stool-actions";
+import StoolForm from "@/components/stool/StoolForm";
 import SymptomForm from "@/components/illness/SymptomForm";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import {
@@ -185,6 +188,7 @@ const KIND_GLYPH: Record<HistoryKind, TablerIcon> = {
   body: IconScaleOutline,
   sleep: IconMoon,
   symptom: IconTemperature,
+  stool: IconPoo,
   activity: IconActivity,
   endurance: IconRun,
   milestone: IconTrophy,
@@ -410,6 +414,15 @@ export default function HistoryRows({
           fd.set("date", row.date);
           await undoable(removeSymptomDay, fd, {
             deletedMessage: "Symptom removed",
+          });
+          break;
+        case "stool":
+          // The `metric_samples` row id IS the address, and `deleteStoolReading` runs
+          // the shared reading delete — so the tombstone and the undo capture are the
+          // ones every other reading delete already gets (#2642).
+          fd.set("id", String(edit.rowId));
+          await undoable(deleteStoolReading, fd, {
+            deletedMessage: "Movement removed",
           });
           break;
         case "cycle":
@@ -656,6 +669,25 @@ export default function HistoryRows({
               severity: edit.severity,
               note: edit.note ?? null,
             }}
+            subjectProfileId={row.profileId}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
+        );
+      case "stool":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // It stamps the ROW's profile itself, like the dose, substance and symptom
+        // forms above, so it does not run through `post()`. No date and no time: the
+        // instant is the row's ADDRESS (see `StoolForm`), so a correction moves the
+        // type and a reading filed on the wrong day is a delete and a re-log.
+        return (
+          <StoolForm
+            date={row.date}
+            maxDate={maxDateFor(row)}
+            row={{ id: edit.rowId, type: edit.type }}
             subjectProfileId={row.profileId}
             onSaved={() => {
               toast("Corrected.");
