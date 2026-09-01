@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { dismissToast, hydratedClick } from "./helpers";
+import { practiceIdentity } from "@/lib/practice";
 // Upcoming row composition (issue #1446).
 //
 // The all-pages census found every overdue row on /upcoming rendering TWO
@@ -87,4 +91,72 @@ test.describe("Upcoming row actions (#1446)", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
+});
+
+// ── THE PRACTICE ROW MOUNTS THE DOMAIN'S ONE CONTROL (#4424 ruling 7) ──────────
+//
+// This row used to front `app/(app)/upcoming/PracticeLogButton.tsx` and its own
+// `logUpcomingPractice` action — a second door onto the shared core, with no duration,
+// no confirm and no live lifecycle. It mounts `LogPracticeButton` now, so the three
+// arrive by convergence rather than by being re-added to a copy.
+//
+// SPEC-OWNED FIXTURE (#868), because the row only exists while a weekly practice floor
+// is UNMET: the shared profile's practices are not reliably behind, and a shared row
+// tapped here would move a neighbour's counts. Seeded and removed by this test.
+test("the practice row logs through the shared control, with the duration the deleted door discarded", async ({
+  page,
+}) => {
+  const name = `E2E Upcoming Practice ${frozenNow().getTime()}`;
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  let targetId = 0;
+  try {
+    targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (1, 'practice', ?, ?, 3)`
+        )
+        .run(name, practiceIdentity(name)).lastInsertRowid
+    );
+
+    await page.goto("/upcoming");
+    const row = page.locator(`[data-testid="upcoming-item-practice:${targetId}"]`);
+    await expect(row).toHaveCount(1);
+
+    // THE SHARED CONTROL, by its own marker — the wellness card, the protocol rows and
+    // the quick sheet all render this same element, which is what `rowControl: shared`
+    // claims. The stepper is the half the deleted door had no field for at all.
+    const control = row.getByTestId("practice-log-control");
+    await expect(control).toBeVisible();
+    const duration = control.getByTestId("practice-duration-input");
+    await expect(duration).toBeVisible();
+    await duration.fill("35");
+
+    await hydratedClick(page, control.getByTestId("practice-log-button"));
+    await dismissToast(page, /Logged/);
+
+    // THE STORE, not the toast: what the deleted door wrote was a session with a null
+    // duration whatever the reader had in mind, so the assertion is the column.
+    await expect
+      .poll(() =>
+        (
+          db
+            .prepare(
+              `SELECT duration_min FROM practice_logs
+                WHERE profile_id = 1 AND practice = ?`
+            )
+            .get(name) as { duration_min: number | null } | undefined
+        )?.duration_min ?? null
+      )
+      .toBe(35);
+  } finally {
+    db.prepare("DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?").run(
+      name
+    );
+    if (targetId)
+      db.prepare("DELETE FROM frequency_targets WHERE id = ?").run(targetId);
+    db.close();
+  }
 });

@@ -135,12 +135,16 @@ export default function LogPracticeButton({
   subjectProfileId?: number;
 }) {
   // WHICH SURFACE THIS MOUNTING IS (#3087). One component, four homes — the Wellness
-  // card, the protocols row, the quick-log sheet and the backfill launcher — all
+  // card, the protocols row, the quick-log sheet and Upcoming's practice row — all
   // posting ONE Server Action, so only the mounting can say where a tap happened.
   // Read from the region rather than taken as a prop: a prop has to be passed at every
   // one of those four call sites and is silent when it is not, which is the failure
   // mode this column exists to avoid. Posted as a form field and re-checked
   // server-side against the web subset.
+  //
+  // THE BACKFILL LAUNCHER USED TO BE ON THAT LIST AND IS NOT A MOUNT OF THIS COMPONENT
+  // — it mounts the FORM (#3143 extracted it), which is why it could be named here
+  // while never posting a tap. Upcoming's row took its place for real (#4424).
   const stampLoggedVia = useLoggedViaStamp();
   // EVERY WRITE THIS CONTROL POSTS NAMES ITS SUBJECT (ruling 4), including the live
   // lifecycle's two: a mount that could log a household member's session while

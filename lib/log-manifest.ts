@@ -305,25 +305,50 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "practice" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "CONVERGING, not converged (#3143). The expanded form is one `PracticeSessionForm` mounted by both `LogPracticeButton` and `PracticeBackfillLauncher` — the extraction #4424 ruling 1 asks for — so the field sets are no longer three. What still blocks the flip is the second write core: `app/(app)/upcoming/PracticeLogButton.tsx` fronts `logUpcomingPractice` with no duration and no confirm. #4424 ruling 7 deletes it; this row flips with it.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "`PracticeSessionHistory` spells its own correction form and the compact `LogPracticeButton` is not yet the one row control every surface mounts.",
-        ref: "#4424",
-      },
+      // #4424's practice leg. `PracticeSessionForm` is add AND full-statement edit at
+      // every mount — the Wellness card's modal, the backfill launcher, the record's
+      // door, that record row's correction and the session history's ⋯.
+      //
+      // THIS CELL SAID THE FIELD SETS WERE "NO LONGER THREE" AND THAT THE FLIP WAS
+      // BLOCKED ON A SECOND WRITE CORE. Both were re-derived and both were wrong. #3143
+      // did extract one expanded form and give it two mounts, but FOUR spellings of the
+      // same five fields were live when this leg opened: that form, this history's own
+      // edit form, the `/history` door's, and that record row's correction. And
+      // `logUpcomingPractice` was never a core — it reached `logPracticeSession`
+      // through `logPracticeByTargetId`, the resolver Telegram's Done shares — so
+      // ruling 7 deleted a DOOR, and the `cores` column below was already correct.
+      // The defects the cell named were all real: no duration, no confirm, its own
+      // gate, its own result shape.
+      //
+      // `LogPracticeButton` is the row control every practice row hosting a write
+      // control mounts: the Wellness card, the dashboard protocol rows, the quick
+      // sheet's rows and — since this leg — Upcoming's, which fronted its own button
+      // and its own action. That row gains the duration stepper, the same-day re-log
+      // confirm and the live lifecycle by mounting the shared one rather than by
+      // having them re-added to a copy.
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // ruling 3 itself rather than a gap — the precedent recorded on #4424 after the
+      // symptom leg: #3958 makes that row one line at every viewport with its trailing
+      // affordance EXCLUSIVE, so a full-statement edit behind the ⋯ is what ruling 3
+      // asks for there. `shared` means the domain has exactly ONE implementation and
+      // every row hosting a write control mounts it; mount count is not the test.
+      form: { kind: "shared", component: "PracticeSessionForm" },
+      rowControl: { kind: "shared", component: "LogPracticeButton" },
     },
     writeConventions: { kind: "convention" },
     // Seven doors, not two. #3143 added the lifecycle and the just-finished intent, and
     // `logPracticeByTargetId` was already missing: the test on this column is that a
     // SURFACE calls it (#4425), and every name here has one — the wellness action's two
-    // intents, the two live-lifecycle actions, the offline replay, the Upcoming row, and
-    // Telegram's Done. Correction and delete are not listed, matching every sibling row.
+    // intents, the two live-lifecycle actions, the offline replay, and Telegram's two
+    // target-keyed taps. Correction and delete are not listed, matching every sibling
+    // row.
+    //
+    // `logPracticeByTargetId` LOST ITS WEB CALLER AND KEPT ITS ROW (#4424 ruling 7).
+    // Upcoming's own button posted a target id; its row mounts the shared control now,
+    // which posts a practice NAME resolved server-side beside the target read. Telegram
+    // is the caller that remains, and it is the one that needs a resolver: a chat
+    // callback carries an id and no day.
     cores: [
       "logPracticeSession",
       "logPracticeSessionForDay",

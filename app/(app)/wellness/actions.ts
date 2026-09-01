@@ -95,10 +95,13 @@ export async function logPractice(
     profileId,
     practice,
     date,
-    // ONE ACTION, FOUR MOUNTINGS (#3087). LogPracticeButton renders on the Wellness
-    // page, on the dashboard practice card, in the quick-log sheet and behind the
-    // command palette — the server cannot tell them apart, so each mounting posts its
-    // own surface and the parse refuses anything outside the web subset.
+    // ONE ACTION, MANY MOUNTINGS (#3087). The shared row control renders on the
+    // Wellness card, the dashboard protocol rows, the quick-log sheet and Upcoming's
+    // practice row; the shared form renders in the card's modal, the backfill launcher
+    // and both of the record's practice surfaces; and the command palette posts this
+    // action directly with no component at all. The server cannot tell them apart, so
+    // each mounting declares its own surface and the parse refuses anything outside
+    // the web subset.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     {
       startTime: formData.has("start_time")
