@@ -17,9 +17,10 @@
 // NEVER GAMIFIED (#998/#1078 law): these writes never touch `activities`, so the
 // milestone/streak machinery stays structurally blind to the domain.
 
-import { today, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
 import { SUBSTANCE_USE_WRITE, isPastWriteAccepted } from "./log-manifest";
 import { now as clockNow } from "./clock";
+import type { LoggedVia } from "./logged-via";
 import { substanceDayCounter } from "./day-counter-ledger-db";
 import { isSubstanceLogged, type SubstanceKey } from "./substance-use";
 
@@ -52,6 +53,11 @@ export function logSubstanceUnitCore(
   profileId: number,
   substance: string,
   date: string,
+  // WHICH SURFACE THIS USE WAS LOGGED FROM (#4435), on the #3087 convention the food
+  // core next door already follows: required, no default, and before the optional
+  // tail so a new call site cannot inherit a bucket by omission. The day row keeps
+  // the LAST tap's surface beside that tap's `recorded_at`.
+  loggedVia: LoggedVia,
   loggedAt: string = clockNow().toISOString()
 ): SubstanceLogOutcome {
   if (!isSubstanceLogged(substance)) return { kind: "unknown-substance" };
@@ -65,6 +71,14 @@ export function logSubstanceUnitCore(
     const units = substanceDayCounter.bump(profileId, date, [substance], 1, [
       loggedAt,
     ]);
+    // CREATION, NOT MUTATION (#3087, #4435). A day total is upserted, so this is the
+    // `symptom_logs` case: `recorded_at` moves to the LATEST tap because the day's
+    // last use is a fact about the day, while provenance names the surface that
+    // OPENED the row and is never rewritten. COALESCE is the whole rule.
+    db.prepare(
+      `UPDATE substance_daily_totals SET logged_via = COALESCE(logged_via, ?)
+       WHERE profile_id = ? AND date = ? AND substance = ?`
+    ).run(loggedVia, profileId, date, substance);
     return { kind: "logged", units, substance };
   });
 }

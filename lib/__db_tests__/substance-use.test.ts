@@ -38,6 +38,7 @@ import {
   addSubstanceDailyTotalCore,
   updateSubstanceDailyTotalCore,
 } from "@/lib/substance-daily-totals-write";
+import { restoreDeletedRow } from "@/lib/undo-delete-db";
 import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
@@ -364,9 +365,9 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     const p = newProfile("SU nic ledger");
     const td = today(p);
 
-    const one = logSubstanceUnitCore(p, "nicotine", td);
+    const one = logSubstanceUnitCore(p, "nicotine", td, "page");
     expect(one).toEqual({ kind: "logged", units: 1, substance: "nicotine" });
-    const two = logSubstanceUnitCore(p, "nicotine", td);
+    const two = logSubstanceUnitCore(p, "nicotine", td, "page");
     expect(two.kind === "logged" && two.units === 2).toBe(true);
 
     // One counter row per (profile, date, substance) — the food_daily_totals shape.
@@ -403,13 +404,13 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
   // " Kratom " beside an existing "Kratom".
   it("refuses alcohol (food-log) and un-normalized keys: neither writes to the counter ledger", () => {
     const p = newProfile("SU ledger guard");
-    expect(logSubstanceUnitCore(p, "alcohol", today(p))).toEqual({
+    expect(logSubstanceUnitCore(p, "alcohol", today(p), "page")).toEqual({
       kind: "unknown-substance",
     });
-    expect(logSubstanceUnitCore(p, " Kratom ", today(p))).toEqual({
+    expect(logSubstanceUnitCore(p, " Kratom ", today(p), "page")).toEqual({
       kind: "unknown-substance",
     });
-    expect(logSubstanceUnitCore(p, "", today(p))).toEqual({
+    expect(logSubstanceUnitCore(p, "", today(p), "page")).toEqual({
       kind: "unknown-substance",
     });
     const n = db
@@ -424,9 +425,9 @@ describe("substance_daily_totals ledger (#1078) — split-ledger week rollup + t
     const p = newProfile("SU split ledgers");
     const td = today(p);
     logDrinks(p, td, 4); // food_daily_totals (alcohol)
-    logSubstanceUnitCore(p, "nicotine", td);
-    logSubstanceUnitCore(p, "nicotine", td);
-    logSubstanceUnitCore(p, "cannabis", td);
+    logSubstanceUnitCore(p, "nicotine", td, "page");
+    logSubstanceUnitCore(p, "nicotine", td, "page");
+    logSubstanceUnitCore(p, "cannabis", td, "page");
 
     const states = getAllSubstanceWeekStates(p);
     expect(states.map((s) => [s.substance, s.count])).toEqual([
@@ -452,7 +453,7 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
     const p = newProfile("SU nic over");
     const td = today(p);
     addCap(p, 7, "nicotine");
-    for (let i = 0; i < 9; i++) logSubstanceUnitCore(p, "nicotine", td);
+    for (let i = 0; i < 9; i++) logSubstanceUnitCore(p, "nicotine", td, "page");
 
     const findings = buildSubstanceUseFindings(p);
     expect(findings).toHaveLength(1);
@@ -477,7 +478,7 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
     const p = newProfile("SU cann dry");
     addCap(p, 0, "cannabis");
     expect(buildSubstanceUseFindings(p)).toEqual([]);
-    logSubstanceUnitCore(p, "cannabis", today(p));
+    logSubstanceUnitCore(p, "cannabis", today(p), "page");
     const findings = buildSubstanceUseFindings(p);
     expect(findings).toHaveLength(1);
     expect(findings[0].dedupeKey).toBe(substanceTargetSignalKey("cannabis"));
@@ -491,8 +492,8 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
     addCap(p, 2, "nicotine");
     addCap(p, 20, "cannabis");
     logDrinks(p, td, 5);
-    for (let i = 0; i < 3; i++) logSubstanceUnitCore(p, "nicotine", td);
-    logSubstanceUnitCore(p, "cannabis", td); // 1 of 20 — silent
+    for (let i = 0; i < 3; i++) logSubstanceUnitCore(p, "nicotine", td, "page");
+    logSubstanceUnitCore(p, "cannabis", td, "page"); // 1 of 20 — silent
 
     const keys = buildSubstanceUseFindings(p).map((f) => f.dedupeKey);
     expect(keys).toEqual([
@@ -507,8 +508,8 @@ describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coach
     addCap(p, 1, "nicotine");
     addCap(p, 1, "cannabis");
     for (let i = 0; i < 5; i++) {
-      logSubstanceUnitCore(p, "nicotine", td);
-      logSubstanceUnitCore(p, "cannabis", td);
+      logSubstanceUnitCore(p, "nicotine", td, "page");
+      logSubstanceUnitCore(p, "cannabis", td, "page");
     }
     const items = collectUpcoming(p, td);
     expect(items.some((i) => i.key.startsWith(SUBSTANCE_USE_PREFIX))).toBe(
@@ -528,8 +529,8 @@ describe("no gamification for the new substances (#1078) — structural exemptio
   it("substance_daily_totals writes create no activities row and no milestone input", () => {
     const p = newProfile("SU nic exempt");
     const td = today(p);
-    for (let i = 0; i < 4; i++) logSubstanceUnitCore(p, "nicotine", td);
-    logSubstanceUnitCore(p, "cannabis", td);
+    for (let i = 0; i < 4; i++) logSubstanceUnitCore(p, "nicotine", td, "page");
+    logSubstanceUnitCore(p, "cannabis", td, "page");
 
     const activities = db
       .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
@@ -547,8 +548,8 @@ describe("no gamification for the new substances (#1078) — structural exemptio
     addCap(p, 1, "nicotine");
     addCap(p, 1, "cannabis");
     for (let i = 0; i < 3; i++) {
-      logSubstanceUnitCore(p, "nicotine", td);
-      logSubstanceUnitCore(p, "cannabis", td);
+      logSubstanceUnitCore(p, "nicotine", td, "page");
+      logSubstanceUnitCore(p, "cannabis", td, "page");
     }
     for (const f of buildSubstanceUseFindings(p)) {
       const text =
@@ -740,7 +741,7 @@ describe("custom substances (#3279)", () => {
     ]);
 
     const day = today(p);
-    expect(logSubstanceUnitCore(p, "Kratom", day)).toEqual({
+    expect(logSubstanceUnitCore(p, "Kratom", day, "page")).toEqual({
       kind: "logged",
       units: 1,
       substance: "Kratom",
@@ -789,13 +790,13 @@ describe("custom substances (#3279)", () => {
 
     // A custom substance qualifies the moment it exists, because it exists BY being
     // logged — which is what keeps #3326's new substance reachable the same day.
-    logSubstanceUnitCore(p, "Kratom", day);
+    logSubstanceUnitCore(p, "Kratom", day, "page");
     expect(getLoggedSubstanceKeys(p)).toEqual(["Kratom"]);
     expect(hasLoggedSubstance(p)).toBe(true);
 
     // A curated substance qualifies on its own rows, and only on its own: logging
     // nicotine does not vouch for cannabis.
-    logSubstanceUnitCore(p, "nicotine", day);
+    logSubstanceUnitCore(p, "nicotine", day, "page");
     expect(getLoggedSubstanceKeys(p)).toEqual(["nicotine", "Kratom"]);
 
     // Alcohol's ledger is food_daily_totals (#860/#944), so its presence has to be
@@ -815,7 +816,7 @@ describe("custom substances (#3279)", () => {
     // the tree does today rather than what it should eventually do.
     const p = newProfile("SU logged keys undo");
     const day = today(p);
-    logSubstanceUnitCore(p, "Kratom", day);
+    logSubstanceUnitCore(p, "Kratom", day, "page");
     expect(hasLoggedSubstance(p)).toBe(true);
     undoSubstanceUnitCore(p, "Kratom", day);
     expect(getLoggedSubstanceKeys(p)).toEqual([]);
@@ -889,7 +890,7 @@ describe("custom substances (#3279)", () => {
   it("stays NEUTRAL with no cap: no status, no finding, no digest line", () => {
     const p = newProfile("SU custom neutral");
     const day = today(p);
-    for (let i = 0; i < 9; i += 1) logSubstanceUnitCore(p, "Kratom", day);
+    for (let i = 0; i < 9; i += 1) logSubstanceUnitCore(p, "Kratom", day, "page");
 
     // #3279 ruling 1. Nine uses is a fact, not a verdict. With no target row there is
     // no SubstanceCapStatus for any surface to render — the opt-in is structural, so
@@ -922,5 +923,159 @@ describe("custom substances (#3279)", () => {
     const findings = buildSubstanceUseFindings(p);
     expect(findings.length).toBe(1);
     expect(findings[0].title).toBe("Kratom is over your weekly target");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #4435 — the historical substance write core used to re-spell food insertion and
+// broke four contracts every other food path holds. One block, four demonstrations:
+// a backfill ADDS, a re-date never leaves an instant on the day the row left, a
+// correction that shrinks a day is undoable, and a substance write says which
+// surface filed it.
+
+/** Every alcohol tap this profile holds, in ledger order. */
+function alcoholTaps(profileId: number) {
+  return db
+    .prepare(
+      `SELECT date, occurred_at, time_source FROM food_log_events
+        WHERE profile_id = ? AND group_key = 'alcohol' ORDER BY id`
+    )
+    .all(profileId);
+}
+
+/** The day rows the record renders, for one day. */
+function historyOn(profileId: number, date: string) {
+  return getAllSubstanceDailyTotals(profileId).filter((r) => r.date === date);
+}
+
+describe("the substance write core keeps the shared food contracts (#4435)", () => {
+  // BOTH LEDGERS, because both refused: alcohol rides food_daily_totals and
+  // nicotine rides substance_daily_totals, and the refusal was written twice.
+  it.each(["alcohol", "nicotine"])(
+    "backfills %s ADDITIVELY onto a day that already has some",
+    (substance) => {
+      const p = newProfile(`SU additive ${substance}`);
+      const date = shiftDateStr(today(p), -4);
+      const first = addSubstanceDailyTotalCore(
+        p,
+        substance,
+        { date, amount: 1, notes: "the first one" },
+        "page"
+      );
+      if (first.kind !== "added") throw new Error("first backfill was refused");
+
+      // The second one lands on the SAME day row rather than being refused as a
+      // conflict: remembering a second drink is the ordinary case, not an error.
+      expect(
+        addSubstanceDailyTotalCore(p, substance, { date, amount: 2 }, "page")
+      ).toEqual({ kind: "added", id: first.id });
+      expect(historyOn(p, date)).toEqual([
+        { id: first.id, substance, date, amount: 3, notes: "the first one" },
+      ]);
+    }
+  );
+
+  it("never leaves a tap's instant on the day its row left", () => {
+    const p = newProfile("SU redate instant");
+    const from = shiftDateStr(today(p), -5);
+    const to = shiftDateStr(today(p), -4);
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      { date: from, amount: 1 },
+      "page"
+    );
+    if (added.kind !== "added") throw new Error("backfill was refused");
+    // A stated instant on the row's own day — what a correction chip or a picker
+    // leaves behind, and the only shape judgeEatenAt accepts anywhere else.
+    db.prepare(
+      `UPDATE food_log_events SET occurred_at = ?, time_source = 'stated'
+        WHERE profile_id = ? AND group_key = 'alcohol' AND date = ?`
+    ).run(`${from}T21:30:00Z`, p, from);
+
+    expect(
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        added.id,
+        { date: to, amount: 1 },
+        "page"
+      )
+    ).toEqual({ kind: "updated", id: added.id });
+
+    // The day moved, so the hour nobody restated cannot survive it: an instant
+    // sitting on the previous day would be the cross-day pair every other write
+    // refuses to create.
+    expect(alcoholTaps(p)).toEqual([
+      { date: to, occurred_at: null, time_source: null },
+    ]);
+  });
+
+  it("captures the drinks a shrinking correction drops, so they can come back", () => {
+    const p = newProfile("SU shrink undo");
+    const date = shiftDateStr(today(p), -6);
+    const added = addSubstanceDailyTotalCore(
+      p,
+      "alcohol",
+      { date, amount: 3 },
+      "page"
+    );
+    if (added.kind !== "added") throw new Error("backfill was refused");
+
+    expect(
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        added.id,
+        { date, amount: 1 },
+        "page"
+      )
+    ).toEqual({ kind: "updated", id: added.id });
+    expect(alcoholTaps(p).length).toBe(1);
+
+    // Two taps went; two captures exist, and restoring them puts the day back —
+    // the #2642 contract every other food-row removal already holds.
+    const captured = db
+      .prepare(
+        `SELECT id FROM deleted_rows
+          WHERE profile_id = ? AND kind = 'food-serving' ORDER BY id`
+      )
+      .all(p) as { id: number }[];
+    expect(captured.length).toBe(2);
+    for (const row of captured) expect(restoreDeletedRow(p, row.id)).toBe(true);
+    expect(alcoholTaps(p).length).toBe(3);
+  });
+
+  // A DAY TOTAL carries the surface of the tap that last filed into it, exactly as
+  // it already carries that tap's `recorded_at`. Both doors, because the one-tap
+  // core took no such argument at all and the history core ignored the one it had.
+  it.each([
+    [
+      "one-tap",
+      (p: number, date: string) =>
+        logSubstanceUnitCore(p, "nicotine", date, "quick-log"),
+    ],
+    [
+      "backfill",
+      (p: number, date: string) =>
+        addSubstanceDailyTotalCore(
+          p,
+          "nicotine",
+          { date, amount: 2 },
+          "quick-log"
+        ),
+    ],
+  ])("stamps logged_via on a substance %s", (_door, write) => {
+    const p = newProfile(`SU via ${_door}`);
+    const date = shiftDateStr(today(p), -2);
+    write(p, date);
+    expect(
+      db
+        .prepare(
+          `SELECT logged_via FROM substance_daily_totals
+            WHERE profile_id = ? AND substance = 'nicotine' AND date = ?`
+        )
+        .get(p, date)
+    ).toEqual({ logged_via: "quick-log" });
   });
 });
