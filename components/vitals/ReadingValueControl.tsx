@@ -42,11 +42,9 @@ export default function ReadingValueControl({
   /**
    * The unit that value was PRINTED in (#630, #3853), posted as `weight_unit` so a
    * correction converts by the unit the row showed rather than by the pref re-read at
-   * write time — a flip in another tab would otherwise land a number 2.2046x out.
-   * The action reads it only on the WEIGHT page, where it is a real `WeightUnit`;
-   * every other metric is charted in the unit it is stored in, so its label ("bpm",
-   * "%") passes through and `submittedWeightUnit` ignores it. Hence `string`: this is
-   * the row's printed unit, and only one page's rows spell a weight unit.
+   * write time — a flip in another tab would otherwise land a number 2.2046x out. It
+   * is `string` because it is the ROW's printed unit: only the weight page's rows
+   * spell a `WeightUnit`, and `submittedWeightUnit` ignores "bpm" and "%".
    */
   weightUnit?: string;
   subjectProfileId?: number;

@@ -3,20 +3,17 @@
 import type { Ref } from "react";
 
 // ONE WEIGHT FIELD (#4424 ruling 5), named by `LOG_MANIFEST.body` beside
-// `TemperatureField`, which the symptom leg extracted from the same form for the same
-// reason. The measurements form and the pediatric label lookup were two implementations
-// of one question — a number and the unit it is in — and the second one put the unit in
-// its LABEL, so a weight typed in a medication form and the same weight typed on
-// /trends did not look like the same field.
+// `TemperatureField` — the same extraction the symptom leg made from the same form.
+// The measurements form and the pediatric label lookup drew one question two ways, and
+// the second put the unit in its LABEL, so the same weight did not look like the same
+// field. The unit rides inside the input's trailing edge here (`pr-12` keeps a value
+// from running under it), which is the measurements form's arrangement and now the only one.
 //
-// IT IS UNCONTROLLED, ALWAYS. The measurements form posts it as part of a `<form>`; the
-// pediatric lookup cannot use a form at all (it renders inside `IntakeItemForm`'s), so
-// it reads the value off `inputRef` and builds the FormData itself. A `value`/`onChange`
-// pair would make one field two fields selected by a prop, which is the shape this
-// ruling exists to remove.
-//
-// THE UNIT RIDES INSIDE THE INPUT'S TRAILING EDGE, which is the measurements form's
-// arrangement and now the only one: `pr-12` is what keeps a value from running under it.
+// UNCONTROLLED, ALWAYS. The measurements form posts it inside a `<form>`; the pediatric
+// lookup cannot use a form at all (it renders inside `IntakeItemForm`'s) and reads the
+// value off `inputRef`. A `value`/`onChange` pair would make one field two, selected by
+// a prop, which is the shape this ruling exists to remove.
+
 export default function WeightField({
   id,
   unit,
@@ -25,10 +22,9 @@ export default function WeightField({
   testId,
 }: {
   /**
-   * The input's id — its label's `htmlFor`. THE LABEL IS THE HOST'S, in the host's own
-   * words, and this carries no `aria-label` of its own for that reason: one here would
-   * override the visible label and leave a screen reader hearing something the page
-   * does not say.
+   * The input's id — its label's `htmlFor`. THE LABEL IS THE HOST'S: no `aria-label`
+   * here, because one would override the visible label and leave a screen reader
+   * hearing something the page does not say.
    */
   id: string;
   /** The display unit this value is entered in; the write boundary converts to kg. */

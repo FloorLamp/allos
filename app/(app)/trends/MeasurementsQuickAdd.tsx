@@ -39,7 +39,6 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
-import { toKg } from "@/lib/units";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
 import {
@@ -48,12 +47,6 @@ import {
 } from "./measurement-actions";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
-
-/** What one successful sitting wrote: the day it landed on, and its weight in kg. */
-export interface MeasurementsSaved {
-  date: string;
-  weightKg: number | null;
-}
 
 // Which refusal sentence a queued capture gets. The shared one when the device kept
 // NOTHING; the partial one when the body half is already in the queue and only the
@@ -177,12 +170,9 @@ export interface MeasurementsQuickAddProps {
   showGrowth?: boolean;
   showHeadCirc?: boolean;
   // Fired after a successful save so a MOUNTING CONTEXT can react — the quick-entry
-  // overlay closes itself, the record's add door re-reads its feed, and the pediatric
-  // label lookup re-derives its dose band. It is handed WHAT THE SITTING WROTE, in the
-  // canonical unit, because a host that needs the number would otherwise have to keep
-  // a second copy of the field to read it back — which is the fourth weight form this
-  // ruling deletes. A host that does not care ignores the argument.
-  onSaved?: (saved: MeasurementsSaved) => void;
+  // overlay closes itself, the record's add door re-reads its feed, and the Trends
+  // page mounts simply reset and stay put.
+  onSaved?: () => void;
   // Optional action for a standalone card mount.
   headerSlot?: ReactNode;
   // A metric detail page narrows this shared form to the observation currently
@@ -677,11 +667,7 @@ export default function MeasurementsQuickAdd({
     resetForm();
     tempUnitDetection.reset();
     refreshSummaries();
-    onSaved?.({
-      date,
-      weightKg:
-        body.weight == null ? null : toKg(Number(body.weight), weightUnit),
-    });
+    onSaved?.();
   }
 
   // ── The fields, authored once and GROUPED below ─────────────────────────────
