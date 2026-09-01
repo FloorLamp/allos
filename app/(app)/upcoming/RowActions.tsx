@@ -24,6 +24,7 @@ import {
   type SnoozeDismissProps,
 } from "@/components/SnoozeDismissMenu";
 import { type AppRoute } from "@/lib/hrefs";
+import { shortLabelAnnouncement } from "@/lib/intake-short-name";
 import { DISMISS_ROW_ATTR } from "./dismiss-row";
 
 // ---------------------------------------------------------------------------
@@ -134,10 +135,7 @@ export function RowActionChips({
     >
       {actions.map((a) => {
         const Icon = a.icon ? ACTION_ICON[a.icon] : null;
-        const accessibleLabel =
-          a.fullLabel && a.fullLabel !== a.label
-            ? `${a.label} — ${a.fullLabel}`
-            : a.label;
+        const accessibleLabel = shortLabelAnnouncement(a.label, a.fullLabel);
         if (a.kind === "link") {
           return (
             <span key={a.id} className="inline-flex items-center">

@@ -256,3 +256,24 @@ export function intakeShortLabels(
   }
   return labels;
 }
+
+/**
+ * #2858's OTHER HALF: how a control whose visible text carries a shortened name
+ * announces the record it writes. The compact form LEADS the accessible name — a
+ * speech user has to be able to target what they can see — and the full name follows
+ * it, so the identity the shortening dropped is still spoken. Returns `label`
+ * unchanged when there is nothing to add.
+ *
+ * Composed here, in the module that decides the shortening, and for the same reason
+ * `lib/overflow-menu-label.ts` exists (#3501): three Upcoming surfaces render this
+ * pairing — the row-action chips, the offer chips and the dose slot chips — and an
+ * accessible name is the one thing that can drift between them for months without
+ * anybody seeing it. It takes the two strings rather than an item because one of its
+ * callers is a generic chip presenter that never holds one.
+ */
+export function shortLabelAnnouncement(
+  label: string,
+  fullLabel?: string
+): string {
+  return fullLabel && fullLabel !== label ? `${label} — ${fullLabel}` : label;
+}

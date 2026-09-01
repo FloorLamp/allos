@@ -5,6 +5,7 @@ import {
   intakeShortLabels,
   intakeShortName,
   normalizeIntakeName,
+  shortLabelAnnouncement,
 } from "@/lib/intake-short-name";
 
 describe("intakeShortName", () => {
@@ -257,5 +258,27 @@ describe("intakeShortLabels", () => {
     expect(intakeShortLabels([])).toEqual([]);
     const items = [supp("Coenzyme Q10"), supp("Ubiquinone"), supp("Zinc")];
     expect(intakeShortLabels(items)).toHaveLength(items.length);
+  });
+});
+
+describe("shortLabelAnnouncement (#2858's other half)", () => {
+  // The compact form LEADS so a speech user can target what they see; the full record
+  // name follows so the shortening loses no identity. Nothing is appended when there
+  // is nothing to add, which is what keeps an unabbreviated chip from announcing its
+  // own visible text twice.
+  it.each([
+    {
+      label: "CoQ10 · Bedtime",
+      full: "Coenzyme Q10 · Bedtime",
+      expected: "CoQ10 · Bedtime — Coenzyme Q10 · Bedtime",
+    },
+    {
+      label: "Aggregate Vitamin D · 1 tab",
+      full: undefined,
+      expected: "Aggregate Vitamin D · 1 tab",
+    },
+    { label: "Magnesium", full: "Magnesium", expected: "Magnesium" },
+  ])("$label", ({ label, full, expected }) => {
+    expect(shortLabelAnnouncement(label, full)).toBe(expected);
   });
 });

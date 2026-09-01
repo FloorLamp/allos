@@ -114,10 +114,10 @@ import {
   dismissMultiviewHintAction,
 } from "./actions";
 import { confirmConditionSuggestion } from "@/app/(app)/records/problems/conditions/actions";
-import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import DoseConfirmButton from "@/components/DoseConfirmButton";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import { shortLabelAnnouncement } from "@/lib/intake-short-name";
 import Disclosure from "@/components/Disclosure";
 
 export const dynamic = "force-dynamic";
@@ -829,16 +829,16 @@ function DemographicsNudge({
 // Each offer carries the same one-tap "Mark taken" write the due rows render (#2419)
 // — the collapsed half of the model was look-but-don't-log, which made a
 // situation-bound item reachable only by first flipping its situation active just to
-// make a button exist. Dueness gates NUDGING, never LOGGING. It is the SHARED
-// RowAction descriptor over the SAME markTaken action, so a refusal (dose retired by
-// an edit, item since paused) still speaks in the write's own words, and the write
-// stays additive ledger truth: nothing here becomes due, owed, or pushed.
+// make a button exist. Dueness gates NUDGING, never LOGGING. It is now the SAME
+// COMPONENT as well as the same action (`DoseChip`), so a refusal (dose retired by an
+// edit, item since paused) still speaks in the write's own words, and the write stays
+// additive ledger truth: nothing here becomes due, owed, or pushed.
 //
 // #2579-F — AVAILABILITY IS NOT WORK, SO IT STOPS WEARING WORK'S UNIFORM. Each offer
-// is now ONE CHIP in a wrapped run instead of a full-height row: the item's name, its
-// slot hint beside it, and the tap IS the log. Deliberately the same chip grammar as
-// the due rows' actions (one `RowAction[]`, one `RowActionChips`), because a due dose
-// and an offered one should share a single supplement-logging language.
+// is ONE CHIP in a wrapped run instead of a full-height row: the item's name, its slot
+// hint beside it, and the tap IS the log. Same grammar as the due doses because it is
+// literally the same chip — a due dose and an offered one share one supplement-logging
+// language, and since #2579-D they share the component that speaks it.
 //
 // What the full-height row was spending that height on: a leading pill glyph
 // identical on every row in a section named after pills, and a subtitle whose first
@@ -876,72 +876,29 @@ function AvailableSection({
       >
         {items.map((item) => {
           const subject = subjectByProfile.get(item.profileId) ?? null;
-          const actionVisible = itemAffordanceVisible(item.writeTarget, {
-            isActing: item.profileId === actingProfileId,
-            subjectCanWrite: subject == null || subject.access === "write",
-          });
-          // The chip's text: the item's own name, and the availability qualifier the
-          // builder composed beside it ("Magnesium · Bedtime · Mondays"). Both come
-          // off the item — this never re-splits `dueText`, which is the same two
-          // pieces written for a sentence.
-          //
-          // The NAME here is the control form (#2858): a chip run wraps, and
-          // "Coenzyme Q10 · Bedtime · Mondays" spends its width on a word the reader
-          // already reads as "CoQ10". A medication is never shortened (the resolver's
-          // own gate), and the full name stays one tap away on the item's page.
-          const chipText = (name: string) =>
-            [name, item.offerHint].filter(Boolean).join(" · ");
-          const label = chipText(item.shortLabel ?? item.title);
-          // Stated only when the two actually differ, so an unabbreviated chip gets
-          // no redundant title/aria copy of its own visible text.
-          const fullLabel =
-            label === chipText(item.title) ? undefined : chipText(item.title);
-          const actions: RowAction[] = [];
-          if (actionVisible && item.doseId != null) {
-            actions.push({
-              id: "mark-taken",
-              kind: "submit",
-              label,
-              fullLabel,
-              toast: "Marked taken",
-              testId: "available-mark-taken",
-              fields: { dose_id: item.doseId, profile_id: item.profileId },
-              // Answered from markDoseTaken's typed outcome, like the banded row's
-              // chip: an offered item is never scheduled today, so the honest
-              // success line here is the off-day one ("not scheduled today") — the
-              // log IS written, and saying which days it was meant for is the whole
-              // point of not answering with a bare ✓.
-              action: async (fd) => {
-                "use server";
-                const result = await markTaken(fd);
-                if (!result.ok)
-                  return { ok: false as const, error: result.error };
-                const msg = doseConfirmMessage(result.outcome);
-                return msg.tone === "error"
-                  ? { ok: false as const, error: msg.text }
-                  : { ok: true as const, message: msg.text };
-              },
-            });
-          }
-          // No write affordance ⇒ the offer is still PRESENT and still one tap from
-          // its item. A chip that logs nothing and goes nowhere would make an
-          // accepted demotion look like a deletion, which is the whole thing #1505
-          // built this disclosure to avoid.
-          if (actions.length === 0) {
-            actions.push({
-              id: "open",
-              kind: "link",
-              label,
-              fullLabel,
-              href: item.href ?? "/medications",
-            });
-          }
           return (
             <div
               key={`${item.profileId}:${item.key}`}
               data-testid="available-row"
+              className="inline-flex items-center gap-1"
             >
-              <RowActionChips actions={actions} fold={false} />
+              {/* The SAME chip the expanded dose fold draws (#4424 ruling 3). The
+                  offer used to build its own `RowAction` descriptor over `markTaken`
+                  and re-spell the typed outcome as a toast — a second spelling of the
+                  domain's write, on the page that had just mounted the shared control
+                  for the due doses. The chip's text, its short-name rule and its
+                  no-affordance link are all the shared component's now; the only thing
+                  this surface still owns is its own testid, because the offers and the
+                  due chips must stay separately addressable. */}
+              <DoseChip
+                item={item}
+                actionVisible={itemAffordanceVisible(item.writeTarget, {
+                  isActing: item.profileId === actingProfileId,
+                  subjectCanWrite:
+                    subject == null || subject.access === "write",
+                })}
+                testId="available-mark-taken"
+              />
             </div>
           );
         })}
@@ -1078,24 +1035,35 @@ function itemSuppression(
   };
 }
 
-// THE PAGE'S DOSE CHIP (#2579-D/F). The item's name, the qualifier its producer
-// composed beside it ("CoQ10 · 400 mg · Mondays"), and the tap IS the log.
+// THE PAGE'S ONE INTAKE CHIP (#2579-D/F, #4424 ruling 3) — the due dose inside the
+// expanded fold AND the offer in "Available to log". The item's name, the qualifier
+// its producer composed beside it ("CoQ10 · 400 mg · Mondays"), and the tap IS the log.
 //
-// The write is `DoseConfirmButton` — the dose domain's ONE row control for rows that
-// list what is still OWED (#4424 ruling 3), the same component the dashboard attention
-// row and the household card's due row mount. No bespoke chip was minted for it: F's
+// ONE COMPONENT FOR BOTH, because they are one thing: an intake item rendered as a
+// tap-to-log chip over `markTaken`. F proved the grammar and D adopted it, and while
+// the offer kept its own `RowAction` descriptor this page carried TWO spellings of the
+// same dose write a few hundred pixels apart — which is the state ruling 3 exists to
+// delete, not a difference between the two surfaces. What still differs is only what a
+// caller owns anyway: its wrapper and its testid.
+//
+// The write is `DoseConfirmButton`, the dose domain's shared row control for rows that
+// list what is still OWED — the same component the dashboard attention row and the
+// household card's due row mount. No bespoke chip was minted for either surface: F's
 // chip grammar is `SubmitActionChip`, which IS `Button type="submit"`, and so is this,
-// so the offer chips and the due-dose chips are one box with one 44px target.
+// so both runs are one box with one 44px target.
 //
-// The name is the CONTROL form (#2858): a chip run wraps, and "Coenzyme Q10 · 100 mg"
-// spends its width on a word the reader already reads as "CoQ10". The visible text is
-// a noun, so the accessible name has to say what the tap DOES as well as to what.
+// The name is the CONTROL form (#2858) — a chip run wraps, and "Coenzyme Q10 · 100 mg"
+// spends its width on a word the reader already reads as "CoQ10" — and the accessible
+// name is `shortLabelAnnouncement`'s, which is that rule's other half and is now read
+// from one place by this and by `RowActionChips`.
 function DoseChip({
   item,
   actionVisible,
+  testId,
 }: {
   item: ProfiledUpcomingItem;
   actionVisible: boolean;
+  testId: string;
 }) {
   const chipText = (name: string) =>
     [name, item.offerHint].filter(Boolean).join(" · ");
@@ -1104,14 +1072,24 @@ function DoseChip({
   // redundant title/aria copy of its own visible text.
   const fullLabel =
     label === chipText(item.title) ? undefined : chipText(item.title);
-  // No write affordance (no dose to log, a read-only-granted member's row) ⇒ the dose
-  // is still present and still one tap from its item, exactly as an offer with none is:
-  // a chip that logs nothing and goes nowhere would make a folded row look deleted.
+  const announced = shortLabelAnnouncement(label, fullLabel);
+  // The full form is BOTH the accessible name and a sibling disclosure (#2858), on
+  // whichever of the two controls this chip turns out to be.
+  const full = fullLabel ? (
+    <InfoTooltipIcon label={`Full label: ${fullLabel}`} />
+  ) : null;
+  // No write affordance — no dose to log, or a read-only-granted member's row — so the
+  // item is still PRESENT and still one tap from its own page. A chip that logs nothing
+  // and goes nowhere would make a folded row look deleted, and would make an accepted
+  // demotion look like one too (#1505), which is the outcome neither surface may have.
   if (!actionVisible || item.doseId == null) {
     return (
-      <DestinationActionLink href={item.href} aria-label={fullLabel ?? label}>
-        {label}
-      </DestinationActionLink>
+      <>
+        <DestinationActionLink href={item.href} aria-label={announced}>
+          {label}
+        </DestinationActionLink>
+        {full}
+      </>
     );
   }
   return (
@@ -1119,14 +1097,12 @@ function DoseChip({
       <DoseConfirmButton
         action={markTaken}
         fields={{ dose_id: item.doseId, profile_id: item.profileId }}
-        testid="upcoming-dose-chip"
-        ariaLabel={`Mark taken — ${fullLabel ?? label}`}
+        testid={testId}
+        ariaLabel={announced}
       >
         {label}
       </DoseConfirmButton>
-      {fullLabel ? (
-        <InfoTooltipIcon label={`Full label: ${fullLabel}`} />
-      ) : null}
+      {full}
     </>
   );
 }
@@ -1219,7 +1195,11 @@ function DoseSlotRuns({
                   {...{ [DISMISS_ROW_ATTR]: item.key }}
                   className="inline-flex items-center gap-1"
                 >
-                  <DoseChip item={item} actionVisible={actionVisible} />
+                  <DoseChip
+                    item={item}
+                    actionVisible={actionVisible}
+                    testId="upcoming-dose-chip"
+                  />
                   {subject && <SubjectChip subject={subject} />}
                 </span>
               ))}

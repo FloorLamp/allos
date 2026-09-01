@@ -155,8 +155,11 @@ test.describe("Upcoming display aggregation (#1504)", () => {
     expect(rowTestId).toMatch(/^upcoming-item-dose:/);
 
     // The confirm is the ordinary row affordance — folding is a rendering decision,
-    // so the write path behind it is untouched.
-    await settledClick(page, row.getByRole("button", { name: "Mark taken" }));
+    // so the write path behind it is untouched. Addressed by the chip's own testid
+    // rather than by an action word: since #2579-D the control's visible text and its
+    // accessible name are both the DOSE (the #2858 announcement), which is the rule
+    // the offer chips beside it have shipped under all along.
+    await settledClick(page, row.getByTestId("upcoming-dose-chip"));
 
     // The row is gone AND the always-visible summary moved with it: the count the
     // collapsed state advertises is the same fact the rows are.
@@ -271,11 +274,14 @@ test.describe("the dose fold's slot runs (#2579-D)", () => {
 
     // THE WRITE IS THE DOMAIN'S SHARED CONTROL, not a chip-shaped copy of it: the tap
     // posts the same markTaken and answers with the same typed outcome the dashboard
-    // and household confirms do, so the accessible name says what it does and to what.
+    // and household confirms do. This fixture's name is not abbreviated, so the #2858
+    // announcement adds nothing and the accessible name IS the visible text — the same
+    // rule, and now the same composer, as the offer chips below (their abbreviated
+    // case is pinned in e2e/intake-short-labels.mobile.spec.ts).
     const control = chip.getByTestId("upcoming-dose-chip");
     await expect(control).toHaveAttribute(
       "aria-label",
-      `Mark taken — ${UPCOMING_AGG_SUPPLEMENT} · 1 tab`
+      `${UPCOMING_AGG_SUPPLEMENT} · 1 tab`
     );
     await settledClick(page, control);
 
