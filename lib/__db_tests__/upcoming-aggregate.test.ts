@@ -188,6 +188,62 @@ describe("doseDayProgress (#1504)", () => {
   });
 });
 
+describe("the dose row's chip fragments (#2579-D)", () => {
+  // The slot-chip run splits what the row said in ONE sentence into two fragments: the
+  // SLOT heads the run, and the chip states what the header does not — the amount, and
+  // the cadence when the row has one (#1602). Both are composed by the producer and the
+  // sentence is composed FROM them, so the fold can never disagree with the row and no
+  // renderer has to slice one fragment out of the other.
+  //
+  // `weekly` seeds TODAY's weekday, so the cadence label is whatever weekday the run
+  // lands on; the claim under test is that the chip CARRIES it, not what it reads.
+  it.each([
+    {
+      why: "a daily morning dose",
+      timeOfDay: "morning",
+      weekly: false,
+      slot: "Morning",
+      hint: /^1 cap$/,
+    },
+    {
+      why: "a cadence-qualified dose keeps its qualifier on the chip (#1602)",
+      timeOfDay: "morning",
+      weekly: true,
+      slot: "Morning",
+      hint: /^1 cap · \S/,
+    },
+    {
+      why: "free-text time_of_day still resolves to a bucket, so every dose has a run",
+      timeOfDay: "with dinner",
+      weekly: false,
+      slot: "Evening",
+      hint: /^1 cap$/,
+    },
+  ])("$why", ({ timeOfDay, weekly, slot, hint }) => {
+    const profileId = mkProfile();
+    const day = today(profileId);
+    const itemId = mkItem(
+      profileId,
+      `Chip ${timeOfDay}${weekly ? " weekly" : ""}`,
+      weekly
+        ? {
+            cadenceKind: "weekly",
+            cadenceWeekdays: String(weekdayOfDateStr(day)),
+          }
+        : {}
+    );
+    mkTimedDose(itemId, timeOfDay);
+
+    const item = doseItems(profileId, day)[0];
+    expect(item.slot).toBe(slot);
+    expect(item.offerHint).toMatch(hint);
+    // THE INVARIANT: the row's sentence is the header plus the chip's cadence tail, so
+    // a chip and the run above it can never state different days.
+    const cadence = item.offerHint!.split(" · ")[1] ?? null;
+    expect(item.dueText).toBe([slot, cadence].filter(Boolean).join(" · "));
+  });
+});
+
 describe("collectDueDosesNow (#2744)", () => {
   it("keeps a future dose in Dashboard Ahead until its bucket arrives", () => {
     const profileId = mkProfile();

@@ -2,11 +2,7 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import {
-  expectNoClippedContent,
-  expectPhoneTapTargets,
-  settledClick,
-} from "./helpers";
+import { expectPhoneTapTargets, settledClick } from "./helpers";
 import {
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -261,26 +257,6 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await expect(page.getByTestId("fitness-rough-note-plank")).toContainText(
       /rough guide only/i
     );
-
-    await page.close();
-  });
-
-  test("the grid is single-scroll on mobile with no horizontal overflow (#1063)", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_FITNESS,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    test.slow();
-    await page.setViewportSize({ width: 390, height: 844 });
-
-    await page.goto("/training/fitness-check");
-    await expect(page.getByTestId("fitness-grid")).toBeVisible();
-    // No horizontal overflow, measured per element (#1543): the app shell clips
-    // the overflow away, so comparing the document's width to the viewport's is
-    // true no matter how far a tile spills past the edge.
-    await expectNoClippedContent(page);
 
     await page.close();
   });

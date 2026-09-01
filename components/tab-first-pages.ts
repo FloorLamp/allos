@@ -62,12 +62,17 @@ export const NUTRITION_TAB_FIRST_PAGE = {
   kind: "query",
   pathname: "/nutrition",
   title: "Nutrition",
-  subtitle: "Log what you eat and manage the supplements you take.",
+  subtitle: "What you ate and took today, and the stack behind it.",
   paramKey: "tab",
   mobileColumns: 2,
+  // DAY | MANAGE (#3987). Day is everything date-shaped — the one ledger where
+  // servings and doses interleave; Manage is everything configuration-shaped —
+  // the stack, its insights, the suggestions and the food preferences. The `id`s
+  // are the URL grammar (`?tab=`) and stay as they were: they are the deep-link
+  // vocabulary every notification, finding and cabinet link already spells.
   tabs: [
-    { id: "food", label: "Food" },
-    { id: "supplements", label: "Supplements" },
+    { id: "food", label: "Day" },
+    { id: "supplements", label: "Manage" },
   ] satisfies readonly { id: NutritionTab; label: string }[],
 } as const satisfies TabFirstPageConfig;
 

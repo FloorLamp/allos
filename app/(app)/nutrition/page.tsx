@@ -3,7 +3,7 @@ import { NUTRITION_TAB_FIRST_PAGE } from "@/components/tab-first-pages";
 import { NUTRITION_TABS, type NutritionTab } from "@/lib/hrefs";
 import { isRealIsoDate } from "@/lib/date";
 import FoodTab from "./FoodTab";
-import SupplementsTab from "./SupplementsTab";
+import ManageTab from "./ManageTab";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,7 @@ export default async function NutritionPage(props: {
   const rawBackfill = one(searchParams.backfill);
   const activePanel =
     tab === "supplements" ? (
-      <SupplementsTab
+      <ManageTab
         supplyId={Number(rawSupply ?? 0)}
         backfillDate={isRealIsoDate(rawBackfill) ? rawBackfill : undefined}
       />

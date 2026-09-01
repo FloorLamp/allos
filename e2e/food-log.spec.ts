@@ -218,34 +218,30 @@ test("the quick rows are the head of the ranking — nothing in the overflow out
   expect(Math.min(...overflowRanks)).toBeGreaterThan(Math.max(...quickRanks));
 });
 
-test("dietary preferences can be edited in a modal without leaving the food log", async ({
+test("dietary preferences left the day for Manage (#3987)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  // ONE preferences affordance at every width since #3987 — the Meals-cards header
-  // that carried the desktop twin retired with the cards.
+  // THE RETIREMENT. The icon in the day header, the modal behind it and its Done
+  // button all went with the split: preferences are configuration, and the Day tab
+  // states only what the day held.
+  await expect(page.getByTestId("food-preferences-open")).toHaveCount(0);
   await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(
     0
   );
-  const open = page.getByTestId("food-preferences-open");
-  await expect(open).toBeVisible();
-  await expect(open).not.toHaveAttribute("href");
-  await open.click();
+  await expect(page.getByTestId("dietary-preferences-form")).toHaveCount(0);
 
-  const dialog = page.getByRole("dialog", { name: "Dietary preferences" });
-  await expect(dialog).toBeVisible();
-  const form = dialog.getByTestId("dietary-preferences-form");
-  await expect(form).toBeVisible();
-  await expect(form).not.toHaveClass(/\bcard\b/);
-  await expect(dialog.getByTestId("dietary-preset")).toBeVisible();
-
-  const done = dialog.getByTestId("food-preferences-done");
-  await expect(done).toHaveClass(/\bbtn\b/);
-  await done.click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page).toHaveURL(/\/nutrition/);
+  // THE CONVERSE, in the same test, because the absence above passes just as well on
+  // the tree where the form vanished from the app entirely. Same form, same write,
+  // on Manage — a card in the page rather than a dialog behind an icon.
+  await page.goto("/nutrition?tab=supplements");
+  const card = page.getByTestId("food-preferences-card");
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("dietary-preferences-form")).toBeVisible();
+  await expect(card.getByTestId("dietary-preset")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", async ({

@@ -782,8 +782,10 @@ type ToneSurface =
   //   `arrived`  — a marker proving the route rendered. An absence assertion goes
   //     green the instant a page 404s or a `<main>` never arrives, which is the
   //     fail-open this file refuses to accept anywhere else.
-  //   `open`/`settled` — the launcher to click and the panel to wait for. An
-  //     absence behind a closed door is not an absence.
+  //   `open`/`settled` — the launcher to click and the panel to wait for, where
+  //     there IS a door. An absence behind a closed one is not an absence. Manage
+  //     lost its door (#3987 phase 2): its suggestions are rows on the page, so
+  //     `arrived` is the only gate that entry needs and both fields are omitted.
   //   `block`    — a selector for the tone's own hand-rolled box. Asserted
   //     PRESENT, which is what stops the marker check below from passing because
   //     there was nothing there to mark.
@@ -792,8 +794,8 @@ type ToneSurface =
       offPrimitive?: readonly {
         route: string;
         arrived: string;
-        open: string;
-        settled: string;
+        open?: string;
+        settled?: string;
         block: string;
       }[];
     };
@@ -851,9 +853,11 @@ const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
   // blocks exist but the shared seed produces none of them. BOTH were false, and
   // the second was inherited from an adversarial review that had asserted it.
   // Measured at 390px on the shared seed: /nutrition?tab=supplements renders TWO
-  // curated supplement suggestions and /nutrition renders food suggestions, each
-  // an emerald-tinted `rounded-lg border` box — `bg rgb(216, 233, 207)`, border
-  // 1px, radius 8px — and every one of them has `data-notice === null`.
+  // curated supplement suggestions (as rows since #3987 phase 2 — no launcher and no
+  // modal, so they are inside `main` and the flat ban above now reaches them, which
+  // is why their frame is `sm:`-only) and /nutrition renders food suggestions. Every
+  // one of them is emerald-TINTED and every one has `data-notice === null`; the tint
+  // is what makes the tone reachable here, not the frame.
   //
   // So the tone is reachable and the NOTICE-FAMILY SHAPE is not. Both call sites
   // are among the six files that hand-roll NOTICE_TONE without going through
@@ -869,9 +873,7 @@ const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
     offPrimitive: [
       {
         route: "/nutrition?tab=supplements",
-        arrived: "supplement-workspace",
-        open: "supplement-suggestions-badge",
-        settled: "supplement-suggestions-panel",
+        arrived: "supplement-suggestions",
         block: '[data-testid^="curated-supplement-suggestion-"]',
       },
       {
@@ -936,8 +938,10 @@ for (const [tone, probe] of OFF_PRIMITIVE_PROBES) {
     // The route ARRIVED — without this, everything below is satisfied by a 404, a
     // redirect, or a `<main>` that never rendered.
     await expect(page.getByTestId(probe.arrived)).toBeVisible();
-    await page.getByTestId(probe.open).click();
-    await expect(page.getByTestId(probe.settled)).toBeVisible();
+    if (probe.open && probe.settled) {
+      await page.getByTestId(probe.open).click();
+      await expect(page.getByTestId(probe.settled)).toBeVisible();
+    }
 
     // THE TONE DOES RENDER HERE. Asserted first and deliberately: it is the
     // premise of the row's reason, and without it the marker check below is a
