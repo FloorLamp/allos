@@ -324,7 +324,8 @@ export function getBodyMetricsOnDate(
 // Source handling (issue #14): an ADDITIVE metric is never summed across sources
 // — every SUM metric picks one source per day (the profile's primary source
 // first, else the default preference, else single-source passthrough), so two
-// sources reporting the same day can't double-count. A POINT (AVG) metric
+// synced sources cannot double-count; hydration adds manual contributions (#4148).
+// A POINT (AVG) metric
 // keeps averaging every source's readings per day (they measure the same
 // quantity and a same-date manual + imported reading must agree, not sum);
 // an explicit primary source narrows it to that source's readings.
@@ -442,7 +443,8 @@ function getAdditiveMetricDailyTotalsBatchWithPriority(
           (row) => row.origin,
           (row) => row.value
         ),
-        resolveMetricSources(metric, priority, SOURCE_PREFERENCE)
+        resolveMetricSources(metric, priority, SOURCE_PREFERENCE),
+        metric === "hydration_l" ? "manual" : undefined
       ).sort((left, right) => left.date.localeCompare(right.date))
     );
   }
