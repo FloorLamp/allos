@@ -831,19 +831,6 @@ export default function MeasurementsQuickAdd({
         </UnitToggle>
       </Field>
     ),
-    // Water drunk today (#1851), in litres — the metric's own canonical and
-    // charted unit, so what is typed is what the chart plots.
-    //
-    // "TODAY" IS LOAD-BEARING, not a nicety. `hydration_l` is an ADDITIVE metric
-    // (lib/metric-buckets.ts names it so), and this field files ONE point row per
-    // day that re-entry CORRECTS — so a second glass typed later replaces the
-    // first rather than adding to it. Labelled "Water" alone, the natural reading
-    // is "log a glass", and the measured result of that reading is wrong twice
-    // over: two typed glasses (0.5 then 0.7) leave the day at 0.7, and on a
-    // profile that also syncs a bottle the typed value REPLACES the synced day
-    // (2.5 L → 0.3 L), because `manual` leads SOURCE_PREFERENCE and an additive
-    // metric elects one source per day. Naming the quantity the field actually
-    // holds is what makes both of those the right answer instead of a surprise.
     hydration: (
       <Field key="hydration" label="Water today" htmlFor="m-hydration">
         <UnitSuffix suffix={TREND_METRIC_META.hydration.unit.trim()}>

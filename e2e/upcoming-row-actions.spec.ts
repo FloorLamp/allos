@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import { frozenNow, workerDbPath } from "./worker-env";
+import { dismissToast, hydratedClick } from "./helpers";
+import { practiceIdentity } from "@/lib/practice";
 // Upcoming row composition (issue #1446).
 //
 // The all-pages census found every overdue row on /upcoming rendering TWO
@@ -15,12 +19,17 @@ import { type Locator, type Page } from "@playwright/test";
 //   2. a preventive row renders exactly one, and that one menu still offers BOTH
 //      halves (the overrides and snooze/dismiss) — the merge, not a deletion,
 //
-// Fixture policy (#868): these are READ-ONLY assertions over the shared seeded
-// profile — they open a menu and press Escape, and never write. So they take no
+// Fixture policy (#868): the composition assertions are READ-ONLY over the shared
+// seeded profile — they open a menu and press Escape, and never write. So they take no
 // exact counts of shared rows (a neighbour spec marks preventive items done or
 // overrides them) and never name a single catalog rule: every assertion is
 // either per-row, a lower bound, or "any preventive row". Deliberately NOT a
-// dedicated fixture profile: these assertions do not need another persisted subject.
+// dedicated fixture profile: those assertions do not need another persisted subject.
+//
+// THE PRACTICE-ROW CASE AT THE BOTTOM DOES WRITE, and it owns its subject: the row it
+// drives only exists while a weekly practice floor is unmet, so it seeds that target
+// itself and removes it and its session again. It touches no row the assertions above
+// count.
 
 async function openUpcoming(page: Page): Promise<Locator> {
   await page.goto("/upcoming");
@@ -87,4 +96,75 @@ test.describe("Upcoming row actions (#1446)", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
+});
+
+// ── THE PRACTICE ROW MOUNTS THE DOMAIN'S ONE CONTROL (#4424 ruling 7) ──────────
+//
+// This row used to front `app/(app)/upcoming/PracticeLogButton.tsx` and its own
+// `logUpcomingPractice` action — a second door onto the shared core, with no duration,
+// no confirm and no live lifecycle. It mounts `LogPracticeButton` now, so the three
+// arrive by convergence rather than by being re-added to a copy.
+//
+// SPEC-OWNED FIXTURE (#868), because the row only exists while a weekly practice floor
+// is UNMET: the shared profile's practices are not reliably behind, and a shared row
+// tapped here would move a neighbour's counts. Seeded and removed by this test.
+test("the practice row logs through the shared control, with the duration the deleted door discarded", async ({
+  page,
+}) => {
+  const name = `E2E Upcoming Practice ${frozenNow().getTime()}`;
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  let targetId = 0;
+  try {
+    targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO frequency_targets
+             (profile_id, scope_kind, scope_value, scope_identity, per_week)
+           VALUES (1, 'practice', ?, ?, 3)`
+        )
+        .run(name, practiceIdentity(name)).lastInsertRowid
+    );
+
+    await page.goto("/upcoming");
+    const row = page.locator(
+      `[data-testid="upcoming-item-practice:${targetId}"]`
+    );
+    await expect(row).toHaveCount(1);
+
+    // THE SHARED CONTROL, by its own marker — the wellness card, the protocol rows and
+    // the quick sheet all render this same element, which is what `rowControl: shared`
+    // claims. The stepper is the half the deleted door had no field for at all.
+    const control = row.getByTestId("practice-log-control");
+    await expect(control).toBeVisible();
+    const duration = control.getByTestId("practice-duration-input");
+    await expect(duration).toBeVisible();
+    await duration.fill("35");
+
+    await hydratedClick(page, control.getByTestId("practice-log-button"));
+    await dismissToast(page, /Logged/);
+
+    // THE STORE, not the toast: what the deleted door wrote was a session with a null
+    // duration whatever the reader had in mind, so the assertion is the column.
+    await expect
+      .poll(
+        () =>
+          (
+            db
+              .prepare(
+                `SELECT duration_min FROM practice_logs
+                WHERE profile_id = 1 AND practice = ?`
+              )
+              .get(name) as { duration_min: number | null } | undefined
+          )?.duration_min ?? null
+      )
+      .toBe(35);
+  } finally {
+    db.prepare(
+      "DELETE FROM practice_logs WHERE profile_id = 1 AND practice = ?"
+    ).run(name);
+    if (targetId)
+      db.prepare("DELETE FROM frequency_targets WHERE id = ?").run(targetId);
+    db.close();
+  }
 });

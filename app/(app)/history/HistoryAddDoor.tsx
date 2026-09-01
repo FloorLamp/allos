@@ -21,7 +21,7 @@ import {
   usualRoutinePhrase,
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
-import { logPractice } from "@/app/(app)/wellness/actions";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
@@ -385,59 +385,24 @@ export default function HistoryAddDoor({
           </form>
         );
       case "practice":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own
+        // practice form — a start with no end, so a window it could state here was
+        // correctable only on the Wellness card — is deleted and the domain's one form
+        // mounts with the found day in hand. The close and re-read stay the door's.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await logPractice(fd);
-                return outcome.kind === "logged"
-                  ? null
-                  : "Couldn't log that session.";
-              })
-            }
-          >
-            {whenField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Practice
-              <select name="practice" className="input mt-1 w-full">
-                {vocabulary.practices.map((practice) => (
-                  <option key={practice}>{practice}</option>
-                ))}
-              </select>
-            </label>
-            {/* THE FIELD IS ALWAYS POSTED, AND ITS VALUE IS NOW THE READER'S.
-                `logPractice` reads PRESENCE, not value (#2204): an absent
-                `start_time` means "you have the clock" and would stamp the filing
-                instant onto a day that is not today, so this stays present
-                unconditionally. Its value is the wall clock WhenControl collected —
-                and an unstated time still resolves to "", which is the same honest
-                "this session has no minute" the door has always been able to say.
-                The field is `start_time` since #3142 renamed the column; posting the
-                old name would have left the presence gate unsatisfied and stamped
-                the tap instant over what the person actually said. NO `end_time`:
-                this door states a start, and a session's window is the expanded
-                form's to state. */}
-            <input
-              type="hidden"
-              name="start_time"
-              value={statedHhmm(when.statedAt, tz)}
-            />
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min={1}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <PracticeSessionForm
+            practices={vocabulary.practices}
+            // The door is bounded by today at every kind (see the header), so
+            // `maxDate` IS this profile's today — there is no second day to pass.
+            today={maxDate}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "substance":
         // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance

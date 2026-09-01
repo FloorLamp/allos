@@ -260,27 +260,62 @@ export function outdoorPlanItems(profileId: number): UpcomingItem[] {
 // A weekly concern, so it sits in the This-week band with a progress due-text (a range
 // shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress (one
 // computation); age-neutral like the underlying practice log.
+// The row control's four props, off the shared tracked-practice row. `undefined` for a
+// target the aggregate folded away (two spellings of one identity keep the first), which
+// leaves that row its link and its pace and offers no control — rather than mounting one
+// against a name this profile does not track.
+function practiceLogOf(
+  tracked: TrackedPractice | undefined
+): UpcomingItem["practiceLog"] {
+  return tracked
+    ? {
+        practice: tracked.name,
+        todayCount: tracked.todayCount,
+        defaultDurationMin: tracked.previousDurationMin,
+        liveSession: tracked.liveSession,
+      }
+    : undefined;
+}
+
 export function practiceItems(profileId: number): UpcomingItem[] {
-  return getFrequencyTargetProgress(profileId)
+  const unmet = getFrequencyTargetProgress(profileId)
     .filter((p) => p.target.scope_kind === "practice")
-    .filter(isUnmetWeeklyTarget)
-    .map((p) => ({
-      key: practiceSignalKey(p.target.id),
-      domain: "practice" as const,
-      title: p.target.scope_value,
-      detail: "Weekly practice target",
-      href: "/wellness",
-      dueDate: null,
-      band: "week" as const,
-      practiceTargetId: p.target.id,
-      // The practice scope's own weekly floor target (#2579-E), declared like its
-      // trainingItems twin — one rule, one property, both builders.
-      weeklyTarget: true,
-      dueText:
-        p.per_week_max != null && p.per_week_max > p.per_week
-          ? `${p.count}/${p.per_week}–${p.per_week_max} this week`
-          : `${p.count}/${p.per_week} this week`,
-    }));
+    .filter(isUnmetWeeklyTarget);
+  if (unmet.length === 0) return [];
+  // RESOLVED HERE, BECAUSE THE ROW MOUNTS THE SHARED CONTROL (#4424 ruling 7). Upcoming's
+  // rows are frequency TARGETS and the control posts a practice NAME — so one of the two
+  // had to resolve, and it is this read, which already holds the target and is the only
+  // side that can also answer the day facts the control renders. `logPracticeByTargetId`
+  // stays for Telegram, whose callback carries an id and no day.
+  //
+  // THROUGH `getTrackedPractices`, WHICH IS ALREADY THAT ANSWER — "one tracked practice
+  // as the quick surfaces need it … what the shared LogPracticeButton shows beside its
+  // tap". Upcoming is one of those surfaces now, so assembling the same four fields here
+  // would have been a second spelling of one question. It is also the cheaper read:
+  // measured on the biohacker dashboard persona (lib/__db_tests__/dashboard-placement-
+  // manifest.test.ts), per-practice `getPracticeDayCount` + `getPracticeUsualDuration`
+  // cost +13 queries and this costs +9, because the day tally and the live sweep are one
+  // grouped query each however many practices there are.
+  const tracked = new Map(
+    getTrackedPractices(profileId).map((entry) => [entry.targetId, entry])
+  );
+  return unmet.map((p) => ({
+    key: practiceSignalKey(p.target.id),
+    domain: "practice" as const,
+    title: p.target.scope_value,
+    detail: "Weekly practice target",
+    href: "/wellness",
+    dueDate: null,
+    band: "week" as const,
+    practiceLog: practiceLogOf(tracked.get(p.target.id)),
+    // The practice scope's own weekly floor target (#2579-E), declared like its
+    // trainingItems twin — one rule, one property, both builders.
+    weeklyTarget: true,
+    dueText:
+      p.per_week_max != null && p.per_week_max > p.per_week
+        ? `${p.count}/${p.per_week}–${p.per_week_max} this week`
+        : `${p.count}/${p.per_week} this week`,
+  }));
 }
 
 // The daily-step afternoon presence (#1723 part 2). RIDE-THE-NAG, not a new send:
@@ -430,6 +465,7 @@ import type { DistanceUnit } from "../../settings";
 import type { UpcomingDomain, UpcomingItem } from "../../upcoming";
 import { fmtDistance } from "../../units";
 import { trainingSignalKey } from "../../workout-nudge";
+import { getTrackedPractices, type TrackedPractice } from "../wellness";
 import { getOutdoorPlans } from "../weather-training";
 import { getCarePlanItems } from "../clinical";
 import {

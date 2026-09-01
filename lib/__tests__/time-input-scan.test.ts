@@ -43,6 +43,17 @@ const HANDROLLED_ALLOW = new Map<
   // amend = correct with "Not stated" reachable).
   // SymptomLogBar.tsx left it on the touch its own entry named (#4424 ruling 5): the
   // temperature reading time is WhenControl's now, day-fixed to the card's date.
+  // PracticeSessionHistory.tsx left it on #4424 ruling 1's touch: its edit form spelled
+  // the same five fields the log form did, so it now MOUNTS that form and the pair it
+  // carried is GONE rather than migrated.
+  //
+  // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
+  // stated here rather than smuggled: the `/history` add door's practice case and that
+  // record row's correction each stated a START through `WhenControl` and could not
+  // state an END at all, so a window stated in the expanded form was correctable on
+  // exactly one surface. Both mount the one form now, which states the RANGE — the
+  // shape this entry exists for. The ratchet's count does not move, because the pair is
+  // spelled once and four surfaces mount it.
   [
     "components/practices/PracticeSessionForm.tsx",
     {
@@ -53,18 +64,9 @@ const HANDROLLED_ALLOW = new Map<
         "activity start/end pair below, unmodelled by the control for the same " +
         "reason. #3143 extracted the deliberate historical form from the quick " +
         "intent control so backfill remains exempt; the same two inputs moved, " +
-        "not grew. Migrates with DateTimeFields when the " +
-        "control grows a range form",
-    },
-  ],
-  [
-    "components/practices/PracticeSessionHistory.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "the #3142 practice start/end pair on the edit form — same range shape " +
-        "and same migration as the log form above",
+        "not grew. #4424 ruling 1 made this THE practice form — add and edit, at " +
+        "every mount — so four spellings of the pair are now this one. Migrates " +
+        "with DateTimeFields when the control grows a range form",
     },
   ],
   [

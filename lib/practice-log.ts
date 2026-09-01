@@ -572,9 +572,13 @@ export function logFinishedPracticeSession(
 // snapshot contract — the message may be stale) — nothing is written. The `date` is the
 // profile-local today (the tap's day).
 //
-// This is the Upcoming web action's ordinary one-tap statement: the session is
-// happening now, so omitted `startTime` stamps the tap. Telegram's explicit Done
-// acknowledgement uses `logFinishedPracticeByTargetId` below instead.
+// TELEGRAM IS THE CALLER, AND IT IS THE ONE THAT NEEDS A RESOLVER. This was also the
+// Upcoming web action's one-tap statement until #4424 ruling 7: that row mounts the
+// shared control now, which posts a practice NAME resolved server-side beside the
+// target read, so the web has nothing left to resolve here. A chat callback carries an
+// id and no day, which is what keeps this function. Omitted `startTime` stamps the tap
+// — the session is happening now. Telegram's explicit Done acknowledgement uses
+// `logFinishedPracticeByTargetId` below instead.
 export function logPracticeByTargetId(
   profileId: number,
   targetId: number,
@@ -599,8 +603,8 @@ export function logPracticeByTargetId(
   );
 }
 
-// Telegram's Done button is a just-finished statement, not the Upcoming page's
-// "happening now" statement. Telegram shows no duration, so the only honest write is
+// Telegram's Done button is a just-finished statement, not the "happening now" one the
+// resolver above makes. Telegram shows no duration, so the only honest write is
 // its observed end tap. A hidden usual duration must never fabricate a start.
 export function logFinishedPracticeByTargetId(
   profileId: number,

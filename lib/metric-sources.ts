@@ -52,7 +52,7 @@ export const SOURCE_PREFERENCE = [
 // Collapse per-(date, source) subtotals to one value per day by choosing a single
 // source — the first present in `selection`, else the largest single-source
 // total (which for a lone source is just that source, and avoids double-counting
-// two unknown sources).
+// two unknown sources). An `additiveSource` contributes beside that winner.
 //
 // A CLASS selector (#1640) makes its members ONE candidate: their subtotals sum,
 // because the class IS the source for that day (two reports covering the same
@@ -63,9 +63,13 @@ export const SOURCE_PREFERENCE = [
 // an honest gap instead of another source's number.
 export function pickOneSourcePerDay(
   rows: { date: string; source: string | null; value: number }[],
-  selection: SourceSelection
+  selection: SourceSelection,
+  additiveSource?: string
 ): { date: string; value: number }[] {
   const { order, strict } = asSourceResolution(selection);
+  const additiveKey = additiveSource
+    ? sourceGroupKey(additiveSource, order)
+    : null;
   const byDate = new Map<string, Map<string, number>>();
   for (const r of rows) {
     let m = byDate.get(r.date);
@@ -78,9 +82,16 @@ export function pickOneSourcePerDay(
   }
   const out: { date: string; value: number }[] = [];
   for (const [date, m] of byDate) {
-    const chosen = order.find((p) => m.has(p));
-    if (chosen == null && strict) continue;
-    const value = chosen != null ? m.get(chosen)! : Math.max(...m.values());
+    const candidates = [...m.entries()].filter(([key]) => key !== additiveKey);
+    const chosen = order.find((p) => p !== additiveKey && m.has(p));
+    if (chosen == null && strict && !m.has(additiveKey!)) continue;
+    const elected =
+      chosen != null
+        ? m.get(chosen)!
+        : candidates.length > 0
+          ? Math.max(...candidates.map(([, value]) => value))
+          : 0;
+    const value = elected + (additiveKey ? (m.get(additiveKey) ?? 0) : 0);
     out.push({ date, value });
   }
   return out;
