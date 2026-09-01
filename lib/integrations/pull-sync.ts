@@ -4,6 +4,7 @@ import { userErrorCopy } from "@/lib/user-error-copy";
 import type { IntegrationId } from "@/lib/types";
 import {
   getConnection,
+  emitSyncEvent,
   markConnectionNeedsReauth,
   recordSync,
   recordSyncEvent,
@@ -14,11 +15,9 @@ import {
   dateWindow,
   emptyCounts,
   foldCounts,
-  summarizeSplit,
   type ProvenanceEntry,
   type UpsertCounts,
 } from "./sync-log";
-import { truncatedSyncDetails } from "./sync-details";
 import { writeRawPayload } from "./raw-log";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import {
@@ -402,34 +401,22 @@ export async function runPullSync<
   recordSync(profileId, spec.id, { ...counts, truncated: truncated ? 1 : 0 });
   {
     const w = win();
-    const tally = summarizeSplit(
-      foldCounts([
-        commit.activities,
-        commit.bodyMetrics,
-        commit.vitals,
-        commit.samples,
-      ]),
-      skipped
-    );
+    const split = foldCounts([
+      commit.activities,
+      commit.bodyMetrics,
+      commit.vitals,
+      commit.samples,
+    ]);
     // Best-effort raw capture (never throws): the JSON we fetched this run.
     const rawRef = writeRawPayload(profileId, spec.id, JSON.stringify(raw));
-    const eventId = recordSyncEvent(profileId, spec.id, {
+    const eventId = emitSyncEvent({
+      profileId,
+      sourceId: spec.id,
+      window: w,
+      split,
+      skipped,
+      partial: truncated ? {} : null,
       ok: true,
-      windowStart: w.start,
-      windowEnd: w.end,
-      received: tally.received,
-      written: tally.inserted + tally.updated + tally.unchanged,
-      inserted: tally.inserted,
-      updated: tally.updated,
-      unchanged: tally.unchanged,
-      suppressed: tally.suppressed,
-      edited: tally.edited,
-      skipped: tally.skipped,
-      // A run the source cut short (page cap / 429) is NOT a clean success: the
-      // cursor was deliberately not advanced and data is still upstream, so the event
-      // carries a durable `truncated` marker + its Review line (#1614). Ordinary
-      // complete runs write no details at all.
-      details: truncated ? truncatedSyncDetails() : null,
       raw_ref: rawRef,
     });
     recordSyncRows(eventId, provenance);
