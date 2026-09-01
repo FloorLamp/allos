@@ -91,12 +91,13 @@ import {
 export function seedBodyMobile(): void {
   // ── Trends → Overview → body census mobile overhaul fixture (#1067 Phase 1) ─────────────────────
   // A dedicated adult profile with a KNOWN, PARTIAL set of synced body metrics so
-  // the chart-jump chips + per-chart anchors are deterministic in the browser:
+  // the chart-jump menu's entries + per-chart anchors are deterministic in the
+  // browser:
   //   present → Weight/resting-HR/BMI (body-composition block), Steps, Sleep,
   //             HR (daily)
   //   ABSENT  → hydration / BMR / calories / lean-mass / bone-mass / macros
-  // so the spec can assert BOTH that present metrics get a chip (and a `#id` anchor
-  // that lands on the card) AND that a chartless metric's chip is hidden. Read-only
+  // so the spec can assert BOTH that a present metric gets a menu entry (and a
+  // `#id` anchor that lands on the card) AND that a chartless metric gets none. Read-only
   // (spec navigates + scrolls only). Relative dates → never stale; UTC instants
   // (the e2e default timezone) → deterministic regardless of host TZ. Idempotent:
   // hard-clear this profile's fixture rows first.
@@ -146,7 +147,8 @@ export function seedBodyMobile(): void {
       `${oldBodyDay}T08:00:00Z`
     );
 
-    // Steps (additive) — three recent days so the chart + chip render and are recent.
+    // Steps (additive) — three recent days so the chart + its menu entry render
+    // and are recent.
     const insSteps = db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, started_at, ended_at, value)
      VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
