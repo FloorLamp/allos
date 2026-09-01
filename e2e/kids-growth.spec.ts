@@ -84,7 +84,58 @@ function setRileyMetricSave(key: string, saved: boolean): void {
   }
 }
 
+interface RileyHeightSnapshot {
+  id: number;
+  profileId: number;
+  value: number;
+}
+
+function captureRileyHeight(): RileyHeightSnapshot {
+  const db = new Database(workerDbPath(), { readonly: true });
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare(
+        `SELECT ms.id, ms.profile_id AS profileId, ms.value
+           FROM metric_samples ms
+           JOIN profiles p ON p.id = ms.profile_id
+          WHERE p.name = 'Riley (child)' AND ms.metric = 'height_cm'
+          ORDER BY ms.ended_at DESC, ms.id DESC
+          LIMIT 1`
+      )
+      .get() as RileyHeightSnapshot | undefined;
+    if (!row) throw new Error("Riley's seeded height is missing");
+    return row;
+  } finally {
+    db.close();
+  }
+}
+
+function restoreRileyHeight(snapshot: RileyHeightSnapshot): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const result = db
+      .prepare(
+        "UPDATE metric_samples SET value = ? WHERE id = ? AND profile_id = ?"
+      )
+      .run(snapshot.value, snapshot.id, snapshot.profileId);
+    if (result.changes !== 1)
+      throw new Error("Riley's height was not restored");
+  } finally {
+    db.close();
+  }
+}
+
+let rileyHeightBeforeWrite: RileyHeightSnapshot | null = null;
+
 test.describe.serial("kids growth trends", () => {
+  test.afterEach(() => {
+    if (!rileyHeightBeforeWrite) return;
+    restoreRileyHeight(rileyHeightBeforeWrite);
+    rileyHeightBeforeWrite = null;
+  });
+
   test.afterAll(async ({ browser }) => {
     // Restore the default profile AND weight unit for any following spec, even
     // if a test above failed mid-switch.
@@ -132,6 +183,9 @@ test.describe.serial("kids growth trends", () => {
     await expect(page.getByLabel("Body Fat", { exact: true })).toHaveCount(0);
 
     // Adding a height persists without error and closes the desktop logging modal.
+    // This corrects Riley's same-day seeded row in place, so retain the original
+    // value for afterEach; later specs share this worker database.
+    rileyHeightBeforeWrite = captureRileyHeight();
     await heightInput.fill("82.5");
     await form.getByRole("button", { name: "Save measurements" }).click();
     await expect(page.getByText("Measurements saved")).toBeVisible();
