@@ -226,7 +226,7 @@ describe("ux census disclosure-expansion registry", () => {
 // rule 3 and would red this guard. That is deliberate and it fails CLOSED: a hover
 // capture whose marker no scan can pin is exactly the entry that goes quietly stale,
 // and the registry should name a static one.
-describe("ux census hover-capture registry", () => {
+describe("ux census registry markers", () => {
   const appRoot = path.join(here, "..", "..", "app");
   const componentsRoot = path.join(here, "..", "..", "components");
 
@@ -399,34 +399,52 @@ describe("ux census hover-capture registry", () => {
       : "";
   };
 
-  it("names markers that are still RENDERED in the tree", () => {
-    for (const e of HOVER_CAPTURES) {
-      const selectors = [e.target, e.reveals, e.openFirst].filter(
-        Boolean
-      ) as string[];
+  // BOTH REGISTRIES, one reader (#3366). A disclosure's `closedToggle` is exposed to
+  // exactly the rename a hover target is, and it fails the same silent way: the
+  // census logs one BLIND SPOT line, takes no expanded shot, and every other check
+  // in this repo stays green. Measured while re-annotating this census: `/`'s
+  // expansion still named `dashboard-standing-tail-summary`, gone since #4480 merged
+  // the two dashboard folds, so the whole Show everything tail — the surface #3366
+  // changed — had stopped being photographed and nothing said so.
+  const REGISTERED = [
+    ...HOVER_CAPTURES.map((e) => ({
+      entry: `hover ${e.route}`,
+      what: `The hover capture for "${e.label}"`,
+      selectors: [e.target, e.reveals, e.openFirst].filter(Boolean) as string[],
+    })),
+    ...DISCLOSURE_EXPANSIONS.map((e) => ({
+      entry: `disclosure ${e.route}`,
+      what: `The expanded capture of "${e.label}"`,
+      selectors: [e.closedToggle, e.loadMore].filter(Boolean) as string[],
+    })),
+  ];
+
+  it.each(REGISTERED)(
+    "$entry names markers that are still RENDERED in the tree",
+    ({ entry, what, selectors }) => {
       for (const sel of selectors) {
         const markers = markersIn(sel);
         expect(
           markers.length,
-          `${e.route}: \`${sel}\` names no testid or class this guard can pin. ` +
+          `${entry}: \`${sel}\` names no testid or class this guard can pin. ` +
             `A selector built only from element names cannot be checked for a ` +
-            `rename, which is the failure this registry is most exposed to.`
+            `rename, which is the failure these registries are most exposed to.`
         ).toBeGreaterThan(0);
         for (const marker of markers) {
           const rendered = renderedIn(marker);
           const hint = orphanHint(marker);
           expect(
             rendered,
-            `${e.route}: \`${marker.name}\` (from \`${sel}\`) is no longer ` +
+            `${entry}: \`${marker.name}\` (from \`${sel}\`) is no longer ` +
               `${marker.kind === "testid" ? 'written as `data-testid="' + marker.name + '"`' : "rendered as a class token"} ` +
-              `by any markup under app/ or components/. The hover capture for ` +
-              `"${e.label}" would stop being taken and only a BLIND SPOT line in a ` +
-              `census run nobody has done yet would say so.${hint}`
+              `by any markup under app/ or components/. ${what} would stop being ` +
+              `taken and only a BLIND SPOT line in a census run nobody has done yet ` +
+              `would say so.${hint}`
           ).not.toEqual([]);
         }
       }
     }
-  });
+  );
 });
 
 // Everything above proves the MATCH can be spelled. None of it proves the WALK can
