@@ -169,15 +169,25 @@ export const DISCLOSURE_EXPANSIONS = [
     loadMore: '[data-testid="clinical-result-panel-load-all"]',
   },
   {
-    // Standing's quiet tail (#3548): dormant lines, months-old results, quiet
-    // pillars and out-ranked connect-a-source CTAs all live behind one disclosure
-    // now, so the resting dashboard shot no longer photographs them at all. The
-    // fold is a native <details>, which publishes its state as the element's own
-    // `open` rather than as an aria attribute — hence the structural selector.
+    // THE DASHBOARD'S ONE FOLD, and the census's only picture of the tail (#3366).
+    //
+    // It began as Standing's quiet tail (#3548) — dormant lines, months-old
+    // results, quiet pillars, out-ranked connect-a-source CTAs. #4480 merged that
+    // fold into Show everything, so one <details> now hides both it and the
+    // exhaustive remainder, and the resting dashboard shot photographs neither.
+    //
+    // WHAT IS BEHIND IT CHANGED TWICE UNDER THIS ENTRY:
+    //   * #4083 retired the four always-available write cards — weight, vitals,
+    //     well-day and cycle — to the quick-log sheet.
+    //   * #4396 removed the Elsewhere door rows #4083 had drawn for the declared
+    //     nav duplicate. Completeness is proven at the placement-manifest tier.
+    //
+    // The existing `dashboard-all` marker names the <details>; selecting its
+    // direct <summary> avoids adding a second runtime marker only for this tool.
+    // `:not([open])` is load-bearing: the expansion loop must stop after one click.
     route: "/",
-    label: "the dashboard's quiet Standing tail",
-    closedToggle:
-      'details:not([open]) > [data-testid="dashboard-standing-tail-summary"]',
+    label: "the dashboard's Show everything fold",
+    closedToggle: 'details[data-testid="dashboard-all"]:not([open]) > summary',
   },
 ];
 

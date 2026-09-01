@@ -226,7 +226,7 @@ describe("ux census disclosure-expansion registry", () => {
 // rule 3 and would red this guard. That is deliberate and it fails CLOSED: a hover
 // capture whose marker no scan can pin is exactly the entry that goes quietly stale,
 // and the registry should name a static one.
-describe("ux census hover-capture registry", () => {
+describe("ux census registry markers", () => {
   const appRoot = path.join(here, "..", "..", "app");
   const componentsRoot = path.join(here, "..", "..", "components");
 
@@ -303,16 +303,16 @@ describe("ux census hover-capture registry", () => {
   /**
    * How a marker must be written to count as RENDERED.
    *
-   * A testid is matched as the attribute itself, in the two spellings this tree
-   * uses for a static value (`data-testid="x"` — 2,213 occurrences — and
-   * `data-testid={"x"}`). A class is matched as a whole token, which is what kills
-   * the superstring rename: `standing-doorway` no longer answers for
-   * `standing-door`.
+   * A testid is matched as either the DOM attribute or the static `testId` prop
+   * shared components use to emit it. The rendered-page check in dashboard.spec
+   * proves that the prop reaches the DOM; this source guard only pins the rename.
+   * A class is matched as a whole token, which is what kills the superstring
+   * rename: `standing-doorway` no longer answers for `standing-door`.
    */
   const renderedPattern = (marker: Marker): RegExp =>
     marker.kind === "testid"
       ? new RegExp(
-          `data-testid=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`
+          `(?:data-testid|testId)=(?:"${escape(marker.name)}"|\\{\\s*["']${escape(marker.name)}["']\\s*\\})`
         )
       : new RegExp(`(?<![\\w-])${escape(marker.name)}(?![\\w-])`);
 
@@ -399,34 +399,49 @@ describe("ux census hover-capture registry", () => {
       : "";
   };
 
-  it("names markers that are still RENDERED in the tree", () => {
-    for (const e of HOVER_CAPTURES) {
-      const selectors = [e.target, e.reveals, e.openFirst].filter(
-        Boolean
-      ) as string[];
+  // A disclosure's `closedToggle` is exposed to the same silent rename as a hover
+  // target: the census logs one BLIND SPOT and takes no expanded shot. `/` carried
+  // a dead Standing-tail marker after #4480 merged that fold into Show everything,
+  // leaving #3366's tail absent from the census until this closeout.
+  const REGISTERED = [
+    ...HOVER_CAPTURES.map((e) => ({
+      entry: `hover ${e.route}`,
+      what: `The hover capture for "${e.label}"`,
+      selectors: [e.target, e.reveals, e.openFirst].filter(Boolean) as string[],
+    })),
+    ...DISCLOSURE_EXPANSIONS.map((e) => ({
+      entry: `disclosure ${e.route}`,
+      what: `The expanded capture of "${e.label}"`,
+      selectors: [e.closedToggle, e.loadMore].filter(Boolean) as string[],
+    })),
+  ];
+
+  it.each(REGISTERED)(
+    "$entry names markers that are still RENDERED in the tree",
+    ({ entry, what, selectors }) => {
       for (const sel of selectors) {
         const markers = markersIn(sel);
         expect(
           markers.length,
-          `${e.route}: \`${sel}\` names no testid or class this guard can pin. ` +
+          `${entry}: \`${sel}\` names no testid or class this guard can pin. ` +
             `A selector built only from element names cannot be checked for a ` +
-            `rename, which is the failure this registry is most exposed to.`
+            `rename, which is the failure these registries are most exposed to.`
         ).toBeGreaterThan(0);
         for (const marker of markers) {
           const rendered = renderedIn(marker);
           const hint = orphanHint(marker);
           expect(
             rendered,
-            `${e.route}: \`${marker.name}\` (from \`${sel}\`) is no longer ` +
-              `${marker.kind === "testid" ? 'written as `data-testid="' + marker.name + '"`' : "rendered as a class token"} ` +
-              `by any markup under app/ or components/. The hover capture for ` +
-              `"${e.label}" would stop being taken and only a BLIND SPOT line in a ` +
-              `census run nobody has done yet would say so.${hint}`
+            `${entry}: \`${marker.name}\` (from \`${sel}\`) is no longer ` +
+              `${marker.kind === "testid" ? 'written as `data-testid="' + marker.name + '"` or `testId="' + marker.name + '"`' : "rendered as a class token"} ` +
+              `by any markup under app/ or components/. ${what} would stop being ` +
+              `taken and only a BLIND SPOT line in a census run nobody has done yet ` +
+              `would say so.${hint}`
           ).not.toEqual([]);
         }
       }
     }
-  });
+  );
 });
 
 // Everything above proves the MATCH can be spelled. None of it proves the WALK can

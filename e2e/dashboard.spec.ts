@@ -8,6 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
 import {
   expectControlBoxHeight,
   openDashboardAll,
@@ -273,6 +274,26 @@ test("Show everything remembers its open state on this device", async ({
     );
   } finally {
     resetDashboardAllOffer();
+    await page.context().close();
+  }
+});
+
+test("the UX census selector reaches Show everything and terminates after one click (#3366)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_DASHBOARD_ALL,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    const censusToggle = page.locator(
+      DISCLOSURE_EXPANSIONS.find((entry) => entry.route === "/")!.closedToggle
+    );
+    await expect(censusToggle).toHaveCount(1);
+    await censusToggle.click();
+    await expect(censusToggle).toHaveCount(0);
+  } finally {
     await page.context().close();
   }
 });

@@ -72,7 +72,7 @@ Journeys: `onboarding`, `invite`, `pages` (all-routes census, both widths),
   routes record `landedOn` and an "Alias routes" table, so byte-identical
   shots are attributable. The registry test pins routes and `data-testid`s.
 - **Committed chrome baseline (#3390)**: `scripts/census-chrome-baseline.json`
-  records the shell's rendered geometry for five routes at both viewports —
+  records the shell's rendered geometry for six routes at both viewports —
   the file #1510's "re-annotate the census baseline" always assumed existed.
 - A `pages` run compares the surfaces it recognises and prints a "Committed
   chrome baseline" table in `audit.md`, naming any surface it did not reach
