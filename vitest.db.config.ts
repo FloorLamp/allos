@@ -41,6 +41,12 @@ const ISOLATED = specsNeedingIsolation(root, [
 // that reseeds and rebinds per file.
 const ACTION_SETUP = "lib/__action_tests__/setup.ts";
 
+// THE TIER-WIDE CLOCK FREEZE (#4509). Last in both projects' lists so its hooks
+// bracket the two above: it freezes after the per-file database is seeded and
+// unfreezes before that database is torn down. See the module header for which of
+// the tree's two clock-pinning conventions this endorses and why.
+const FROZEN_CLOCK = "lib/__db_tests__/frozen-clock.ts";
+
 export default defineConfig({
   resolve: { alias },
   test: {
@@ -75,6 +81,7 @@ export default defineConfig({
             TIMEOUT_REPORT,
             "lib/__db_tests__/setup-shared.ts",
             ACTION_SETUP,
+            FROZEN_CLOCK,
           ],
         },
       },
@@ -89,6 +96,7 @@ export default defineConfig({
             TIMEOUT_REPORT,
             "lib/__db_tests__/setup.ts",
             ACTION_SETUP,
+            FROZEN_CLOCK,
           ],
           sequence: { groupOrder: ISOLATED_POOL_GROUP },
         },
