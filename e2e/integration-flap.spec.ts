@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenSyncInstant } from "./worker-env";
+import { expectNoClippedContent } from "./helpers";
 
 // #1880/#2263: flapping is not failing, and what separates them is SILENCE. A
 // source alternating Failed/Refreshed with a recent success is `intermittent` — a
@@ -110,6 +111,28 @@ function clearFixture(): void {
 }
 
 test.afterAll(() => clearFixture());
+
+test("Connected-source timestamps share a trailing column inside the Data page measure", async ({
+  page,
+}) => {
+  seedFlapping();
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/data?section=review");
+
+  const healthy = page.getByTestId("sources-healthy");
+  const timestamps = healthy.getByTestId("sync-timestamp-compact");
+  await expect(timestamps).toHaveCount(2);
+  const rightEdges = await timestamps.evaluateAll((nodes) =>
+    nodes.map((node) => Math.round(node.getBoundingClientRect().right))
+  );
+  expect(new Set(rightEdges).size).toBe(1);
+  expect(
+    (await page.getByTestId("data-page").boundingBox())!.width
+  ).toBeLessThanOrEqual(1152);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoClippedContent(page);
+});
 
 test("a flapping source is amber Intermittent on all three surfaces and escalates nowhere", async ({
   page,
