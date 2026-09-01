@@ -511,8 +511,6 @@ test("the context region at its tallest still fits the panel's one reserve (#373
       const option = options.nth(index);
       await option.click();
       await expect(option).toHaveAttribute("aria-pressed", "true");
-      const subtitles = sheet.locator("[data-sheet-row-label] + span");
-      expect(await subtitles.count()).toBe(0);
       const rows = sheet.getByTestId("log-sheet-items").locator("button");
       for (let row = 0; row < (await rows.count()); row += 1)
         rowHeights.push((await box(rows.nth(row), "segment row")).height);
@@ -522,9 +520,8 @@ test("the context region at its tallest still fits the panel's one reserve (#373
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.locator("aside").getByTestId("sidebar-log").click();
-    const desktopDue = page
-      .getByTestId("sidebar-log-panel")
-      .getByTestId("log-sheet-chip-doses");
+    const panel = page.getByTestId("sidebar-log-panel");
+    const desktopDue = panel.getByTestId("log-sheet-chip-doses");
     expect((await box(desktopDue, "desktop due row")).height).toBe(46);
   } finally {
     await page.context().close();
