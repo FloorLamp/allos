@@ -438,8 +438,8 @@ export function repsProgressing(points: readonly E1rmPoint[]): boolean {
 // each series to the trailing PLATEAU_WINDOW_DAYS. Most recently trained first
 // (#4069) — the cap downstream truncates on this order, and a stall on the lift
 // someone trained this week is the one worth telling them about; the letter it
-// starts with is not a relevance signal. `upcomingDeload` (#741), when the routine's deload week
-// is ≤2 weeks out, swaps the ad-hoc "drop the load ~10%" advice for a pointer at
+// starts with is not a relevance signal.
+// `upcomingDeload` (#741), when the routine's deload week is ≤2 weeks out, swaps the ad-hoc "drop the load ~10%" advice for a pointer at
 // that scheduled light week — SAME finding identity (key/legacyKey/title), only the
 // detail copy changes, so a dismissal carries across the phrasing.
 export function detectPlateaus(
@@ -497,11 +497,7 @@ export function detectPlateaus(
   return out
     .sort(
       (a, b) =>
-        (a.lastTrained < b.lastTrained
-          ? 1
-          : a.lastTrained > b.lastTrained
-            ? -1
-            : 0) ||
+        b.lastTrained.localeCompare(a.lastTrained) ||
         a.obs.exercise!.localeCompare(b.obs.exercise!) ||
         a.obs.key.localeCompare(b.obs.key)
     )
