@@ -27,8 +27,10 @@ invariants are summarized in AGENTS.md.
 dose/schedule/adherence/escalation/refill machinery serves both; medication-only
 fields (`prescriber`/`pharmacy`/`rx_number`/`as_needed`) are nullable columns on
 the same table. **Surfaces (#746):** the two kinds render on separate pages —
-supplements on **Nutrition → Supplements** (`/nutrition?tab=supplements`, a tab
-of the Food | Supplements umbrella), medications on the standalone
+supplements on **Nutrition → Manage** (`/nutrition?tab=supplements`, a tab of the
+Day | Manage umbrella — the tab was labelled Supplements until #3987 phase 2, and
+the `?tab=` value keeps that spelling because it is what every stored deep link
+carries), medications on the standalone
 **Medications** page (`/medications`, Medical nav group). The former combined
 intake route was removed outright (#1635) and now 404s — historical deep
 links to it are not kept alive. This is a UI/route split only: one `intake_items` table, and the write
@@ -307,7 +309,7 @@ remembered in two others, and only medications had a frictionless door at all.
 
 **Name first; every door owns the kind.** The form opens on one field, but it is
 never a generic intake chooser: each of its six shipped hosts passes a literal
-`medication` or `supplement` kind. Medication doors and Nutrition → Supplements
+`medication` or `supplement` kind. Medication doors and Nutrition → Manage
 therefore keep their own write vocabulary without asking a question the route
 has already answered. The form rejects a missing or unknown kind at its runtime
 boundary, and the caller census keeps every mount literal and classified.
@@ -1246,7 +1248,7 @@ nav entry. Its old Medical-group row was worse than an ordinary one: it was
 `requiresMultiProfile`, so it materialized unannounced when a second profile was
 added, wearing the same `IconPill` as the "Medications" row above it. The row was
 removed; the ROUTE is unchanged. Its doors are `components/intake/SharedSuppliesLink`
-(the Medications header, the Nutrition → Supplements tab, and the Household header,
+(the Medications header, the Nutrition → Manage tab, and the Household header,
 labelled by the pure `sharedSuppliesLinkLabel`), the shared-bottle chip on a linked
 item, and the "See all shared bottles" exit in `SharedSupplyPicker`. `/supplies`
 highlights **Medications** and `/equipment` highlights **Training** through

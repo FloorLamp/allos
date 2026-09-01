@@ -66,11 +66,12 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
 
     // CompactDateMenu is the one adopter that genuinely renders on a phone.
     // Measure it beside the row's other action so the 44px repair cannot escape
-    // the viewport or buy its size by covering Dietary preferences.
-    const preferences = page.getByTestId("food-preferences-open");
+    // the viewport or buy its size by covering the history door. That neighbour
+    // used to be Dietary preferences, which left this bar for Manage (#3987).
+    const neighbour = page.getByTestId("food-ledger-link");
     const [dateBox, preferencesBox] = await settledBoxes([
       dateMenuTrigger,
-      preferences,
+      neighbour,
     ]);
     const viewport = page.viewportSize()!;
     expect(dateBox.width).toBeGreaterThanOrEqual(CONTROL_BOX_PX);
@@ -306,13 +307,12 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     expect(weekBox!.y).toBeLessThan(insightsBox!.y);
 
     // Day context scrolls with the page on mobile, matching the tab strip and
-    // auto-hiding shell chrome. Profile settings owns dietary preferences; the
-    // logger header stays focused on day/meal input.
+    // auto-hiding shell chrome. The logger header states the day and nothing
+    // configuration-shaped: dietary preferences are the Manage tab's now (#3987),
+    // asserted from both sides in food-log.spec.ts.
     const context = page.getByTestId("food-log-context");
     await expect(context.getByTestId("food-preferences-link")).toHaveCount(0);
-    await expect(page.getByTestId("food-preferences-open")).toBeVisible();
-    // ONE preferences affordance at every width, and no Meals-cards header to carry a
-    // second one (#3987).
+    await expect(page.getByTestId("food-preferences-open")).toHaveCount(0);
     await expect(page.getByTestId("food-preferences-open-desktop")).toHaveCount(
       0
     );

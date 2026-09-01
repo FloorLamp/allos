@@ -261,6 +261,43 @@ export function planBandRender<T extends UpcomingItem>(
 }
 
 // ---------------------------------------------------------------------------
+// The dose fold's slot runs (#2579-D)
+// ---------------------------------------------------------------------------
+
+// One run of chips inside the expanded dose fold: a time-bucket header and the doses
+// that sit under it.
+export interface SlotRun<T> {
+  slot: string;
+  items: T[];
+}
+
+// Turn the dose fold's items into slot runs — the second render plan of this module,
+// and the same discipline as the first: it NEVER re-sorts. The items arrive in the
+// band's own order, which for doses is `sortHint` (bucket → priority → stack → name,
+// the #297 dose-day sort), so the buckets already arrive contiguous and the boundaries
+// are simply where the label changes. Reading a run as CONSECUTIVE rather than
+// grouping by key is what keeps that true: a keyed grouping would quietly re-order
+// the day the moment the comparator changed, and print a header order the rows behind
+// it no longer follow.
+//
+// A dose with no slot (nothing downstream produces one today, but the field is
+// optional on the shared item) opens its own unlabelled run rather than being dropped
+// — this page's charter is completeness, and a chip nobody can see is the one outcome
+// a fold may not have.
+export function planSlotRuns<T extends Pick<UpcomingItem, "slot">>(
+  items: readonly T[]
+): SlotRun<T>[] {
+  const runs: SlotRun<T>[] = [];
+  for (const item of items) {
+    const slot = item.slot ?? "";
+    const last = runs[runs.length - 1];
+    if (last && last.slot === slot) last.items.push(item);
+    else runs.push({ slot, items: [item] });
+  }
+  return runs;
+}
+
+// ---------------------------------------------------------------------------
 // The day's dose progress
 // ---------------------------------------------------------------------------
 
