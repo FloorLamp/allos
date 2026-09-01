@@ -52,6 +52,7 @@ import {
 } from "./supplement-safety";
 import { getAiPrefs, getProfileSex, getProfileAge } from "./settings";
 import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
+import { AI_SETUP_COPY } from "./medical-extract/extract";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
@@ -407,7 +408,7 @@ async function runModel(
     return {
       suggestions: [],
       model: "offline",
-      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server → AI to get AI supplement suggestions.",
+      note: `AI not configured — ${AI_SETUP_COPY.lightOrHeavy} to get AI supplement suggestions.`,
     };
   }
   // Per-profile daily AI cap (rate-limiting Fix 1). A key is present, so a real
@@ -436,7 +437,7 @@ async function runModel(
     return {
       suggestions: [],
       model: "offline",
-      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server → AI to get AI supplement suggestions.",
+      note: `AI not configured — ${AI_SETUP_COPY.lightOrHeavy} to get AI supplement suggestions.`,
     };
   }
   const { client, model: MODEL, tier, host } = resolved;
