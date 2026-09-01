@@ -260,11 +260,23 @@ describe("practiceDisplayName", () => {
 describe("practiceLogOutcomeText (#1633)", () => {
   it("reports the day's running count on a fresh log", () => {
     expect(
-      practiceLogOutcomeText({ kind: "logged", count: 1, date: "2026-07-30" })
+      practiceLogOutcomeText(
+        { kind: "logged", count: 1, date: "2026-07-30" },
+        "2026-07-30"
+      )
     ).toBe("Logged today's session");
     expect(
-      practiceLogOutcomeText({ kind: "logged", count: 3, date: "2026-07-30" })
+      practiceLogOutcomeText(
+        { kind: "logged", count: 3, date: "2026-07-30" },
+        "2026-07-30"
+      )
     ).toBe("Logged — 3 sessions today");
+    expect(
+      practiceLogOutcomeText(
+        { kind: "logged", count: 3, date: "2026-07-29" },
+        "2026-07-30"
+      )
+    ).toBe("Logged past session");
   });
 
   it("never confirms an outcome that wrote nothing", () => {
@@ -274,7 +286,7 @@ describe("practiceLogOutcomeText (#1633)", () => {
       { kind: "invalid-date" },
       { kind: "stale-target" },
     ] as const) {
-      expect(practiceLogOutcomeText(outcome)).toBe(
+      expect(practiceLogOutcomeText(outcome, "2026-07-30")).toBe(
         "Couldn't log that session."
       );
     }

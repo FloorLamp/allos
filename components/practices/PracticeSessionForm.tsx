@@ -6,6 +6,7 @@ import InlineError from "@/components/InlineError";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
+import { practiceLogOutcomeText } from "@/lib/practice";
 
 // THE PRACTICE DOMAIN'S ONE FORM (#4424 ruling 1), named by
 // `LOG_MANIFEST.practice.pieces.form`. `row` absent posts the log core; `row` present
@@ -116,11 +117,7 @@ export default function PracticeSessionForm({
         return;
       }
       setError(null);
-      toast(
-        outcome.date === today
-          ? "Logged today's session"
-          : "Logged past session"
-      );
+      toast(practiceLogOutcomeText(outcome, today));
       onSaved?.({ count: outcome.count, date: outcome.date });
     } catch {
       setPending(false);
