@@ -1381,9 +1381,12 @@ export async function setDoseStatus(
 // the same "the form is an UPPER BOUND, never an instruction" rule the dose ids already
 // obey, applied to the one field that was still an unbounded instruction.
 //
-// ONE ACTION FOR THE ROW AND THE STACK, because a single-dose tap IS a stack of one:
-// both name a list of dose ids that is an UPPER BOUND on the write, never an
-// instruction. `pendingDayDoses` is re-run here against fresh state and the named ids
+// THE WHOLE-STACK TAP, and since #4424's dose leg only that: a single dose row is
+// `DoseStatusControl` posting `setDoseStatus` with the row's day, so this action no
+// longer serves "a stack of one" as its header used to say. What it still holds is the
+// bulk contract — the ids NAME an UPPER BOUND on the write, never an instruction, which
+// is what makes a stale tap on a stack of six safe.
+// `pendingDayDoses` is re-run here against fresh state and the named ids
 // are intersected with it, so a forged id, another profile's dose, a retired dose, a
 // paused item or a dose already resolved from the phone writes nothing — the
 // `logUsualRoutineCore` contract (#2458), one day further back. Every survivor still

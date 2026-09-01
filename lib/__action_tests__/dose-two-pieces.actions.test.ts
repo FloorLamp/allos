@@ -22,6 +22,7 @@ import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { shiftDateStr } from "@/lib/date";
 import { TAP_REACH } from "@/lib/log-manifest";
 import { MESSAGE_POINTER_RETENTION_DAYS } from "@/lib/notifications/message-pointers";
+import { applyIntent } from "@/lib/offline/writes";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function seedDose(profileId: number): number {
@@ -163,4 +164,52 @@ describe("a tap made against a clear control may resolve, never overwrite (#280)
     expect(flip.ok).toBe(true);
     expect(status(doseId, today(profileId))).toBe("skipped");
   });
+});
+
+// THE OFFLINE REPLAY DID NOT MOVE UNDER THE CAPTURE (#4424 review). The row control's
+// ONLINE post changed — `setDoseStatus` with the row's day, resolve-only from a clear —
+// and the worry is that a past-day take queued while offline now lands through that
+// action too, overwriting a status the person set by hand in the meantime.
+//
+// It does not. A capture enqueues `{ flow, date, payload }`, and the replay route reads
+// the QUEUE: `applyIntent` (lib/offline/writes.ts) dispatches the two dose flows to
+// `applyDoseIntent`, which calls `markDoseTaken` / `markDoseSkipped` — the resolve-only
+// twins — and never `setDoseStatus` or `setDoseStatusCore`. Asserted by running the race
+// rather than by reading the call chain, because the claim is about what the write DOES.
+describe("a queued past-day dose replays resolve-only, whoever moved the day since", () => {
+  it.each([
+    // the flow captured offline, what the person set by hand before it replayed,
+    // and whether the replay is allowed to change it
+    ["dose", "skipped", "rejected"],
+    ["skip-dose", "taken", "rejected"],
+    ["dose", "taken", "done"],
+  ] as const)(
+    "a queued %s replaying onto a day standing %s is %s",
+    async (flow, standing, disposition) => {
+      const { profileId, doseId } = actor();
+      const day = shiftDateStr(today(profileId), -1);
+
+      // The person resolves that day BY HAND, through the control's own action —
+      // which is the half of this race that this leg changed.
+      const byHand = await setDoseStatus(
+        fd({ dose_id: doseId, status: standing, from: "clear", date: day })
+      );
+      expect(byHand.ok).toBe(true);
+      expect(status(doseId, day)).toBe(standing);
+
+      const outcome = applyIntent(profileId, {
+        key: `dose-replay-${flow}-${standing}-${day}`,
+        flow,
+        date: day,
+        capturedAt: new Date().toISOString(),
+        payload: { doseId },
+      });
+
+      // THE ROW FIRST, because it is the assertion: a `rejected` disposition that had
+      // already written would be the defect wearing a correct-looking answer, and a
+      // disposition checked first hides whether the row moved.
+      expect(status(doseId, day)).toBe(standing);
+      expect(outcome.status).toBe(disposition);
+    }
+  );
 });
