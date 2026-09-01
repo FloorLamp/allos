@@ -517,7 +517,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   await expect(reloaded).toHaveCount(0);
 });
 
-test("the cross-practice day-history renders a row per practice, on one day axis", async ({
+test("the cross-practice day-history aligns its frozen labels at first paint (#3243)", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -544,17 +544,48 @@ test("the cross-practice day-history renders a row per practice, on one day axis
     insert.run(A, day(9), 25);
     insert.run(B, day(3), null);
 
-    await page.goto("/wellness");
     const history = page.getByTestId("practice-history");
-    await expect(history).toBeVisible();
     const rowA = history.locator(
       `[data-testid="day-history-row"][data-group="${keyA}"]`
     );
     const rowB = history.locator(
       `[data-testid="day-history-row"][data-group="${keyB}"]`
     );
-    await expect(rowA).toHaveCount(1);
-    await expect(rowB).toHaveCount(1);
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await page.goto("/wellness");
+      await expect(rowA).toHaveCount(1);
+      await expect(rowB).toHaveCount(1);
+      await expect(
+        history.getByTestId("day-history-visible-range")
+      ).toBeVisible();
+      const geometry = await rowA.evaluate((row) => {
+        const label = row.querySelector<HTMLElement>("[data-matrix-label]")!;
+        const text = label.querySelector<HTMLElement>("button > span")!;
+        const labelBox = label.getBoundingClientRect();
+        const partialCells = [
+          ...row.querySelectorAll<HTMLElement>("[data-matrix-col] > span"),
+        ].filter((cell) => {
+          const box = cell.getBoundingClientRect();
+          const overlap =
+            Math.min(labelBox.right, box.right) -
+            Math.max(labelBox.left, box.left);
+          return overlap > 0.5 && overlap < box.width - 0.5;
+        });
+        return {
+          label: text.textContent,
+          labelClipped:
+            text.scrollWidth > text.clientWidth + 0.5 ||
+            text.scrollHeight > text.clientHeight + 0.5,
+          partialCells: partialCells.length,
+        };
+      });
+      expect(geometry).toEqual({
+        label: A,
+        labelClipped: false,
+        partialCells: 0,
+      });
+    }
     // Rows share ONE day axis: the calendar half renders beside them.
     await expect(history.getByTestId("day-history-calendar")).toBeVisible();
     await expect(history).toContainText(

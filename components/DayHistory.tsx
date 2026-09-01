@@ -396,9 +396,27 @@ export default function DayHistory({
   // Keyed on the WINDOW only: a chip toggle or fold expansion must never yank
   // a scroll position the user has chosen.
   useEffect(() => {
-    for (const el of [matrixRef.current, calendarRef.current]) {
-      if (el) el.scrollLeft = el.scrollWidth;
+    const matrix = matrixRef.current;
+    if (matrix) {
+      // Open at the last CELL boundary, not the raw scroll maximum, so the
+      // opaque frozen label never bisects the first visible cell.
+      const labelWidth =
+        matrix
+          .querySelector<HTMLElement>("[data-matrix-label]")
+          ?.getBoundingClientRect().width ?? 0;
+      const max = Math.max(0, matrix.scrollWidth - matrix.clientWidth);
+      const snap = [
+        ...matrix.querySelectorAll<HTMLElement>(
+          '[data-matrix-row="0"][data-matrix-col]'
+        ),
+      ]
+        .map((cell) => cell.offsetLeft - labelWidth)
+        .filter((offset) => offset <= max)
+        .at(-1);
+      matrix.scrollLeft = snap ?? max;
     }
+    const calendar = calendarRef.current;
+    if (calendar) calendar.scrollLeft = calendar.scrollWidth;
     requestAnimationFrame(updateMatrixRange);
   }, [buckets.length, updateMatrixRange]);
 
@@ -1675,7 +1693,9 @@ export default function DayHistory({
                           }`}
                         />
                       )}
-                      <span className="truncate">{row.short}</span>
+                      <span className="min-w-0 whitespace-normal break-words">
+                        {row.short}
+                      </span>
                     </>
                   );
                   const rowSummary = matrixRowSummary(row);
