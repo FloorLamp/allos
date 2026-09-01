@@ -90,12 +90,12 @@ const ORIGIN_TAB: ReadonlyArray<{
   },
   {
     builder: "buildAdherencePatternFindings",
-    surface: "app/(app)/nutrition/SupplementsTab.tsx",
+    surface: "app/(app)/nutrition/ManageTab.tsx",
     symbol: "buildAdherencePatternFindings",
   },
   {
     builder: "buildDemotionSuggestionFindings",
-    surface: "app/(app)/nutrition/SupplementsTab.tsx",
+    surface: "app/(app)/nutrition/ManageTab.tsx",
     symbol: "buildDemotionSuggestionFindings",
   },
   {

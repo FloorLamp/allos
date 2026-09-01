@@ -3,7 +3,11 @@ import { type Browser, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
-import { settledClick, expandUpcomingAggregates } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  expandUpcomingAggregates,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_UPCOMING_AGG,
@@ -151,8 +155,11 @@ test.describe("Upcoming display aggregation (#1504)", () => {
     expect(rowTestId).toMatch(/^upcoming-item-dose:/);
 
     // The confirm is the ordinary row affordance — folding is a rendering decision,
-    // so the write path behind it is untouched.
-    await settledClick(page, row.getByRole("button", { name: "Mark taken" }));
+    // so the write path behind it is untouched. Addressed by the chip's own testid
+    // rather than by an action word: since #2579-D the control's visible text and its
+    // accessible name are both the DOSE (the #2858 announcement), which is the rule
+    // the offer chips beside it have shipped under all along.
+    await settledClick(page, row.getByTestId("upcoming-dose-chip"));
 
     // The row is gone AND the always-visible summary moved with it: the count the
     // collapsed state advertises is the same fact the rows are.
@@ -233,6 +240,94 @@ test.describe("Upcoming display aggregation (#1504)", () => {
     await expect(suppressed).toBeVisible();
     await suppressed.locator("summary").click();
     await expect(suppressed.getByTestId("suppressed-row")).toHaveCount(1);
+  });
+});
+
+// ── The dose fold's slot runs and their per-slot kebab (#2579-D) ──
+//
+// The expanded fold is one line per time SLOT holding tap-to-take chips, with one
+// compact kebab per run carrying per-dose suppression (owner ruling 2, 2026-08-13).
+// The fixture's six doses are all `morning`, so it is exactly one run — which is what
+// makes the two claims below checkable: the run OWNS every chip, and the kebab it
+// carries reaches each of them individually rather than the run as a whole.
+test.describe("the dose fold's slot runs (#2579-D)", () => {
+  test("expands to one slot run whose chips are the doses, each writing its own", async ({
+    browser,
+  }) => {
+    const { page, main } = await openUpcoming(browser);
+    await expandUpcomingAggregates(main, "dose");
+
+    const run = doseAggregate(main).getByTestId("upcoming-slot-run");
+    await expect(run).toHaveCount(1);
+    await expect(run).toHaveAttribute("data-slot", "Morning");
+    // The slot left the chips: it is stated once, on the header, instead of once per
+    // dose in a status column — which is the whole compaction.
+    await expect(run.getByTestId("upcoming-slot-label")).toHaveText("Morning");
+    await expect(
+      run.locator('[data-testid^="upcoming-item-dose:"]')
+    ).toHaveCount(5);
+
+    // The chip states what the header does not: the item's name and its amount.
+    const chip = doseRow(main, UPCOMING_AGG_SUPPLEMENT);
+    await expect(chip).toContainText("1 tab");
+    await expect(chip).not.toContainText("Morning");
+
+    // THE WRITE IS THE DOMAIN'S SHARED CONTROL, not a chip-shaped copy of it: the tap
+    // posts the same markTaken and answers with the same typed outcome the dashboard
+    // and household confirms do. This fixture's name is not abbreviated, so the #2858
+    // announcement adds nothing and the accessible name IS the visible text — the same
+    // rule, and now the same composer, as the offer chips below (their abbreviated
+    // case is pinned in e2e/intake-short-labels.mobile.spec.ts).
+    const control = chip.getByTestId("upcoming-dose-chip");
+    await expect(control).toHaveAttribute(
+      "aria-label",
+      `${UPCOMING_AGG_SUPPLEMENT} · 1 tab`
+    );
+    await settledClick(page, control);
+
+    // The chip is gone AND the always-visible summary moved with it — the count the
+    // collapsed state advertises is the same fact the chips are.
+    await expect(chip).toHaveCount(0, { timeout: RERENDER_MS });
+    await expect(doseSummary(main)).toContainText(
+      "4 doses left · 2 of 6 taken",
+      {
+        timeout: RERENDER_MS,
+      }
+    );
+  });
+
+  test("the run's ONE kebab snoozes a single dose, not the run", async ({
+    browser,
+  }) => {
+    const { page, main } = await openUpcoming(browser);
+    await expandUpcomingAggregates(main, "dose");
+
+    const run = doseAggregate(main).getByTestId("upcoming-slot-run");
+    // Exactly one trigger for the whole run — the chips stay clean, which is the
+    // trade the ruling made, and #1446's "one ⋯ per unit" still holds over it.
+    await expect(run.getByTestId("overflow-menu-trigger")).toHaveCount(1);
+
+    const chip = doseRow(main, UPCOMING_AGG_SUPPLEMENT);
+    await expect(chip).toBeVisible();
+    await hydratedClick(page, run.getByTestId("overflow-menu-trigger"));
+    const menu = page.getByRole("menu");
+    // The menu names each dose it can act on — five subjects behind one kebab needs
+    // the labels or every "1 week" answers to nothing.
+    await expect(menu).toContainText(UPCOMING_AGG_SUPPLEMENT);
+    // Per-DOSE suppression: the section that belongs to THIS dose, and its snooze.
+    await menu
+      .locator(`[data-subject="${UPCOMING_AGG_SUPPLEMENT}"]`)
+      .getByRole("menuitem", { name: "1 week" })
+      .click();
+
+    // Exactly that dose left; the rest of the run stayed.
+    await expect(chip).toHaveCount(0, { timeout: RERENDER_MS });
+    await expect(
+      doseAggregate(main).locator('[data-testid^="upcoming-item-dose:"]')
+    ).toHaveCount(4, { timeout: RERENDER_MS });
+    await expect(
+      doseAggregate(main).getByTestId("upcoming-slot-run")
+    ).toHaveCount(1);
   });
 });
 

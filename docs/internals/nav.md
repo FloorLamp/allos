@@ -83,9 +83,9 @@ the daily set and Search for lookups, and it was the nav's only non-deterministi
 element: a system that quietly changes is indistinguishable from a bug, and that
 argument applies to chrome at least as hard as to a dashboard.
 
-What survives in `lib/recent-pages.ts` is the route→name registry, which answers
-a different question — _what is this route called_ — and is load-bearing for the
-dashboard's doors.
+Two things survive in `lib/recent-pages.ts`: the route→name registry (#1416),
+which answers _what is this route called_ and is load-bearing for the dashboard's
+doors, and the retired visit-key tombstone that clears upgraded browsers (#4653).
 
 **Position is earned by frequency, but the ordering is fixed when it is set**
 (#1042), and re-ranking is an owner call recorded on an issue, never a runtime
@@ -142,7 +142,7 @@ am I acting as?" and opens the panel in place.
 | The nav registry, the fold, and the group's a11y  | `components/Nav.tsx`            |
 | Which row is lit, on both surfaces                | `lib/nav.ts`                    |
 | Which rows a profile is eligible for              | `lib/nav-relevance.ts`          |
-| The route→name registry                           | `lib/recent-pages.ts`           |
+| Route names and tally tombstone (#1416; #4653)    | `lib/recent-pages.ts`           |
 | The sticky host for a page-owned strip            | `components/ShellChrome.tsx`    |
 
 ## Related

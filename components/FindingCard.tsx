@@ -1,25 +1,49 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useOptimistic, type ReactNode } from "react";
 import { IconAlertTriangle, IconX } from "@tabler/icons-react";
 import { NOTICE_TONE, type NoticeTone } from "@/components/Notice";
 import IconButton from "@/components/IconButton";
+import { useToast } from "@/components/Toast";
 import { dismissIntakeFinding } from "@/app/(app)/nutrition/intake-actions";
 
 // Inline dismiss control for the page's finding cards (#435): posts the finding's
 // dedupeKey to the namespace-guarded dismissIntakeFinding action, which hides it
 // through the shared findings-suppression bus. One helper so every warning block
 // (UL, RDA, interaction, PGx) and the keep-apart bucket banner dismiss identically.
+//
+// IT ANSWERS THE REFUSAL NOW (#2641 gap 2). `dismissIntakeFinding` returns a typed
+// `FormResult` — it refuses any dedupeKey outside the intake namespaces — and the
+// inline `"use server"` wrapper this used to carry threw that answer away, so a
+// refused dismiss re-rendered the page unchanged, which is exactly what a lost tap
+// looks like. Never confirm-unconditionally, and never REFUSE silently either (the
+// inline-action rule, #2133).
+//
+// `onTap` is how a card that OWNS the thing being dismissed paints the tap: it is
+// called inside this form action's transition, so an optimistic hide set there
+// lives exactly as long as the write and falls away on a refusal.
 export function DismissFindingButton({
   dedupeKey,
   label,
+  onTap,
 }: {
   dedupeKey: string;
   label: string;
+  onTap?: () => void;
 }) {
+  const toast = useToast();
   return (
     <form
       action={async (fd) => {
-        "use server";
-        await dismissIntakeFinding(fd);
+        onTap?.();
+        let result;
+        try {
+          result = await dismissIntakeFinding(fd);
+        } catch {
+          toast("Couldn't dismiss that. Try again.", { tone: "error" });
+          return;
+        }
+        if (!result.ok) toast(result.error, { tone: "error" });
       }}
     >
       <input type="hidden" name="dedupe_key" value={dedupeKey} />
@@ -114,6 +138,13 @@ export function FindingCard({
   dismissable?: boolean;
 }) {
   const t = TEXT[tone];
+  // THE CARD GOES AWAY ON THE TAP (#2641 gap 2), and can only go away honestly: the
+  // hidden state is `useOptimistic` over this render, so it lives exactly as long as
+  // the dismiss transition. A refusal — a dedupeKey outside the intake namespaces —
+  // toasts its reason AND the card comes back, because the server render that
+  // replaces it still contains the finding.
+  const [dismissed, showDismissed] = useOptimistic(false);
+  if (dismissed) return null;
   return (
     <div
       data-testid={testid}
@@ -138,7 +169,11 @@ export function FindingCard({
           <p className="font-semibold">{title}</p>
         </div>
         {dismissable && (
-          <DismissFindingButton dedupeKey={dismissKey} label={dismissLabel} />
+          <DismissFindingButton
+            dedupeKey={dismissKey}
+            label={dismissLabel}
+            onTap={() => showDismissed(true)}
+          />
         )}
       </div>
       <p className={`mt-0.5 ${t.detail}`}>{detail}</p>

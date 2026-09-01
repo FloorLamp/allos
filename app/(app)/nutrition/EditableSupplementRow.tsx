@@ -8,7 +8,6 @@ import type {
   IntakeConditionOption,
 } from "@/lib/types";
 import type { IntakeItemIngredient } from "@/lib/intake-ingredients";
-import IngredientsDisclosure from "@/components/intake/IngredientsDisclosure";
 import type { IntakeItemPurpose } from "@/lib/intake-purposes";
 import type { InteractionItem } from "@/lib/drug-interactions";
 import type { PgxVariantInput } from "@/lib/pgx";
@@ -17,8 +16,8 @@ import {
   FOOD_TIMING_HINTS,
   OBLIGATION_LABELS,
   obligationClass,
+  stackSchedule,
 } from "@/lib/intake-schedule";
-import { medicationMetaLine } from "@/lib/medication-history";
 import type { AdherenceDot } from "@/lib/intake-adherence";
 import type { DoseRate } from "@/lib/refill";
 import {
@@ -31,7 +30,6 @@ import DoseStatusControl from "@/components/DoseStatusControl";
 import IntakeItemForm from "@/components/IntakeItemForm";
 import ModalShell from "@/components/ModalShell";
 import FoodGuidance from "@/components/FoodGuidance";
-import NotesText from "@/components/NotesText";
 import DoseHistoryPanel, {
   type DoseHistoryEntry,
 } from "@/components/intake/DoseHistoryPanel";
@@ -49,9 +47,20 @@ import {
 } from "./intake-actions";
 import { isOnDemand } from "@/lib/intake-schedule";
 
-// One scheduled dose of a supplement, as it appears in a time bucket. A
-// supplement with multiple doses renders one of these per dose. Editing opens
-// the full supplement form (all its doses).
+// ONE ROW OF THE MANAGED STACK (#3987 phase 2). A supplement with two doses renders
+// two rows, because two doses ARE two things to manage — different amount, different
+// slot, different calendar.
+//
+// It is a MANAGEMENT row and no longer a schedule row: the bucket heading that used to
+// state its time went with the daily schedule in phase 1, so the row says its own
+// schedule now ("Evening · Every other day", "Anytime" for an on-demand item). It says
+// it in ONE line — what the item is, what it costs you today, and what it is running
+// out of. The composition, the notes and the whole edit surface are behind ⋯ → Edit,
+// where they were always written; the dose history is behind ⋯ → Dose history. What
+// stays inline is the safety layer — the food-timing hint and the food-drug guidance,
+// advice about taking the thing that must never need a tap to find (#2385) — and the
+// adherence line, which is SILENT unless the misses are noteworthy and is the visible
+// reason an obligation-demotion suggestion is being offered below.
 export default function EditableSupplementRow({
   supplement,
   dose,
@@ -138,21 +147,15 @@ export default function EditableSupplementRow({
   const subline = [s.brand, s.product].filter(Boolean).join(" · ");
   const foodHint = FOOD_TIMING_HINTS[dose.food_timing];
   const multi = doses.length > 1;
-
-  // Recent adherence (last 14 days) and the refill "≈N days left" badge are the
-  // shared AdherenceSummaryLine / RefillBadge formatters (#313/#38/#301), rendered
-  // identically here and on the medication card (#747 parity).
-
-  // Medication identity: the stricter affordances (Rx/PRN/escalate
-  // badges above, prescriber/pharmacy/Rx line below).
-  const isMed = s.kind === "medication";
-  const medMeta = isMed ? medicationMetaLine(s) : "";
+  const schedule = stackSchedule(s, dose).label;
+  // The refill "≈N days left" badge is the shared RefillBadge formatter (#38/#301),
+  // rendered identically here and on the medication card (#747 parity).
 
   return (
     <>
       <div
         data-testid="supplement-row"
-        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg! px-3! py-3! shadow-none! ${
+        className={`card grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-3! py-3! shadow-none! ${
           !s.active ? "opacity-50" : ""
         } ${menuOpen ? "relative z-20" : ""}`}
       >
@@ -199,16 +202,6 @@ export default function EditableSupplementRow({
                 refillRate={refillRate}
                 doseCount={doses.length}
               />
-            )}
-            {isMed && (
-              <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
-                Rx
-              </span>
-            )}
-            {isMed && isOnDemand(s) && (
-              <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-                PRN
-              </span>
             )}
             {s.critical === 1 && (
               <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
@@ -327,42 +320,35 @@ export default function EditableSupplementRow({
           data-testid="supplement-row-details"
           className="col-span-2 col-start-1 row-start-2 min-w-0 md:col-span-1"
         >
-          {(dose.amount || subline) && (
-            <div
-              data-testid="supplement-dose-brand"
-              className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400"
-            >
-              {dose.amount && <span>{dose.amount}</span>}
-              {subline && (
-                <>
-                  {dose.amount && <span aria-hidden="true">·</span>}
-                  <span>{subline}</span>
-                </>
-              )}
-            </div>
-          )}
+          {/* THE MANAGEMENT LINE: what it costs, when it is taken, what it is. The
+            schedule is unconditional — a row that cannot say when it is taken is
+            not a stack row — so the composition ("What's in this", #2856) and the
+            item notes moved into ⋯ → Edit, which is where both were written and
+            where the numbers behind a UL warning are still inspectable. */}
+          <div
+            data-testid="supplement-dose-brand"
+            className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400"
+          >
+            {[dose.amount, schedule, subline]
+              .filter((part): part is string => !!part)
+              .map((part, index) => (
+                <span key={part} className="flex items-center gap-2">
+                  {index > 0 && <span aria-hidden="true">·</span>}
+                  <span
+                    data-testid={
+                      part === schedule ? "supplement-row-schedule" : undefined
+                    }
+                  >
+                    {part}
+                  </span>
+                </span>
+              ))}
+          </div>
           {foodHint && (
             <div className="mt-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
               {foodHint}
             </div>
           )}
-          {medMeta && (
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {medMeta}
-            </div>
-          )}
-          {/* What's in this (#2856): the label composition, shown where the person
-            entered it so the numbers behind an upper-limit warning or an interaction
-            notice are inspectable rather than mysterious. */}
-          <IngredientsDisclosure
-            rows={ingredients}
-            testId="supplement-ingredients"
-          />
-          <NotesText
-            as="div"
-            notes={s.notes}
-            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-          />
           {/* Food–drug guidance (issue #154): per-item food note for a matching
             item (e.g. dairy/minerals × iron-binding drugs). */}
           <FoodGuidance
@@ -393,7 +379,7 @@ export default function EditableSupplementRow({
                 time_of_day: d.time_of_day,
               }))}
               asNeeded={isOnDemand(s)}
-              courseBound={isMed}
+              courseBound={false}
               history={doseHistory}
               strip={strip}
               maxDate={historyMaxDate}

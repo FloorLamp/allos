@@ -246,15 +246,19 @@ export default function IntakeItemForm({
     initialSupply ? [initialSupply] : []
   );
   useEffect(() => {
-    if (s) return;
     let live = true;
     void listSharedSupplyOptions().then((options) => {
-      if (live) setBottles(options);
+      const offered = bottlesForKindDoor(options, lockedKind);
+      const linkedId = s?.supply_id ?? initialSupply?.id;
+      const linked = options.find((option) => option.id === linkedId);
+      if (linked && !offered.some((option) => option.id === linked.id))
+        offered.unshift(linked);
+      if (live) setBottles(offered);
     });
     return () => {
       live = false;
     };
-  }, [s]);
+  }, [s, initialSupply, lockedKind]);
   const rx = useIntakeRxcui(s);
 
   const kind = lockedKind;
@@ -273,7 +277,7 @@ export default function IntakeItemForm({
     s?.condition ?? "daily"
   );
   const [obligation, setObligationState] = useState<IntakeObligation>(
-    s?.obligation ?? (lockedKind === "supplement" ? "should" : "must")
+    s?.obligation ?? affordances.defaultObligation
   );
   const [critical, setCritical] = useState(s?.critical === 1);
   const [escalateAfterMin, setEscalateAfterMin] = useState(
@@ -311,7 +315,11 @@ export default function IntakeItemForm({
   );
   const [qtyPerDose, setQtyPerDose] = useState(String(s?.qty_per_dose ?? 1));
   const [supplyId, setSupplyId] = useState(
-    initialSupply ? String(initialSupply.id) : ""
+    s?.supply_id != null
+      ? String(s.supply_id)
+      : initialSupply
+        ? String(initialSupply.id)
+        : ""
   );
   const [supplyLabel, setSupplyLabel] = useState<string | null>(
     s?.supply_name ?? initialSupply?.name ?? null
@@ -437,7 +445,7 @@ export default function IntakeItemForm({
   // One call site each for the two suggestion lists #846 found teaching wrong.
   const dosageOptions = useMemo(
     () =>
-      dosageOptionsFor(kind, {
+      dosageOptionsFor(affordances.dosageSource, {
         otcStrengths: prnDefaults
           ? [
               ...new Set([
@@ -448,9 +456,9 @@ export default function IntakeItemForm({
           : [],
         catalogDosages: catalogEntry?.dosages ?? [],
       }),
-    [kind, catalogEntry, prnDefaults]
+    [affordances.dosageSource, catalogEntry, prnDefaults]
   );
-  const brandOptions = brandOptionsFor(kind, {
+  const brandOptions = brandOptionsFor(affordances.catalogSource, {
     medicationBrands: brandNarrowing ?? catalogOptions.medicationBrands,
     supplementBrands: SUPPLEMENT_BRANDS,
   });
@@ -546,10 +554,7 @@ export default function IntakeItemForm({
     // A BOTTLE row. It seeds the product facts the pool is authoritative for, rides as
     // supply_id on this item's own save. The locked door filters the bottle choices
     // to its own kind before this point.
-    const bottle = bottleForOptionLabel(
-      bottlesForKindDoor(bottles, lockedKind),
-      picked
-    );
+    const bottle = bottleForOptionLabel(bottles, picked);
     const name = bottle ? itemSeedFromPool(bottle).name : picked;
     if (bottle) {
       onPickSupply(bottle);
@@ -678,9 +683,15 @@ export default function IntakeItemForm({
           : d
       )
     );
+    onLinkSupply(supply);
+    seededRef.current = seed;
+  }
+
+  function onLinkSupply(supply: SupplyOption | null): void {
     setSupplyId(supply ? String(supply.id) : "");
     setSupplyLabel(supply?.name ?? null);
-    seededRef.current = seed;
+    if (supply && !bottles.some((option) => option.id === supply.id))
+      setBottles([...bottles, supply]);
   }
 
   function selectPediatricBand(band: PediatricBand) {
@@ -955,7 +966,7 @@ export default function IntakeItemForm({
     setProduct("");
     setStack("");
     setCondition("daily");
-    setObligationState(lockedKind === "supplement" ? "should" : "must");
+    setObligationState(affordances.defaultObligation);
     setCritical(false);
     setEscalateAfterMin("");
     setEscalateChatId("");
@@ -999,14 +1010,14 @@ export default function IntakeItemForm({
   // holds the rule and the no-sibling ruling.
   const nameOptions = useMemo(
     () => [
-      ...bottlesForKindDoor(bottles, lockedKind).map(bottleOptionLabel),
-      ...(lockedKind === "supplement"
-        ? catalogOptions.supplements
-        : lockedKind === "medication"
-          ? catalogOptions.medications
-          : [...catalogOptions.medications, ...catalogOptions.supplements]),
+      ...(s ? [] : bottles.map(bottleOptionLabel)),
+      ...catalogOptions[
+        affordances.catalogSource === "supplement"
+          ? "supplements"
+          : "medications"
+      ],
     ],
-    [bottles, lockedKind, catalogOptions]
+    [s, bottles, catalogOptions, affordances.catalogSource]
   );
 
   const ingredientNames = useMemo(
@@ -1349,7 +1360,7 @@ export default function IntakeItemForm({
               </div>
             )}
             <CadenceEditor value={cadence} onChange={setCadence} />
-            {obligation === "may" && (
+            {affordances.redose && obligation === "may" && (
               <div
                 data-testid="redose-block"
                 className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
@@ -1541,7 +1552,7 @@ export default function IntakeItemForm({
         );
 
       case "prescription":
-        return (
+        return affordances.prescription ? (
           <div className="sm:col-span-2">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input
@@ -1610,10 +1621,10 @@ export default function IntakeItemForm({
               </div>
             )}
           </div>
-        );
+        ) : null;
 
       case "indication":
-        return (
+        return affordances.indication ? (
           <div className="sm:col-span-2">
             <label className="label" htmlFor={`med-indication-${fid}`}>
               For condition
@@ -1633,7 +1644,7 @@ export default function IntakeItemForm({
               ))}
             </select>
           </div>
-        );
+        ) : null;
 
       case "identity":
         return (
@@ -1651,7 +1662,7 @@ export default function IntakeItemForm({
                 placeholder={affordances.brandPlaceholder}
               />
             </div>
-            {!isMed && (
+            {affordances.stack && (
               <>
                 <div>
                   <label className="label" htmlFor={`intake-product-${fid}`}>
@@ -1696,9 +1707,10 @@ export default function IntakeItemForm({
           <RefillTracking
             fid={fid}
             item={s}
-            kind={lockedKind}
-            initialSupply={initialSupply}
-            onPickSupply={onPickSupply}
+            bottles={bottles}
+            supplyId={supplyId}
+            supplyName={supplyLabel}
+            onPickSupply={s ? onLinkSupply : onPickSupply}
             quantityOnHand={quantityOnHand}
             setQuantityOnHand={setQuantityOnHand}
             qtyPerDose={qtyPerDose}
@@ -1757,7 +1769,7 @@ export default function IntakeItemForm({
         );
 
       case "composition":
-        return (
+        return affordances.composition ? (
           <div className="sm:col-span-2">
             {ingredients.length === 0 ? (
               <button
@@ -1776,7 +1788,7 @@ export default function IntakeItemForm({
               />
             )}
           </div>
-        );
+        ) : null;
 
       case "purpose":
         return (

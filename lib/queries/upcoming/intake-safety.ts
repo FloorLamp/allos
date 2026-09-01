@@ -241,14 +241,21 @@ function doseRowToItem({
   dose,
   shortLabel,
 }: ScheduledDoseRow): UpcomingItem & { shortLabel: string } {
-  const detail = [
-    item.kind === "medication" ? "Medication" : null,
+  // The dose's AMOUNT, as its own fragment, because two readers want it: the row's
+  // `detail` line ("Medication · 500 mg") and the slot-run CHIP, whose text is the
+  // item's name plus this (#2579-D). Composed once, here, so neither can be recovered
+  // by slicing the other.
+  const amount =
     item.kind === "medication"
       ? formatMedicationDoseProduct(dose.amount, item.product)
-      : dose.amount,
-  ]
+      : dose.amount;
+  const detail = [item.kind === "medication" ? "Medication" : null, amount]
     .filter(Boolean)
     .join(" · ");
+  // The two fragments the dose row and the dose chip are both composed FROM: the time
+  // bucket (the chip run's header) and the cadence qualifier (#1602).
+  const slot = timeBucket(dose.time_of_day);
+  const cadence = cadenceLabel(item);
   // A situational item is due specifically BECAUSE its situation is active (the
   // gate isDueOn just applied) — carry that as a structured reason (issue #656
   // item 5) so the same "due because Illness is active" explanation the medicine
@@ -275,9 +282,12 @@ function doseRowToItem({
     // a row that appears one day in seven must SAY so, or it reads as an ordinary
     // daily dose the user is somehow only now seeing (#1602). One formatter
     // (cadenceLabel) so the row, the digest and the reminder phrase it identically.
-    dueText: [timeBucket(dose.time_of_day), cadenceLabel(item)]
-      .filter(Boolean)
-      .join(" · "),
+    dueText: [slot, cadence].filter(Boolean).join(" · "),
+    slot,
+    // The chip form of the same facts (#2579-D): the slot is the run HEADER the chip
+    // sits under, so the chip states what the header does not — the amount, and the
+    // cadence when the row has one.
+    offerHint: [amount, cadence].filter(Boolean).join(" · ") || null,
     // Shared dose-day sort key (bucket → priority → stack → name) so morning
     // and bedtime doses no longer interleave alphabetically within the band —
     // the SAME ordering the intake surface's due-today section uses (#297).

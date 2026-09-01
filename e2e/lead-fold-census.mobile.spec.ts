@@ -152,7 +152,7 @@ async function renderedLines(
   }, testId);
 }
 
-test("(1)(2) every intro leads in at most two rendered lines at 390px", async ({
+test("(1)(2)(3) every intro leads in two lines and the probe catches its known wall", async ({
   page,
 }) => {
   test.slow();
@@ -216,6 +216,28 @@ test("(1)(2) every intro leads in at most two rendered lines at 390px", async ({
       ).toBeGreaterThan(20);
     }
 
+    if (route.path === "/integrations/health-connect") {
+      // (3) PROOF THE CENSUS CAN FAIL. Put back the exact long-form shape that
+      // #3490 removed, in the live element the route census already measured.
+      // The next navigation discards the forged DOM, so no cleanup or second
+      // browser test is needed.
+      await lead.evaluate((el) => {
+        el.textContent =
+          "FORGED BY A SPEC on purpose (not shipped copy): Sync weight, body fat, " +
+          "resting heart rate, steps, heart rate, and workouts from your Android " +
+          "phone. An exporter app on the phone pushes Health Connect data to this " +
+          "app on a schedule. It's also the supported way to bring in nutrition: " +
+          "food trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio write " +
+          "your logged macros to Health Connect, so calories and protein/carbs/fat " +
+          "flow through here and chart on Trends → Nutrition → Macros.";
+      });
+      const forged = await renderedLines(page, "integration-intro-lead");
+      expect(
+        forged.lines,
+        "the census did not see the known 72-word wall grow the lead"
+      ).toBeGreaterThanOrEqual(6);
+    }
+
     measured.push(route.path);
   }
 
@@ -227,45 +249,6 @@ test("(1)(2) every intro leads in at most two rendered lines at 390px", async ({
       "stopped rendering its intro, or a new adopter nobody added here"
   ).toEqual(ROUTES.map((r) => r.path));
   expect(measured).toHaveLength(EXPECTED_INTROS);
-});
-
-test("(3) the census catches a synthetic wall planted in the live DOM", async ({
-  page,
-}) => {
-  test.slow();
-  await page.goto("/integrations/health-connect");
-  await expect(page.getByRole("main")).toBeVisible();
-  await expect(page.getByTestId("integration-intro-lead")).toBeVisible();
-
-  const clean = await renderedLines(page, "integration-intro-lead");
-  expect(clean.lines).toBeLessThanOrEqual(MAX_LEAD_LINES);
-
-  // The 72-word blurb this issue pair was filed about, put back into the exact
-  // element it used to occupy. FORGED BY A SPEC on purpose — this text has not
-  // shipped since #3490. If the measurement reads the wrong box, or a ceiling was
-  // quietly widened, this is where it shows, and it is the only assertion in this
-  // file that can fail because the probe stopped working rather than the app.
-  await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="integration-intro-lead"]');
-    if (!el) throw new Error("no lead to forge into");
-    el.textContent =
-      "FORGED BY A SPEC on purpose (not shipped copy): Sync weight, body fat, " +
-      "resting heart rate, steps, heart rate, and workouts from your Android " +
-      "phone. An exporter app on the phone pushes Health Connect data to this " +
-      "app on a schedule. It's also the supported way to bring in nutrition: " +
-      "food trackers like MyFitnessPal, Cronometer, Lose It!, and Yazio write " +
-      "your logged macros to Health Connect, so calories and protein/carbs/fat " +
-      "flow through here and chart on Trends → Nutrition → Macros.";
-  });
-
-  const forged = await renderedLines(page, "integration-intro-lead");
-  expect(
-    forged.lines,
-    "the census did not see a 72-word paragraph grow the intro — the measurement " +
-      "is reading something other than the lead's rendered box"
-  ).toBeGreaterThan(MAX_LEAD_LINES);
-  // And it is the SIZE of the miss that #3490 reported: seven lines, not three.
-  expect(forged.lines).toBeGreaterThanOrEqual(6);
 });
 
 /**

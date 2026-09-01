@@ -19,6 +19,7 @@ import {
   medSafetyAggregateLabel,
   pageRowDetail,
   planBandRender,
+  planSlotRuns,
   sumDoseProgress,
   type BandNode,
 } from "../upcoming-aggregate";
@@ -407,6 +408,74 @@ describe("band scoping", () => {
     expect(
       todayNode.node === "aggregate" && todayNode.items.map((i) => i.key)
     ).toEqual(["dose:4", "dose:5", "dose:6"]);
+  });
+});
+
+describe("the dose fold's slot runs (#2579-D)", () => {
+  const runsOf = (slots: (string | undefined)[]) =>
+    planSlotRuns(slots.map((slot, n) => dose(n + 1, { slot }))).map((r) => [
+      r.slot,
+      r.items.map((i) => i.key),
+    ]);
+
+  // The runs are the boundaries of an ALREADY-SORTED list, so the cases are about
+  // where a boundary falls, not about grouping: an order the comparator would never
+  // produce must come back as the two runs it literally is, because a header that
+  // silently absorbed a distant row would describe rows that are not under it.
+  it.each([
+    {
+      why: "one run per contiguous bucket, in arrival order",
+      slots: ["Morning", "Morning", "Evening", "Before sleep"],
+      expected: [
+        ["Morning", ["dose:1", "dose:2"]],
+        ["Evening", ["dose:3"]],
+        ["Before sleep", ["dose:4"]],
+      ],
+    },
+    {
+      why: "a repeated bucket that is NOT contiguous stays two runs — never re-sorted",
+      slots: ["Morning", "Evening", "Morning"],
+      expected: [
+        ["Morning", ["dose:1"]],
+        ["Evening", ["dose:2"]],
+        ["Morning", ["dose:3"]],
+      ],
+    },
+    {
+      why: "a dose with no slot opens its own unlabelled run rather than vanishing",
+      slots: ["Morning", undefined],
+      expected: [
+        ["Morning", ["dose:1"]],
+        ["", ["dose:2"]],
+      ],
+    },
+    { why: "nothing folded, nothing drawn", slots: [], expected: [] },
+  ])("$why", ({ slots, expected }) => {
+    expect(runsOf(slots)).toEqual(expected);
+  });
+
+  it("hands back the SAME item objects — a run is a render plan, not a copy", () => {
+    const a = dose(1, { slot: "Morning", writeTarget: "item" });
+    const b = dose(2, { slot: "Morning" });
+    const runs = planSlotRuns([a, b]);
+    expect(runs[0].items[0]).toBe(a);
+    expect(runs[0].items[1]).toBe(b);
+  });
+
+  // The plan is only trustworthy on the order the band actually produces, so pin the
+  // composition: what planBandRender folds is exactly what planSlotRuns divides.
+  it("divides exactly what the dose fold folded", () => {
+    const items = [
+      dose(1, { slot: "Morning" }),
+      dose(2, { slot: "Evening" }),
+      dose(3, { slot: "Evening" }),
+    ];
+    const node = planBandRender(items)[0];
+    expect(node.node).toBe("aggregate");
+    const folded = node.node === "aggregate" ? node.items : [];
+    expect(
+      planSlotRuns(folded).flatMap((r) => r.items.map((i) => i.key))
+    ).toEqual(items.map((i) => i.key));
   });
 });
 

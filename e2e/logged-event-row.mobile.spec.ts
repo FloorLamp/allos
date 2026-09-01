@@ -722,14 +722,14 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
     // now, so the claim is POSITIONAL and is asserted that way: the door is above
     // every supplement row it is a door to, and above where the rail begins.
     //
-    // WHY NOT "inside the first 932px". Measured 2026-08-27 at 430px on the e2e
-    // seed: this page renders ~1500px of intake findings (ul-warnings,
-    // rda-adequacy, demotion-suggestions, interaction warnings) before the schedule
-    // begins at y=1619, so nothing in the schedule is inside the first viewport for
-    // this profile whatever the door does. The move is still the whole fix —
-    // y=3253 in the rail, y=1639 in the day header — and a viewport-absolute
-    // assertion would be a claim about the FINDINGS stack, which #3671 does not
-    // touch.
+    // AND NOW ALSO "inside the first screen", which it could not be before. This
+    // comment used to explain why a viewport-absolute assertion was impossible here:
+    // the page rendered ~1500px of intake findings (ul-warnings, rda-adequacy,
+    // demotion-suggestions, interaction warnings) before the schedule began, so
+    // nothing in it was inside the first viewport whatever the door did — the #3892
+    // measurement. #3987 phase 2 moved those findings BELOW the stack (they are all
+    // still on the page, at full height, undismissed — #2385), so the claim the door
+    // could not make is now the one this page can be held to.
     await page.goto("/nutrition?tab=supplements");
     const doseDoor = page.getByTestId("dose-ledger-link");
     await expect(doseDoor).toBeVisible();
@@ -758,6 +758,26 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
         `first supplement row at ${geometry.firstRow}px`
     ).toBeLessThan(geometry.firstRow!);
     expect(geometry.doorBottom).toBeLessThan(geometry.rail!);
+
+    // THE MANAGE MEASUREMENT (#3987's chrome gate, the analogue of the Day ledger's
+    // in day-ledger.spec.ts). The redesign's goal is LESS, so less is measured: the y
+    // of the FIRST STACK ROW at 430x932, reported in the PR body. Scoped to
+    // `supplement-stack` and not to the page, so a Held or Paused row — which fold
+    // BELOW and are allowed to be far down — can never satisfy it.
+    const firstStackRow = page
+      .getByTestId("supplement-stack")
+      .getByTestId("supplement-row")
+      .first(); // first-ok: the topmost stack row IS the measurement — order is the point
+    const stackBox = await firstStackRow.boundingBox();
+    expect(stackBox).not.toBeNull();
+    // eslint-disable-next-line no-console
+    console.log(`MANAGE_FIRST_STACK_ROW_Y=${Math.round(stackBox!.y)}`);
+    // A ceiling, not the number: the gate is that the chrome above the stack cannot
+    // grow back. 520px is the SAME ceiling the Day ledger's first row is held to —
+    // roughly half the 932px viewport — because the two tabs make the same promise
+    // and one number is easier to keep honest than two.
+    expect(stackBox!.y).toBeLessThan(520);
+
     const doseShape = await doseDoor.getAttribute("class");
 
     // FOOD: the same door, not a bare text link in a row of its own.

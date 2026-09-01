@@ -405,7 +405,10 @@ export async function handlePracticeDoneTap(
     messageKindIsPracticeNudge(cq.data) ? "telegram-nudge" : "telegram-command",
     notifyMessageId
   );
-  await answerCallbackQuery(cq.id, practiceLogOutcomeText(outcome));
+  await answerCallbackQuery(
+    cq.id,
+    practiceLogOutcomeText(outcome, today(profileId))
+  );
 
   const wrote = outcome.kind === "logged" ? profileId : undefined;
 

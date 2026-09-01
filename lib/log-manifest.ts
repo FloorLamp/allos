@@ -387,20 +387,32 @@ export const LOG_MANIFEST = {
       // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
-      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. It lists what is
-      // still OWED, so the row is unmounted by its own write: the tri-state's receipt
-      // (#2654) cannot exist there and the answer has to be a toast carrying the
-      // inverse (#2642). Folding it in would delete a documented undo with no ruling.
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Three mounts, on
+      // two surfaces (`grep -rn "<DoseConfirmButton" --include=*.tsx`): the dashboard
+      // attention row, and — since #2579-D — both of Upcoming's, its banded due-dose
+      // row and the `DoseChip` its dose fold and its "Available to log" run share.
       //
-      // IT IS DOWN TO ONE MOUNT — the dashboard attention row — AND THAT IS A RULING,
-      // NOT A DECAY (#1463 §1, owner-approved 2026-07-25). The household card's due
-      // row was the second, and the card is a summary now rather than a second action
-      // surface: Upcoming multi-view already owns cross-profile in-app dose confirms
-      // through its subject-gated "Mark taken" over the same `markDoseTaken`, so the
-      // capability CEDED rather than went. This cell's earlier note that the two
-      // mounts were "deliberate and kept behind the one shared component" was the
-      // ONE-COMPONENT requirement being stated, never a promise that both mounts
-      // were permanent — mount count is not the test here either.
+      // THE COUNT HAS MOVED TWICE AND BOTH MOVES WERE RULINGS. This cell said TWO and
+      // named only the dashboard row and the household card's; #2579-D added Upcoming's
+      // pair and #4696 corrected the cell to four on three. #1463 §1 then removed the
+      // household card's (owner-approved 2026-07-25): that card is a summary now rather
+      // than a second action surface, and Upcoming multi-view already owns cross-profile
+      // in-app dose confirms through its subject-gated "Mark taken" over the same
+      // `markDoseTaken` — so the capability CEDED rather than went. The earlier note
+      // that the two mounts were "deliberate and kept behind the one shared component"
+      // was the ONE-COMPONENT requirement being stated, never a promise that any
+      // particular mount was permanent. Mount count is not the test here either.
+      //
+      // WHAT UNITES THEM IS THAT THE TRI-STATE'S RECEIPT (#2654) HAS NOWHERE TO LIVE,
+      // and #2579-D widened the reason rather than breaking it — the household removal
+      // leaves it intact. On the first two the row lists what is still OWED, so the
+      // write UNMOUNTS it. On Upcoming's offer chips it does not — a `may` item is still
+      // offered after it is logged — but an offer has no per-day STATUS to state, so a
+      // control whose three states are taken/skipped/cleared for a scheduled day has
+      // nothing to say about it. Either way the answer has to be a toast carrying the
+      // inverse (#2642), which is this component. Folding it into the tri-state would
+      // delete a documented undo with no ruling, and would put a status on a row that
+      // has none.
       form: { kind: "shared", component: "HistoricalDoseForm" },
       rowControl: { kind: "shared", component: "DoseStatusControl" },
     },
