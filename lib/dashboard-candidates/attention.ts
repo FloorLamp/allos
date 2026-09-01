@@ -40,6 +40,8 @@ function attentionObligation(
   setup: boolean
 ): DashboardObligation {
   if (item.obligation) return item.obligation;
+  // An available item is an offer, never owed: its null date or open window cannot
+  // promote it into Now without a separate user/context signal (#3082).
   if (setup || item.domain === "available") return "may";
   // A due date says when a fact matters, not that the source declared it a must.
   // Non-intake attention models do not carry the three-level obligation field.
