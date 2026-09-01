@@ -16,7 +16,8 @@ import { openLogSheet, showLogRow } from "./log-sheet-helpers";
 
 // A weigh-in logged from the app's quick-write surface joins the SAME deduped daily
 // series the dashboard's weight family reads and the Trends chart stack draws — one
-// write core (`addBodyMetric`), asserted across all three surfaces.
+// write core (`insertBodyMetric`, behind `addMeasurements`), asserted across all
+// three surfaces.
 //
 // #3366 MOVED THE GESTURE, NOT THE CLAIM. This used to drive the dashboard tail's
 // own weight quick-add card (#1042 phase 2). The owner ruling of 2026-08-29 retired

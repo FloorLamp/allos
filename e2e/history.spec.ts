@@ -711,10 +711,23 @@ test.describe("the record (#3958)", () => {
     );
     // The body door covers body metrics generally rather than weight alone — the
     // hardcoded `/trends/metric/weight` redirect was the loudest half of this defect.
+    //
+    // SINCE #4424 ruling 2 IT MOUNTS THE DOMAIN'S ONE FORM rather than three fields of
+    // its own, so it covers every measure a body sitting can hold and not merely the
+    // three the record prints. It opens on the group holding those three's majority
+    // (weight, body fat); resting HR is a VITAL in the form's own grouping, so it is
+    // one disclosure away rather than absent — asserted by OPENING it, because a
+    // presence check on a `hidden` group would pass on a form that never shows it.
     await page.goto("/history?kind=body");
     await hydratedClick(page, page.getByTestId("history-add-open-body"));
     const bodyPanel = page.getByTestId("history-add-panel-body");
+    await expect(bodyPanel.getByTestId("measurements-quick-add")).toBeVisible();
+    await expect(bodyPanel.locator('input[name="weight"]')).toBeVisible();
     await expect(bodyPanel.locator('input[name="body_fat_pct"]')).toBeVisible();
+    await hydratedClick(
+      page,
+      bodyPanel.getByTestId("measurements-group-vitals-toggle")
+    );
     await expect(bodyPanel.locator('input[name="resting_hr"]')).toBeVisible();
   });
 

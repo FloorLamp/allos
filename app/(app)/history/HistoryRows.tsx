@@ -57,10 +57,8 @@ import {
 import { removePracticeSession } from "@/app/(app)/wellness/actions";
 import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
-import {
-  deleteMetricReading,
-  updateMetricReading,
-} from "@/app/(app)/trends/reading-actions";
+import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";
+import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
 import {
@@ -687,31 +685,22 @@ export default function HistoryRows({
           </form>
         );
       case "body":
+        // ROW-CONTROL-GRADE, AND THE DOMAIN'S ONE CONTROL (#4424 ruling 3): a reading's
+        // value is a one-field inline edit, and this row drew a second copy of the
+        // readings table's cell rather than mounting it. Nothing about a reading's
+        // WHEN is editable from either mount, so there is no full-statement half here
+        // for the ⋯ to open — the record's `Log a reading` door is where a body
+        // sitting is stated.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("kind", edit.slug);
-                fd.set("target", edit.target);
-                if (edit.unit) fd.set("weight_unit", edit.unit);
-                return updateMetricReading(fd);
-              })
-            }
-          >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Value
-              <input
-                type="number"
-                step="any"
-                name="value"
-                defaultValue={edit.value}
-                className="input mt-1 w-full"
-                required
-              />
-            </label>
-            {buttons}
-          </form>
+          <ReadingValueControl
+            kind={edit.slug}
+            target={edit.target}
+            value={edit.value}
+            weightUnit={edit.unit}
+            subjectProfileId={row.profileId}
+            onSaved={done}
+            onCancel={done}
+          />
         );
     }
   }

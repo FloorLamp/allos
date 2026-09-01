@@ -1,47 +1,16 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
-import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 
 import { revalidateRoute } from "@/lib/revalidate";
 import { captureDelete } from "@/lib/undo-delete-db";
-import { getUnitPrefs } from "@/lib/settings";
-import { insertBodyMetric } from "@/lib/offline/writes";
-import { submittedWeightUnit } from "@/lib/units";
 
-// Body-metrics write path. Moved here from the former standalone /body-metrics
-// page when Body Metrics was absorbed into the Trends "Body" tab (sidebar
-// consolidation). The insert (canonical-kg conversion, input rejection,
-// profile-scoped write) now lives in lib/offline/writes.ts::insertBodyMetric so the
-// offline replay route (issue #28) runs the SAME validation; this action just
-// resolves the session, converts using the login's unit pref, and revalidates.
-function strOrNull(raw: FormDataEntryValue | null): string | null {
-  return raw === null ? null : String(raw);
-}
-
-export async function addBodyMetric(formData: FormData) {
-  const { login, profile } = await requireWriteAccess();
-  const prefs = getUnitPrefs(login.id);
-  // No `occurredAt`: this path states no time at all, so the core's acceptance
-  // gate has nothing to judge and its outcome can never carry a refusal (#2311).
-  const { wrote } = insertBodyMetric(profile.id, {
-    date: String(formData.get("date") ?? "").trim(),
-    weight: String(formData.get("weight") ?? ""), // in the login's weight unit
-    weightUnit: submittedWeightUnit(
-      formData.get("weight_unit"),
-      prefs.weightUnit
-    ),
-    bodyFatPct: strOrNull(formData.get("body_fat_pct")),
-    restingHr: strOrNull(formData.get("resting_hr")),
-    notes: strOrNull(formData.get("notes")),
-    // The dashboard's weigh-in widget and the Trends page's own add form post THIS
-    // action, so the mounting declares itself and the page keeps the default (#3087).
-    loggedVia: parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-  });
-  // Only revalidate when a row actually landed — a rejected input is a no-op.
-  if (!wrote) return;
-  revalidateRoute("/trends");
-  revalidateRoute("/");
-}
+// The body-metric DELETE, and only that (#4424 ruling 7). This module also carried
+// `addBodyMetric` — a weight-shaped write action beside `addMeasurements`, which is the
+// same submission with more fields — and its three callers (the record's add door, the
+// pediatric label lookup, and the palette's `weight 82.5` reaching past it into the
+// core) are the three copies that ruling deletes. They all post the measurements action
+// now, so a body sitting has ONE door however small the sitting is, and every one of
+// them is under `isPastWriteAccepted` and states the same optional time.
 
 // Note: document-sourced rows (source 'document:<id>') are a projection of
 // that document's extraction — reprocessing the document re-creates them.

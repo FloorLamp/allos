@@ -289,19 +289,15 @@ function QuickEntryBody({
     case "measurements":
       return (
         <MeasurementsQuickAdd
+          // The whole field set, spread (#4424 ruling 1): `measurementsQuickEntry`
+          // answers "what does this form need on day D" for every surface that mounts
+          // it, so the sheet and the record's add door cannot list different props.
+          {...data}
           // A dialog body renders content, never chrome (#3361). Without this the
           // form falls back to `presentation="card"` and draws its own card
           // border and `<h2>` inside a panel that already draws both — the same
           // escape hatch its two ModalShell mounts already pass.
           presentation="modal"
-          weightUnit={data.weightUnit}
-          defaultDate={data.defaultDate}
-          defaultStatedAt={data.statedAt}
-          temperatureUnit={data.temperatureUnit}
-          showBodyFat={data.showBodyFat}
-          showGrowth={data.showGrowth}
-          showHeadCirc={data.showHeadCirc}
-          profileId={data.profileId}
           defaultGroup={prefill?.measurementGroup}
           onSaved={onDone}
         />

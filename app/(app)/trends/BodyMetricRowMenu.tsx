@@ -1,18 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ModalShell from "@/components/ModalShell";
 import OverflowMenu, {
   MENU_ITEM,
   MENU_ITEM_DANGER,
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
-import { useToast } from "@/components/Toast";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import type { BodyMetricMeasure } from "@/lib/body-metric-measures";
 import type { WeightUnit } from "@/lib/settings";
 import { deleteBodyMetric } from "./body-actions";
-import { updateMetricReading } from "./reading-actions";
+import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 
 // Row actions for the body census history table on Trends Overview (issue #2556).
 //
@@ -47,7 +46,6 @@ export default function BodyMetricRowMenu({
   weightUnit: WeightUnit;
 }) {
   const confirm = useConfirm();
-  const toast = useToast();
   const undoable = useUndoableDelete();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<BodyMetricMeasure | null>(null);
@@ -132,111 +130,45 @@ export default function BodyMetricRowMenu({
           dateLabel={label}
           weightUnit={weightUnit}
           onClose={() => setEditing(null)}
-          onSaved={(message) => {
-            setEditing(null);
-            toast(message);
-          }}
         />
       )}
     </div>
   );
 }
 
-// One measure's correction dialog. The value posts in the DISPLAY unit it was rendered
-// in — named alongside it, so the write cannot read it differently from the person who
-// typed it (#630, #3853) — and `updateMetricReading` converts at the boundary (weight
-// through `toKg`), so nothing here knows what a kilogram is.
+// One measure's correction, in the standard dialog — a WRAPPER now, not a second
+// spelling of the field (#4424 ruling 3). The value input, its Save and Cancel, the
+// unit carry and the verdict are `ReadingValueControl`'s, the same control the metric
+// detail page's readings table and the record's body rows mount. The dialog keeps what
+// is genuinely its own: which measure of a wide row is being corrected, said in the
+// title, because `body_metrics` holds three readings per row and "Edit" alone would be
+// a guess.
 function EditMeasureDialog({
   measure,
   dateLabel,
   weightUnit,
   onClose,
-  onSaved,
 }: {
   measure: BodyMetricMeasure;
   dateLabel: string;
   weightUnit: WeightUnit;
   onClose: () => void;
-  onSaved: (message: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(String(measure.value));
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    if (pending) return;
-    setPending(true);
-    setError(null);
-    try {
-      const fd = new FormData();
-      fd.set("kind", measure.slug);
-      fd.set("target", measure.target);
-      fd.set("value", value);
-      fd.set("weight_unit", weightUnit);
-      const result = await updateMetricReading(fd);
-      if (!result.ok) {
-        setError(result.error ?? "Couldn’t save that reading.");
-        return;
-      }
-      onSaved(`${measure.label} updated.`);
-    } catch {
-      setError("Couldn’t save that reading. Try again.");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  const step = measure.decimals > 0 ? 10 ** -measure.decimals : 1;
-
   return (
     <ModalShell
       title={`Edit ${measure.label.toLowerCase()} — ${dateLabel}`}
       onClose={onClose}
-      initialFocusRef={inputRef}
       size="sm"
     >
       <div className="space-y-4" data-testid="body-metric-edit-dialog">
-        <label className="label block">
-          {measure.label}
-          {measure.unit ? ` (${measure.unit.trim()})` : ""}
-          <input
-            ref={inputRef}
-            type="number"
-            step={step}
-            inputMode="decimal"
-            className="input mt-1"
-            value={value}
-            disabled={pending}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void save();
-            }}
-            data-testid="body-metric-edit-value"
-          />
-        </label>
-        {error && (
-          <p
-            className="text-sm text-rose-600 dark:text-rose-400"
-            data-testid="body-metric-edit-error"
-          >
-            {error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={pending || value.trim() === ""}
-            onClick={() => void save()}
-            data-testid="body-metric-edit-save"
-          >
-            {pending ? "Saving…" : "Save"}
-          </button>
-        </div>
+        <ReadingValueControl
+          kind={measure.slug}
+          target={measure.target}
+          value={measure.value}
+          weightUnit={weightUnit}
+          onSaved={onClose}
+          onCancel={onClose}
+        />
       </div>
     </ModalShell>
   );

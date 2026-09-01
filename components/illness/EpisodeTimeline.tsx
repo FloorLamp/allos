@@ -1,5 +1,6 @@
 "use client";
 
+import { measurementsSavedText } from "@/lib/body-metric-input";
 import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import OverflowMenu, {
@@ -296,6 +297,12 @@ export default function EpisodeTimeline({
           ? "Symptom updated."
           : "Dose updated."
     );
+    // The minute the gate discarded (#4568), said in the body domain's own words —
+    // the same sentence `MeasurementsQuickAdd` and the symptom bar raise. Its own
+    // toast, because the correction LANDED: this amends nothing about the line above.
+    if (result.statedTimeRefused) {
+      toast(measurementsSavedText("Saved", result.statedTimeRefused));
+    }
   }
 
   async function remove(event: IllnessTimelineEvent) {
