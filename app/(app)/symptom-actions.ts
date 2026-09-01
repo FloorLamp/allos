@@ -179,8 +179,11 @@ export async function editSymptom(
 }
 
 // Explicit LOWER (#857): drop a symptom-day's worst severity to a strictly lower value,
-// preserving its note. Backs the bar's inline "Lower to mild?" confirm — a narrow action
-// so a plain tap can never lower (it raises) and this can never raise.
+// preserving its note. Backs `SymptomRowControl`'s labelled chips — selecting one BELOW
+// the day's current value is sufficient intent, so there is no confirm; the narrowness is
+// what makes that safe, since a plain tap can never lower (it raises) and this can never
+// raise. The "Lower to mild?" confirm this line used to name has not existed for some
+// time, and #4425's manifest inherited the word from here.
 export async function lowerSymptom(
   formData: FormData
 ): Promise<SymptomLogResult> {
