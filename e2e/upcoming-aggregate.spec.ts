@@ -3,7 +3,11 @@ import { type Browser, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
-import { settledClick, expandUpcomingAggregates } from "./helpers";
+import {
+  hydratedClick,
+  settledClick,
+  expandUpcomingAggregates,
+} from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_UPCOMING_AGG,
@@ -299,7 +303,7 @@ test.describe("the dose fold's slot runs (#2579-D)", () => {
 
     const chip = doseRow(main, UPCOMING_AGG_SUPPLEMENT);
     await expect(chip).toBeVisible();
-    await run.getByTestId("overflow-menu-trigger").click();
+    await hydratedClick(page, run.getByTestId("overflow-menu-trigger"));
     const menu = page.getByRole("menu");
     // The menu names each dose it can act on — five subjects behind one kebab needs
     // the labels or every "1 week" answers to nothing.
