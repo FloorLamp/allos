@@ -7,7 +7,6 @@ import AddSupplementModal from "@/components/nutrition/AddSupplementModal";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import CreateAction from "@/components/CreateAction";
 import { ToastProvider } from "@/components/Toast";
-import IntakeItemForm from "@/components/IntakeItemForm";
 import { intakeKindAffordances } from "@/lib/intake-kind-affordances";
 
 // WHICH BOTTLES THE SHARED-SUPPLY PICKER OFFERS (#3315).
@@ -162,6 +161,11 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
     </ToastProvider>
   );
   fireEvent.click(screen.getByTestId(`${kind}-add-toggle`));
+  fireEvent.click(screen.getByTestId("intake-fact-importance"));
+  expect(
+    (screen.getByTestId("intake-obligation") as HTMLSelectElement).value
+  ).toBe(intakeKindAffordances(kind).defaultObligation);
+  fireEvent.click(screen.getByTestId("intake-editor-done"));
   const input = screen.getByRole("combobox", { name: "Name" });
   fireEvent.focus(input);
   const option = await screen.findByRole("option", {
@@ -194,19 +198,3 @@ describe("IntakeItemForm bottle picks (#4608)", () => {
     expect(data.get("supply_id")).toBe("11");
   });
 });
-it.each(["medication", "supplement"] as const)(
-  "reads the %s obligation default from the kind table (#4668)",
-  (kind) => {
-    render(
-      <ToastProvider>
-        <ConfirmProvider>
-          <IntakeItemForm action={vi.fn()} kind={kind} />
-        </ConfirmProvider>
-      </ToastProvider>
-    );
-    fireEvent.click(screen.getByTestId("intake-fact-importance"));
-    expect(
-      (screen.getByTestId("intake-obligation") as HTMLSelectElement).value
-    ).toBe(intakeKindAffordances(kind).defaultObligation);
-  }
-);
