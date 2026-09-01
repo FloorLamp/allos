@@ -377,18 +377,22 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "symptom" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`SymptomLogBar` takes 21 props and hand-rolls its own temperature entry (a raw time input on the allowlist) instead of composing the vitals field; the `/history` row correction is a second spelling and posts the subject under a second name.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The severity-lower confirm is row-control-grade and lives inside the bar; `/history` symptom rows carry a correction form and no shared control.",
-        ref: "#4424",
-      },
+      // #4424's symptom leg. `SymptomForm` is add AND full-statement edit — the record's
+      // symptom door and that row's correction — with the day riding in from the mount,
+      // because the store is UNIQUE(profile_id, date, symptom) and a date FIELD would
+      // let a correction merge two days' worst severities into one.
+      //
+      // `SymptomRowControl` is everything a logged day can be corrected with WITHOUT
+      // restating it: the severity taps (a plain tap RAISES, a labelled chip below the
+      // current value posts the narrow lower), the note, and the clear with its undo.
+      //
+      // ON `/history` THE FEED ROW MOUNTS THE FORM AND NOT THE CONTROL, and that is
+      // #3958 rather than a gap: it rules the row one line at every viewport with the
+      // trailing affordance EXCLUSIVE — ⋯ or ›, never both — so a third trailing
+      // control is not available there and the ⋯ opens the form. The day view's own
+      // card mounts the bar, whose rows are this control.
+      form: { kind: "shared", component: "SymptomForm" },
+      rowControl: { kind: "shared", component: "SymptomRowControl" },
     },
     writeConventions: { kind: "convention" },
     cores: [

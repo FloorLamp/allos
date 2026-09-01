@@ -30,6 +30,17 @@ const record = (name: string) => (fd: FormData) => {
   (posted[name] ??= []).push(fd);
 };
 
+vi.mock("@/app/(app)/symptom-actions", () => ({
+  logSymptom: async (fd: FormData) => {
+    record("logSymptom")(fd);
+    return {
+      ok: true,
+      symptom: String(fd.get("symptom")),
+      severity: Number(fd.get("severity")),
+    };
+  },
+  editSymptom: async () => ({ ok: false, error: "the door never corrects" }),
+}));
 vi.mock("@/app/(app)/nutrition/actions", () => ({
   logFoodServing: async (fd: FormData) => {
     record("logFoodServing")(fd);
@@ -101,6 +112,15 @@ vi.mock("@/components/Toast", () => ({
 vi.mock("@/components/TimezoneProvider", () => ({ useTimezone: () => "UTC" }));
 
 beforeEach(() => {
+  // The symptom door's picker is the shared Combobox, which observes its own box.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
   for (const key of Object.keys(posted)) delete posted[key];
   refreshed.length = 0;
   offerReads.length = 0;
@@ -188,6 +208,10 @@ describe("the record's Add door posts to the domain's own create action", () => 
       { substance: "nicotine", amount: "1" },
     ],
     ["body", "addBodyMetric", {}],
+    // THE DOMAIN'S OWN LOG CORE (#4424 ruling 2): the door is a date-context wrapper,
+    // so the symptom kind reaches `logSymptom` — the same action a tap on the bar
+    // posts — and never a door-shaped write of its own.
+    ["symptom", "logSymptom", { symptom: "Headache", severity: "1" }],
   ] as [HistoryAddKind, string, Record<string, string>][])(
     "%s writes on the day the reader was looking at, through %s",
     async (kind, action, fields) => {
@@ -201,6 +225,11 @@ describe("the record's Add door posts to the domain's own create action", () => 
       if (kind === "body") {
         fireEvent.change(screen.getByRole("spinbutton", { name: /weight/i }), {
           target: { value: "154" },
+        });
+      }
+      if (kind === "symptom") {
+        fireEvent.change(screen.getByRole("combobox", { name: "Symptom" }), {
+          target: { value: "Headache" },
         });
       }
       await submit(kind);

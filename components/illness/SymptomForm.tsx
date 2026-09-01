@@ -47,11 +47,8 @@ export default function SymptomForm({
   date,
   row,
   subjectProfileId,
-  episodeId,
   onSaved,
   onCancel,
-  submitLabel,
-  testId,
 }: {
   /** What this mount may write against. One entry collapses the picker. */
   symptoms: readonly SymptomChoice[];
@@ -59,13 +56,9 @@ export default function SymptomForm({
   date: string;
   row?: SymptomDayRow;
   subjectProfileId?: number;
-  /** The open episode a logged day joins, when the mount owns one. */
-  episodeId?: number;
-  /** The day as the write settled it — the SERVER's resolved key, not a guess. */
+  /** The row as the write settled it — the SERVER's resolved key, not a guess. */
   onSaved: (saved: { symptom: string; severity: number; note: string }) => void;
-  onCancel?: () => void;
-  submitLabel?: string;
-  testId?: string;
+  onCancel: () => void;
 }) {
   // WHICH SURFACE THIS WRITE CAME FROM (#3087), read off the region: one form renders
   // in the bar's picker and on the record's rows, and the action cannot know which.
@@ -88,7 +81,6 @@ export default function SymptomForm({
     fd.set("date", row?.date ?? date);
     if (subjectProfileId != null)
       fd.set("profile_id", String(subjectProfileId));
-    if (episodeId != null) fd.set("episodeId", String(episodeId));
     setPending(true);
     let result;
     try {
@@ -115,7 +107,6 @@ export default function SymptomForm({
     <form
       className="grid gap-2 sm:grid-cols-2"
       onSubmit={(event) => void submit(event)}
-      data-testid={testId}
     >
       {only ? null : (
         <div data-testid="symptom-form-picker">
@@ -172,13 +163,11 @@ export default function SymptomForm({
           data-testid="symptom-form-save"
           disabled={pending || key.trim() === ""}
         >
-          {pending ? "Saving…" : (submitLabel ?? (row ? "Save" : "Add"))}
+          {pending ? "Saving…" : row ? "Save" : "Add"}
         </button>
-        {onCancel ? (
-          <button className="btn-ghost" type="button" onClick={onCancel}>
-            Cancel
-          </button>
-        ) : null}
+        <button className="btn-ghost" type="button" onClick={onCancel}>
+          Cancel
+        </button>
       </div>
     </form>
   );
