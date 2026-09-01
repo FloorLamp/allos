@@ -4,8 +4,9 @@ import type { ImportDrop } from "../import-report";
 // so the importer and the entry form can never disagree about the bucket names.
 import type { CarePlanCategory } from "../care-plan-upcoming";
 import type { DocumentSubjectScope } from "../instrument-recognize";
+import { UserFacingError } from "../user-error-copy";
 
-export class CdaError extends Error {}
+export class CdaError extends UserFacingError {}
 
 // ---- section catalog (LOINC section codes + C-CDA templateIds) ----
 

@@ -1,6 +1,7 @@
 import zlib from "node:zlib";
 import { resourcesToImportResult } from "./fhir";
 import type { ImportResult } from "./health-import";
+import { UserFacingError } from "./user-error-copy";
 
 // Decode a SMART Health Card (the QR / .smart-health-card file a patient
 // downloads from a portal) into its FHIR bundle, then hand the resources to the
@@ -17,7 +18,7 @@ export interface ShcResult extends ImportResult {
   issuer: string | null;
 }
 
-export class SmartHealthCardError extends Error {}
+export class SmartHealthCardError extends UserFacingError {}
 
 // --- decoding ---
 
@@ -49,9 +50,7 @@ function jwsFromShcSegments(segments: string[]): string {
   }
   chunks.sort((a, b) => a.index - b.index);
   if (chunks.length !== count)
-    throw new SmartHealthCardError(
-      `Incomplete SMART Health Card: got ${chunks.length} of ${count} QR chunks.`
-    );
+    throw new SmartHealthCardError("Incomplete SMART Health Card QR code.");
   return numericToJws(chunks.map((c) => c.numeric).join(""));
 }
 
