@@ -379,7 +379,10 @@ export default async function AppLayout({
             `top-edge-safe` (app/globals.css) itself; the token rather than a
             second `env()` for the reason the page gutter is one.
             Below `md` only: the desktop shell never paid this. */}
-                          <main className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0">
+                          <main
+                            data-rendered-at={nowMs}
+                            className="min-w-0 flex-1 overflow-x-clip pt-(--top-edge-inset) md:pt-0"
+                          >
                             {/* THE STICKY CHROME NOW HOLDS ONLY WHAT A PAGE PUT IN
                     IT (#4102). It was built for the phone top bar's hide-on-scroll
                     (issue #1416), and that bar has retired: the dock is the phone's

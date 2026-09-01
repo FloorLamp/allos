@@ -57,6 +57,11 @@ function bodyScrollLocked(): boolean {
   return document.body.style.overflow === "hidden";
 }
 
+function renderedAt(): string {
+  return document.querySelector<HTMLElement>("main[data-rendered-at]")!.dataset
+    .renderedAt!;
+}
+
 // `data-state` / `data-refreshes` on the indicator are the observable contract —
 // they are what the e2e spec asserts against, since "did router.refresh() get
 // called" is otherwise invisible from the outside. `data-refreshes` counts
@@ -69,6 +74,7 @@ export default function PullToRefresh() {
   const [state, setState] = useState<PullState>({ kind: "idle" });
   const [refreshes, setRefreshes] = useState(0);
   const [pending, startTransition] = useTransition();
+  const beforeRefresh = useRef<string | null>(null);
   // Gesture origin. A ref, not state: touchmove fires at frame rate and must not
   // re-render on every sample beyond the indicator's own state.
   const start = useRef<{
@@ -84,6 +90,19 @@ export default function PullToRefresh() {
   // check inside the `setState` updater would fire twice under React's development
   // double-invoke, which is a side effect an updater is not allowed to have.
   const armed = useRef(false);
+
+  useEffect(() => {
+    const before = beforeRefresh.current;
+    if (pending || before === null) return;
+    beforeRefresh.current = null;
+    setState({ kind: renderedAt() !== before ? "updated" : "failed" });
+  }, [pending]);
+
+  useEffect(() => {
+    if (state.kind !== "updated") return;
+    const timer = window.setTimeout(() => setState({ kind: "idle" }), 1500);
+    return () => window.clearTimeout(timer);
+  }, [state.kind]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -131,6 +150,7 @@ export default function PullToRefresh() {
       setState((current) => {
         if (shouldRefresh(current)) {
           setRefreshes((n) => n + 1);
+          beforeRefresh.current = renderedAt();
           startTransition(() => router.refresh());
         }
         return { kind: "idle" };
@@ -154,7 +174,7 @@ export default function PullToRefresh() {
 
   if (!enabled) return null;
 
-  const { translateY, opacity, rotation } = indicatorPresentation(
+  const { translateY, opacity, rotation, message } = indicatorPresentation(
     state,
     pending,
     reduceMotion
@@ -165,7 +185,8 @@ export default function PullToRefresh() {
       data-testid="pull-to-refresh"
       data-state={pending ? "refreshing" : state.kind}
       data-refreshes={refreshes}
-      aria-hidden
+      role="status"
+      aria-live="polite"
       className="pointer-events-none fixed inset-x-0 top-0 z-90 flex justify-center print:hidden"
       style={{
         // Transform + opacity only — never layout. Both numbers, and the badge's
@@ -175,8 +196,7 @@ export default function PullToRefresh() {
       }}
     >
       <span
-        className="mt-[max(0.5rem,env(safe-area-inset-top))] flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-surface shadow-md"
-        style={{ transform: `rotate(${rotation}deg)` }}
+        className={`mt-[max(0.5rem,env(safe-area-inset-top))] flex h-9 items-center justify-center rounded-full border border-(--border) bg-surface shadow-md ${message ? "max-w-[calc(100vw-2rem)] gap-2 px-3 text-sm font-medium" : "w-9"}`}
       >
         <IconRefresh
           className={`h-5 w-5 ${
@@ -185,7 +205,10 @@ export default function PullToRefresh() {
               : "text-slate-400"
           }`}
           stroke={2}
+          style={{ transform: `rotate(${rotation}deg)` }}
+          aria-hidden
         />
+        {message}
       </span>
     </div>
   );

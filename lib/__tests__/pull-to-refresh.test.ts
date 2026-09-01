@@ -196,6 +196,16 @@ describe("indicatorPresentation", () => {
     }
   });
 
+  it("keeps both refresh outcomes visible and honest", () => {
+    const show = (kind: "updated" | "failed") =>
+      indicatorPresentation({ kind }, false, false);
+    expect(show("updated")).toMatchObject({ opacity: 1, message: "Updated" });
+    expect(show("failed")).toMatchObject({
+      opacity: 1,
+      message: "Couldn't refresh — still showing earlier data.",
+    });
+  });
+
   it("tracks the finger while pulling", () => {
     const style = indicatorPresentation(HALF_PULL, false, false);
     expect(style.translateY).toBe(HALF_PULL.distance);

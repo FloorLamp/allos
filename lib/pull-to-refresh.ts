@@ -112,7 +112,7 @@ export interface PullInput {
   deltaX: number;
 }
 
-export type PullState =
+export type PullGestureState =
   // Not a pull-to-refresh gesture. The component shows nothing and a release
   // does nothing.
   | { kind: "idle" }
@@ -120,10 +120,12 @@ export type PullState =
   | { kind: "pulling"; distance: number; progress: number }
   // Past the threshold: releasing refreshes.
   | { kind: "armed"; distance: number; progress: number };
+export type PullState =
+  PullGestureState | { kind: "updated" } | { kind: "failed" };
 
 // Classify the gesture so far. Pure and total; `progress` is 0..1 against the
 // arming threshold, for the indicator's rotation/opacity.
-export function classifyPull(input: PullInput): PullState {
+export function classifyPull(input: PullInput): PullGestureState {
   const { overlayOpen, startScrollY, scrollY, deltaY, deltaX } = input;
   if (overlayOpen) return { kind: "idle" };
   if (startScrollY > PTR_TOP_SLOP_PX) return { kind: "idle" };
@@ -152,6 +154,7 @@ export interface IndicatorPresentation {
   translateY: number;
   opacity: number;
   rotation: number;
+  message: string | null;
 }
 
 // The indicator's whole visual state, so it is decidable without a browser —
@@ -171,24 +174,37 @@ export function indicatorPresentation(
   pending: boolean,
   reduceMotion: boolean
 ): IndicatorPresentation {
+  const message =
+    state.kind === "updated"
+      ? "Updated"
+      : state.kind === "failed"
+        ? "Couldn't refresh — still showing earlier data."
+        : null;
   const active = state.kind !== "idle";
-  const committed = state.kind === "armed" || pending;
+  const committed = state.kind === "armed" || pending || message !== null;
 
   if (reduceMotion) {
     return {
       translateY: active || pending ? PTR_MAX_PX / 2 : 0,
       opacity: committed ? 1 : 0,
       rotation: 0,
+      message,
     };
   }
 
   // Mid-refresh the gesture is already released, so there is no finger to track:
   // the indicator holds at half travel until the transition settles.
-  const distance = active ? state.distance : pending ? PTR_MAX_PX / 2 : 0;
-  const progress = active ? state.progress : pending ? 1 : 0;
+  const gesture = state.kind === "pulling" || state.kind === "armed";
+  const distance = gesture
+    ? state.distance
+    : pending || message
+      ? PTR_MAX_PX / 2
+      : 0;
+  const progress = gesture ? state.progress : pending || message ? 1 : 0;
   return {
     translateY: distance,
     opacity: progress,
     rotation: Math.round(progress * 270),
+    message,
   };
 }

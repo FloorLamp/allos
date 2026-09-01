@@ -78,7 +78,7 @@ async function pullDown(page: Page, distance: number) {
   }, distance);
 }
 
-test("a pull at the top of a standalone page refreshes; a mid-page pull does not", async ({
+test("pull-to-refresh answers honestly and stays top-only", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -95,15 +95,32 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
     // The Timeline is the app's tallest read-only surface on the shared seed, so
     // there is guaranteed scroll range to have a "mid-page" at all.
     await page.goto("/history");
+    let fail = true;
+    await page.route("**/*", (route) => {
+      const headers = route.request().headers();
+      return fail && headers.rsc && !headers["next-router-prefetch"]
+        ? route.abort("failed")
+        : route.fallback();
+    });
 
     const indicator = page.getByTestId(INDICATOR);
     // It mounts at all only because this context reports standalone.
     await expect(indicator).toHaveAttribute("data-refreshes", "0");
 
+    await pullDown(page, 200);
+    await expect(indicator).toHaveAttribute("data-state", "failed");
+    await expect(indicator).toContainText(
+      "Couldn't refresh — still showing earlier data."
+    );
+
     // A real pull from the top: past the arming threshold (the classifier halves
     // finger travel, so 200px of drag is comfortably armed).
+    fail = false;
     await pullDown(page, 200);
-    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+    await expect(indicator).toHaveAttribute("data-state", "updated");
+    await expect(indicator).toContainText("Updated");
+    await expect(indicator).toHaveAttribute("data-state", "idle");
+    await expect(indicator).toHaveAttribute("data-refreshes", "2");
 
     // THE negative case. Scroll into the page and pull exactly as hard: this is
     // ordinary scrolling, and it must trigger nothing.
@@ -116,13 +133,13 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
       "the Timeline should be scrollable at phone width"
     ).toBeGreaterThan(400);
     await pullDown(page, 200);
-    // Still one — the count is what makes "nothing happened" assertable.
-    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+    // Still two — the count is what makes "nothing happened" assertable.
+    await expect(indicator).toHaveAttribute("data-refreshes", "2");
 
     // A too-short pull back at the top is a snap-back, not a refresh.
     await page.evaluate(() => window.scrollTo(0, 0));
     await pullDown(page, 30);
-    await expect(indicator).toHaveAttribute("data-refreshes", "1");
+    await expect(indicator).toHaveAttribute("data-refreshes", "2");
   } finally {
     await context.close();
   }
