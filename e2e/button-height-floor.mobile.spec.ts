@@ -68,9 +68,11 @@ type BoxSurface = {
 const BOX_ROUTES: { route: string; ready: string; surfaces: BoxSurface[] }[] = [
   // THE OWNER'S EXAMPLE, RE-HOMED (#3958). This entry read the dose ledger, whose
   // route is deleted: the four ledgers folded into `/history`, and the record is the
-  // surface that now renders the two controls this row still binds. `dose-ledger-add`
-  // is LITERALLY the same control — `DoseBackfillLauncher`, same testid — mounted by
-  // the record's kind-resolved Add door, and the chip is the record's own filter row.
+  // surface that now renders the two controls this row still binds. The dose door's
+  // control is `history-add-open-dose` — the same btn-ghost, mounted by the record's
+  // kind-resolved Add door, which since #4424's dose leg opens the domain's shared form
+  // directly rather than `DoseBackfillLauncher`'s own toggle (that launcher is deleted)
+  // — and the chip is the record's own filter row.
   //
   // TWO SURFACES LEFT WITH THE RANGE ROW RATHER THAN MOVING, and neither was replaced
   // by a nearby element to keep this list the same length:
