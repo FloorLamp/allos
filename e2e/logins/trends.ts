@@ -4,12 +4,12 @@
 // fixture-profile name for THIS domain here, beside the fixtures that use it.
 
 // #1067 Phase 1 — Trends → Overview → body census mobile overhaul. A dedicated adult profile with a
-// KNOWN, PARTIAL set of synced body metrics so the chart-jump chips + per-chart
-// anchors are deterministic: it has manual + synced weight/resting HR (the
+// KNOWN, PARTIAL set of synced body metrics so the chart-jump menu's entries +
+// per-chart anchors are deterministic: it has manual + synced weight/resting HR (the
 // body-composition block and source-control fixture), derived BMI, steps, a sleep
 // night, and one day of heart-rate minutes — but NO
-// hydration / BMR / calories / lean-mass etc., so those metrics' chips must
-// be ABSENT (the "chartless charts hide their chip" assertion). Read-only grant;
+// hydration / BMR / calories / lean-mass etc., so those metrics must get NO
+// menu entry (the "a chartless chart gets no entry" assertion). Read-only grant;
 // the spec only navigates + scrolls (no writes), so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_BODY = "e2e_trends_body";
 export const TRENDS_BODY_PROFILE = "Trends Body (e2e)";
