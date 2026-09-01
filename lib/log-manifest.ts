@@ -311,9 +311,12 @@ export const LOG_MANIFEST = {
       //
       // THIS CELL SAID THE FIELD SETS WERE "NO LONGER THREE" AND THAT THE FLIP WAS
       // BLOCKED ON A SECOND WRITE CORE. Both were re-derived and both were wrong. #3143
-      // did extract one expanded form and give it two mounts, but FOUR spellings of the
-      // same five fields were live when this leg opened: that form, this history's own
-      // edit form, the `/history` door's, and that record row's correction. And
+      // did extract one expanded form and give it two mounts, but FOUR hand-rolled
+      // spellings of the practice statement were live when this leg opened: that form,
+      // this history's own edit form (the same five fields again), the `/history`
+      // door's, and that record row's correction — the last two carrying four of the
+      // five, with no END, so a window stated in the expanded form was correctable on
+      // exactly one surface. And
       // `logUpcomingPractice` was never a core — it reached `logPracticeSession`
       // through `logPracticeByTargetId`, the resolver Telegram's Done shares — so
       // ruling 7 deleted a DOOR, and the `cores` column below was already correct.
