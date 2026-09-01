@@ -1,4 +1,5 @@
 "use client";
+import { measurementsSavedText } from "@/lib/body-metric-input";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import { useMemo, useState, useTransition, type FormEvent } from "react";
@@ -309,6 +310,13 @@ export default function SymptomLogBar({
       // shown as a distinct, longer-lived error toast at the moment of logging.
       if (res.redFlag) {
         toast(res.redFlag, { tone: "error" });
+      }
+      // The minute the gate discarded (#4568), said in the body domain's own words —
+      // the same sentence `MeasurementsQuickAdd` raises for the sitting's Time. Its
+      // own toast for the reason the red flag has one: the reading LANDED, so this
+      // amends nothing about the line above and must not be squeezed into it.
+      if (res.statedTimeRefused) {
+        toast(measurementsSavedText("Saved", res.statedTimeRefused));
       }
     } else {
       setTempError(res.error);

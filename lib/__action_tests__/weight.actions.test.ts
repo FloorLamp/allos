@@ -1,16 +1,19 @@
-// SERVER-ACTION TIER — weight/body-metric write path.
+// SERVER-ACTION TIER — the weight half of the body domain's write path.
 //
-// Proves the real addBodyMetric/deleteBodyMetric actions run through the (mocked)
-// auth guard, convert to canonical kg using the acting LOGIN's unit prefs, reject
-// invalid input, revalidate, and scope every write to the acting profile.
+// Proves the real actions run through the (mocked) auth guard, convert to canonical kg
+// using the acting LOGIN's unit prefs, reject invalid input, revalidate, and scope every
+// write to the acting profile.
+//
+// THE ADD IS `addMeasurements` SINCE #4424 ruling 7. `addBodyMetric` was a second body
+// write action carrying a strict subset of the same submission, and its three callers
+// were the three copies that ruling deletes; a weight is now the smallest sitting the
+// one measurements action takes, and this file asks the same questions of it.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import {
-  addBodyMetric,
-  deleteBodyMetric,
-} from "@/app/(app)/trends/body-actions";
+import { deleteBodyMetric } from "@/app/(app)/trends/body-actions";
+import { addMeasurements } from "@/app/(app)/trends/measurement-actions";
 import { LB_PER_KG } from "@/lib/units";
 import { getBodyMetrics } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -29,13 +32,13 @@ beforeEach(() => {
   revalidate.mockClear();
 });
 
-describe("addBodyMetric", () => {
+describe("addMeasurements — a weight-only sitting", () => {
   it("stores weight converted to kg from a lb-pref login", async () => {
     const login = createLogin({ weightUnit: "lb" });
     const profile = createProfile("lb-user", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-02-01", weight: 220 }));
+    await addMeasurements(fd({ date: "2026-02-01", weight: 220 }));
 
     const rows = bodyMetricRows(profile.id);
     expect(rows).toHaveLength(1);
@@ -52,7 +55,7 @@ describe("addBodyMetric", () => {
     const profile = createProfile("kg-user", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-02-02", weight: 80 }));
+    await addMeasurements(fd({ date: "2026-02-02", weight: 80 }));
 
     expect(bodyMetricRows(profile.id)[0].weight_kg).toBeCloseTo(80, 6);
   });
@@ -62,7 +65,7 @@ describe("addBodyMetric", () => {
     const profile = createProfile("captured-lb-user", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(
+    await addMeasurements(
       fd({ date: "2026-02-02", weight: 44, weight_unit: "lb" })
     );
 
@@ -77,7 +80,7 @@ describe("addBodyMetric", () => {
     const profile = createProfile("bad-date", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-13-45", weight: 80 }));
+    await addMeasurements(fd({ date: "2026-13-45", weight: 80 }));
 
     expect(bodyMetricRows(profile.id)).toHaveLength(0);
     expect(revalidate).not.toHaveBeenCalled();
@@ -88,7 +91,7 @@ describe("addBodyMetric", () => {
     const profile = createProfile("nan-weight", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-02-03", weight: "abc" }));
+    await addMeasurements(fd({ date: "2026-02-03", weight: "abc" }));
 
     expect(bodyMetricRows(profile.id)).toHaveLength(0);
     expect(revalidate).not.toHaveBeenCalled();
@@ -99,7 +102,7 @@ describe("addBodyMetric", () => {
     const profile = createProfile("no-weight", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-02-04" }));
+    await addMeasurements(fd({ date: "2026-02-04" }));
 
     expect(bodyMetricRows(profile.id)).toHaveLength(0);
   });
@@ -111,7 +114,7 @@ describe("deleteBodyMetric", () => {
     const profile = createProfile("del-user", login.id);
     actAs(login, profile);
 
-    await addBodyMetric(fd({ date: "2026-02-05", weight: 81 }));
+    await addMeasurements(fd({ date: "2026-02-05", weight: 81 }));
     const id = bodyMetricRows(profile.id)[0].id;
     revalidate.mockClear();
 
@@ -129,7 +132,7 @@ describe("scoping", () => {
     const profileB = createProfile("B", login.id);
 
     actAs(login, profileA);
-    await addBodyMetric(fd({ date: "2026-03-01", weight: 70 }));
+    await addMeasurements(fd({ date: "2026-03-01", weight: 70 }));
 
     // Nothing landed in B, and B's reads are unaffected by A's write.
     expect(bodyMetricRows(profileB.id)).toHaveLength(0);
@@ -143,7 +146,7 @@ describe("scoping", () => {
     const profileB = createProfile("B2", login.id);
 
     actAs(login, profileB);
-    await addBodyMetric(fd({ date: "2026-03-02", weight: 90 }));
+    await addMeasurements(fd({ date: "2026-03-02", weight: 90 }));
     const bId = bodyMetricRows(profileB.id)[0].id;
 
     // Act as A and try to delete B's row by id — the action's profile_id filter

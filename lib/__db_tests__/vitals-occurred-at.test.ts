@@ -26,11 +26,18 @@
 //     the retired #800/#843 convention is never minted again — and the episode
 //     fever curve reads the time off the column.
 //
-// All fixtures SYNTHETIC; dates sit in the past so the acceptance gate's future
-// check (real clock — the db tier does not freeze time) can never fire.
+//   • and since #4568 the temperature cores JUDGE that statement through the same
+//     `judgeStatedAt` seam their five sibling body cores run, rather than
+//     shape-checking it — so a wall time that has not happened costs the minute on
+//     the log path and the whole submission on the correction path, and the
+//     correction door holds the same never-the-future DAY bound its log sibling does.
+//
+// All fixtures SYNTHETIC. The fixed dates sit in the past; the clock is PINNED below
+// because the judged cases state a wall time on a `today()`-derived day, which is
+// past in the evening and future at lunchtime.
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { db, today } from "@/lib/db";
 import { insertVitals } from "@/lib/offline/writes";
 import { upsertVitals, type NormVital } from "@/lib/integrations/normalize";
 import {
@@ -38,6 +45,20 @@ import {
   updateTemperatureCore,
 } from "@/lib/temperature-log";
 import { getReadingSeries } from "@/lib/queries/readings";
+import { shiftDateStr } from "@/lib/date";
+
+// Late on its own UTC day, so every wall time stated below has already happened (the
+// lib/__db_tests__/bristol-stool-write.test.ts precedent; these profiles are UTC).
+const PINNED_NOW = "2026-08-31T22:00:00.000Z";
+let priorNow: string | undefined;
+beforeAll(() => {
+  priorNow = process.env.ALLOS_TEST_NOW;
+  process.env.ALLOS_TEST_NOW = PINNED_NOW;
+});
+afterAll(() => {
+  if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+  else process.env.ALLOS_TEST_NOW = priorNow;
+});
 
 let profileId: number;
 
@@ -54,14 +75,14 @@ function newProfile(name: string): number {
   return id;
 }
 
-function medRows(canonical: string, date: string) {
+function medRows(canonical: string, date: string, p = profileId) {
   return db
     .prepare(
       `SELECT id, date, occurred_at, value_num, unit, source, external_id, notes, edited
          FROM medical_records
         WHERE profile_id = ? AND canonical_name = ? AND date = ? ORDER BY id`
     )
-    .all(profileId, canonical, date) as {
+    .all(p, canonical, date) as {
     id: number;
     date: string;
     occurred_at: string | null;
@@ -309,5 +330,79 @@ describe("the temperature quick-log core (the notes-hack, retired)", () => {
       logTemperatureCore(profileId, 98.9, "F", "2026-03-13", "page").kind
     ).toBe("logged");
     expect(medRows("Body Temperature", "2026-03-13")[0].occurred_at).toBeNull();
+  });
+});
+
+// #4568 — the manifest declares `body.statedTime: judged` and this core was the one
+// that did not. Every case here states a time on TODAY, because that is the only day
+// on which "has this happened yet?" has two answers; 08:00 is behind the pinned now
+// and 23:50 is ahead of it by two hours. Both are shapes `normalizeClockTime`
+// accepts, which is precisely why a shape check could not tell them apart.
+describe("the temperature cores judge their stated time (#4568)", () => {
+  it("keeps the reading and drops a minute that has not happened", () => {
+    const p = newProfile("TempJudgeLog");
+    const date = today(p);
+    const past = logTemperatureCore(p, 99.4, "F", date, "page", "08:00");
+    const ahead = logTemperatureCore(p, 99.6, "F", date, "page", "23:50");
+    // THE READING ALWAYS LANDS on this path. A refused minute is a NOTICE, which is
+    // what `insertBodyMetric` and `insertVitals` already answer for the same
+    // statement — the agreement the manifest's one `judged` cell asserts.
+    expect([past.kind, ahead.kind]).toEqual(["logged", "logged"]);
+    expect(
+      medRows("Body Temperature", date, p).map((r) => r.occurred_at)
+    ).toEqual([`${date}T08:00:00Z`, null]);
+    expect([
+      past.kind === "logged" ? past.statedTimeRefused : "unreachable",
+      ahead.kind === "logged" ? ahead.statedTimeRefused : "unreachable",
+    ]).toEqual([undefined, "future"]);
+  });
+
+  // BOTH ARMS OF THE CORRECTION DOOR, and they differ because the questions do. A
+  // wrong MINUTE costs the minute: lib/stated-time.ts's correction branch is for a path
+  // "where the statement IS the whole submission", and this submission is a value and a
+  // day as well — refusing all three over a stray clock loses the serving to save the
+  // cosmetic half, which is the trade that file's FIRST branch exists to prevent. A
+  // wrong DAY is refused outright: the same file calls an instant outside its own row's
+  // day corruption, and `date` is what every downstream query keys on.
+  it("keeps a correction whose minute is refused, and refuses one whose day is", () => {
+    const p = newProfile("TempJudgeEdit");
+    const date = today(p);
+    const logged = logTemperatureCore(p, 99.4, "F", date, "page", "08:00");
+    const id = (logged as { id: number }).id;
+
+    // The minute arm: the value edit LANDS, the refused statement is a notice, and
+    // `occurred_at` is honest NULL rather than a fact about the future.
+    const kept = updateTemperatureCore(p, id, 100.6, date, "23:50");
+    expect(kept).toEqual({
+      kind: "updated",
+      degF: 100.6,
+      flag: "high",
+      statedTimeRefused: "future",
+    });
+    expect(medRows("Body Temperature", date, p)[0]).toMatchObject({
+      value_num: 100.6,
+      occurred_at: null,
+    });
+
+    // The day arm: nothing is written at all, and the reading keeps the value the
+    // minute arm just gave it — so this cannot pass by refusing everything.
+    expect(
+      updateTemperatureCore(p, id, 101.8, shiftDateStr(date, 1), "08:00")
+    ).toEqual({ kind: "invalid", error: "Enter a valid date." });
+    expect(medRows("Body Temperature", date, p)[0]).toMatchObject({
+      value_num: 100.6,
+      date,
+    });
+
+    // And the converse of the minute arm, through the SAME call: a statement the gate
+    // ACCEPTS lands on the column and reports nothing.
+    expect(updateTemperatureCore(p, id, 100.6, date, "09:15")).toEqual({
+      kind: "updated",
+      degF: 100.6,
+      flag: "high",
+    });
+    expect(medRows("Body Temperature", date, p)[0].occurred_at).toBe(
+      `${date}T09:15:00Z`
+    );
   });
 });
