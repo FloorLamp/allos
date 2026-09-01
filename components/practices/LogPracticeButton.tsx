@@ -27,6 +27,7 @@ import {
   PRACTICE_DURATION_STEP_MIN,
   PRACTICE_USUAL_DAY_TEXT,
   practiceIdentity,
+  practiceLogOutcomeText,
   stepPracticeDuration,
 } from "@/lib/practice";
 import {
@@ -235,16 +236,8 @@ export default function LogPracticeButton({
         setCount(outcome.count);
         setLastTime(null);
       }
-      toast(
-        outcome.date !== today
-          ? "Logged past session"
-          : outcome.count === 1
-            ? "Logged today's session"
-            : `Logged — ${outcome.count} sessions today`
-      );
-      return;
     }
-    toast("Couldn't log that session.");
+    toast(practiceLogOutcomeText(outcome, today));
   }
 
   // Park this tap for replay (#2908). DAY-IDEMPOTENT by construction: the replay

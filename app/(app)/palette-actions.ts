@@ -54,7 +54,7 @@ export async function paletteQuickLog(
     // not idempotent, and one that did not happen must not be reported as one that did.
     return {
       ok: outcome.kind === "logged",
-      message: practiceLogOutcomeText(outcome),
+      message: practiceLogOutcomeText(outcome, today(profile.id)),
     };
   }
 
