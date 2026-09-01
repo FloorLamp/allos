@@ -263,14 +263,13 @@ interface Kind {
   correct: (id: number, date: string) => Record<string, string | number>;
   correctFn: (form: FormData) => Promise<unknown>;
   /**
-   * The delete post, minus `profile_id`. It takes the SUBJECT as well as the row id
-   * because one of these seven actions spells the subject differently: `removeSymptom`
-   * is a symptom-BAR action (#858) as well as the record's delete, and reads
-   * `profileId` where the other six read `profile_id` through `gateItemProfile`. Both
-   * resolve to requireProfileWriteAccess(target); only the field name differs, and the
-   * record's ⋯ posts whichever one its row's action reads.
+   * The delete post, minus `profile_id`. ONE SUBJECT FIELD FOR ALL SEVEN (#4424
+   * ruling 4): `removeSymptom` used to read #858's `profileId` where the other six
+   * read `profile_id`, so the record's ⋯ posted the subject under BOTH names to reach
+   * one profile. It reads `profile_id` now, so this shape no longer needs the subject
+   * threaded through it and the caller below supplies the one field.
    */
-  remove: (id: number, profileId: number) => Record<string, string | number>;
+  remove: (id: number) => Record<string, string | number>;
   removeFn: (form: FormData) => Promise<unknown>;
   /** Whether the row still exists, for the delete half. */
   present: (id: number, profileId: number, date: string) => boolean;
@@ -375,11 +374,7 @@ const KINDS: Kind[] = [
       note: "corrected",
     }),
     correctFn: (form) => editSymptom(form),
-    remove: (_id, profileId) => ({
-      symptom: "headache",
-      date: DATE,
-      profileId,
-    }),
+    remove: () => ({ symptom: "headache", date: DATE }),
     removeFn: (form) => removeSymptom(form),
     present: (_id, profileId, date) =>
       symptomSeverityOf(profileId, date) != null,
@@ -434,9 +429,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
           )
         ).rejects.toThrow();
         await expect(
-          kind.removeFn(
-            fd({ ...kind.remove(id, target.id), profile_id: target.id })
-          )
+          kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }))
         ).rejects.toThrow();
         expect(kind.read(id, target.id, DATE)).toEqual(before);
         expect(kind.present(id, target.id, DATE)).toBe(true);
@@ -459,9 +452,7 @@ describe("the record's corrections gate the ROW's profile (#4009 item 1)", () =>
       );
       expect(kind.read(id, target.id, DATE)).toEqual(kind.corrected);
 
-      await kind.removeFn(
-        fd({ ...kind.remove(id, target.id), profile_id: target.id })
-      );
+      await kind.removeFn(fd({ ...kind.remove(id), profile_id: target.id }));
       expect(kind.present(id, target.id, DATE)).toBe(false);
     });
   });
