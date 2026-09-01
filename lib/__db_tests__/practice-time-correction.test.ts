@@ -442,21 +442,11 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     seedLoginTelegram(pid, chatId);
     const targetId = practiceTarget(pid, "Sauna");
 
-    // The write path carries the pointer through, which is what the binding reads.
-    logFinishedPracticeByTargetId(pid, targetId, "telegram-nudge", null);
-    const unattributed = lastLogId(pid);
-    expect(
-      (
-        db
-          .prepare(
-            "SELECT notify_message_id AS m FROM practice_logs WHERE id = ?"
-          )
-          .get(unattributed) as { m: number | null }
-      ).m
-    ).toBeNull();
-
     // A stamped row reports its message on the tap row the offer reads. The pointer is
     // recorded through the real store, so the id is the one production would stamp.
+    // This is one delivered-message tap, not an unattributed tap immediately followed
+    // by the same Telegram action: the shared callback core deliberately deduplicates
+    // that second shape inside its double-tap window (#4582).
     recordMessagePointer({
       profileId: pid,
       chatId,
@@ -485,10 +475,9 @@ describe("a burst renders only on the message that produced it (#2264)", () => {
     const taps = getRecentPracticeTaps(pid, clockNow());
     const byId = new Map(taps.map((t) => [t.id, t]));
     expect(byId.get(attributed)?.messageRef).toBe(messageRow);
-    expect(byId.get(unattributed)?.messageRef).toBeNull();
 
     // A message that is NOT the one the tap came from, and is not the newest live
-    // message of its domain, carries neither burst.
+    // message of its domain, carries no burst.
     expect(
       getPracticeCorrectionBursts(pid, clockNow(), {
         messageRef: messageRow + 999,
