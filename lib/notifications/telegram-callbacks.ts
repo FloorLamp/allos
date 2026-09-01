@@ -64,6 +64,7 @@ import {
   type TakeCallback,
   type TapWrote,
   OUTDATED_MESSAGE_TEXT,
+  STALE_TOKEN_REFUSAL,
   householdStaleDateAnswerText,
   householdTapAnswerText,
   householdTapRefusalText,
@@ -1282,7 +1283,7 @@ async function handleAllTaken(
   await answerCallbackQuery(
     cq.id,
     entries.length === 0
-      ? "Not logged — this reminder is out of date. Open the app."
+      ? STALE_TOKEN_REFUSAL
       : logged > 0
         ? `All logged ${GLYPH.done}`
         : allSkipped
@@ -1406,7 +1407,7 @@ async function handleStackTaken(
   await answerCallbackQuery(
     cq.id,
     current.length === 0
-      ? "Not logged — this reminder is out of date. Open the app."
+      ? STALE_TOKEN_REFUSAL
       : logged > 0
         ? `Logged ${GLYPH.done}`
         : allSkipped
@@ -1415,7 +1416,7 @@ async function handleStackTaken(
             ? // Everything the button named is already resolved (a race, or a second
               // tap) — nothing was inserted, so don't claim a fresh log (#280).
               `Already logged ${GLYPH.done}`
-            : "Not logged — this reminder is out of date. Open the app.",
+            : STALE_TOKEN_REFUSAL,
     // The arms that contradict the button demand a dismissal — a fully-skipped set
     // included: "skipped" is not the state the ✅ asked for, and the reader has to
     // know nothing was taken.

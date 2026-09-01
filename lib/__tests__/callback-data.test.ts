@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
+import { doseConfirmMessage } from "../dose-outcome-text";
+import { RESTAMP_REFUSAL_TEXT } from "../notifications/telegram-time-correction";
 import {
   OUTDATED_MESSAGE_TEXT,
+  PAUSED_ITEM_REFUSAL,
+  STALE_TOKEN_REFUSAL,
   escalationAckAnswerText,
   escalationAckCloseText,
   escalationTakeCloseText,
@@ -33,6 +38,7 @@ import {
   tapAnswerText,
   tapAnswerNeedsDismissal,
   tapLogged,
+  notLoggedBecause,
   tapResolved,
   tapSkipAnswerText,
   type InlineKeyboard,
@@ -239,6 +245,26 @@ describe("resolveTapProfile", () => {
 // what actually happened — "Logged ✅" is only honest for a real (or idempotent
 // repeat) confirmation.
 describe("tap outcome → answer", () => {
+  it("keeps one typed, byte-identical refusal vocabulary across registers (#4549)", () => {
+    expect(tapAnswerText("stale-dose")).toBe(STALE_TOKEN_REFUSAL);
+    expect(tapSkipAnswerText("stale-dose")).toBe(STALE_TOKEN_REFUSAL);
+    expect(tapAnswerText("inactive")).toBe(PAUSED_ITEM_REFUSAL);
+    expect(tapSkipAnswerText("inactive")).toBe(PAUSED_ITEM_REFUSAL);
+    expect(doseConfirmMessage("inactive").text).toBe(
+      notLoggedBecause("inactive", "app")
+    );
+    expect(doseConfirmMessage("stale-dose").text).toBe(
+      notLoggedBecause("stale-dose", "app")
+    );
+    expect(RESTAMP_REFUSAL_TEXT["no-burst"]({} as never)).toMatch(
+      /Couldn't find/
+    );
+    const production =
+      readFileSync("lib/notifications/callback-data.ts", "utf8") +
+      readFileSync("lib/notifications/telegram-callbacks.ts", "utf8");
+    expect(production).not.toContain(STALE_TOKEN_REFUSAL);
+  });
+
   it("acknowledges only real TAKEN confirmations as logged", () => {
     expect(tapLogged("logged")).toBe(true);
     expect(tapLogged("already-taken")).toBe(true);

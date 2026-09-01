@@ -292,6 +292,38 @@ export function tapResolved(outcome: DoseTakenOutcome): boolean {
   );
 }
 
+function refusal(verb: string, subject: string, remedy?: string): string {
+  return `${verb} — ${subject}${remedy ? `. ${remedy}` : ""}`;
+}
+
+export const STALE_TOKEN_REFUSAL = refusal(
+  "Not logged",
+  "this reminder is out of date",
+  "Open the app."
+);
+export const PAUSED_ITEM_REFUSAL = refusal(
+  "Not logged",
+  "this item is paused",
+  "Open the app to log it."
+);
+
+type DoseRefusalOutcome = Extract<DoseTakenOutcome, "inactive" | "stale-dose">;
+const DOSE_REFUSALS = {
+  inactive: [PAUSED_ITEM_REFUSAL, refusal("Not logged", "this item is paused")],
+  "stale-dose": [
+    STALE_TOKEN_REFUSAL,
+    refusal("Not logged", "this dose is no longer scheduled"),
+  ],
+} satisfies Record<DoseRefusalOutcome, readonly [chat: string, app: string]>;
+
+export function notLoggedBecause(
+  outcome: DoseRefusalOutcome,
+  register: "app" | "chat"
+): string {
+  const copy = DOSE_REFUSALS[outcome];
+  return register === "chat" ? copy[0] : copy[1];
+}
+
 // The Telegram callback-answer toast for a tap, per markDoseTaken outcome.
 // A reminder message is a frozen snapshot: by the time a button is tapped the
 // dose may have been deleted/retired by an edit, or its item paused — those
@@ -318,10 +350,10 @@ export function tapAnswerText(
     case "already-skipped":
       return `Not logged — already marked skipped ${GLYPH.skipped}. Open the app to change it.`;
     case "inactive":
-      return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
-    default:
-      return "Not logged — this reminder is out of date. Open the app.";
+      return notLoggedBecause(outcome, "chat");
+    case "skipped":
+      return STALE_TOKEN_REFUSAL;
   }
 }
 
@@ -339,10 +371,10 @@ export function tapSkipAnswerText(outcome: DoseTakenOutcome): string {
     case "already-taken":
       return `Not skipped — already logged as taken ${GLYPH.done}. Open the app to change it.`;
     case "inactive":
-      return "Not logged — this item is paused. Open the app to log it.";
     case "stale-dose":
-    default:
-      return "Not logged — this reminder is out of date. Open the app.";
+      return notLoggedBecause(outcome, "chat");
+    case "logged":
+      return STALE_TOKEN_REFUSAL;
   }
 }
 
@@ -1485,7 +1517,7 @@ export function householdTapRefusalText(
       return "Not logged — you no longer have access to log for this person.";
     case "wrong-chat":
     default:
-      return "Not logged — this reminder is out of date. Open the app.";
+      return STALE_TOKEN_REFUSAL;
   }
 }
 

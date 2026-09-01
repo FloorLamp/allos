@@ -1,5 +1,6 @@
 import type { DoseTakenOutcome, DoseUndoOutcome } from "./types";
 import type { UndoOutcome } from "./undo-offer";
+import { notLoggedBecause } from "./notifications/callback-data";
 
 // What an IN-APP dose confirm says, per markDoseTaken outcome (issue #1468).
 //
@@ -69,10 +70,10 @@ export function doseConfirmMessage(
     case "skipped":
       return { text: "Dose skipped", tone: "success" };
     case "inactive":
-      return { text: "Not logged — this item is paused", tone: "error" };
+      return { text: notLoggedBecause(outcome, "app"), tone: "error" };
     case "stale-dose":
       return {
-        text: "Not logged — this dose is no longer scheduled",
+        text: notLoggedBecause(outcome, "app"),
         tone: "error",
       };
   }
