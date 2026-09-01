@@ -9,7 +9,6 @@ import FilterPills from "@/components/FilterPills";
 import JumpRailScrubber, {
   type ScrubberStop,
 } from "@/components/JumpRailScrubber";
-import DoseBackfillLauncher from "@/components/intake/DoseBackfillLauncher";
 import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
@@ -506,6 +505,7 @@ export default async function HistoryPage(props: {
   // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
+    kind === "dose" ||
     kind === "practice" ||
     kind === "substance" ||
     kind === "body"
@@ -513,6 +513,10 @@ export default async function HistoryPage(props: {
       : kind === "symptom" && day == null
         ? kind
         : null;
+  const defaultTime = zonedDateParts(
+    getTimezone(actingProfileId),
+    new Date()
+  ).hhmm;
   const addVocabulary =
     canWrite && addKind
       ? {
@@ -541,6 +545,11 @@ export default async function HistoryPage(props: {
                   ]),
                 ].map((key) => ({ key, label: symptomLabel(key) }))
               : [],
+          // ONLY ITEMS WITH A LIVE DOSE, which is the dose door's own presence rule
+          // (`hasAddDoor` below reads the same list): an item whose schedule is
+          // entirely retired keeps its history and takes no new rows.
+          doseItems: addKind === "dose" ? loggable : [],
+          doseDefaultTime: defaultTime,
           weightUnit: getUnitPrefs(loginId).weightUnit,
           // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
           // door's first paint is the server's answer rather than a flash of nothing;
@@ -557,18 +566,16 @@ export default async function HistoryPage(props: {
   // that cannot offer one falls back to the kind chooser rather than to an empty row,
   // which is what the dose branch already did.
   const hasAddDoor = addVocabulary
-    ? addKind === "practice"
-      ? addVocabulary.practices.length > 0
-      : addKind === "substance"
-        ? addVocabulary.substances.length > 0
-        : addKind === "symptom"
-          ? addVocabulary.symptoms.length > 0
-          : true
-    : kind === "dose" && loggable.length > 0;
-  const defaultTime = zonedDateParts(
-    getTimezone(actingProfileId),
-    new Date()
-  ).hhmm;
+    ? addKind === "dose"
+      ? addVocabulary.doseItems.length > 0
+      : addKind === "practice"
+        ? addVocabulary.practices.length > 0
+        : addKind === "substance"
+          ? addVocabulary.substances.length > 0
+          : addKind === "symptom"
+            ? addVocabulary.symptoms.length > 0
+            : true
+    : false;
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -1000,12 +1007,6 @@ export default async function HistoryPage(props: {
                 </Link>
               ))}
             </div>
-          ) : kind === "dose" ? (
-            <DoseBackfillLauncher
-              loggable={loggable}
-              maxDate={todayStr}
-              defaultTime={defaultTime}
-            />
           ) : addVocabulary && addKind ? (
             <HistoryAddDoor
               kind={addKind}

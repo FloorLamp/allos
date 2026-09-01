@@ -1292,8 +1292,17 @@ function doseStatusResult(outcome: DoseStatusOutcome): FormResult {
   }
 }
 
-// Set a single dose's status for today to an explicit target — the web
-// tri-state's write path (taken / skipped / clear). #232
+// Set a single dose's status on a day to an explicit target — the web tri-state's
+// write path (taken / skipped / clear). #232
+//
+// THE DAY IS OPTIONAL AND BOUNDED BY THE OFFER (#4424). Absent it is the profile's
+// today, which is every mount that stands on today. Present it is checked against
+// `doseLogDays(localToday)` — the SAME upper-bound rule `resolveDayDoses` below
+// applies to its own date, off the same constant — so this action can never write a
+// day the day switcher would not offer, and a forged POST cannot reach TOMORROW
+// through the ±2 window `isDoseDateAccepted` allows a late Telegram tap. Widening it
+// means widening `TAP_REACH["dose-status"]`, which is coupled to Telegram pointer
+// retention (lib/log-manifest.ts) and would strand live keyboards.
 //
 // Cross-profile (#858/#1373): a multi-view Medications board confirms a household
 // member's scheduled dose without switching the acting profile — the board posts an
@@ -1318,19 +1327,23 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   }
   const doseId = Number(formData.get("dose_id"));
   const target = String(formData.get("status") ?? "");
+  const localToday = today(profileId);
+  const posted = String(formData.get("date") ?? "");
+  const date = posted === "" ? localToday : posted;
   if (
     !doseId ||
-    (target !== "taken" && target !== "skipped" && target !== "clear")
+    (target !== "taken" && target !== "skipped" && target !== "clear") ||
+    !doseLogDays(localToday).includes(date)
   ) {
     return formError("Couldn't update this dose.");
   }
   const outcome = setDoseStatusCore(
     profileId,
     doseId,
-    today(profileId),
+    date,
     target,
-    // The tri-state check-off renders on the Nutrition/Medications pages and in the
-    // quick-log sheet's dose list, all posting THIS action.
+    // The tri-state check-off renders on the Nutrition/Medications pages, the day
+    // ledger's rows and the quick-log sheet's dose list, all posting THIS action.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
   );
   revalidateIntake();

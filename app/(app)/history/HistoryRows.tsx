@@ -461,13 +461,19 @@ export default function HistoryRows({
         const item = itemById.get(edit.itemId);
         return (
           <HistoricalDoseForm
-            itemId={edit.itemId}
-            itemName={row.title}
-            doses={item ? doseOptionsFor(item, prefs) : []}
+            // ONE item, so the form renders no picker: a correction is about the row
+            // that is already there, and moving it to another item is not an edit.
+            items={[
+              {
+                id: edit.itemId,
+                name: row.title,
+                doses: item ? doseOptionsFor(item, prefs) : [],
+                asNeeded: item?.asNeeded ?? false,
+                courseBound: edit.itemKind === "medication",
+              },
+            ]}
             maxDate={maxDateFor(row)}
             defaultTime={defaultTime}
-            asNeeded={item?.asNeeded ?? false}
-            courseBound={edit.itemKind === "medication"}
             editing={{
               logId: edit.logId,
               doseId: edit.doseId,

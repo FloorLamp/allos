@@ -17,9 +17,9 @@ export interface HistoricalDoseLauncherItem {
   }[];
 }
 
-// Top-level destination for a day-history dose backfill (#2420). Choosing the
-// item is explicit because the chart's selected day has no single item identity;
-// the actual write remains the shared HistoricalDoseForm used by every item row.
+// Top-level destination for a day-history dose backfill (#2420). The write, the item
+// choice and the field set are all the shared `HistoricalDoseForm`'s (#4424 ruling 2);
+// what is left here is the card this page puts around it and its two empty states.
 export default function HistoricalDoseLauncher({
   items,
   initialDate,
@@ -34,9 +34,7 @@ export default function HistoricalDoseLauncher({
   invalidRequestedDate?: boolean;
 }) {
   const formatPrefs = useFormatPrefs();
-  const [itemId, setItemId] = useState(items[0]?.id ?? 0);
   const [open, setOpen] = useState(true);
-  const item = items.find((candidate) => candidate.id === itemId) ?? items[0];
 
   return (
     <section
@@ -58,53 +56,34 @@ export default function HistoricalDoseLauncher({
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Add an active supplement dose before logging dose history.
         </p>
-      ) : (
-        <>
-          <label className="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200">
-            IntakeItem
-            <select
-              className="input mt-1 w-full sm:max-w-sm"
-              value={item?.id ?? 0}
-              onChange={(event) => {
-                setItemId(Number(event.target.value));
-                setOpen(true);
-              }}
-              data-testid="historical-dose-item-picker"
-            >
-              {items.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {item && open ? (
-            <HistoricalDoseForm
-              key={item.id}
-              itemId={item.id}
-              itemName={item.name}
-              doses={item.doses.map((dose) => ({
-                id: dose.id,
-                amount: dose.amount,
-                label:
-                  formatMedicationDoseLine({
-                    amount: dose.amount,
-                    product: item.product,
-                    timeOfDay: dose.timeOfDay,
-                    asNeeded: item.asNeeded,
-                    timeFormat: formatPrefs.timeFormat,
-                  }) || "Dose",
-              }))}
-              initialDate={initialDate}
-              maxDate={maxDate}
-              defaultTime={defaultTime}
-              asNeeded={item.asNeeded}
-              courseBound={false}
-              onDone={() => setOpen(false)}
-            />
-          ) : null}
-        </>
-      )}
+      ) : open ? (
+        <HistoricalDoseForm
+          items={items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            asNeeded: item.asNeeded,
+            // A supplement keeps no medication courses, so its backfill reaches any
+            // past date — the rule this page's items all share.
+            courseBound: false,
+            doses: item.doses.map((dose) => ({
+              id: dose.id,
+              label:
+                formatMedicationDoseLine({
+                  amount: dose.amount,
+                  product: item.product,
+                  timeOfDay: dose.timeOfDay,
+                  asNeeded: item.asNeeded,
+                  timeFormat: formatPrefs.timeFormat,
+                }) || "Dose",
+              amount: dose.amount,
+            })),
+          }))}
+          initialDate={initialDate}
+          maxDate={maxDate}
+          defaultTime={defaultTime}
+          onDone={() => setOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

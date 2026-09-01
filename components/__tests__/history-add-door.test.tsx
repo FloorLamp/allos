@@ -162,6 +162,17 @@ const VOCABULARY = {
   ],
   weightUnit: "lb" as const,
   usual: [] as UsualOffer[],
+  doseItems: [
+    {
+      id: 7,
+      name: "Creatine",
+      kind: "supplement" as const,
+      product: null,
+      asNeeded: false,
+      doses: [{ id: 11, amount: "5 g", time_of_day: "Morning" }],
+    },
+  ],
+  doseDefaultTime: "08:00",
 };
 
 function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {

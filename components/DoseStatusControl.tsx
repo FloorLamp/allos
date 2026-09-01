@@ -7,6 +7,7 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { localDate } from "@/lib/offline/queue";
+import type { FormResult } from "@/lib/types/forms";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -17,10 +18,19 @@ import {
   DOSE_ACTION_RESOLVED,
 } from "@/components/medications/dose-action-styles";
 
-// Tri-state dose check-off (issue #232): one dose is taken, deliberately skipped,
-// or clear. Shared by MedicationCard and EditableSupplementRow so BOTH surfaces
-// (and every viewport) get the same control — a ✅ take toggle and a ⏭️ skip
-// toggle, each flipping its state back to clear when pressed again.
+// Tri-state dose check-off (issue #232), and THE dose domain's one row control
+// (#4424 ruling 3): one dose is taken, deliberately skipped, or clear. Every row that
+// hosts a dose write control mounts this — the medication card, the supplement row,
+// the day ledger's due and logged rows, and the quick sheet's list — so a ✅ take
+// toggle and a ⏭️ skip toggle, each flipping back to clear when pressed again, are
+// what a dose row offers wherever it renders.
+//
+// IT TAKES A DAY, WHICH IS WHAT MADE THE ROW ONE CONTROL. The day ledger used to pick
+// between this control and a hand-rolled Take/Skip pair per row on `isToday`, and the
+// quick sheet spelled a third and fourth pair, because `setDoseStatus` stamped the
+// profile's today and nothing else could reach yesterday. The day is now the row's,
+// bounded at the action by `doseLogDays` — so the past day gained the CLEAR it never
+// had, and the flag that selected a layout is gone rather than moved.
 //
 // Online every transition calls the setDoseStatus Server Action with an explicit
 // target, which keeps on-hand supply in lock-step (only crossing the taken
@@ -62,6 +72,8 @@ export default function DoseStatusControl({
   label,
   compact = false,
   profileId,
+  date,
+  onSettled,
 }: {
   doseId: number;
   taken: boolean;
@@ -76,6 +88,20 @@ export default function DoseStatusControl({
   // A cross-profile write always goes online (the offline replay has no target-profile
   // seam), so it's never queued.
   profileId?: number;
+  /**
+   * The profile-local day this row stands on. Absent means today, which is every mount
+   * that has no day of its own. A past day inside `doseLogDays` writes to that day and
+   * queues to that day; beyond it the action refuses, so the surface must not offer the
+   * control at all (the ledger's `doseWritable`).
+   */
+  date?: string;
+  /**
+   * What the ROW does with the answer, where the row is a LIST of what a day still owes
+   * rather than a standing record: the quick sheet drops a resolved row and closes when
+   * nothing is left, and the ledger's due list does the same. Absent on a standing row,
+   * which simply re-renders from the revalidated server state.
+   */
+  onSettled?: (result: FormResult) => void;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -85,7 +111,12 @@ export default function DoseStatusControl({
   // The shared client write pipeline (#3276): it stamps the surface, decides online vs
   // capture, says the sentence, and settles the one-tap ledger. This control declares
   // what a dose resolution means; it hand-wires none of that choreography.
-  const pipeline = useWritePipeline("dose-status");
+  // WHICH AFFORDANCE THIS TAP IS (lib/one-tap.ts). A dated tap is `dose-day` — "the
+  // recent-past day switcher's single dated tap … a day that may already have closed"
+  // — and today's is `dose-status`. Two registry rows because a census reading them
+  // must be able to see the dated write; one control, because the person taps the same
+  // circle either way.
+  const pipeline = useWritePipeline(date ? "dose-day" : "dose-status");
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -142,6 +173,8 @@ export default function DoseStatusControl({
       fields: {
         dose_id: String(doseId),
         status: target,
+        // Omitted on a today mount so its post stays byte-identical.
+        ...(date != null ? { date } : {}),
         // #858/#1373: target the row's own profile so a caregiver confirms a household
         // member's dose from its board; absent on the acting board (byte-identical).
         ...(profileId != null ? { profileId: String(profileId) } : {}),
@@ -153,8 +186,9 @@ export default function DoseStatusControl({
       //
       // A landed transition says nothing: the control BECOMING its done state is the
       // receipt (#2654), and there is no toast to hang an Undo on.
-      settle: (outcome) =>
-        outcome.ok
+      settle: (outcome) => {
+        onSettled?.(outcome);
+        return outcome.ok
           ? { wrote: true, announce: "silent" as const }
           : {
               wrote: false,
@@ -163,7 +197,8 @@ export default function DoseStatusControl({
                 tone: "error" as const,
                 undo: null,
               },
-            },
+            };
+      },
       failureMessage: "Couldn't update this dose. Try again.",
       offline: (tappedAt) => {
         // Cross-profile writes (#1373) are never queued — the offline replay route
@@ -182,7 +217,10 @@ export default function DoseStatusControl({
         return {
           kind: "capture",
           flow,
-          date: localDate(tappedAt),
+          // THE ROW'S DAY, NOT THE TAP'S. A past-day row captured offline replays
+          // against the day it names; `localDate(tappedAt)` is only the answer where
+          // the row has no day of its own.
+          date: date ?? localDate(tappedAt),
           // The server validates the stamp; a skip records no intake time, so it
           // carries none.
           payload: {

@@ -22,6 +22,9 @@ import {
   usualRoutinePhrase,
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
+import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import { doseOptionsFor, type DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
@@ -33,7 +36,7 @@ import type { WeightUnit } from "@/lib/settings";
 
 // THE ADD DOOR RESOLVES IN PLACE (#4045 §1), which is what #3958 asked for and what
 // only the dose kind shipped: "one door, kind-resolved — filtered to a kind it IS that
-// kind's backfill". The other four kinds rendered plain redirect links, so the page
+// kind's backfill". The other kinds rendered plain redirect links, so the page
 // built for FINDING a gap in the record sent the reader somewhere else to fill it and
 // lost the day they were looking at on the way. `body` was the loudest of them: it
 // pointed at `/trends/metric/weight`, as if a body reading were only ever a weight.
@@ -44,8 +47,8 @@ import type { WeightUnit } from "@/lib/settings";
 // one re-checks write access server-side, so the door is an affordance and never a gate.
 //
 // THE CONTROL KEEPS ONE IDENTITY while its form is open, and dismissal belongs to the
-// form. `DoseBackfillLauncher` follows the same rule (#3911), so all five record doors
-// keep the identity that opened them instead of turning that control into Cancel.
+// form (#3911), so every record door keeps the identity that opened it instead of
+// turning that control into Cancel.
 //
 // THE DATE OPENS ON THE DAY THE READER WAS LOOKING AT, not on today: the whole reason
 // to add from here is a gap you just found. Bounded by today at every kind, which is
@@ -73,6 +76,7 @@ import type { WeightUnit } from "@/lib/settings";
 
 const KIND_LABEL = {
   food: "Log food",
+  dose: "Log past dose",
   practice: "Log a practice",
   substance: "Log a use",
   body: "Log a reading",
@@ -85,6 +89,14 @@ export type HistoryAddKind = keyof typeof KIND_LABEL;
 export interface HistoryAddVocabulary {
   /** Practices this profile tracks. An empty list renders no practice door. */
   practices: string[];
+  /**
+   * The intake items a past dose may be logged against — only items with a LIVE dose,
+   * so an item whose schedule is entirely retired keeps its history but takes no new
+   * rows. Empty for every other kind, and an empty list renders no dose door.
+   */
+  doseItems: DoseLedgerItem[];
+  /** The profile-local clock a dose backfill prefills its time with. */
+  doseDefaultTime: string;
   /** This profile's substance keys, with the label its record prints. */
   substances: { key: string; label: string }[];
   /**
@@ -116,6 +128,7 @@ export default function HistoryAddDoor({
 }) {
   const router = useRouter();
   const tz = useTimezone();
+  const formatPrefs = useFormatPrefs();
   // THE PAIR, held as one value (#2236 invariant 1). `date` opens on the day the
   // reader was looking at and `statedAt` opens EMPTY — never defaulted to now.
   const [when, setWhen] = useState<WhenValue>({ date, statedAt: null });
@@ -171,6 +184,7 @@ export default function HistoryAddDoor({
       });
   }, [when.date, seededDate, vocabulary.usual]);
 
+  if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
   if (kind === "symptom" && vocabulary.symptoms.length === 0) return null;
@@ -395,6 +409,31 @@ export default function HistoryAddDoor({
             </label>
             {buttons}
           </form>
+        );
+      case "dose":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind was the
+        // one door that already opened a form in place, but through
+        // `DoseBackfillLauncher` — a wrapper that owned its own toggle, its own item
+        // picker and NO day: it opened on today whatever day the reader was standing
+        // on, which is the context every other kind here was given back. The launcher
+        // is deleted and the domain's one form mounts with the found day in hand.
+        return (
+          <HistoricalDoseForm
+            items={vocabulary.doseItems.map((item) => ({
+              id: item.id,
+              name: item.name,
+              doses: doseOptionsFor(item, formatPrefs),
+              asNeeded: item.asNeeded,
+              courseBound: item.kind === "medication",
+            }))}
+            initialDate={date}
+            maxDate={maxDate}
+            defaultTime={vocabulary.doseDefaultTime}
+            onDone={() => {
+              close();
+              router.refresh();
+            }}
+          />
         );
       case "practice":
         // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own
