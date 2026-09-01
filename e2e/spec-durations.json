@@ -452,7 +452,6 @@
   "e2e/upcoming-weekly-targets.spec.ts": 0.658,
   "e2e/update-notice.spec.ts": 27.745,
   "e2e/upload-feedback.spec.ts": 7.746,
-  "e2e/ux-geometry-probe.mobile.spec.ts": 4.605,
   "e2e/ux-hover-capture.spec.ts": 10.138,
   "e2e/video-capture.spec.ts": 6.637,
   "e2e/view-only-access.spec.ts": 8.563,
