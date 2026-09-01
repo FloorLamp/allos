@@ -853,10 +853,11 @@ const TONE_SURFACES: Record<NoticeTone, ToneSurface> = {
   // blocks exist but the shared seed produces none of them. BOTH were false, and
   // the second was inherited from an adversarial review that had asserted it.
   // Measured at 390px on the shared seed: /nutrition?tab=supplements renders TWO
-  // curated supplement suggestions (as rows, since #3987 phase 2 — no launcher, no
-  // modal) and /nutrition renders food suggestions, each
-  // an emerald-tinted `rounded-lg border` box — `bg rgb(216, 233, 207)`, border
-  // 1px, radius 8px — and every one of them has `data-notice === null`.
+  // curated supplement suggestions (as rows since #3987 phase 2 — no launcher and no
+  // modal, so they are inside `main` and the flat ban above now reaches them, which
+  // is why their frame is `sm:`-only) and /nutrition renders food suggestions. Every
+  // one of them is emerald-TINTED and every one has `data-notice === null`; the tint
+  // is what makes the tone reachable here, not the frame.
   //
   // So the tone is reachable and the NOTICE-FAMILY SHAPE is not. Both call sites
   // are among the six files that hand-roll NOTICE_TONE without going through

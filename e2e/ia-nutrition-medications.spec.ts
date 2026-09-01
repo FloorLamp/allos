@@ -284,9 +284,12 @@ test("supplement suggestion provenance stays visually bounded", async ({
     );
 
     await page.goto("/nutrition?tab=supplements");
+    // Keyed on the row's OWN testid, not on `div.rounded-lg`: the frame is `sm:`-only
+    // since #3987 put these rows inside `main` under #3673's flat ban, so the class
+    // this used to select on is absent at every width below `sm`.
     const suggestion = page
       .getByTestId("supplement-suggestions")
-      .locator("div.rounded-lg")
+      .locator('[data-testid^="generated-supplement-suggestion-"]')
       .filter({ hasText: name });
     await expect(suggestion).toBeVisible();
     await expect(

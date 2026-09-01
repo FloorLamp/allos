@@ -787,7 +787,7 @@ export default async function ManageTab({
                 key={suggestion.id}
                 data-testid={`generated-supplement-suggestion-${suggestion.id}`}
                 data-origin="generated"
-                className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+                className="border-black/10 p-3 sm:rounded-lg sm:border dark:border-white/10"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-slate-800 dark:text-slate-100">
@@ -939,12 +939,23 @@ export default async function ManageTab({
                     message="Nothing scheduled. Add a supplement, or see today's doses on the Day ledger."
                   />
                 )}
-                {/* NOT SCHEDULED (#3987): an item entered without a time of day. It is
-                  a real part of the stack and it is not a day question — it simply has
-                  no slot — so it folds under its own count rather than sitting in the
-                  scheduled list pretending to a time it does not have. */}
+                {/* NOT SCHEDULED (#3987): an item entered without a time of day. It
+                  is a real part of the stack and it is not a day question — it simply
+                  has no slot — so it gets its own counted group rather than sitting in
+                  the scheduled list pretending to a time it does not have.
+                  OPEN, NOT COLLAPSED, and this is the one place this page departs from
+                  the letter of the ruling. The add form does not require a time of
+                  day, so a bare Name + Add — the primary action's own default path —
+                  produces a timeless item: collapsed, the thing you just created is
+                  not on screen, and on a fresh profile NOTHING is. Phase 1 recorded
+                  the same finding in prose; four shipped specs
+                  (intake-lifecycle, one-intake-form, supplement-add-reset,
+                  ia-nutrition-medications' add flow) demonstrate it, since each adds
+                  an item that way and then looks for its row. It is still a fold —
+                  labelled, counted, collapsible, remembered — it just does not start
+                  by hiding what you own. */}
                 {unscheduledItems.length > 0 && (
-                  <Disclosure className="mt-4">
+                  <Disclosure open className="mt-4">
                     <summary className="cursor-pointer section-label">
                       Not scheduled ({unscheduledItems.length})
                     </summary>

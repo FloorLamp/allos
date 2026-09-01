@@ -72,7 +72,12 @@ export default function CuratedSupplementSuggestions({
             key={s.key}
             data-testid={`curated-supplement-suggestion-${s.key}`}
             data-origin={s.origin}
-            className={`rounded-lg border px-3 py-2.5 text-base ${NOTICE_TONE.emerald}`}
+            // FLAT BELOW `sm`, TINTED AT EVERY WIDTH (#3673, applied here by #3987).
+            // The frame is `sm:` only, like every other content surface: a
+            // suggestion is not the safety layer, and the ban's exemption is for
+            // warnings that must stay loud. What carries #2378's distinction is the
+            // TINT and the badge, and both survive at every width.
+            className={`px-3 py-2.5 text-base sm:rounded-lg sm:border ${NOTICE_TONE.emerald}`}
           >
             <div className="flex items-start gap-1.5">
               <IconPill className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
