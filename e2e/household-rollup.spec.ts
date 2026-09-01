@@ -101,7 +101,6 @@ test.describe("Household view for members (issue #31)", () => {
     await memberPage.context().close();
   });
 
-
   test("a single-profile member has no Household nav and is redirected from the URL", async ({
     browser,
   }) => {
@@ -198,10 +197,15 @@ test.describe("the household card is a status board, not an action surface", () 
   }) => {
     await page.goto("/household");
     const links = page.getByTestId("household-attention-link");
-    // The seeded household has due doses, so at least one card states a count.
-    await expect(links.first()).toBeVisible(); // first-ok: one card proves the door
-    await expect(links.first()).toHaveAttribute("href", "/upcoming");
-    await expect(links.first()).toHaveText(/^\d+ needs? attention$/);
+    // The seeded household has due doses, so at least one card states a count — and
+    // every one that does states it the same way. Asserted over the whole set rather
+    // than a first, because "the door exists somewhere" is not the claim.
+    const count = await links.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      await expect(links.nth(i)).toHaveAttribute("href", "/upcoming");
+      await expect(links.nth(i)).toHaveText(/^\d+ needs? attention$/);
+    }
   });
 });
 

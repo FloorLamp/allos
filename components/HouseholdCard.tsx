@@ -169,7 +169,9 @@ function RecentDigest({
 }) {
   const overflowing = recent.overflow > 0;
   const shown = overflowing ? recent.lines.slice(0, -1) : recent.lines;
-  const overflowLine = overflowing ? recent.lines[recent.lines.length - 1] : null;
+  const overflowLine = overflowing
+    ? recent.lines[recent.lines.length - 1]
+    : null;
 
   return (
     <div

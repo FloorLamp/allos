@@ -116,9 +116,7 @@ function logTakenBehindTheCard(
 // behind the "all" disclosure (#1804's native <details>), which every revalidate closes
 // again — so the caller re-opens before each read rather than once at the top.
 function doseRow(page: Page): Locator {
-  return page
-    .getByTestId("dashboard-candidate")
-    .filter({ hasText: UNDO_ITEM });
+  return page.getByTestId("dashboard-candidate").filter({ hasText: UNDO_ITEM });
 }
 
 test("the dose confirm offers an Undo that takes the log back, and none when it wrote nothing (#2642)", async ({
@@ -133,10 +131,7 @@ test("the dose confirm offers an Undo that takes the log back, and none when it 
   await expect(doseRow(page)).toBeVisible();
 
   // ── 1. Act ────────────────────────────────────────────────────────────────────
-  await settledClick(
-    page,
-    doseRow(page).getByTestId("attention-mark-taken")
-  );
+  await settledClick(page, doseRow(page).getByTestId("attention-mark-taken"));
 
   const logged = page.getByTestId("toast").filter({ hasText: "Dose logged" });
   await expect(logged).toBeVisible();
@@ -175,10 +170,7 @@ test("the dose confirm offers an Undo that takes the log back, and none when it 
   await openDashboardAll(page);
   await expect(doseRow(page)).toBeVisible();
   logTakenBehindTheCard(itemId, doseId, loggedDate);
-  await settledClick(
-    page,
-    doseRow(page).getByTestId("attention-mark-taken")
-  );
+  await settledClick(page, doseRow(page).getByTestId("attention-mark-taken"));
 
   const repeat = page
     .getByTestId("toast")
