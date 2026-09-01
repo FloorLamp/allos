@@ -124,16 +124,18 @@ test.describe("mobile clipped-content audit (#1063)", () => {
   test("/household: member cards fit a phone viewport", async ({ page }) => {
     test.slow();
     await phone(page);
-    // The admin session sees every seeded profile — sick chips, supplement
-    // rollups, goals — the densest household rendering the suite can produce.
+    // The admin session sees every seeded profile — sick chips, the 7-day digest,
+    // goals — the densest household rendering the suite can produce.
     await page.goto("/household");
     await expect(
       page.getByRole("heading", { name: "Household" })
     ).toBeVisible();
     await expect(page.getByTestId("household-card")).not.toHaveCount(0);
     // The dense variants provably rendered under the guard: a sick-line chip
-    // (the seeded open illness episodes) and an attention rollup row.
+    // (the seeded open illness episodes) and the week's digest, whose lines are the
+    // longest free text a card carries (#1463 §1).
     await expect(page.getByTestId("household-sick-chip")).not.toHaveCount(0);
+    await expect(page.getByTestId("household-digest-line")).not.toHaveCount(0);
     await expectNoClippedContent(page);
   });
 

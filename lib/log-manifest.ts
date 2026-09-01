@@ -387,12 +387,20 @@ export const LOG_MANIFEST = {
       // with this leg; what stays shared is the whole-stack "Take all", which is
       // `dose-day-stack`, a bulk offer and not a row control.
       //
-      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. Its two mounts —
-      // the dashboard attention row, the household card's due row — list what is still
-      // OWED, so the row is unmounted by its own write: the tri-state's receipt (#2654)
-      // cannot exist there and the answer has to be a toast carrying the inverse
-      // (#2642). One component, two gates, which the issue body names as the
-      // requirement. Folding it in would delete a documented undo with no ruling.
+      // `DoseConfirmButton` STANDS, AND IS NOT A SECOND ROW CONTROL. It lists what is
+      // still OWED, so the row is unmounted by its own write: the tri-state's receipt
+      // (#2654) cannot exist there and the answer has to be a toast carrying the
+      // inverse (#2642). Folding it in would delete a documented undo with no ruling.
+      //
+      // IT IS DOWN TO ONE MOUNT — the dashboard attention row — AND THAT IS A RULING,
+      // NOT A DECAY (#1463 §1, owner-approved 2026-07-25). The household card's due
+      // row was the second, and the card is a summary now rather than a second action
+      // surface: Upcoming multi-view already owns cross-profile in-app dose confirms
+      // through its subject-gated "Mark taken" over the same `markDoseTaken`, so the
+      // capability CEDED rather than went. This cell's earlier note that the two
+      // mounts were "deliberate and kept behind the one shared component" was the
+      // ONE-COMPONENT requirement being stated, never a promise that both mounts
+      // were permanent — mount count is not the test here either.
       form: { kind: "shared", component: "HistoricalDoseForm" },
       rowControl: { kind: "shared", component: "DoseStatusControl" },
     },

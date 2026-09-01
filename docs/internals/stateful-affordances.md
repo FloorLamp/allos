@@ -333,12 +333,14 @@ changes-checked-outcome sweep the intake issues started:
 
 #2106 closed the outcome-discard half: the household confirm and the attention
 hero declared `outcome-toast` feedback (below) while their actions dropped
-`markDoseTaken`'s outcome and returned void. Both now return the shared
+`markDoseTaken`'s outcome and returned void. Both were made to return the shared
 `DoseConfirmResult` and render through `components/DoseConfirmButton.tsx` (the
 `doseConfirmMessage` wording), the Upcoming row chips render any typed result they
 receive, and a source scan in `lib/__tests__/one-tap.test.ts` fails any module that
 calls `markDoseTaken`/`markDoseSkipped` as a bare statement — a discarded outcome
-is an unconditional confirm waiting to happen.
+is an unconditional confirm waiting to happen. The household confirm itself is
+gone since #1463 §1 (the card is a summary, and Upcoming multi-view owns the
+cross-profile action); the attention hero and the Upcoming chips are unchanged.
 
 ## The one-tap feedback family (#2041, #2007)
 

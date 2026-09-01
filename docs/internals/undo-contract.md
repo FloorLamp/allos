@@ -81,12 +81,15 @@ matters most — the core's clear is a `DELETE … WHERE dose_id = ? AND date = 
 so an undo that skipped the probe would take a PRN administration logged in the
 meantime with it.
 
-Surfaces wired: the dashboard dose atom (`markAttentionDose` /
-`undoAttentionDose`) and the household member card (`confirmDoseAction` /
-`undoConfirmDoseAction`), both through `components/DoseConfirmButton.tsx`. The
-household undo re-runs the CARD's gate — `requireProfileWriteAccess` on the
-profile the form names — so a read-only caregiver can no more un-log a dose than
-log one.
+Surface wired: the dashboard dose atom (`markAttentionDose` /
+`undoAttentionDose`), through `components/DoseConfirmButton.tsx`.
+
+The household member card carried the second pair (`confirmDoseAction` /
+`undoConfirmDoseAction`) until #1463 §1 made the card a summary rather than a
+second action surface. Cross-profile dose confirms live on Upcoming multi-view
+now, whose row chips post through the shared `RowAction` descriptors and are
+listed as an unwired gap below — so that removal narrowed the undo's reach, by
+ruling and not by drift.
 
 ## Not yet wired
 
