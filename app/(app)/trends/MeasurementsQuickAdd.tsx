@@ -38,6 +38,7 @@ import {
   shouldQueueOffline,
 } from "@/lib/offline/queue";
 import type { TemperatureUnit, WeightUnit } from "@/lib/settings";
+import { toKg } from "@/lib/units";
 import { TREND_METRIC_META } from "@/lib/trend-metrics";
 import InlineError from "@/components/InlineError";
 import {
@@ -46,6 +47,12 @@ import {
 } from "./measurement-actions";
 
 export type { MeasurementEntryMetric } from "@/lib/measurement-entry";
+
+/** What one successful sitting wrote: the day it landed on, and its weight in kg. */
+export interface MeasurementsSaved {
+  date: string;
+  weightKg: number | null;
+}
 
 // Which refusal sentence a queued capture gets. The shared one when the device kept
 // NOTHING; the partial one when the body half is already in the queue and only the
@@ -143,6 +150,14 @@ export interface MeasurementsQuickAddProps {
   // renders the Time EMPTY even when the date is today (#2053), with the
   // control's one-tap "Now" beside it.
   defaultStatedAt?: string | null;
+  /**
+   * The latest day this form may write, which is the day the write cores already
+   * bound it to (`isPastWriteAccepted`). Optional only because a mount that omits it
+   * still cannot write the future — `addMeasurements` answers `dateRefused` and the
+   * inline refusal below says so — but a bound the control ENFORCES beats one the
+   * submission discovers.
+   */
+  maxDate?: string;
   weightUnit: WeightUnit;
   // The viewer's login temperature-unit preference (#857) — seeds the temp entry
   // unit. Storage stays canonical °F.
@@ -155,8 +170,12 @@ export interface MeasurementsQuickAddProps {
   showGrowth?: boolean;
   showHeadCirc?: boolean;
   // Fired after a successful save so a MOUNTING CONTEXT can react — the quick-entry
-  // overlay closes itself, leaving the user where they were.
-  onSaved?: () => void;
+  // overlay closes itself, the record's add door re-reads its feed, and the pediatric
+  // label lookup re-derives its dose band. It is handed WHAT THE SITTING WROTE, in the
+  // canonical unit, because a host that needs the number would otherwise have to keep
+  // a second copy of the field to read it back — which is the fourth weight form this
+  // ruling deletes. A host that does not care ignores the argument.
+  onSaved?: (saved: MeasurementsSaved) => void;
   // Optional action for a standalone card mount.
   headerSlot?: ReactNode;
   // A metric detail page narrows this shared form to the observation currently
@@ -229,6 +248,7 @@ const UNCONTROLLED_VITAL_FIELDS = [
 export default function MeasurementsQuickAdd({
   defaultDate,
   defaultStatedAt = null,
+  maxDate,
   weightUnit,
   temperatureUnit = "F",
   showBodyFat = true,
@@ -650,7 +670,10 @@ export default function MeasurementsQuickAdd({
     resetForm();
     tempUnitDetection.reset();
     refreshSummaries();
-    onSaved?.();
+    onSaved?.({
+      date,
+      weightKg: body.weight == null ? null : toKg(Number(body.weight), weightUnit),
+    });
   }
 
   // ── The fields, authored once and GROUPED below ─────────────────────────────
@@ -1168,6 +1191,7 @@ export default function MeasurementsQuickAdd({
           grain="minute"
           value={when}
           onChange={setWhen}
+          maxDate={maxDate}
           testId="m"
           dateLabel="Date"
           timeLabel="Time taken (optional)"

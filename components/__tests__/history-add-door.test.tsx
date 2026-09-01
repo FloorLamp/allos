@@ -59,10 +59,17 @@ vi.mock("@/app/(app)/medical/substance-use/actions", () => ({
     return { kind: "added" };
   },
 }));
-vi.mock("@/app/(app)/trends/body-actions", () => ({
-  addBodyMetric: async (fd: FormData) => {
-    record("addBodyMetric")(fd);
+// THE MEASUREMENTS ACTION, not a body-shaped one (#4424 ruling 2): the body kind
+// mounts the domain's one form, so the door's write is the same action the quick-log
+// sheet and the Trends panel post.
+vi.mock("@/app/(app)/trends/measurement-actions", () => ({
+  addMeasurements: async (fd: FormData) => {
+    record("addMeasurements")(fd);
+    return {};
   },
+}));
+vi.mock("@/components/OfflineQueueProvider", () => ({
+  useOfflineQueue: () => ({ enqueue: async () => "kept" }),
 }));
 // #4118's pair: the composed write the one-tap posts, and the dated offer read the
 // door consults when its date field moves. `offerReads` records every day asked about
@@ -102,6 +109,7 @@ vi.mock("@/app/(app)/actions", () => ({
 const refreshed: number[] = [];
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => refreshed.push(1) }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 // THE TOAST IS AN ASSERTION SUBJECT, not scenery (#4118). It was a no-op mock, so the
 // door could report a success it had not achieved and nothing here could see it.
@@ -150,6 +158,20 @@ const MORNING_OFFER: UsualOffer = {
   doses: [{ id: 41, name: "Creatine", stack: null }],
 };
 
+/** What the body domain's one form needs on the found day (`measurementsQuickEntry`). */
+const MEASUREMENTS = {
+  form: "measurements" as const,
+  defaultDate: FOUND_DAY,
+  defaultStatedAt: null,
+  maxDate: TODAY,
+  profileId: 7,
+  weightUnit: "lb" as const,
+  temperatureUnit: "F" as const,
+  showBodyFat: true,
+  showGrowth: false,
+  showHeadCirc: false,
+};
+
 const VOCABULARY = {
   practices: ["Rowing", "Sauna"],
   substances: [
@@ -160,7 +182,7 @@ const VOCABULARY = {
     { key: "headache", label: "Headache" },
     { key: "cough", label: "Cough" },
   ],
-  weightUnit: "lb" as const,
+  measurements: MEASUREMENTS,
   usual: [] as UsualOffer[],
 };
 
@@ -207,7 +229,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
       "addSubstanceDailyTotalAction",
       { substance: "nicotine", amount: "1" },
     ],
-    ["body", "addBodyMetric", {}],
+    ["body", "addMeasurements", { weight: "154", weight_unit: "lb" }],
     // THE DOMAIN'S OWN LOG CORE (#4424 ruling 2): the door is a date-context wrapper,
     // so the symptom kind reaches `logSymptom` — the same action a tap on the bar
     // posts — and never a door-shaped write of its own.
@@ -238,11 +260,17 @@ describe("the record's Add door posts to the domain's own create action", () => 
       for (const [key, value] of Object.entries(fields)) {
         expect(sent[key], `${action} posted ${key}=${sent[key]}`).toBe(value);
       }
-      // RESOLVED IN PLACE, WITH THE RESULT VISIBLE: the panel closes and the feed is
-      // re-read. Without the re-read the door writes silently and reads as dead — the
-      // same complaint as the redirect it replaces.
-      expect(screen.queryByTestId(`history-add-panel-${kind}`)).toBeNull();
+      // RESOLVED IN PLACE, WITH THE RESULT VISIBLE: the feed is re-read. Without it
+      // the door writes silently and reads as dead — the same complaint as the
+      // redirect it replaces.
       expect(refreshed).toHaveLength(1);
+      // AND THE BODY DOOR STAYS OPEN on purpose (#4211, absorbed into #4424): the
+      // shared form resets its own fields and keeps its date, so five readings
+      // backfilled onto one past day are five quick saves. Asserted as the same
+      // question for every kind, so a kind that silently changed side is visible.
+      expect(screen.queryByTestId(`history-add-panel-${kind}`) !== null).toBe(
+        kind === "body"
+      );
     }
   );
 
@@ -295,16 +323,16 @@ describe("the record's Add door posts to the domain's own create action", () => 
     expect(screen.queryByTestId("history-add-open-practice")).toBeNull();
   });
 
-  it("refuses an out-of-range body reading inline instead of closing over nothing", async () => {
-    // `addBodyMetric` SILENTLY SKIPS a number outside its range, so a door that just
-    // posted would close on a write that never happened. The refusal is the one case
-    // where the panel must stay open.
+  it("refuses an out-of-range body reading inline instead of posting it", async () => {
+    // The write cores SILENTLY SKIP a number outside their range, so a submission that
+    // just posted would confirm a write that never happened. The shared form runs the
+    // same pure guard (`validateBodyMetricInput`) the cores do and never posts.
     open("body");
     fireEvent.change(screen.getByRole("spinbutton", { name: /weight/i }), {
       target: { value: "9999" },
     });
     await submit("body");
-    expect(posted.addBodyMetric ?? []).toHaveLength(0);
+    expect(posted.addMeasurements ?? []).toHaveLength(0);
     expect(screen.getByTestId("history-add-panel-body")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBeTruthy();
     expect(refreshed).toHaveLength(0);
@@ -361,20 +389,23 @@ describe("the record's Add door posts to the domain's own create action", () => 
     }
   );
 
-  // THE DATE-ONLY KINDS HAVE NO TIME FIELD AT ALL, and this is the assertion that
-  // keeps that a decision rather than an accident. Both are date-only in the SCHEMA:
-  // `substance_daily_totals` is a day total with no event instant, and
-  // `addBodyMetric` states none. A time input on either would collect a statement
-  // with nowhere to be stored.
-  it.each(["substance", "body"] as HistoryAddKind[])(
-    "%s offers no time field, because its row has no instant to state",
-    (kind) => {
-      open(kind);
-      expect(screen.queryByTestId(`history-add-when-${kind}-time`)).toBeNull();
-      // The converse in the same test: the door still exists and still takes a day.
-      expect(screen.getByTestId(`history-add-panel-${kind}`)).toBeTruthy();
-    }
-  );
+  // A KIND OFFERS A TIME EXACTLY WHEN ITS ROW HAS AN INSTANT TO PUT ONE IN, and this
+  // is the assertion that keeps that a decision rather than an accident. Substance is
+  // date-only in the SCHEMA — `substance_daily_totals` is a day total with no event
+  // instant (#3327) — so a time input there would collect a statement with nowhere to
+  // be stored. Body is the converse and it CHANGED with #4424 ruling 2:
+  // `body_metrics.occurred_at` has existed since migration 165, and the door's own
+  // bare `DateField` was the only reason a reading backfilled from the record could
+  // not say when it was taken. The domain's form carries the sitting's Time, so it can.
+  it("offers a time exactly where the row has an instant to hold one", () => {
+    open("substance");
+    expect(screen.queryByTestId("history-add-when-substance-time")).toBeNull();
+    expect(screen.getByTestId("history-add-panel-substance")).toBeTruthy();
+    cleanup();
+    open("body");
+    // The shared form's own control (testId "m"), not a door-shaped one.
+    expect(screen.getByTestId("m-time")).toBeTruthy();
+  });
 });
 
 // ── THE ONE-TAP USUAL ON A PAST DAY (#4118) ──────────────────────────────────

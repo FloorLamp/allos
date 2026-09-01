@@ -37,17 +37,26 @@ import { getManualBodyMetricStatedAt } from "@/lib/queries";
 // profile-local day are already resolved there for the nav and the dock — which is
 // the price of the capability, paid on every app route.
 //
-// The freshness the lazy path bought is genuinely given up here: `statedAt` and
+// The freshness the lazy path bought is genuinely given up here: `defaultStatedAt` and
 // `defaultDate` are now as fresh as the page rather than as fresh as the tap. That
 // is the same freshness the inline widget had, and `defaultStatedAt` only ever
 // seeds the form's initial state, so a mid-session tab that crosses midnight opens
 // on the day it was rendered.
+// EVERY FIELD BELOW IS A PROP OF `MeasurementsQuickAdd`, SPELLED AS THAT COMPONENT
+// SPELLS IT (#4424 ruling 1), so a mount spreads this shape rather than re-listing
+// seven props — which is how the sheet and a second surface come to hand one form two
+// different field sets. `form` is the union's discriminant and the component ignores it.
 export interface MeasurementsQuickEntry {
   form: "measurements";
   defaultDate: string;
-  // The stated instant already on today's manual body-metrics row, or null —
+  // The stated instant already on that day's manual body-metrics row, or null —
   // seeds the form's Time control (#2235 decision 5).
-  statedAt: string | null;
+  defaultStatedAt: string | null;
+  // THE DAY BOUND, AS THE CORE HOLDS IT (#4425). `addMeasurements` refuses any day
+  // that has not happened, so the control that collects the day says so rather than
+  // letting a submission travel to find out. It is the SUBJECT's today: a caregiver
+  // in another zone must not be able to write a day that has not started for them.
+  maxDate: string;
   // Scopes the form's last-written-group memory (#2014) to the data subject.
   profileId: number;
   weightUnit: WeightUnit;
@@ -57,18 +66,24 @@ export interface MeasurementsQuickEntry {
   showHeadCirc: boolean;
 }
 
+// `date` is THE DAY THE FORM WILL STAND ON, defaulting to the profile's today — the
+// sheet and the Trends panel open on today; the `/history` add door opens on the day
+// the reader was looking at (#4424 ruling 2), which is the whole reason to add from
+// there. One reader answers "what does the measurements form need on day D" so a
+// second surface cannot assemble a different set of props for the same form.
 export function measurementsQuickEntry(
   loginId: number,
-  profileId: number
+  profileId: number,
+  date: string = today(profileId)
 ): MeasurementsQuickEntry {
-  const date = today(profileId);
   const age = getProfileAge(profileId);
   const birthdate = getProfileBirthdate(profileId);
   const prefs = getUnitPrefs(loginId);
   return {
     form: "measurements",
     defaultDate: date,
-    statedAt: getManualBodyMetricStatedAt(profileId, date),
+    defaultStatedAt: getManualBodyMetricStatedAt(profileId, date),
+    maxDate: today(profileId),
     profileId,
     weightUnit: prefs.weightUnit,
     temperatureUnit: prefs.temperatureUnit,

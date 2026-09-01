@@ -1216,7 +1216,6 @@ export default function IntakeItemForm({
                 )}
                 {pediatricContext && (
                   <PediatricWeightUpdate
-                    idPrefix={`pediatric-${fid}`}
                     context={pediatricContext}
                     initiallyOpen={
                       pediatricResult.kind === "need-weight" ||
