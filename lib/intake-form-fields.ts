@@ -29,6 +29,7 @@ import type {
 import type { IntakePairDraft } from "./intake-rules";
 import type { PurposeDraft } from "./intake-purposes";
 import { serializeRxcuiIngredients } from "./rxnorm";
+import { intakeKindAffordances } from "./intake-kind-affordances";
 
 // One dose row, structurally what DoseRowsEditor edits (declared here so the mapping
 // stays free of React).
@@ -116,7 +117,7 @@ export function intakeItemFields(
 ): [string, string][] {
   const out: [string, string][] = [];
   const set = (k: string, v: string) => out.push([k, v]);
-  const isMed = state.kind === "medication";
+  const affordances = intakeKindAffordances(state.kind);
 
   if (state.id != null) set("id", String(state.id));
   set("kind", state.kind);
@@ -148,7 +149,7 @@ export function intakeItemFields(
   set("cadence_interval_days", state.cadence.intervalDays);
   set("cadence_anchor_date", state.cadence.anchorDate);
 
-  if (isMed) {
+  if (affordances.prescription) {
     set("rx", state.rx ? "1" : "0");
     set("prescriber", state.prescriber.trim());
     set("pharmacy", state.pharmacy.trim());
@@ -168,7 +169,7 @@ export function intakeItemFields(
     if (state.id != null) set("end_date", state.endDate.trim());
     // The redose trio only exists for an as-needed medication; the action clears it
     // otherwise, and posting it for a scheduled med would be a second gate.
-    if (state.obligation === "may") {
+    if (affordances.redose && state.obligation === "may") {
       if (state.minIntervalHours.trim())
         set("min_interval_hours", state.minIntervalHours.trim());
       if (state.maxDailyCount.trim())
@@ -182,7 +183,8 @@ export function intakeItemFields(
       )
         set("redose_notice", "1");
     }
-  } else {
+  }
+  if (affordances.stack) {
     set("stack", state.stack.trim());
   }
   // Both child sets survive a kind flip (#3649). Posting them for every kind is what
@@ -231,7 +233,7 @@ export function emptyIntakeItemFormState(
     condition: "daily",
     situation: "",
     pauseSituation: "",
-    obligation: kind === "medication" ? "must" : "should",
+    obligation: intakeKindAffordances(kind).defaultObligation,
     critical: false,
     escalateAfterMin: "",
     escalateChatId: "",

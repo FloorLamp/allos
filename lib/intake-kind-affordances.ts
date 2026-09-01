@@ -25,11 +25,10 @@ import { availableIntakeConditions } from "./intake-schedule";
 export type IntakeBrandSource = "medication" | "supplement";
 
 export interface IntakeKindAffordances {
-  kind: IntakeItemKind;
   // The one name field's placeholder — the thing that taught wrong before #846.
   namePlaceholder: string;
   brandPlaceholder: string;
-  brandSource: IntakeBrandSource;
+  catalogSource: IntakeBrandSource;
   // Which `condition` values this kind may schedule by. Workout/rest days are a
   // supplement concept; a medication is daily or situational.
   conditions: IntakeCondition[];
@@ -61,10 +60,9 @@ export function intakeKindAffordances(
 ): IntakeKindAffordances {
   if (kind === "medication") {
     return {
-      kind,
       namePlaceholder: "e.g. Ibuprofen",
       brandPlaceholder: "e.g. Advil",
-      brandSource: "medication",
+      catalogSource: "medication",
       conditions: MEDICATION_CONDITIONS,
       prescription: true,
       redose: true,
@@ -78,10 +76,9 @@ export function intakeKindAffordances(
   }
   const { activityScheduleAvailable = true, storedCondition = null } = options;
   return {
-    kind,
     namePlaceholder: "e.g. Vitamin D3",
     brandPlaceholder: "e.g. Thorne",
-    brandSource: "supplement",
+    catalogSource: "supplement",
     conditions: availableIntakeConditions(
       activityScheduleAvailable,
       storedCondition
@@ -98,25 +95,25 @@ export function intakeKindAffordances(
 }
 
 // The two lists #846 found teaching the user wrong — brand suggestions and dose-amount
-// suggestions — resolved by kind rather than by which file the form happened to be in.
+// suggestions — resolved by this table, not by which file the form happened to be in.
 // These are the whole of that guarantee's mechanism: one call site each in the form, so
 // a medication CANNOT be offered "e.g. Thorne" without this function returning it.
 
 export function brandOptionsFor(
-  kind: IntakeItemKind,
+  source: IntakeBrandSource,
   sources: {
     // The ranked per-profile medication brands (#1677), or the picked drug's own.
     medicationBrands: readonly string[];
     supplementBrands: readonly string[];
   }
 ): readonly string[] {
-  return kind === "medication"
+  return source === "medication"
     ? sources.medicationBrands
     : sources.supplementBrands;
 }
 
 export function dosageOptionsFor(
-  kind: IntakeItemKind,
+  source: IntakeBrandSource,
   sources: {
     // The OTC label strengths for the picked ingredient (#798).
     otcStrengths: readonly string[];
@@ -124,5 +121,7 @@ export function dosageOptionsFor(
     catalogDosages: readonly string[];
   }
 ): readonly string[] {
-  return kind === "medication" ? sources.otcStrengths : sources.catalogDosages;
+  return source === "medication"
+    ? sources.otcStrengths
+    : sources.catalogDosages;
 }

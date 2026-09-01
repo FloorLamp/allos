@@ -128,6 +128,7 @@ import type {
   IntakeObligation,
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
+import { intakeKindAffordances } from "@/lib/intake-kind-affordances";
 import { demoteIntakeObligation } from "@/lib/intake-obligation-write";
 import {
   DEMOTION_PREFIX,
@@ -169,19 +170,15 @@ function fields(formData: FormData) {
   // one obligation that carries a safety net.
   const kindEarly: IntakeItemKind =
     formData.get("kind") === "medication" ? "medication" : "supplement";
-  const obligationRaw = String(
-    formData.get("obligation") ??
-      (kindEarly === "medication" ? "must" : "should")
-  );
+  const defaultObligation = intakeKindAffordances(kindEarly).defaultObligation;
+  const obligationRaw = String(formData.get("obligation") ?? defaultObligation);
   // A `may` item is on demand by construction (#1505 collapsed obligation into it), so
   // the old separate as-needed checkbox is gone: choosing May declares no dueness.
   const obligation: IntakeObligation = OBLIGATIONS.includes(
     obligationRaw as IntakeObligation
   )
     ? (obligationRaw as IntakeObligation)
-    : kindEarly === "medication"
-      ? "must"
-      : "should";
+    : defaultObligation;
   // CALENDAR cadence (#1602) — orthogonal to `condition` above and to `obligation`.
   // Each branch keeps ONLY its own fields so a user who tries weekly, picks days, then
   // switches back to daily doesn't leave a stale weekday list that would silently
