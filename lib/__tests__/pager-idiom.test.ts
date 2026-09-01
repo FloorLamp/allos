@@ -144,6 +144,7 @@ describe("one pager idiom (#3378)", () => {
       "app/(app)/sleep/SleepMoodSection.tsx",
       "app/(app)/trends/BodySection.tsx",
       "app/(app)/whats-new/page.tsx",
+      "components/ClinicalResultsTable.tsx",
       "components/DataTableManager.tsx",
     ]);
   });

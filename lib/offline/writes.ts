@@ -12,7 +12,13 @@
 // parent), per the repo scoping rule.
 
 import { db, today, writeTx } from "@/lib/db";
-import { isPastWriteAccepted, isWithinTapReach } from "@/lib/log-manifest";
+import {
+  BODY_READING_WRITE,
+  MOOD_CHECKIN,
+  STOOL_MOVEMENT_LOG,
+  isPastWriteAccepted,
+  isWithinTapReach,
+} from "@/lib/log-manifest";
 import { OFFLINE_REPLAY, type LoggedVia } from "../logged-via";
 import { now as clockNow } from "@/lib/clock";
 import {
@@ -296,6 +302,8 @@ export function insertBodyMetric(
   // holds the reason — and every one of them renders it rather than dropping it.
   return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
+// #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
+export const insertBodyMetricDeclares = BODY_READING_WRITE;
 
 // ── vitals quick-add ────────────────────────────────────────────────────────────
 
@@ -661,6 +669,7 @@ export function insertVitals(
     ...(sleepWindowRefused ? { sleepWindowRefused } : {}),
   };
 }
+export const insertVitalsDeclares = BODY_READING_WRITE;
 
 // ── growth (height / head circumference) ───────────────────────────────────────
 
@@ -702,6 +711,7 @@ export function insertGrowth(
   });
   return true;
 }
+export const insertGrowthDeclares = BODY_READING_WRITE;
 
 // ── waist circumference (issue #2322) ─────────────────────────────────────────
 
@@ -731,6 +741,7 @@ export function insertWaistCirc(
   });
   return true;
 }
+export const insertWaistCircDeclares = BODY_READING_WRITE;
 
 // ── lean mass / bone mass / hydration (issue #1851) ───────────────────────────
 
@@ -770,6 +781,7 @@ export function insertComposition(
   });
   return true;
 }
+export const insertCompositionDeclares = BODY_READING_WRITE;
 
 // ── Bristol stool form (issue #2785) ──────────────────────────────────────────
 
@@ -859,6 +871,7 @@ export function logBristolStool(
   });
   return { wrote: true, ...(refused ? { statedTimeRefused: refused } : {}) };
 }
+export const logBristolStoolDeclares = STOOL_MOVEMENT_LOG;
 
 // ── mood check-in (issue #992) ──────────────────────────────────────────────────
 
@@ -920,6 +933,7 @@ export function upsertMoodLog(
   resetMoodCheckinIgnored(profileId);
   return true;
 }
+export const upsertMoodLogDeclares = MOOD_CHECKIN;
 
 // Correct or remove ONE past check-in, from the mood detail page's readings table
 // (issue #1488, absorbing #1397). Before this, `upsertMoodLog` was the only mood

@@ -585,7 +585,7 @@ test("the panel facet offers only panels this browser can return (#1581 section 
   await page.context().close();
 });
 
-test("an open group over the cap says what it is holding back, and loads the rest (#1651)", async ({
+test("an open group pages through bounded chunks without replacing its panel (#3230)", async ({
   browser,
 }) => {
   // A narrowing filter opens every group it matched, which is exactly where an
@@ -599,20 +599,16 @@ test("an open group over the cap says what it is holding back, and loads the res
   await expect(lipids).toHaveAttribute("data-open", "true");
   await expect(lipids).toHaveAttribute("data-total", "30");
 
-  const more = lipids.getByTestId("clinical-result-panel-more");
-  await expect(more).toContainText(
-    `Showing ${PANEL_ROW_LIMIT} of 30 clinical results`
+  const pager = lipids.getByTestId("clinical-result-panel-pagination");
+  await expect(pager).toContainText(
+    `Showing 1–${PANEL_ROW_LIMIT} of 30 clinical results`
   );
   await expect(lipids.locator("tr")).toHaveCount(PANEL_ROW_LIMIT + 2); // header + rows + footer
 
-  // Asking for the rest is one request for one panel, and the footer goes away
-  // because there is nothing left to hold back.
-  await hydratedClick(
-    page,
-    lipids.getByTestId("clinical-result-panel-load-all")
-  );
-  await expect(lipids.locator("tr")).toHaveCount(31); // header + 30 results
-  await expect(more).toHaveCount(0);
+  await hydratedClick(page, pager.getByRole("button", { name: "Next" }));
+  await expect(pager).toContainText("Showing 26–30 of 30 clinical results");
+  await expect(lipids).toHaveAttribute("data-open", "true");
+  await expect(lipids.locator("tr")).toHaveCount(7); // header + 5 rows + pager
 
   await page.context().close();
 });

@@ -8,11 +8,24 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  EVERY_DOMAIN_DECLARES_A_CORE,
   LOG_DOMAINS,
   LOG_MANIFEST,
+  BODY_READING_WRITE,
+  DOSE_CONFIRM_UNDO,
+  DOSE_RESOLUTION,
+  FOOD_SERVING_LOG,
+  FOOD_SERVING_UNDO,
+  MOOD_CHECKIN,
+  PRACTICE_LIVE_TAP,
+  PRACTICE_SESSION_LOG,
+  STOOL_MOVEMENT_LOG,
+  SUBSTANCE_USE_WRITE,
+  SYMPTOM_DAY_WRITE,
   TAP_REACH,
   isPastWriteAccepted,
 } from "@/lib/log-manifest";
+import type { LogCoreName, LogCoresOf, LogDomain } from "@/lib/log-manifest";
 import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isDoseDateAccepted,
@@ -92,6 +105,23 @@ describe("the shared core invariant: any real past day, never the future", () =>
 // The type requires a `reason` and a `ref`; it cannot require that the reason SAYS
 // anything, which is the one gap a value check closes (`arguedExclusion` throws on
 // the same input for the same reason).
+// Every core declaration in the tree. A new one that argues nothing is caught here the
+// way an argued exclusion is; the compile-time half — that every core HAS one — is
+// `DECLARED_CORES` below.
+const LOG_CORE_DECLARATIONS = [
+  FOOD_SERVING_LOG,
+  FOOD_SERVING_UNDO,
+  DOSE_RESOLUTION,
+  DOSE_CONFIRM_UNDO,
+  PRACTICE_SESSION_LOG,
+  PRACTICE_LIVE_TAP,
+  MOOD_CHECKIN,
+  SYMPTOM_DAY_WRITE,
+  STOOL_MOVEMENT_LOG,
+  SUBSTANCE_USE_WRITE,
+  BODY_READING_WRITE,
+];
+
 describe("every argued absence argues", () => {
   it("no reason is blank and no ref is bare", () => {
     const blank: string[] = [];
@@ -104,7 +134,6 @@ describe("every argued absence argues", () => {
     for (const domain of LOG_DOMAINS) {
       const entry = LOG_MANIFEST[domain];
       const arguable = [
-        entry.statedTime,
         entry.offline,
         ...Object.values(entry.surfaces),
         ...Object.values(entry.pieces),
@@ -113,6 +142,60 @@ describe("every argued absence argues", () => {
       arguable.forEach((v, i) => check(`${domain}[${i}]`, v));
     }
     for (const [id, reach] of Object.entries(TAP_REACH)) check(id, reach);
+    LOG_CORE_DECLARATIONS.forEach((d) =>
+      check(`${d.domain}.statedTime`, d.statedTime)
+    );
     expect(blank).toEqual([]);
+  });
+});
+
+// THE CORES COLUMN DERIVES NOW (#4614). It used to be hand-named strings with a type
+// floor and no completeness check, and it went stale three times inside a day. Each
+// core declares its own domain beside itself; this table is exhaustive over the
+// DERIVED union, so a core that is renamed, deleted, or newly declared fails `tsc`
+// here rather than leaving a row quietly describing the old set.
+type DomainOfCore<C extends LogCoreName> = {
+  [D in LogDomain]: C extends LogCoresOf<D> ? D : never;
+}[LogDomain];
+
+const DECLARED_CORES = {
+  logFoodServingCore: "food",
+  undoFoodServingCore: "food",
+  markDoseTaken: "dose",
+  markDoseSkipped: "dose",
+  setDoseStatusCore: "dose",
+  undoDoseConfirm: "dose",
+  logHistoricalDose: "dose",
+  logPracticeSession: "practice",
+  logPracticeSessionForDay: "practice",
+  logPracticeByTargetId: "practice",
+  logFinishedPracticeSession: "practice",
+  logFinishedPracticeByTargetId: "practice",
+  startLivePracticeSession: "practice",
+  endLivePracticeSession: "practice",
+  upsertMoodLog: "mood",
+  logSymptomCore: "symptom",
+  setSymptomSeverityCore: "symptom",
+  lowerSymptomSeverityCore: "symptom",
+  logBristolStool: "stool",
+  logSubstanceUnitCore: "substance",
+  undoSubstanceUnitCore: "substance",
+  addSubstanceDailyTotalCore: "substance",
+  insertBodyMetric: "body",
+  insertVitals: "body",
+  insertGrowth: "body",
+  insertWaistCirc: "body",
+  insertComposition: "body",
+  logTemperatureCore: "body",
+} as const satisfies { [C in LogCoreName]: DomainOfCore<C> };
+
+describe("cores declare and the manifest derives (#4614)", () => {
+  it("every domain is answered by at least one declared core", () => {
+    // The compile-time half is the constant itself: it does not typecheck unless every
+    // `LogDomain` derives a non-empty list.
+    expect(EVERY_DOMAIN_DECLARES_A_CORE).toBe(true);
+    expect(new Set(Object.values(DECLARED_CORES))).toEqual(
+      new Set(LOG_DOMAINS)
+    );
   });
 });

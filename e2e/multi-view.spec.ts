@@ -1015,35 +1015,7 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
     await expectInView(page, 2);
   }
 
-  test("single-view: only the acting member's readings, no Profile column, no chip", async ({
-    browser,
-  }) => {
-    test.slow();
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_MVBIO,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    await page.goto("/results/clinical-results");
-    await expect(page.getByTestId("results-clinical-results")).toBeVisible();
-    // The acting (self) member's unique analyte renders.
-    await expect(
-      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-    // No leading Profile column and no subject chips in single view.
-    await expect(
-      page.getByRole("columnheader", { name: "Profile" })
-    ).toHaveCount(0);
-    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
-    // The read-only member's unique analyte is NOT in view.
-    await expect(
-      page.getByText(MVBIO_RO_ANALYTE, { exact: false })
-    ).toHaveCount(0);
-
-    await page.context().close();
-  });
-
-  test("multi-view: both members' shared family merges, chip + no write on the read-only rows", async ({
+  test("single-view stays plain, then multi-view merges both members without granting writes", async ({
     browser,
   }) => {
     test.slow();
@@ -1052,48 +1024,55 @@ test.describe("Multi-view Clinical results table (issue #1331)", () => {
       username: E2E_LOGIN_MVBIO,
       password: E2E_MEMBER_PASSWORD,
     });
+    try {
+      await page.goto("/results/clinical-results");
+      await expect(page.getByTestId("results-clinical-results")).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      await expect(
+        page.getByRole("columnheader", { name: "Profile" })
+      ).toHaveCount(0);
+      await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(
+        0
+      );
+      await expect(
+        page.getByText(MVBIO_RO_ANALYTE, { exact: false })
+      ).toHaveCount(0);
 
-    await toggleIntoView(page, roId);
-    // The view-set persists on the session — re-navigate for a deterministic reload.
-    await page.goto("/results/clinical-results");
-    await expectInView(page, 2);
+      await toggleIntoView(page, roId);
+      // Re-navigation proves the selected view-set persists on the session.
+      await page.goto("/results/clinical-results");
+      await expectInView(page, 2);
+      await expect(
+        page.getByRole("columnheader", { name: "Profile" })
+      ).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      await expect(
+        page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+      ).toBeVisible();
+      const roChip = page.getByTestId(`subject-chip-${roId}`);
+      await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
 
-    // The leading Profile column appears in multi-view.
-    await expect(
-      page.getByRole("columnheader", { name: "Profile" })
-    ).toBeVisible();
+      // Both members' shared-family rows survive the per-member dedup partition.
+      await page.goto("/results/clinical-results?q=vitamin+d");
+      await expectInView(page, 2);
+      await expect(
+        page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
+      ).toHaveCount(2);
 
-    // Both members' unique analytes are merged into the one table.
-    await expect(
-      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-    await expect(
-      page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
-    ).toBeVisible();
-
-    // The non-acting (read-only) member's rows carry its subject chip.
-    const roChip = page.getByTestId(`subject-chip-${roId}`);
-    await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
-
-    // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
-    // dedup never collapsed the two people into one series (per-member partitions).
-    await page.goto("/results/clinical-results?q=vitamin+d");
-    await expectInView(page, 2);
-    await expect(
-      page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
-    ).toHaveCount(2);
-
-    // The read-only member's row shows NO edit/delete affordance; a self row does.
-    const roRow = page.locator("tr", {
-      has: page.getByTestId(`subject-chip-${roId}`),
-    });
-    await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
-    // At least one write affordance exists (on the acting member's own rows).
-    await expect(
-      page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
-    ).toBeVisible();
-
-    await page.context().close();
+      const roRow = page.locator("tr", {
+        has: page.getByTestId(`subject-chip-${roId}`),
+      });
+      await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
+      await expect(
+        page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
+      ).toBeVisible();
+    } finally {
+      await page.context().close();
+    }
   });
 });
 

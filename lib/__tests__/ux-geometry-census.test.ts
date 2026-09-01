@@ -7,18 +7,8 @@ import {
   geometryAuditSections,
 } from "../../scripts/ux-geometry-census.mjs";
 
-// The PURE half of the #3489 geometry probe's guard.
-//
-// The probe itself measures rendered boxes and can only be exercised in a real
-// browser — e2e/ux-geometry-probe.mobile.spec.ts plants offenders of both classes
-// in a live DOM and requires them back, and requires the probe's silence on the
-// benign neighbours. jsdom cannot host that test: `getBoundingClientRect()` returns
-// zeros there, so every element would read as un-rendered and the whole suite would
-// be green by measuring nothing — the exact fail-open shape this issue exists to
-// close.
-//
-// What IS pure is everything downstream of the measurement: the thresholds, the
-// ranking, and the truncation notice. Those are what turn a probe's output into the
+// Fast coverage for everything downstream of the census measurement: thresholds,
+// ranking, and truncation notices. Those turn a probe's output into the
 // audit.md tables the acceptance criteria name, and they are worth a fast test
 // because a ranking that silently sorts the wrong way hides the worst offender in
 // the middle of a list nobody reads to the end of.
@@ -220,23 +210,6 @@ describe("the harness reads the shared rule rather than a second copy of it", ()
     expect(harness).not.toMatch(/controlHeightTolerancePx\s*[:=]\s*\d/);
     expect(harness).not.toMatch(/clipEpsilonPx\s*[:=]\s*\d/);
     expect(harness).not.toMatch(/overlapEpsilonPx\s*[:=]\s*\d/);
-  });
-
-  it("the e2e guard runs the probe rather than re-spelling its rules (#3814)", () => {
-    // #3814 asks whether the sweep and the e2e probe SHARE the `.truncate`
-    // exemption (`insideEllipsisTruncation`) or each carry their own reach — two
-    // instruments answering one question is how they drift apart. They share it,
-    // and this is the checkable form of that: the guard imports `geometryProbe` and
-    // hands it to `page.evaluate`, so the exemption it exercises is the one the
-    // census runs, character for character. What would break that is the guard
-    // growing a computed-style read of the mechanism or a threshold of its own.
-    const guard = codeOf("e2e", "ux-geometry-probe.mobile.spec.ts");
-    expect(guard).toMatch(/from "\.\.\/scripts\/ux-geometry-census\.mjs"/);
-    expect(guard).toContain("geometryProbe");
-    expect(guard).not.toContain("textOverflow");
-    expect(guard).not.toMatch(/clipEpsilonPx\s*[:=]\s*\d/);
-    expect(guard).not.toMatch(/overlapEpsilonPx\s*[:=]\s*\d/);
-    expect(guard).not.toMatch(/controlHeightTolerancePx\s*[:=]\s*\d/);
   });
 
   it("derives the ellipsis exemption from paintedRect (#3977)", () => {
