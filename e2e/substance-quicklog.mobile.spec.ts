@@ -208,13 +208,20 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
     // absent — this profile has logged none of them, and the offer is what it
     // TRACKS, not the catalog.
     await expect(
-      page.getByTestId(`quick-entry-substance-cap-${NAME}`)
+      page.getByTestId(`quick-entry-substance-cap-progress-${NAME}`)
     ).toHaveCount(0);
     await expect(
       page.getByTestId("quick-entry-substance-nicotine")
     ).toHaveCount(0);
 
-    // And the tap logs, through the same action the page's card posts.
+    // BOTH TAPS, because the row IS the domain's shared row control since #4424 —
+    // the sheet used to offer a log and no undo, so a mis-tap had to be carried to
+    // another page. Asserted as the pair rather than as the new button alone: a mount
+    // that drew one of them and not the other is the per-mount field set the ruling
+    // forbids.
+    await expect(
+      page.getByTestId(`quick-entry-substance-undo-${NAME}`)
+    ).toBeVisible();
     await settledClick(
       page,
       page.getByTestId(`quick-entry-substance-log-${NAME}`)
@@ -250,7 +257,9 @@ test.describe("quick-log sheet: the substance row (#3327)", () => {
     const sheet = await openLogSheet(page);
     const row = await showLogRow(sheet, "log-substance");
     await row.click();
-    const capLine = page.getByTestId(`quick-entry-substance-cap-${NAME}`);
+    const capLine = page.getByTestId(
+      `quick-entry-substance-cap-progress-${NAME}`
+    );
     await expect(capLine).toBeVisible({ timeout: 15_000 });
     await expect(capLine).toContainText("7");
     // Calm and factual, like every other rendering of this one line.

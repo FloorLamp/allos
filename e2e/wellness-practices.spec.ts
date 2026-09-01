@@ -405,8 +405,8 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Nothing logged yet: the first tap is offered as a first tap.
   await expect(todayLine).toContainText("No sessions yet");
-  await expect(button).toHaveText("Log now");
-  await expect(button).toHaveAccessibleName(/^Log now — /);
+  await expect(button).toHaveText("Just finished");
+  await expect(button).toHaveAccessibleName(/^Just finished a /);
 
   // #2204, owner ruling: the CARD carries the inline stepper too, alongside the
   // expanded form rather than instead of it. "The modal is one tap away" answered
@@ -428,7 +428,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
   });
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(todayLine).toContainText("1 session logged");
-  await expect(button).toHaveAccessibleName(/^Log another /);
+  await expect(button).toHaveAccessibleName(/^Just finished another /);
   // The existing cooldown is a rendered state, not a silent onClick return: a
   // caller can await readiness without guessing the ledger's two-second window.
   await expect(button).toBeDisabled();
@@ -436,7 +436,7 @@ test("one-tap practice logging: a double-tap logs once, the label states today, 
 
   // Layer 2 — the affordance now renders today's state, so the next tap is visibly
   // a SECOND one before it is taken.
-  await expect(button).toHaveText("Log another");
+  await expect(button).toHaveText("Just finished");
   await expect(button).toHaveAccessibleName(/1 already logged today/);
 
   // The pin: exactly one session reached the store. The reload also clears the

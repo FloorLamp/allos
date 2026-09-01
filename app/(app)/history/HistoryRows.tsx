@@ -59,10 +59,8 @@ import {
   editPracticeSession,
   removePracticeSession,
 } from "@/app/(app)/wellness/actions";
-import {
-  deleteSubstanceDailyTotalAction,
-  updateSubstanceDailyTotalAction,
-} from "@/app/(app)/medical/substance-use/actions";
+import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import SubstanceForm from "@/components/substances/SubstanceForm";
 import {
   deleteMetricReading,
   updateMetricReading,
@@ -641,54 +639,25 @@ export default function HistoryRows({
         );
       }
       case "substance":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // It stamps the ROW's profile itself, like the dose form above, so it does not
+        // run through `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("substance", edit.substance);
-                fd.set("id", String(edit.rowId));
-                const outcome = await updateSubstanceDailyTotalAction(fd);
-                return outcome.kind === "updated"
-                  ? { ok: true }
-                  : { ok: false, error: "Couldn't save that entry." };
-              })
-            }
-          >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Date
-              <DateField
-                name="date"
-                defaultValue={row.date}
-                max={maxDateFor(row)}
-                required
-                inputClassName="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={edit.amount}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {/* Same rewrite-everything contract as the practice edit above: the
-                action reads `notes` and stores what it finds, so a form without the
-                field would silently clear it. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input
-                type="text"
-                name="notes"
-                defaultValue={edit.notes ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={[{ key: edit.substance, label: row.title }]}
+            date={row.date}
+            maxDate={maxDateFor(row)}
+            row={{
+              id: edit.rowId,
+              substance: edit.substance,
+              date: row.date,
+              amount: edit.amount,
+              notes: edit.notes ?? null,
+            }}
+            subjectProfileId={row.profileId}
+            onSaved={done}
+            onCancel={done}
+          />
         );
       case "symptom":
         return (

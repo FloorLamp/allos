@@ -16,7 +16,7 @@ import { stubTelegramSends } from "./telegram-spies";
 import { db, today } from "@/lib/db";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { LEDGERS_WITH_LOGGED_VIA, isLoggedVia } from "@/lib/logged-via";
-import { updatePracticeSession } from "@/lib/practice-log";
+import { logPracticeSession, updatePracticeSession } from "@/lib/practice-log";
 import { practiceIdentity } from "@/lib/practice";
 import {
   logFoodServingCore,
@@ -65,11 +65,18 @@ function practiceTarget(name: string): number {
 function practiceRow(name: string) {
   return db
     .prepare(
-      `SELECT logged_via, edited FROM practice_logs
+      `SELECT logged_via, edited, start_time, end_time, duration_min FROM practice_logs
         WHERE profile_id = ? AND practice = ? ORDER BY id DESC LIMIT 1`
     )
     .get(p.profileId, name) as
-    { logged_via: string | null; edited: number | null } | undefined;
+    | {
+        logged_via: string | null;
+        edited: number | null;
+        start_time: string | null;
+        end_time: string | null;
+        duration_min: number | null;
+      }
+    | undefined;
 }
 
 /** A fresh scheduled dose with nothing logged against it yet. */
@@ -219,14 +226,31 @@ describe("the chat surfaces, driven through their real handlers", () => {
     // are only evidence about the nudge if a tap can say it came from one.
     const nudged = practiceTarget("lv nudge practice");
     const listed = practiceTarget("lv list practice");
+    logPracticeSession(
+      p.profileId,
+      "lv nudge practice",
+      today(p.profileId),
+      "page",
+      { durationMin: 20 }
+    );
 
     await handleCallbackQuery(cq(`pdone:${p.profileId}:${nudged}:n1`));
     expect(practiceRow("lv nudge practice")?.logged_via).toBe("telegram-nudge");
+    expect(practiceRow("lv nudge practice")).toMatchObject({
+      start_time: null,
+      end_time: expect.any(String),
+      duration_min: null,
+    });
 
     await handleCallbackQuery(cq(`plog:${p.profileId}:${listed}:n2`));
     expect(practiceRow("lv list practice")?.logged_via).toBe(
       "telegram-command"
     );
+    expect(practiceRow("lv list practice")).toMatchObject({
+      start_time: null,
+      end_time: expect.any(String),
+      duration_min: null,
+    });
   });
 
   it("a SLASH-COMMAND PRN tap stores telegram-command", async () => {

@@ -480,18 +480,11 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "substance" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "The `/history` add door spells its own substance form with an unlabeled amount; the sheet's overlay is a third spelling beside the Medical page's.",
-        ref: "#4424",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The unit tap and the record's row correction share no control, and the cap-progress line rides only the former.",
-        ref: "#4424",
-      },
+      // #4424's substance leg. `SubstanceForm` is add AND full-statement edit at every
+      // mount, with the unit-labelled amount (#4211); `SubstanceUnitControl` carries the
+      // tap, its undo, and the cap verdict the exclusion above is argued from.
+      form: { kind: "shared", component: "SubstanceForm" },
+      rowControl: { kind: "shared", component: "SubstanceUnitControl" },
     },
     writeConventions: { kind: "convention" },
     cores: [

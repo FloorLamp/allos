@@ -23,7 +23,7 @@ import {
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { logPractice } from "@/app/(app)/wellness/actions";
-import { addSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
+import SubstanceForm from "@/components/substances/SubstanceForm";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { FOOD_GROUPS } from "@/lib/food-groups";
@@ -62,17 +62,13 @@ import type { WeightUnit } from "@/lib/settings";
 // time field stays empty and emits null, so a backfill that states nothing still
 // states nothing, which is the behaviour phase 1 was protecting.
 //
-// TWO KINDS KEEP A BARE DATE, and neither is an oversight:
-//   • SUBSTANCE — `substance_daily_totals` is a DAY TOTAL. It has a `recorded_at`
-//     (when the use was logged) and no event instant at all, which is why the record
-//     renders these rows date-only and sinks them below the day's timed ones. A time
-//     field here would collect a statement with nowhere to be stored.
-//   • BODY — `body_metrics.occurred_at` exists (migration 165, #2235) and the write
-//     core takes it, but `addBodyMetric` deliberately states no time, and its
-//     find-then-write CLEARS the column on an empty submission while leaving it alone
-//     for a time-blind one. Choosing between those is a decision about the body
-//     domain's write contract, not about this door, so it is raised rather than
-//     guessed at here.
+// BODY KEEPS A BARE DATE, and that is not an oversight: `body_metrics.occurred_at`
+// exists (migration 165, #2235) and the write core takes it, but `addBodyMetric`
+// deliberately states no time, and its find-then-write CLEARS the column on an empty
+// submission while leaving it alone for a time-blind one. Choosing between those is a
+// decision about the body domain's write contract, not about this door. SUBSTANCE is
+// date-only in the SCHEMA (`substance_daily_totals` is a day total with no event
+// instant, #3327) and its own form now says so.
 
 const KIND_LABEL = {
   food: "Log food",
@@ -301,9 +297,8 @@ export default function HistoryAddDoor({
     );
   }
 
-  // The DATE-ONLY kinds' field. Still `DateField` rather than a `WhenControl` with the
-  // time hidden: a control rendered without half of itself is a variant, and these two
-  // kinds are date-only in the SCHEMA rather than by presentation choice.
+  // BODY's field, and still `DateField` rather than a `WhenControl` with its time
+  // hidden: a control rendered without half of itself is a variant.
   const dateField = (
     <label className="text-xs text-slate-500 dark:text-slate-400">
       Date
@@ -449,46 +444,20 @@ export default function HistoryAddDoor({
           </form>
         );
       case "substance":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own substance
+        // form — with the bare "Amount" — is deleted and the domain's one form mounts
+        // with the found day in hand. The close and re-read stay the door's.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                const outcome = await addSubstanceDailyTotalAction(fd);
-                return outcome.kind === "added"
-                  ? null
-                  : "Couldn't save that entry.";
-              })
-            }
-          >
-            {dateField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Substance
-              <select name="substance" className="input mt-1 w-full">
-                {vocabulary.substances.map((substance) => (
-                  <option key={substance.key} value={substance.key}>
-                    {substance.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Amount
-              <input
-                type="number"
-                name="amount"
-                min={1}
-                defaultValue={1}
-                className="input mt-1 w-full"
-                required
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <input type="text" name="notes" className="input mt-1 w-full" />
-            </label>
-            {buttons}
-          </form>
+          <SubstanceForm
+            substances={vocabulary.substances}
+            date={date}
+            maxDate={maxDate}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "body":
         return (

@@ -228,7 +228,9 @@ export function activityWindow(a: ActivityWindowInput): ActivityWindow | null {
   let end: string | null = null;
   if (a.end_time) {
     end = `${a.date}T${a.end_time.slice(0, 5)}`;
-    if (end <= start) end = addMinutesLocal(end, 1440); // crossed midnight
+    if (end === start && a.duration_min != null && a.duration_min > 0)
+      end = addMinutesLocal(start, Math.round(a.duration_min));
+    else if (end < start) end = addMinutesLocal(end, 1440); // crossed midnight
   } else if (a.duration_min != null && a.duration_min > 0) {
     end = addMinutesLocal(start, Math.round(a.duration_min));
   }

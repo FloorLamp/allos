@@ -551,7 +551,9 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         },
       }),
     ]);
-    fireEvent.change(screen.getByLabelText("Amount"), {
+    // The amount names the substance's own unit word since #4424's substance leg —
+    // matched on the prefix so this stays about the FIELD, not about the wording.
+    fireEvent.change(screen.getByLabelText(/^Amount/), {
       target: { value: "5" },
     });
     await act(async () =>
@@ -690,6 +692,10 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         date: "2026-08-18",
         amount: "3",
         notes: "after lunch",
+        // The shared form declares its surface (#3087) as the symptom form beside it
+        // already did; the hand-rolled substance form it replaced posted nothing, so
+        // every correction made here was stamped by the action's fallback instead.
+        logged_via: "page",
       },
       "Save",
     ],

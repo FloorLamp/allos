@@ -223,10 +223,10 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await addForm.locator('input[type="text"]').fill(earlier);
     await addForm.locator('input[name="amount"]').fill("2");
     await addForm.locator('textarea[name="notes"]').fill(marker);
-    await settledClick(
-      page,
-      page.getByTestId("substance-history-add-save-cannabis")
-    );
+    // The shared form's own submit (#4424): the modal, the row correction and the
+    // record's add door all draw this one button, so the label is the domain form's
+    // and not this card's.
+    await settledClick(page, addForm.getByRole("button", { name: "Add" }));
     await expect(card.getByText(marker)).toBeVisible();
 
     // Today remains the one-tap fast path. Reloading clears only the two-second
@@ -255,10 +255,14 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await page.getByRole("menuitem", { name: "Edit" }).click();
     await pastRow.locator('input[name="amount"]').fill("3");
     await pastRow.locator('textarea[name="notes"]').fill(`${marker} corrected`);
-    await settledClick(
-      page,
-      page.getByTestId("substance-history-save-cannabis")
-    );
+    // SAME COMPONENT AS THE ADD ABOVE, in edit mode — one form, two seeds, two
+    // actions (#4424 ruling 1). Its amount field names the substance's unit, which is
+    // what the add door's deleted copy could not say.
+    await expect(
+      pastRow.getByTestId("substance-history-edit-form-cannabis")
+    ).toBeVisible();
+    await expect(pastRow.getByText("Amount (uses)")).toBeVisible();
+    await settledClick(page, pastRow.getByRole("button", { name: "Save" }));
     await expect(pastRow).toContainText("3 uses");
     await expect(pastRow).toContainText(`${marker} corrected`);
 
