@@ -397,9 +397,23 @@ export interface UpcomingItem {
   // When set, the page renders an inline "mark taken" form for this dose id
   // (reusing the existing dose check-off path). Only dose items carry one.
   doseId?: number;
-  // Wellness-practice items carry their stable frequency-target id so Upcoming can
-  // offer the same typed one-tap log as the wellness/protocol surfaces (#1591).
-  practiceTargetId?: number;
+  // WHAT THE SHARED ROW CONTROL NEEDS TO STAND ON THIS ROW (#4424 ruling 7). The row
+  // used to carry only the frequency-target id, because its own button posted one; the
+  // shared `LogPracticeButton` posts the practice NAME and renders the day's count, so
+  // the resolution moved here — server-side, beside the read that already holds the
+  // target. It is one field rather than four so the row cannot half-exist: a row either
+  // can host the control or does not offer one.
+  practiceLog?: {
+    /** The target's own `scope_value` — the name every practice core is keyed on. */
+    practice: string;
+    /** Sessions already logged on the SUBJECT's today, which is what makes the
+     *  control's re-log question ("2 already logged today") answerable at all. */
+    todayCount: number;
+    /** The practice's usual duration, so the row's stepper opens holding it. */
+    defaultDurationMin: number | null;
+    /** A session already running, so this row says End rather than Start. */
+    liveSession: { id: number; date: string; startTime: string } | null;
+  };
   // When set, the row renders inline preventive controls — "Mark done" (records a
   // satisfaction) plus a declined / not-applicable override — for this stable
   // catalog rule key. Only visit/screening items (issue #82) carry one; mirrors

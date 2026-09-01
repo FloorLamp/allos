@@ -1,8 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
 import { useToast } from "@/components/Toast";
-import DateField from "@/components/DateField";
 import NotesText from "@/components/NotesText";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import EntryHistoryTable, {
@@ -13,12 +11,10 @@ import {
   formatDateWithYear,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import { normalizePracticeName } from "@/lib/practice";
-import type { PracticeLog, PracticeSessionMutationOutcome } from "@/lib/types";
-import {
-  editPracticeSession,
-  removePracticeSession,
-} from "@/app/(app)/wellness/actions";
+import type { PracticeLog } from "@/lib/types";
+import { removePracticeSession } from "@/app/(app)/wellness/actions";
 
 function sessionFacts(session: PracticeLog, prefs: DisplayFormatPrefs): string {
   const parts = [formatDateWithYear(session.date, prefs)];
@@ -61,10 +57,15 @@ function sessionMenuName(
 
 // The practice-session history list on the shared EntryHistoryTable (#1491):
 // the shell, ⋯ menu, collapsed-5 window and undoable delete live in the shared
-// component; this file keeps practice's columns, its edit form, and the typed
-// mutation-outcome copy.
+// component; this file keeps practice's columns and its delete copy.
+//
+// THE ⋯ OPENS THE DOMAIN'S ONE FORM (#4424 rulings 1 and 3), seeded from the row. It
+// used to spell the same five fields a second time — same date, same start/end pair,
+// same duration, same notes — which is how a correction here could state a window the
+// record's own row could not.
 export default function PracticeSessionHistory({
   sessions,
+  today,
   totalCount = sessions.length,
   emptyText = "No sessions during this period.",
   ledger = false,
@@ -72,6 +73,8 @@ export default function PracticeSessionHistory({
   readOnly = false,
 }: {
   sessions: PracticeLog[];
+  /** The subject's today — the form's confirmation reads it. */
+  today: string;
   totalCount?: number;
   emptyText?: string;
   /** The server-paged event-ledger mount owns empty state, extent and paging. */
@@ -82,35 +85,6 @@ export default function PracticeSessionHistory({
 }) {
   const toast = useToast();
   const formatPrefs = useFormatPrefs();
-  const [pendingId, setPendingId] = useState<number | null>(null);
-
-  async function submitEdit(
-    event: FormEvent<HTMLFormElement>,
-    id: number,
-    done: () => void
-  ) {
-    event.preventDefault();
-    setPendingId(id);
-    const fd = new FormData(event.currentTarget);
-    fd.set("id", String(id));
-    let outcome: PracticeSessionMutationOutcome;
-    try {
-      outcome = await editPracticeSession(fd);
-    } catch {
-      toast("Couldn't update that session.", { tone: "error" });
-      setPendingId(null);
-      return;
-    }
-    setPendingId(null);
-    if (outcome.kind === "updated") {
-      toast("Session updated");
-      done();
-    } else if (outcome.kind === "invalid-date") {
-      toast("Choose a date within 30 days of today.", { tone: "error" });
-    } else {
-      toast("Couldn't find that session.", { tone: "error" });
-    }
-  }
 
   if (sessions.length === 0 && !ledger) {
     return (
@@ -181,79 +155,22 @@ export default function PracticeSessionHistory({
         editTestId={() => "practice-session-edit"}
         deleteTestId={() => "practice-session-delete"}
         renderEditForm={(session, done) => (
-          <form
-            onSubmit={(event) => submitEdit(event, session.id, done)}
-            className="grid gap-2 sm:grid-cols-2"
-          >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Date
-              <DateField
-                name="date"
-                defaultValue={session.date}
-                required
-                inputClassName="mt-1 w-full"
-              />
-            </label>
-            {/* START AND END (#3142, owner decision "just migrate time → start").
-                There is no separate "time" concept left to show, so the single Time
-                input became the pair — the same start/end shape the activity form
-                states, and unmodelled by WhenControl for the same reason (see
-                lib/__tests__/time-input-scan.test.ts). Both optional: a session may
-                state a start and no end, and `activityWindow` then derives the end
-                from Duration. */}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Start
-              <input
-                type="time"
-                name="start_time"
-                defaultValue={session.start_time ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              End
-              <input
-                type="time"
-                name="end_time"
-                defaultValue={session.end_time ?? ""}
-                min={session.start_time ?? undefined}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Duration (minutes)
-              <input
-                type="number"
-                name="duration_min"
-                min="1"
-                step="1"
-                defaultValue={session.duration_min ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-              Notes
-              <textarea
-                name="notes"
-                rows={2}
-                defaultValue={session.notes ?? ""}
-                className="input mt-1 w-full"
-              />
-            </label>
-            <div className="flex gap-2 sm:col-span-2">
-              <button
-                type="submit"
-                className="btn"
-                disabled={pendingId === session.id}
-                data-testid="practice-session-save"
-              >
-                {pendingId === session.id ? "Saving…" : "Save"}
-              </button>
-              <button type="button" className="btn-ghost" onClick={done}>
-                Cancel
-              </button>
-            </div>
-          </form>
+          <PracticeSessionForm
+            key={session.id}
+            practices={[session.practice]}
+            today={today}
+            date={session.date}
+            row={{
+              id: session.id,
+              date: session.date,
+              startTime: session.start_time,
+              endTime: session.end_time,
+              durationMin: session.duration_min,
+              notes: session.notes,
+            }}
+            onSaved={done}
+            onCancel={done}
+          />
         )}
         confirmDelete={() => ({
           title: "Delete practice session?",

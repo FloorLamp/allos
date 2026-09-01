@@ -403,6 +403,24 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/wellness/actions.ts",
+    fn: "logPractice",
+    why: "multi-view (#4424 ruling 7): Upcoming's practice rows mount the shared control, so a session logged on Sam's row writes to SAM via gateItemProfile() \u2192 requireProfileWriteAccess(rowProfileId). Every other mount posts no subject and falls back to the acting-profile gate. This replaced app/(app)/upcoming/actions.ts's logUpcomingPractice, which spelled the same two-branch gate inline",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/wellness/actions.ts",
+    fn: "startPracticeLive",
+    why: "multi-view (#4424 ruling 7): the live lifecycle takes the same subject as the log, or a control mounted on a member's row would start the ACTING profile's session; gateItemProfile() \u2192 requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/wellness/actions.ts",
+    fn: "endPracticeLive",
+    why: "multi-view (#4424 ruling 7): ends the SUBJECT's running session \u2014 endLivePracticeSession is (profile, id) scoped, so a cross-profile id no-ops rather than ending someone else's; gateItemProfile() \u2192 requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/wellness/actions.ts",
     fn: "editPracticeSession",
     why: "record correction (#4009): corrects the ROW's practice session via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
     gate: "gateItemProfile",

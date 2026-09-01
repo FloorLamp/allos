@@ -41,7 +41,12 @@ const SESSION: PracticeLog = {
 describe("practice session identity", () => {
   it("names each row and its action menu in the cross-practice ledger", () => {
     render(
-      <PracticeSessionHistory sessions={[SESSION]} ledger showPracticeName />
+      <PracticeSessionHistory
+        sessions={[SESSION]}
+        today="2026-08-20"
+        ledger
+        showPracticeName
+      />
     );
 
     const row = screen.getByTestId("practice-session-17");
@@ -56,7 +61,7 @@ describe("practice session identity", () => {
   });
 
   it("keeps the compact per-practice history free of repeated identity", () => {
-    render(<PracticeSessionHistory sessions={[SESSION]} />);
+    render(<PracticeSessionHistory sessions={[SESSION]} today="2026-08-20" />);
 
     const row = screen.getByTestId("practice-session-17");
     expect(row.textContent).toContain("Aug 20, 2026 · 08:30 · 20 min");
