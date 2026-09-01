@@ -2,17 +2,16 @@ import { createLogger } from "@/lib/log";
 import { userErrorCopy } from "@/lib/user-error-copy";
 import { getHomeLocation } from "@/lib/settings";
 import { getTimezone } from "@/lib/settings";
-import { WEATHER_ID, recordSync, recordSyncEvent } from "./connections";
+import {
+  WEATHER_ID,
+  emitSyncEvent,
+  recordSync,
+  recordSyncEvent,
+} from "./connections";
 import { syncFailureCopy, syncFailureKind } from "./auth-failure";
 import { openMeteoSource, type WeatherSource } from "./open-meteo";
 import { upsertUvHours, upsertWeatherDays } from "./weather-cache";
-import {
-  summarizeSplit,
-  type UpsertCounts,
-  emptyCounts,
-  foldCounts,
-} from "./sync-log";
-import { truncatedSyncDetails } from "./sync-details";
+import { type UpsertCounts, emptyCounts, foldCounts } from "./sync-log";
 
 // Pulls the hourly UV + irradiance series for a profile's HOME LOCATION from Open-Meteo
 // and upserts it into the GLOBAL, location-keyed cache (weather_uv_hours). Runs from
@@ -240,38 +239,21 @@ export async function runWeatherSync(
     ...(partial ? { partial } : {}),
   };
   recordSync(profileId, WEATHER_ID, { hours: total, days: dayTotal });
-  const tally = summarizeSplit(mergeCounts(counts, dayCounts), 0);
-  recordSyncEvent(profileId, WEATHER_ID, {
-    ok: true,
-    windowStart: startDate,
-    windowEnd: dailyEnd,
-    // THE DEGRADED RUN, RECORDED (#2567). `partial` was computed here, folded into the
-    // returned summary and logged — and then this event was written WITHOUT it, so a
-    // run whose daily/air-quality half failed stored `ok: true`, no details, no error,
-    // and nothing anywhere said it was degraded. The only trace was `received`
-    // silently dropping; 2 of the 80 successes in a twelve-day window had been
-    // degraded that way, invisibly.
-    //
-    // The standing already existed and already rendered: `isTruncatedSyncEvent` reads
-    // this marker, `scheduledStanding` returns "partial" off it, and Strava, Oura and
-    // Withings share the serializer. This run computed the input for all of it and
-    // dropped it on the floor. It writes it now, through the shared shape with its own
-    // honest line rather than a fourth spelling of the same fact.
-    details: partial
-      ? truncatedSyncDetails(
-          weatherPartialWarning(partial, {
+  emitSyncEvent({
+    profileId,
+    sourceId: WEATHER_ID,
+    window: { start: startDate, end: dailyEnd },
+    split: mergeCounts(counts, dayCounts),
+    skipped: 0,
+    // Never let a degraded daily half record a clean event again (#2567).
+    partial: partial
+      ? {
+          warning: weatherPartialWarning(partial, {
             deterministic: partialDeterministic,
-          })
-        )
+          }),
+        }
       : null,
-    received: tally.received,
-    written: tally.inserted + tally.updated + tally.unchanged,
-    inserted: tally.inserted,
-    updated: tally.updated,
-    unchanged: tally.unchanged,
-    suppressed: tally.suppressed,
-    edited: tally.edited,
-    skipped: tally.skipped,
+    ok: true,
   });
   log.info("weather sync", { profile: profileId, ...summary });
   return summary;
