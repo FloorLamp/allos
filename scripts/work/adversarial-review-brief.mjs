@@ -663,7 +663,7 @@ function main(argv) {
       );
     }
     console.error(
-      "An WORKER decides whether the lane runs. Read these claims, not the terms:"
+      "A WORKER decides whether the lane runs. Read these claims, not the terms:"
     );
     for (const h of vocabHits) {
       console.error(`  [${h.term}] ${h.where} — ${h.why}`);
