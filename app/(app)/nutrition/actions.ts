@@ -153,12 +153,13 @@ function parseFields(
 export async function logFoodServing(
   formData: FormData
 ): Promise<FoodLogResult> {
-  // The mounted bar and the record's add door stamp their originating subject as
-  // `profile_id`, and `gateItemProfile` is the app's ONE reader of it (#4730): this
-  // action used to hand-roll the same two branches around a `profileId` nobody posts,
-  // so an add carrying a subject silently landed on the ACTING profile instead. The
-  // gate reauthorizes the subject, so an in-flight add cannot be retargeted by a
-  // concurrent profile switch either.
+  // ONE SPELLING FOR THE SUBJECT (#4730). Every mount stamps `profile_id`, and
+  // `gateItemProfile` is this repo's one reader of it; this action hand-rolled the
+  // same two branches around a camelCase `profileId` nothing posts, so an add
+  // carrying a subject fell through to the ACTING profile — silently, because a
+  // caregiver's own serving is a perfectly valid row. Reading through the gate also
+  // reauthorizes that subject, so an in-flight add cannot be retargeted by a
+  // concurrent profile switch.
   const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
