@@ -76,17 +76,20 @@ describe("OfferRow", () => {
   it.each([
     ["brand", "bg-brand-50/60"],
     ["neutral", "bg-surface"],
-  ] as const)("declares its %s tone and keeps the caller's margin", (tone, fill) => {
-    const onAct = vi.fn();
-    render(
-      <OfferRow tone={tone} onAct={onAct} testId="offer" className="mb-3">
-        Your usual Morning (3)
-      </OfferRow>
-    );
-    const row = screen.getByTestId("offer");
-    expect(row.className).toContain(fill);
-    expect(row.className).toContain("mb-3");
-    fireEvent.click(row);
-    expect(onAct).toHaveBeenCalledTimes(1);
-  });
+  ] as const)(
+    "declares its %s tone and keeps the caller's margin",
+    (tone, fill) => {
+      const onAct = vi.fn();
+      render(
+        <OfferRow tone={tone} onAct={onAct} testId="offer" className="mb-3">
+          Your usual Morning (3)
+        </OfferRow>
+      );
+      const row = screen.getByTestId("offer");
+      expect(row.className).toContain(fill);
+      expect(row.className).toContain("mb-3");
+      fireEvent.click(row);
+      expect(onAct).toHaveBeenCalledTimes(1);
+    }
+  );
 });

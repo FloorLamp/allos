@@ -179,10 +179,7 @@ describe("labeled-verb adoption retires the …now verbs (issue #4753)", () => {
     const findings = ["app", "components"]
       .flatMap(sourceFiles)
       .flatMap((file) =>
-        retiredNowCopy(
-          file,
-          fs.readFileSync(path.join(ROOT, file), "utf8")
-        )
+        retiredNowCopy(file, fs.readFileSync(path.join(ROOT, file), "utf8"))
       );
     expect(
       findings,
