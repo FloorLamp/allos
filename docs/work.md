@@ -56,10 +56,10 @@ scripts/work-checkin.sh
 2. Cluster related, non-overlapping work into branches.
 3. Dispatch through `dispatch-brief.mjs new`.
 4. Review the full diff and verify claims against the repository.
-5. Require green CI on the exact head, then squash merge serially. A second
-   merge needs checks that ran on a base containing the first: compare
-   `started_at` to the previous merge; `mergeable_state` reports `clean` either
-   way. Re-run, or write down why the two file sets cannot interact.
+5. Require green CI on the exact head, then squash merge serially. A head
+   whose checks ran on an older base merges without a re-run only when
+   `scripts/work/landing-independence.mjs <pr>` exits 0 — its paths are
+   disjoint from everything landed since, and no shared file on either side.
 6. Run `dispatch-brief.mjs done <branch>`, confirm issue closure, and update
    release notes when appropriate.
 

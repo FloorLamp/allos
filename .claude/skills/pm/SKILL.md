@@ -53,7 +53,7 @@ turn without the next one armed. Each watch reads, in order:
    status detail (`lifecycle.md` §Status pulse).
 2. Merges on `main` since the last watch; check-runs on the head of `main`.
 3. Open PRs and their check-runs. A green exact head sitting unmerged is a
-   stall; two open ready PRs is a slot violation.
+   stall; a verified branch with no PR is one too (PRs run in parallel).
 4. Issue comments since the last watch (`/issues/comments?since=`): lane
    findings, `Dispatched:` notes, new `needs-human` flags.
 5. The remote branch list: two branches carrying one issue number is
@@ -65,9 +65,9 @@ Then judge three things, and send a corrective only when one fails:
 - **Saturation**: both E2E lanes full, ordinary lanes near the cap, per
   container. A worker reporting "review_ready" with two lanes is
   under-saturated.
-- **Landing**: `main` green; the slot occupied whenever a green head exists;
-  banked branches promoted as the slot frees; a red `main` with the fix
-  already pushed lands that fix next.
+- **Landing**: `main` green; every verified branch has a PR; green heads
+  merge in the turn found (re-run only when `landing-independence.mjs` says
+  so); a red `main` with the fix already pushed lands that fix next.
 - **Ladder**: the live lanes match the top rungs. Rung one undispatched
   while rung three runs is off-ladder.
 
@@ -151,7 +151,7 @@ every question by VISIBLE impact and rules the low half itself.
 - Create it with `create_session` in the same environment. The prompt names
   the sibling's session id and the PM's, the slice, and the three rules of
   `docs/work/multi-worker.md`: claim before dispatch, file
-  fence via the other's branches, one open ready PR repo-wide.
+  fence via the other's branches, serial merges with parallel PRs.
 - Tell the existing worker the same day, with the same three rules and
   the new session id. Then watch both; the first watch after a split checks
   for double `Dispatched:` notes and duplicate branch names.

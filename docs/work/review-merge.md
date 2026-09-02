@@ -71,11 +71,11 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
 - A green exact head merges in the TURN that finds it green. An unrelated
-  `e2e-main` run on `main` is not a reason to hold it; a red `main` or an
-  occupied repo-wide slot (`multi-worker.md`) is.
-- One landing candidate gets final rebase, PR opened or refreshed READY
-  (never draft — environment.md §GitHub access), exact-head review, and full
-  CI, in order. Local pre-review never replaces it; bank later branches.
+  `e2e-main` run on `main` is not a reason to hold it; a red `main` is.
+- Merges are serial; PRs are not. Every branch that passed its gates opens
+  READY at once (never draft — environment.md §GitHub access), so CI and the
+  exact-head review run in parallel. After a merge, the next green head merges
+  without a re-run when `landing-independence.mjs <pr>` exits 0; else rebase.
 - **The exact-head review is INDEPENDENT and pinned to the SHA** (owner
   2026-08-26, #3710): a non-author reviews the candidate commit; the COMMENT
   review states SHA and reviewer — on a shared bot account, also that the

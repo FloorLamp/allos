@@ -43,12 +43,10 @@ closed taxonomy, and `needs-human` handling.
   an ASSERTION failure included, not only a timeout (#3436).
 - Every brief uses the generated template and the gate order from
   `scripts/work/agent-gates.sh`.
-- Push meaningful checkpoints. A branch not next to land stays branch-only —
-  no PR at all, and a draft is not a banking state. The candidate's PR opens
-  READY (environment.md §GitHub access), never for CI a pending merge will
-  invalidate.
-- Parallelize banked implementation/local pre-review; serialize the sole
-  candidate's remote review, CI, and merge.
+- Push meaningful checkpoints. A branch that has not passed its gates stays
+  branch-only — no PR, and a draft is not a banking state. A verified branch
+  opens READY at once (environment.md §GitHub access); CI and review run in
+  parallel across PRs, and only the merge itself is serial.
 - A census meant to be EXHAUSTIVE passes ripgrep's `--binary` (`-a`). Several
   source files carry a deliberate NUL separator, so rg calls them binary and
   skips them — a plain `rg` reports a clean sweep it never took.
@@ -59,8 +57,8 @@ closed taxonomy, and `needs-human` handling.
 1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
-   Promote only the next landing candidate to a PR; keep later verified branches
-   banked until the preceding merge lands, then rebase once.
+   Open the PR as soon as the gates pass; after another merge lands, run
+   `landing-independence.mjs` before deciding whether to rebase.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
    the change is a worker-owned E2E fix.

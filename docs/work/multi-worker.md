@@ -31,12 +31,12 @@ cap and E2E cap. What they share is GitHub — issues, branches, PRs, `main`.
   the other worker's live branches. Overlap is sequencing, not a race:
   bank, or take the next issue.
 
-## One landing slot, repo-wide
+## Merges are serial, PRs are not
 
-- At most ONE open ready non-dependabot PR at a time. Before promoting a
-  candidate, list open PRs; if the other worker's is open, bank and
-  re-check when it merges. The slot goes to whoever finds it empty.
-- After any merge on `main`, both recheck every open PR's mergeability.
+- Open a PR for every branch that passed its gates, whichever worker owns it;
+  CI and review run in parallel. Only the merge is serial, repo-wide: re-read
+  `main`'s head, merge one green exact head, then let the other worker's
+  candidates re-judge with `landing-independence.mjs` (exit 0 = no re-run).
 - A red `main` is everyone's problem: the merge that turned it red owns the
   next landing; the other worker leaves it alone and tells the PM.
 - `e2e-main` is one concurrency group across both sessions; a queued run is

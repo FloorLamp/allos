@@ -33,6 +33,7 @@ const ENTRY_SCRIPTS = [
   "scripts/work/dependabot-eval-brief.mjs",
   "scripts/work/dispatch-brief.mjs",
   "scripts/work/host.mjs",
+  "scripts/work/landing-independence.mjs",
   "scripts/work/ledger.mjs",
   "scripts/work/merge-gate.mjs",
   "scripts/work/post-merge-census.mjs",

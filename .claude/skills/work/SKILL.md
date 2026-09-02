@@ -160,8 +160,9 @@ Squash merge only a GREEN EXACT HEAD, serially, through the transport this
 host grants (MCP where present, else REST — `review-merge.md` §Merge). After
 each merge, recheck every open PR's mergeability.
 
-A green exact head merges in the turn that finds it; only a red `main` or an
-occupied repo-wide slot holds it.
+A green exact head merges in the turn that finds it; only a red `main` holds
+it. After a merge, `landing-independence.mjs <pr>` says whether the next
+head merges as is (exit 0) or rebases first.
 
 Gate first, every time: `merge-gate.mjs <pr>` exit 0 — receipt on the current
 head, checks green, zero unresolved threads, verified read-only — is the
@@ -171,9 +172,8 @@ A later conflicting PR rebases only after the last earlier conflict lands;
 semantic conflicts go back to their author — never hand-integrate feature
 code.
 
-Migration conflicts: merge order defines migration order, keep both
-`versions/index.ts` entries with the later merge appended last, and never
-edit a shipped migration (`review-merge.md` §Migrations).
+Migration conflicts: merge order defines migration order; keep both
+`versions/index.ts` entries, later merge last (`review-merge.md` §Migrations).
 
 ## 6. Close out, then refill
 
