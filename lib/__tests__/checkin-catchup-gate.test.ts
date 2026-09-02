@@ -41,4 +41,19 @@ describe("the check-in's catch-up gate", () => {
   it("a failed digest is announced, never silently swallowed", () => {
     expect(checkin).toContain("digest FAILED");
   });
+
+  // AND THE DIGEST REPORTS WHETHER MAIN ITSELF IS GREEN (#4722). e2e-main runs
+  // on main, so no PR check can see it, and eight consecutive merges were red
+  // there while every PR read 19/19 green. The merge gate speaks AT a merge;
+  // those eight reds lived BETWEEN merges, which is this script's window.
+  it("reads main's own detector, through the merge gate's verdict function", () => {
+    expect(digest).toContain("/commits/main/check-runs");
+    // The anti-drift property, and the only one worth pinning: ONE function
+    // decides "is main red" for both surfaces. A re-spelling here could
+    // disagree with the gate and nothing would notice. Pinned on the CALL fed
+    // by the fetch, not on the name — the name survives in the import line
+    // alone, so a mention-shaped pin passes over a body that stopped using it.
+    expect(digest).toContain("merge-gate-core.mjs");
+    expect(digest).toMatch(/baseDetectorNotice\(\s*parsed\.check_runs/);
+  });
 });
