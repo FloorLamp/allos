@@ -282,17 +282,25 @@ export default function Combobox({
       // The input handler below then closes only the listbox; a second Escape
       // reaches the modal normally.
       //
-      // STILL KEYED ON `open`, DELIBERATELY, AND #3432 OWNS THE QUESTION. `open` and
-      // `listOpen` come apart when the list would render EMPTY, and this marker then
-      // claims a layer that has nothing to close — the same shape as the
-      // `aria-expanded` lie fixed below, which is why narrowing it to `listOpen` was
-      // tried on this branch. It was reverted, because the benefit is not reachable
-      // at the site that motivated it: #3100's stack field sits inside an open
-      // `FactEditorHost`, which carries its own marker (that file, #3409), so the
-      // first Escape is yielded either way and it is two presses on both builds.
-      // Changing Escape ROUTING with no assertion, beside two other in-flight Escape
-      // changes, is not a trade this PR should make. The measurement is on #3432.
-      data-escape-layer={open ? "true" : undefined}
+      // KEYED ON THE LISTBOX, NOT ON `open` (#3432, owner ruling). `open` and
+      // `listOpen` come apart when the list would render EMPTY — an allowFreeText
+      // field whose vocabulary is empty and whose value is still blank — and there
+      // the wider marker claimed a layer with nothing to close, so the press was
+      // swallowed with nothing on screen to show for it. The narrowing was tried on
+      // #3426's branch and reverted for a reason worth keeping in view: at the site
+      // that motivated it, #3100's stack field, the marker buys nothing, because that
+      // field sits inside an open `FactEditorHost` carrying its own marker (#3409) and
+      // the trap yields either way. That was an argument against shipping an Escape
+      // ROUTING change with no assertion beside two other in-flight ones — not an
+      // argument that the marker is right. The assertion is now in
+      // components/__tests__/combobox-escape.test.tsx, which counts PRESSES through a
+      // real trap rather than reading this attribute — the marker is what looked
+      // decisive on #3426 and wasn't.
+      //
+      // WHAT THIS DOES NOT DO is the other half of #3432's ruling: dropping an
+      // un-navigated draft on the same press. That half is not here, and the reason is
+      // in the issue rather than in a comment nobody can act on.
+      data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (
         <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
