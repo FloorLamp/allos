@@ -535,3 +535,92 @@ test.describe("fresh-profile illness front door", () => {
     ).toBeVisible();
   });
 });
+
+// ── THE RECOVERY-LED COMPACT COCKPIT'S GEOMETRY (#4752 items 2 and 3) ───────
+//
+// Two claims a component test cannot make, because both are about rendered boxes:
+// the card holds a readable measure instead of stretching to the viewport, and an
+// expansion opens IN PLACE — the card never navigates, and nothing above the panel
+// moves when it opens.
+//
+// THE MEASURE IS ASSERTED AS A RELATIONSHIP, NOT ONLY AS A NUMBER. `width <= 880`
+// alone is satisfied by a card that has simply been made narrow, and by one whose
+// own container is narrow; the claim is that the card is INSET from the column it
+// sits in and centered in it, which is what "never full-bleed" means to a reader.
+for (const [label, viewport, wide] of [
+  ["desktop", { width: 1280, height: 900 }, true],
+  ["phone", { width: 390, height: 844 }, false],
+] as const) {
+  test(`the illness cockpit holds a readable measure and expands in place (${label})`, async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, credentials(E2E_LOGIN_SICK_SELF));
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      const card = page
+        .getByTestId("illness-now-group")
+        .locator('[data-active="true"]');
+      await expect(card).toHaveAttribute("data-expanded", "true");
+      // Wait for the content the measurement is about, not for the card's own
+      // visibility: an empty card fits any width.
+      await expect(card.getByTestId("cockpit-recovery-header")).toBeVisible();
+      const chips = card.getByTestId("cockpit-med-chips");
+      await expect(chips).toBeVisible();
+
+      const cardBox = (await card.boundingBox())!;
+      const columnBox = (await card.locator("xpath=..").boundingBox())!;
+      expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
+        880
+      );
+      if (wide) {
+        // INSET AND CENTERED in the column it sits in — the two gutters equal, and
+        // both real. A full-bleed card leaves neither.
+        const left = cardBox.x - columnBox.x;
+        const right =
+          columnBox.x + columnBox.width - (cardBox.x + cardBox.width);
+        expect(left, `${label} left gutter`).toBeGreaterThan(1);
+        expect(Math.abs(left - right), `${label} centering`).toBeLessThan(2);
+      } else {
+        // Below the cap the phone is unchanged: the card is the column.
+        expect(Math.abs(cardBox.width - columnBox.width)).toBeLessThan(2);
+      }
+
+      // IN PLACE (#4752 item 3). Everything the panel opens BENEATH keeps its exact
+      // box, and the card keeps its edges — a panel that reflowed the chips, or one
+      // that replaced the row it belongs to, fails this.
+      const above = [
+        card.getByTestId("cockpit-recovery-header"),
+        card.getByTestId("symptom-log-actions"),
+        chips,
+      ];
+      const before = await Promise.all(above.map((el) => el.boundingBox()));
+      const url = page.url();
+      await settledClick(
+        page,
+        chips.locator('[data-testid^="cockpit-med-chip-"]').first()
+      ); // first-ok: the row's leading med chip; every chip opens the same panel
+      const panel = card.getByTestId("cockpit-med-panel");
+      await expect(panel).toBeVisible();
+      expect(page.url(), "the card never navigates").toBe(url);
+      const after = await Promise.all(above.map((el) => el.boundingBox()));
+      expect(after).toEqual(before);
+      const panelBox = (await panel.boundingBox())!;
+      const chipsBox = before[2]!;
+      // DIRECTLY BENEATH ITS OWN ROW, and inside the card's measure.
+      expect(panelBox.y).toBeGreaterThanOrEqual(
+        chipsBox.y + chipsBox.height - 1
+      );
+      expect(panelBox.x).toBeGreaterThanOrEqual(cardBox.x);
+      expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(
+        cardBox.x + cardBox.width + 1
+      );
+      const cardAfter = (await card.boundingBox())!;
+      expect(cardAfter.x).toBe(cardBox.x);
+      expect(cardAfter.width).toBe(cardBox.width);
+      if (!wide) await expectNoClippedContent(page);
+    } finally {
+      await page.context().close();
+    }
+  });
+}
