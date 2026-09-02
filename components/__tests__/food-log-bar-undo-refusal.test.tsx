@@ -1678,7 +1678,10 @@ describe("FoodLogBar composed usual bundle", () => {
     doses,
   });
 
-  function mount(seeded: ReturnType<typeof offer>[]) {
+  function mount(
+    seeded: ReturnType<typeof offer>[],
+    habit: Record<FoodSlot, string[]> = HABIT
+  ) {
     return render(
       <TimezoneProvider tz="UTC">
         <ActiveProfileProvider profileId={7}>
@@ -1690,7 +1693,7 @@ describe("FoodLogBar composed usual bundle", () => {
                   today={DATE}
                   days={[DAY, otherDay]}
                   groupsBySlot={BOTH}
-                  usualBySlot={HABIT}
+                  usualBySlot={habit}
                   usualRoutine={{ date: DATE, offers: seeded }}
                   slot="Midday"
                   slotBoundaries={{ midday: 660, evening: 900 }}
@@ -1770,6 +1773,31 @@ describe("FoodLogBar composed usual bundle", () => {
         .map((t) => t.textContent)
         .join(" ")
     ).toContain("1 dose taken");
+  });
+
+  // THE SCOOP IS A MEMBER OF THE FOOD HALF HERE TOO (#4379, owner ruling 2026-09-02:
+  // "protein behaves exactly like a food group"). This page is the one host that
+  // derives the food half CLIENT-side, off the habitual set rather than off the offer
+  // the other hosts read, so the ruling has to be true in a second computation — and
+  // nothing pinned it here. The member stands only while BOTH halves say it does, so
+  // the second case below is the converse and not a second scenario: same habitual set,
+  // server offer silent about grams, member gone. Slugs are asserted too because the
+  // reserved key is a member of the NAME and never of the posted group list.
+  it.each([
+    [30, "Cruciferous vegetables, Berries and +30g protein + Creatine"],
+    [null, "Cruciferous vegetables and Berries + Creatine"],
+  ])("names the scoop as a food member when the offer promises %s", (
+    grams,
+    phrase
+  ) => {
+    mount([offer("Midday", [DOSE], grams)], {
+      ...HABIT,
+      Midday: ["__protein__", "cruciferous", "berries"],
+    });
+    expect(screen.getByTestId("food-usual-names").textContent).toBe(phrase);
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-groups")
+    ).toBe("cruciferous,berries");
   });
 
   // THE STICKY STATEMENT DOES NOT RIDE THE BUNDLE, and this is the converse of the
