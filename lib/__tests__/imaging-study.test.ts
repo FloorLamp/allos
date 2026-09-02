@@ -262,33 +262,57 @@ describe("impressionDisplayText — the finding, not its heading (#3498 item 3)"
 // now keeps its own column and this parser fills the impression only when the report
 // labels its own impression section. The decoders collapse a rendered report to one
 // line, so these cases are single-line on purpose.
-describe("parseImpressionSection — a heading owns a line, or there is no heading (#3594)", () => {
-  // A rendered report the decoders collapsed to ONE line: every "SECTION:" in it is
-  // mid-line, so none of them is a heading this parser can trust — the impression is
-  // in there, and which sentence it is cannot be told apart from prose.
+describe("parseImpressionSection — a heading owns its whole line (#3594)", () => {
+  // WHERE THE NEWLINES COME FROM, since the whole rule turns on line structure.
+  // mapImagingStudyResource joins ImagingStudy.description and note[].text with
+  // "\n", so it is the route that carries a report's own layout — and the one the
+  // level-by-level cases below are proven on end to end in fhir.test.ts.
+  // decodeInlineAttachmentText and stripHtml collapse runs of whitespace, so the text
+  // of any SINGLE attachment arrives as one line; newlines survive there only where
+  // attachmentsText joins two or more decoded attachments with "\n\n". So "collapsed
+  // to one line" is a property of one attachment, not of a whole document.
   const COLLAPSED =
     "OBSTETRICS REPORT (Signed Final 10/10/2024) PATIENT: Fictional Patient " +
     "TECHNIQUE: Transabdominal ultrasound. FINDINGS: Single intrauterine " +
     "gestation. IMPRESSION: Normal interval growth at 20 weeks. " +
     "RECOMMENDATION: Routine follow-up in four weeks.";
-  // The same report with its line structure intact, which is what the CDA block map
-  // and a text/plain attachment preserve.
-  const LINED =
+  // A heading that owns its whole line delimits the section; one carrying prose on
+  // the same line does not, so the second of these runs on to the end.
+  const LINED_BARE =
     "OBSTETRICS REPORT (Signed Final 10/10/2024)\n" +
-    "TECHNIQUE: Transabdominal ultrasound.\n" +
-    "FINDINGS: Single intrauterine gestation.\n" +
+    "IMPRESSION: Normal interval growth at 20 weeks.\n" +
+    "RECOMMENDATION:\n" +
+    "Routine follow-up in four weeks.";
+  const LINED_INLINE =
     "IMPRESSION: Normal interval growth at 20 weeks.\n" +
     "RECOMMENDATION: Routine follow-up in four weeks.";
 
   it.each([
     // [what the report looks like, the impression we are willing to store]
     //
-    // A MID-SENTENCE CAPS TOKEN IS NOT A HEADING. Spine levels, hyphenated disease
-    // names and quadrant abbreviations all end in a colon inside a clinical
-    // sentence, and cutting there stores a sentence torso that the report does not
-    // say — which then OUTRANKS the intact narrative on every surface, because
-    // studyFindingText prefers the impression. Storing less means storing null; a
-    // truncated finding is not less, it is false.
+    // A CAPS TOKEN THAT CARRIES PROSE ON ITS LINE IS DATA, NOT A HEADING. Level-by-
+    // level lines are THE canonical spine-MRI impression format and quadrant lines
+    // are the mammography one, so cutting at them drops the finding and keeps the
+    // summary — and the fragment then OUTRANKS the intact narrative everywhere,
+    // because studyFindingText prefers the impression. Storing less means storing
+    // null; a truncated finding is not less, it is false.
+    [
+      "IMPRESSION:\nMild degenerative change at\nL4-L5: no significant canal stenosis.",
+      "Mild degenerative change at\nL4-L5: no significant canal stenosis.",
+    ],
+    [
+      "IMPRESSION:\nMultilevel degenerative disc disease.\nL4-L5: severe left " +
+        "lateral recess stenosis and impingement of the traversing left L5 nerve root.",
+      "Multilevel degenerative disc disease.\nL4-L5: severe left lateral recess " +
+        "stenosis and impingement of the traversing left L5 nerve root.",
+    ],
+    [
+      "IMPRESSION:\nBilateral diagnostic mammogram.\nRIGHT BREAST: 8 mm irregular " +
+        "mass, BI-RADS 4C.\nLEFT BREAST: No suspicious finding.",
+      "Bilateral diagnostic mammogram.\nRIGHT BREAST: 8 mm irregular mass, " +
+        "BI-RADS 4C.\nLEFT BREAST: No suspicious finding.",
+    ],
+    // Same class on one line, which is how the collapsing routes deliver it.
     [
       "IMPRESSION: Mild degenerative change at L4-L5: no significant canal " +
         "stenosis. No fracture or malalignment.",
@@ -305,14 +329,34 @@ describe("parseImpressionSection — a heading owns a line, or there is no headi
       "IMPRESSION: 1. Appendicitis. 2. Free fluid in RLQ: small volume.",
       "1. Appendicitis. 2. Free fluid in RLQ: small volume.",
     ],
-    // A heading that owns its line delimits the section on both sides.
-    [LINED, "Normal interval growth at 20 weeks."],
+    // A label alone on its line IS the next section, and ends this one.
+    [LINED_BARE, "Normal interval growth at 20 weeks."],
+    [
+      "IMPRESSION:\nNo acute finding.\nELECTRONICALLY SIGNED BY:\nDr Fictional",
+      "No acute finding.",
+    ],
+    // A label with prose on its line is not a boundary, so the section runs on.
+    // Verbose and TRUE, which is the side of the tiebreak to be on.
+    [
+      LINED_INLINE,
+      "Normal interval growth at 20 weeks.\nRECOMMENDATION: Routine follow-up in four weeks.",
+    ],
+    // THE LABEL THAT OPENS THE SECTION IS A KNOWN WORD, so a qualifier before it and
+    // a compound after it still open — unlike the closing rule, which matches ANY
+    // caps token and therefore needs the stronger whole-line signal to tell a
+    // heading from a data line.
     ["IMPRESSION: No acute finding.", "No acute finding."],
     ["Impression: No acute finding.", "No acute finding."],
+    ["IMPRESSIONS: No acute finding.", "No acute finding."],
+    ["CLINICAL IMPRESSION: No acute finding.", "No acute finding."],
+    ["FINAL IMPRESSION: No acute finding.", "No acute finding."],
+    ["RADIOLOGIC IMPRESSION: No acute finding.", "No acute finding."],
+    ["FINAL RADIOLOGIC IMPRESSION: No acute finding.", "No acute finding."],
+    ["OVERALL IMPRESSION: No acute finding.", "No acute finding."],
     ["IMPRESSION/CONCLUSION: No acute finding.", "No acute finding."],
+    ["IMPRESSION/RECOMMENDATION: No acute finding.", "No acute finding."],
     ["CONCLUSION: No acute finding.", "No acute finding."],
-    // Sentence-cased trailing sections are not headings, so they stay with the
-    // impression rather than being guessed away.
+    // Sentence-cased trailing sections are not headings either.
     [
       "IMPRESSION: No acute finding. Compared with the prior study.",
       "No acute finding. Compared with the prior study.",

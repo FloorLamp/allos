@@ -299,32 +299,46 @@ export function studyFindingText(study: {
 //
 // The rendered form of a radiology report is a whole document — banner, header,
 // technique, findings, impression, signature — and the only signal we trust for
-// where the impression starts and stops is a section heading that OWNS ITS LINE.
+// where the impression starts and stops is a section heading.
 //
-// A MID-LINE "WORD:" IS NOT A HEADING, and this is the rule the whole parser turns
-// on. Clinical sentences are full of capitalised tokens that end in a colon — spine
-// levels ("L4-L5:"), hyphenated disease names ("COVID-19:"), quadrant abbreviations
-// ("RLQ:") — so treating any of them as the next section cuts the finding in half
-// and stores a sentence torso the report never said. That fragment then OUTRANKS the
-// intact narrative everywhere, because studyFindingText prefers the impression. A
-// verbose impression is at least true; a truncated one is not, so "err toward storing
-// less" means answering NULL, never answering a fragment.
+// A CAPS TOKEN THAT CARRIES PROSE ON ITS LINE IS DATA, NOT A HEADING, and this is
+// the rule the whole parser turns on. Clinical writing is full of capitalised labels
+// that end in a colon and are followed by the finding itself — spine levels
+// ("L4-L5: severe left lateral recess stenosis"), quadrant lines ("RIGHT BREAST: 8 mm
+// irregular mass"), hyphenated disease names ("COVID-19:"), quadrant abbreviations
+// ("RLQ:"). Level-by-level lines are THE canonical spine-MRI impression format, so
+// treating one as the next section is not an exotic failure: it keeps the summary
+// line and drops the finding. That fragment then OUTRANKS the intact narrative
+// everywhere, because studyFindingText prefers the impression. A verbose impression
+// is at least true; a truncated one is not, so "err toward storing less" means
+// answering NULL, never answering a fragment.
 //
-// Both ends therefore anchor to a line: a heading is a label at the start of a line
-// (optionally indented), and the section runs to the next line that starts with an
-// ALL-CAPS label — or to the end of the text when none does. A document the decoders
-// collapsed onto ONE line has no line structure left to read, so unless it BEGINS
-// with the impression label there is nothing here to trust and the answer is null.
+// So a closing heading must OWN ITS WHOLE LINE: an ALL-CAPS label whose colon ends
+// the line, with the section running to the end of the text when none does.
 //
-// NO HEADING, NO PARSE. A report that does not label its impression on a line of its
-// own contributes nothing to this field and is read through the narrative fallback
-// above, which shows the whole report — so declining hides nothing from anybody.
+// The opening rule is deliberately looser, and the asymmetry is principled rather
+// than convenient: the opening label is a KNOWN WORD ("impression" / "conclusion",
+// optionally qualified — CLINICAL, FINAL, RADIOLOGIC — or compounded, IMPRESSION/
+// RECOMMENDATION), so a colon after it identifies a heading on its own and the prose
+// that follows on the same line is the impression's first sentence. The closing rule
+// matches ANY caps token, so it cannot tell a heading from a data line by vocabulary
+// and needs the structural signal instead.
+//
+// Both ends still anchor to a line start. A document the decoders collapsed onto ONE
+// line has no line structure left to read, so unless it BEGINS with the impression
+// label there is nothing here to trust and the answer is null.
+//
+// NO HEADING, NO PARSE. A report that does not label its impression contributes
+// nothing to this field and is read through the narrative fallback above, which shows
+// the whole report — so declining hides nothing from anybody.
 const IMPRESSION_HEADING =
-  /(?:^|\n)[ \t]*(?:overall[ \t]+)?(?:impression|conclusion)(?:[ \t]*\/[ \t]*(?:conclusion|impression))?[ \t]*[:\-\u2013\u2014][ \t]*/i;
-// The next section's heading: a line whose first token is an ALL-CAPS run ending in a
-// colon ("RECOMMENDATION:", "ELECTRONICALLY SIGNED BY:"). Anchored to the newline, so
-// a capitalised token INSIDE a sentence can never end the section.
-const NEXT_SECTION_HEADING = /\n[ \t]*(?=[A-Z][A-Z0-9 /&'-]{2,}:)/;
+  /(?:^|\n)[ \t]*(?:[a-z]+[ \t]+){0,2}(?:impressions?|conclusions?)(?:[ \t]*\/[ \t]*[a-z]+)?[ \t]*[:\-\u2013\u2014][ \t]*/i;
+// The next section's heading: a line whose ONLY content is an ALL-CAPS label and its
+// colon ("RECOMMENDATION:", "ELECTRONICALLY SIGNED BY:"). The lookahead runs to the
+// end of that line, which is what keeps "L4-L5: no significant canal stenosis" — a
+// label with a finding after it — from ending the section.
+const NEXT_SECTION_HEADING =
+  /\n[ \t]*(?=[A-Z][A-Z0-9 /&'-]{2,}:[ \t]*(?:\r?\n|$))/;
 
 export function parseImpressionSection(
   narrative: string | null | undefined

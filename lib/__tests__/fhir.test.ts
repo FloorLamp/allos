@@ -238,6 +238,45 @@ describe("parseFhirBundle", () => {
     });
   });
 
+  // #3594: mapImagingStudyResource joins description + note[].text with "\n" and is
+  // the ONLY route that reaches parseImpressionSection with line structure intact —
+  // the DocumentReference and presentedForm decoders collapse whitespace. So it is
+  // the route where a level-by-level impression can be cut at its own data lines,
+  // and the one this has to be proven on end to end rather than against the regex.
+  it("keeps a level-by-level impression whole through the ImagingStudy route (#3594)", () => {
+    const impression =
+      "IMPRESSION:\n" +
+      "Multilevel degenerative disc disease.\n" +
+      "L4-L5: severe left lateral recess stenosis and impingement of the " +
+      "traversing left L5 nerve root.";
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "ImagingStudy",
+          id: "study-lumbar",
+          status: "available",
+          started: "2024-03-04T09:00:00Z",
+          modality: [{ code: "MR" }],
+          description: "MRI Lumbar Spine",
+          note: [{ text: impression }],
+        },
+      ])
+    );
+    const study = r.imagingStudies![0];
+    // The finding survives, not just the summary line above it.
+    expect(study.impression).toContain(
+      "L4-L5: severe left lateral recess stenosis"
+    );
+    expect(study.impression).toBe(
+      "Multilevel degenerative disc disease.\n" +
+        "L4-L5: severe left lateral recess stenosis and impingement of the " +
+        "traversing left L5 nerve root."
+    );
+    // The narrative still holds the whole thing, banner line included.
+    expect(study.report_narrative).toContain("MRI Lumbar Spine");
+    expect(study.report_narrative).toContain("IMPRESSION:");
+  });
+
   it("drops an entered-in-error ImagingStudy, records the drop", () => {
     const r = parseFhirBundle(
       bundle([
