@@ -38,6 +38,8 @@ let removeResult: { ok: boolean; undoId?: number | null; error?: string } = {
   ok: true,
   undoId: 9,
 };
+// The staged mapping the text-intake mock answers with, when a test sets one.
+let staged: unknown = null;
 
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
@@ -77,10 +79,10 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
     return { ok: true as const, degF: 100.1, flag: null, redFlag: null };
   },
   activateIllnessForSymptoms: async () => ({ ok: true as const }),
-  suggestSymptomsFromText: async () => ({
-    ok: false as const,
-    reason: "empty" as const,
-  }),
+  suggestSymptomsFromText: async () =>
+    staged
+      ? { ok: true as const, mapping: staged }
+      : { ok: false as const, reason: "empty" as const },
 }));
 vi.mock("@/app/(app)/undo-actions", () => ({
   undoDelete: async () => ({ ok: true }),
@@ -112,6 +114,7 @@ beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
   removeResult = { ok: true, undoId: 9 };
+  staged = null;
   cleanup();
 });
 
@@ -450,6 +453,7 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
           timeZone="UTC"
           profileId={SUBJECT}
           showTitle={false}
+          textIntakeEnabled
         />
       </CockpitDayProvider>
     );
@@ -557,16 +561,40 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     ).toBe("");
   });
 
-  it("a confirmed sentence lands on the day the bar is standing on", async () => {
+  // THE COMPOSITE, driven through `confirmIntake` rather than through the fold — the
+  // test that used to carry this name drove the temperature fold and was byte-identical
+  // to the case above it, so the composite had NO coverage at all while being the only
+  // producer of an untimed reading on a past day.
+  //
+  // It sets no `time`: a typed sentence carries a day at best, and the action stamps
+  // the minute only for a day that has a now. So the assertion is the ABSENCE — the
+  // composite must not invent one — beside the day it did state.
+  it("a confirmed sentence posts a day and states no time", async () => {
+    staged = {
+      symptoms: [{ slug: "headache", severity: 2, note: null }],
+      temperature: { value: 99.2, unit: "F" },
+      unmapped: [],
+      dayOffset: -1,
+    };
     toggledBar();
+    // The text intake lives inside the add picker, which is collapsed by default.
     await act(async () =>
-      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
     );
-    await openTemp("99.2");
-    fireEvent.change(screen.getByTestId("temp-quick-time"), {
-      target: { value: "18:30" },
+    fireEvent.change(screen.getByTestId("symptom-text-input"), {
+      target: { value: "headache and 99.2 since yesterday" },
     });
-    await saveTemp();
-    expect(payload("temperature").date).toBe(FOUND_DAY);
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-suggest"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-confirm"))
+    );
+    // The sentence said "yesterday" and the card offers that day, so both halves land
+    // there — the symptom and the reading, together.
+    expect(payload("log").date).toBe(FOUND_DAY);
+    const temp = payload("temperature");
+    expect(temp.date).toBe(FOUND_DAY);
+    expect(temp.time).toBeUndefined();
   });
 });

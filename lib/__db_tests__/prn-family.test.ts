@@ -15,7 +15,11 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { TIER_FROZEN_INSTANT } from "./frozen-clock";
-import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
+import {
+  setProfileHomeAssistant,
+  getProfileSetting,
+  setProfileSetting,
+} from "@/lib/settings";
 import {
   parseUtcSql,
   shiftDateStr,
@@ -25,6 +29,7 @@ import {
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
 import {
   markDoseTaken,
+  restampDoseLogsCore,
   setDoseStatusCore,
 } from "@/lib/queries/intake/adherence";
 import {
@@ -43,7 +48,7 @@ import {
   redoseNoticeDecision,
   PRN_MAX_PREFIX,
 } from "@/lib/prn-redose";
-import { redoseCardLabel } from "@/lib/redose-format";
+import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { SUPPRESSION_DISPLAY_PREFIXES } from "@/lib/suppression-display";
 import { buildMedicationDuplicationFindings } from "@/lib/rule-findings";
 import {
@@ -762,5 +767,189 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
 
     // …and every card/quick-log/Telegram surface reads the same window.
     expect(cardLabel(p, MORNING)).toBe("Max reached · 5 of 5 in 24h");
+  });
+});
+
+// ── REGRESSIONS AGAINST main (#4686 pass three) ──────────────────────────────
+//
+// Both of these are FALSE GOs on a redose interval — the app saying "Redose OK" when
+// the minimum interval has not passed — so each asserts what `main` answers, and each
+// must fail on the branch that broke it and pass on the commit before. That is what
+// "regression" means, and asserting only the corrected value would not have said it.
+describe("the arming clock never reads a GO main would refuse (#4686)", () => {
+  const AT = (iso: string) => new Date(iso);
+  const UNPLACED_NOW = AT("2026-09-02T09:16:00Z");
+
+  function seedPrn(p: number, name: string) {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation,
+              min_interval_hours, max_daily_count)
+           VALUES (?, ?, 1, 'medication', 'daily', 'may', 6, 4)`
+        )
+        .run(p, name).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'anytime', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    return { itemId, doseId };
+  }
+
+  // `date` IS THE ADHERENCE DAY, NOT A CLAIM ABOUT WHEN THE DOSE WAS GIVEN.
+  // `restampDoseLogsCore` says so in its own header and returns `crossedMidnight` as a
+  // first-class outcome, so narrowing the arming read to MAX(date) can miss the
+  // genuinely-latest administration: a row filed to an EARLIER day can carry a LATER
+  // stated instant. Four real hours after a 22:00 dose, that narrowing said go.
+  it("a dose whose stated instant crossed midnight away from its day still arms it", () => {
+    vi.setSystemTime(AT("2026-08-06T02:00:00Z"));
+    const p = newProfile("ArmCrossMidnight");
+    setProfileSetting(p, "timezone", "UTC");
+    const med = seedPrn(p, "Ibuprofen");
+
+    // Two administrations. The one filed to the LATER day was given at 18:00; the one
+    // filed to the EARLIER day is restamped to 22:00 — the cross-midnight correction
+    // the writer exists for. The true latest is 22:00.
+    const early = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_logs
+             (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+           VALUES (?, ?, '2026-08-04', '2026-08-04T20:00:00Z',
+                   '2026-08-04T20:00:00Z', 'taken', '200 mg')`
+        )
+        .run(med.doseId, med.itemId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+       VALUES (?, ?, '2026-08-05', '2026-08-05T18:00:00Z',
+               '2026-08-05T18:00:00Z', 'taken', '200 mg')`
+    ).run(med.doseId, med.itemId);
+    expect(
+      restampDoseLogsCore(p, early, () => AT("2026-08-05T22:00:00Z"))
+    ).toMatchObject({ kind: "restamped", crossedMidnight: true });
+
+    const state = getMedicationFamilyStates(p).get(med.itemId)!;
+    expect(state.latestGivenAt).toBe("2026-08-05T22:00:00Z");
+
+    // 4h after a 22:00 dose against a 6h interval: the window is SHUT.
+    const status = prnQuickLogRedoseStatus(
+      getPrnMedicationsForQuickLog(p).find((m) => m.id === med.itemId)!,
+      AT("2026-08-06T02:00:00Z")
+    )!;
+    expect(redoseCardLabel(status)).toContain("Next dose in ~2h");
+    expect(redoseCardLabel(status)).not.toContain("Redose OK");
+  });
+
+  // THE COVERAGE THE FIXTURE REWRITE REMOVED. Making the seeded administrations state
+  // their instants was right — production's writer states them — but it left the tree
+  // with NO taken row carrying `occurred_at IS NULL` on the arming clock, which is
+  // precisely the arm that then regressed. These two hold that arm directly: an
+  // unplaced row is never a candidate for arming, and while it sits in the window it
+  // makes the interval unknown even though a timed row is also present.
+  it("an unplaced administration arms nothing and makes the interval unknown", () => {
+    vi.setSystemTime(UNPLACED_NOW);
+    const p = newProfile("Win24Unplaced");
+    setProfileSetting(p, "timezone", "UTC");
+    const med = seedPrn(p, "Acetaminophen");
+    // A real dose seven hours ago, and an unplaced one filed to YESTERDAY — whose
+    // noon anchor is the one inside a window that opened at 09:16 yesterday. (A row
+    // dated TODAY would not be in the window until local noon; that boundary is the
+    // under-count this PR reports rather than fixes.)
+    logAdmin(med.itemId, med.doseId, today(p), 7, UNPLACED_NOW, "500 mg");
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+       VALUES (?, ?, ?, ?, NULL, 'taken', '500 mg')`
+    ).run(
+      med.doseId,
+      med.itemId,
+      shiftDateStr(today(p), -1),
+      utcInstant(UNPLACED_NOW)
+    );
+
+    const state = getMedicationFamilyStates(p).get(med.itemId)!;
+    // The unplaced row is IN the window — it counts — and it is not the arming dose.
+    expect(state.count24h).toBe(2);
+    expect(state.untimedInWindow).toBe(true);
+    expect(state.latestGivenAt).toBe(
+      utcInstant(new Date(UNPLACED_NOW.getTime() - 7 * 3_600_000))
+    );
+
+    // The interval half says so, on the card and to the notice, rather than computing
+    // an elapsed time from a row that never said when it happened.
+    const status = prnQuickLogRedoseStatus(
+      getPrnMedicationsForQuickLog(p).find((m) => m.id === med.itemId)!,
+      UNPLACED_NOW
+    )!;
+    expect(status.interval).toEqual({ known: false });
+    expect(redoseCardLabel(status)).toBe(
+      "Last dose time not recorded · 2 of 4 in 24h"
+    );
+    expect(redoseActionIsPrimary(status)).toBe(false);
+    expect(
+      redoseNoticeDecision({
+        minIntervalHours: 6,
+        maxDailyCount: 4,
+        latestAdministrationId: state.latestId!,
+        latestGivenAt: parseUtcSql(state.latestGivenAt),
+        count24h: state.count24h,
+        now: UNPLACED_NOW,
+        notifiedAdministrationId: null,
+        tickMinutes: 60,
+        exposure: state.exposure,
+        untimedInWindow: state.untimedInWindow,
+      }).kind
+    ).toBe("interval-unknown");
+  });
+
+  it("an unplaced row OUTSIDE the window leaves the interval knowable", () => {
+    vi.setSystemTime(UNPLACED_NOW);
+    const p = newProfile("Win24UnplacedOld");
+    setProfileSetting(p, "timezone", "UTC");
+    const med = seedPrn(p, "Acetaminophen");
+    logAdmin(med.itemId, med.doseId, today(p), 7, UNPLACED_NOW, "500 mg");
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+       VALUES (?, ?, '2026-01-04', '2026-01-04T08:00:00Z', NULL, 'taken', '500 mg')`
+    ).run(med.doseId, med.itemId);
+
+    const state = getMedicationFamilyStates(p).get(med.itemId)!;
+    expect(state.untimedInWindow).toBe(false);
+    const status = prnQuickLogRedoseStatus(
+      getPrnMedicationsForQuickLog(p).find((m) => m.id === med.itemId)!,
+      UNPLACED_NOW
+    )!;
+    expect(status.interval).toMatchObject({ known: true, open: true });
+  });
+
+  // THE OVERNIGHT TAP, through the shipped tri-state with nothing exotic: a card
+  // rendered at 23:58 still holds yesterday's date, the parent gives the dose and taps
+  // at 00:15. The row states no instant, and anchoring it at its day's NOON claimed
+  // twelve hours had passed — the window read open the moment the dose was logged.
+  // An administration whose instant nobody established makes the interval UNKNOWN;
+  // unknown is not "go".
+  it("a past-dated tap that states no instant never reads as an open window", () => {
+    vi.setSystemTime(AT("2026-09-02T00:15:00Z"));
+    const p = newProfile("ArmOvernightTap");
+    setProfileSetting(p, "timezone", "UTC");
+    const med = seedPrn(p, "Acetaminophen");
+    setDoseStatusCore(p, med.doseId, "2026-09-01", "taken", "page");
+
+    const status = prnQuickLogRedoseStatus(
+      getPrnMedicationsForQuickLog(p).find((m) => m.id === med.itemId)!,
+      AT("2026-09-02T00:15:00Z")
+    );
+    const label = status ? redoseCardLabel(status) : null;
+    expect(label).not.toContain("Redose OK");
+    expect(label).not.toContain("min interval passed");
   });
 });

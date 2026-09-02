@@ -233,6 +233,32 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(s.evidence).toBe("none");
   });
 
+  // THE SELECTION, NOT THE COMPARISON. An UNTIMED fever sharing a day with a timed one
+  // was never compared at all: noon arithmetic picked the timed 100.9 as "the last
+  // fever", the 103.4 nobody could place dropped out, and the surface cleared the
+  // child while quoting the lower reading back.
+  it("an unplaced fever governs its day over a timed one", () => {
+    const p = newProfile("sr-unplaced-fever");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 3);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    // The timed fever is LATER THAN NOON, so the retired arithmetic genuinely preferred
+    // it over the unplaced 103.4 — without that the fixture cannot reach the state it
+    // forbids, and passes for the wrong reason.
+    logTemperatureCore(p, 100.9, "F", yd, "page", "19:00");
+    logTemperatureCore(p, 103.4, "F", yd, "page", null); // unplaced, same day
+    logTemperatureCore(p, 98.6, "F", yd, "page", "20:00");
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    // 24h after the 20:00 normal: the retired rule read "fever-free 24h/24h, met",
+    // quoting 100.9 back as the last fever.
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T20:00:00Z`))!;
+    expect(s.lastFeverDegF).toBe(103.4);
+    expect(s.evidence).toBe("none");
+    expect(s.met).toBe(false);
+  });
+
   it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {
     const p = newProfile("sr-stated");
     setProfileSetting(p, "timezone", "UTC");

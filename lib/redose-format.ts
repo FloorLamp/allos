@@ -111,6 +111,7 @@ export function redoseNoticeMessage(input: {
 // The marker-agnostic status line for the med card / dashboard presentation, or null when
 // there's nothing useful to say (nothing logged yet). Never permissive — it reports
 // window state and the running count, deferring to the user's judgment:
+//   • time not recorded    → "Last dose time not recorded · 2 of 4 in 24h"
 //   • at the confirmed max → "Max reached · 4 of 4 in 24h"
 //   • window open          → "Redose OK — min interval passed · 2 of 4 in 24h"
 //   • not yet              → "Next dose in ~2h · 1 of 4 in 24h"
@@ -136,16 +137,27 @@ export function redoseCardLabel(
     status.maxDailyCount == null && status.exposure == null
       ? " · no daily limit on record"
       : "";
-  if (status.open)
+  // UNKNOWN IS NOT A WINDOW STATE, so it does not get one. The line says the fact it
+  // has — a dose in the window whose time nobody recorded — and states neither an
+  // elapsed time nor a next-dose estimate, because both would be invented. The count
+  // half is unaffected: counting never needed to know when.
+  if (!status.interval.known)
+    return `Last dose time not recorded · ${count}${across}${missingLimit}`;
+  if (status.interval.open)
     return `Redose OK — min interval passed · ${count}${across}${missingLimit}`;
-  return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}${missingLimit}`;
+  return `Next dose in ~${hoursLabel(status.interval.opensInHours)} · ${count}${across}${missingLimit}`;
 }
 
 // A redose window is guidance, not a hard gate: logging always remains available.
 // It receives CTA emphasis only when there is no configured window yet, or when the
 // confirmed interval has passed and the daily maximum has not been reached.
 export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
-  return status == null || (status.open && !status.atMax);
+  // An UNKNOWN interval never earns CTA emphasis: the emphasis IS the go-ahead this
+  // module refuses to invent. Logging stays available either way.
+  return (
+    status == null ||
+    (status.interval.known && status.interval.open && !status.atMax)
+  );
 }
 
 // ---- The `/dose` quick-log list (issue #1717) -------------------------------------

@@ -83,16 +83,35 @@ describe("redoseNoticeMessage", () => {
 });
 
 describe("redoseCardLabel", () => {
-  const status = (over: Partial<RedoseStatus>): RedoseStatus => ({
-    open: false,
-    atMax: false,
-    count24h: 1,
-    maxDailyCount: 4,
-    sinceHours: 3,
-    opensInHours: 3,
-    exposure: null,
-    ...over,
-  });
+  // The interval half is a UNION now (#4686 pass three), so the fixture takes the flat
+  // knobs the cases are written in and assembles it. `interval: { known: false }` is
+  // reachable by passing it through.
+  const status = (
+    over: Partial<
+      Omit<RedoseStatus, "interval"> & {
+        open: boolean;
+        sinceHours: number;
+        opensInHours: number;
+        interval: RedoseStatus["interval"];
+      }
+    >
+  ): RedoseStatus => {
+    const {
+      open = false,
+      sinceHours = 3,
+      opensInHours = 3,
+      interval,
+      ...rest
+    } = over;
+    return {
+      interval: interval ?? { known: true, open, sinceHours, opensInHours },
+      atMax: false,
+      count24h: 1,
+      maxDailyCount: 4,
+      exposure: null,
+      ...rest,
+    };
+  };
 
   it("null status → null", () => {
     expect(redoseCardLabel(null)).toBeNull();
@@ -118,7 +137,7 @@ describe("redoseCardLabel", () => {
 
   // #1458 — the parent who filled in "6 hours" and left "maximum per day" blank.
   it("keeps the window guidance with no confirmed daily max", () => {
-    const noMax = (over: Partial<RedoseStatus>) =>
+    const noMax = (over: Parameters<typeof status>[0]) =>
       redoseCardLabel(status({ maxDailyCount: null, ...over }));
     expect(noMax({ open: false, opensInHours: 5, count24h: 1 })).toBe(
       "Next dose in ~5h · 1 in 24h · no daily limit on record"
@@ -179,12 +198,10 @@ describe("helpers", () => {
 // card's classification.
 describe("prnQuickLogLabel (#1717)", () => {
   const status = (over: Partial<RedoseStatus> = {}): RedoseStatus => ({
-    open: true,
+    interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
     atMax: false,
     count24h: 2,
     maxDailyCount: 4,
-    sinceHours: 7,
-    opensInHours: 0,
     exposure: null,
     ...over,
   });
@@ -216,7 +233,10 @@ describe("prnQuickLogLabel (#1717)", () => {
     const label = prnQuickLogLabel({
       name: "Ibuprofen",
       dose: "200 mg",
-      status: status({ open: false, count24h: 1, opensInHours: 2 }),
+      status: status({
+        interval: { known: true, open: false, sinceHours: 4, opensInHours: 2 },
+        count24h: 1,
+      }),
       count24h: 1,
       maxDailyCount: 4,
     });
@@ -294,12 +314,15 @@ describe("prnLogAnswerText (#1717)", () => {
         "Logged ✅ Ibuprofen — 5 today",
         true,
         {
-          open: false,
+          interval: {
+            known: true,
+            open: false,
+            sinceHours: 0,
+            opensInHours: 6,
+          },
           atMax: true,
           count24h: 5,
           maxDailyCount: 4,
-          sinceHours: 0,
-          opensInHours: 6,
           exposure: null,
         },
         1
@@ -389,12 +412,10 @@ describe("redoseCardLabel × exposure (#1854)", () => {
     });
     expect(
       redoseCardLabel({
-        open: true,
+        interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
         atMax: exposure!.atMax,
         count24h: 1,
         maxDailyCount: null,
-        sinceHours: 7,
-        opensInHours: 0,
         exposure,
       })
     ).toBe("Redose OK — min interval passed · 800 of 1200 mg in 24h");
@@ -407,12 +428,10 @@ describe("redoseCardLabel × exposure (#1854)", () => {
       maxDailyCount: 6,
     });
     const s: RedoseStatus = {
-      open: true,
+      interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
       atMax: exposure!.atMax,
       count24h: 3,
       maxDailyCount: 6,
-      sinceHours: 7,
-      opensInHours: 0,
       exposure,
     };
     expect(redoseCardLabel(s, 2)).toBe(

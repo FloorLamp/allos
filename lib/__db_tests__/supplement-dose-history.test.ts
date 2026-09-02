@@ -881,21 +881,21 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       )
     ).toEqual({ kind: "duplicate" });
 
-    // Clearing the event makes the safety read fall back to THE ROW'S OWN DAY, at
-    // local noon — not to the immutable capture stamp, which this used to assert as
-    // an identity. #4686 retired that substitution: `recorded_at` is when the row was
-    // FILED, and here it is two days after the day the row is about (the amend runs
-    // on the tier's frozen today while `date` is the backfilled day), so quoting it as
-    // an administration instant said the dose was given two days after it was given.
-    // A row that states no time now sits at noon of its own date, the same anchor the
-    // ceiling window and the school-return derivation use.
+    // CLEARING THE EVENT TAKES THE ROW OUT OF THE ARMING CANDIDATES ENTIRELY (#4686
+    // pass three). It used to fall back to the immutable capture stamp — asserted here
+    // as an identity — and then, briefly, to the row's own day at noon; both were
+    // stand-ins for a time nobody recorded, and both read as an elapsed interval on a
+    // safety line. A row that states no instant now arms nothing: the clock is the
+    // newest row that DOES state one, and the unplaced row makes the interval UNKNOWN
+    // for as long as it sits inside the ceiling window.
     updateHistoricalDose(p, itemId, logId, date, null, null);
-    expect(getRedoseArmingState(p, itemId).latestGivenAt).toBe(
-      `${date}T12:00:00Z`
-    );
-    expect(getRedoseArmingState(p, itemId).latestGivenAt).not.toBe(
-      logRow(logId).recorded_at
-    );
+    const cleared = getRedoseArmingState(p, itemId);
+    expect(cleared.latestGivenAt).toBe(`${date}T10:01:00Z`);
+    expect(cleared.latestGivenAt).not.toBe(logRow(logId).recorded_at);
+    // …and it is OUTSIDE the ceiling window (a backfilled past day), so it does not
+    // make the interval unknown — only an unplaced row the window actually holds can
+    // do that. The boundary is asserted rather than assumed.
+    expect(cleared.untimedInWindow).toBe(false);
   });
 });
 

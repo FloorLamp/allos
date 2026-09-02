@@ -1743,6 +1743,11 @@ export interface RedoseArmingState {
   latestId: number | null;
   latestGivenAt: string | null;
   count24h: number;
+  // As the family gather's field of the same name (#4686 pass three): an unplaced
+  // administration in the window makes the interval unknowable. Reported here too, or
+  // this fallback would be laxer than the thing it stands in for — which is the exact
+  // failure the shared window predicate was introduced to end.
+  untimedInWindow: boolean;
 }
 
 export function getRedoseArmingState(
@@ -1762,17 +1767,22 @@ export function getRedoseArmingState(
   const window = prnCeilingWindowClause(profileId);
   const count = db
     .prepare(
-      `SELECT COUNT(*) AS n
+      `SELECT COUNT(*) AS n,
+              SUM(CASE WHEN l.occurred_at IS NULL THEN 1 ELSE 0 END) AS unplaced
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
           AND ${window.sql}`
     )
-    .get(profileId, itemId, ...window.params) as { n: number };
+    .get(profileId, itemId, ...window.params) as {
+    n: number;
+    unplaced: number | null;
+  };
   return {
     latestId: latest?.id ?? null,
     latestGivenAt: latest?.administeredAt ?? null,
     count24h: count.n,
+    untimedInWindow: (count.unplaced ?? 0) > 0,
   };
 }
 
@@ -1900,6 +1910,9 @@ export interface PrnMedForQuickLog {
   // gather — null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
   // quick-log/card/Telegram "N of M" line reads milligrams when they're known.
   familyExposure: PrnWindowExposure | null;
+  // An administration in the ceiling window states no instant (#4686 pass three), so
+  // the interval half of every redose surface reads UNKNOWN rather than guessing.
+  familyUntimedInWindow: boolean;
   // Number of active items in the ingredient family (1 for a solo item) — lets the
   // quick-log content note that the counters span sibling items.
   familyMemberCount: number;
@@ -1941,6 +1954,7 @@ function getPrnQuickLogItems(
     | "familyLastGivenAt"
     | "familyMaxDailyCount"
     | "familyExposure"
+    | "familyUntimedInWindow"
     | "familyMemberCount"
   >[];
   const families = getMedicationFamilyStates(profileId);
@@ -1952,6 +1966,7 @@ function getPrnQuickLogItems(
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
       familyExposure: fam?.exposure ?? null,
+      familyUntimedInWindow: fam?.untimedInWindow ?? false,
       familyMemberCount: fam?.memberIds.length ?? 1,
     };
   });

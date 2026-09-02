@@ -117,6 +117,9 @@ export async function runRedoseNotices(
       // parseable snapshotted amounts, 3 × 800 mg suppresses at 2400 mg even
       // though "3 of 6 doses" reads calm — same verdict every other surface uses.
       exposure: arming.exposure,
+      // A notice is the one surface that must never fire on a guessed interval
+      // (#4686 pass three).
+      untimedInWindow: arming.untimedInWindow,
     });
     if (decision.kind !== "fire") continue;
 

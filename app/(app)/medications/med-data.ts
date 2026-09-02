@@ -369,7 +369,7 @@ export function loadMedicationsData(
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
     // the "next dose in ~Nh" half needs, so the gate asks only for those.
-    if (s.min_interval_hours != null && famLast) {
+    if (s.min_interval_hours != null && (famLast || fam?.untimedInWindow)) {
       const redoseStatus = redoseWindowStatus({
         minIntervalHours: s.min_interval_hours,
         maxDailyCount: effectiveMaxDailyCount(
@@ -382,6 +382,9 @@ export function loadMedicationsData(
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.
         exposure: fam?.exposure ?? null,
+        // #4686 pass three: an unplaced administration in the window makes the
+        // interval unknowable, and this card must say so rather than compute one.
+        untimedInWindow: fam?.untimedInWindow,
       });
       redoseLine = redoseCardLabel(redoseStatus, fam?.memberIds.length ?? 1);
       redosePrimary = redoseActionIsPrimary(redoseStatus);

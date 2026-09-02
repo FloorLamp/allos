@@ -89,6 +89,15 @@ function schoolReturnStatusForRows(
   //
   // NOON IS A PLACEHOLDER, NOT A MEASUREMENT, and the ordering rule below is what keeps
   // that honest.
+  // THE SELECTION OBEYS THE SAME ORDERING RULE AS THE COMPARISON BELOW. Picking the
+  // newest fever by anchored-instant arithmetic quietly bypassed it: an UNTIMED 103.4
+  // sharing a day with a timed 100.9 lost to noon arithmetic, so the "last fever" was
+  // the one that COULD be ordered, the untimed one was never compared at all, and the
+  // surface read "fever-free 24h/24h" while quoting 100.9 as the last reading.
+  //
+  // Within the latest fever DAY, an unplaced reading could be later than every placed
+  // one, so it is the one that governs — and being unplaced, it makes every same-day
+  // comparison below unprovable, which is the honest outcome rather than a silent one.
   let lastFever: { ms: number; day: string; timed: boolean } | null = null;
   let lastFeverDegF = 0;
   for (const t of episode.temperatures) {
@@ -96,8 +105,28 @@ function schoolReturnStatusForRows(
     const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
     if (!at) continue;
     const ms = at.getTime();
-    if (lastFever == null || ms >= lastFever.ms) {
-      lastFever = { ms, day: t.date, timed: !!t.time };
+    const timed = !!t.time;
+    if (lastFever == null) {
+      lastFever = { ms, day: t.date, timed };
+      lastFeverDegF = t.degF;
+      continue;
+    }
+    // A later DAY always wins. On the SAME day, an unplaced reading wins over a placed
+    // one; between two placed ones the later instant wins; between two unplaced ones
+    // the later in the episode's own order wins.
+    const laterDay = t.date > lastFever.day;
+    const sameDay = t.date === lastFever.day;
+    const wins = laterDay
+      ? true
+      : !sameDay
+        ? false
+        : lastFever.timed && !timed
+          ? true
+          : lastFever.timed === timed
+            ? ms >= lastFever.ms
+            : false;
+    if (wins) {
+      lastFever = { ms, day: t.date, timed };
       lastFeverDegF = t.degF;
     }
   }

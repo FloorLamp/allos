@@ -123,8 +123,11 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       count24h: 2,
       now: hoursAfter(3),
     })!;
-    expect(closed.open).toBe(false);
-    expect(closed.opensInHours).toBeCloseTo(3, 5);
+    expect(closed.interval).toMatchObject({ known: true, open: false });
+    expect(closed.interval.known && closed.interval.opensInHours).toBeCloseTo(
+      3,
+      5
+    );
     expect(closed.atMax).toBe(false);
 
     const open = redoseWindowStatus({
@@ -134,7 +137,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       count24h: 4,
       now: hoursAfter(7),
     })!;
-    expect(open.open).toBe(true);
+    expect(open.interval).toMatchObject({ known: true, open: true });
     expect(open.atMax).toBe(true);
   });
 });
@@ -152,8 +155,11 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       now: hoursAfter(1),
     })!;
     expect(before).not.toBeNull();
-    expect(before.open).toBe(false);
-    expect(before.opensInHours).toBeCloseTo(5, 5);
+    expect(before.interval).toMatchObject({ known: true, open: false });
+    expect(before.interval.known && before.interval.opensInHours).toBeCloseTo(
+      5,
+      5
+    );
     expect(before.maxDailyCount).toBeNull();
     expect(before.atMax).toBe(false);
 
@@ -164,7 +170,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       count24h: 9,
       now: hoursAfter(7),
     })!;
-    expect(after.open).toBe(true);
+    expect(after.interval).toMatchObject({ known: true, open: true });
     // An unconfigured ceiling is never a reached one, however high the count runs.
     expect(after.atMax).toBe(false);
   });

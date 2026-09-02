@@ -179,6 +179,10 @@ export interface RedoseWindowInput {
   // a 2400 mg/day max even though "3 of 6 doses" reads calm. Absent/null keeps the
   // count-basis suppression exactly as before.
   exposure?: PrnWindowExposure | null;
+  // As `redoseWindowStatus`: an unplaced administration in the window makes the
+  // interval unknowable, and a notice is exactly the thing that must not fire on a
+  // guess.
+  untimedInWindow?: boolean;
 }
 
 export type RedoseDecision =
@@ -197,6 +201,7 @@ export type RedoseDecision =
   | { kind: "already-notified" } // one-shot already fired for the latest administration
   | { kind: "not-yet"; opensInHours: number } // interval hasn't elapsed
   | { kind: "missed-window" } // the opening + bounded retry bands are both past
+  | { kind: "interval-unknown" } // an administration in the window states no instant
   | { kind: "suppressed-max" }; // the window's count has reached the confirmed max
 
 // Hours elapsed between two instants (may be fractional).
@@ -227,6 +232,10 @@ export function redoseAttempt(
 
 export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
   const { latestAdministrationId, latestGivenAt } = input;
+  // An unplaced administration in the window: no elapsed time can be computed, so
+  // there is nothing to fire on. Ahead of the arming check, because an unplaced dose
+  // could be the latest one.
+  if (input.untimedInWindow) return { kind: "interval-unknown" };
   // Not armed: nothing logged, so there's no window to open.
   if (latestAdministrationId == null || latestGivenAt == null) {
     return { kind: "not-armed" };
@@ -279,13 +288,29 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // only the interval and the last administration. The one-shot NOTIFICATION path
 // (redoseNoticeDecision above) keeps requiring both — its gather gate only returns
 // items with both confirmed.
+// THE INTERVAL HALF, AS A UNION WITH AN ABSENT ARM (owner ruling, pass three — the
+// same shape `SchoolReturnStatus` uses one domain over, for the same reason).
+//
+// An administration that states no instant makes elapsed time UNCOMPUTABLE, and every
+// candidate stand-in is a guess that reads as a GO: the capture stamp says a catch-up
+// happened just now, the day's noon says a dose logged at 00:15 happened twelve hours
+// ago. Both produce "Redose OK — min interval passed" on a safety line whose whole job
+// is to not say that. `known: false` cannot carry an `open`, so no surface can render
+// one, and no notice can fire off one.
+export type RedoseInterval =
+  | { known: false }
+  | {
+      known: true;
+      open: boolean; // the minimum interval has elapsed since the last administration
+      sinceHours: number; // hours since the last administration
+      opensInHours: number; // hours until the window opens (0 when already open)
+    };
+
 export interface RedoseStatus {
-  open: boolean; // the minimum interval has elapsed since the last administration
+  interval: RedoseInterval;
   atMax: boolean; // the window's exposure reached the ceiling (false when unset)
   count24h: number;
   maxDailyCount: number | null; // null ⇒ no confirmed count ceiling
-  sinceHours: number; // hours since the last administration
-  opensInHours: number; // hours until the window opens (0 when already open)
   // The window's amount-aware exposure (#1854), when one was computable — the "N of
   // M" fragment then reads milligrams and atMax is ITS verdict. null keeps the
   // plain count fragment/ceiling.
@@ -299,21 +324,36 @@ export function redoseWindowStatus(input: {
   count24h: number;
   now: Date;
   exposure?: PrnWindowExposure | null;
+  // An administration in the window states no instant (#4686 pass three) ⇒ the
+  // interval is unknowable, whatever the timed rows say, because an unplaced dose
+  // could sit after every placed one.
+  untimedInWindow?: boolean;
 }): RedoseStatus | null {
-  if (!input.latestGivenAt) return null;
-  const elapsed = hoursBetween(input.latestGivenAt, input.now);
-  const open = elapsed >= input.minIntervalHours;
   const exposure = input.exposure ?? null;
-  return {
-    open,
+  const ceiling = {
     atMax: exposure
       ? exposure.atMax
       : input.maxDailyCount != null && input.count24h >= input.maxDailyCount,
     count24h: input.count24h,
     maxDailyCount: input.maxDailyCount,
-    sinceHours: elapsed,
-    opensInHours: open ? 0 : input.minIntervalHours - elapsed,
     exposure,
+  };
+  if (input.untimedInWindow) {
+    return { interval: { known: false }, ...ceiling };
+  }
+  // Nothing logged at all is a different state from "logged, but unplaced": there is
+  // no window to describe, and the caller falls back to the plain count.
+  if (!input.latestGivenAt) return null;
+  const elapsed = hoursBetween(input.latestGivenAt, input.now);
+  const open = elapsed >= input.minIntervalHours;
+  return {
+    interval: {
+      known: true,
+      open,
+      sinceHours: elapsed,
+      opensInHours: open ? 0 : input.minIntervalHours - elapsed,
+    },
+    ...ceiling,
   };
 }
 
@@ -348,10 +388,14 @@ export function prnQuickLogRedoseStatus(
     // getMedicationFamilyStates gather; null when no ceiling is confirmed (or on
     // a legacy caller), which keeps the count basis exactly as before.
     familyExposure?: PrnWindowExposure | null;
+    // The family gather's own answer (#4686 pass three); absent on a legacy caller,
+    // which keeps the timed-only behaviour.
+    familyUntimedInWindow?: boolean;
   },
   now: Date
 ): RedoseStatus | null {
-  if (med.minIntervalHours == null || !med.familyLastGivenAt) return null;
+  if (med.minIntervalHours == null) return null;
+  if (!med.familyLastGivenAt && !med.familyUntimedInWindow) return null;
   return redoseWindowStatus({
     minIntervalHours: med.minIntervalHours,
     maxDailyCount: effectiveMaxDailyCount(
@@ -362,5 +406,6 @@ export function prnQuickLogRedoseStatus(
     count24h: med.familyCount,
     now,
     exposure: med.familyExposure ?? null,
+    untimedInWindow: med.familyUntimedInWindow,
   });
 }

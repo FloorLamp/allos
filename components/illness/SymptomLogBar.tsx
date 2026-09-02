@@ -31,7 +31,6 @@ import {
 } from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
-import { dateStrInTz, zonedDateParts } from "@/lib/date";
 import {
   logSymptom,
   logTemperature,
@@ -265,12 +264,11 @@ export default function SymptomLogBar({
     const targetDate =
       intakeStaged.dayOffset === -1 && altDay ? altDay : activeDate;
     // THE COMPOSITE STATES NO TIME, and it has no control to ask through — a typed
-    // sentence carries a day at best. So it goes through the same has-a-now question
-    // every other write here does: a reading whose day has ENDED is filed on that day
-    // UNTIMED rather than stamped with a clock nobody read. The school-return
-    // derivation knows an untimed row cannot be ordered against a same-day one, so an
-    // honest gap stays a gap instead of becoming a false clearance.
-    const targetHasNow = targetDate === dateStrInTz(timeZone ?? tempZone);
+    // sentence carries a day at best. It therefore sets no `time` AT ALL and lets the
+    // action decide: `logTemperature` stamps the profile's current minute when the day
+    // is today and stores the reading untimed otherwise, off the clock seam. That is
+    // one rule in one place — the fourth hand-written spelling of "does this day have
+    // a now", reading its own `new Date()`, lived here and is gone.
     for (const s of intakeStaged.symptoms) {
       const fd = new FormData();
       fd.set("symptom", s.slug);
@@ -284,9 +282,6 @@ export default function SymptomLogBar({
       fd.set("temperature", String(intakeStaged.temperature.value));
       fd.set("temp_unit", intakeStaged.temperature.unit);
       fd.set("date", targetDate);
-      if (targetHasNow) {
-        fd.set("time", zonedDateParts(timeZone ?? tempZone, new Date()).hhmm);
-      }
       await logTemperature(withTarget(fd));
     }
     const count = intakeStaged.symptoms.length;
