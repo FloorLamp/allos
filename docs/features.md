@@ -953,7 +953,18 @@ form and land in the same stores an import writes, so a DEXA report's lean mass
 scales the protein target the way a smart scale's does and a counted breathing
 rate charts beside a pushed one. Masses are entered in your own weight unit and
 stored in kilograms; water is the day's total, in litres — typing it again
-corrects the day rather than adding a second entry.
+corrects the day rather than adding a second entry. On a growing profile the two
+masses follow body fat — see below.
+
+**Body composition on a growing profile: upload it, don't type it** (#4147). Body
+fat, lean mass and bone mass are not offered as fields on a profile the app tracks
+growth for. They come off the same scan, so they travel together: offering two of
+the three was the inconsistency this fixed. Upload the report instead — import
+already reads every composition figure on a DEXA page — and the numbers then
+**show wherever they exist**, on the charts, the tiles, the history table and the
+records. Nothing is hidden that you have data for; there is simply no empty field
+asking a child's profile for a figure. Adults are unchanged, and the raw data
+export has always kept every column either way.
 
 **A night can be typed as bed and wake times** (#1851), not just as hours. The
 Sleep Regularity Index and the consistency strip need to know _when_ you slept,

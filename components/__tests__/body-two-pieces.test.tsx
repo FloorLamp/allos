@@ -88,18 +88,18 @@ function renderedFields(): string[] {
 }
 
 describe("one form, one field set (#4424 ruling 1)", () => {
-  // THE FIELD SET IS THE SAME SIZE AT BOTH LIFE STAGES, which is the property the
-  // manifest's stale "13-field form" obscured. Asserted as a RELATIONSHIP between the
-  // two renders rather than against a constant: the growth pair swaps in exactly as
-  // body fat and HRV swap out (#493), so the swap is the claim and the number is a
-  // consequence. A gate that starts hiding a field without offering one moves the two
-  // sides apart and this fails; changing what the form carries does not.
-  it("swaps the life-stage pair without changing what a sitting can hold", () => {
+  // ONE FORM, TWO LIFE-STAGE VARIANTS, ASSERTED AS THE DIFFERENCE BETWEEN THEM — the
+  // property the manifest's stale "13-field form" obscured. It used to be assertable
+  // as EQUAL SIZE, because the growth pair swapped in exactly as body fat and HRV
+  // swapped out (#493). #4147 ended that coincidence: the composition class gates as
+  // a class, so lean and bone mass leave with body fat and the minor's form is two
+  // fields shorter. The sets are still the claim; the number no longer is.
+  it("swaps the life-stage sets, and the composition class travels together", () => {
     render(
       <MeasurementsQuickAdd
         defaultDate="2026-05-20"
         weightUnit="kg"
-        showBodyFat
+        showCompositionEntry
       />
     );
     const adult = renderedFields();
@@ -108,23 +108,34 @@ describe("one form, one field set (#4424 ruling 1)", () => {
       <MeasurementsQuickAdd
         defaultDate="2026-05-20"
         weightUnit="kg"
-        showBodyFat={false}
+        showCompositionEntry={false}
         showGrowth
         showHeadCirc
       />
     );
     const minor = renderedFields();
 
-    expect(adult.length).toBe(minor.length);
+    // All three composition measures leave together — the two-of-three DEXA problem
+    // #4147 was filed about is exactly this list being shorter than it should be.
     expect(adult.filter((label) => !minor.includes(label))).toEqual([
       "Body Fat",
+      "Lean Body Mass",
+      "Bone Mass",
       "Heart Rate Variability",
     ]);
     expect(minor.filter((label) => !adult.includes(label))).toEqual([
       "Height",
       "Head Circumference",
     ]);
-    // And the count the corrected manifest cell and the form's own header state.
+    // Waist circumference and hydration sit either side of the gated pair and are
+    // NOT composition — a tape measure and a day's water apply at every life stage,
+    // so a gate that swept the neighbours up with them would show here.
+    for (const label of ["Waist Circumference", "Water today"]) {
+      expect(adult).toContain(label);
+      expect(minor).toContain(label);
+    }
+    // The adult form is untouched by this ruling: the count the corrected manifest
+    // cell and the form's own header state.
     expect(adult).toHaveLength(17);
   });
 

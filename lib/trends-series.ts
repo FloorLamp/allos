@@ -21,7 +21,7 @@ import { today } from "./db";
 import type { BiomarkerPickerGroup } from "./biomarker-rank";
 import { bodyMetricKindForBiomarker } from "./outcome-identity";
 import { getUnitPrefs, getProfileAge, getSituationEvents } from "./settings";
-import { showBodyFat } from "./growth-metrics";
+import { showBodyFatDisplay } from "./growth-metrics";
 import { isStrengthTrainingRelevant, isTrainingRelevant } from "./life-stage";
 import {
   buildAnnotations,
@@ -191,9 +191,19 @@ export function buildMetricSeries(
 ): TrendSeries[] {
   const wu = getUnitPrefs(loginId).weightUnit;
   const weightUnitSuffix = ` ${wu}`;
-  // Body fat % is not a datapoint we surface for children (kids growth trends) —
-  // drop its tile for a minor, matching the body census age-aware layout.
-  const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  // Body fat's tile follows the body census's DISPLAY rule (#4147): it is there
+  // wherever a reading exists, and for a growth-tracked profile with none it is not —
+  // that profile cannot enter one, so an empty tile would offer nothing. Read once
+  // here rather than inside `pointsFor`, which needs the same series anyway.
+  const bodyFatPoints = getLogicalBodyMetricDailySeries(
+    profileId,
+    "body_fat",
+    ALL_ROWS
+  ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
+  const hideBodyFat = !showBodyFatDisplay(
+    getProfileAge(profileId),
+    bodyFatPoints.length > 0
+  );
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
   const strengthTrainingRelevant = isStrengthTrainingRelevant(
     getProfileAge(profileId)
@@ -213,11 +223,7 @@ export function buildMetricSeries(
           ALL_ROWS
         ).map((p) => ({ date: p.date, value: dispWeight(p.value, wu) }));
       case "bodyfat":
-        return getLogicalBodyMetricDailySeries(
-          profileId,
-          "body_fat",
-          ALL_ROWS
-        ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
+        return bodyFatPoints;
       case "resting_hr":
         return getLogicalBodyMetricDailySeries(
           profileId,
@@ -441,7 +447,13 @@ export function placeholderBiomarkerTile(canonical: string): TrendSeries {
 // "A". MEMBERSHIP is untouched: the age gates above and the body-metric exclusion below
 // still decide what is offered at all, so a gated metric is neither tile nor option.
 export function listTrendMetricOptions(profileId: number): TrendOption[] {
-  const hideBodyFat = !showBodyFat(getProfileAge(profileId));
+  // The same display rule as the tiles (#4147). The series read is the price of
+  // asking a data question; it is one indexed group-by on a picker that is already
+  // reading the profile's biomarker names below.
+  const hideBodyFat = !showBodyFatDisplay(
+    getProfileAge(profileId),
+    getLogicalBodyMetricDailySeries(profileId, "body_fat", ALL_ROWS).length > 0
+  );
   const trainingRelevant = isTrainingRelevant(getProfileAge(profileId));
   const strengthTrainingRelevant = isStrengthTrainingRelevant(
     getProfileAge(profileId)
