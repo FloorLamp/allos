@@ -143,6 +143,7 @@ import {
 import {
   attentionCandidates,
   attentionAheadDetail,
+  attentionDoseChipLabel,
   careCandidates,
   dailyCandidates,
   engagementFromSource,
@@ -1295,7 +1296,7 @@ async function renderDashboard(
               action={markAttentionDose}
               undoAction={undoAttentionDose}
               fields={{ dose_id: item.doseId }}
-              payload={attentionAheadDetail(item, on, formatPrefs)}
+              payload={attentionDoseChipLabel(item, on, formatPrefs)}
               ariaLabel={`Take ${item.title}`}
               testid="attention-mark-taken"
             />
