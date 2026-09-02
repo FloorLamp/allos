@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 import DoseStatusControl from "@/components/DoseStatusControl";
+import OfferRow from "@/components/OfferRow";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import SegmentedControl from "@/components/SegmentedControl";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
@@ -215,15 +216,19 @@ export default function QuickDoseList({
                   </span>
                 )}
               </span>
-              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                {dose.dueText}
-              </span>
+              {/* THE SLOT IS STATED ONCE, ON THE CONTROL THAT WRITES IT (#4753,
+                  owner ruling 1). This row prints the dose's NAME, so the
+                  non-redundant payload is WHEN it was owed — which sat in a span of
+                  its own beside the button, leaving the tap to be read as a bare
+                  "Mark taken". It is the chip's label now: `8:00am · [Take]`, the
+                  canvas's own `Midday · Take`, and the span is gone rather than
+                  duplicated. */}
               <DoseStatusControl
                 doseId={dose.doseId}
                 taken={false}
                 skipped={false}
                 variant="pill"
-                label="Mark taken"
+                payload={dose.dueText}
                 rowLeaves
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);
@@ -295,14 +300,14 @@ function PastDayDoses({
               {TIME_BUCKET_LABELS[slot.bucket]}
             </h3>
             {slot.doses.length > 1 && (
-              <button
-                type="button"
-                data-testid={`quick-entry-dose-stack-${slot.bucket}`}
-                data-doses={ids.join(",")}
-                aria-label={`${heading}: ${phrase}`}
+              <OfferRow
+                tone="brand"
+                testId={`quick-entry-dose-stack-${slot.bucket}`}
+                data={{ "data-doses": ids.join(",") }}
+                ariaLabel={`${heading}: ${phrase}`}
                 disabled={bulkBlocked(ids)}
-                onClick={() => resolveAll(ids)}
-                className="mb-1.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+                onAct={() => resolveAll(ids)}
+                className="mb-1.5"
               >
                 <IconPlus
                   className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
@@ -319,7 +324,7 @@ function PastDayDoses({
                     {phrase}
                   </span>
                 </span>
-              </button>
+              </OfferRow>
             )}
             <ul className="flex flex-col gap-1.5">
               {slot.doses.map((dose) => (
