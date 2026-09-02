@@ -14,6 +14,8 @@
 import { assignHashedColors } from "./trend-colors";
 import { TREND_METRIC_META } from "./trend-metrics";
 import { documentSourceId } from "./document-source";
+import { getIntegration } from "./integrations/registry";
+import type { IntegrationId } from "./types";
 
 export { documentSourceId };
 
@@ -441,4 +443,21 @@ export function sourceSeriesColorMap(keys: string[]): Map<string, string> {
     out.set(key, color);
   }
   return out;
+}
+
+// THE display name for any metric source id — one answer, so the compare overlay's
+// legend and a chart's provenance caption (#2653 state 6) cannot name the same
+// device two ways. `docs` is the per-profile document id→meta lookup
+// `documentSourceLabel` reads; a surface that has not joined `medical_documents`
+// omits it and every document then reads "Document #<id>" — coarser, never wrong,
+// and two reports on one day still tell apart. An unregistered integration id
+// prints itself.
+export function metricSourceLabel(
+  source: string,
+  docs: Record<number, DocumentMeta> = {}
+): string {
+  if (sourceKey(source) === "manual") return "Manual";
+  if (source === DOCUMENTS_SOURCE_CLASS) return DOCUMENTS_SOURCE_LABEL;
+  if (documentSourceId(source) != null) return documentSourceLabel(source, docs);
+  return getIntegration(source as IntegrationId)?.name ?? source;
 }

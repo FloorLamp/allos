@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   loneReading,
+  sourceSpreadCaption,
+  sourceSpreadCompanions,
   sparklineShapeForMetric,
   sparklineShapeForSeriesKey,
 } from "../trend-sparkline";
@@ -79,5 +81,58 @@ describe("loneReading (#2615 item 3)", () => {
         { date: "2026-07-14", value: 121 },
       ])
     ).toBeNull();
+  });
+});
+
+describe("two sources, one day — the companion decision (#2653 state 6)", () => {
+  const spread = (others: { source: string; value: number }[]) => ({
+    trusted: "Withings",
+    others,
+  });
+
+  it("draws a companion only where the other source prints a different number", () => {
+    const print = (v: number) => v.toFixed(1);
+    const out = sourceSpreadCompanions(
+      [
+        // Agrees to the printed digit: no fact to add, no mark.
+        { date: "2026-07-20", value: 80.04, sources: spread([{ source: "Oura", value: 80.01 }]) },
+        // Disagrees at the chart's precision: a companion.
+        { date: "2026-07-21", value: 80.0, sources: spread([{ source: "Oura", value: 80.6 }]) },
+        // One of two others agrees; only the disagreeing one survives.
+        {
+          date: "2026-07-22",
+          value: 80.0,
+          sources: spread([
+            { source: "Manual", value: 80.02 },
+            { source: "Oura", value: 81.0 },
+          ]),
+        },
+        // A gap day and an uncontested day carry nothing.
+        { date: "2026-07-23", value: null, sources: spread([{ source: "Oura", value: 1 }]) },
+        { date: "2026-07-24", value: 79 },
+      ],
+      print
+    );
+    expect([...out.keys()]).toEqual(["2026-07-21", "2026-07-22"]);
+    expect(out.get("2026-07-22")?.others).toEqual([{ source: "Oura", value: 81.0 }]);
+  });
+
+  it.each([
+    [[["2026-07-21", ["Oura"]]], "Showing Withings · 1 day also reported by Oura"],
+    [
+      [
+        ["2026-07-21", ["Oura"]],
+        ["2026-07-22", ["Oura", "Manual"]],
+      ],
+      "Showing Withings · 2 days also reported by Oura and Manual",
+    ],
+  ] as const)("captions the facts and takes no side: %j", (days, text) => {
+    const spreads = new Map(
+      days.map(([date, names]) => [
+        date,
+        spread(names.map((source) => ({ source, value: 1 }))),
+      ])
+    );
+    expect(sourceSpreadCaption(spreads)).toBe(text);
   });
 });

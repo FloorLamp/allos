@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { DOCUMENTS_SOURCE_CLASS } from "@/lib/metric-source-priority";
 import {
+  displaySourcePoints,
+  foldDaysBySourceMean,
   pickOneSourcePerDay,
   pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
@@ -476,5 +478,127 @@ describe("pickRowsOneSourcePerWindow", () => {
   it("keeps a row whose window will not parse — this filter de-duplicates, it does not validate", () => {
     const broken: Row = { source: "withings", start: "", end: "", v: 0 };
     expect(pick([night, broken, nap])).toEqual([night, broken, nap]);
+  });
+});
+
+describe("foldDaysBySourceMean — two sources, one day (#2653 state 6)", () => {
+  const D = "2026-07-20";
+  const row = (source: string | null, value: number, date = D) => ({
+    date,
+    source,
+    value,
+  });
+
+  // The value every caller already read is unchanged; what rides along is the
+  // account the election set aside. `toEqual` on whole points is deliberate: a day
+  // nobody contested must carry NO `sources` key at all.
+  it.each([
+    [
+      "the preferred source wins and names the other",
+      [row("oura", 52), row("health-connect", 60)],
+      SOURCE_PREFERENCE,
+      [
+        {
+          date: D,
+          value: 60,
+          sources: { trusted: "health-connect", others: [{ source: "oura", value: 52 }] },
+        },
+      ],
+    ],
+    [
+      "a lone source carries nothing extra",
+      [row("oura", 52)],
+      SOURCE_PREFERENCE,
+      [{ date: D, value: 52 }],
+    ],
+    [
+      "repeat rows from one source average and do not contest themselves",
+      [row(null, 80), row(null, 82), row("withings", 81.5)],
+      SOURCE_PREFERENCE,
+      [
+        {
+          date: D,
+          value: 81,
+          sources: { trusted: "manual", others: [{ source: "withings", value: 81.5 }] },
+        },
+      ],
+    ],
+    [
+      "class members are one group, so two documents never contest each other",
+      [row("document:5", 21), row("document:7", 23), row("withings", 24)],
+      [DOCUMENTS_SOURCE_CLASS],
+      [
+        {
+          date: D,
+          value: 22,
+          sources: {
+            trusted: DOCUMENTS_SOURCE_CLASS,
+            others: [{ source: "withings", value: 24 }],
+          },
+        },
+      ],
+    ],
+    [
+      "STRICT keeps no point for a day the selector never covers (#1642)",
+      [row("oura", 52), row("withings", 80, "2026-07-21")],
+      { order: ["withings"], strict: true } satisfies SourceSelection,
+      [{ date: "2026-07-21", value: 80 }],
+    ],
+    [
+      "without a preference hit the source with the most rows wins",
+      [row("vendor-a", 1), row("vendor-a", 3), row("vendor-b", 9)],
+      [],
+      [
+        {
+          date: D,
+          value: 2,
+          sources: { trusted: "vendor-a", others: [{ source: "vendor-b", value: 9 }] },
+        },
+      ],
+    ],
+  ])("%s", (_name, rows, selection, expected) => {
+    expect(foldDaysBySourceMean(rows, selection)).toEqual(expected);
+  });
+
+  it("sorts days oldest→newest and other sources by id", () => {
+    const out = foldDaysBySourceMean(
+      [
+        row("health-connect", 1, "2026-07-21"),
+        row("withings", 3),
+        row("oura", 2),
+        row("health-connect", 1),
+      ],
+      SOURCE_PREFERENCE
+    );
+    expect(out.map((p) => p.date)).toEqual([D, "2026-07-21"]);
+    expect(out[0].sources?.others.map((o) => o.source)).toEqual([
+      "oura",
+      "withings",
+    ]);
+  });
+});
+
+describe("displaySourcePoints", () => {
+  it("converts the plotted value and every other account through ONE function, and names the sources", () => {
+    const out = displaySourcePoints(
+      [
+        {
+          date: "2026-07-20",
+          value: 80,
+          sources: { trusted: "withings", others: [{ source: "oura", value: 81 }] },
+        },
+        { date: "2026-07-21", value: 79 },
+      ],
+      (kg) => kg * 2,
+      (source) => source.toUpperCase()
+    );
+    expect(out).toEqual([
+      {
+        date: "2026-07-20",
+        value: 160,
+        sources: { trusted: "WITHINGS", others: [{ source: "OURA", value: 162 }] },
+      },
+      { date: "2026-07-21", value: 158 },
+    ]);
   });
 });
