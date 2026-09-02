@@ -628,6 +628,15 @@ async function renderDashboard(
         now: clockNow(),
       }
     );
+    // ONE COLLAPSED READING, drawn twice (#4752 item 1): the accordion line above the
+    // body and the body's own recovery header read the SAME object, so an expanded
+    // cockpit and the line it expanded from cannot state two different last doses.
+    const collapsedStatus = {
+      ...clinicalStatus,
+      worsening: displayStatus.worsening,
+      temperature: displayStatus.temperature,
+      lastMeds: displayStatus.lastMeds,
+    };
     return {
       episodeKey: key,
       episodeOrder: c.episodeOrder,
@@ -654,18 +663,14 @@ async function renderDashboard(
               key,
               latestDose
             ),
-      status: {
-        ...clinicalStatus,
-        worsening: displayStatus.worsening,
-        temperature: displayStatus.temperature,
-        lastMeds: displayStatus.lastMeds,
-      },
+      status: collapsedStatus,
       feverFree: model.feverFree,
       episodeHref: episodeHref(c.episode.id),
       body: (
         <IllnessCockpitBody
           profileId={c.profileId}
           episode={displayEpisode}
+          status={collapsedStatus}
           crossProfile={!c.isActive}
           canWrite={scope.access.get(c.profileId) === "write"}
           ownsSharedProfileControls={c.episodeOrder === 0}
