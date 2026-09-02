@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 import {
+  baseDetectorNotice,
   checkRunsVerdict,
   closedStatusDescription,
   readinessVerdict,
@@ -62,7 +63,14 @@ if (method === "POST" && url.endsWith("/graphql")) {
   });
 }
 if (url.includes("/check-runs")) {
-  reply({ total_count: state.checkRuns.length, check_runs: state.checkRuns });
+  // Head vs BASE-BRANCH check runs: the base read is the one addressed by ref.
+  if (url.includes(state.pr.head.sha))
+    reply({ total_count: state.checkRuns.length, check_runs: state.checkRuns });
+  if (state.baseCheckRunsStatus) {
+    process.stdout.write("{}\\n" + state.baseCheckRunsStatus);
+    process.exit(0);
+  }
+  reply({ total_count: state.baseCheckRuns.length, check_runs: state.baseCheckRuns });
 }
 if (url.includes("/comments")) {
   reply(url.includes("page=1") ? (state.reviewComments ?? []) : []);
@@ -79,6 +87,8 @@ interface Fixture {
   pr?: Partial<Record<string, unknown>>;
   reviews?: unknown[];
   checkRuns?: unknown[];
+  baseCheckRuns?: unknown[];
+  baseCheckRunsStatus?: number;
   threads?: unknown[];
   graphqlStatus?: number;
   reviewComments?: unknown[];
@@ -108,6 +118,8 @@ function fixture(overrides: Fixture) {
       },
     ],
     checkRuns: overrides.checkRuns ?? [green("lint"), green("test")],
+    baseCheckRuns: overrides.baseCheckRuns ?? [],
+    baseCheckRunsStatus: overrides.baseCheckRunsStatus,
     threads: overrides.threads ?? [],
     graphqlStatus: overrides.graphqlStatus,
     reviewComments: overrides.reviewComments ?? [],
@@ -365,6 +377,64 @@ describe("merge-gate.mjs", () => {
     const state = fixture({ pr: { draft: true } });
     const result = readinessVerdict(state.pr);
     expect(result.failures).toEqual([expect.stringContaining("DRAFT")]);
+  });
+
+  // A RED THAT NO GATE READS IS A RED NOBODY CLOSES (#4722). e2e-main runs on
+  // pushes to main, so it is never on a PR head and every check above is
+  // structurally blind to it — main stayed red there for eight merges while
+  // every PR read green. The notice states it; it must never close the gate,
+  // which .github/workflows/e2e-main.yml reserves as a separate ruling.
+  const SHA = `${"9".repeat(40)}`;
+  const at = (
+    name: string,
+    conclusion: string | null,
+    status = "completed"
+  ) => ({
+    name,
+    status,
+    conclusion,
+    head_sha: SHA,
+  });
+  it.each([
+    [[], "no verdict on main"],
+    [
+      [at("e2e-main (1)", "success"), at("e2e-main (2)", "failure")],
+      "is RED — e2e-main (2)",
+    ],
+    [
+      [at("e2e-main (1)", null, "in_progress"), at("e2e-main (2)", "success")],
+      "still running",
+    ],
+    [
+      [at("e2e-main (1)", "success"), at("e2e-main (2)", "skipped")],
+      "is green (2 shards)",
+    ],
+    [[at("lint", "failure")], "no verdict on main"],
+  ])("reports main's e2e-main standing: %#", (runs, expected) => {
+    expect(baseDetectorNotice(runs, "main")).toContain(expected);
+  });
+
+  it("prints a RED base detector and still OPENS the gate", () => {
+    const run = runGate({
+      baseCheckRuns: [
+        {
+          name: "e2e-main (2)",
+          status: "completed",
+          conclusion: "failure",
+          head_sha: SHA,
+        },
+      ],
+    });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("e2e-main: main@99999999 is RED");
+    expect(run.stdout).toContain("GATE OPEN");
+  });
+
+  it("says the standing is unknown when the base read fails, and still opens", () => {
+    const run = runGate({ baseCheckRunsStatus: 404 });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("e2e-main standing unknown");
+    expect(run.stdout).toContain("GATE OPEN");
   });
 
   it("blocks (exit 3) without a token rather than reporting empty sets", () => {
