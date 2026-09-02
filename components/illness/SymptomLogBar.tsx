@@ -25,6 +25,10 @@ import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import {
+  useCockpitDay,
+  useDayBinding,
+} from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
 import {
@@ -66,8 +70,6 @@ const SYMPTOM_LABEL_OPTIONS = symptomLabelOptions();
 export default function SymptomLogBar({
   date,
   altDate,
-  dateLabel = "Today",
-  altDateLabel = "Yesterday",
   initial,
   initialAlt,
   initialNotes,
@@ -90,8 +92,6 @@ export default function SymptomLogBar({
   date: string;
   // Optional second date for the toggle (yesterday on the dashboard). Absent → single-day.
   altDate?: string;
-  dateLabel?: string;
-  altDateLabel?: string;
   // symptom key → severity already logged, for the primary and alt dates.
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
@@ -138,9 +138,21 @@ export default function SymptomLogBar({
   // name their symptoms and show the viewer's own, so those mounts omit it.
   analysisHref?: AppRoute;
 }) {
-  const hasToggle = !!altDate;
-  const [mode, setMode] = useState<"primary" | "alt">("primary");
-  const activeDate = mode === "alt" && altDate ? altDate : date;
+  // THE DAY THIS BAR IS STANDING ON (#4691) comes from the CARD, not from this
+  // component: the toggle sets the card's day context and every control beneath it —
+  // this bar's taps, notes and temperature fold, and the Meds rows that are this bar's
+  // SIBLING — reads the same answer. Unwrapped mounts (the Timeline day view, cycles,
+  // the quick-entry sheet) are single-day surfaces and stand on the day they were
+  // handed.
+  const card = useCockpitDay();
+  // The binding, card or no card — so an UNWRAPPED mount (`/history?day=<past>`, the
+  // cycles page) answers the has-a-now question from the calendar too, rather than
+  // assuming yes. That assumption is what let a past-day reading through those mounts
+  // without a stated time.
+  const day = useDayBinding(date, timeZone);
+  const activeDate = day.activeDate;
+  const isPrimaryDay = day.isPrimaryDay;
+  const hasToggle = !!card?.altDate;
 
   const [severitiesByDate, setSeveritiesByDate] = useState<
     Record<string, Record<string, number>>
@@ -166,7 +178,7 @@ export default function SymptomLogBar({
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // Reading time (#800/#843) through the shared control, which is what retires this
   // bar's own <input type="time"> from the #2236 allowlist. The day is FIXED to the
-  // card's primary date, so the control renders it as text and offers only the clock —
+  // day the toggle is showing, so the control renders it as text and offers only the clock —
   // and its invariant 3 replaces the old seeded-now field: an untouched time states
   // NOTHING and the action stamps the profile's current minute, which is what a
   // thermometer-to-phone reading meant anyway. Adjusting it for an earlier reading is
@@ -176,6 +188,13 @@ export default function SymptomLogBar({
     date,
     statedAt: null,
   }));
+  // Switching the day re-anchors the pair rather than leaving a time stated on the
+  // day the user just left — the WhenControl's own invariant 1, applied by the owner
+  // of the day it is pinned to.
+  function selectDay(next: string): void {
+    card?.select(next);
+    setTempWhen({ date: next, statedAt: null });
+  }
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
 
@@ -239,9 +258,17 @@ export default function SymptomLogBar({
   async function confirmIntake() {
     if (!intakeStaged) return;
     setIntakePending(true);
-    // A "since yesterday" hint targets the alt day when the toggle offers one.
+    // The day the bar is standing on, unless the sentence itself said "yesterday"
+    // and the toggle offers that day.
+    const altDay = card?.altDate ?? altDate;
     const targetDate =
-      intakeStaged.dayOffset === -1 && altDate ? altDate : date;
+      intakeStaged.dayOffset === -1 && altDay ? altDay : activeDate;
+    // THE COMPOSITE STATES NO TIME, and it has no control to ask through — a typed
+    // sentence carries a day at best. It therefore sets no `time` AT ALL and lets the
+    // action decide: `logTemperature` stamps the profile's current minute when the day
+    // is today and stores the reading untimed otherwise, off the clock seam. That is
+    // one rule in one place — the fourth hand-written spelling of "does this day have
+    // a now", reading its own `new Date()`, lived here and is gone.
     for (const s of intakeStaged.symptoms) {
       const fd = new FormData();
       fd.set("symptom", s.slug);
@@ -254,7 +281,7 @@ export default function SymptomLogBar({
       const fd = new FormData();
       fd.set("temperature", String(intakeStaged.temperature.value));
       fd.set("temp_unit", intakeStaged.temperature.unit);
-      fd.set("date", date);
+      fd.set("date", targetDate);
       await logTemperature(withTarget(fd));
     }
     const count = intakeStaged.symptoms.length;
@@ -287,9 +314,21 @@ export default function SymptomLogBar({
     event.preventDefault();
     const form = event.currentTarget;
     const fd = new FormData(form);
-    // The reading is "now" for today (the card's primary date), never the alt day.
-    fd.set("date", date);
+    // The day the fold is showing (#4691). Under Yesterday this backfills last
+    // night's reading — the one the fever-free clock needs evidence of (#4685) —
+    // through the same dated core a reading logged today goes through.
+    fd.set("date", activeDate);
     const hhmm = statedHhmm(tempWhen.statedAt, timeZone ?? tempZone);
+    // ON A PAST DAY THE MINUTE IS THE ASK (#4685). "Now" is not a time on a day that
+    // has ended, so there is nothing honest for the action to fall back to — it
+    // stores such a reading untimed, and an untimed reading is anchored at noon,
+    // which cannot answer "was this before or after the 7:10pm fever?". The control
+    // is already mounted and already knows the day, so asking for the minute is the
+    // honest ask rather than friction.
+    if (!hhmm && !isPrimaryDay) {
+      setTempError("Add the time this reading was taken.");
+      return;
+    }
     if (hhmm) fd.set("time", hhmm);
     setTempError(null);
     setTempPending(true);
@@ -298,7 +337,7 @@ export default function SymptomLogBar({
     if (res.ok) {
       form.reset();
       tempUnitDetection.reset();
-      setTempWhen({ date, statedAt: null });
+      setTempWhen({ date: activeDate, statedAt: null });
       setTempOpen(false);
       toast(
         `Temperature logged: ${fmtTemp(res.degF, temperatureUnit)}${
@@ -472,7 +511,7 @@ export default function SymptomLogBar({
               </span>
             </p>
           )}
-          {hasToggle && (
+          {card?.altDate && (
             <div
               data-testid="symptom-day-toggle"
               className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
@@ -480,20 +519,20 @@ export default function SymptomLogBar({
               <button
                 type="button"
                 data-testid="symptom-day-primary"
-                aria-pressed={mode === "primary"}
-                onClick={() => setMode("primary")}
-                className={`px-2 py-1 ${mode === "primary" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+                aria-pressed={isPrimaryDay}
+                onClick={() => selectDay(card.date)}
+                className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
               >
-                {dateLabel}
+                {card.dateLabel}
               </button>
               <button
                 type="button"
                 data-testid="symptom-day-alt"
-                aria-pressed={mode === "alt"}
-                onClick={() => setMode("alt")}
-                className={`px-2 py-1 ${mode === "alt" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+                aria-pressed={!isPrimaryDay}
+                onClick={() => selectDay(card.altDate!)}
+                className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
               >
-                {altDateLabel}
+                {card.altDateLabel}
               </button>
             </div>
           )}
@@ -790,11 +829,14 @@ export default function SymptomLogBar({
               value={tempWhen}
               onChange={setTempWhen}
               tz={timeZone}
-              // ONE DAY, the card's primary date: a reading is filed against the day
-              // the bar is standing on, so the control renders it as text and the pair
-              // rule holds with nothing to enforce.
-              minDate={date}
-              maxDate={date}
+              // ONE DAY, the day the bar is standing on: a reading is filed against
+              // the day the toggle is showing, so the control renders it as text and
+              // the pair rule holds with nothing to enforce.
+              minDate={activeDate}
+              maxDate={activeDate}
+              // A past day has no "now" to fall back to (#4685), so the minute is
+              // required there and optional on today.
+              timeRequired={!isPrimaryDay}
               timeLabel="Reading time"
               testId="temp-quick"
             />

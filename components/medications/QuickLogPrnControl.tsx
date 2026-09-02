@@ -7,6 +7,7 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
+import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -18,11 +19,12 @@ import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
+import { doseLogDays } from "@/lib/dose-log-window";
 import { statedHhmm } from "@/lib/stated-time";
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
-// the shared WhenControl (#2236) — an absolute time today, empty until stated, with
+// the shared WhenControl (#2236) — a DATED absolute time, empty until stated, with
 // a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
 // old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
 // TAP time, so it drifts with every minute a rendered page sits open, which is the
@@ -30,6 +32,15 @@ import { statedHhmm } from "@/lib/stated-time";
 // — the failure #2236 exists to end. Each successful log is a real administration
 // (the ledger allows multiples/day), and the action's own revalidate brings back the
 // updated "N today · last …" subtitle with its response.
+//
+// THE STATEMENT STATES ITS DAY (#4691). It used to hand the WhenControl
+// `minDate === maxDate === today`, which renders the day as static text — so the
+// illness cockpit could show a Yesterday toggle above a row that could only ever
+// write today, and last night's dose had no path at all short of the med detail
+// page's backfill door. The statement now opens the day picker over `doseLogDays`,
+// the SHIPPED past half of the dose tap's declared reach, so the days it offers are
+// exactly the days `logAdministration`'s own guard accepts — a switcher can neither
+// offer a day the core refuses nor withhold one it would take.
 //
 // A PRN dose is ADDITIVE and declares no expected interval (#2007): several
 // administrations a day are legitimate and #798's redose line already advises without
@@ -85,13 +96,29 @@ export default function QuickLogPrnControl({
   // cockpit — three regions, one action, and only the region knows which.
   const stampLoggedVia = useLoggedViaStamp();
   const [open, setOpen] = useState(false);
-  // The earlier-dose pair (#2236): the day is fixed to today (the action resolves
-  // the wall time against the profile's today), the time starts UNSTATED — the
-  // control never defaults it to now.
+  const todayStr = dateStrInTz(tz);
+  const days = doseLogDays(todayStr);
+  // THE CARD'S DAY (#4691), when this row is inside one. The illness cockpit's toggle
+  // is the day context for every control beneath it, so flipping to Yesterday opens
+  // this statement on yesterday — the Meds row and the Symptoms section can no longer
+  // disagree about which day the card is showing. Outside a cockpit (the medications
+  // page, the dashboard's own dose card) there is no card day and the statement opens
+  // on today.
+  const card = useCockpitDay();
+  const cardDay = card?.activeDate ?? todayStr;
+  // The earlier-dose pair (#2236): the day starts on the day this row displays and
+  // the time starts UNSTATED — the control never defaults it to now.
   const [when, setWhen] = useState<WhenValue>(() => ({
-    date: dateStrInTz(tz),
+    date: cardDay,
     statedAt: null,
   }));
+  // The card's day is server state; when it changes under an OPEN statement, the pair
+  // moves with it rather than leaving a time stated on the day the user just left.
+  const [seenCardDay, setSeenCardDay] = useState(cardDay);
+  if (seenCardDay !== cardDay) {
+    setSeenCardDay(cardDay);
+    setWhen({ date: cardDay, statedAt: null });
+  }
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
@@ -104,7 +131,10 @@ export default function QuickLogPrnControl({
         const fd = stampLoggedVia(new FormData());
         fd.set("id", String(itemId));
         fd.set("offset", offset);
-        if (customTime) fd.set("time", customTime);
+        if (customTime) {
+          fd.set("time", customTime);
+          fd.set("date", when.date);
+        }
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
       },
@@ -122,7 +152,7 @@ export default function QuickLogPrnControl({
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
         setOpen(false);
-        setWhen({ date: dateStrInTz(tz), statedAt: null });
+        setWhen({ date: cardDay, statedAt: null });
         return { kind: "keep" };
       },
       onError: () => {
@@ -184,8 +214,8 @@ export default function QuickLogPrnControl({
   );
 
   // The saved value is the pair's local wall time, resolved back to an instant
-  // SERVER-side against the profile's today (the same reason the food bar submits
-  // a choice rather than a client timestamp): the control's fixed day IS today.
+  // SERVER-side against the day it was stated on (the same reason the food bar submits
+  // a choice rather than a client timestamp).
   const savedHhmm = statedHhmm(when.statedAt, tz);
   const options = open ? (
     <div data-testid="prn-log-options">
@@ -200,9 +230,9 @@ export default function QuickLogPrnControl({
           onChange={setWhen}
           tz={tz}
           timeRequired
-          minDate={when.date}
-          maxDate={when.date}
-          timeLabel="Specific time today"
+          minDate={days[days.length - 1]}
+          maxDate={todayStr}
+          timeLabel="Specific time"
           disabled={busy}
           testId="prn-log-when"
         />

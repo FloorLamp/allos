@@ -57,7 +57,7 @@ import SymptomVideoStrip from "@/components/illness/SymptomVideoStrip";
 import { getSymptomVideosInRange } from "@/lib/symptom-video-write";
 import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { schoolReturnCompactClause } from "@/lib/school-return";
+import { schoolReturnCompactLabel } from "@/lib/school-return";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
 import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
@@ -328,10 +328,7 @@ export default async function EpisodePage(props: {
         feverFree={
           schoolReturn
             ? {
-                label: schoolReturnCompactClause(schoolReturn).replace(
-                  /^fever-free/,
-                  "Fever-free"
-                ),
+                label: schoolReturnCompactLabel(schoolReturn, temperatureUnit),
                 met: schoolReturn.met,
               }
             : null

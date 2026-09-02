@@ -235,7 +235,11 @@ that dismissal policy.
 
 A per-profile fever-free interval drives the school/daycare return countdown. It
 names the last reading and last fever-reducer dose and presents the configured
-guideline as context, not medical clearance.
+guideline as context, not medical clearance. The countdown requires EVIDENCE: it
+starts at the first normal reading after the last fever-range one, so an
+unmeasured night is not counted as fever-free time. Until such a reading exists
+the surface says so — "No reading since 103.4 °F (14h ago)" — and the guideline
+can never read as met on silence.
 
 ### Symptom media
 

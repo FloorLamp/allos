@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { logTemperature } from "@/app/(app)/symptom-actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -131,6 +131,64 @@ describe("logTemperature — canonical write + fever flag", () => {
     expect(rows.every((r) => r.notes === null)).toBe(true);
     expect(rows.map((r) => r.value_num)).toEqual([100.4, 102.2, 101.1]);
     expect(rows.every((r) => r.flag === "high")).toBe(true);
+  });
+});
+
+// THE ACTION NEVER INVENTS A READING TIME FOR A DAY THAT IS NOT TODAY (#4685/#4691).
+//
+// The untimed fallback stamps the profile's CURRENT clock time, which was correct
+// while `date` could only be today — the cockpit's temperature fold hard-set it. Once
+// the fold binds to the day it displays, that fallback writes now's clock onto a past
+// day: a 09:16 backfill of "last night's 98.6" became an instant nobody measured, and
+// the fever-free clock believed it — `Fever-free 24h/24h`, cleared for school thirteen
+// hours early. `#2019` and lib/row-instants.ts exist to stop capture time standing in
+// for event time; this is that substitution, so the past-day row is stored honestly
+// UNTIMED and the reader anchors it at its own day's noon.
+describe("logTemperature — a past day is never stamped with now (#4685)", () => {
+  it("stores a past-day reading untimed when no time is stated", async () => {
+    const login = createLogin();
+    const profile = createProfile("Backfill", login.id);
+    actAs(login, profile);
+    pinUtc(profile.id);
+
+    await logTemperature(
+      fd({ temperature: "98.6", temp_unit: "F", date: DATE })
+    );
+
+    const rows = tempRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value_num).toBe(98.6);
+    expect(rows[0].occurred_at).toBeNull();
+  });
+
+  it("still stamps the clock for TODAY — thermometer-to-phone is one step", async () => {
+    const login = createLogin();
+    const profile = createProfile("TodayStamp", login.id);
+    actAs(login, profile);
+    pinUtc(profile.id);
+
+    await logTemperature(
+      fd({ temperature: "98.6", temp_unit: "F", date: today(profile.id) })
+    );
+
+    const rows = tempRows(profile.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].occurred_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+    );
+  });
+
+  it("a STATED time on a past day is honoured exactly", async () => {
+    const login = createLogin();
+    const profile = createProfile("BackfillStated", login.id);
+    actAs(login, profile);
+    pinUtc(profile.id);
+
+    await logTemperature(
+      fd({ temperature: "98.6", temp_unit: "F", date: DATE, time: "23:00" })
+    );
+
+    expect(tempRows(profile.id)[0].occurred_at).toBe(`${DATE}T23:00:00Z`);
   });
 });
 

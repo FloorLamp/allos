@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SymptomForm from "@/components/illness/SymptomForm";
 import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 
 // THE SYMPTOM DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.symptom.pieces`).
@@ -37,6 +38,8 @@ let removeResult: { ok: boolean; undoId?: number | null; error?: string } = {
   ok: true,
   undoId: 9,
 };
+// The staged mapping the text-intake mock answers with, when a test sets one.
+let staged: unknown = null;
 
 vi.mock("@/app/(app)/symptom-actions", () => ({
   logSymptom: async (fd: FormData) => {
@@ -76,10 +79,10 @@ vi.mock("@/app/(app)/symptom-actions", () => ({
     return { ok: true as const, degF: 100.1, flag: null, redFlag: null };
   },
   activateIllnessForSymptoms: async () => ({ ok: true as const }),
-  suggestSymptomsFromText: async () => ({
-    ok: false as const,
-    reason: "empty" as const,
-  }),
+  suggestSymptomsFromText: async () =>
+    staged
+      ? { ok: true as const, mapping: staged }
+      : { ok: false as const, reason: "empty" as const },
 }));
 vi.mock("@/app/(app)/undo-actions", () => ({
   undoDelete: async () => ({ ok: true }),
@@ -91,7 +94,11 @@ vi.mock("@/components/Toast", () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-const TODAY = "2026-08-20";
+// THE PROFILE'S ACTUAL TODAY. `isPrimaryDay` asks the calendar (#4691 review), so a
+// fixed literal calling itself "today" is a past day and the time becomes required —
+// which is the rule working. Anything asserting the has-a-now behaviour must stand on
+// the real one; FOUND_DAY stays a fixed past day, which is what it always was.
+const TODAY = new Date().toISOString().slice(0, 10);
 const FOUND_DAY = "2026-08-18";
 const SUBJECT = 42;
 const ROW = {
@@ -107,6 +114,7 @@ beforeEach(() => {
   for (const key of Object.keys(posted)) delete posted[key];
   toasts.length = 0;
   removeResult = { ok: true, undoId: 9 };
+  staged = null;
   cleanup();
 });
 
@@ -415,5 +423,178 @@ describe("SymptomLogBar mounts both pieces", () => {
       fireEvent.click(screen.getByTestId("temp-quick-save"))
     );
     expect(payload("temperature", 1).time).toBe("07:15");
+  });
+});
+
+// ONE DAY CONTEXT PER SURFACE (#4691). The bar renders a Today/Yesterday toggle and
+// then bound three things to three different days: the severity taps followed it, the
+// temperature fold hard-set the primary date under a comment that said so, and the
+// staged-sentence composite split the difference. The claim is a RELATIONSHIP — what
+// the fold DISPLAYS is what it WRITES — so it is asserted through the control's own
+// rendered day and the posted `date` together, on both sides of the toggle.
+describe("the day the bar shows is the day it writes (#4691)", () => {
+  // THE TOGGLE IS THE CARD'S (#4691), so the fixture supplies the card. A bar rendered
+  // WITHOUT a provider is a single-day surface with no toggle at all, which is the
+  // Timeline/cycles/quick-entry shape and is covered by the mounts above.
+  function toggledBar(): void {
+    render(
+      <CockpitDayProvider date={TODAY} altDate={FOUND_DAY}>
+        <SymptomLogBar
+          date={TODAY}
+          altDate={FOUND_DAY}
+          initial={{}}
+          initialAlt={{}}
+          initialNotes={{}}
+          symptoms={PICKER_SYMPTOMS}
+          customNames={[]}
+          suggestActivateIllness={false}
+          showTemperature
+          temperatureUnit="F"
+          timeZone="UTC"
+          profileId={SUBJECT}
+          showTitle={false}
+          textIntakeEnabled
+        />
+      </CockpitDayProvider>
+    );
+  }
+
+  async function openTemp(value: string): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("temp-quick-input"), {
+      target: { value },
+    });
+  }
+
+  async function saveTemp(): Promise<void> {
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-save"))
+    );
+  }
+
+  // A PAST DAY HAS NO "NOW" (#4685). The action stores an untimed reading honestly
+  // rather than stamping the current clock onto a day that has ended, and an untimed
+  // reading is anchored at noon — which cannot say whether it came before or after an
+  // evening fever. So the alt day asks for the minute, and refuses without it.
+  it("refuses a reading on the alt day until a time is stated", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await openTemp("98.6");
+    // The control carries the requirement natively, so the browser refuses the
+    // submission before the handler runs — which is what the user meets. The
+    // handler's own guard is the belt beneath it, for a programmatic submit.
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
+    ).toBe(true);
+    await saveTemp();
+    expect(posted.temperature).toBeUndefined();
+  });
+
+  it("does NOT require a time on the primary day — thermometer-to-phone is one step", async () => {
+    toggledBar();
+    await openTemp("101.4");
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
+    ).toBe(false);
+    await saveTemp();
+    expect(payload("temperature").date).toBe(TODAY);
+    expect(payload("temperature").time).toBeUndefined();
+  });
+
+  it("accepts it once the minute is stated, and posts both halves", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await openTemp("98.6");
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "23:00" },
+    });
+    await saveTemp();
+    expect(payload("temperature").date).toBe(FOUND_DAY);
+    expect(payload("temperature").time).toBe("23:00");
+  });
+
+  it.each([
+    ["primary", TODAY],
+    ["alt", FOUND_DAY],
+  ])("the temperature fold on %s writes that day", async (side, day) => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId(`symptom-day-${side}`))
+    );
+    await openTemp("101.4");
+    if (side === "alt") {
+      fireEvent.change(screen.getByTestId("temp-quick-time"), {
+        target: { value: "19:10" },
+      });
+    }
+    // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
+    // draws it as text rather than a picker and the pair rule holds by construction.
+    // The control renders the primary day as "Today" (it IS today now) and the alt
+    // day as its date — either way, the day it SHOWS is the day it writes below.
+    expect(screen.getByTestId("temp-quick-date").textContent).toContain(
+      day === TODAY ? "Today" : day
+    );
+    // …and what it WRITES is that same day.
+    await saveTemp();
+    expect(payload("temperature").date).toBe(day);
+  });
+
+  it("switching days re-anchors the stated reading time instead of carrying it over", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("temp-quick-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "19:10" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).value
+    ).toBe("");
+  });
+
+  // THE COMPOSITE, driven through `confirmIntake` rather than through the fold — the
+  // test that used to carry this name drove the temperature fold and was byte-identical
+  // to the case above it, so the composite had NO coverage at all while being the only
+  // producer of an untimed reading on a past day.
+  //
+  // It sets no `time`: a typed sentence carries a day at best, and the action stamps
+  // the minute only for a day that has a now. So the assertion is the ABSENCE — the
+  // composite must not invent one — beside the day it did state.
+  it("a confirmed sentence posts a day and states no time", async () => {
+    staged = {
+      symptoms: [{ slug: "headache", severity: 2, note: null }],
+      temperature: { value: 99.2, unit: "F" },
+      unmapped: [],
+      dayOffset: -1,
+    };
+    toggledBar();
+    // The text intake lives inside the add picker, which is collapsed by default.
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-add-picker-toggle"))
+    );
+    fireEvent.change(screen.getByTestId("symptom-text-input"), {
+      target: { value: "headache and 99.2 since yesterday" },
+    });
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-suggest"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-text-confirm"))
+    );
+    // The sentence said "yesterday" and the card offers that day, so both halves land
+    // there — the symptom and the reading, together.
+    expect(payload("log").date).toBe(FOUND_DAY);
+    const temp = payload("temperature");
+    expect(temp.date).toBe(FOUND_DAY);
+    expect(temp.time).toBeUndefined();
   });
 });

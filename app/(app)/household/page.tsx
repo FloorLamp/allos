@@ -247,7 +247,7 @@ export default async function HouseholdPage() {
           profile.name,
           ep,
           temperatureUnit,
-          sr ? schoolReturnCompactClause(sr) : null,
+          sr ? schoolReturnCompactClause(sr, temperatureUnit) : null,
           formatPrefs.timeFormat
         );
       })(),
