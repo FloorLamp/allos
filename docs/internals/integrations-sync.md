@@ -1312,6 +1312,58 @@ push and across the whole capture. Measured 2026-08-21 over 45 captures — 208 
 173 of them intervals — it found **none**. Re-run it when the parser gains a record
 type.
 
+### Sleep is the exception, and the heart rate is what decides it (#3628)
+
+`sleep_min` is deliberately NOT in `DAY_BUCKET_METRICS`: a session row is one
+reading on its own real window, so two overlapping sleep rows are two readings and
+the rule above may never touch them. But after a device zone change Health Connect
+can hold the same Fitbit night **twice** — a first write derived under the old zone
+and a corrected one a day later — and because sleep keys on `started_at` the re-timed
+session is a new natural key rather than a correction. Measured on prod: two sessions
+of one origin 6 h apart, 17 min of overlap, equal duration, a re-scored stage set, and
+`mainSleepSession` electing the phantom as the night of the day before.
+
+So there is a second, narrower rule, in `lib/sleep-overlap.ts` (pure) with its store
+half in `lib/integrations/sleep-overlap-db.ts`. It shares no machinery with the day
+buckets and it does not weaken the sentence above:
+
+- **Same origin, overlapping, different keys.** One person recorded by one package
+  cannot be asleep in two overlapping sessions. A NULL origin is UNKNOWN and never
+  shared. #1191's fragmented night is untouched by construction — fragments are
+  separated by an awake gap.
+- **The device's own heart rate decides which window is the night.** A window is
+  corroborated when the `hr_minutes` inside it average BELOW what the same device
+  recorded while the person was awake nearby — awake meaning every minute in a
+  ±24 h span that no stored sleep session covers. On the prod pair that is 58 bpm
+  inside the real window against 78 inside the phantom, with a 68 bpm awake block:
+  the evidence that identified the phantom by hand, promoted to the rule (owner
+  ruling, 2026-08-31). There is no bpm constant, so there is nothing here to be
+  wrong for an athlete or for someone with a fever.
+- **BOTH windows must be read, and EXACTLY ONE may say sleep.** A window with no
+  minutes, or with a hole wider than the `heart-rate` stream's declared
+  `dipToleranceMin`, is unread — not "not sleep" — because the watch batches into the
+  phone independently of the exporter's push. Neither corroborated, both corroborated,
+  or either unread: **nothing is deleted** and the pair is listed in Data → Review
+  (`getOverlappingSleepSessions`) for the person to settle in Data → Manage.
+- **The stage breakdown goes with the session, and the #133 lock covers it.** A stage
+  has no parentage column, but the parser pins it to its SESSION's wake day, which on
+  this defect separates the two stage sets outright. Within a wake day a stage is the
+  loser's when its midpoint is inside the loser's window and no other session on that
+  day overlaps it. An `edited` session **or stage** holds the whole collapse.
+- **ARRIVAL ORDER DECIDES NOTHING, so the sentence above stands unscoped.**
+  `pushed_at` is read only to bound which sessions are examined; the verdict is
+  symmetric in the pair, so a backfill delivering them newest-first collapses to the
+  same row as the live trace. That is the refutation the previous attempt died on: a
+  stamp rule cannot work here at all, because the exporter re-sends the session for
+  48 h and the re-send's `ON CONFLICT DO UPDATE` moves BOTH rows' stamps to the same
+  push.
+
+The delete is permanent — `removeImportTombstone` is reachable only from the undo of a
+captured user delete — which is why every term above is a refusal and the fallback is
+to list the pair rather than to guess. `lib/__db_tests__/hc-sleep-overlap-collapse.test.ts`
+drives the prod pair through the real parser and the real chunked ingest, in both
+arrival orders, and each refusal was checked to reach the branch it names.
+
 **A stored sleep session is an ABSOLUTE INSTANT (#2096).** `started_at` is both
 the natural upsert key and the value every read path hands to `new Date()`, and
 ECMAScript resolves an offset-less date-time in the PROCESS zone — so a boundary

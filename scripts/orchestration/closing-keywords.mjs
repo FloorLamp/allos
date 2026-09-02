@@ -74,6 +74,64 @@ function isRecord(value) {
 class CannotAnswer extends Error {}
 
 /**
+ * The curl fallback for hosts without `gh`.
+ *
+ * Returns parsed JSON, or `undefined` when curl itself is unavailable or the
+ * request failed — never a reassuring empty value. `undefined` sends the caller
+ * back to the CannotAnswer it would otherwise have thrown, so a failure here
+ * cannot be mistaken for "nothing closes".
+ *
+ * A paginated read returns the `--slurp` shape — an ARRAY OF PAGES — walked
+ * until a short page. A truncated read would understate what a merge closes, so
+ * an incomplete walk returns undefined rather than the pages gathered so far.
+ */
+function curlOnce(url) {
+  const run = spawnSync(
+    "curl",
+    [
+      "-sS",
+      "--fail-with-body",
+      "-H",
+      "Accept: application/vnd.github+json",
+      url,
+    ],
+    {
+      encoding: "utf8",
+      maxBuffer: MAX_BUFFER,
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
+  if (run.error || run.status !== 0) return undefined;
+  let json;
+  try {
+    json = JSON.parse(run.stdout);
+  } catch {
+    return undefined;
+  }
+  if (isRecord(json) && typeof json.message === "string") return undefined;
+  return json;
+}
+
+function curlApi(endpoint, { paginate = false } = {}) {
+  const base = `https://api.github.com/${endpoint.replace(/^\/+/, "")}`;
+  if (!paginate) return curlOnce(base);
+
+  const perPage = Number(/[?&]per_page=(\d+)/.exec(base)?.[1] ?? 30);
+  const join = base.includes("?") ? "&" : "?";
+  const pages = [];
+  // Bounded so a malformed link cycle cannot spin: 100 pages of 100 is far more
+  // commits than any reviewable PR carries, and hitting the cap returns
+  // undefined rather than a partial answer.
+  for (let page = 1; page <= 100; page += 1) {
+    const body = curlOnce(`${base}${join}page=${page}`);
+    if (!Array.isArray(body)) return undefined;
+    pages.push(body);
+    if (body.length < perPage) return pages;
+  }
+  return undefined;
+}
+
+/**
  * Read one GitHub API endpoint through the authenticated CLI.
  *
  * No token is passed on argv, printed, or written. `gh` resolves its supported
@@ -91,6 +149,21 @@ function ghApi(endpoint, { paginate = false } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  // NO `gh` ON THIS HOST IS NOT THE SAME FACT AS `gh` REFUSING, and only the
+  // first one earns a fallback. `run.error` means the binary could not be
+  // spawned at all; a non-zero status means gh ran and said no, which is a
+  // signal to respect rather than route around — the auth-failure case must
+  // still fail closed, and there is a test that says so.
+  // Measured 2026-08-31: `gh` is absent in Claude Code remote, so this scanner
+  // could not run there AT ALL, and it is the guard that catches a `Fixes #N`
+  // on an issue the diff does not finish. Exiting 2 was honest and useless.
+  // Reads need no credential (public repo), and Node's fetch ignores
+  // HTTPS_PROXY in that container while curl does not — the same reasoning as
+  // issue-read.mjs. See docs/orchestration/environment.md §GitHub access.
+  if (run.error) {
+    const viaCurl = curlApi(endpoint, { paginate });
+    if (viaCurl !== undefined) return viaCurl;
+  }
   if (run.error) throw new CannotAnswer(`could not run gh api for ${endpoint}`);
   if (run.status !== 0)
     throw new CannotAnswer(
