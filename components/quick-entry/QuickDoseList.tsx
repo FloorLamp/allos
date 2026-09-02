@@ -216,15 +216,19 @@ export default function QuickDoseList({
                   </span>
                 )}
               </span>
-              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                {dose.dueText}
-              </span>
+              {/* THE SLOT IS STATED ONCE, ON THE CONTROL THAT WRITES IT (#4753,
+                  owner ruling 1). This row prints the dose's NAME, so the
+                  non-redundant payload is WHEN it was owed — which sat in a span of
+                  its own beside the button, leaving the tap to be read as a bare
+                  "Mark taken". It is the chip's label now: `8:00am · [Take]`, the
+                  canvas's own `Midday · Take`, and the span is gone rather than
+                  duplicated. */}
               <DoseStatusControl
                 doseId={dose.doseId}
                 taken={false}
                 skipped={false}
                 variant="pill"
-                label="Mark taken"
+                payload={dose.dueText}
                 rowLeaves
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);

@@ -151,11 +151,32 @@ describe("Chip residual", () => {
 // so the rule ranged over zero files and could not have failed. It ranges over the
 // adopted files now and still faces FORWARD, at the next family — which is why the
 // cases below forge both directions rather than trusting the sweep's silence.
-const RETIRED_VERB =
-  /\b(?:take|taken|log|logged|give|given|start|started|mark|finish|finished|confirm|confirmed)\s+now\b/i;
+//
+// AND THE SECOND RULE IS THE OWNER'S, NOT AN INFERENCE (ruling 2, 2026-09-02). The
+// build lane asked whether `Mark taken` was in scope at all, since it carries no
+// "now"; the answer is that the verb names the ACT and never the BOOKKEEPING of it —
+// `Take`/`Give`/`Log`, never `Mark taken`/`Mark done`. So the pattern below is two
+// alternations reading one sentence: a verb that says WHEN, and a verb that says
+// FILING. Both are matched the same way, in string literals and JSX text only, for
+// the same reason — a comment explaining a retirement must be able to quote it.
+//
+// WHAT THE `Mark …` HALF CANNOT SEE is the list above plus one of its own: the
+// PARTICIPLE IS ENUMERATED. `Mark taken` and `Mark done` are named; a surface that
+// invents `Mark administered` is not caught. An open `Mark \w+` would be worse — it
+// matches "Mark", "Marked up" and every proper noun — so the enumeration is the
+// honest trade, and it is stated here rather than discovered later.
+const RETIRED_VERB = new RegExp(
+  [
+    // says WHEN: the verb carried the sentence because nothing else on the control did
+    "\\b(?:take|taken|log|logged|give|given|start|started|mark|finish|finished|confirm|confirmed)\\s+now\\b",
+    // says FILING: the bookkeeping of the act, standing in for the act
+    "\\bmark(?:ed)?\\s+(?:as\\s+|not\\s+)*(?:taken|done|logged|complete|completed|skipped|finished|read)\\b",
+  ].join("|"),
+  "i"
+);
 const CHIP_MOUNT = /\bLabeledVerbChip\b/;
 
-function retiredNowCopy(file: string, text: string): string[] {
+function retiredVerbCopy(file: string, text: string): string[] {
   if (!CHIP_MOUNT.test(text)) return [];
   const source = ts.createSourceFile(
     file,
@@ -181,17 +202,18 @@ function retiredNowCopy(file: string, text: string): string[] {
   return findings;
 }
 
-describe("labeled-verb adoption retires the …now verbs (issue #4753)", () => {
-  it("no surface mounting the chip still says a verb and then now", () => {
+describe("labeled-verb adoption retires the …now and Mark … verbs (issue #4753)", () => {
+  it("no surface mounting the chip still says when, or says filing", () => {
     const findings = ["app", "components"]
       .flatMap(sourceFiles)
       .flatMap((file) =>
-        retiredNowCopy(file, fs.readFileSync(path.join(ROOT, file), "utf8"))
+        retiredVerbCopy(file, fs.readFileSync(path.join(ROOT, file), "utf8"))
       );
     expect(
       findings,
       "A labeled-verb chip's LABEL states the payload, including when it happened, " +
-        "so the verb is one word and never carries `now`. These adopted surfaces " +
+        "so the verb is one word: it never carries `now`, and it names the act " +
+        "rather than the filing of it (owner ruling 2). These adopted surfaces " +
         `still spell the retired copy:\n${findings.join("\n")}`
     ).toEqual([]);
   });
@@ -226,7 +248,23 @@ describe("labeled-verb adoption retires the …now verbs (issue #4753)", () => {
       'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <LabeledVerbChip label="Due now · 250 mg" verb="Log" onAct={a} tone="neutral" />;',
       0,
     ],
+    // RULING 2's half, forged both directions for the same reason the first half is.
+    [
+      "mounts the chip and keeps the bookkeeping framing as an accessible name",
+      'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <><LabeledVerbChip label="8:00am" verb="Take" onAct={a} tone="brand" /><button aria-label="Mark taken" /></>;',
+      1,
+    ],
+    [
+      "mounts the chip and negates the bookkeeping framing",
+      'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <><LabeledVerbChip label="8:00am" verb="Take" onAct={a} tone="brand" /><button aria-label="Mark not taken" /></>;',
+      1,
+    ],
+    [
+      "mounts the chip and says Mark about a person rather than a filing",
+      'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <LabeledVerbChip label="Mark · 250 mg" verb="Give" onAct={a} tone="brand" />;',
+      0,
+    ],
   ])("%s: reports %i", (_name, source, count) => {
-    expect(retiredNowCopy("components/Plant.tsx", source)).toHaveLength(count);
+    expect(retiredVerbCopy("components/Plant.tsx", source)).toHaveLength(count);
   });
 });
