@@ -31,7 +31,7 @@ function renderPill(state: "clear" | "taken" | "skipped") {
       taken={state === "taken"}
       skipped={state === "skipped"}
       variant="pill"
-      label={state === "taken" ? "Taken" : "Mark taken"}
+      label={state === "taken" ? "Taken" : "Take"}
       compact
     />
   );
@@ -41,21 +41,21 @@ describe("DoseStatusControl", () => {
   it.each([
     {
       state: "clear" as const,
-      takeName: "Mark taken",
+      takeName: "Take",
       takePressed: "false",
       skipName: "Skip this dose",
       skipPressed: "false",
     },
     {
       state: "taken" as const,
-      takeName: "Mark not taken",
+      takeName: "Undo take",
       takePressed: "true",
       skipName: "Skip this dose",
       skipPressed: "false",
     },
     {
       state: "skipped" as const,
-      takeName: "Mark taken",
+      takeName: "Take",
       takePressed: "false",
       skipName: "Undo skip",
       skipPressed: "true",
@@ -125,5 +125,73 @@ describe("DoseStatusControl", () => {
       );
       expect(button.className.split(/\s+/)).toContain("tap-target");
     }
+  });
+});
+
+// ── THE OFFER ARM, AND THE THREE THINGS THAT TURN IT OFF (#4753) ────────────
+//
+// Owner ruling 1 says a control with nothing non-redundant left to show is NOT this
+// primitive, and ruling 3 says there is no label-less variant. Both of those are
+// SILENCES — the chip simply does not appear — so each is forged here beside the case
+// that does appear. A silence asserted alone passes on the tree where the arm never
+// works at all.
+describe("DoseStatusControl's labeled-verb arm (issue #4753)", () => {
+  function renderArm(props: Partial<Parameters<typeof DoseStatusControl>[0]>) {
+    return render(
+      <DoseStatusControl
+        doseId={11}
+        taken={false}
+        skipped={false}
+        variant="pill"
+        {...props}
+      />
+    );
+  }
+
+  it("shows the payload on the pill and names the act beside it", () => {
+    renderArm({ payload: "8:00am" });
+
+    const take = screen.getByTestId("dose-take");
+    // ONE TARGET: the verb is a span inside the pill, so the row grows no second
+    // tab stop for the nub.
+    expect(take.tagName).toBe("BUTTON");
+    expect(take.querySelectorAll("button")).toHaveLength(0);
+    expect(take.textContent).toBe("8:00amTake");
+    expect(take.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["chip-base", "chip-offer"])
+    );
+    // The name a reader hears is the label they see, in the order they see it.
+    expect(take.getAttribute("aria-label")).toBe("8:00am · Take");
+    // An offer is never "on" — a chip that could look selected would be the filter
+    // chip's grammar wearing the action chip's paint.
+    expect(take.getAttribute("aria-pressed")).toBeNull();
+    // The skip stays exactly where it was: this arm replaces the take, not the row.
+    expect(screen.getByTestId("dose-skip")).toBeTruthy();
+  });
+
+  it.each([
+    // [why the chip stands down, the props that make it, what the take renders as]
+    ["no payload to show (ruling 1)", {}],
+    ["an icon-only arm (ruling 3)", { payload: "8:00am", compact: true }],
+    [
+      "a circle arm (ruling 3)",
+      { payload: "8:00am", variant: "circle" as const },
+    ],
+    [
+      "a dose already taken — a receipt, not an offer",
+      { payload: "8:00am", taken: true },
+    ],
+    [
+      "a dose already skipped — a receipt, not an offer",
+      { payload: "8:00am", skipped: true },
+    ],
+  ])("stands down for %s", (_why, props) => {
+    renderArm(props);
+
+    const take = screen.getByTestId("dose-take");
+    expect(take.className).not.toContain("chip-offer");
+    // The pill it falls back to is the tri-state's own button, which is what carries
+    // the pressed state and the resolved treatment the receipt is made of.
+    expect(take.getAttribute("aria-pressed")).not.toBeNull();
   });
 });
