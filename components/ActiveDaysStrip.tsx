@@ -57,7 +57,10 @@ export default function ActiveDaysStrip({
             : {}),
         }))}
       />
-      <SeriesSummary label="Recent activity days" items={data.days.map(summary)} />
+      <SeriesSummary
+        label="Recent activity days"
+        items={data.days.map(summary)}
+      />
     </div>
   );
 }

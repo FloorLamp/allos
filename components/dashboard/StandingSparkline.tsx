@@ -174,54 +174,54 @@ export default function StandingSparkline({
       style={{ width: WIDTH }}
     >
       <svg
-          data-testid="standing-sparkline"
-          data-sparkline-state="series"
-          data-sparkline-points={values.length}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          width={WIDTH}
-          height={HEIGHT}
-          className="hidden min-[45rem]:block"
-          role="img"
-          aria-label={series.name}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {strokes.map((run) => {
-            const key = `${run[0].date}-${run.at(-1)!.date}`;
-            const line = run.map((p) => `${p.x},${p.y}`).join(" ");
-            return (
-              <g key={key}>
-                {run.length > 1 && (
-                  // The area, at ~12% of the line's own colour. `currentColor` carries the
-                  // glance tone down from the wrapper, so the fill can never drift from
-                  // the stroke it sits under.
-                  <polygon
-                    points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
-                    fill="currentColor"
-                    fillOpacity={0.12}
-                  />
-                )}
-                <polyline
-                  points={line}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        data-testid="standing-sparkline"
+        data-sparkline-state="series"
+        data-sparkline-points={values.length}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        width={WIDTH}
+        height={HEIGHT}
+        className="hidden min-[45rem]:block"
+        role="img"
+        aria-label={series.name}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {strokes.map((run) => {
+          const key = `${run[0].date}-${run.at(-1)!.date}`;
+          const line = run.map((p) => `${p.x},${p.y}`).join(" ");
+          return (
+            <g key={key}>
+              {run.length > 1 && (
+                // The area, at ~12% of the line's own colour. `currentColor` carries the
+                // glance tone down from the wrapper, so the fill can never drift from
+                // the stroke it sits under.
+                <polygon
+                  points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
+                  fill="currentColor"
+                  fillOpacity={0.12}
                 />
-              </g>
-            );
-          })}
-          {last && (
-            // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
-            // reading, the newest mark is the one the eye is looking for.
-            <circle
-              data-testid="standing-sparkline-endpoint"
-              cx={last.x}
-              cy={last.y}
-              r={2.5}
-              fill="currentColor"
-            />
-          )}
+              )}
+              <polyline
+                points={line}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          );
+        })}
+        {last && (
+          // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
+          // reading, the newest mark is the one the eye is looking for.
+          <circle
+            data-testid="standing-sparkline-endpoint"
+            cx={last.x}
+            cy={last.y}
+            r={2.5}
+            fill="currentColor"
+          />
+        )}
       </svg>
       {strokes.flat().map((point) => (
         // One band per reading, laid over the plot in the same coordinates it is

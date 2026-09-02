@@ -10,11 +10,7 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
-import {
-  openDashboardAll,
-  settledBoxes,
-  settledClick,
-} from "./helpers";
+import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());

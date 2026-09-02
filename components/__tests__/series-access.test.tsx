@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/postcss";
-import postcss from "postcss";
+import postcss, { type Rule } from "postcss";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
@@ -122,7 +122,12 @@ const fitness = {
   coverage: { total: 2, measured: 1, fresh: 1, stale: 0, unmeasured: 1 },
   results: [
     { key: "vo2", label: "VO₂ max", measured: true, freshness: "current" },
-    { key: "grip", label: "Grip", measured: false, freshness: "not-applicable" },
+    {
+      key: "grip",
+      label: "Grip",
+      measured: false,
+      freshness: "not-applicable",
+    },
   ],
 } as unknown as FitnessCheckModel;
 
@@ -142,6 +147,7 @@ const practice: PracticeTrend = {
   weeks: [{ start: "2026-08-17", count: 2, verdict: "under" }],
   consistency: { weeks: 1, met: 0, rate: 0 },
   sessions: 2,
+  existedWholeWindow: true,
   duration: [],
 };
 const cadence = practiceCadenceText(3, 5);
@@ -447,14 +453,24 @@ describe("SeriesAccess primitives", () => {
         from: GLOBALS,
       })
     ).css;
+    // Tailwind emits the utility's `&` rules NESTED, so a selector is resolved
+    // against its parents before it is read.
+    const resolved = (rule: Rule): string => {
+      const parent = rule.parent;
+      return parent && parent.type === "rule"
+        ? rule.selector.replace(/&/g, resolved(parent as Rule))
+        : rule.selector;
+    };
     const display = new Map<string, string>();
     let content = "";
-    postcss.parse(css).walkRules(/\.series-point/, (rule) => {
-      rule.walkDecls((declaration) => {
-        if (declaration.prop === "content") content = declaration.value;
-        if (declaration.prop === "display")
-          display.set(rule.selector, declaration.value);
-      });
+    postcss.parse(css).walkRules((rule) => {
+      const selector = resolved(rule);
+      if (!selector.includes(".series-point")) return;
+      for (const node of rule.nodes) {
+        if (node.type !== "decl") continue;
+        if (node.prop === "content") content = node.value;
+        if (node.prop === "display") display.set(selector, node.value);
+      }
     });
     expect(content).toBe("attr(aria-label)");
     expect(display.get(".series-point::after")).toBe("none");
@@ -462,7 +478,7 @@ describe("SeriesAccess primitives", () => {
       [...display.entries()].filter(
         ([selector, value]) =>
           value === "block" && /:(focus|hover)::after/.test(selector)
-      ).length
-    ).toBeGreaterThanOrEqual(1);
+      )
+    ).not.toEqual([]);
   });
 });

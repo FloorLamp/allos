@@ -51,9 +51,7 @@ import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 // One sentence per week — the cell's name and the summary's line are the same string.
 function adherenceWeekText(w: AdherenceWeek): string {
   return `${w.label}: ${
-    w.rate == null
-      ? "no goal tracked"
-      : `${w.met} of ${w.applicable} goals met`
+    w.rate == null ? "no goal tracked" : `${w.met} of ${w.applicable} goals met`
   }`;
 }
 
