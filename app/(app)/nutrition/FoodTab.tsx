@@ -71,7 +71,6 @@ import {
 import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 import {
   buildDayLedger,
-  LEDGER_DAY_SPAN,
   type LedgerGroup,
   type LedgerServing,
 } from "@/lib/day-ledger";
@@ -101,6 +100,15 @@ import { isTrainingRelevant } from "@/lib/life-stage";
 // One-tap serving logging for today + a weekly rollup, plus the deterministic
 // biomarker→food suggestions (#577) shown here as "food before pills." Habit tier,
 // informational — never a calorie counter.
+
+// HOW MANY DAYS THIS PAGE'S RECENT-MEAL PICKER OFFERS: today plus the previous six.
+// A LENGTH, NOT A BOUND. It was `LEDGER_DAY_SPAN` in lib/day-ledger.ts and was also
+// the selection edit's server-side move bound, deliberately one spelling. #4754's
+// ruling retired that half: a move may reach any past day, the way the deep doors
+// already do, so nothing on the server asks this question any more and the constant
+// has no reason to sit in lib/ or to be shared. It is how much markup this picker
+// draws, and #4477's ‹ › pager retires it outright when it replaces the picker.
+const RECENT_DAY_PICKER_SPAN = 7;
 
 const FIBER_STATUS_LABEL: Record<FiberAdequacy["status"], string> = {
   below: "Below",
@@ -305,13 +313,7 @@ export default async function FoodTab({
             : [],
         }
       : null;
-  // A deliberately bounded recent-meal picker: today plus the previous six days
-  // (`LEDGER_DAY_SPAN`, shared with the selection edit's server-side move bound so the
-  // two cannot disagree about which days this surface is about). This is enough to
-  // recover a missed meal without turning the one-tap habit log into an unrestricted
-  // historical editor. Each day's daily counters and meal-slot ledger arrive together, so
-  // changing day/meal is instant on the client.
-  const recentDates = Array.from({ length: LEDGER_DAY_SPAN }, (_, i) =>
+  const recentDates = Array.from({ length: RECENT_DAY_PICKER_SPAN }, (_, i) =>
     shiftDateStr(date, -i)
   );
   const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(
