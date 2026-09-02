@@ -68,7 +68,12 @@ const HANDROLLED_ALLOW = new Map<
         "inputs with the same rules, and the practice one had lost #336's interplay " +
         "on the way across. Both mount this now, so the count did not shrink because " +
         "a surface migrated to `WhenControl` — it shrank because two spellings became " +
-        "one. Migrates when the control grows a range form",
+        "one. AND IT IS STILL RAW SINCE #4218 LANDED, deliberately: `TimeField` " +
+        "replaced the minute grain INSIDE `WhenControl`, and putting it here too " +
+        "would restyle the activity form's clocks — a surface #4218's own pass " +
+        "left on this list rather than migrating. One component to change when " +
+        "that is decided, which is the point of the extraction. Migrates when " +
+        "the control grows a range form",
     },
   ],
   [

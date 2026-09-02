@@ -156,8 +156,10 @@ describe("rule 4: opening the statement labels its control, visibly", () => {
     fireEvent.click(screen.getByTestId(`${testId}-toggle`));
     const time = screen.getByTestId(`${testId}-time`);
     const label = document.querySelector(`label[for="${time.id}"]`);
-    expect(label, "the revealed control has no label element pointing at it").not
-      .toBeNull();
+    expect(
+      label,
+      "the revealed control has no label element pointing at it"
+    ).not.toBeNull();
     expect(label?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
     // …and it is the SAME name the control carries, so the visible words and the
     // accessible name cannot drift into two different answers.
@@ -176,7 +178,9 @@ describe("rule 4: opening the statement labels its control, visibly", () => {
       />
     );
     expect(screen.queryByTestId("practice-when-time")).toBeNull();
-    expect(document.querySelector('label[for="practice-when-time"]')).toBeNull();
+    expect(
+      document.querySelector('label[for="practice-when-time"]')
+    ).toBeNull();
   });
 });
 
