@@ -7,7 +7,7 @@
           "pr": 4704,
           "kind": "fix",
           "category": "Training",
-          "title": "When coaching notes are trimmed to a few, you get the most relevant ones rather than the alphabetical first few",
+          "title": "Trimmed coaching notes keep the most relevant ones, not the alphabetical first",
           "issues": [4069]
         },
         {
@@ -42,8 +42,57 @@
           "pr": 4708,
           "kind": "feature",
           "category": "History",
-          "title": "A movement can be logged for an earlier day, and a time that has not happened yet is refused",
+          "title": "A bowel movement can be logged for an earlier day",
           "issues": [4433]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "A movement time that has not happened yet is refused",
+          "issues": [4433]
+        },
+        {
+          "pr": 4710,
+          "title": "A weather sync problem is described in plain words instead of a status code",
+          "kind": "fix",
+          "category": "Connected apps",
+          "issues": [3639]
+        },
+        {
+          "pr": 4710,
+          "title": "Body-fat entry is not offered for a growing child",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [3639]
+        },
+        {
+          "pr": 4710,
+          "title": "A body-fat reading already recorded still shows",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [3639]
+        },
+        {
+          "pr": 4718,
+          "title": "Right-size suggestions name the targets you are furthest from meeting",
+          "kind": "fix",
+          "category": "Training",
+          "issues": [4069]
+        },
+        {
+          "pr": 4718,
+          "title": "The supplement suggested for demotion is the one lapsed longest, counted in days",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [4069]
+        },
+        {
+          "pr": 4718,
+          "title": "Outcome goals created in the same moment keep the order you added them",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [4069]
         }
       ]
     },
@@ -96,7 +145,14 @@
           "pr": 4610,
           "kind": "fix",
           "category": "Interface",
-          "title": "The activity overlay keeps clear of the top edge, and a dead strip of chips is gone",
+          "title": "The activity overlay keeps clear of the top edge",
+          "issues": [4515]
+        },
+        {
+          "pr": 4610,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A dead strip of jump chips is gone",
           "issues": [4515]
         },
         {
@@ -159,7 +215,14 @@
           "pr": 4636,
           "kind": "feature",
           "category": "Trends",
-          "title": "Measurements use one form and one reading control, and a stated temperature time is checked",
+          "title": "Measurements use one form and one reading control everywhere",
+          "issues": [4424, 4568]
+        },
+        {
+          "pr": 4636,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "A stated temperature time is checked",
           "issues": [4424, 4568]
         },
         {
@@ -194,7 +257,14 @@
           "pr": 4650,
           "kind": "feature",
           "category": "Medications",
-          "title": "Doses use one form behind one picker, and the row no longer changes shape on past days",
+          "title": "Doses use one form behind one picker",
+          "issues": [4424]
+        },
+        {
+          "pr": 4650,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A dose row no longer changes shape on past days",
           "issues": [4424]
         },
         {
@@ -271,7 +341,14 @@
           "pr": 4692,
           "kind": "feature",
           "category": "Nutrition",
-          "title": "Nutrition becomes Day and Manage: your supplements come first, and the safety notes sit below them",
+          "title": "Nutrition becomes Day and Manage",
+          "issues": [3987]
+        },
+        {
+          "pr": 4692,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Your supplements come first, with the safety notes below them",
           "issues": [3987]
         },
         {
@@ -285,7 +362,14 @@
           "pr": 4696,
           "kind": "feature",
           "category": "Medications",
-          "title": "Upcoming groups a slot into one row you can expand, and each dose logs from the shared control",
+          "title": "Upcoming groups a slot into one row you can expand",
+          "issues": [2579]
+        },
+        {
+          "pr": 4696,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Each dose in a slot logs from the shared control",
           "issues": [2579]
         },
         {
@@ -306,7 +390,7 @@
           "pr": 4697,
           "kind": "fix",
           "category": "Interface",
-          "title": "Dismissing a finding that cannot be dismissed now says so instead of doing nothing",
+          "title": "Dismissing a finding that cannot be dismissed now says so",
           "issues": [2641]
         },
         {
@@ -577,7 +661,14 @@
           "pr": 4494,
           "kind": "feature",
           "category": "Nutrition",
-          "title": "A usual meal can be logged up to six days back, and a chat entry names who sent it",
+          "title": "A usual meal can be logged up to six days back",
+          "issues": []
+        },
+        {
+          "pr": 4494,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "A chat entry names who sent it",
           "issues": []
         },
         {
@@ -689,7 +780,7 @@
           "pr": 4579,
           "kind": "fix",
           "category": "Documents",
-          "title": "If camera permission cannot be read, the file chooser opens instead of a dead end",
+          "title": "If camera permission cannot be read, the file chooser opens",
           "issues": []
         },
         {
