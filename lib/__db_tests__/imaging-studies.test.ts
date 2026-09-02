@@ -29,6 +29,7 @@ import { producedTotal } from "@/lib/import-log";
 import { extractionToPersistInput } from "@/lib/import-shape";
 import { getTimelineEvents } from "@/lib/timeline";
 import { cumulativeDose } from "@/lib/radiation-dose";
+import { studyFindingText } from "@/lib/imaging-study";
 import type { ExtractionResult } from "@/lib/medical-extract";
 import { db } from "@/lib/db";
 
@@ -145,7 +146,13 @@ describe("AI extraction lands imaging studies through the persist core", () => {
     expect(mri.laterality).toBe("left");
     expect(mri.contrast).toBe(true);
     expect(mri.contrast_agent).toBe("gadolinium");
-    expect(mri.impression).toBe("Small joint effusion. No meniscal tear.");
+    // #4732: the AI path is prompted for the report BODY, so what it returns is
+    // stored as the narrative and `impression` is filled only from a section the
+    // report labels as one. This fixture's study labels none, so the whole body is
+    // the narrative and every finding surface reads it through studyFindingText.
+    expect(mri.impression).toBeNull();
+    expect(mri.report_narrative).toBe("Small joint effusion. No meniscal tear.");
+    expect(studyFindingText(mri)).toBe("Small joint effusion. No meniscal tear.");
     expect(mri.indication).toBe("Knee pain");
 
     const cxr = all.find((r) => r.modality === "x-ray")!;
