@@ -170,17 +170,6 @@ export default function Combobox({
     allowFreeText &&
     value.trim() !== "" &&
     !options.some((o) => o.toLowerCase() === q);
-  // #3432 second half, owner ruling: Escape clears the typed draft along with the list,
-  // in a picker that could never keep it. This is `showUse`'s mirror on the other side
-  // of `allowFreeText` — the state where a free-text picker offers "Use '<query>'" is,
-  // here, characters the picker has no row to offer for. Read off `value`, not `q`: the
-  // title appearance blanks `q` on focus to show the whole list, and keying on that
-  // would clear a SELECTED value on a bare Escape, which was never a draft.
-  const draft = value.trim().toLowerCase();
-  const escapeDropsDraft =
-    !allowFreeText &&
-    draft !== "" &&
-    !options.some((o) => o.toLowerCase() === draft);
 
   // THE LISTBOX IS PORTALED (#3271). Left in flow it was an absolutely-positioned
   // child, and an absolutely-positioned element is clipped by ANY ancestor
@@ -308,12 +297,17 @@ export default function Combobox({
       // real trap rather than reading this attribute — the marker is what looked
       // decisive on #3426 and wasn't.
       //
-      // THE OTHER HALF IS HERE NOW, AND IT STOPS AT `allowFreeText` (#3432, second-half
-      // ruling): the same press also drops the typed draft, but only where the typed
-      // characters could never BE the value. In a free-text picker they are the value —
-      // eight shipped specs assert the typed entry on the line after the press — so
-      // Escape there dismisses the list and leaves the text alone. `escapeDropsDraft`
-      // above is where that boundary is drawn.
+      // THE OTHER HALF — dropping the typed draft on this same press — IS NOT HERE, and
+      // the ruled boundary for it is why. #3432's second-half ruling restricts the drop
+      // to pickers WITHOUT `allowFreeText`, "where the typed text cannot be the value".
+      // That boundary is not in this component: `allowFreeText` decides whether a
+      // "Use '<query>'" ROW is offered, not whether the caller keeps what was typed, and
+      // two shipped pickers with the flag OFF keep it anyway — GenomicVariantForm's Gene
+      // field, whose own empty state reads "type any symbol", and AnalyzePicker, whose
+      // `options` are opaque identities under `labelFor` labels, so its value matches no
+      // option in ANY state and a bare Escape over the analyze title would blank it with
+      // nothing typed. Both measured; see components/__tests__/combobox-escape.test.tsx,
+      // which pins today's behaviour so the next attempt starts from the counterexamples.
       data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (
@@ -439,10 +433,6 @@ export default function Combobox({
           } else if (e.key === "Escape") {
             if (closeStopsPropagation) e.stopPropagation(); // close dropdown, not a modal
             setOpen(false);
-            if (escapeDropsDraft) {
-              onChange("");
-              setHighlight(0);
-            }
           }
         }}
         className={
