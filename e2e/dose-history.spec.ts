@@ -8,6 +8,7 @@ import {
   ledgerDoseRow,
   settledClick,
 } from "./helpers";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -409,6 +410,39 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
   await expect(newest).toContainText("250 mg");
   await expect(newest).not.toContainText("Morning");
+
+  // ── ONE PILL, ONE TARGET (#4753) ───────────────────────────────────────────
+  // The labeled-verb chip's claim is geometric as well as textual, so it is
+  // MEASURED here rather than asserted from a class: the whole pill renders the
+  // control box, and the verb nub is contained by it instead of being a second
+  // target beside it. Measured against the pill's own rectangle, not the viewport
+  // — "the nub is inside" is a relationship and an absolute cannot see it.
+  const pill = await newest.evaluate((el) => {
+    const nub = el.lastElementChild as HTMLElement;
+    const box = el.getBoundingClientRect();
+    const inner = nub.getBoundingClientRect();
+    return {
+      height: box.height,
+      verb: nub.textContent,
+      nubTag: nub.tagName,
+      nubTabIndex: nub.getAttribute("tabindex"),
+      // Every pressable descendant, the nub included: a chip that grew a second
+      // button inside itself would still look right and would tab twice.
+      innerControls: el.querySelectorAll("a,button,input,select,[tabindex]")
+        .length,
+      contained:
+        inner.left >= box.left &&
+        inner.right <= box.right &&
+        inner.top >= box.top &&
+        inner.bottom <= box.bottom,
+    };
+  });
+  expect(pill.height).toBeCloseTo(CONTROL_BOX_PX, 0);
+  expect(pill.verb).toBe("Log");
+  expect(pill.nubTag).toBe("SPAN");
+  expect(pill.nubTabIndex).toBeNull();
+  expect(pill.innerControls).toBe(0);
+  expect(pill.contained).toBe(true);
   // ONE identity: the control does not become "Cancel" because it is open.
   await expect(control).toHaveText("Log past dose");
   await expect(control).toHaveAttribute("aria-expanded", "true");
