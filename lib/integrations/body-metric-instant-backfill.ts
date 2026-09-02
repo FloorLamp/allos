@@ -49,10 +49,10 @@ const MEASURES = [
 ] as const;
 
 // Profile directories in the archive, as numeric ids. A non-numeric entry is not ours.
-function archivedProfileIds(): number[] {
+function archivedProfileIds(root: string): number[] {
   let entries: string[];
   try {
-    entries = fs.readdirSync(RAW_PAYLOAD_ROOT);
+    entries = fs.readdirSync(root);
   } catch {
     return []; // no archive at all — nothing to backfill, not an error
   }
@@ -63,8 +63,8 @@ function archivedProfileIds(): number[] {
 
 // This profile's archived Health Connect payloads, newest file first so the most
 // recent statement of a day is the one that gets to fill it.
-function archivedPayloads(profileId: number): string[] {
-  const dir = path.join(RAW_PAYLOAD_ROOT, String(profileId));
+function archivedPayloads(root: string, profileId: number): string[] {
+  const dir = path.join(root, String(profileId));
   let files: string[];
   try {
     files = fs
@@ -93,12 +93,15 @@ function archivedPayloads(profileId: number): string[] {
 /**
  * Fill NULL per-measure instants on Health Connect body-metric rows from the archived
  * push bodies. Idempotent: a filled column is never revisited, and a payload read twice
- * fills nothing the second time. `timezoneFor` resolves each profile's zone — injected
- * rather than imported so this stays callable outside a request scope (and from tests).
+ * fills nothing the second time. `timezoneFor` resolves each profile's zone and `root`
+ * locates the archive — both injected rather than imported, so this is callable outside
+ * a request scope and a test can point it at a directory it made itself instead of
+ * mocking a module (which would cost the DB tier a whole isolated registry).
  */
 export function backfillBodyMetricInstants(
   db: Database.Database,
-  timezoneFor: (profileId: number) => string
+  timezoneFor: (profileId: number) => string,
+  root: string = RAW_PAYLOAD_ROOT
 ): InstantBackfillTally {
   const tally: InstantBackfillTally = {
     payloads: 0,
@@ -116,9 +119,9 @@ export function backfillBodyMetricInstants(
     )
   );
 
-  for (const profileId of archivedProfileIds()) {
+  for (const profileId of archivedProfileIds(root)) {
     const tz = timezoneFor(profileId);
-    for (const abs of archivedPayloads(profileId)) {
+    for (const abs of archivedPayloads(root, profileId)) {
       let parsed;
       try {
         parsed = parseHealthConnectPayload(

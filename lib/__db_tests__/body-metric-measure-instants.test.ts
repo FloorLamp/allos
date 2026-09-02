@@ -8,16 +8,17 @@
 // own measure: the merge keeps the stored weight and the row ends up claiming the
 // incoming reading's time for it. Every case below asserts the PAIR.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { makeTmpDir } from "@/lib/__tests__/tmp-dir";
 import { toKg } from "@/lib/units";
 import { db, writeTx } from "@/lib/db";
 import {
   upsertBodyMetrics,
   type NormBodyMetric,
 } from "@/lib/integrations/normalize";
+import { backfillBodyMetricInstants } from "@/lib/integrations/body-metric-instant-backfill";
 
 const SOURCE = "health-connect";
 const DAY = "2026-06-15";
@@ -170,60 +171,53 @@ describe("archive backfill (#3950 — while the archive still exists)", () => {
   let root: string;
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), "bm-instants-"));
-    vi.resetModules();
+    root = makeTmpDir("bm-instants");
   });
 
-  async function runBackfill(payload: unknown) {
+  function archive(name: string, body: string) {
     const dir = path.join(root, String(profileId));
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, "health-connect-aaa111.json"),
-      JSON.stringify(payload)
-    );
-    vi.doMock("@/lib/integrations/raw-log", () => ({ RAW_PAYLOAD_ROOT: root }));
-    const { backfillBodyMetricInstants } =
-      await import("@/lib/integrations/body-metric-instant-backfill");
-    return backfillBodyMetricInstants(db, () => "UTC");
+    fs.writeFileSync(path.join(dir, name), body);
   }
 
-  const payloadFor = (kg: number) => ({
-    weight: [{ time: MORNING, kilograms: kg }],
-  });
+  function runBackfill() {
+    return backfillBodyMetricInstants(db, () => "UTC", root);
+  }
 
-  it("dates a row written before the columns existed", async () => {
+  const payloadFor = (kg: number) =>
+    JSON.stringify({ weight: [{ time: MORNING, kilograms: kg }] });
+
+  it("dates a row written before the columns existed", () => {
     put([row({ weight_kg: toKg(80, "kg") })]);
-    const tally = await runBackfill(payloadFor(80));
+    archive("health-connect-aaa111.json", payloadFor(80));
+    const tally = runBackfill();
     expect(stored()).toMatchObject({ weight_kg: 80, weight_at: MORNING });
     expect(tally.filled).toBe(1);
   });
 
-  it("DECLINES when the stored value has since moved on", async () => {
+  it("DECLINES when the stored value has since moved on", () => {
     put([row({ weight_kg: toKg(79, "kg") })]);
-    const tally = await runBackfill(payloadFor(80));
+    archive("health-connect-aaa111.json", payloadFor(80));
+    const tally = runBackfill();
     expect(stored().weight_at).toBeNull();
     expect(tally.filled).toBe(0);
     expect(tally.declined).toBeGreaterThan(0);
   });
 
-  it("never overwrites an instant that is already there", async () => {
+  it("never overwrites an instant that is already there", () => {
     put([row({ weight_kg: toKg(80, "kg"), weight_at: EVENING })]);
-    const tally = await runBackfill(payloadFor(80));
+    archive("health-connect-aaa111.json", payloadFor(80));
+    const tally = runBackfill();
     expect(stored().weight_at).toBe(EVENING);
     expect(tally.filled).toBe(0);
   });
 
-  it("counts a truncated archive file unreadable rather than throwing", async () => {
-    const dir = path.join(root, String(profileId));
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, "health-connect-bbb222.json"),
+  // The archive is byte-capped, so a large push is stored truncated mid-string.
+  it("counts a truncated archive file unreadable rather than throwing", () => {
+    archive(
+      "health-connect-bbb222.json",
       '{"weight":[{"time":"2026-06-15T07:00'
     );
-    vi.doMock("@/lib/integrations/raw-log", () => ({ RAW_PAYLOAD_ROOT: root }));
-    const { backfillBodyMetricInstants } =
-      await import("@/lib/integrations/body-metric-instant-backfill");
-    const tally = backfillBodyMetricInstants(db, () => "UTC");
-    expect(tally.unreadable).toBe(1);
+    expect(runBackfill().unreadable).toBe(1);
   });
 });
