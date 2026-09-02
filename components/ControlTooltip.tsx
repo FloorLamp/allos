@@ -5,7 +5,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type FocusEvent,
   type PointerEvent,
   type ReactNode,
   type RefObject,
@@ -119,7 +118,8 @@ export interface ControlAnchorProps {
   "aria-describedby": string | undefined;
   onPointerEnter: (event: PointerEvent<HTMLButtonElement>) => void;
   onPointerLeave: () => void;
-  onFocus: (event: FocusEvent<HTMLButtonElement>) => void;
+  onPointerDown: () => void;
+  onFocus: () => void;
   onBlur: () => void;
 }
 
@@ -139,6 +139,13 @@ export default function ControlTooltip({
   const id = useId();
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  // Whether the focus this control is about to receive came from a pointer. The
+  // browser's own answer to that question is `:focus-visible`, and it would be one
+  // line — but it is resolved from a document-wide modality record, so the answer
+  // depends on what happened before rather than on this control, and it is not the
+  // same answer in every engine. This is the same heuristic stated locally: a
+  // pointer landing on THIS control means the focus that follows is that pointer's.
+  const focusFromPointer = useRef(false);
 
   return (
     <>
@@ -153,13 +160,18 @@ export default function ControlTooltip({
           if (event.pointerType === "mouse") setOpen(true);
         },
         onPointerLeave: () => setOpen(false),
-        // KEYBOARD FOCUS ONLY, and `:focus-visible` is the browser's own answer to
-        // which focus that was — the same rule that decides whether a focus ring is
-        // drawn. A click or a tap focuses the button without matching it.
-        onFocus: (event) => {
-          if (event.currentTarget.matches(":focus-visible")) setOpen(true);
+        onPointerDown: () => {
+          focusFromPointer.current = true;
         },
-        onBlur: () => setOpen(false),
+        // KEYBOARD FOCUS ONLY. A click and a tap both focus the button on their way
+        // to activating it, and neither is a request to be told what the button is.
+        onFocus: () => {
+          if (!focusFromPointer.current) setOpen(true);
+        },
+        onBlur: () => {
+          focusFromPointer.current = false;
+          setOpen(false);
+        },
       })}
       {open ? <TooltipPanel id={id} label={label} anchorRef={ref} /> : null}
     </>
