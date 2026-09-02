@@ -1,17 +1,13 @@
 // Auth-blind historical correction core for substance consumption (#2009).
 // The public row contract is storage-agnostic; dispatch is decided only from the
-// catalog substance. Alcohol updates its existing food_daily_totals counter and reconciles
-// the matching per-tap events, while nicotine/cannabis update substance_daily_totals.
-//
-// IT DOES NOT SPELL EITHER WRITE ITSELF (#4435). It used to, and the second spelling
-// got four contracts wrong that every other food path holds: the backfill REFUSED a
-// day that already had drinks, a re-date left the tap's instant on the day the row
-// had left, surplus taps were hard-deleted with no undo capture, and a per-tap row
-// was born without provenance. So every alcohol tap now moves through the food
-// ledger's own cores — logFoodServingCore inserts and bumps, deleteFoodLogEventCore
-// captures and unbumps, updateFoodLogEventCore re-dates and moves the counter with
-// it — and the non-food counter moves through the shared day-counter ledger. What is
-// left here is what only this domain knows: the catalog dispatch, the day's NOTE, and
+// catalog substance. Alcohol rides food_daily_totals, nicotine/cannabis ride
+// substance_daily_totals — and this file SPELLS NEITHER WRITE ITSELF (#4435). It used
+// to, and the second spelling got four contracts wrong that every other food path
+// holds: the backfill refused a day that already had drinks, a re-date left the tap's
+// instant on the day the row had left, surplus taps were hard-deleted with no undo
+// capture, and a per-tap row was born without provenance. Alcohol taps now move
+// through the food ledger's own cores and the non-food counter through the shared
+// day-counter ledger; what is left here is the catalog dispatch, the day's NOTE and
 // the typed outcomes.
 //
 // #3279: `substance` is a SubstanceKey — curated OR a profile's own name — and this core
@@ -62,11 +58,9 @@ function normalizedNotes(notes: string | null | undefined): string | null {
   return notes?.trim() || null;
 }
 
-// The day's alcohol taps, NEWEST FIRST. When a correction SHRINKS the day the taps
-// that survive are the LATEST ones and the earliest are dropped (#2073): a per-tap
-// row carries a `recorded_at`, so which rows survive decides what a "last drink at
-// HH:MM" surface reads. Keeping the head of this list keeps the most recent drink
-// instant, which is the datum such a surface is about.
+// The day's alcohol taps, NEWEST FIRST. A correction that SHRINKS the day keeps the
+// head of this list and drops the tail (#2073): each tap carries its own
+// `recorded_at`, so which rows survive is what a "last drink at HH:MM" surface reads.
 function alcoholTapIds(profileId: number, date: string): number[] {
   return (
     db
@@ -77,6 +71,19 @@ function alcoholTapIds(profileId: number, date: string): number[] {
       )
       .all(profileId, ALCOHOL_FOOD_GROUP, date) as { id: number }[]
   ).map((row) => row.id);
+}
+
+// One tap per unit, through the food ledger's own log core — so a drink filed here is
+// the same row a drink tapped on the bar is: counter bumped, event appended,
+// provenance stamped, and no eating instant invented for a day nobody stated one for.
+function appendAlcoholTaps(
+  profileId: number,
+  date: string,
+  count: number,
+  loggedVia: LoggedVia
+): void {
+  for (let index = 0; index < count; index += 1)
+    logFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, date, loggedVia);
 }
 
 export function addSubstanceDailyTotalCore(
@@ -94,33 +101,32 @@ export function addSubstanceDailyTotalCore(
   if (!validAmount(input.amount)) return { kind: "invalid-amount" };
   const notes = normalizedNotes(input.notes);
 
-  // ADDITIVE, like every other logged fact (#4435). This used to answer
-  // `date-conflict` whenever the day already held some, which made "I had a second
-  // one" unrecordable through the door that exists to record it — while the one-tap
-  // beside it composed happily. `validAmount` keeps `amount` at 1 or more, so each
-  // branch below leaves exactly one day row for the caller to name.
+  // ADDITIVE, like every other logged fact (#4435): this used to answer
+  // `date-conflict` for a day that already held some, which made "I had a second one"
+  // unrecordable through the door that exists to record it. `validAmount` keeps
+  // `amount` at 1 or more, so each branch leaves one day row to read back. A note
+  // ARRIVES WITH the entry rather than replacing the day's — the correction door below
+  // is where a day's note is restated or cleared.
   return writeTx(() => {
     if (substanceDef(substance).ledger === "food-log") {
-      for (let index = 0; index < input.amount; index += 1)
-        logFoodServingCore(
-          profileId,
-          ALCOHOL_FOOD_GROUP,
-          input.date,
-          loggedVia
-        );
-      return {
-        kind: "added" as const,
-        id: alcoholDayRow(profileId, input.date, notes),
+      appendAlcoholTaps(profileId, input.date, input.amount, loggedVia);
+      const day = db
+        .prepare(
+          `UPDATE food_daily_totals SET notes = COALESCE(?, notes)
+           WHERE profile_id = ? AND date = ? AND group_key = ?
+           RETURNING id`
+        )
+        .get(notes, profileId, input.date, ALCOHOL_FOOD_GROUP) as {
+        id: number;
       };
+      return { kind: "added" as const, id: day.id };
     }
 
     substanceDayCounter.bump(profileId, input.date, [substance], input.amount, [
       instantNow(),
     ]);
-    // A note ARRIVES WITH the entry rather than replacing the day's: an add says
-    // something about the units it brought, and the correction door below is where a
-    // day's note is restated or cleared. `logged_via` follows the same COALESCE for a
-    // different reason — provenance names the surface that OPENED the row (#3087).
+    // `logged_via` takes the same COALESCE for its own reason: provenance names the
+    // surface that OPENED the row and is never rewritten (#3087).
     const day = db
       .prepare(
         `UPDATE substance_daily_totals
@@ -136,23 +142,6 @@ export function addSubstanceDailyTotalCore(
   });
 }
 
-// The alcohol day row after a write, with the day's note folded in. The bumps above
-// always leave it, so this reads a row that exists rather than probing for one.
-function alcoholDayRow(
-  profileId: number,
-  date: string,
-  notes: string | null
-): number {
-  return (
-    db
-      .prepare(
-        `UPDATE food_daily_totals SET notes = COALESCE(?, notes)
-         WHERE profile_id = ? AND date = ? AND group_key = ?
-         RETURNING id`
-      )
-      .get(notes, profileId, date, ALCOHOL_FOOD_GROUP) as { id: number }
-  ).id;
-}
 // #4614: each core declares its own domain; `LOG_MANIFEST`'s cores column derives.
 export const addSubstanceDailyTotalCoreDeclares = SUBSTANCE_USE_WRITE;
 
@@ -194,10 +183,9 @@ export function updateSubstanceDailyTotalCore(
       // THE DAY ROW MOVES WHOLE — it is the entry's identity and carries the note —
       // but its COUNT is re-based on the taps, because every reconcile below is a
       // shared-ledger write that moves the counter itself. A same-day correction
-      // starts from the taps it already has; a day that MOVES starts from zero,
-      // because each surviving tap re-bumps the counter as it is re-dated. A
-      // pre-ledger row holding ticks no tap ever backed is repaired by the same line:
-      // the correction states what the day held, and the taps are what it held.
+      // starts from the taps it still has; one that MOVES starts from zero, because
+      // each surviving tap re-bumps the counter as it is re-dated. A pre-ledger row
+      // holding ticks no tap ever backed is repaired by the same line.
       db.prepare(
         `UPDATE food_daily_totals SET date = ?, servings = ?, notes = ?
          WHERE id = ? AND profile_id = ? AND group_key = ?`
@@ -209,32 +197,27 @@ export function updateSubstanceDailyTotalCore(
         profileId,
         ALCOHOL_FOOD_GROUP
       );
-      // Surplus taps leave through the row-delete core, so shrinking a day is
-      // UNDOABLE (#2642). Hard-deleting them made this the app's one unrecoverable
-      // food removal, and a mis-typed amount took the evening with it.
+      // Surplus taps leave through the row-delete core, so shrinking a day is UNDOABLE
+      // (#2642). Hard-deleting them made this the app's one unrecoverable food removal.
       for (const tapId of taps.slice(input.amount))
         deleteFoodLogEventCore(profileId, tapId);
       if (row.date !== input.date) {
-        // A re-date moves the tap's DAY, so an `occurred_at` from the old day would
-        // be exactly the cross-day pair `judgeEatenAt` refuses to write anywhere
-        // else. Nobody restated an hour for the new day, so the honest value is
-        // none: the instant and its source are cleared WITH the move rather than
-        // left pointing at a day the row is no longer on.
+        // A re-date moves the tap's DAY, so an `occurred_at` from the old day is
+        // exactly the cross-day pair `judgeEatenAt` refuses to write anywhere else.
+        // Nobody restated an hour for the new day, so the honest value is none: the
+        // instant is cleared WITH the move rather than left on the day the row left.
         for (const tapId of taps.slice(0, input.amount))
           updateFoodLogEventCore(profileId, tapId, {
             date: input.date,
             eatenAt: null,
           });
       }
-      // A correction that GROWS the day appends through the log core, so a row
-      // created here carries the provenance a one-tap drink carries.
-      for (let index = taps.length; index < input.amount; index += 1)
-        logFoodServingCore(
-          profileId,
-          ALCOHOL_FOOD_GROUP,
-          input.date,
-          loggedVia
-        );
+      appendAlcoholTaps(
+        profileId,
+        input.date,
+        input.amount - taps.length,
+        loggedVia
+      );
       return { kind: "updated" as const, id };
     }
 
