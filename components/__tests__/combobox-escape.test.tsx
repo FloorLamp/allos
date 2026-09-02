@@ -33,9 +33,11 @@ beforeEach(() => {
 function Panel({
   options,
   onEscape,
+  allowFreeText,
 }: {
   options: string[];
   onEscape: () => void;
+  allowFreeText: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState("");
@@ -46,7 +48,7 @@ function Panel({
         value={value}
         onChange={setValue}
         options={options}
-        allowFreeText
+        allowFreeText={allowFreeText}
         ariaLabel="Item"
       />
     </div>
@@ -66,7 +68,7 @@ describe("a picker only claims the Escape layer while it has a list to close", (
     "with $list, the FIRST press reaches the panel: $reaches",
     ({ options, reaches }) => {
       const escaped = vi.fn();
-      render(<Panel options={options} onEscape={escaped} />);
+      render(<Panel options={options} onEscape={escaped} allowFreeText />);
       fireEvent.focus(field());
       press();
       expect(escaped).toHaveBeenCalledTimes(reaches ? 1 : 0);
@@ -77,7 +79,7 @@ describe("a picker only claims the Escape layer while it has a list to close", (
     // The half that must NOT change: a list a person can see gets dismissed on its own
     // press, so opening one by mistake never costs them the form (#3409/#3417).
     const escaped = vi.fn();
-    render(<Panel options={["Creatine"]} onEscape={escaped} />);
+    render(<Panel options={["Creatine"]} onEscape={escaped} allowFreeText />);
     fireEvent.focus(field());
     expect(screen.getAllByRole("option").length).toBeGreaterThan(0);
 
@@ -91,13 +93,53 @@ describe("a picker only claims the Escape layer while it has a list to close", (
 
   it("a draft that renders a row keeps its press — typing is what reopens the list", () => {
     // The main #3432 case, unchanged by the marker: after typing there IS a list, so it
-    // owns the first press. Collapsing that one is the ruling's other half.
+    // owns the first press. What that press does to the draft is the table below.
     const escaped = vi.fn();
-    render(<Panel options={[]} onEscape={escaped} />);
+    render(<Panel options={[]} onEscape={escaped} allowFreeText />);
     fireEvent.focus(field());
     fireEvent.change(field(), { target: { value: "Zinc" } });
     press();
     expect(escaped).not.toHaveBeenCalled();
     expect((field() as HTMLInputElement).value).toBe("Zinc");
   });
+});
+
+// #3432 second half (owner ruling, 2026-09-02). The press that closes the list also
+// clears the typed draft — but only in a picker that could never keep it. Where
+// `allowFreeText` is on, those characters ARE the value, and eight shipped specs assert
+// the typed entry on the line after the press, so the draft survives there. A value that
+// IS an option was never a draft, in either mode.
+describe("the press that closes the list drops a draft only where it could not be kept", () => {
+  it.each([
+    { picker: "a plain picker, draft typed", free: false, typed: "Zinc", kept: "" },
+    {
+      picker: "a plain picker, an option typed",
+      free: false,
+      typed: "Creatine",
+      kept: "Creatine",
+    },
+    { picker: "a free-text picker", free: true, typed: "Zinc", kept: "Zinc" },
+  ])(
+    '$picker: the field holds "$kept" after Escape, and the panel takes the second press',
+    ({ free, typed, kept }) => {
+      const escaped = vi.fn();
+      render(
+        <Panel
+          options={["Creatine"]}
+          onEscape={escaped}
+          allowFreeText={free}
+        />
+      );
+      fireEvent.focus(field());
+      fireEvent.change(field(), { target: { value: typed } });
+
+      press();
+      expect(escaped).not.toHaveBeenCalled();
+      expect((field() as HTMLInputElement).value).toBe(kept);
+
+      // Two presses, not three: the collapse from the first half stands in both modes.
+      press();
+      expect(escaped).toHaveBeenCalledTimes(1);
+    }
+  );
 });

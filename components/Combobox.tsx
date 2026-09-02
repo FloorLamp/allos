@@ -170,6 +170,17 @@ export default function Combobox({
     allowFreeText &&
     value.trim() !== "" &&
     !options.some((o) => o.toLowerCase() === q);
+  // #3432 second half, owner ruling: Escape clears the typed draft along with the list,
+  // in a picker that could never keep it. This is `showUse`'s mirror on the other side
+  // of `allowFreeText` — the state where a free-text picker offers "Use '<query>'" is,
+  // here, characters the picker has no row to offer for. Read off `value`, not `q`: the
+  // title appearance blanks `q` on focus to show the whole list, and keying on that
+  // would clear a SELECTED value on a bare Escape, which was never a draft.
+  const draft = value.trim().toLowerCase();
+  const escapeDropsDraft =
+    !allowFreeText &&
+    draft !== "" &&
+    !options.some((o) => o.toLowerCase() === draft);
 
   // THE LISTBOX IS PORTALED (#3271). Left in flow it was an absolutely-positioned
   // child, and an absolutely-positioned element is clipped by ANY ancestor
@@ -297,9 +308,12 @@ export default function Combobox({
       // real trap rather than reading this attribute — the marker is what looked
       // decisive on #3426 and wasn't.
       //
-      // WHAT THIS DOES NOT DO is the other half of #3432's ruling: dropping an
-      // un-navigated draft on the same press. That half is not here, and the reason is
-      // in the issue rather than in a comment nobody can act on.
+      // THE OTHER HALF IS HERE NOW, AND IT STOPS AT `allowFreeText` (#3432, second-half
+      // ruling): the same press also drops the typed draft, but only where the typed
+      // characters could never BE the value. In a free-text picker they are the value —
+      // eight shipped specs assert the typed entry on the line after the press — so
+      // Escape there dismisses the list and leaves the text alone. `escapeDropsDraft`
+      // above is where that boundary is drawn.
       data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (
@@ -425,6 +439,10 @@ export default function Combobox({
           } else if (e.key === "Escape") {
             if (closeStopsPropagation) e.stopPropagation(); // close dropdown, not a modal
             setOpen(false);
+            if (escapeDropsDraft) {
+              onChange("");
+              setHighlight(0);
+            }
           }
         }}
         className={
