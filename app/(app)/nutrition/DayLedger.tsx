@@ -18,7 +18,7 @@ import type { DoseStatusResult } from "@/app/(app)/nutrition/intake-actions";
 import { EmptyState } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useDoseDayResolution } from "@/components/medications/dose-day-settlement";
-import { dosesPhrase } from "@/lib/usual-routine";
+import { bulkTakeLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
@@ -483,7 +483,16 @@ export default function DayLedger({
     const ids = doses.map((d) => d.doseId);
     const expanded = open.has(row.id);
     return (
-      <li key={row.id} className="border-t border-(--divider) first:border-t-0">
+      // THE ONE ACCENT ON THE PAGE (#4477's blessed one-stream hierarchy). The record
+      // rows are the surface's ground; this is the only row anybody can still act on,
+      // so it — and nothing else in the ledger — takes the accent fill. The token is
+      // the palette's own `--accent-soft`, the same fill the active nav item wears, so
+      // this introduces no colour: both themes already define it.
+      <li
+        key={row.id}
+        data-testid={`ledger-due-row-${row.bucket}`}
+        className="border-t border-(--divider) bg-(--accent-soft) first:border-t-0"
+      >
         <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
           <button
             type="button"
@@ -499,24 +508,32 @@ export default function DayLedger({
               }`}
               stroke={2}
             />
+            {/* THE BUCKET IS NAMED ONCE (#4477). This row used to read "Midday doses"
+                directly beneath a "Midday" section heading — the same word twice, the
+                second time as the title of the day's one actionable row. The heading
+                owns the bucket; the row states what is still owed in it.
+                "due" is present tense. Past the write window the day is over and
+                nothing about it is still owed, so the row states what the record
+                holds instead of what the schedule wanted. */}
             <span className="min-w-0 flex-1 max-sm:truncate">
-              {TIME_BUCKET_LABELS[row.bucket]} doses
-              <span className="ml-2 font-normal text-slate-500 dark:text-slate-400">
-                {/* "due" is present tense. Past the write window the day is over and
-                    nothing about it is still owed, so the row states what the record
-                    holds instead of what the schedule wanted. */}
-                {doses.length} {doseWritable ? "due" : "not recorded"}
-              </span>
+              {doses.length} {doses.length === 1 ? "dose" : "doses"}{" "}
+              {doseWritable ? "due" : "not recorded"}
             </span>
           </button>
           {doseWritable && (
             <Button
               data-testid={`ledger-takeall-${row.bucket}`}
-              aria-label={`Take all ${doses.length}: ${dosesPhrase(doses)}`}
+              // The visible label already enumerates a set of one, so repeating the
+              // phrase after it would have the control say the name twice.
+              aria-label={
+                doses.length === 1
+                  ? bulkTakeLabel(doses)
+                  : `${bulkTakeLabel(doses)}: ${dosesPhrase(doses)}`
+              }
               disabled={bulkBlocked(ids)}
               onClick={() => resolveAll(ids)}
             >
-              Take all {doses.length}
+              {bulkTakeLabel(doses)}
             </Button>
           )}
         </div>
