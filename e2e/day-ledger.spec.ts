@@ -375,9 +375,8 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     const tones = () =>
       dueRow.evaluate((el) => ({
         due: getComputedStyle(el).backgroundColor,
-        ground: getComputedStyle(
-          el.closest('[data-testid="ledger-rows"]')!
-        ).backgroundColor,
+        ground: getComputedStyle(el.closest('[data-testid="ledger-rows"]')!)
+          .backgroundColor,
       }));
 
     const light = await tones();
@@ -402,7 +401,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // …and the theme really switched, so the second reading is not the first one under
     // another name.
     expect(dark.ground).not.toBe(light.ground);
-    await page.evaluate((key) => localStorage.removeItem(key), THEME_STORAGE_KEY);
+    await page.evaluate(
+      (key) => localStorage.removeItem(key),
+      THEME_STORAGE_KEY
+    );
     await page.reload();
     await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
     await expect(dueRow).toBeVisible();
@@ -429,9 +431,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     await expect(morning(page).locator("h4")).toHaveText(
       TIME_BUCKET_LABELS.Morning
     );
-    const summary = morning(page).locator(
-      '[data-testid^="ledger-due-group-"]'
-    );
+    const summary = morning(page).locator('[data-testid^="ledger-due-group-"]');
     await expect(summary).toContainText(/\d+ doses? due/);
     await expect(summary).not.toContainText(TIME_BUCKET_LABELS.Morning);
   });
