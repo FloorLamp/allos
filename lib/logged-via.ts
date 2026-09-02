@@ -229,6 +229,12 @@ export const USUAL_BACKFILL: LoggedVia = "usual-backfill";
  * That is the creation-not-mutation rule working exactly as #3087 specifies. It is
  * written down because "which surface a person used" reads, at a glance, like a claim
  * about the row's present value, and #3077's ranker is what will read it.
+ *
+ * `substance_daily_totals` (#4435) is the second day-row and follows that same rule,
+ * with one thing worth naming beside it: this row DOES re-stamp `recorded_at` on every
+ * tap, because the day's latest use is a fact about the day. Provenance still does not
+ * move — a nicotine day opened from the page and topped up from the quick-log sheet
+ * reads `page`.
  */
 export const LEDGERS_WITH_LOGGED_VIA = [
   "intake_item_logs",
@@ -238,6 +244,7 @@ export const LEDGERS_WITH_LOGGED_VIA = [
   "body_metrics",
   "symptom_logs",
   "medical_records",
+  "substance_daily_totals",
 ] as const;
 
 export type LedgerWithLoggedVia = (typeof LEDGERS_WITH_LOGGED_VIA)[number];
