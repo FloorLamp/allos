@@ -85,7 +85,7 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     // The backdated "fatty fish 2×/week" habit shows a full 8-week trend strip.
     const fishTrend = page.getByTestId("habit-trend-fatty_fish");
     await expect(fishTrend).toBeVisible();
-    const fishCells = fishTrend.locator("span[data-verdict]");
+    const fishCells = fishTrend.locator("span[data-state]");
     await expect(fishCells).toHaveCount(8);
     // EACH WEEK'S EXACT COUNT, in the strip's OWN accessible name (#3987). The
     // per-habit details disclosure retired with the second This-week list; the reading
@@ -96,14 +96,14 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     expect(fishWeeks).toHaveLength(8);
     expect(fishWeeks.every((week) => /·\s\d+ of 2$/.test(week))).toBe(true);
     // A backdated habit has NO not-applicable cells (it existed for the whole window).
-    await expect(fishTrend.locator('span[data-verdict="na"]')).toHaveCount(0);
+    await expect(fishTrend.locator('span[data-state="na"]')).toHaveCount(0);
 
     // The freshly-created "leafy greens" habit renders an honest cold start — the weeks
     // before it existed are not-applicable, never red misses.
     const greensTrend = page.getByTestId("habit-trend-leafy_greens");
     await expect(greensTrend).toBeVisible();
     await expect(
-      greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
+      greensTrend.locator('span[data-state="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toBeVisible();
     // And the strip's accessible name says so, in the same words.
     const greensLabel = (await greensTrend.getAttribute("aria-label")) ?? "";

@@ -226,6 +226,7 @@ import { migration as mLivePracticeSessions } from "./20260831-live-practice-ses
 import { migration as mPracticeDerivedWindows } from "./20260831-practice-derived-windows";
 import { migration as mSubstanceLoggedVia } from "./20260901-substance-logged-via";
 import { migration as mImagingReportNarrative } from "./20260902-imaging-report-narrative";
+import { migration as mDoseWriteBundle } from "./20260902-dose-write-bundle";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -461,6 +462,7 @@ export const MIGRATIONS: Migration[] = [
   mPracticeDerivedWindows,
   mSubstanceLoggedVia,
   mImagingReportNarrative,
+  mDoseWriteBundle,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

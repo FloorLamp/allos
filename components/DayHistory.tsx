@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import DestinationLink from "@/components/DestinationLink";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import { StateLegend } from "@/components/StateCells";
 import { chartActivityRamp, chartObservationRamp } from "@/lib/chart-colors";
 import {
   formatLongDate,
@@ -982,16 +983,18 @@ export default function DayHistory({
             : summary}
         </span>
       </div>
-      <div className={`mt-0.5 flex items-center gap-3 ${PANE_META}`}>
-        <span className="flex items-center gap-1">
-          <span className={`h-2.5 w-2.5 rounded-[3px] ${levelClasses[0]}`} />
-          No record
-          <span
-            className={`ml-1 h-2.5 w-2.5 rounded-[3px] ${levelClasses[1]}`}
-          />
-          {spec.calendarKind === "coverage" ? "Recorded" : "Active"}
-        </span>
-      </div>
+      <StateLegend
+        label="Cell key"
+        className="mt-0.5"
+        items={[
+          { key: "empty", tone: levelClasses[0], label: "No record" },
+          {
+            key: "recorded",
+            tone: levelClasses[1],
+            label: spec.calendarKind === "coverage" ? "Recorded" : "Active",
+          },
+        ]}
+      />
     </div>
   );
 

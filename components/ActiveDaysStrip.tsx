@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { chartActivityRamp } from "@/lib/chart-colors";
 import { trainingLogDayHref } from "@/lib/hrefs";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
 import VisualizationDetails from "@/components/VisualizationDetails";
+import { StateCells } from "@/components/StateCells";
 
 // The same blessed activity ramp the full heatmap uses (issue #1445) — the strip
 // is the heatmap's compact twin, so a second ladder here is the drift.
@@ -44,29 +44,19 @@ export default function ActiveDaysStrip({
           </span>
         </h2>
       </div>
-      <div className="flex gap-1" aria-label="Recent activity days">
-        {data.days.map((day, index) => {
-          const responsive = index < compactStart ? "hidden xl:block" : "block";
-          const classes = `h-4 w-4 rounded-[3px] ${responsive} ${LEVEL_CLASS[day.level]}`;
-          return day.count > 0 ? (
-            <Link
-              key={day.date}
-              href={trainingLogDayHref(day.date)}
-              data-testid="active-day"
-              data-date={day.date}
-              data-count={day.count}
-              aria-label={summary(day)}
-              className={`${classes} ring-brand-400 hover:ring-2 focus:outline-hidden focus:ring-2`}
-            />
-          ) : (
-            <span
-              key={day.date}
-              aria-label={summary(day)}
-              className={classes}
-            />
-          );
-        })}
-      </div>
+      <StateCells
+        label="Recent activity days"
+        cells={data.days.map((day, index) => ({
+          key: day.date,
+          tone: LEVEL_CLASS[day.level],
+          state: String(day.level),
+          label: summary(day),
+          className: index < compactStart ? "hidden xl:block" : "block",
+          ...(day.count > 0
+            ? { href: trainingLogDayHref(day.date), testId: "active-day" }
+            : {}),
+        }))}
+      />
       <VisualizationDetails
         label="Daily details"
         items={data.days.map(summary)}

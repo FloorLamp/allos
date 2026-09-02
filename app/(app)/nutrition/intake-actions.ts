@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
+import { newDoseBundle } from "@/lib/dose-bundle";
 import { requireScope } from "@/lib/scope";
 
 import { revalidateRoute } from "@/lib/revalidate";
@@ -1436,6 +1437,11 @@ export async function resolveDayDoses(
   // The quick-log sheet is the only mounting today; the field says so rather than the
   // action assuming it (#3087).
   const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
+  // ONE BUNDLE FOR THE WHOLE TAP (#4328): this is the ledger's bulk control, so the
+  // rows it writes ARE one composed action and say so, rather than leaving the reader
+  // to infer it from the minute they happened to land in. Only the taken arm carries
+  // one — a skip is its own statement and never joins a collapsed row.
+  const bundleId = newDoseBundle();
   const doses = pendingDayDoses(profile.id, date)
     .filter((dose) => named.has(dose.doseId))
     .map((dose) => ({
@@ -1449,7 +1455,9 @@ export async function resolveDayDoses(
               dose.itemId,
               date,
               loggedVia,
-              date === localToday ? undefined : null
+              date === localToday ? undefined : null,
+              null,
+              bundleId
             )
           : markDoseSkipped(
               profile.id,

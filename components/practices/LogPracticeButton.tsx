@@ -4,12 +4,11 @@ import { useState } from "react";
 import {
   IconCheck,
   IconClock,
-  IconMinus,
   IconPlayerPlay,
   IconPlayerStop,
-  IconPlus,
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import Stepper from "@/components/Stepper";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -472,20 +471,16 @@ export default function LogPracticeButton({
         {stepperShown && (
           // shrink-0: the three parts of the stepper stay together and stay legible;
           // the cluster above is what wraps.
-          <div
-            className="flex shrink-0 items-center gap-0.5"
-            data-testid="practice-inline-duration"
+          <Stepper
+            testId="practice-inline-duration"
+            stepTestId="practice-duration"
+            className="w-36 shrink-0 border-black/10 dark:border-white/10"
+            onStep={(direction) => step(direction * PRACTICE_DURATION_STEP_MIN)}
+            disabled={pending || ledger.pending()}
+            decreaseDisabled={duration === ""}
+            decreaseLabel={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
+            increaseLabel={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
           >
-            <button
-              type="button"
-              onClick={() => step(-PRACTICE_DURATION_STEP_MIN)}
-              disabled={pending || ledger.pending() || duration === ""}
-              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
-              aria-label={`Shorten the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-              data-testid="practice-duration-down"
-            >
-              <IconMinus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-            </button>
             <input
               type="number"
               inputMode="numeric"
@@ -493,22 +488,12 @@ export default function LogPracticeButton({
               step="1"
               value={duration}
               onChange={(event) => setDuration(event.target.value)}
-              className="input w-14 px-1.5 py-1 text-center text-sm"
+              className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-1 py-1 text-center text-sm outline-hidden focus:ring-0 dark:border-white/10"
               aria-label={`Duration in minutes for this ${practice} session`}
               placeholder="min"
               data-testid="practice-duration-input"
             />
-            <button
-              type="button"
-              onClick={() => step(PRACTICE_DURATION_STEP_MIN)}
-              disabled={pending || ledger.pending()}
-              className={`${DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL} px-1.5`}
-              aria-label={`Lengthen the ${practice} session by ${PRACTICE_DURATION_STEP_MIN} minutes`}
-              data-testid="practice-duration-up"
-            >
-              <IconPlus className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
-            </button>
-          </div>
+          </Stepper>
         )}
         {currentLive ? (
           <button

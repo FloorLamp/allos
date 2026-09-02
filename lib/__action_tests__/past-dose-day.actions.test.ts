@@ -171,6 +171,21 @@ function logsOn(profileId: number, date: string) {
     .all(profileId, date) as { dose_id: number; status: string }[];
 }
 
+// The composed action each row on a day records having been written by (#4328).
+// DISTINCT, because the claim is that one bulk tap left ONE bundle across its rows.
+function bundlesOn(profileId: number, date: string): (string | null)[] {
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT l.bundle_id FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.profile_id = ? AND l.date = ?`
+      )
+      .all(profileId, date) as { bundle_id: string | null }[]
+  ).map((r) => r.bundle_id);
+}
+
 function resolve(
   date: string,
   status: "taken" | "skipped",
@@ -240,6 +255,13 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
       { dose_id: doses.creatine, status: "taken" },
       { dose_id: doses.collagen, status: "taken" },
     ]);
+    // ONE BULK TAP, ONE BUNDLE (#4328). The two rows above are what makes this a claim
+    // about sharing rather than about a single row: the ledger's Take-all is a composed
+    // action and records itself, instead of leaving a reader to infer the composition
+    // from the minute the rows happened to land in.
+    const taken = bundlesOn(profile.id, day);
+    expect(taken).toHaveLength(1);
+    expect(taken[0]).not.toBeNull();
     // The day the tap happened on stays untouched: a backdated write is about the day
     // it names and no other.
     expect(logsOn(profile.id, localToday)).toEqual([]);
@@ -262,6 +284,10 @@ describe.each(ZONES)("in $tz", ({ tz, localToday }) => {
     expect(logsOn(profile.id, skippedDay)).toEqual([
       { dose_id: doses.melatonin, status: "skipped" },
     ]);
+    // A SKIP CARRIES NO BUNDLE. It is its own statement, with its own reason, and the
+    // ledger never folds one into a collapsed row — so there is nothing for a bundle to
+    // record and the taken arm is the only one that stamps.
+    expect(bundlesOn(profile.id, skippedDay)).toEqual([null]);
   });
 
   it("keeps today's one-tap administration stamp", async () => {
