@@ -39,7 +39,7 @@ import type {
   NotificationChannel,
   NotificationMessage,
 } from "./types";
-import { prefixMessage } from "./types";
+import { composeForSend, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
 import { resolveTelegramRecipients } from "./fan-out";
@@ -72,7 +72,6 @@ import {
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
 import {
-  attachUsualRoutine,
   attachmentOnKeyboard,
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
@@ -620,8 +619,27 @@ export async function sendTelegramMessage(
   msg: NotificationMessage,
   subject: TelegramSendSubject
 ): Promise<void> {
-  const messageId = await sendMessageRaw(chatId, msg);
-  await trackDelivered(resolveSubject(chatId, subject), chatId, messageId, msg);
+  // COMPOSED HERE, NOT BY THE CALLER (#4538). Every send through this function is a
+  // reply to something the reader just did — a slash command, a reply to a prompt, a
+  // Settings test send — so the chat origin is `telegram-command` by construction
+  // rather than by each mint site remembering to say so.
+  //
+  // ATTRIBUTION FOLLOWS THE DECLARED SUBJECT (#1995): a message ABOUT a profile
+  // carries that profile's "[Name] " label, and a CHAT_WIDE message covers the chat
+  // (or has no data subject at all) and names nobody — labelling it with the chat's
+  // stable representative would say the list belongs to one member of a family chat.
+  const composed = composeMessage(
+    msg,
+    typeof subject === "number" ? prefixForProfile(subject) : "",
+    "telegram-command"
+  );
+  const messageId = await sendMessageRaw(chatId, composed);
+  await trackDelivered(
+    resolveSubject(chatId, subject),
+    chatId,
+    messageId,
+    composed
+  );
 }
 
 // Resolve a declared subject to the profile the pointer is scoped by. A CHAT_WIDE send
@@ -660,8 +678,7 @@ function liveUsualAttachment(
 // and keyboard the initial send used. This is what closes the #377 class at the
 // boundary: a callback handler hands over the raw rebuilt message + its profileId
 // and CANNOT re-render without the "[Name] " label, because the chokepoint owns
-// applying it. Byte-identical to the former hand-rolled
-// editMessageText(renderMessageHtml(prefixMessage(msg, prefixForProfile(id))), …).
+// applying it.
 export async function rebuildMessage(
   profileId: number,
   chatId: number | string,
@@ -678,9 +695,17 @@ export async function rebuildMessage(
   // It can only ever REDUCE. `standingUsualAttachment` intersects the STORED offer with
   // what currently stands, so a half already logged falls out of the named line and the
   // whole button disappears once nothing stands.
-  const attributed = prefixMessage(
-    attachUsualRoutine(msg, liveUsualAttachment(profileId, chatId, messageId)),
-    prefixForProfile(profileId)
+  //
+  // THE SAME COMPOSITION A SEND RUNS (#4538): one `composeForSend` both ways, so a
+  // rebuilt keyboard can only ever differ from the delivered one by what the stored
+  // offer no longer stands for. No origin is passed — a rebuild PRESERVES whatever the
+  // live keyboard declares, which its callers read off the tapped token or the pointer
+  // and have already applied.
+  const attributed = composeForSend(
+    profileId,
+    msg,
+    null,
+    liveUsualAttachment(profileId, chatId, messageId)
   );
   await editMessageTextRaw(chatId, messageId, renderMessageHtml(attributed), {
     keyboard: messageKeyboard(attributed),
