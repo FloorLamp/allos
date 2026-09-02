@@ -352,6 +352,16 @@ export function chartInexactDot(c: ChartColors, color: string) {
 // The x offset is what keeps the pair legible when the two numbers are close —
 // stacked coincident dots are the smudge the issue opened with — and small enough
 // that the companion still reads as its own day's rather than the next one's.
+//
+// NO CONNECTOR between the two marks. A hairline would state a RANGE, and two
+// accounts of one day are not a spread around a value; the caption below the plot
+// already names what the grey mark is. It would also cost an `ErrorBar` per series
+// on every chart in the funnel to buy one day's emphasis.
+//
+// AND IT DOES NOT REACH `SourceCompareChart`. That surface plots every source as its
+// own named, coloured, legended series on purpose — the pair is the glance-level
+// answer for a chart showing ONE series, and drawing it there would say twice, in two
+// vocabularies, what that chart already says once.
 
 /** How far a companion mark sits from its day's own x, in px. */
 export const CHART_PAIR_OFFSET_X = 4;

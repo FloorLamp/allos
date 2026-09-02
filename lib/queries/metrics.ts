@@ -12,7 +12,6 @@ import {
   pickRowsOneSourcePerDay,
   pickRowsOneSourcePerWindow,
   type DailySourcePoint,
-  type SourceSelection,
 } from "../metric-sources";
 import {
   DOCUMENTS_SOURCE_CLASS,
@@ -1432,7 +1431,7 @@ function getBodyMetricDailySeriesUncached(
         ORDER BY date DESC LIMIT ?`
     )
     .all(profileId, limit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
+  return foldDaysBySourceMean(rows, resolutionFor(profileId, metric));
 }
 export const getBodyMetricDailySeries = snapshotCached(
   "metrics.body-daily-series",
@@ -1441,22 +1440,15 @@ export const getBodyMetricDailySeries = snapshotCached(
   getBodyMetricDailySeriesUncached
 );
 
+// The raw shape both body-metric day reads hand to `foldDaysBySourceMean`, which
+// keeps ONE source's reading per day (primary source first — #14), averages any
+// remaining same-day rows from the kept source, and reports the sources the election
+// set aside (#2653 state 6) rather than discarding them. The full-series read and the
+// latest-two trend read (#1367) call the same fold, so the rollup cannot drift.
 interface BodyMetricRow {
   date: string;
   source: string | null;
   value: number;
-}
-
-// Collapse raw body_metrics rows to one value per day (oldest→newest): keep ONE
-// source's reading per day (primary source first — #14), average any remaining
-// same-day rows from the kept source, and report the sources the election set
-// aside (#2653 state 6) rather than discarding them. Shared by the full-series read
-// and the latest-two trend read (#1367) so both compute the daily rollup ONE way.
-function foldBodyMetricDaily(
-  rows: BodyMetricRow[],
-  selection: SourceSelection
-): DailySourcePoint[] {
-  return foldDaysBySourceMean(rows, selection);
 }
 
 // The latest `dateLimit` DAILY points for a body metric, oldest→newest — the exact
@@ -1485,7 +1477,7 @@ export function getLatestBodyMetricDailyPoints(
           )`
     )
     .all(profileId, profileId, dateLimit) as BodyMetricRow[];
-  return foldBodyMetricDaily(rows, resolutionFor(profileId, metric));
+  return foldDaysBySourceMean(rows, resolutionFor(profileId, metric));
 }
 
 // ---- Per-source comparison series (issue #14) ----
