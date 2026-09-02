@@ -11,6 +11,9 @@ import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecor
 import DentalProcedureForm from "@/app/(app)/records/specialty/dental/DentalProcedureForm";
 import DentalProcedureList from "@/app/(app)/records/specialty/dental/DentalProcedureList";
 import { addDentalProcedure } from "@/app/(app)/records/specialty/dental/actions";
+import { getDisplayFormatPrefs } from "@/lib/settings";
+import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
+import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 
 // Dental (former /dental index, #1042 final tail): the profile's structured dental
 // records — tooth-anchored procedures (fillings/crowns/extractions with tooth +
@@ -29,6 +32,9 @@ import { addDentalProcedure } from "@/app/(app)/records/specialty/dental/actions
 // care plan (the #1328 scope-limit precedent Imaging set), and "create a visit from
 // this record" builds an encounter on the acting profile's timeline. Widening any of
 // those would be a wrong-target write, not a feature.
+//
+// DENTAL CARE HISTORY (#2921): the specialty lens's visits and tooth-coded
+// conditions, below the structured table, over the same view set the list reads.
 export default function DentalSection({ scope }: { scope: ProfileScope }) {
   const multi = scope.viewIds.length > 1;
   const records = stampSubjects(
@@ -36,6 +42,12 @@ export default function DentalSection({ scope }: { scope: ProfileScope }) {
     readForProfiles(scope.viewIds, (pid) => getDentalProcedures(pid))
   );
   const followUps = getDentalProcedureFollowUps(scope.actingProfileId);
+  const dentalCare = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) =>
+      getSpecialtyLensEntries(pid, "dental")
+    )
+  );
   // "Create a visit from this record?" (#1099): a completed procedure dated D with no
   // encounter that day.
   const createVisitOffersList = createVisitOffers(
@@ -69,6 +81,12 @@ export default function DentalSection({ scope }: { scope: ProfileScope }) {
           This is a record of dental work and findings, not a clinical charting
           tool.
         </p>
+        <SpecialtyHistoryStrip
+          line="dental"
+          entries={dentalCare}
+          formatPrefs={getDisplayFormatPrefs(scope.loginId)}
+          actingProfileId={multi ? scope.actingProfileId : undefined}
+        />
       </div>
     </ProviderOptionsProvider>
   );
