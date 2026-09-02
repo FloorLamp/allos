@@ -213,14 +213,14 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
     "components/stool/StoolTypeControl.tsx",
     {
       mounts: true,
-      why: '"Happened earlier?" over the second-grain key (#2785)',
+      why: '"Happened earlier?" over the second-grain key (#2785), via the shared statement',
     },
   ],
   [
     "components/practices/LogPracticeButton.tsx",
     {
       mounts: true,
-      why: '"Happened earlier?" states the end of Just finished (#3273/#3143)',
+      why: '"Happened earlier?" states the end of Just finished (#3273/#3143), via the shared statement',
     },
   ],
   [
@@ -260,8 +260,14 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
 ]);
 
 describe("the quick-log sheet's instant forms mount the control or argue (#3273)", () => {
-  const mounted = (rel: string) =>
-    fs.readFileSync(path.join(REPO, rel), "utf8").includes("<WhenControl");
+  // WHAT MEMBERSHIP ACTUALLY IS. Mounting the shared statement (#4426) mounts the
+  // control — `useTimeStatement` renders a `WhenControl` and nothing else can — so a
+  // predicate that only knew the JSX tag read the two surfaces that converged onto it
+  // as having LOST the control they still render.
+  const mounted = (rel: string) => {
+    const src = fs.readFileSync(path.join(REPO, rel), "utf8");
+    return src.includes("<WhenControl") || src.includes("useTimeStatement(");
+  };
 
   it.each([...SHEET_INSTANT_FORMS])("%s", (rel, entry) => {
     // Both directions, because only one of them is the one that rots. A `mounts`
