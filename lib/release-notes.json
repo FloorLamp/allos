@@ -240,6 +240,125 @@
           "category": "Interface",
           "title": "Escape closes a picker that has a list, and reaches the dialog when it does not",
           "issues": [3432]
+        },
+        {
+          "pr": 4764,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a child’s food row can no longer move it into an adult-only group",
+          "issues": [4072]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "History",
+          "title": "A correction on the day view reaches any past day, not just the last seven",
+          "issues": [4754]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A bulk take names what it takes instead of showing a count",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The row that is actually due wears the day’s one accent",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A bucket says its name once at the top instead of on every row",
+          "issues": [4477]
+        },
+        {
+          "pr": 4783,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A one-tap offer shows the dose or time it will log, beside the verb",
+          "issues": [4753]
+        },
+        {
+          "pr": 4783,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Backfilling a missed dose names the day on the button itself",
+          "issues": [4753]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly recap stops counting today’s pending doses as missed",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A resumed medication says which way its number points",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly notification leads with its news instead of its totals",
+          "issues": [4228]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A wear reminder states what happened, not a claim about tonight",
+          "issues": [3060]
+        },
+        {
+          "pr": 4782,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Each chart point shows its value on hover or focus; the list below it is gone",
+          "issues": [4760]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A parent adding a child’s medication no longer gets advice meant for adults",
+          "issues": [4609]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The medication form shows interaction, gene and condition notices it skipped",
+          "issues": [4609]
+        },
+        {
+          "pr": 4794,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "The time field opens an in-app wheel instead of the browser’s time control",
+          "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Where a time is required, one field opens a single date-and-time panel",
+          "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The time field uses the 12- or 24-hour clock you chose, not your device’s",
+          "issues": [4218]
         }
       ]
     },
