@@ -324,6 +324,15 @@ function rendersText(nodes: Node[]): boolean {
 const hasAttribute = (attrs: string, name: string): boolean =>
   new RegExp(`(?:^|\\s)${name}\\s*=`).test(attrs);
 
+// A button that spreads a ControlTooltip anchor (#4511) carries the name without
+// writing it: `ControlAnchorProps` requires `"aria-label": string`, so the spread
+// cannot arrive without one — and the same string is what the tooltip reveals on
+// hover and keyboard focus, which is the whole point of the primitive. The file
+// must import the component, so an unrelated `{...spread}` is still unnamed.
+const spreadsControlAnchor = (attrs: string, src: string): boolean =>
+  /\{\s*\.\.\.anchor\s*\}/.test(attrs) &&
+  /from "@\/components\/ControlTooltip"/.test(src);
+
 export interface IconButton {
   rel: string;
   line: number;
@@ -355,7 +364,9 @@ function iconOnlyButtons(rel: string, text: string): IconButton[] {
       found.push({
         rel,
         line: text.slice(0, lt).split("\n").length,
-        hasAriaLabel: hasAttribute(tag.attrs, "aria-label"),
+        hasAriaLabel:
+          hasAttribute(tag.attrs, "aria-label") ||
+          spreadsControlAnchor(tag.attrs, text),
       });
     }
     i = after;
@@ -437,6 +448,18 @@ describe("the icon-only classifier itself", () => {
     );
     expect(found).toHaveLength(1);
     expect(found[0].hasAriaLabel).toBe(true);
+  });
+
+  it("counts a name that arrives through a ControlTooltip anchor", () => {
+    const button = `<button {...anchor} type="button"><IconX /></button>`;
+    // Both directions, because the import is what makes the spread mean anything:
+    // without it the same button is an unnamed one and must stay flagged.
+    expect(
+      scan(
+        `import ControlTooltip from "@/components/ControlTooltip";\n${button}`
+      )[0].hasAriaLabel
+    ).toBe(true);
+    expect(scan(`const anchor = {};\n${button}`)[0].hasAriaLabel).toBe(false);
   });
 
   it("ignores an icon+text button", () => {

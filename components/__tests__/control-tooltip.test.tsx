@@ -4,6 +4,9 @@ import ControlTooltip from "@/components/ControlTooltip";
 import ActivityPartsList from "@/components/activity-form/ActivityPartsList";
 import RestTimer from "@/components/activity-form/RestTimer";
 import type { PartEntry, SetEntry } from "@/lib/activity-form-model";
+// A test may mint a tracking directly — it asserts on the scale, not on who gets
+// one (lib/__tests__/rpe-opt-in.test.ts says so, and excludes tests from its census).
+import { mintRpeTracking } from "@/lib/rpe";
 
 // THE CONTROL TOOLTIP (#4511), at the tier that can read the accessibility tree.
 //
@@ -233,7 +236,7 @@ function renderForm() {
       deloadContext={{ isDeloadWeek: false, routineKeys: [] }}
       recoveringContext={{ temperedRegions: [], constraints: [] }}
       plateauHints={[]}
-      rpeTracking="rpe10"
+      rpeTracking={mintRpeTracking()}
       onRpeTrackingChange={vi.fn()}
       currentActivityId={null}
       editedDate={null}
