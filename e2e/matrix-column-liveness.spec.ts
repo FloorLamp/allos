@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledCheck, settledClick, settledFill } from "./helpers";
+import {
+  openChannelRow,
+  settledCheck,
+  settledClick,
+  settledFill,
+} from "./helpers";
 import {
   E2E_LOGIN_MATRIX_INK,
   E2E_MEMBER_PASSWORD,
@@ -56,6 +61,9 @@ test.describe("Matrix column liveness", () => {
       await expect(kinds).toBeVisible();
 
       const setHaEnabled = async (on: boolean) => {
+        // The channel's configuration lives behind its strip row since #2565 A, and
+        // the reload at the end of this helper closes it again.
+        await openChannelRow(member, "home-assistant");
         await settledCheck(member, member.getByTestId("ha-enable"), on);
         if (on) {
           await settledFill(

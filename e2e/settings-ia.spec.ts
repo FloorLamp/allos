@@ -1,7 +1,12 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs, followLink } from "./nav";
-import { settledClick, settledCheck, settledFill } from "./helpers";
+import {
+  openChannelRow,
+  settledClick,
+  settledCheck,
+  settledFill,
+} from "./helpers";
 import {
   E2E_LOGIN_NOTIF,
   E2E_LOGIN_NOTIF_SWEEP,
@@ -164,8 +169,17 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
 
     // The three sections of §6.
     await expect(page.getByTestId("notify-channels")).toBeVisible();
+    // #2565 A: the four channels are a status strip, one row each, and the Household
+    // round is NOT one of them — it is a send that rides the kinds' Telegram routing.
+    for (const c of ["telegram", "push", "email", "home-assistant"]) {
+      await expect(page.getByTestId(`notify-channel-${c}`)).toBeVisible();
+    }
+    await expect(page.getByTestId("notify-channel-household-round")).toHaveCount(
+      0
+    );
     await expect(page.getByTestId("notify-schedule")).toBeVisible();
     await expect(page.getByTestId("notification-kinds")).toBeVisible();
+    await openChannelRow(page, "push");
     await expect(page.getByTestId("push-settings")).toBeVisible();
 
     // The kind list replaced BOTH the old mega-card toggles and the separate
@@ -195,13 +209,20 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     await expect(page.getByTestId("digest-tune-disclosure")).toBeVisible();
 
     // The schedule/kind cards autosave now, so their explicit Save buttons are gone.
-    // THREE deliberate exceptions remain, and a spec clicking "Save" here must scope
-    // to its card: two channel cards (Telegram validates a chat id; the email card
-    // commits a deliberate content-mode choice, #1855), plus — for an ADMIN, which
-    // this shared session is — the per-profile notification scope (#2345), whose
-    // control is the Family grant editor and therefore carries #467's loaded-snapshot
-    // concurrency check rather than a per-tick autosave.
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(3);
+    // FOUR deliberate exceptions remain, and a spec clicking "Save" here must scope to
+    // its channel row: three channel configurations (Telegram validates a chat id; the
+    // email card commits a deliberate content-mode choice, #1855; Home Assistant
+    // validates a webhook URL), plus — for an ADMIN, which this shared session is —
+    // the per-profile notification scope (#2345), whose control is the Family grant
+    // editor and therefore carries #467's loaded-snapshot concurrency check rather
+    // than a per-tick autosave.
+    //
+    // The count is 4 rather than 3 because #2565 renamed Home Assistant's "Apply Home
+    // Assistant settings" to plain "Save": that label existed only to keep unscoped
+    // role queries unambiguous, and the strip's rows now do that structurally. Note
+    // Playwright's name matching is case-insensitive SUBSTRING matching, so the notify
+    // scope editor's "Save notifications" is one of these four.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(4);
     await expect(page.getByTestId("notify-scope-section")).toBeVisible();
   });
 
@@ -226,6 +247,7 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       }
 
       await member.goto("/settings/notifications");
+      await openChannelRow(member, "push");
       await expect(member.getByTestId("push-settings")).toBeVisible();
       await expect(member.getByTestId("notification-kinds")).toBeVisible();
       await expect(member.getByTestId("server-telegram")).toHaveCount(0);
@@ -344,7 +366,7 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       // Configure Home Assistant so the profile has one CONFIGURED channel, then
       // turn a SAFETY kind (dose) off on it — with no other channel configured, the
       // row warns (warn, never block).
-      const ha = member.getByTestId("ha-settings");
+      const ha = await openChannelRow(member, "home-assistant");
       const haEnable = member.getByTestId("ha-enable");
       // settledCheck waits for hydration (a pre-hydration toggle reverts — #1188) and
       // is idempotent, so it subsumes the isChecked() guard.
@@ -356,6 +378,7 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       );
       await settledClick(member, member.getByTestId("ha-save"));
       await member.reload();
+      await openChannelRow(member, "home-assistant");
 
       // #1868 §1: the HA card is the CHANNEL now — enable, URL, secret, test — and
       // carries no per-kind grid. Its routing lives in the matrix's HA column, which
@@ -381,7 +404,7 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
       await expect(member.getByTestId("kind-safety-warning-dose")).toHaveCount(
         0
       );
-      // ha card still rendered (sanity — the section didn't collapse).
+      // The Home Assistant row is still rendered (sanity — the strip didn't collapse).
       await expect(ha).toBeVisible();
     } finally {
       await member.context().close();
