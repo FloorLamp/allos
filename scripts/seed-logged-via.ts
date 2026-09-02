@@ -22,9 +22,12 @@
 // call site. Both values come from the closed vocabulary in lib/logged-via.ts, so there
 // is nothing user-supplied here to escape.
 //
-// WHAT THIS DOES NOT SETTLE, named rather than implied: whether a demo instance's
-// fabricated `page` rows should read as engagement to #3077's relevance ranker. They
-// will. That is worth a decision — it is simply not a decision NULL was making either.
+// SEEDED `page` ROWS READ AS ENGAGEMENT TO #3077'S RELEVANCE RANKER, AND THAT IS
+// DELIBERATE — ruled 2026-09-01 (#3808, question 3). A distinct "seeded" value was
+// recommended and overruled: a demo profile's dashboard SHOULD read as lived-in, so
+// the ranker consuming fabricated engagement is the behaviour wanted here, not a leak.
+// NULL was never neutral either — it was simply unreadable, so this replaces an
+// accidental answer with the one somebody chose.
 
 import { IMPORTED, type LoggedVia } from "../lib/logged-via";
 
