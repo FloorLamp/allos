@@ -16,8 +16,14 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
-import { parseUtcSql, shiftDateStr, utcSqlString } from "@/lib/date";
+import {
+  parseUtcSql,
+  shiftDateStr,
+  utcInstant,
+  utcSqlString,
+} from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
+import { markDoseTaken } from "@/lib/queries/intake/adherence";
 import {
   collectUpcoming,
   dismissFinding,
@@ -118,16 +124,21 @@ function logAdmin(
   // logAdministration stamps from the dose row). Null = a legacy/amount-less row.
   amount: string | null = null
 ): number {
-  const recordedAt = utcSqlString(
-    new Date(now.getTime() - hoursAgo * 3_600_000)
-  );
+  // A REAL administration STATES its instant: `logAdministration` writes both columns,
+  // and since #4686 the ceiling window judges `occurred_at` (a row that states none is
+  // anchored at its day's noon instead), so a fixture that wrote only the capture stamp
+  // would be exercising the untimed arm while claiming to be a timed dose.
+  const at = new Date(now.getTime() - hoursAgo * 3_600_000);
+  const recordedAt = utcSqlString(at);
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
-         VALUES (?, ?, ?, ?, 'taken', ?)`
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+         VALUES (?, ?, ?, ?, ?, 'taken', ?)`
       )
-      .run(doseId, itemId, date, recordedAt, amount).lastInsertRowid
+      .run(doseId, itemId, date, recordedAt, utcInstant(at), amount)
+      .lastInsertRowid
   );
 }
 
@@ -562,13 +573,81 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     // One real dose this morning, and one stamped in 1999 — a 9-digit epoch.
     logAdmin(med.itemId, med.doseId, t, 5.27, MORNING, "500 mg");
     db.prepare(
-      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
-       VALUES (?, ?, '1999-06-01', '1999-06-01T08:00:00Z', 'taken', '500 mg')`
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, recorded_at, occurred_at, status, amount)
+       VALUES (?, ?, '1999-06-01', '1999-06-01T08:00:00Z',
+               '1999-06-01T08:00:00Z', 'taken', '500 mg')`
     ).run(med.doseId, med.itemId);
 
     // The window holds the morning dose and nothing else.
     expect(getMedicationFamilyStates(p).get(med.itemId)!.count24h).toBe(1);
     expect(getRedoseArmingState(p, med.itemId).count24h).toBe(1);
+  });
+
+  // AN UNTIMED ROW IS JUDGED AT ITS OWN DAY, NEVER AT ITS CAPTURE STAMP. A scheduled
+  // check-off states no administration instant, and `applyDoseStatusCore` used to
+  // stamp `occurred_at` with the CAPTURE clock — so a parent catching up on the two
+  // scheduled days they missed put three "administrations" inside today's trailing
+  // window and the card read `Max reached · 3 of 3 in 24h` off ONE real dose. Families
+  // union by name, so the scheduled Ibuprofen and the PRN Ibuprofen are one family and
+  // one ceiling. "Max reached" is the line that tells a parent not to treat a fevered
+  // child, so a restrictive lie is still a lie on a safety surface.
+  it("a past-day scheduled check-off does not count against today's ceiling", () => {
+    vi.setSystemTime(MORNING);
+    const p = newProfile("Win24Catchup");
+    const prn = seedMed(p, "Ibuprofen", {
+      amount: "200 mg",
+      minInterval: 4,
+      maxDaily: 3,
+    });
+    // The scheduled sibling: same ingredient name, so one family and one ceiling.
+    const sched = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'should')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const schedDose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'anytime', 'any', 0)`
+        )
+        .run(sched).lastInsertRowid
+    );
+
+    // ONE dose was actually given, this morning.
+    logAdmin(prn.itemId, prn.doseId, today(p), 5.27, MORNING, "200 mg");
+    // …then the parent checks off the two scheduled days they missed.
+    const outcomes = [1, 2].map((back) =>
+      markDoseTaken(p, schedDose, sched, shiftDateStr(today(p), -back), "page")
+    );
+
+    // Both check-offs LANDED (the fixture reaches the state, rather than being
+    // refused into a vacuous pass — measured: outcomes were ["logged","logged"] and
+    // the two past-day rows carried today's clock in `occurred_at`).
+    expect(outcomes).toEqual(["logged", "logged"]);
+    const state = getMedicationFamilyStates(p).get(prn.itemId)!;
+    // TWO, and two is the rule applied rather than a softened assertion: this
+    // morning's real dose, plus YESTERDAY's check-off, whose noon anchor (12:00)
+    // genuinely falls inside a window that opened at 09:16 yesterday. The
+    // day-before's noon does not, so it is out. Before the fix all THREE counted,
+    // because each carried a capture stamp of this morning.
+    expect(state.count24h).toBe(2);
+    // The claim that matters is unchanged: a catch-up cannot reach the ceiling.
+    expect(state.exposure?.atMax).toBe(false);
+    const label = redoseCardLabel(
+      prnQuickLogRedoseStatus(
+        getPrnMedicationsForQuickLog(p).find((m) => m.id === prn.itemId)!,
+        MORNING
+      ),
+      state.memberIds.length
+    );
+    expect(label).toContain("2 of 3 in 24h");
+    expect(label).not.toContain("Max reached");
   });
 
   it("five doses spanning midnight inside 24h reach the ceiling", () => {

@@ -38,7 +38,7 @@ import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
 import {
   getMedicationFamilyStates,
-  prnCeilingWindowStart,
+  prnCeilingWindowClause,
   redoseWindowState,
 } from "./prn-family";
 import type { PrnWindowExposure, PrnExposureBasis } from "../../prn-redose";
@@ -356,6 +356,15 @@ function applyDoseStatusCore(
       // clock. A skip records the action but asserts no administration.
       const capturedAt = clockNow();
       const explicitlyUntimed = opts.takenAt === null;
+      // A CHECK-OFF FOR A PAST DAY STATES NO ADMINISTRATION INSTANT (#4686). The
+      // capture clock is today's; stamping it onto a row dated two days ago writes an
+      // administration that never happened at that moment, and the PRN ceiling — which
+      // judges the administration instant over a trailing 24h — then counted a
+      // catch-up as a dose given now. `recorded_at` still records WHEN THIS WAS FILED;
+      // what retires is the claim that filing time is intake time on a day it cannot
+      // be. A caller that genuinely carries a captured instant (the offline replay)
+      // still supplies it below and is unaffected.
+      const statesNowIsHonest = date === today(profileId);
       const stamp = opts.takenAt
         ? resolveQueuedTakenAt(
             opts.takenAt,
@@ -388,7 +397,11 @@ function applyDoseStatusCore(
         target,
         utcInstant(capturedAt),
         target === "taken" && !explicitlyUntimed
-          ? utcInstant(stamp ?? capturedAt)
+          ? stamp
+            ? utcInstant(stamp)
+            : statesNowIsHonest
+              ? utcInstant(capturedAt)
+              : null
           : null,
         opts.notifyMessageId ?? null,
         loggedVia
@@ -1743,19 +1756,18 @@ export function getRedoseArmingState(
     )
     .get(profileId, itemId) as
     { id: number; administeredAt: string } | undefined;
-  // CAST because `strftime` returns TEXT: a bare `>=` compares two epochs as
-  // STRINGS, which inverts below 2001-09-09 (nine digits sort above ten). Same
-  // spelling and same reason as the family window this mirrors.
+  // The SAME window predicate the family gather uses (#4686) — one spelling, so this
+  // fallback can never be laxer than the thing it stands in for.
+  const window = prnCeilingWindowClause(profileId);
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND CAST(strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
-                   AS INTEGER) >= CAST(strftime('%s', ?) AS INTEGER)`
+          AND ${window.sql}`
     )
-    .get(profileId, itemId, prnCeilingWindowStart()) as { n: number };
+    .get(profileId, itemId, ...window.params) as { n: number };
   return {
     latestId: latest?.id ?? null,
     latestGivenAt: latest?.administeredAt ?? null,

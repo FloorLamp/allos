@@ -460,6 +460,51 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     );
   }
 
+  // A PAST DAY HAS NO "NOW" (#4685). The action stores an untimed reading honestly
+  // rather than stamping the current clock onto a day that has ended, and an untimed
+  // reading is anchored at noon — which cannot say whether it came before or after an
+  // evening fever. So the alt day asks for the minute, and refuses without it.
+  it("refuses a reading on the alt day until a time is stated", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await openTemp("98.6");
+    // The control carries the requirement natively, so the browser refuses the
+    // submission before the handler runs — which is what the user meets. The
+    // handler's own guard is the belt beneath it, for a programmatic submit.
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
+    ).toBe(true);
+    await saveTemp();
+    expect(posted.temperature).toBeUndefined();
+  });
+
+  it("does NOT require a time on the primary day — thermometer-to-phone is one step", async () => {
+    toggledBar();
+    await openTemp("101.4");
+    expect(
+      (screen.getByTestId("temp-quick-time") as HTMLInputElement).required
+    ).toBe(false);
+    await saveTemp();
+    expect(payload("temperature").date).toBe(TODAY);
+    expect(payload("temperature").time).toBeUndefined();
+  });
+
+  it("accepts it once the minute is stated, and posts both halves", async () => {
+    toggledBar();
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await openTemp("98.6");
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "23:00" },
+    });
+    await saveTemp();
+    expect(payload("temperature").date).toBe(FOUND_DAY);
+    expect(payload("temperature").time).toBe("23:00");
+  });
+
   it.each([
     ["primary", TODAY],
     ["alt", FOUND_DAY],
@@ -469,6 +514,11 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId(`symptom-day-${side}`))
     );
     await openTemp("101.4");
+    if (side === "alt") {
+      fireEvent.change(screen.getByTestId("temp-quick-time"), {
+        target: { value: "19:10" },
+      });
+    }
     // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
     // draws it as text rather than a picker and the pair rule holds by construction.
     // (Both fixture days are in the past, so neither renders as "Today" here.)
@@ -500,6 +550,9 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
     await openTemp("99.2");
+    fireEvent.change(screen.getByTestId("temp-quick-time"), {
+      target: { value: "18:30" },
+    });
     await saveTemp();
     expect(payload("temperature").date).toBe(FOUND_DAY);
   });

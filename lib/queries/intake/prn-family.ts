@@ -38,7 +38,13 @@ import {
   type PrnWindowExposure,
 } from "../../prn-redose";
 import { now as clockNow } from "../../clock";
-import { utcInstant } from "../../date";
+import {
+  dateStrInTz,
+  shiftDateStr,
+  utcInstant,
+  zonedWallTimeToUtc,
+} from "../../date";
+import { getTimezone } from "../../settings";
 import { bestKnownInstant } from "../../row-instants";
 import type { IntakeObligation } from "../../types";
 
@@ -201,19 +207,81 @@ export const getMedicationFamilyStates = snapshotCached(
   getMedicationFamilyStatesForRequest
 );
 
-// The trailing ceiling window's opening instant, in the canonical stored shape —
-// shared with the per-item arming fallback in ./adherence so the two cannot drift
-// (#4686).
-export function prnCeilingWindowStart(): string {
-  return utcInstant(
-    new Date(clockNow().getTime() - PRN_CEILING_WINDOW_HOURS * 3_600_000)
-  );
+// THE CEILING WINDOW JUDGES THE ADMINISTRATION INSTANT (#4686).
+//
+// A row that STATES one (`occurred_at` — every PRN log, every backfill) is judged on
+// it. A row that states NONE is judged at profile-local NOON of its own `date`, which
+// is the same anchoring lib/school-return-data.ts already gives an untimed reading —
+// one rule, not a second one.
+//
+// IT IS NEVER JUDGED ON `recorded_at`. That column is the immutable CAPTURE stamp, and
+// letting it stand in for the event instant is exactly the substitution
+// lib/row-instants.ts exists to stop; `COALESCE(occurred_at, recorded_at)` is that
+// substitution spelled in SQL. It mattered here rather than theoretically: a scheduled
+// check-off for a day the parent missed carries a capture stamp of NOW, so catching up
+// on two missed days put three administrations inside today's window off one real dose
+// and the card read "Max reached · 3 of 3 in 24h" — a safety line telling a parent not
+// to treat a fevered child, wrong.
+export interface PrnCeilingWindow {
+  // The window's opening instant, canonical, for rows that state a time.
+  fromInstant: string;
+  // The profile-local days whose NOON anchor falls inside the window — how an untimed
+  // row is judged. At most two; an empty list is representable and matches nothing.
+  untimedDates: string[];
+}
+
+export function prnCeilingWindow(profileId: number): PrnCeilingWindow {
+  const now = clockNow();
+  const from = new Date(now.getTime() - PRN_CEILING_WINDOW_HOURS * 3_600_000);
+  const tz = getTimezone(profileId);
+  // Candidates around both ends, then filtered by the anchor itself, so a DST day
+  // that carries zero or two noons inside the window answers for itself.
+  const seen = new Set<string>();
+  const untimedDates: string[] = [];
+  for (const anchorDay of [dateStrInTz(tz, from), dateStrInTz(tz, now)]) {
+    for (const offset of [-1, 0, 1]) {
+      const day = shiftDateStr(anchorDay, offset);
+      if (seen.has(day)) continue;
+      seen.add(day);
+      const noon = zonedWallTimeToUtc(tz, day, "12:00");
+      if (noon && noon >= from && noon <= now) untimedDates.push(day);
+    }
+  }
+  return { fromInstant: utcInstant(from), untimedDates: untimedDates.sort() };
+}
+
+// The window as a SQL predicate over `intake_item_logs l`, with its bound parameters —
+// ONE spelling, so the family gather and the per-item arming fallback in ./adherence
+// cannot drift. The CAST is load-bearing: `strftime('%s', …)` returns TEXT, and a bare
+// `>=` compares two epochs as STRINGS — right for every 10-digit epoch and INVERTED
+// below 2001-09-09, where '999907200' sorts above '1788254160', so an ancient stamp
+// would read as inside the window and count against the ceiling forever.
+export function prnCeilingWindowClause(profileId: number): {
+  sql: string;
+  params: (string | number)[];
+} {
+  const { fromInstant, untimedDates } = prnCeilingWindow(profileId);
+  // No qualifying noon ⇒ the untimed arm matches nothing, spelled as a false literal
+  // because `IN ()` is not valid SQLite.
+  const untimed = untimedDates.length
+    ? `l.date IN (${untimedDates.map(() => "?").join(", ")})`
+    : "0";
+  return {
+    sql: `(CASE WHEN l.occurred_at IS NOT NULL
+                THEN CAST(strftime('%s', l.occurred_at) AS INTEGER)
+                     >= CAST(strftime('%s', ?) AS INTEGER)
+                ELSE ${untimed} END)`,
+    params: [fromInstant, ...untimedDates],
+  };
 }
 
 function getMedicationFamilyStatesUncached(
   profileId: number
 ): Map<number, MedFamilyState> {
   const out = new Map<number, MedFamilyState>();
+  // ONE window for the whole gather: every family in this map is judged against the
+  // same instant, which is what makes the map a single consistent state.
+  const window = prnCeilingWindowClause(profileId);
   for (const family of getActiveMedicationFamilies(profileId)) {
     const ids = family.members.map((m) => m.id);
     const placeholders = ids.map(() => "?").join(", ");
@@ -231,32 +299,18 @@ function getMedicationFamilyStatesUncached(
       )
       .get(profileId, ...ids) as
       { id: number; administeredAt: string; itemId: number } | undefined;
-    // The CEILING WINDOW's taken administrations WITH their snapshotted amounts —
-    // the count is the row count, and the amounts feed the amount-aware exposure
-    // (#1854). Compared through `strftime` rather than as strings because the
-    // administration instant is whichever of the two columns the row has, and
-    // `strftime` reads both stored shapes identically — the space-separated SQL
-    // datetime and the Z-suffixed canonical instant.
-    //
-    // THE CAST IS LOAD-BEARING, not decorative. `strftime` returns TEXT, and a bare
-    // `>=` between two TEXT values compares them as strings: right for every 10-digit
-    // epoch, and INVERTED below 2001-09-09, where a 9-digit '999907200' sorts ABOVE a
-    // modern '1788254160'. An ancient or mis-stamped administration would then be
-    // judged inside the trailing window and counted against the ceiling forever — a
-    // "Max reached" nobody earned. The repo's other `strftime` comparisons sit inside
-    // `ABS(a - b)`, where the arithmetic coerces; these two are the only bare ones, so
-    // they spell it the way lib/queries/correction-history.ts already does.
+    // The CEILING WINDOW's taken administrations WITH their snapshotted amounts — the
+    // count is the row count, and the amounts feed the amount-aware exposure (#1854).
+    // The window predicate and its reasoning live in prnCeilingWindowClause above.
     const windowLogs = db
       .prepare(
         `SELECT l.amount AS amount
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken'
-            AND CAST(strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
-                     AS INTEGER) >= CAST(strftime('%s', ?) AS INTEGER)`
+            AND l.status = 'taken' AND ${window.sql}`
       )
-      .all(profileId, ...ids, prnCeilingWindowStart()) as {
+      .all(profileId, ...ids, ...window.params) as {
       amount: string | null;
     }[];
     const amounts24h = windowLogs.map((l) => l.amount);

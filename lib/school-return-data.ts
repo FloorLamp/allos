@@ -16,6 +16,7 @@ import { getTimezone, getProfileSetting } from "./settings";
 import { formatGivenAtClock } from "./administration-format";
 import { parseRxcuiIngredients } from "./rxnorm";
 import { isAntipyreticIntakeItem } from "./prn-defaults";
+import { isOutOfRange } from "./reference-range/flags";
 import type { AssembledEpisode } from "./illness-episode-format";
 import { computeSchoolReturn, type SchoolReturnStatus } from "./school-return";
 
@@ -99,12 +100,20 @@ function schoolReturnStatusForRows(
   }
   if (lastFeverAtMs == null) return null;
 
-  // THE EVIDENCE (#4685): the FIRST normal (non-fever-flag) reading after that fever.
-  // Same skip rules — a reading whose clock cannot be read is not evidence of
-  // anything, and a day-granular one is anchored at local noon exactly as above.
+  // THE EVIDENCE (#4685): the first IN-RANGE reading after that fever. Same skip
+  // rules — a reading whose clock cannot be read is not evidence of anything, and a
+  // day-granular one is anchored at local noon exactly as above.
+  //
+  // OUT OF RANGE IN EITHER DIRECTION IS NOT CLEARANCE. Skipping only `high` let a
+  // HYPOTHERMIC reading start the fever-free clock: 103.4 then 95.0 read as
+  // "Fever-free 24h/24h, met" — and 95 °F in a sick child is a red flag, not a
+  // recovery. `isOutOfRange` is the shipped predicate (high / low / abnormal) and is
+  // null-safe, which matters because a normal manual reading stores flag NULL rather
+  // than "normal" — testing for the string would have matched nothing at all and
+  // stranded every parent at "No reading since".
   let firstNormalAfterFeverAtMs: number | null = null;
   for (const t of episode.temperatures) {
-    if (t.flag === "high") continue;
+    if (isOutOfRange(t.flag)) continue;
     const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
     if (!at) continue;
     const ms = at.getTime();

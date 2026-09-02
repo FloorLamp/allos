@@ -144,6 +144,9 @@ export default function SymptomLogBar({
   // it — the severity taps, the notes, a confirmed text sentence, and the temperature
   // fold — because the day a surface DISPLAYS is the day its writes state.
   const activeDate = mode === "alt" && altDate ? altDate : date;
+  // Whether the bar is standing on its PRIMARY day — the day whose "now" is a real
+  // instant. Everything that may fall back to the current clock is gated on this.
+  const isPrimaryDay = activeDate === date;
 
   const [severitiesByDate, setSeveritiesByDate] = useState<
     Record<string, Record<string, number>>
@@ -306,6 +309,16 @@ export default function SymptomLogBar({
     // through the same dated core a reading logged today goes through.
     fd.set("date", activeDate);
     const hhmm = statedHhmm(tempWhen.statedAt, timeZone ?? tempZone);
+    // ON A PAST DAY THE MINUTE IS THE ASK (#4685). "Now" is not a time on a day that
+    // has ended, so there is nothing honest for the action to fall back to — it
+    // stores such a reading untimed, and an untimed reading is anchored at noon,
+    // which cannot answer "was this before or after the 7:10pm fever?". The control
+    // is already mounted and already knows the day, so asking for the minute is the
+    // honest ask rather than friction.
+    if (!hhmm && !isPrimaryDay) {
+      setTempError("Add the time this reading was taken.");
+      return;
+    }
     if (hhmm) fd.set("time", hhmm);
     setTempError(null);
     setTempPending(true);
@@ -811,6 +824,9 @@ export default function SymptomLogBar({
               // the pair rule holds with nothing to enforce.
               minDate={activeDate}
               maxDate={activeDate}
+              // A past day has no "now" to fall back to (#4685), so the minute is
+              // required there and optional on today.
+              timeRequired={!isPrimaryDay}
               timeLabel="Reading time"
               testId="temp-quick"
             />

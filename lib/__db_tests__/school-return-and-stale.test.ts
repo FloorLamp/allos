@@ -158,6 +158,35 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(schoolReturnCompactClause(later)).not.toContain("fever-free");
   });
 
+  // A HYPOTHERMIC READING IS NOT CLEARANCE. Skipping only the fever flag let 95.0 °F
+  // start the fever-free clock — "Fever-free 24h/24h, met" off a reading that is its
+  // own red flag. Evidence is a reading that is IN RANGE, in either direction.
+  it("an out-of-range LOW reading does not start the fever-free clock", () => {
+    const p = newProfile("sr-hypothermic");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 2);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    logTemperatureCore(p, 95.0, "F", yd, "page", "07:00");
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T09:16:00Z`))!;
+    expect(s.evidence).toBe("none");
+    expect(s.met).toBe(false);
+    expect(schoolReturnCompactClause(s)).toContain("no reading since");
+
+    // …and a genuinely in-range reading after it DOES, so the guard is not simply
+    // refusing everything (the converse, from the same fixture).
+    logTemperatureCore(p, 98.6, "F", yd, "page", "08:00");
+    const after = schoolReturnStatusFor(
+      p,
+      assembleIllnessEpisode(p, episodeForProfileDate(p, td)!),
+      Date.parse(`${td}T09:16:00Z`)
+    )!;
+    expect(after.evidence).toBe("measured");
+  });
+
   it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {
     const p = newProfile("sr-stated");
     setProfileSetting(p, "timezone", "UTC");

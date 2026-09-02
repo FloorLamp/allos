@@ -382,12 +382,24 @@ export async function logTemperature(
   const rawValue = Number(formData.get("temperature"));
   const unit = String(formData.get("temp_unit") ?? "F");
   const date = parseDate(formData, profileId);
-  // Prefer an explicit "HH:MM" (a backfilled reading); otherwise stamp the reading with
-  // the profile-local clock time of "now" (thermometer-to-phone in one step).
+  // An explicit "HH:MM" always wins. Absent one, the profile's current clock time is
+  // the reading's instant ONLY when the reading is dated TODAY — thermometer-to-phone
+  // in one step, which is what that fallback was for.
+  //
+  // NEVER ON A PAST DAY (#4685/#4691). This action used to be reachable only with
+  // `date` = today, because the cockpit's temperature fold hard-set it; once the fold
+  // binds to the day it displays, the same fallback would stamp NOW'S CLOCK onto a
+  // past day. That is capture time standing in for event time — the substitution #2019
+  // and lib/row-instants.ts exist to stop — and the fever-free clock believed it: a
+  // 98.6 backfilled at 09:16 for last night read as measured at 09:16 and cleared a
+  // child for school thirteen hours early. A past day with no stated time is stored
+  // UNTIMED, which the readers already have an arm for.
   const providedTime = String(formData.get("time") ?? "").trim();
   const time = /^\d{2}:\d{2}$/.test(providedTime)
     ? providedTime
-    : zonedDateParts(getTimezone(profileId), new Date()).hhmm;
+    : date === today(profileId)
+      ? zonedDateParts(getTimezone(profileId), new Date()).hhmm
+      : null;
   const outcome = logTemperatureCore(
     profileId,
     Number.isFinite(rawValue) ? rawValue : null,
