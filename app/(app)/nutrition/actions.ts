@@ -1,6 +1,6 @@
 "use server";
 
-import { requireProfileWriteAccess, requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
@@ -97,14 +97,7 @@ export type FoodServingTruthResult =
 export async function readFoodServingTruth(
   formData: FormData
 ): Promise<FoodServingTruthResult> {
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   const truth = foodServingTruthCore(profileId, fields.group, fields.date);
@@ -160,16 +153,13 @@ function parseFields(
 export async function logFoodServing(
   formData: FormData
 ): Promise<FoodLogResult> {
-  // The mounted bar stamps its originating subject. Reauthorize that subject so
-  // an in-flight add cannot be retargeted by a concurrent profile switch.
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  // The mounted bar and the record's add door stamp their originating subject as
+  // `profile_id`, and `gateItemProfile` is the app's ONE reader of it (#4730): this
+  // action used to hand-roll the same two branches around a `profileId` nobody posts,
+  // so an add carrying a subject silently landed on the ACTING profile instead. The
+  // gate reauthorizes the subject, so an in-flight add cannot be retargeted by a
+  // concurrent profile switch either.
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   // The eating-time statement (#2053), when the user made one. The form carries an
@@ -314,15 +304,9 @@ export async function undoFoodServing(
 ): Promise<FoodLogResult> {
   // A toast may survive a profile transition. When it carries its originating
   // subject, reauthorize that subject explicitly; never retarget its inverse to
-  // whichever profile happens to be active when Undo is clicked (#3611).
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  // whichever profile happens to be active when Undo is clicked (#3611). Same one
+  // reader as the add beside it (#4730).
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   const rawExpected = String(formData.get("expected_servings") ?? "").trim();
