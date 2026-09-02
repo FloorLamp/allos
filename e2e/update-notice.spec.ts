@@ -601,6 +601,18 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   //
   //       registered   → marker written → the draft auto-applies, no banner
   //       unregistered → marker removed → today's offer banner, an empty field
+  // THE RELOAD'S OLD TREE IS BRIEFLY STILL IN THE DOCUMENT, and this assertion runs
+  // right after one. Measured on 2026-09-02: this line failed on `main` and on an
+  // unrelated PR with `strict mode violation: getByTestId('routines-section') resolved
+  // to 2 elements`, both of them `hidden` — the outgoing page and the incoming one,
+  // caught mid-transition. Only one mount exists (`PlanSection` renders
+  // `RoutinesSection` once, and its comment records that a second anchor would emit a
+  // duplicate id), so two is a transition artifact, never a shipped duplicate.
+  //
+  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated.
+  // It is asserted rather than worked around with `.first()`: a genuine duplicate id
+  // still reds here, which is exactly what `.first()` would have hidden.
+  await expect(page.getByTestId("routines-section")).toHaveCount(1);
   await expect(page.getByTestId("routines-section")).toBeVisible();
   await hydratedClick(page, page.getByTestId("routine-new"));
   const reopened = page.getByTestId("routine-builder");
