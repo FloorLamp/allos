@@ -160,10 +160,13 @@ export default function QuickLogPrnControl({
               : `${name} already has a dose logged at about that time.`
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
-        statement.setOpen(false);
-        // Rule 4, and `consumed` is why it is not just a reset: a "Taken now" tap
-        // consumes NO statement, so one made beside it survives the tap it did not pay
-        // for — and a statement made while this write was in flight survives its settle.
+        // Rule 4, and `consumed` is why this is not the unconditional reset it used to
+        // be: a "Taken now" tap consumes NO statement, so one made beside it survives
+        // the tap that did not pay for it — and a statement made while this write was
+        // in flight survives its settle. The reveal closes on the SAME event, because a
+        // spent statement is the only reason there was to close it; leaving it open on
+        // a "Taken now" keeps a live statement on screen instead of hiding one.
+        if (consumed) statement.setOpen(false);
         statement.spend(consumed);
         return { kind: "keep" };
       },

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
+import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 
 // THE SHARED TIME STATEMENT'S RULES, PINNED ONCE (#4426). Four domains spelled this
 // question by hand and each carried its own answer to "what happens to the statement
@@ -13,11 +14,13 @@ import LogPracticeButton from "@/components/practices/LogPracticeButton";
 // could satisfy every assertion below while no surface passed `shown` or spent
 // anything.
 
-const { setDoseStatus, logPractice, enqueue } = vi.hoisted(() => ({
-  setDoseStatus: vi.fn(),
-  logPractice: vi.fn(),
-  enqueue: vi.fn(),
-}));
+const { setDoseStatus, logPractice, enqueue, logMedicationAdministration } =
+  vi.hoisted(() => ({
+    setDoseStatus: vi.fn(),
+    logPractice: vi.fn(),
+    enqueue: vi.fn(),
+    logMedicationAdministration: vi.fn(),
+  }));
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (formData: FormData) => formData,
 }));
@@ -47,6 +50,9 @@ vi.mock("@/components/useOptimisticLedger", () => ({
   }),
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({ setDoseStatus }));
+vi.mock("@/app/(app)/medications/actions", () => ({
+  logMedicationAdministration,
+}));
 vi.mock("@/app/(app)/wellness/actions", () => ({
   logPractice,
   startPracticeLive: vi.fn(),
@@ -231,5 +237,63 @@ describe("an offline dose confirm queues the stated administration (#4426)", () 
     } finally {
       if (online) Object.defineProperty(window.navigator, "onLine", online);
     }
+  });
+});
+
+// THE FOURTH DIALECT, CONVERGED (#4738 ruling 3). The PRN row's "Earlier dose" was the
+// one statement that stated a DAY as well as a time, through a day picker of its own;
+// the ruling put the day back on the surface and left this the time half. What that
+// buys is asserted here rather than assumed: the row now obeys the shared rule 4 it
+// never had, having previously cleared the field on ANY successful tap.
+describe("the PRN row spends its statement on the tap that paid for it (#4426)", () => {
+  function prnRow() {
+    return render(
+      <QuickLogPrnControl
+        itemId={5}
+        name="Ibuprofen"
+        doseAmount="200 mg"
+        dayLabel="none today"
+        tz="UTC"
+      />
+    );
+  }
+  const timeField = () =>
+    screen.getByTestId("prn-log-when-time") as HTMLInputElement;
+  const lastPost = () =>
+    logMedicationAdministration.mock.calls.at(-1)?.[0] as FormData;
+
+  it("keeps a statement Taken now never consumed, and spends the one Save dose does", async () => {
+    logMedicationAdministration.mockResolvedValue({
+      ok: true,
+      outcome: "logged",
+    });
+    prnRow();
+    fireEvent.click(screen.getByTestId("prn-log-more"));
+    fireEvent.change(timeField(), { target: { value: "07:05" } });
+    // THE FIXTURE REACHES THE STATE THE VERDICT IS ABOUT. Every assertion below is
+    // about what happens to a statement that EXISTS, and all of them would pass over a
+    // row that never accepted one.
+    expect(timeField().value).toBe("07:05");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("prn-log-now"));
+    });
+    // "Taken now" asserts an administration at the tap — no time on the post, so
+    // nothing was paid for and the statement stands, still on screen.
+    expect(lastPost().get("offset")).toBe("now");
+    expect(lastPost().get("time")).toBeNull();
+    expect(timeField().value).toBe("07:05");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("prn-log-custom"));
+    });
+    expect(lastPost().get("offset")).toBe("custom");
+    expect(lastPost().get("time")).toBe("07:05");
+    // …and THAT tap spent it. The reveal closes with the statement it consumed, and
+    // reopening offers an empty field rather than a minute that would silently correct
+    // the row the tap just wrote.
+    expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
+    fireEvent.click(screen.getByTestId("prn-log-more"));
+    expect(timeField().value).toBe("");
   });
 });
