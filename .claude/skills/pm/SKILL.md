@@ -22,7 +22,27 @@ order, prerequisites, and each orchestrator's slice. Orchestrators read it at
 every check-in. A ladder that lives in your prompt dies at compaction.
 
 Edit it whenever the owner re-ranks, a prerequisite lands, or a session is
-added: body in place, edit time stamped, verified by re-read.
+added: body in place, edit time stamped, verified by re-read. The session ids
+it lists are hints, refreshed at every bootstrap — never a dependency.
+
+## Bootstrap — sessions do not survive an account change
+
+Sessions, triggers and watches belong to one Claude account. On a new
+account, or after any gap, nothing you remember about session ids is true.
+
+The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
+`Dispatched:` notes, and the Ladder issue.
+
+1. `list_sessions` (tag `allos-orchestrator`, else title "work work"); keep
+   the ones that are live. Refresh the ids in the Ladder.
+2. **No live worker → create exactly one** with `create_session` in the
+   repo's environment, tagged `allos-orchestrator`. Its prompt: invoke the
+   `orchestrate` skill, check in, adopt every live remote branch through
+   `dispatch-brief.mjs adopt` (`recovery.md`), read the Ladder, refill.
+3. Record its id in the Ladder, arm your watch, and only then look at the
+   queue. One worker is the default; a second is the owner's call.
+4. Stale triggers from the old account never fire here: re-arm the watch
+   and every relay you were owed, from the Ladder's state, not from memory.
 
 ## The watch loop
 
