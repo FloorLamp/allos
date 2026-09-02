@@ -1153,9 +1153,10 @@ test("the sheet keeps its collapsed earlier-time statement for Just finished (#3
     // #4384 fix 3: what opens is a LABELLED statement, not a bare box. The label is
     // asserted VISIBLE and ASSOCIATED — an `aria-label` is what this replaced, and an
     // `sr-only` span would satisfy every DOM check while looking exactly like the
-    // defect. The dress is asserted on the ROUNDING rather than on a pixel: a native
-    // `<input type="time">` draws its own square border, so a non-zero corner radius
-    // is the part that can only have come from the app's `.input`.
+    // defect. The dress is asserted as BORDER PLUS RADIUS, which is the app's `.input`
+    // and not a browser default: since #4218 this is `TimeField`'s text input rather
+    // than a native `<input type="time">`, and an undressed text input in this row
+    // would render with neither.
     const time = row.getByTestId("practice-when-time");
     await expect(row.getByText("End time", { exact: true })).toBeVisible();
     await expect(time).toHaveAttribute("id", "practice-when-time");
