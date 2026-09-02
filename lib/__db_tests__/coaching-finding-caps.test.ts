@@ -24,6 +24,11 @@
 // furthest from target, most recently added duplicate — with the old stable order
 // kept as the TIE-BREAK so determinism survives. These five cases now assert that
 // contract; the pin they replaced recorded what shipped, and was never a blessing.
+// The owner then settled what three of those signals MEAN (2026-09-02): a shortfall is
+// RELATIVE to its floor, a lapse is counted in DAYS, and same-second goals break by
+// ascending id. Those three rows and the same-second case below moved with the ruling;
+// adherencePattern's miss RATE and trainingPlateau's most-recently-trained were
+// ratified as built and are untouched.
 //
 // A fixture that only proves DETERMINISM is what let the wrong contract ship, so
 // each of the five is built with its relevance order the exact REVERSE of the
@@ -80,6 +85,7 @@ import { cycleBleedingSignalKey } from "@/lib/cycle-observation";
 import { weightAnomalySignalKey } from "@/lib/weight-anomaly";
 import { PROLONGED_PERIOD_DAYS } from "@/lib/cycle";
 import { practiceIdentity } from "@/lib/practice";
+import { logPracticeSession } from "@/lib/queries";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -228,49 +234,73 @@ function seedDailyItem(
   return { itemId, doseId };
 }
 
-// Four should-tier supplements due daily for four months, each with ONE follow-through
-// inside the 30-day window and none since — so all four are candidates (a single take
-// is far under DEMOTION_MAX_TAKEN_RATE) and their lapses run 8, 14, 20 and the whole
-// window. Longest lapsed first (#4069) is the exact reverse of the alphabetical order
-// the cap used to cut on, and the items are inserted alphabetically so insertion order
-// cannot produce it either.
+// Four should-tier supplements established for four months, each with ONE follow-through
+// inside the 30-day window and none since — so all four are candidates (a single take is
+// far under DEMOTION_MAX_TAKEN_RATE) and their lapses run 16, 18, 22 and 26 DAYS.
+// Longest lapsed first (#4069) is the exact reverse of the alphabetical order the cap
+// used to cut on, and the items are inserted alphabetically so insertion order cannot
+// produce it either.
+//
+// Three of the four are due every OTHER day, which is what separates the two readings
+// of "longest lapsed" the ruling had to choose between (2026-09-02: days). Their lapses
+// in scheduled OCCURRENCES are 15, 9, 11 and 13 — a different order AND a different
+// surviving three (Ashwagandha in, Berberine out), so a build ranking on occurrences
+// cannot produce the expectation below. Every-other-day still clears
+// DEMOTION_MIN_OCCURRENCES: 14 due days in the window against the floor of 10.
 function seedDemotionCandidates(profileId: number, anchor: string): string[] {
   const logTaken = db.prepare(
     `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
   );
-  // Days since the last follow-through. Dandelion never followed through at all, so
-  // its lapse is the whole window — the longest there is.
-  const lastTakenDaysAgo: [string, number | null][] = [
-    ["Ashwagandha", 8],
-    ["Berberine", 14],
-    ["Creatine", 20],
-    ["Dandelion", null],
+  // Days since the last follow-through, and the cadence that decides how many
+  // occurrences those days hold. Every "days ago" is EVEN, which is an on-day for the
+  // interval items: their anchor is 120 days back, so the parity of the window is the
+  // parity of the offset.
+  const items: [name: string, lastTakenDaysAgo: number, everyOtherDay: boolean][] = [
+    ["Ashwagandha", 16, false],
+    ["Berberine", 18, true],
+    ["Creatine", 22, true],
+    ["Dandelion", 26, true],
   ];
-  for (const [name, ago] of lastTakenDaysAgo) {
+  for (const [name, ago, everyOtherDay] of items) {
     const { itemId, doseId } = seedDailyItem(profileId, anchor, name);
-    if (ago != null) logTaken.run(doseId, itemId, shiftDateStr(anchor, -ago));
+    if (everyOtherDay) {
+      db.prepare(
+        `UPDATE intake_items
+            SET cadence_kind = 'interval', cadence_interval_days = 2,
+                cadence_anchor_date = ?
+          WHERE id = ?`
+      ).run(shiftDateStr(anchor, -120), itemId);
+    }
+    logTaken.run(doseId, itemId, shiftDateStr(anchor, -ago));
   }
-  return lastTakenDaysAgo.map(([name]) => `${name}: move it to May?`).reverse();
+  return items.map(([name]) => `${name}: move it to May?`).reverse();
 }
 
-// Four practice floors nobody has ever met (no sessions at all), at four different
-// weekly floors — so with a best week of zero each, the shortfall `floor - best` is
-// 4, 5, 6 and 7. Furthest from target first (#4069) is the exact reverse of the
-// alphabetical order the cap used to cut on, and the targets are inserted
-// alphabetically so insertion order cannot produce it either.
+// Four practice floors chronically under-met, each at a different size and each with a
+// different best week — so the RELATIVE shortfall (the share of the floor unmet) runs
+// 1/2, 4/9, 1/3 and 0/3 of the way met, i.e. 50%, 56%, 67% and 100% unmet. Furthest
+// from target first (#4069) is the exact reverse of the alphabetical order the cap used
+// to cut on, and the targets are inserted alphabetically so insertion order cannot
+// produce it either.
+//
+// The ABSOLUTE gap `floor - best` runs the other way — 6, 5, 4, 3 — which is exactly
+// alphabetical, so a build ranking on it produces the pre-ruling answer and is red
+// against the expectation below. That is the pair the ruling chose between
+// (2026-09-02: relative). Every best week clears RIGHTSIZE_MAX_ATTAINMENT, which is
+// itself a ratio, so all four stay candidates.
 function seedRightSizeTargets(profileId: number, anchor: string): string[] {
   const insert = db.prepare(
     `INSERT INTO frequency_targets
        (profile_id, scope_kind, scope_value, scope_identity, per_week, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`
   );
-  const floors: [string, number][] = [
-    ["Breathwork", 4],
-    ["Cold plunge", 5],
-    ["Journaling", 6],
-    ["Stretching", 7],
+  const floors: [label: string, perWeek: number, bestWeek: number][] = [
+    ["Breathwork", 12, 6],
+    ["Cold plunge", 9, 4],
+    ["Journaling", 6, 2],
+    ["Stretching", 3, 0],
   ];
-  for (const [label, perWeek] of floors) {
+  for (const [label, perWeek, bestWeek] of floors) {
     insert.run(
       profileId,
       "practice",
@@ -279,6 +309,11 @@ function seedRightSizeTargets(profileId: number, anchor: string): string[] {
       perWeek,
       `${shiftDateStr(anchor, -200)} 08:00:00`
     );
+    // The best week's sessions, one a day inside the NEWEST completed week (days 13
+    // through 7 back, in the rolling mode makeProfile sets). The three older completed
+    // weeks stay empty, so this week is the maximum and `best` is exactly it.
+    for (let i = 0; i < bestWeek; i++)
+      logPracticeSession(profileId, label, shiftDateStr(anchor, -(13 - i)), "page");
   }
   return floors
     .map(([label]) => `${label}: right-size the weekly target?`)
@@ -676,7 +711,15 @@ describe("#4069 — goal pacing's two halves are bounded separately", () => {
     expect(titles).toContain("“LDL under 100” is off pace");
   });
 
-  it("goals written in the same second survive newest-first, not row order", () => {
+  // `id ASC`, not DESC (owner ruling 2026-09-02): an imported set keeps the order it
+  // was written in, so the goals list people already see does not reverse under them.
+  // What this case CAN see is the direction — a build ordering `id DESC` keeps the
+  // last three of the import instead of the first and is red here. What it cannot see
+  // is the tiebreak's ABSENCE: ascending id is also the order a table scan returns, so
+  // this expectation is the same one a build with no tiebreak at all would satisfy.
+  // That is the point of the ruling rather than a hole in it — the column was chosen
+  // to preserve the de-facto order, and the same-second case exists to keep it defined.
+  it("goals written in the same second keep the order the import wrote them in", () => {
     const { profileId, anchor } = makeProfile("goalpace-same-second");
     seedRisingWeights(profileId, anchor);
     // An import: four goals, one created_at, so `created_at DESC` alone leaves the
@@ -691,8 +734,7 @@ describe("#4069 — goal pacing's two halves are bounded separately", () => {
     expect(
       buildGoalPacingFindings(profileId, anchor).map((f) => f.title)
     ).toEqual(
-      [...titles]
-        .reverse()
+      titles
         .slice(0, COACHING_ENTITY_FINDING_LIMITS.goalPacing)
         .map((t) => `“${t}” is off pace`)
     );

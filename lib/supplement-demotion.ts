@@ -122,9 +122,13 @@ export interface DemotionCandidate {
   occurrences: number;
   takenDays: number;
   takenRate: number;
-  // How long the lapse has been running, in scheduled occurrences since the last one
-  // the profile followed through on (the whole window when they never did). The
-  // family's cap truncates on it (#4069 — longest lapsed first).
+  // How long the lapse has been running, measured from the last occurrence the
+  // profile followed through on (the whole window when they never did): in DAYS, and
+  // in scheduled occurrences. The family's cap truncates on the days (#4069, owner
+  // ruling 2026-09-02 — longest lapsed as a person experiences it, so a sparse item
+  // lapsed a month outranks a daily one lapsed ten days), occurrences as the
+  // tie-break.
+  lapsedDays: number;
   lapsedOccurrences: number;
 }
 
@@ -175,10 +179,13 @@ export function detectDemotionCandidate(
   const takenDays = occurrences.filter(isTaken).length;
   const takenRate = takenDays / occurrences.length;
   if (takenRate > DEMOTION_MAX_TAKEN_RATE) return null;
-  // Occurrences since the last follow-through — the whole window when there was
-  // none, since findLastIndex returns -1. Counted in occurrences rather than days so
-  // it reads in the same unit as the evidence above and makes no assumption about
-  // the strip's shape.
+  // The lapse since the last follow-through — the whole span when there was none,
+  // since findLastIndex returns -1. Days come off the strip, which is one dot per
+  // calendar day of the window (`lastNDates` builds it and every consumer shares it),
+  // so the trailing index difference IS the day count; occurrences come off the due
+  // days alone. The two differ exactly when the item is not due daily, which is the
+  // pair the ruling is about.
+  const lapsedDays = input.strip.length - 1 - input.strip.findLastIndex(isTaken);
   const lapsedOccurrences =
     occurrences.length - 1 - occurrences.findLastIndex(isTaken);
 
@@ -199,6 +206,7 @@ export function detectDemotionCandidate(
     occurrences: occurrences.length,
     takenDays,
     takenRate,
+    lapsedDays,
     lapsedOccurrences,
   };
 }
@@ -206,8 +214,10 @@ export function detectDemotionCandidate(
 // Every demotion candidate across a profile's items, LONGEST LAPSED FIRST (#4069):
 // the family's cap truncates on this order, and the supplement someone stopped
 // taking longest ago is the one closest to being a `may` — the letter it starts with
-// is not a relevance signal. Ties keep the pre-ruling stable order (name, then item
-// id), so determinism survives. The caller applies the findings-bus suppression filter.
+// is not a relevance signal. Longest in DAYS, because that is the span the person
+// lived through; equal days fall to the occurrences the schedule asked for in them,
+// then to the pre-ruling stable order (name, then item id), so determinism survives.
+// The caller applies the findings-bus suppression filter.
 export function detectDemotionCandidates(
   inputs: readonly DemotionInput[]
 ): DemotionCandidate[] {
@@ -216,6 +226,7 @@ export function detectDemotionCandidates(
     .filter((c): c is DemotionCandidate => c != null)
     .sort(
       (a, b) =>
+        b.lapsedDays - a.lapsedDays ||
         b.lapsedOccurrences - a.lapsedOccurrences ||
         a.name.localeCompare(b.name) ||
         a.itemId - b.itemId
