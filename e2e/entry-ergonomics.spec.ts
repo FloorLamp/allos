@@ -1148,10 +1148,9 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
-  // The reading this case's closing claim used to be a COMMENT about (#4741). CI
-  // contradicted that comment twice, so the claim is now a diff over the same
-  // snapshot the shared-profile guard uses — read once at the end, against this
-  // reading.
+  // The BEFORE reading for the row-absence assertion at the end (#4741). That claim
+  // used to be a closing COMMENT and CI contradicted it twice, so it is now a diff
+  // over the same snapshot the shared-profile guard reads.
   const at = frozenNow();
   const activitiesBefore = snapshotRecentActivities(at);
 
