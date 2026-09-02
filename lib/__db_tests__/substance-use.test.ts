@@ -1047,6 +1047,42 @@ describe("the substance write core keeps the shared food contracts (#4435)", () 
     expect(alcoholTaps(p).length).toBe(3);
   });
 
+  it("re-bases a pre-ledger day whose counter outran its taps", () => {
+    const p = newProfile("SU pre-ledger day");
+    const date = shiftDateStr(today(p), -7);
+    // A counter row from before the per-tap ledger existed (migration 056 backfilled
+    // nothing): three servings, no events to move or drop.
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO food_daily_totals (profile_id, date, group_key, servings)
+           VALUES (?, ?, 'alcohol', 3)`
+        )
+        .run(p, date).lastInsertRowid
+    );
+    const moved = shiftDateStr(date, 1);
+    expect(
+      updateSubstanceDailyTotalCore(
+        p,
+        "alcohol",
+        id,
+        { date: moved, amount: 2 },
+        "page"
+      )
+    ).toEqual({ kind: "updated", id });
+
+    // The correction states what the day held, so the counter comes back from the
+    // taps rather than carrying phantom ticks onto the new day.
+    expect(
+      db
+        .prepare(
+          `SELECT date, servings FROM food_daily_totals WHERE profile_id = ?`
+        )
+        .all(p)
+    ).toEqual([{ date: moved, servings: 2 }]);
+    expect(alcoholTaps(p).length).toBe(2);
+  });
+
   // A DAY TOTAL carries the surface of the tap that last filed into it, exactly as
   // it already carries that tap's `recorded_at`. Both doors, because the one-tap
   // core took no such argument at all and the history core ignored the one it had.
