@@ -270,12 +270,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(panelDoor).toHaveAccessibleName("Happened earlier?");
     await expect(panelDoor).toHaveText("Happened earlier?"); // the visible glyph only — the words are sr-only
     await expect(panelDoor.locator("span")).toHaveClass(/sr-only/);
-    const [takeBox, doorBox] = await Promise.all([
-      panelTake.boundingBox(),
-      panelDoor.boundingBox(),
-    ]);
+    // ONE SETTLED GROUP, not two round-trips: the claim below is RELATIVE, so the
+    // two boxes have to describe the same layout (#868's hygiene rule).
+    const [takeBox, doorBox] = await settledBoxes([panelTake, panelDoor]);
     // Seated immediately RIGHT of the action it modifies, and never before it.
-    expect(doorBox!.x).toBeGreaterThan(takeBox!.x + takeBox!.width - 1);
+    expect(doorBox.x).toBeGreaterThan(takeBox.x + takeBox.width - 1);
     const medNameBox = await doseLink.boundingBox();
     const medStatusBox = await doseWorkingRow
       .getByTestId("prn-day-label")

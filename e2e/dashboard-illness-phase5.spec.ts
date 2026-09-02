@@ -8,6 +8,7 @@ import {
   expectNoClippedContent,
   hydratedClick,
   openDashboardAll,
+  settledBoxes,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -589,8 +590,12 @@ for (const [label, viewport, wide] of [
       const chips = card.getByTestId("cockpit-med-chips");
       await expect(chips).toBeVisible();
 
-      const cardBox = (await card.boundingBox())!;
-      const columnBox = (await card.locator("xpath=..").boundingBox())!;
+      // ONE SETTLED GROUP: every claim below is the card measured AGAINST its own
+      // column, so the two boxes have to describe the same layout.
+      const [cardBox, columnBox] = await settledBoxes([
+        card,
+        card.locator("xpath=.."),
+      ]);
       expect(cardBox.width, `${label} cockpit measure`).toBeLessThanOrEqual(
         880
       );
@@ -615,20 +620,20 @@ for (const [label, viewport, wide] of [
         card.getByTestId("symptom-log-actions"),
         chips,
       ];
-      const before = await Promise.all(above.map((el) => el.boundingBox()));
+      const before = await settledBoxes(above);
       const url = page.url();
       // A CLIENT TOGGLE, not a write: the chip opens the med and posts nothing.
       await hydratedClick(
         page,
-        chips.locator('[data-testid^="cockpit-med-chip-"]').first()
-      ); // first-ok: the row's leading med chip; every chip opens the same panel
+        chips.locator('[data-testid^="cockpit-med-chip-"]').first() // first-ok: the row's leading med chip; every chip opens the same panel
+      );
       const panel = card.getByTestId("cockpit-med-panel");
       await expect(panel).toBeVisible();
       expect(page.url(), "the card never navigates").toBe(url);
-      const after = await Promise.all(above.map((el) => el.boundingBox()));
+      const after = await settledBoxes(above);
       expect(after).toEqual(before);
-      const panelBox = (await panel.boundingBox())!;
-      const chipsBox = before[2]!;
+      const [panelBox] = await settledBoxes([panel]);
+      const chipsBox = before[2];
       // DIRECTLY BENEATH ITS OWN ROW, and inside the card's measure.
       expect(panelBox.y).toBeGreaterThanOrEqual(
         chipsBox.y + chipsBox.height - 1
@@ -637,7 +642,7 @@ for (const [label, viewport, wide] of [
       expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(
         cardBox.x + cardBox.width + 1
       );
-      const cardAfter = (await card.boundingBox())!;
+      const [cardAfter] = await settledBoxes([card]);
       expect(cardAfter.x).toBe(cardBox.x);
       expect(cardAfter.width).toBe(cardBox.width);
       // ── ONE GRAMMAR ACROSS THE WHOLE SECTION (#4752 items 7 and 8) ────────
