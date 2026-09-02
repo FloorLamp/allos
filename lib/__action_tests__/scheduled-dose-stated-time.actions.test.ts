@@ -19,6 +19,7 @@ import { setDoseStatus } from "@/app/(app)/nutrition/intake-actions";
 import { getTimezone } from "@/lib/settings";
 import { statedInstantOnDate } from "@/lib/stated-time";
 import { utcInstant } from "@/lib/date";
+import { applyIntent } from "@/lib/offline/writes";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 function actor(): { profileId: number; doseId: number } {
@@ -119,5 +120,46 @@ describe("a scheduled dose confirm may state when it was actually taken (#4426)"
     // A skip is "I chose not to take it". There is no administration to time, so the
     // column stays NULL whatever the wire says.
     expect(log?.occurred_at).toBeNull();
+  });
+});
+
+// THE OFFLINE HALF OF THE SAME CLAIM. The control now queues the STATED instant as
+// `clientTakenAt` rather than the tap's, which is a client decision — but it is only
+// worth making if the replay honours an instant earlier than the sync moment and lands
+// it in `occurred_at`. That seam predates this change, so these cases are GREEN on the
+// base tree: they are here as the pin under a client behaviour that now depends on
+// them, and a red here would mean the capture had quietly become a no-op.
+describe("a queued confirm replays the administration it captured", () => {
+  it.each([
+    // Stated at 07:05 on the row's own day: kept, because an accepted stamp always
+    // sits inside its own log day.
+    ["on the row's day", 0, true],
+    // The same instant attributed to a DIFFERENT day contradicts the row it lands on,
+    // so the precision is dropped and the dose is still logged — never refused.
+    ["on some other day", -1, false],
+  ])("captured %s: kept=%s", async (_label, dayShift, kept) => {
+    const { profileId, doseId } = actor();
+    const date = today(profileId);
+    const stated = statedInstantOnDate(date, "07:05", getTimezone(profileId));
+    if (!stated) throw new Error("07:05 is a real time on this day");
+    const captured = new Date(stated.getTime() + dayShift * 86_400_000);
+
+    const outcome = applyIntent(profileId, {
+      key: `dose-${doseId}-word7`,
+      flow: "dose",
+      date,
+      // When the tap was PARKED, which is a different fact from when the dose was
+      // taken — the whole reason `clientTakenAt` exists beside it.
+      capturedAt: new Date().toISOString(),
+      payload: { doseId, clientTakenAt: captured.toISOString() },
+    });
+
+    expect(outcome.status).toBe("done");
+    const log = row(doseId, date);
+    expect(log?.status).toBe("taken");
+    // Both halves, because "not the stated instant" is satisfied by any value at all:
+    // a dropped capture falls back to the replay's own stamp, which is the row's
+    // `recorded_at`.
+    expect(log?.occurred_at).toBe(kept ? utcInstant(stated) : log?.recorded_at);
   });
 });

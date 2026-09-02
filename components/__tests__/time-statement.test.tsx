@@ -13,9 +13,10 @@ import LogPracticeButton from "@/components/practices/LogPracticeButton";
 // could satisfy every assertion below while no surface passed `shown` or spent
 // anything.
 
-const { setDoseStatus, logPractice } = vi.hoisted(() => ({
+const { setDoseStatus, logPractice, enqueue } = vi.hoisted(() => ({
   setDoseStatus: vi.fn(),
   logPractice: vi.fn(),
+  enqueue: vi.fn(),
 }));
 vi.mock("@/components/LoggedViaSurface", () => ({
   useLoggedViaStamp: () => (formData: FormData) => formData,
@@ -23,7 +24,7 @@ vi.mock("@/components/LoggedViaSurface", () => ({
 vi.mock("@/components/Toast", () => ({ useToast: () => vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/components/OfflineQueueProvider", () => ({
-  useOfflineQueue: () => ({ enqueue: vi.fn() }),
+  useOfflineQueue: () => ({ enqueue }),
 }));
 vi.mock("@/components/usePrefersReducedMotion", () => ({
   usePrefersReducedMotion: () => false,
@@ -189,5 +190,46 @@ describe("rule 4: a statement is spent by the tap it answers, and only that tap"
     expect(
       (screen.getByTestId("practice-when-time") as HTMLInputElement).value
     ).toBe("");
+  });
+});
+
+describe("an offline dose confirm queues the stated administration (#4426)", () => {
+  // THE CAPTURE CARRIES THE STATEMENT, NOT THE TAP. A queued confirm already carried
+  // `clientTakenAt` so the replay would not claim the sync instant; with a statement on
+  // screen the tap instant is simply the wrong fact, and replay re-validates whatever
+  // is sent against the row's own day (`resolveQueuedTakenAt`). Without this the stated
+  // minute was silently lost on exactly the taps most likely to be made away from
+  // signal.
+  it("sends the stated instant as clientTakenAt", async () => {
+    enqueue.mockResolvedValue("kept");
+    const online = Object.getOwnPropertyDescriptor(window.navigator, "onLine");
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      get: () => false,
+    });
+    try {
+      scheduledDose();
+      fireEvent.click(screen.getByTestId("scheduled-dose-when-toggle"));
+      fireEvent.change(screen.getByTestId("scheduled-dose-when-time"), {
+        target: { value: "07:05" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("dose-take"));
+      });
+
+      const [flow, , payload] = enqueue.mock.calls.at(-1) ?? [];
+      expect(flow).toBe("dose");
+      // The zone is pinned to UTC by the mock above, so the stated wall time IS the
+      // instant's UTC clock — a naive `${day}T07:05` string would read the same here
+      // and differently in every other zone, which is why the assertion reads the
+      // MINUTE off the instant rather than comparing a built string.
+      const sent = new Date(
+        (payload as { clientTakenAt: string }).clientTakenAt
+      );
+      expect(sent.getUTCHours()).toBe(7);
+      expect(sent.getUTCMinutes()).toBe(5);
+    } finally {
+      if (online) Object.defineProperty(window.navigator, "onLine", online);
+    }
   });
 });

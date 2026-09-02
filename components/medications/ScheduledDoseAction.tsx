@@ -30,6 +30,7 @@ export default function ScheduledDoseAction({
   readOnly = false,
   compactActions = false,
   profileId,
+  tz: tzProp,
 }: {
   doseId: number;
   doseLabel: string;
@@ -42,14 +43,24 @@ export default function ScheduledDoseAction({
   // #858/#1373: the dose's owning profile, for a cross-profile confirm on a
   // multi-view Medications board. Absent on the acting board (byte-identical).
   profileId?: number;
+  // The OWNING profile's timezone, on a board that is not the acting profile's — the
+  // same prop `QuickLogPrnControl` takes beside this one, for the same reason. The
+  // posted claim would be correct without it (the action resolves the wall time in the
+  // owning profile's zone), but the control renders the day and OFFERS a one-tap "Now"
+  // from this zone, and a caregiver two zones away would be offered the wrong minute
+  // and accept it because it was offered. Defaults to the acting profile's.
+  tz?: string;
 }) {
   // The row stands on the profile's today — the day `setDoseStatus` files an undated
   // confirm under. The STATEMENT is a wall time and the action anchors it on that same
   // day in the OWNING profile's zone, so the pair cannot come apart; this day only
   // decides what the control renders and offers.
+  const contextTz = useTimezone();
+  const tz = tzProp ?? contextTz;
   const statement = useTimeStatement({
     shown: !readOnly && !taken && !skipped,
-    day: dateStrInTz(useTimezone()),
+    day: dateStrInTz(tz),
+    tz,
     label: "Taken earlier?",
     timeLabel: `Time ${doseLabel || "this dose"} was taken`,
     testId: "scheduled-dose-when",
