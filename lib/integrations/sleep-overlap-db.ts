@@ -47,10 +47,6 @@ const CANDIDATE_DAY_RADIUS = 2;
 const STAGE_METRICS_SQL =
   "('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')";
 
-interface StoredRow extends SleepSessionRow {
-  date: string;
-}
-
 function dayOffset(date: string, days: number): string {
   const ms = Date.parse(`${date}T00:00:00Z`);
   if (!Number.isFinite(ms)) return date;
@@ -168,7 +164,7 @@ export function collapseSleepSessionOverlaps(
         WHERE profile_id = ? AND source = ? AND pushed_at = ? AND metric = 'sleep_min'
         ORDER BY id`
     )
-    .all(profileId, source, pushedAt) as StoredRow[];
+    .all(profileId, source, pushedAt) as SleepSessionRow[];
   if (touched.length === 0) return 0;
 
   const findSessions = db.prepare(
@@ -202,7 +198,7 @@ export function collapseSleepSessionOverlaps(
       source,
       from,
       to
-    ) as StoredRow[];
+    ) as SleepSessionRow[];
     for (const pair of sleepOverlapPairs(neighbourhood)) {
       const { a, b } = pair;
       if (a.id !== session.id && b.id !== session.id) continue;
@@ -243,12 +239,12 @@ export function collapseSleepSessionOverlaps(
       const { keep, drop } = verdict;
       const dropWindow =
         drop.id === a.id
-          ? { startMs: pair.aStartMs, endMs: pair.aEndMs }
-          : { startMs: pair.bStartMs, endMs: pair.bEndMs };
+          ? { date: drop.date, startMs: pair.aStartMs, endMs: pair.aEndMs }
+          : { date: drop.date, startMs: pair.bStartMs, endMs: pair.bEndMs };
       const owned = stagesOwnedBy(
         dropWindow,
         neighbourhood.filter((s) => s.id !== drop.id),
-        findStages.all(profileId, source, drop.origin, from, to) as StoredRow[]
+        findStages.all(profileId, source, drop.origin, from, to) as SleepSessionRow[]
       );
       // THE #133 LOCK COVERS THE BREAKDOWN, NOT ONLY THE TOTAL. A hand-corrected stage
       // row is the person's, and deleting the session out from under it would leave an

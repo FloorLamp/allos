@@ -54,6 +54,11 @@ export interface SleepSessionRow {
   id: number;
   /** The metric the row is filed under: `sleep_min` for a session, `sleep_*_min` for a stage. */
   metric: string;
+  /**
+   * The profile-local wake day the parser filed this row under. A session's stages are
+   * pinned to their SESSION's wake day, which is the only parentage the schema carries.
+   */
+  date: string;
   started_at: string;
   ended_at: string;
   /** The package that wrote it. NULL is UNKNOWN, never "the same as another NULL". */
@@ -159,15 +164,26 @@ export function observeHeartRate(
 }
 
 /**
- * Is this window observed well enough to say anything about it, and does what the device
- * recorded there read as sleep?
+ * Was this window OBSERVED — is there enough heart rate inside it to say anything at all?
  *
  * `dipToleranceMs` IS THE DECLARED ONE, not a number picked here: the Health Connect
  * `heart-rate` stream declares `quiet.dipToleranceMin` (150 min) as the silence a worn
  * device may show before the stream counts as stopped, measured off a bimodal gap
  * distribution with an empty valley at 2.1–2.5 h. A window carrying a longer hole than
- * that was not continuously observed, so the mean over what did arrive is a claim about
- * a fragment, and this refuses it.
+ * that was not continuously observed, so a mean over what did arrive is a claim about a
+ * fragment.
+ */
+export function windowObserved(
+  observation: HeartRateObservation,
+  dipToleranceMs: number
+): boolean {
+  return (
+    observation.meanBpm !== null && observation.longestGapMs <= dipToleranceMs
+  );
+}
+
+/**
+ * Does an observed window read as sleep?
  *
  * `referenceBpm` is the person's own awake mean over the surrounding span. STRICTLY
  * BELOW, with no margin: see the header — a margin would only shift which side of
@@ -176,12 +192,9 @@ export function observeHeartRate(
  */
 export function corroboratesSleep(
   observation: HeartRateObservation,
-  referenceBpm: number,
-  dipToleranceMs: number
+  referenceBpm: number
 ): boolean {
-  if (observation.meanBpm === null) return false;
-  if (observation.longestGapMs > dipToleranceMs) return false;
-  return observation.meanBpm < referenceBpm;
+  return observation.meanBpm !== null && observation.meanBpm < referenceBpm;
 }
 
 /** Why a pair was left standing instead of collapsed. */
@@ -210,42 +223,49 @@ export function decideSleepOverlap<T extends SleepSessionRow>(
 ): SleepOverlapVerdict<T> {
   const { a, b } = pair;
   if (a.edited || b.edited) return { kind: "undecided", reason: "edited" };
-  if (referenceBpm === null) return { kind: "undecided", reason: "unobserved" };
-  const aSleeps = corroboratesSleep(observations.a, referenceBpm, dipToleranceMs);
-  const bSleeps = corroboratesSleep(observations.b, referenceBpm, dipToleranceMs);
+  // BOTH WINDOWS, OR NEITHER DECIDES ANYTHING. An unread window is not a window that
+  // failed to look like sleep — the watch batches into the phone independently of the
+  // exporter's push, so the corrected night routinely arrives before its own minutes do.
+  // Asked one at a time this would delete a real night whose heart rate had not landed
+  // yet, on the strength of a phantom sitting on an evening; asked together it cannot.
+  if (
+    referenceBpm === null ||
+    !windowObserved(observations.a, dipToleranceMs) ||
+    !windowObserved(observations.b, dipToleranceMs)
+  )
+    return { kind: "undecided", reason: "unobserved" };
+  const aSleeps = corroboratesSleep(observations.a, referenceBpm);
+  const bSleeps = corroboratesSleep(observations.b, referenceBpm);
   if (aSleeps && bSleeps) return { kind: "undecided", reason: "both" };
   if (aSleeps) return { kind: "collapse", keep: a, drop: b };
   if (bSleeps) return { kind: "collapse", keep: b, drop: a };
-  // Neither is below the awake reference. One of them may still be the night — a window
-  // whose heart rate has not arrived says so without saying which — and this rule does
-  // not guess between two windows it could not read.
-  return {
-    kind: "undecided",
-    reason:
-      observations.a.meanBpm === null || observations.b.meanBpm === null
-        ? "unobserved"
-        : "neither",
-  };
+  // Both were read and neither is below the person's own awake mean. Nothing here says
+  // which one is the night, and this rule does not guess.
+  return { kind: "undecided", reason: "neither" };
 }
 
 /**
  * The stage rows that go with the session being deleted.
  *
- * THERE IS NO PARENTAGE IN THE SCHEMA. A stage is a `metric_samples` row on its own
- * window; nothing points at its session. So ownership is derived, and it is derived to
- * fail toward KEEPING a row:
+ * THERE IS NO PARENTAGE COLUMN, BUT THERE IS ONE FACT: the parser pins every stage to its
+ * SESSION's wake day (`date`), so a stage and its session always agree on that column
+ * whatever the two windows do. On the defect this rule exists for, that alone separates
+ * the two stage sets — the re-timed pair is filed under two different wake days, which is
+ * the very signature of the bug — including inside the band where the windows overlap and
+ * geometry cannot say anything. The rest is derived, and derived to fail toward KEEPING:
  *
  *   * the stage's MIDPOINT lies inside the loser's window. A midpoint is jitter-proof at
  *     both ends and needs no tolerance constant — the parser's own comment records a
  *     minute of scorer jitter at each end of a session, so containment would strand
  *     exactly those stages while a plain overlap test would claim its neighbours'.
- *   * and the stage overlaps NO OTHER stored session of the same group, the survivor
- *     included. That is what makes a stage that has escaped its own session safe: a
- *     genuine fragment's trailing awake stage still overlaps the fragment it came from,
- *     so it is never taken, however far its midpoint has drifted. It is also what leaves
- *     the pair's own overlap band alone — a loser stage inside the survivor's window
- *     stays, which counts a few of the band's minutes twice rather than deleting a
- *     minute of the night that is being kept.
+ *   * and no OTHER session filed under that same wake day overlaps the stage. Only a
+ *     session on a day can own a stage on that day, so this is the whole veto set — and
+ *     it is what makes a stage that has escaped its own session safe: a genuine fragment's
+ *     trailing awake stage still overlaps the fragment it came from, so it is never taken,
+ *     however far its midpoint has drifted. Where the pair itself shares a wake day the
+ *     survivor is in this set too, so the band's stages stay on both sides: a few minutes
+ *     counted twice on a day that still has its night, rather than a minute deleted from
+ *     the night being kept.
  *
  * Nothing here gates the COLLAPSE. An earlier version refused the whole thing when a
  * stage had two owners, which could only ever fire on finely-scored sessions — so the
@@ -253,17 +273,19 @@ export function decideSleepOverlap<T extends SleepSessionRow>(
  * reached. Ownership is per stage now; the session decision is the heart rate's alone.
  */
 export function stagesOwnedBy<T extends SleepSessionRow>(
-  loser: { startMs: number; endMs: number },
-  otherSessions: readonly SleepSessionRow[],
+  loser: { date: string; startMs: number; endMs: number },
+  sessions: readonly SleepSessionRow[],
   stages: readonly T[]
 ): T[] {
+  const sameDay = sessions.filter((s) => s.date === loser.date);
   return stages.filter((stage) => {
+    if (stage.date !== loser.date) return false;
     const s = instantMs(stage.started_at);
     const e = instantMs(stage.ended_at);
     if (s === null || e === null || e <= s) return false;
     const mid = s + (e - s) / 2;
     if (mid < loser.startMs || mid >= loser.endMs) return false;
-    return !otherSessions.some((other) =>
+    return !sameDay.some((other) =>
       windowsOverlap(
         stage.started_at,
         stage.ended_at,
