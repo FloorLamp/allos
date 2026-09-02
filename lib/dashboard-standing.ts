@@ -37,6 +37,7 @@ export type StandingFamilyKey =
   | "nap-total"
   | "cycle-phase"
   | "weight"
+  | "intraday-today"
   | "blood-pressure"
   | "resting-heart-rate"
   | "healthspan-pillars"
@@ -161,6 +162,18 @@ export const STANDING_READING_ORDER: readonly StandingReadingFamily[] = [
     composition: "single",
     matches: idStartsWith("cycle.phase:"),
     memberOrder: { kind: "identity", prefixes: ["cycle.phase:"] },
+  },
+  // THE DAY SO FAR (#4767 item 2), last in Today because it is the band's only
+  // DRAWING and the numbers above it are what a glance reads first. It mounts only
+  // where the profile's watch has already sent today's minutes, so its absence is
+  // the ordinary state rather than a hole in the order.
+  {
+    key: "intraday-today",
+    section: "today",
+    label: "Day so far",
+    composition: "single",
+    matches: idStartsWith("activity.intraday:"),
+    memberOrder: { kind: "identity", prefixes: ["activity.intraday:"] },
   },
   {
     key: "weight",

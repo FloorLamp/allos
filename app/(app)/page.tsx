@@ -34,6 +34,11 @@ import {
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
+import IntradayChart from "@/components/IntradayChart";
+import { getIntradayDay } from "@/lib/queries/intraday";
+import { getLatestHrDay } from "@/lib/queries/metrics";
+import { gatherHistoryLog } from "@/lib/history";
+import { intradayFreshness } from "@/lib/intraday";
 import {
   isFoodLoggingRelevant,
   isLongevityRelevant,
@@ -281,6 +286,13 @@ import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
 export const dynamic = "force-dynamic";
+
+// The bound on the day gather behind the Today band's chart (#4767 item 2). It is a
+// ROW cap on one profile-local day, and the chart draws only the subset that carries
+// a clock — so this is not a limit on what the chart can show so much as a refusal to
+// read an unbounded day. A day past it has more entries than any 358px axis could
+// mark legibly, and the day view itself is one tap away with its own paging.
+const DASHBOARD_INTRADAY_DAY_ROWS = 200;
 
 // The soonest scheduled visit, flattened by the page (#171/#1215). `whenLabel`
 // carries date AND clock time through the login's display prefs — a 9am and a 4pm
@@ -1153,6 +1165,35 @@ async function renderDashboard(
   // The PROFILE-LOCAL hour decides whether today is complete enough to compare against
   // whole days (#3258). Local, not UTC — a delta appearing on the server's clock would
   // be the same artifact in a different disguise.
+  // THE DAY SO FAR (#4767 item 2) — the SAME IntradayChart the /history day view
+  // draws, in its existing compact geometry. No second implementation and no model
+  // of its own: the events are `gatherHistoryLog`'s own resolved day rows, the same
+  // list the day view hands the panel, so a window drawn here can never name
+  // something that page would not show.
+  //
+  // GATED LIKE THE CARD IT REPLACES, and gated CHEAPLY FIRST. `getLatestHrDay` is one
+  // indexed read; a profile with no wearable, or a morning nothing has synced into
+  // yet, pays that and stops — the day gather below never runs for them, and they see
+  // no frame at all rather than an empty axis. The second half of the gate is n > 1:
+  // one sample is a dot, not a day (the same rule the sparkline column applies at
+  // `loneReading`).
+  const intradayCandidate =
+    getLatestHrDay(profile.id) === on
+      ? getIntradayDay(
+          profile.id,
+          on,
+          gatherHistoryLog(profile.id, {
+            loginId: login.id,
+            day: on,
+            limit: DASHBOARD_INTRADAY_DAY_ROWS,
+          }).dayEvents
+        )
+      : null;
+  const intradayToday =
+    intradayCandidate && (intradayCandidate.hr?.pointCount ?? 0) > 1
+      ? intradayCandidate
+      : null;
+
   const stepsRows = getMetricDailyTotals(profile.id, "steps");
   const stepsSummary =
     stepsRows.length > 0
@@ -2062,6 +2103,30 @@ async function renderDashboard(
         // The control is unchanged from the quick-log sheet's mount, whose reserved
         // height pins it (LOG_SHEET_CONTEXT_RESERVE_PX).
         control: <UsualRoutineControl {...routineControl} />,
+      }
+    );
+
+  if (intradayToday)
+    add(
+      dailyCandidates.intraday(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        on
+      ),
+      {
+        // The lag sentence is the row's FACTS — the one thing the drawing cannot
+        // say about itself (#4767 item 5).
+        value: intradayFreshness(intradayToday) ?? undefined,
+        href: historyDayIntradayHref(on),
+        presence: "current",
+        figure: (
+          <IntradayChart
+            model={intradayToday}
+            formatPrefs={formatPrefs}
+            profileId={profile.id}
+            variant="compact"
+            className="w-full"
+          />
+        ),
       }
     );
 

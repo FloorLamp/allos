@@ -49,6 +49,20 @@ export interface DashboardStandingPresentation {
    * to stay in cards until now.
    */
   control?: ReactNode;
+  /**
+   * A DRAWING THE ROW *IS*, as opposed to the trend column beside it (#4767 item 2).
+   * `series` is a 176×32 desktop-only glance at where a number has been; this is the
+   * row's whole subject — today's clock-axis chart, with the day's own windows and
+   * marks on it — so it renders full width, on every viewport, under the facts.
+   *
+   * It sits OUTSIDE the row's link for the same reason `control` does: the figure is
+   * interactive (its ticks are anchors, its drag is a zoom), and nesting that in an
+   * `<a>` is invalid markup browsers reparent. The row's own href stays on the facts.
+   *
+   * One row declares one. There is no second renderer here and no flag: a caller
+   * either hands over a node or does not.
+   */
+  figure?: ReactNode;
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -207,7 +221,13 @@ export function DashboardFactRow({
   );
   return (
     <li
-      className={className}
+      // A figure is the row's whole subject, so its row takes the family's full
+      // facts cell rather than shrinking to its text in the flex-row members list.
+      className={
+        [presentation.figure != null ? "w-full" : null, className]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       data-testid="dashboard-candidate"
       data-candidate-id={candidate.candidateId}
       data-fact-key={candidate.factKey}
@@ -230,6 +250,11 @@ export function DashboardFactRow({
           >
             {control}
           </div>
+        </div>
+      )}
+      {presentation.figure != null && (
+        <div className="mt-2" data-testid="dashboard-row-figure">
+          {presentation.figure}
         </div>
       )}
     </li>
