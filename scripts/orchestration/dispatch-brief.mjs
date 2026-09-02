@@ -420,9 +420,9 @@ function buildBrief(opts) {
     : "Defer them until promotion; the landing candidate's CI runs them.";
 
   const brief = `${opts.task ? `Task: ${opts.task}\n\n` : ""}\
-- Worktree setup: git fetch origin main && BASE_SHA=$(git rev-parse FETCH_HEAD) && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} "$BASE_SHA" && echo "PINNED_BASE_SHA=$BASE_SHA"
+- Worktree setup (the path is LITERAL, not \`$SCRATCH\` — that variable is unset in most lane shells and two lanes on 2026-09-02 built their tree under the harness scratchpad and had to \`git worktree move\` it, where a check-in scanning ${STATE_DIR} would have read them as absent): git fetch origin main && BASE_SHA=$(git rev-parse FETCH_HEAD) && git worktree add ${STATE_DIR}/${opts.worktree} -b ${opts.branch} "$BASE_SHA" && echo "PINNED_BASE_SHA=$BASE_SHA"
 - Keep the printed PINNED_BASE_SHA in your handoff. For any history edit, reset or rewrite against the printed SHA, never against moving \`origin/main\`; sibling worktrees share its remote-tracking ref.
-- cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
+- cp -al ${nm.path}/. ${STATE_DIR}/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
 ${landingLines}
 - npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts.
@@ -596,6 +596,68 @@ ${landingLines}
   it was structurally the wrong direction. Name the surfaces that must stay loud, keep
   the list SHORT and hand-written (an exhaustive scanner is the forbidden shape), and
   prove the converse assertion can fail before you trust it passing.
+- COUNT HOW OFTEN YOUR FIXTURE REACHES THE STATE YOUR ASSERTION FORBIDS. This is the
+  cheapest check in this brief and it catches the defect class the rest of these rules
+  keep circling. A test's SUBJECT and its FIXTURE are usually chosen by the same person
+  in the same motion, so the fixture inherits that person's belief about where the
+  defect lives and then confirms it. Nobody asks the separate question -- can this
+  fixture even produce the shape? Measured 2026-08-30 across one session: an empty-state
+  test whose fixture made the absence true for the wrong reason; a retirement table
+  querying its most permissive input; a census sweep whose pattern never matched
+  anything; a completeness guard structurally blind to over-dropping; a tie-break case
+  whose expected answer was also what declaration order alone produced; and a 5000-seed
+  conservation fuzz that stayed GREEN with its guard deleted, because the generator had
+  produced the shape that guard governs ZERO times. Every one was green, and green for a
+  reason that had nothing to do with the code.
+  So instrument once, in a throwaway file you delete: count the fixtures, seeds or rows
+  that actually reach the forbidden state. A zero is your answer. This costs one run and
+  it is what turns "my test passes" into "my test could have failed".
+- DO NOT NAME A CAUSE YOU HAVE NOT LOOKED FOR. A failure signature -- \`sticky\` dying, a
+  null bounding box, an element hidden, a count off by one -- has a small set of textbook
+  causes, and your mind supplies one instantly and fluently. That fluency IS the trap:
+  "this cause would explain the symptom" and "this cause exists in the code in front of
+  me" are different claims, and only the first has been checked. The second is usually
+  one grep away. Measured 2026-08-30, one lane, TWICE in a day: "the quick-entry mount
+  receives no ledger prop, so nothing in this diff renders there" -- true premise, and
+  the mount was three lines away in a file never opened; and "a keep-apart notice above
+  the rows carried its own list inside a collapsed disclosure" -- where that component
+  renders no list and has no disclosure at all. Both went into a PR body and a commit
+  message before either was checked; both were disproven later by the author, by a
+  single grep.
+  So before a cause goes into a commit message, a comment, or a PR body, GREP FOR ITS
+  MECHANISM. Say "a collapsed disclosure hid it" only after grepping that subtree for a
+  disclosure. Say "nothing renders there" only after grepping for the mount. If the
+  mechanism is not there you do not have a cause -- you have a symptom and a guess, and
+  "I DON'T KNOW WHY" IS THE CORRECT THING TO WRITE. A wrong cause is worse than none: it
+  is durable, it is trusted by the next reader, and it sends them somewhere the bug is
+  not. This is the twin of the fixture rule above -- that one asks whether your test can
+  REACH the state it forbids, this one asks whether your explanation EXISTS. Both are one
+  cheap command.
+- A CONTROL THAT RE-QUERIES INSTEAD OF RE-USING PROVES NOTHING ABOUT YOUR GUARD.
+  When you forge the forbidden state to show an assertion can fail, the control must
+  run through the SAME locator, selector or query object the assertion runs through
+  -- not a fresh one you write to check your work. Measured 2026-08-31: a lane wrote
+  the positive control this brief demands, forged a card into the page, and watched
+  its detector return 1. The detector counted through a document-rooted query; the
+  guard chained a CSS selector onto an already-scoped root, so it asked for a main
+  element nested inside a main element. It matched nothing, ever. The control proved
+  that A query can find a card. It never proved that THE GUARD can.
+  This is worse than an assertion that simply cannot fail, because every visible
+  signal is right: the control exists, it reds on demand, the reasoning is sound,
+  and the guard is blind behind it. The lane found the same mismatch in a second
+  guard once it knew the shape. THE TELL IS A CONTROL THAT RE-QUERIES RATHER THAN
+  RE-USES: count through the guard's own object, mutate, count again through that
+  same object, restore, count again.
+  AND THIS APPLIES TO WHAT YOU ARE TOLD, not only to what you infer. A claim's
+  SOURCE does not change whether it is checkable. Measured 2026-08-31: a lane
+  re-derived every number in its own PR body against the pushed head -- catching a
+  mutation anchor that prettier had rewrapped, and an issue comment that had
+  appeared since its first read -- and then wrote "confirmed" over a one-line
+  aside from the ORCHESTRATOR that was wrong, without running the one command
+  that would have checked it. Authority is not evidence. When the coordinator,
+  an issue body, a PR description or a reviewer hands you a checkable fact that
+  your work will rest on, check it: they are working from summaries too, and a
+  wrong fact travels further when it arrives from above.
 - A NUMBER IN PROSE MUST COME FROM A COMMAND YOU RAN, AND THE COMMAND GOES BESIDE
   IT. A figure recalled from your own reasoning looks EXACTLY like one that came off
   a shell, and prose carries no test — so a specific number in a comment, a commit
@@ -611,7 +673,12 @@ ${landingLines}
   in any configuration — the real values are 93 and 141, and 147 looks like a garbled
   141. Both were plausible, both were durable, and one was already load-bearing for a
   design argument. "Two years" is the worst shape of all, because it sounds like
-  institutional memory rather than a measurement. So: print the command next to the
+  institutional memory rather than a measurement. A third shape is the SUMMARY
+  over exact work: a census whose per-site verdicts were every one correct — each
+  read line by line — sat under "92 hits, 60 mounts", which corresponded to no
+  quantity in the tree at all. Not files, not mounts, not lines, not occurrences.
+  The verdicts came from reading; the summary came from nowhere, and a reader
+  trusts the summary precisely BECAUSE the detail beneath it is sound. So: print the command next to the
   figure, and if you cannot name one, WRITE NO NUMBER — a reader has no way to tell
   the two kinds apart, and the next lane will quote yours as established fact.
 - MEASURE YOUR DIFF WITH THREE DOTS. \`git diff origin/main HEAD\` is UNSAFE in this

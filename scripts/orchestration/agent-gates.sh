@@ -219,9 +219,14 @@ if [ "$prettier_would_rewrite" = "1" ]; then
   fi
 
   echo
-  echo "NOTE: Prettier rewrote files. Commit them NOW and do not edit anything"
-  echo "afterwards — an edit after format is the known CI breaker this script exists"
-  echo "to prevent. If you must edit, re-run this script from the top."
+  echo "NOTE: Prettier rewrote files IN $(pwd)."
+  echo "If that is not the worktree you will commit and push from, those rewrites"
+  echo "are about to be discarded with it and the branch ships unformatted — a"
+  echo "verification run in a throwaway tree prints PASS and lands a red \`check\`."
+  echo "Measured on #4312: four files shipped unformatted exactly this way."
+  echo "Commit them NOW and do not edit anything afterwards — an edit after format"
+  echo "is the known CI breaker this script exists to prevent. If you must edit,"
+  echo "re-run this script from the top."
 fi
 
 echo
