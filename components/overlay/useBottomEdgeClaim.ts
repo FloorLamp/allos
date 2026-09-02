@@ -116,10 +116,19 @@ export function useBottomEdgeClaim<T extends HTMLElement>(
         // so a notice raised in that window comes to rest on the panel, which is
         // the collision this exists to prevent. Discounting the element's own
         // transform publishes the edge it comes to REST on, from its first
-        // frame. Overlay motion is transform/opacity only (app/globals.css,
-        // pinned by lib/__tests__/overlay-motion-chokepoint.test.ts), so the
-        // element's own transform is exactly its animation and a claimant at
-        // rest carries none.
+        // frame. A claimant at REST carries no transform of its own — neither
+        // dock draws one, and the overlay keyframes are the only thing that
+        // puts one on a sheet panel (app/globals.css; no surface hand-rolls a
+        // slide, per lib/__tests__/overlay-motion-chokepoint.test.ts) — so
+        // discounting it is a no-op everywhere except mid-motion, which is the
+        // only place it was wrong.
+        //
+        // What this does NOT reach: a panel already at rest that is being
+        // dragged away (useOverlayDrag writes the same property) or one playing
+        // its EXIT keeps its resting claim, because nothing re-measures an
+        // element that is only being translated. Both over-state the edge, so a
+        // notice clears more than it needs to — the safe direction, unlike an
+        // arrival.
         const { transform } = getComputedStyle(el);
         // `none` is not a <transform-list>, so it is not DOMMatrix's to parse.
         const shift =

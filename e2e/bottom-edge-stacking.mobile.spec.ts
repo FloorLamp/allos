@@ -409,9 +409,17 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   // second read taken a CDP round-trip later could never say: the claim is the
   // panel's RESTING edge from its first frame, not a number that catches up when
   // the animation ends. Before #4796 it read the edge the panel was sliding up
-  // FROM — 505.04 here — or, while the quick-log sheet was still playing its own
-  // exit, that departing panel's stale 582, and a notice raised in that window
-  // came to rest on the sheet.
+  // FROM — 505.04 here — and a notice raised in that window came to rest on the
+  // sheet.
+  //
+  // THE DEPARTING SHEET IS A SEPARATE, OPPOSITE CASE, and it is unchanged: the
+  // quick-log sheet is still playing its exit here, and its own resting claim
+  // (582) stays in the map until it unmounts, because nothing re-measures a
+  // panel that is only being translated away. That direction is SAFE — it
+  // over-states how much edge is spoken for, so a notice clears more than it
+  // needs to rather than landing on something. It is why 582 was byte-identical
+  // in every CI red: it was the max while the arriving panel under-reported at
+  // 505.04. With the arriving panel honest at 615 it simply loses the max.
   expect(arriving.claimed).toBeCloseTo(viewport - settled.y, 0);
 
   // Closing RELEASES the claim down to the nav dock — the same shape the
