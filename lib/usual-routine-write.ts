@@ -114,6 +114,7 @@ import { zonedDateParts } from "./date";
 import { statedInstantOnDate } from "./stated-time";
 import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
+import { newDoseBundle, type DoseBundleId } from "./dose-bundle";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import { addProteinGramsCore } from "./protein-daily-totals-write";
@@ -189,7 +190,8 @@ function datedDoseWrite(
   tz: string,
   date: string,
   dose: PendingDayDose,
-  loggedVia: LoggedVia
+  loggedVia: LoggedVia,
+  bundleId: DoseBundleId
 ): UsualRoutineDoseOutcome {
   const hhmm =
     parseClockHhmm(dose.timeOfDay) ?? zonedDateParts(tz, clockNow()).hhmm;
@@ -205,7 +207,8 @@ function datedDoseWrite(
       at,
       null,
       true,
-      loggedVia
+      loggedVia,
+      bundleId
     )
   );
 }
@@ -299,6 +302,13 @@ export function logUsualRoutineCore(
   // WHICH WRITER (#4305). One question, asked once for the whole bundle, because the
   // day is the same for every dose in it. Inside the stale-tap window nothing moves.
   const dated = !isDoseDateAccepted(t, date);
+  // ONE BUNDLE FOR THE WHOLE TAP (#4328), minted before the loop and stamped on every
+  // row it writes — including through the dated writer, because which writer the day
+  // routes to is not a fact about how many taps happened. This is what the Day ledger
+  // reads instead of inferring a composed write from a shared minute; a bundle that
+  // ends up with one member is dissolved by the reader, so nothing here has to decide
+  // in advance whether the intersection will still be plural.
+  const bundleId = newDoseBundle();
   const tz = getTimezone(profileId);
   const doses: UsualRoutineDoseResult[] = [];
   for (const doseId of namedDoseIds) {
@@ -311,7 +321,7 @@ export function logUsualRoutineCore(
       doseId,
       name: offered.name,
       outcome: dated
-        ? datedDoseWrite(profileId, tz, date, offered, via)
+        ? datedDoseWrite(profileId, tz, date, offered, via, bundleId)
         : // markDoseTaken is idempotent per (dose, date) and refuses a retired dose or
           // a paused item on its own terms. Its answer is carried, never assumed.
           //
@@ -328,7 +338,8 @@ export function logUsualRoutineCore(
             date,
             via,
             date === t ? undefined : null,
-            notifyMessageId
+            notifyMessageId,
+            bundleId
           ),
     });
   }

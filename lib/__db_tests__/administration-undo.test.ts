@@ -8,6 +8,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
+import { setTimezone } from "@/lib/settings";
 import {
   logAdministration,
   deleteAdministrationLog,
@@ -15,6 +17,10 @@ import {
   getRedoseArmingState,
   getPrnOverMaxItems,
 } from "@/lib/queries";
+import { logUsualRoutineCore } from "@/lib/usual-routine-write";
+import { pendingDayDoses } from "@/lib/queries/usual-routine";
+import { getDayDoseLedger } from "@/lib/queries/day-ledger";
+import { buildDayLedger, type LedgerStack } from "@/lib/day-ledger";
 
 // A PRN medication with a confirmed redose interval + daily max and tracked supply.
 function seedPrnMed(opts: {
@@ -178,5 +184,115 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     expect(deleteAdministrationLog(a.profileId, bLogId)).toBeNull();
     expect(adminIds(b.itemId)).toContain(bLogId); // still there
     expect(onHand(b.itemId)).toBe(9); // B's supply untouched by the failed delete
+  });
+});
+
+// ── THE UNDO CARRIES THE COMPOSED WRITE (#4328) ──────────────────────────────
+//
+// `restoreAdministrationLog` puts back the row that was deleted, which since #4328
+// includes the bundle that row was born with — so a member undone out of a stack rejoins
+// the stack rather than standing beside it as a lone dose with the same clock.
+//
+// THIS IS THE ONLY GUARD ON THAT ARGUMENT. Mutating the restore's `bundle_id` to `null`
+// leaves the rest of this tier green, because every other assertion about an undo is
+// about supply, the redose window and the daily count — none of them can see which row
+// the ledger files the restored dose on. So the claim is asserted where a person would
+// see it: through the ledger reader, on the stack row itself.
+describe("restoreAdministrationLog returns a member to its stack row (#4328)", () => {
+  // One composed tap, one minute: the clock is pinned so the three rows cannot straddle a
+  // minute boundary and split the collapse on `hhmm` for a reason this test is not about.
+  const NOW_ISO = "2026-06-15T08:12:00Z";
+  let priorNow: string | undefined;
+  beforeEach(() => {
+    priorNow = process.env.ALLOS_TEST_NOW;
+    process.env.ALLOS_TEST_NOW = NOW_ISO;
+  });
+  afterEach(() => {
+    if (priorNow == null) delete process.env.ALLOS_TEST_NOW;
+    else process.env.ALLOS_TEST_NOW = priorNow;
+  });
+
+  // Three morning supplements of ONE routine, all born a month back so the day owes each.
+  function seedStack(name: string): { profileId: number; doseIds: number[] } {
+    const profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+        .lastInsertRowid
+    );
+    setTimezone(profileId, "UTC");
+    const born = `${shiftDateStr(today(profileId), -30)} 09:00:00`;
+    const doseIds = ["Alpha", "Beta", "Gamma"].map((member) => {
+      const itemId = Number(
+        db
+          .prepare(
+            `INSERT INTO intake_items
+               (profile_id, name, kind, active, obligation, condition, stack, created_at)
+             VALUES (?, ?, 'supplement', 1, 'should', 'daily', 'Morning stack', ?)`
+          )
+          .run(profileId, `${name} ${member}`, born).lastInsertRowid
+      );
+      return Number(
+        db
+          .prepare(
+            `INSERT INTO intake_item_doses
+               (item_id, amount, time_of_day, food_timing, sort, created_at)
+             VALUES (?, '1 cap', 'morning', 'any', 0, ?)`
+          )
+          .run(itemId, born).lastInsertRowid
+      );
+    });
+    return { profileId, doseIds };
+  }
+
+  // The Morning stack row as the page builds it, or undefined when the day holds none.
+  // Read through the SAME pair the ledger renders from (`getDayDoseLedger` +
+  // `buildDayLedger`), never a hand-rolled query: a bundle is only ever a fact about
+  // which row a dose lands on.
+  function stackRow(profileId: number, date: string): LedgerStack | undefined {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: getDayDoseLedger(profileId, date),
+      pending: pendingDayDoses(profileId, date),
+    });
+    const morning = groups.find((g) => g.bucket === "Morning");
+    return morning?.rows.find((r): r is LedgerStack => r.kind === "stack");
+  }
+
+  it("a member deleted out of a composed write rejoins the same row when it is restored", () => {
+    const { profileId, doseIds } = seedStack("Undo Stack");
+    const date = today(profileId);
+
+    // ONE tap of all three, through the real composed writer — the bundle is minted
+    // there, so nothing in this test spells one.
+    const wrote = logUsualRoutineCore(
+      profileId,
+      "Morning",
+      date,
+      [],
+      doseIds,
+      "page"
+    );
+    expect(wrote.kind).toBe("logged");
+    const before = stackRow(profileId, date);
+    expect(before?.written).toHaveLength(3);
+
+    // Delete the middle member. Two remain on the row — still a composed write, now
+    // stating two.
+    const middle = (
+      db
+        .prepare(
+          "SELECT id FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseIds[1], date) as { id: number }
+    ).id;
+    const removed = deleteAdministrationLog(profileId, middle);
+    expect(removed).not.toBeNull();
+    expect(stackRow(profileId, date)?.written).toHaveLength(2);
+
+    // Restore. THE CLAIM: three again, on ONE row — not two plus a lone dose beside it.
+    expect(restoreAdministrationLog(profileId, removed!.undoId)).toBe(true);
+    const after = stackRow(profileId, date);
+    expect(after?.written).toHaveLength(3);
+    // And it is the SAME row, keyed on the same composed action the tap recorded.
+    expect(after?.id).toBe(before?.id);
   });
 });
