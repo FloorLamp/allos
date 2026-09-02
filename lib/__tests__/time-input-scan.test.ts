@@ -423,12 +423,23 @@ export function stillHandRolled(src: string): boolean {
   );
 }
 
-/** Files mounting `<WhenControl>` directly. Comments and strings do not count. */
+/**
+ * Files mounting `<WhenControl>` directly. Comments and strings do not count.
+ *
+ * PRODUCT SURFACES ONLY. The register below argues, per file, why a hand-rolled
+ * composition is the right shape for THAT surface — a question a test file that
+ * renders the control to assert its behaviour is not asking. Scanning them would
+ * put every such test in a register of surfaces, where its entry would say
+ * nothing and its removal would be a false alarm. The raw-time-input ratchet
+ * above deliberately keeps scanning them: a raw `<input type="time">` in a
+ * fixture is still a second spelling of a time input to keep in step.
+ */
 export function whenControlMounts(): string[] {
   return [
     ...scanDirs(SCAN_DIRS, (text) => findTags(text, "WhenControl", () => true)),
   ]
     .map(([rel]) => rel)
+    .filter((rel) => !rel.includes("/__tests__/"))
     .sort();
 }
 
