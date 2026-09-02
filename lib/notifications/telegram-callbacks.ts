@@ -1728,8 +1728,10 @@ async function handleFoodLog(
     // does not go through it, so it makes it here. A same-day tap is untouched.
     backfilling ? USUAL_BACKFILL : food.origin,
     tapAt,
-    backfilling ? food.window : undefined,
-    backfilling ? undefined : { eatenAt: tapAt, source: "tap" },
+    // A backfill DECLARES the nudge's window; a same-day tap STATES its instant. One
+    // argument says which (#4729); the two ternaries it replaces were a caller
+    // remembering that only one of them may be filled in.
+    backfilling ? food.window : { eatenAt: tapAt, source: "tap" },
     origin
   );
   await answerCallbackQuery(
@@ -1811,8 +1813,8 @@ async function handleFoodProtein(
     // otherwise count as evidence about a day nobody was living.
     backfilling ? USUAL_BACKFILL : token.origin,
     tapAt,
-    backfilling ? token.window : undefined,
-    backfilling ? undefined : { eatenAt: tapAt, source: "tap" },
+    // The same one placement its food-group sibling above passes (#4729).
+    backfilling ? token.window : { eatenAt: tapAt, source: "tap" },
     origin
   );
   await answerCallbackQuery(

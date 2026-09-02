@@ -388,6 +388,24 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/nutrition/actions.ts",
+    fn: "logFoodServing",
+    why: "one spelling for the subject (#4730): the bar and the record's add door post `profile_id`, so the ADD takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) reader as the correction below. It hand-rolled that gate around a `profileId` key nothing posts, so a subject-carrying add fell back to the ACTING profile and wrote a caregiver's serving onto themselves",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/actions.ts",
+    fn: "undoFoodServing",
+    why: "one spelling for the subject (#4730): the add's inverse must resolve the SAME subject the add did (#3611), so it reads it through the same gateItemProfile()",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/actions.ts",
+    fn: "readFoodServingTruth",
+    why: "read-only (#4730): re-reads the SUBJECT's day + meal projection after a burst settles, resolving that subject through the same gateItemProfile() its add and undo do so the three cannot answer about different profiles",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/actions.ts",
     fn: "updateFoodLogEvent",
     why: "record correction (#4009): corrects the ROW's serving via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the eaten-at wall time resolves in the SUBJECT's timezone",
     gate: "gateItemProfile",

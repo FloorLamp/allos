@@ -416,6 +416,19 @@ export function gatherHistoryLog(
   // `getAllSubstanceDailyTotals` reads that counter — so a serving logged through
   // Nutrition still reaches the record, once, as a substance. Food TOTALS are
   // untouched: this is the record's row set, not the nutrition arithmetic.
+  //
+  // …EXCEPT FOR A KNOWN MINOR, WHERE IT DISAPPEARS — AN OPEN OWNER QUESTION (#4072).
+  // The substance gate below does not run for one, and this exclusion is unconditional,
+  // so such a row is on NEITHER half while still counting in
+  // `getAllSubstanceDailyTotals`. That is the ruling above working exactly as measured,
+  // and it is a row nobody can undo from the surface that would undo it; the two
+  // readings want opposite code, so the exclusion stays as the ruling set it and this
+  // change stops the record CREATING the state instead.
+  //
+  // ONE EXPRESSION for "does this subject's record carry substance content at all",
+  // read by that gate and by the correction's offer, so the record cannot show a group
+  // it would then refuse to write.
+  const substanceShown = !isMinor(getProfileAge(profileId));
   if (wants(opts, "food")) {
     const boundaries = profileFoodSlotBoundaries(profileId);
     const ledger = getFoodLedgerPage(
@@ -471,6 +484,7 @@ export function gatherHistoryLog(
           clock: hhmm,
           clockKind: stated ? "stated" : "logged",
           slotBoundaries: boundaries,
+          substanceCorrectable: substanceShown,
         },
       });
     }
@@ -613,8 +627,9 @@ export function gatherHistoryLog(
   // LIFE-STAGE GATED, exactly as the surface that owns them is (#1174/#1279): the
   // substance record is adult-only content, and a page that merged it in for a known
   // minor would be widening exposure past what that profile's own pages show. Asked of
-  // the SUBJECT's age, so `?view=everyone` inherits the gate per member.
-  if (wants(opts, "substance") && !isMinor(getProfileAge(profileId))) {
+  // the SUBJECT's age, so `?view=everyone` inherits the gate per member — and it is the
+  // same `substanceShown` the food correction's offer reads (#4072).
+  if (wants(opts, "substance") && substanceShown) {
     const totals = getAllSubstanceDailyTotals(profileId).filter(
       (row) =>
         row.date <= until &&

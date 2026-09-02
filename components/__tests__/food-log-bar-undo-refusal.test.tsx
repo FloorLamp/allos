@@ -956,7 +956,7 @@ describe("FoodLogBar projection publication", () => {
     fireEvent.click(screen.getByTestId("log-cruciferous"));
     expect(actions.logFoodServing).toHaveBeenCalledTimes(1);
     const submitted = actions.logFoodServing.mock.calls[0][0] as FormData;
-    expect(submitted.get("profileId")).toBe("7");
+    expect(submitted.get("profile_id")).toBe("7");
 
     view.rerender(barTree({ profileId: 8, day: profileEight }));
     view.rerender(barTree({ profileId: 7, day: returnedProfileSeven }));

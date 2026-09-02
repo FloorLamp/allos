@@ -73,7 +73,6 @@ describe("getLoggedFoodWindows", () => {
       y,
       "page",
       `${y}T${EVENING}`,
-      undefined,
       {
         eatenAt: `${y}T${MIDDAY}`,
         source: "stated",
