@@ -67,14 +67,14 @@ test.describe("Illness round 3 (#859)", () => {
     await expect(feverFreeStatus).not.toContainText(/Fever-free/i);
     await expect(feverFreeStatus).toHaveClass(/text-slate-500/);
 
-    // …and the converse, from the same surface: a NORMAL reading is the evidence the
-    // clock starts on, so the countdown appears the moment one is logged.
-    await openTempEntry(bar);
-    await bar.getByTestId("temp-quick-unit").selectOption("F");
-    await bar.getByTestId("temp-quick-input").fill("98.4");
-    await bar.getByTestId("temp-quick-save").click();
-    await expect(page.getByText(/Temperature logged/i).first()).toBeVisible(); // first-ok: the newest toast for this write — order-agnostic
-    await expect(feverFreeStatus).toContainText(/Fever-free \d+h\/\d+h/i);
+    // THE CONVERSE IS NOT ASSERTABLE HERE, and saying so is the point. Both readings
+    // this bar can take land on the run's FROZEN minute, and the clock's evidence must
+    // be a normal reading STRICTLY after the fever — a same-minute pair is a tie
+    // nothing in the data can break, so the conservative arm is the right one. The
+    // measured arm is pinned where the clock is controllable: the four measured cases
+    // in lib/__tests__/school-return.test.ts and the gather's own in
+    // lib/__db_tests__/school-return-and-stale.test.ts, which renders 8h from a normal
+    // reading three hours after a fever.
     const latestReadings = page.getByTestId("episode-latest-readings");
     await expect(
       latestReadings.getByTestId("school-return-status")

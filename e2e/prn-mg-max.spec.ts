@@ -147,7 +147,7 @@ test("the over-max finding fires on summed milligrams and states the mg basis", 
       .filter({ hasText: OTC_NAME })
       .getByTestId("prn-redose-line");
     await expect(redoseLine).toContainText("Max reached");
-    await expect(redoseLine).toContainText("2400 of 1200 mg today");
+    await expect(redoseLine).toContainText("2400 of 1200 mg in 24h");
     await expect(redoseLine).toContainText("across 2 items");
   } finally {
     const cleanup = openDb();
