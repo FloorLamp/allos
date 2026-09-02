@@ -10,6 +10,7 @@ import {
 } from "@/lib/trends-practices";
 import VisualizationDetails from "@/components/VisualizationDetails";
 import Disclosure from "@/components/Disclosure";
+import { StateCells, StateLegend } from "@/components/StateCells";
 
 // One practice, one complete story (#2151): the fixed 26-week lens lives beside
 // the practice's affordances and history on /wellness. The card has no competing
@@ -37,37 +38,28 @@ function WeeksInRange({ practice }: { practice: PracticeTrend }) {
   const showLegend = practice.perWeekMax != null;
   return (
     <div className="mt-3" data-testid="practice-weeks-in-range">
-      <ol
-        className="flex flex-wrap gap-1"
-        aria-label="Completed weeks in range"
-      >
-        {practice.weeks.map((week) => (
-          <li
-            key={week.start}
-            data-testid="practice-week-cell"
-            data-verdict={week.verdict}
-            className={`h-4 w-4 rounded-xs ${VERDICT_CELL[week.verdict]}`}
-          >
-            <span className="sr-only">{weekCellTitle(week, weekly)}</span>
-          </li>
-        ))}
-      </ol>
-      <p
-        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
-        data-testid="practice-weeks-legend"
-      >
-        {LEGEND.filter((verdict) => showLegend || verdict !== "at-ceiling").map(
-          (verdict) => (
-            <span key={verdict} className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden
-                className={`h-2.5 w-2.5 rounded-xs ${VERDICT_CELL[verdict]}`}
-              />
-              {PRACTICE_VERDICT_LABEL[verdict]}
-            </span>
-          )
-        )}
-      </p>
+      <StateCells
+        label="Completed weeks in range"
+        cells={practice.weeks.map((week) => ({
+          key: week.start,
+          tone: VERDICT_CELL[week.verdict],
+          state: week.verdict,
+          label: weekCellTitle(week, weekly),
+          testId: "practice-week-cell",
+        }))}
+      />
+      <StateLegend
+        label="Week verdict legend"
+        testId="practice-weeks-legend"
+        className="mt-2"
+        items={LEGEND.filter(
+          (verdict) => showLegend || verdict !== "at-ceiling"
+        ).map((verdict) => ({
+          key: verdict,
+          tone: VERDICT_CELL[verdict],
+          label: PRACTICE_VERDICT_LABEL[verdict],
+        }))}
+      />
     </div>
   );
 }
