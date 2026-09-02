@@ -45,9 +45,23 @@ export function collapseBodyMetricsByDate(
     });
     const out: NormBodyMetric = { date };
     for (const r of sorted) {
-      if (r.weight_kg != null) out.weight_kg = r.weight_kg;
-      if (r.body_fat_pct != null) out.body_fat_pct = r.body_fat_pct;
-      if (r.resting_hr != null) out.resting_hr = r.resting_hr;
+      // Each instant is assigned INSIDE its own measure's branch, so a later reading
+      // that wins the value brings its own instant and a reading that contributes no
+      // value cannot leave its instant behind describing somebody else's number
+      // (#3950). Assigning `undefined` is deliberate: a winning reading that states no
+      // instant must CLEAR an earlier one rather than inherit it.
+      if (r.weight_kg != null) {
+        out.weight_kg = r.weight_kg;
+        out.weight_at = r.weight_at;
+      }
+      if (r.body_fat_pct != null) {
+        out.body_fat_pct = r.body_fat_pct;
+        out.body_fat_at = r.body_fat_at;
+      }
+      if (r.resting_hr != null) {
+        out.resting_hr = r.resting_hr;
+        out.resting_hr_at = r.resting_hr_at;
+      }
       if (r.partial_day) out.partial_day = true;
     }
     return out;
