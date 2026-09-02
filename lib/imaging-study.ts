@@ -298,21 +298,33 @@ export function studyFindingText(study: {
 // THE IMPRESSION SECTION OF A RENDERED REPORT (#3594), or null.
 //
 // The rendered form of a radiology report is a whole document — banner, header,
-// technique, findings, impression, signature — and the decoders collapse it to a
-// single line, so there are no line breaks to split on. The only signal we trust is
-// the report's OWN section heading: text after an "IMPRESSION:" (or
-// "IMPRESSION/CONCLUSION:", "CONCLUSION:") label, up to the next ALL-CAPS heading.
+// technique, findings, impression, signature — and the only signal we trust for
+// where the impression starts and stops is a section heading that OWNS ITS LINE.
 //
-// NO HEADING, NO PARSE. A wrong sentence stored as the finding is a worse medical
-// record than a verbose one — the ruling's instruction is to err toward storing less —
-// so a report that does not label its impression contributes nothing here and is read
-// through the narrative fallback above.
+// A MID-LINE "WORD:" IS NOT A HEADING, and this is the rule the whole parser turns
+// on. Clinical sentences are full of capitalised tokens that end in a colon — spine
+// levels ("L4-L5:"), hyphenated disease names ("COVID-19:"), quadrant abbreviations
+// ("RLQ:") — so treating any of them as the next section cuts the finding in half
+// and stores a sentence torso the report never said. That fragment then OUTRANKS the
+// intact narrative everywhere, because studyFindingText prefers the impression. A
+// verbose impression is at least true; a truncated one is not, so "err toward storing
+// less" means answering NULL, never answering a fragment.
+//
+// Both ends therefore anchor to a line: a heading is a label at the start of a line
+// (optionally indented), and the section runs to the next line that starts with an
+// ALL-CAPS label — or to the end of the text when none does. A document the decoders
+// collapsed onto ONE line has no line structure left to read, so unless it BEGINS
+// with the impression label there is nothing here to trust and the answer is null.
+//
+// NO HEADING, NO PARSE. A report that does not label its impression on a line of its
+// own contributes nothing to this field and is read through the narrative fallback
+// above, which shows the whole report — so declining hides nothing from anybody.
 const IMPRESSION_HEADING =
-  /(?:^|[\s.;])(?:overall\s+)?(?:impression|conclusion)(?:\s*\/\s*(?:conclusion|impression))?\s*[:\-\u2013\u2014]\s*/i;
-// The next section's heading: an ALL-CAPS run followed by a colon ("RECOMMENDATION:",
-// "ELECTRONICALLY SIGNED BY:"). Two characters minimum so an initial ("A:") does not
-// cut a sentence in half.
-const NEXT_SECTION_HEADING = /\s(?=[A-Z][A-Z0-9 /&'-]{2,}:)/;
+  /(?:^|\n)[ \t]*(?:overall[ \t]+)?(?:impression|conclusion)(?:[ \t]*\/[ \t]*(?:conclusion|impression))?[ \t]*[:\-\u2013\u2014][ \t]*/i;
+// The next section's heading: a line whose first token is an ALL-CAPS run ending in a
+// colon ("RECOMMENDATION:", "ELECTRONICALLY SIGNED BY:"). Anchored to the newline, so
+// a capitalised token INSIDE a sentence can never end the section.
+const NEXT_SECTION_HEADING = /\n[ \t]*(?=[A-Z][A-Z0-9 /&'-]{2,}:)/;
 
 export function parseImpressionSection(
   narrative: string | null | undefined

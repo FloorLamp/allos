@@ -262,31 +262,67 @@ describe("impressionDisplayText — the finding, not its heading (#3498 item 3)"
 // now keeps its own column and this parser fills the impression only when the report
 // labels its own impression section. The decoders collapse a rendered report to one
 // line, so these cases are single-line on purpose.
-describe("parseImpressionSection — no heading, no parse (#3594)", () => {
-  const REPORT =
+describe("parseImpressionSection — a heading owns a line, or there is no heading (#3594)", () => {
+  // A rendered report the decoders collapsed to ONE line: every "SECTION:" in it is
+  // mid-line, so none of them is a heading this parser can trust — the impression is
+  // in there, and which sentence it is cannot be told apart from prose.
+  const COLLAPSED =
     "OBSTETRICS REPORT (Signed Final 10/10/2024) PATIENT: Fictional Patient " +
     "TECHNIQUE: Transabdominal ultrasound. FINDINGS: Single intrauterine " +
     "gestation. IMPRESSION: Normal interval growth at 20 weeks. " +
     "RECOMMENDATION: Routine follow-up in four weeks.";
+  // The same report with its line structure intact, which is what the CDA block map
+  // and a text/plain attachment preserve.
+  const LINED =
+    "OBSTETRICS REPORT (Signed Final 10/10/2024)\n" +
+    "TECHNIQUE: Transabdominal ultrasound.\n" +
+    "FINDINGS: Single intrauterine gestation.\n" +
+    "IMPRESSION: Normal interval growth at 20 weeks.\n" +
+    "RECOMMENDATION: Routine follow-up in four weeks.";
 
   it.each([
     // [what the report looks like, the impression we are willing to store]
-    [REPORT, "Normal interval growth at 20 weeks."],
+    //
+    // A MID-SENTENCE CAPS TOKEN IS NOT A HEADING. Spine levels, hyphenated disease
+    // names and quadrant abbreviations all end in a colon inside a clinical
+    // sentence, and cutting there stores a sentence torso that the report does not
+    // say — which then OUTRANKS the intact narrative on every surface, because
+    // studyFindingText prefers the impression. Storing less means storing null; a
+    // truncated finding is not less, it is false.
+    [
+      "IMPRESSION: Mild degenerative change at L4-L5: no significant canal " +
+        "stenosis. No fracture or malalignment.",
+      "Mild degenerative change at L4-L5: no significant canal stenosis. " +
+        "No fracture or malalignment.",
+    ],
+    [
+      "IMPRESSION: Findings compatible with COVID-19: bilateral peripheral " +
+        "ground-glass opacities.",
+      "Findings compatible with COVID-19: bilateral peripheral ground-glass " +
+        "opacities.",
+    ],
+    [
+      "IMPRESSION: 1. Appendicitis. 2. Free fluid in RLQ: small volume.",
+      "1. Appendicitis. 2. Free fluid in RLQ: small volume.",
+    ],
+    // A heading that owns its line delimits the section on both sides.
+    [LINED, "Normal interval growth at 20 weeks."],
     ["IMPRESSION: No acute finding.", "No acute finding."],
     ["Impression: No acute finding.", "No acute finding."],
     ["IMPRESSION/CONCLUSION: No acute finding.", "No acute finding."],
     ["CONCLUSION: No acute finding.", "No acute finding."],
-    [
-      "FINDINGS: Clear lungs. OVERALL IMPRESSION: No acute finding.",
-      "No acute finding.",
-    ],
     // Sentence-cased trailing sections are not headings, so they stay with the
     // impression rather than being guessed away.
     [
       "IMPRESSION: No acute finding. Compared with the prior study.",
       "No acute finding. Compared with the prior study.",
     ],
-    // Nothing labelled → nothing parsed. The narrative fallback carries these.
+    // AMBIGUOUS SHAPES ANSWER NULL. A label buried mid-line could be a heading or
+    // could be prose ("the clinical impression: ..."), and the narrative fallback
+    // shows the whole report either way — so nothing is hidden by declining.
+    [COLLAPSED, null],
+    ["FINDINGS: Clear lungs. OVERALL IMPRESSION: No acute finding.", null],
+    // Nothing labelled → nothing parsed.
     ["Single intrauterine gestation. Normal growth.", null],
     ["CHEST X-RAY 2 VIEWS FINDINGS: Clear lungs.", null],
     ["IMPRESSION:", null],

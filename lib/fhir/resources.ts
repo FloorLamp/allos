@@ -1575,6 +1575,15 @@ function capNarrative(s: string): string {
     : t;
 }
 
+// The impression a report labels for itself, under the SAME bound as the narrative
+// (#3594). A labelled section that runs to the end of a runaway document parses to
+// the whole body, and this is the field every display surface prefers — so the cap
+// belongs on the parse result, not only on the narrative it came from.
+function capImpression(narrative: string | null): string | null {
+  const section = parseImpressionSection(narrative);
+  return section ? capNarrative(section) : null;
+}
+
 // Decode ONE inline FHIR Attachment to plain text — ONLY when it carries inline
 // base64 `data` with a text-ish contentType. A binary attachment (application/pdf,
 // image/*) or a remote `url`-only reference returns null: we DELIBERATELY never fetch
@@ -1698,7 +1707,7 @@ export function mapImagingStudyResource(
     dose_msv: null,
     // The study's own description + notes: a narrative, not a labelled impression
     // (#3594). parseImpressionSection fills the impression only if it says so.
-    impression: parseImpressionSection(impressionRaw),
+    impression: capImpression(impressionRaw),
     report_narrative: impressionRaw ? capNarrative(impressionRaw) : null,
     indication: conceptListText(r?.reasonCode),
     status: typeof r?.status === "string" ? r.status : null,
@@ -1777,7 +1786,7 @@ export function mapDiagnosticReport(
           // rendered report is parsed only if it labels its own impression section.
           impression: conclusionImpression
             ? capNarrative(conclusionImpression)
-            : parseImpressionSection(formText),
+            : capImpression(formText),
           report_narrative: capNarrative(narrative),
           indication: null,
           status: typeof r?.status === "string" ? r.status : null,
@@ -1853,7 +1862,7 @@ export function mapDocumentReferenceImaging(
     dose_msv: null,
     // A whole rendered report and nothing else — the impression is only what the
     // document labels as one (#3594).
-    impression: parseImpressionSection(text),
+    impression: capImpression(text),
     report_narrative: capNarrative(text),
     indication: null,
     status:

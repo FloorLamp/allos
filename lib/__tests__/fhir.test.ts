@@ -340,6 +340,41 @@ describe("parseFhirBundle", () => {
     expect(rec!.external_id).toBe("fhir:dr-conclusion:dr-path");
   });
 
+  // #3594: the 8000-character narrative cap is an invariant of this field, and the
+  // parsed impression is subject to it exactly as the narrative is. A runaway report
+  // whose labelled IMPRESSION runs to the end parses to the whole body, so an
+  // uncapped parse result puts tens of thousands of characters into the column every
+  // display surface PREFERS — while the narrative beside it stays bounded.
+  it("caps a parsed impression at the same bound as the narrative (#3594)", () => {
+    const body = "Innumerable small nodules are again noted. ".repeat(1400);
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "DocumentReference",
+          id: "docref-runaway",
+          status: "current",
+          type: { text: "Radiology Report" },
+          date: "2024-07-01",
+          content: [
+            {
+              attachment: {
+                contentType: "text/plain",
+                data: b64(`IMPRESSION: ${body}`),
+              },
+            },
+          ],
+        },
+      ])
+    );
+    const study = r.imagingStudies![0];
+    // The source really is far past the bound, so the assertion has something to
+    // discriminate against — a fixture under the cap would pass either way.
+    expect(body.length).toBeGreaterThan(20000);
+    expect(study.report_narrative!.length).toBeLessThanOrEqual(8001);
+    expect(study.impression).not.toBeNull();
+    expect(study.impression!.length).toBeLessThanOrEqual(8001);
+  });
+
   it("ingests an inline-text imaging DocumentReference but NOT a binary/remote one (#708 item 4)", () => {
     const r = parseFhirBundle(
       bundle([

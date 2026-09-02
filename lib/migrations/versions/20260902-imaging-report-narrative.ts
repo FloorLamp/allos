@@ -13,13 +13,18 @@ import type { Migration } from "../runner";
 // states a finding it did not parse is a record that states a falsehood.
 //
 // So the narrative keeps its storage under a name that describes it, and `impression`
-// is re-added for the parsed finding alone. An imported row's text moves to
-// `report_narrative` — we cannot tell after the fact whether it was a whole report or
-// a real impression, and the ruling errs toward storing LESS in the parsed field. A
-// MANUAL row is different: its author typed the impression into the impression box,
-// so it moves back and the form round-trips exactly as before. Every "what did the
-// report say" surface reads the impression with the narrative as its fallback, so
-// nothing a person could read is lost or hidden.
+// is re-added for the parsed finding alone. A row carrying a `document_id` moves its
+// text to `report_narrative` — we cannot tell after the fact whether it was a whole
+// report or a real impression, and the ruling errs toward storing LESS in the parsed
+// field. A row with NO `document_id` moves back to `impression`, and that is the
+// rule as WRITTEN: `document_id IS NULL`, not "a human typed this". It covers the
+// study form's own rows, whose author did type into the impression box — and it also
+// covers a DOCUMENTLESS (paste) import, which stamps a NULL document_id and a NULL
+// source, so its whole-report text stays in `impression` where it already was. That
+// preserves the status quo for those rows rather than regressing them; the paste and
+// AI paths are a separate, un-split ingest half. Every "what did the report say"
+// surface reads the impression with the narrative as its fallback, so nothing a
+// person could read is lost or hidden either way.
 export function up(db: Database.Database): void {
   const columns = new Set(
     (
