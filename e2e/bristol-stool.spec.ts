@@ -388,3 +388,125 @@ test("the panel is absent for a profile with nothing logged", async ({
   await page.goto("/trends");
   await expect(page.getByTestId("bristol-panel")).toHaveCount(0);
 });
+
+// ── STOOL JOINS THE RECORD (#4433) ────────────────────────────────────────────
+//
+// The absence this closes was a mis-tap being PERMANENT: a logged movement rendered on
+// the Trends dot strip and nowhere correctable. Only a browser can prove the ⋯ round
+// trip — the DB tier cannot render a page and the action tier posts its own FormData,
+// so nothing below the menu was ever driven by the thing that actually sends it.
+//
+// AND THE DOOR IS WHAT MAKES A PAST DAY REACHABLE AT ALL. `TAP_REACH` files
+// `stool-form` as a `today` tap, correctly — the sheet states no day — so a movement
+// remembered the NEXT morning had no surface in the app before this.
+
+const localDay = (offsetDays: number) =>
+  dateStrInTz(TZ, new Date(frozenNow().getTime() + offsetDays * 86_400_000));
+
+function clearStoolTrash(): void {
+  const db = new Database(DB_PATH);
+  try {
+    db.pragma("busy_timeout = 5000");
+    // The holding rows this spec's delete mints, so a failed run leaves no capture for
+    // the Data → Trash specs to trip over.
+    db.prepare(
+      "DELETE FROM deleted_rows WHERE profile_id = 1 AND kind = 'metric-sample'"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("the record's stool rows (#4433)", () => {
+  test.afterEach(() => clearStoolTrash());
+
+  test("corrects a mis-tapped type in place and deletes with undo", async ({
+    page,
+  }) => {
+    test.slow();
+    const day = localDay(-1);
+    seedBristol(day, "08:12:00", 3);
+    seedBristol(day, "19:40:00", 6);
+
+    await page.goto("/history?kind=stool");
+
+    // Both movements are their own row — instant grain, never a day's average.
+    const rows = page.getByTestId("history-row");
+    await expect(rows.filter({ hasText: "Type 3" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "Type 6" })).toHaveCount(1);
+
+    // THE CORRECTION. "Type 3, meant 4" is the mis-tap the issue names, and the form
+    // offers the type ALONE — the reading's instant is its address, so a time field
+    // here would fork the row rather than move it.
+    const misTapped = rows.filter({ hasText: "Type 3" });
+    await hydratedClick(page, misTapped.getByTestId("overflow-menu-trigger"));
+    // The menu is portalled, so the item is addressed on the PAGE — the row scope
+    // above is what decided which ⋯ opened it.
+    await page.getByTestId("history-row-edit").click();
+    const form = page.getByTestId("history-row-editing");
+    await expect(form.getByTestId("stool-form-when")).toHaveCount(0);
+    await form.getByTestId("stool-form-type").selectOption("4");
+    await settledClick(page, form.getByTestId("stool-form-save"));
+
+    await expect(rows.filter({ hasText: "Type 4" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "Type 3" })).toHaveCount(0);
+    // ONE row still, at the same instant: the correction moved the type and nothing
+    // else. Read from the store rather than from the page, because a fork would render
+    // as a second row that a "the row I clicked changed" assertion never looks at.
+    expect(bristolRows().map((r) => [r.started_at, r.value])).toEqual([
+      [`${day}T08:12:00`, 4],
+      [`${day}T19:40:00`, 6],
+    ]);
+
+    // THE DELETE, through the shared undo-capture contract (#2642).
+    const corrected = rows.filter({ hasText: "Type 4" });
+    await hydratedClick(page, corrected.getByTestId("overflow-menu-trigger"));
+    await page.getByTestId("history-row-delete").click();
+    await settledClick(
+      page,
+      page.getByTestId("confirm-dialog").getByRole("button", { name: "Delete" })
+    );
+    await expect(rows.filter({ hasText: "Type 4" })).toHaveCount(0);
+    await expect(page.getByText("Movement removed")).toBeVisible();
+    // The row beside it is untouched — "the row I clicked went away" cannot see a
+    // delete that took the wrong reading with it.
+    await expect(rows.filter({ hasText: "Type 6" })).toHaveCount(1);
+    expect(bristolRows().map((r) => r.value)).toEqual([6]);
+
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    await expect(rows.filter({ hasText: "Type 4" })).toHaveCount(1);
+    expect(bristolRows().map((r) => [r.started_at, r.value])).toEqual([
+      [`${day}T08:12:00`, 4],
+      [`${day}T19:40:00`, 6],
+    ]);
+  });
+
+  test("the record's door logs a movement onto the day being read", async ({
+    page,
+  }) => {
+    test.slow();
+    const day = localDay(-2);
+    await page.goto(`/history?kind=stool&day=${day}`);
+
+    await hydratedClick(page, page.getByTestId("history-add-open-stool"));
+    const panel = page.getByTestId("history-add-panel-stool");
+    // The date opens on the day the reader was looking at — the whole reason to add
+    // from here is a gap you just found — and the time is EMPTY, never defaulted.
+    // `DateField` renders the login's DISPLAY format, so the ISO day is asserted where
+    // it is unambiguous: on the row this writes, below.
+    await expect(panel.getByTestId("stool-form-when-date")).not.toHaveValue("");
+    await expect(panel.getByTestId("stool-form-when-time")).toHaveValue("");
+    await settledFill(page, panel.getByTestId("stool-form-when-time"), "07:05");
+    await panel.getByTestId("stool-form-type").selectOption("5");
+    await settledClick(page, panel.getByTestId("stool-form-save"));
+
+    await expect(
+      page.getByTestId("history-row").filter({ hasText: "Type 5" })
+    ).toHaveCount(1);
+    // Filed on the day it names, at the minute it states — not on today, which is
+    // what `logStoolForm` re-derived before this leg.
+    expect(bristolRows()).toEqual([
+      { date: day, started_at: `${day}T07:05:00`, value: 5 },
+    ]);
+  });
+});
