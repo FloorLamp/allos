@@ -32,7 +32,6 @@
 
 import { db, today } from "./db";
 import { now as clockNow } from "./clock";
-import { daysBetweenDateStr, isRealIsoDate } from "./date";
 import { getTimezone } from "./settings";
 import { reanchorStatedAt, statedInstantOnDate } from "./stated-time";
 import { isProteinNudgeKey } from "./protein-nudge";
@@ -45,7 +44,7 @@ import {
   updateHistoricalDose,
 } from "./queries/intake/adherence";
 import { historicalDoseErrorMessage } from "./historical-dose-error";
-import { LEDGER_DAY_SPAN } from "./day-ledger";
+import { isPastWriteAccepted } from "./log-manifest";
 
 /** What a batch does to every row in it. One verb, one batch. */
 export type LedgerSelectionEdit =
@@ -91,18 +90,6 @@ export type LedgerSelectionOutcome =
 
 const ROW_GONE = "No longer on this day.";
 const TIME_UNAVAILABLE = "That time does not exist on this day.";
-
-// The day a selected row may be moved TO, checked here rather than at the surface. The
-// ledger's own day picker offers today plus the previous six days (LEDGER_DAY_SPAN) and
-// that markup was the only bound: a hand-built POST could re-date a serving into the next
-// century, where it would sit in every rollup for ever. The deep doors keep reaching
-// further back — `/history`'s food door and `logHistoricalDose` are the honest path for a
-// year-old row — so this bounds the LEDGER's batch, not the record.
-function movableTo(profileId: number, date: string): boolean {
-  if (!isRealIsoDate(date)) return false;
-  const back = daysBetweenDateStr(today(profileId), date);
-  return back != null && back <= 0 && back > -LEDGER_DAY_SPAN;
-}
 
 interface SelectableServing {
   id: number;
@@ -169,7 +156,7 @@ export function editDayLedgerSelectionCore(
   selection: LedgerSelection,
   edit: LedgerSelectionEdit
 ): LedgerSelectionOutcome {
-  if (!isRealIsoDate(date) || date > today(profileId))
+  if (!isPastWriteAccepted(today(profileId), date))
     return { kind: "invalid-edit" };
   const tz = getTimezone(profileId);
 
@@ -186,7 +173,19 @@ export function editDayLedgerSelectionCore(
     stamped = statedInstantOnDate(date, edit.hhmm, tz);
     if (!stamped) return { kind: "invalid-edit" };
   }
-  if (edit.kind === "move-day" && !movableTo(profileId, edit.date))
+  // THE DAY A SELECTION MAY MOVE TO is the same question as the day it may be edited on,
+  // and now has the same answer: a real past day. #4754 retired the 7-day floor this
+  // once carried — #4477 makes the ledger a one-day random-access view of ANY day, and
+  // the deep doors (`/history`'s food door, `logHistoricalDose`) already reach any past
+  // day for the same profile under the same access, so the floor was never an
+  // authorisation. Not-future is the whole remaining rule, spelled as the shared
+  // invariant every domain core holds rather than re-derived here. It still has to be
+  // asked: `updateFoodLogEventCore` does not re-check a patched date, so without this a
+  // hand-built POST could re-date a serving into the next century.
+  if (
+    edit.kind === "move-day" &&
+    !isPastWriteAccepted(today(profileId), edit.date)
+  )
     return { kind: "invalid-edit" };
 
   const day = selectableOn(profileId, date);

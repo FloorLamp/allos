@@ -6,6 +6,9 @@ import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
+import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import { bulkTakeLabel } from "@/lib/usual-routine";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 // THE DAY LEDGER (#3987 phase 1), on its own seeded stack.
 //
@@ -199,6 +202,64 @@ function statusCount(
   }
 }
 
+/** The item name a dose is written under — what a control naming one dose must say. */
+function nameOf(doseId: number): string {
+  const db = openDb();
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT s.name AS name FROM intake_item_doses d
+             JOIN intake_items s ON s.id = d.item_id
+            WHERE d.id = ?`
+        )
+        .get(doseId) as { name: string }
+    ).name;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Answer doses out of band, exactly as a phone tap or another tab would — the only way
+ * to reach a day that owes two, and then one. `unforge` takes the same ids back off.
+ */
+function forgeTaken(doseIds: readonly number[]): void {
+  if (doseIds.length === 0) return;
+  const db = openDb();
+  try {
+    const day = todayLocal();
+    const at = utcSqlString(frozenNow());
+    const read = db.prepare(
+      "SELECT item_id FROM intake_item_doses WHERE id = ?"
+    );
+    const write = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at)
+       VALUES (?, ?, ?, 'taken', ?)`
+    );
+    for (const doseId of doseIds) {
+      const { item_id } = read.get(doseId) as { item_id: number };
+      write.run(doseId, item_id, day, at);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function unforge(doseIds: readonly number[]): void {
+  if (doseIds.length === 0) return;
+  const db = openDb();
+  try {
+    const marks = doseIds.map(() => "?").join(", ");
+    db.prepare(
+      `DELETE FROM intake_item_logs
+        WHERE date = ? AND status = 'taken' AND dose_id IN (${marks})`
+    ).run(todayLocal(), ...doseIds);
+  } finally {
+    db.close();
+  }
+}
+
 /** The routine label each dose's item carries, or null for an unstacked one (#3098). */
 function stacksOf(doseIds: readonly number[]): Map<number, string | null> {
   const db = openDb();
@@ -293,6 +354,134 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     ).toContainText(/logged \d{1,2}:\d{2}/);
   });
 
+  test("the due row takes the ledger's one accent and names its bucket once (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const dueRow = morning(page).locator('[data-testid^="ledger-due-row-"]');
+    await expect(dueRow).toBeVisible();
+    // WAIT FOR THE RECORD, not just for the group: the comparison below is between the
+    // due row and the ground the RECORD rows are printed on, and a group that has
+    // rendered its due row but not yet its logged ones would be measured against a
+    // ground nobody is standing on.
+    await expect(
+      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // first-ok: any recorded dose row proves the record half rendered — order-agnostic
+    ).toBeVisible();
+
+    // THE RELATIONSHIP, NOT AN ABSOLUTE. The record rows carry no fill of their own —
+    // they are printed on the list's surface — so what a person sees is the due row
+    // against THAT ground, and a hex value asserted against a constant would go on
+    // passing if the whole ledger changed colour together.
+    const tones = () =>
+      dueRow.evaluate((el) => ({
+        due: getComputedStyle(el).backgroundColor,
+        ground: getComputedStyle(el.closest('[data-testid="ledger-rows"]')!)
+          .backgroundColor,
+      }));
+
+    const light = await tones();
+    expect(light.due).not.toBe(light.ground);
+
+    // DARK BY THE APP'S OWN RULE, not by holding a class on against it. Forcing
+    // `classList.add("dark")` reads correct and is a race: components/ThemeReassert.tsx
+    // re-applies `isDarkTheme` on every route effect and its toggle CLEARS a class the
+    // stored choice disowns, so the second reading landed on the light surface in one
+    // configuration and the dark one in another. Storing the choice removes the race
+    // instead of sampling it — the boot script and the re-assert then agree with the
+    // assertion.
+    await page.evaluate(
+      (key) => localStorage.setItem(key, "dark"),
+      THEME_STORAGE_KEY
+    );
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
+    const dark = await tones();
+    expect(dark.due).not.toBe(dark.ground);
+    // …and the theme really switched, so the second reading is not the first one under
+    // another name.
+    expect(dark.ground).not.toBe(light.ground);
+    await page.evaluate(
+      (key) => localStorage.removeItem(key),
+      THEME_STORAGE_KEY
+    );
+    await page.reload();
+    await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
+
+    // THE CONTROL, THROUGH THE SAME OBJECT the assertion reads through: paint the due
+    // row with the ground's own colour and the comparison must agree, then restore and
+    // it must part again. A control that re-queried would only prove that SOME read
+    // can see a difference.
+    await dueRow.evaluate((el, bg) => {
+      (el as HTMLElement).style.backgroundColor = bg;
+    }, light.ground);
+    const forged = await tones();
+    expect(forged.due).toBe(forged.ground);
+    await dueRow.evaluate((el) => {
+      (el as HTMLElement).style.backgroundColor = "";
+    });
+    const restored = await tones();
+    expect(restored.due).not.toBe(restored.ground);
+
+    // THE BUCKET IS NAMED ONCE. The group's heading owns the word; the actionable row
+    // states only what the bucket still owes. The positive half is asserted first so
+    // the absence below is read off a row that really rendered — `not.toContainText`
+    // is happiest of all against an element that is not there.
+    await expect(morning(page).locator("h4")).toHaveText(
+      TIME_BUCKET_LABELS.Morning
+    );
+    const summary = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(summary).toContainText(/\d+ doses? due/);
+    await expect(summary).not.toContainText(TIME_BUCKET_LABELS.Morning);
+  });
+
+  test("the bulk verb reads by count — all N, then both, then the member (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const due = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(due).toBeVisible();
+    const named = ((await due.getAttribute("data-doses")) ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map(Number);
+    // THE LADDER HAS THREE RUNGS AND THE FIXTURE MUST START ABOVE THE TOP ONE, or the
+    // two lower rungs below are never reached and this test passes without having
+    // rendered either of the strings the ruling is about.
+    expect(
+      named.length,
+      "the morning due row starts with three or more doses"
+    ).toBeGreaterThanOrEqual(3);
+    const takeAll = morning(page).locator('[data-testid^="ledger-takeall-"]');
+    await expect(takeAll).toHaveText(`Take all ${named.length}`);
+
+    // FORGED OUT OF BAND, and put back before this test ends — the lower rungs are
+    // states of the DAY, unreachable by any navigation while it still owes three. The
+    // ids also ride `borrowedDoseIds`, so a failure between here and the restore still
+    // leaves the file's own afterAll a clean day.
+    borrowedDoseIds.push(...named);
+    const downToTwo = named.slice(0, -2);
+    const downToOne = named[named.length - 2]!;
+    const lastOwed = named[named.length - 1]!;
+    try {
+      forgeTaken(downToTwo);
+      await page.reload();
+      // Two is the whole set, so the count adds nothing the word does not already say.
+      await expect(takeAll).toHaveText("Take both");
+
+      forgeTaken([downToOne]);
+      await page.reload();
+      // One is not a bulk. The control names the member it will write, and its
+      // accessible name does not then say that name a second time.
+      const only = `Take ${nameOf(lastOwed)}`;
+      await expect(takeAll).toHaveText(only);
+      await expect(takeAll).toHaveAttribute("aria-label", only);
+    } finally {
+      unforge([...downToTwo, downToOne]);
+    }
+  });
+
   test("the bulk Take-all writes only what the day still owes (#3936)", async ({
     page,
   }) => {
@@ -305,7 +494,13 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .map(Number);
     expect(named.length).toBeGreaterThan(0);
     const takeAll = morning(page).locator('[data-testid^="ledger-takeall-"]');
-    await expect(takeAll).toHaveText(`Take all ${named.length}`);
+    // THE LABEL IS THE ROW'S PROMISE, and its wording is the ruled ladder (#4477) —
+    // read through the shared helper rather than re-spelled here, so this test keeps
+    // asserting WHICH doses the control promises while the ladder's own rungs are
+    // pinned against literals in the copy test above.
+    const promise = (ids: readonly number[]) =>
+      bulkTakeLabel(ids.map((id) => ({ name: nameOf(id) })));
+    await expect(takeAll).toHaveText(promise(named));
 
     // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved
     // out of band, exactly as a phone tap or another tab would. The row's list is an
@@ -364,7 +559,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .map(Number);
     expect(namedAfter).not.toContain(stale);
     expect(namedAfter).toHaveLength(named.length - 1);
-    await expect(takeAll).toHaveText(`Take all ${named.length - 1}`);
+    await expect(takeAll).toHaveText(promise(namedAfter));
 
     await settledClick(page, takeAll);
     // ONE taken row for the stale dose, still — no second administration for a dose

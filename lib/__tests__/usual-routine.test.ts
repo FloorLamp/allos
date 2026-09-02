@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  bulkTakeLabel,
   namesPhrase,
   proteinMemberName,
   usualRoutineAnswerText,
@@ -80,6 +81,20 @@ describe("namesPhrase", () => {
     expect(namesPhrase(["Berries", "Eggs", "Fermented foods"])).toBe(
       "Berries, Eggs and Fermented foods"
     );
+  });
+});
+
+describe("bulkTakeLabel — the bulk verb reads by count (#4477)", () => {
+  // The ladder the owner ruled, at each rung and at both boundaries. One NAMES its
+  // member — the number would be the control counting instead of promising — two says
+  // the set whole, and a count appears only where it is the thing that has to be said.
+  it.each([
+    [["Glycine"], "Take Glycine"],
+    [["Glycine", "Creatine"], "Take both"],
+    [["Glycine", "Creatine", "Collagen"], "Take all 3"],
+    [["Glycine", "Creatine", "Collagen", "B complex"], "Take all 4"],
+  ] as [string[], string][])("%s reads %s", (names, label) => {
+    expect(bulkTakeLabel(names.map((name) => ({ name })))).toBe(label);
   });
 });
 
