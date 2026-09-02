@@ -98,6 +98,7 @@ export default function DoseHistoryPanel({
   maxDate,
   defaultTime,
   canWrite = true,
+  subjectProfileId,
   courseBound = true,
   backfillDisabledReason,
   note,
@@ -117,6 +118,15 @@ export default function DoseHistoryPanel({
   maxDate: string;
   defaultTime: string;
   canWrite?: boolean;
+  // WHOSE doses this panel writes (#4693). Absent on every single-subject mount — the
+  // acting profile's own /medications or Supplements tab — where the actions' shared
+  // `gateItemProfile` falls back to the acting-profile gate. Present when the panel
+  // is mounted by a SUBJECT-SCOPED CONTAINER displaying another profile's item: the
+  // backfill, the missed-day offer, the amend and the delete then all post it as
+  // `profile_id`, and every one of them is re-gated server-side against that subject.
+  // The panel is one surface, so it takes one subject: a door that inherited and a
+  // row control that did not would file two halves of the same page on two people.
+  subjectProfileId?: number;
   // Whether this item's history is bounded by a medication course (see the form).
   courseBound?: boolean;
   // Why a backfill can't be offered right now (no live dose, no course covering any
@@ -200,6 +210,10 @@ export default function DoseHistoryPanel({
         fd.set("id", String(itemId));
         fd.set("dose_id", String(soleDose.id));
         fd.set("date", date);
+        // The offer is the form's write with the fields pre-answered, so it carries
+        // the subject the form carries — otherwise one tap files the caregiver.
+        if (subjectProfileId != null)
+          fd.set("profile_id", String(subjectProfileId));
         // The same field names and the same amount the form posts, so the offer and
         // the form produce one row rather than two spellings of one write. The TIME
         // is the one value derived better than the form derives it — see
@@ -340,6 +354,7 @@ export default function DoseHistoryPanel({
           maxDate={maxDate}
           initialDate={backfill.date}
           defaultTime={defaultTime}
+          subjectProfileId={subjectProfileId}
           onDone={() => setBackfill(null)}
         />
       ) : null}
@@ -365,6 +380,7 @@ export default function DoseHistoryPanel({
                   statedAt: entry.statedAt,
                   amount: entry.amount,
                 }}
+                subjectProfileId={subjectProfileId}
                 onDone={done}
               />
             )}
@@ -379,6 +395,8 @@ export default function DoseHistoryPanel({
             deleteFormData={(entry) => {
               const fd = new FormData();
               fd.set("log_id", String(entry.id));
+              if (subjectProfileId != null)
+                fd.set("profile_id", String(subjectProfileId));
               return fd;
             }}
             deleteAction={deleteAdministration}

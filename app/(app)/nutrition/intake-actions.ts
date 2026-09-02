@@ -1489,10 +1489,21 @@ export async function resolveDayDoses(
 // Deliberately backfill one past dose from a dose-history panel. The profile-local
 // wall time is converted here; the core owns everything else, including the optional
 // supply adjustment (pool-aware for a shared bottle, #1374).
+//
+// THE SURFACE'S SUBJECT, NOT THE ACTING PROFILE (#4693). A dose-history panel stands
+// on ONE item, so the surface hosting it names one subject — and on a subject-scoped
+// container (`/medications/[id]` viewed cross-profile) an ADD follows that surface
+// instead of the switcher. It takes the gate its amend path has had since #4009:
+// `gateItemProfile` → requireProfileWriteAccess on the posted `profile_id`, falling
+// back to the acting-profile gate on every single-subject mount, which posts none.
+// The zone, the core call and the audit row all take the profile that gate returns —
+// a wall time anchored in the CAREGIVER's zone would file the subject's dose at the
+// wrong instant.
 export async function logHistoricalDose(
   formData: FormData
 ): Promise<FormResult> {
-  const { login, profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
   const itemId = Number(formData.get("id"));
   const doseId = Number(formData.get("dose_id"));
   const date = String(formData.get("date") ?? "");
@@ -1506,12 +1517,12 @@ export async function logHistoricalDose(
     return formError("Enter a valid dose date and time.");
   }
 
-  const recordedAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+  const recordedAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
   if (!recordedAt) return formError("Enter a valid dose date and time.");
   const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
 
   const outcome = logHistoricalDoseCore(
-    profile.id,
+    profileId,
     itemId,
     doseId,
     recordedAt,
@@ -1522,7 +1533,7 @@ export async function logHistoricalDose(
   if (outcome.kind === "logged") {
     recordAudit({
       loginId: login.id,
-      profileId: profile.id,
+      profileId,
       action: AUDIT_ACTIONS.doseLogBackfill,
       target: String(itemId),
       detail: outcome.date,

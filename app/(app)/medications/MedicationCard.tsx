@@ -128,6 +128,7 @@ export default function MedicationCard({
   historyMaxDate,
   defaultHistoryTime,
   canWrite = true,
+  doseHistorySubjectProfileId,
   initialAction,
   conditions = [],
   ingredients = [],
@@ -200,10 +201,17 @@ export default function MedicationCard({
   historyMaxDate: string;
   defaultHistoryTime: string;
   // A medication reached through another accessible profile's illness episode is
-  // readable without switching profiles. Writes remain tied to the acting profile, so
-  // the cross-profile detail view hides every mutation control until the user explicitly
-  // chooses "Act as …" in the page identity banner.
+  // readable without switching profiles. Every control that changes the medication
+  // ITSELF — edit, stop, retire, side effects — stays tied to the acting profile and
+  // hides until the user chooses "Act as …" in the page identity banner.
   canWrite?: boolean;
+  // The one exception, and the whole of it (#4693): the detail page is a
+  // subject-scoped container, so its DOSE HISTORY follows the surface's subject
+  // rather than the switcher. Present ⇒ this card renders another profile's
+  // medication AND the login holds write on that profile, so the panel is live and
+  // posts this id; the server re-gates it. Nothing else on the card reads it — an add
+  // that inherits the surface is not a licence to edit the definition.
+  doseHistorySubjectProfileId?: number;
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
   // The profile's conditions for the "For condition…" indication picker (#1052).
@@ -859,7 +867,8 @@ export default function MedicationCard({
             minDate={historyMinDate}
             maxDate={historyMaxDate}
             defaultTime={defaultHistoryTime}
-            canWrite={canWrite}
+            canWrite={canWrite || doseHistorySubjectProfileId != null}
+            subjectProfileId={doseHistorySubjectProfileId}
             backfillDisabledReason={
               doses.length === 0
                 ? "This medication has no dose to log against"
