@@ -6,7 +6,7 @@ import IntakeItemForm from "@/components/IntakeItemForm";
 import QuickLogPrnContent from "@/components/medications/QuickLogPrnContent";
 import { addIntakeItem } from "@/app/(app)/nutrition/intake-actions";
 import type { PrnMedForQuickLog } from "@/lib/queries";
-import type { PediatricFormContext } from "@/lib/prn-dosing";
+import type { IntakeFormContext } from "@/lib/intake-form-context";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // The shared medication workspace for an active illness. Existing PRN medications use
@@ -17,14 +17,19 @@ export default function IllnessMedicationLogger({
   meds,
   tz,
   profileId,
-  pediatric,
+  intakeContext,
   canAdd,
   nowIso,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
   profileId?: number;
-  pediatric?: PediatricFormContext;
+  // REQUIRED, and the whole of it (#4609). This fold used to pass the pediatric
+  // context alone, so the form it mounts knew the profile was a child — weight-band
+  // dosing and all — while its food-note age gate ran on "unknown" and its stack, PGx
+  // and pairing inputs were empty. A host that cannot supply the subject's full
+  // context has no business opening this door.
+  intakeContext: IntakeFormContext;
   canAdd: boolean;
   // The server's redose-window "now" (see QuickLogPrnContent.nowIso) — this is a
   // "use client" mount, so the frozen-clock env override is invisible here.
@@ -79,7 +84,12 @@ export default function IllnessMedicationLogger({
               <IntakeItemForm
                 action={addIntakeItem}
                 kind="medication"
-                pediatric={pediatric}
+                allIntakeItems={intakeContext.allIntakeItems}
+                stackItems={intakeContext.stackItems}
+                pgxVariants={intakeContext.pgxVariants}
+                conditions={intakeContext.conditions}
+                pediatric={intakeContext.pediatric}
+                todayStr={intakeContext.todayStr}
                 onDone={() => setAdding(false)}
               />
             </div>

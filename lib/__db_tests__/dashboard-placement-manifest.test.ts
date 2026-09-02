@@ -940,6 +940,15 @@ describe("actual atomic dashboard manifests", () => {
   // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
+  // +4 on household ONLY (#4609): the illness cockpit gather asked for the profile's
+  // pediatric figures and nothing else, so the "Add medication" fold it renders mounted
+  // the intake form with no stack, variants, conditions or local day — an unknown-age
+  // alcohol note over a child's weight-band dosing. It now loads the whole
+  // intake-form context per cockpit. This fixture renders three cockpits; measured by
+  // stubbing the loader out of the gather alone, that is +7 for the context and −3 for
+  // the per-cockpit pediatric read it subsumes. Every other persona is flat because
+  // none carries an open illness, and /medications is unmoved: med-data now reads the
+  // same rows through the one loader instead of assembling its own copy.
   const QUERY_BASELINE: Record<string, number> = {
     // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
     // as well as their own table, so a profile whose only eye care is VISITS stops
@@ -961,7 +970,7 @@ describe("actual atomic dashboard manifests", () => {
     // short-circuiting.
     bodybuilder: 225,
     "marathon-runner": 224,
-    household: 270,
+    household: 274,
     pregnant: 221,
     "diabetic-cgm": 232,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
