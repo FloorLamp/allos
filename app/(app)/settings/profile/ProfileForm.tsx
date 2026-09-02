@@ -66,8 +66,7 @@ export default function ProfileForm({
     // Reproductive (menopausal) status — shown for female profiles only. Cleared when
     // the sex switches away from female (the server also forces it null in that case).
     reproductiveStatus: (initialReproductiveStatus ?? "") as
-      | ReproductiveStatus
-      | "",
+      ReproductiveStatus | "",
     birthdate: initialBirthdate ?? "",
     // Manual age fallback, editable only when no birthdate is set (a birthdate
     // always derives the age and supersedes this). Seeded from a document-supplied
@@ -251,9 +250,7 @@ export default function ProfileForm({
               // Derived (read-only) when a birthdate is set; editable otherwise.
               value={birthdate ? (derivedAge ?? "") : ageFallback}
               disabled={!!birthdate}
-              onChange={(e) =>
-                save({ ...draft, ageFallback: e.target.value })
-              }
+              onChange={(e) => save({ ...draft, ageFallback: e.target.value })}
               className="input disabled:opacity-60"
             />
           </div>

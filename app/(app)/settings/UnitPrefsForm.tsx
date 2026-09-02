@@ -81,7 +81,10 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
           data-testid="temperature-unit-select"
           value={units.temperatureUnit}
           onChange={(e) =>
-            save({ ...units, temperatureUnit: e.target.value as TemperatureUnit })
+            save({
+              ...units,
+              temperatureUnit: e.target.value as TemperatureUnit,
+            })
           }
           className="input"
         >

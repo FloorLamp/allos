@@ -20,7 +20,10 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
 
   function save(next: AiPrefs) {
     const fd = new FormData();
-    fd.set("auto_supplement_suggestions", next.autoSupplementSuggestions ? "1" : "0");
+    fd.set(
+      "auto_supplement_suggestions",
+      next.autoSupplementSuggestions ? "1" : "0"
+    );
     fd.set(
       "recommendation_max_runs_per_day",
       String(next.recommendationMaxRunsPerDay)
