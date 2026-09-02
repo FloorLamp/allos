@@ -74,14 +74,20 @@ export const DORMANCY_DEFAULT_DAYS = 90;
 // days the chart has no points left to hide.
 export const WEIGHT_TREND_WINDOW_DAYS = 90;
 
-// Past this, a dated vital stops being rendered as a value and becomes a dormant line
-// (#3226). It is the year that `RECENT_LAB_STALE_DAYS` already argues for one card over:
-// a reading whose own floor lapsed a year ago has stopped being a stale description of
-// the body and become a historical fact about the ledger.
+// Past this, an EPISODIC vital stops being rendered as a value and becomes a dormant
+// line (#3226). It is the year that `RECENT_LAB_STALE_DAYS` already argues for one card
+// over: a reading whose own floor lapsed a year ago has stopped being a stale
+// description of the body and become a historical fact about the ledger.
 //
-// It is named here rather than in `vitals-latest` because the declarations below have to
-// BE it: the collapse is only honest because past this many days the row renders no
-// value, so the interval and the render window are the same number by construction.
+// ONE OF THE TWO VITAL ROWS TAKES IT (owner ruling, #3250). The year was written for a
+// cuff reading and inherited by the wearable stream beside it, and the two cadences have
+// nothing in common: a season of silence on a daily stream is the sync broken, which is
+// an actionable fact, while the same silence between physicals is an ordinary gap. So
+// blood pressure keeps the year and resting HR takes the registry default below.
+//
+// It is named here rather than in `vitals-latest` because the declaration has to BE it:
+// the collapse is only honest because past this many days the row renders no value, so
+// the interval and the render window are the same number by construction.
 export const VITAL_DORMANCY_DAYS = 365;
 
 // The domains a section can be dormant IN. Adding one is a deliberate edit with a
@@ -148,13 +154,16 @@ export const DORMANCY_DOMAINS: Record<DormancyDomain, DormancyDeclaration> = {
   // A daily wearable stream, whose 14-day presentation floor already withdraws the
   // currency claim. Dormancy is the far end of the same span, not a second staleness: it
   // fires only once the stream has been silent long enough that the last number is a
-  // record rather than a reading.
+  // record rather than a reading — and on something that arrives nightly, a season is
+  // already long enough (#3250). At the year it inherited from blood pressure the line
+  // was an epitaph; at 90 days it is the sentence that tells someone their sync broke,
+  // while the amber as-of span the 14-day floor owns is still 76 days of it.
   "resting-hr": {
     record: "resting heart rate",
-    collapseAfterDays: VITAL_DORMANCY_DAYS,
+    collapseAfterDays: DORMANCY_DEFAULT_DAYS,
     reason:
-      "A daily stream whose own floor is 14 days; a year of silence is the source gone, not a gap.",
-    renderWindowDays: VITAL_DORMANCY_DAYS,
+      "A daily stream whose own floor is 14 days; the default season of silence is the source gone, not a gap.",
+    renderWindowDays: DORMANCY_DEFAULT_DAYS,
   },
 };
 

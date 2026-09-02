@@ -230,6 +230,15 @@ export type HistoryRowEdit =
        * boundaries already produced, rather than assembled per-profile at the mount.
        */
       slotBoundaries: FoodSlotBoundaries;
+      /**
+       * May this row be corrected INTO a substance group (#4072)? False for a known
+       * minor, whose record has no substance home for such a row and whose every other
+       * substance surface is age-gated — so the correction does not OFFER the option,
+       * rather than offering one that always refuses. Read off the same expression the
+       * gather's own substance gate reads, and the same question `updateFoodLogEvent`
+       * asks of the same profile before it writes.
+       */
+      substanceCorrectable: boolean;
     }
   | {
       kind: "practice";

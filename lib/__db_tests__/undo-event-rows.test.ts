@@ -297,7 +297,6 @@ describe("one food serving: delete → undo (#2038)", () => {
       date,
       "page",
       `${date}T18:40:00.000Z`,
-      "Evening",
       { eatenAt: `${date}T18:00:00.000Z`, source: "stated" as const }
     );
     const [only] = eventIds(profileId, date, "whole_grains");

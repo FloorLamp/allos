@@ -184,6 +184,62 @@
           "category": "Interface",
           "title": "A settings toggle that fails to save goes back to its saved value",
           "issues": [4688]
+        },
+        {
+          "pr": 4739,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Doses taken in one tap group together; doses tapped one by one do not",
+          "issues": [4328]
+        },
+        {
+          "pr": 4746,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "A night recorded twice after a timezone change collapses to the real one",
+          "issues": [3628]
+        },
+        {
+          "pr": 4746,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Two overlapping sleep sessions Allos cannot judge are listed for review",
+          "issues": [3628]
+        },
+        {
+          "pr": 4750,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "A week short of its target now reads as a paler green, not amber",
+          "issues": [4543]
+        },
+        {
+          "pr": 4755,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A scheduled dose can say it was taken earlier than it was confirmed",
+          "issues": [4426]
+        },
+        {
+          "pr": 4755,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The as-needed row logs against the day it is showing, with no second picker",
+          "issues": [4426]
+        },
+        {
+          "pr": 4762,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Resting heart rate goes quiet after 90 days, so a broken sync shows sooner",
+          "issues": [3250]
+        },
+        {
+          "pr": 4762,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Escape closes a picker that has a list, and reaches the dialog when it does not",
+          "issues": [3432]
         }
       ]
     },

@@ -818,7 +818,8 @@ export default function FoodLogBar({
     const form = new FormData();
     form.set("group_key", slug);
     form.set("date", date);
-    if (activeProfileId != null) form.set("profileId", String(activeProfileId));
+    if (activeProfileId != null)
+      form.set("profile_id", String(activeProfileId));
     let truth: FoodServingTruthResult;
     try {
       truth = await readFoodServingTruth(form);
@@ -1344,7 +1345,7 @@ export default function FoodLogBar({
         if (expectedEventId != null)
           fd.set("event_id", String(expectedEventId));
         if (activeProfileId != null)
-          fd.set("profileId", String(activeProfileId));
+          fd.set("profile_id", String(activeProfileId));
         // The absolute local WALL TIME, not an instant: the server resolves it against
         // its own clock and the profile's timezone, so this island never converts a
         // profile-local hour with its own locale. It is also what a page open since
@@ -1582,7 +1583,7 @@ export default function FoodLogBar({
       truthForm.set("group_key", slug);
       truthForm.set("date", activeDate);
       if (activeProfileId != null)
-        truthForm.set("profileId", String(activeProfileId));
+        truthForm.set("profile_id", String(activeProfileId));
       const isStillLatest = () => {
         const currentBurst =
           servingBursts.current.get(receiptKey) ?? emptyFoodServingBurst();

@@ -18,14 +18,16 @@ import { dashboardCandidatePrefix } from "./dashboard-candidate";
 //      because its own window is 90 days and an empty window read as an empty domain.
 //      "It stopped" and "there has never been any" are different sentences.
 //   3. The collapse STOPS where a card is still showing a value. On the same profile,
-//      Recent labs (400 days old) and Latest vitals (200) keep their full cards and
-//      their numbers under their declared presentation floors — the fix is what a card
-//      claims, never what it hides (#1216/#2303).
+//      Recent labs (400 days old), a blood pressure (200) and a resting heart rate (60)
+//      keep their full cards and their numbers under their declared presentation floors
+//      — the fix is what a card claims, never what it hides (#1216/#2303).
 //      #3226 moved where that stop SITS for vitals without moving the rule: a vitals
-//      row now does collapse, but only past a YEAR, which is the point past which it
-//      renders no value and so has nothing left to hide. 200 days is inside that floor,
-//      so this profile still pins the stated claim — and pins it at an age that is
-//      unambiguously stale, which is the part that matters.
+//      row now does collapse, but only past its own horizon, which is the point past
+//      which it renders no value and so has nothing left to hide. #3250 then split that
+//      horizon by cadence — a year for the episodic cuff, 90 days for the daily stream
+//      — so the two seeded ages are different on purpose. Each is inside its own
+//      horizon and past its own floor, so this profile still pins the stated claim at
+//      an age that is unambiguously stale, which is the part that matters.
 //   4. A profile whose domains are current collapses nothing.
 //
 // The fixture profile is read-only by contract (e2e/seed/dashboard.ts:
@@ -119,15 +121,17 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   });
   await page.goto("/");
 
-  // Labs 400 days old and vitals 200 days old, on the very profile whose weight and
-  // sleep just collapsed. Both cards declare a presentation floor that keeps the value
-  // on screen with an age label (#1216/#2303), and dormancy may not undo that — so
-  // these stay full cards, with their numbers and their write.
+  // Labs 400 days old and a blood pressure 200 days old, on the very profile whose
+  // weight and sleep just collapsed. Both cards declare a presentation floor that keeps
+  // the value on screen with an age label (#1216/#2303), and dormancy may not undo that
+  // — so these stay full cards, with their numbers and their write.
   //
   // The blood pressure here is 20 days past its own 180-day floor and 165 short of the
   // year at which #3226 retires it: the exact span where the row is stale AND still a
   // number. A dormancy rule that fired on staleness rather than on the year floor would
-  // turn this row dormant and redden this test.
+  // turn this row dormant and redden this test. Its resting-heart-rate neighbour holds
+  // the same span against a much shorter horizon (60 days, floor 14, collapse 90), and
+  // the row below asserts it is still standing.
   await openDashboardAll(page);
   const labs = dashboardCandidatePrefix(page, "labs.latest:").filter({
     hasText: "Glucose",
@@ -138,6 +142,11 @@ test("a card still showing a stale value is NOT collapsed (#2652)", async ({
   const vitals = dashboardCandidatePrefix(page, "vitals.blood-pressure:");
   await expect(vitals).toHaveAttribute("data-presence", "current");
   await expect(vitals).toContainText("118");
+  // The stream row, on its own shorter horizon (#3250): stale by its 14-day floor,
+  // still 30 days short of collapsing, so it is a value here and not a dormant line.
+  const hr = dashboardCandidatePrefix(page, "vitals.resting-heart-rate:");
+  await expect(hr).toHaveAttribute("data-presence", "current");
+  await expect(hr).toContainText("58");
   await page.close();
 });
 

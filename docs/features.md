@@ -1340,7 +1340,11 @@ quiet ground (#4477). A **skip**
 shows with the reason you gave it. A row with no stated time says which clock it is
 showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
 actions to **correct** it — the food group, the day, or the meal it belongs to — or
-to **remove** that one serving. A correction MOVES
+to **remove** that one serving. On a **known minor's** row the group list omits the
+substance groups (#4072): the record has no substance half for that profile, so a
+serving corrected into one would vanish from the only surface that could undo it. A
+row already in such a group keeps its own entry, so its meal and time stay
+correctable and it can still be moved back out. A correction MOVES
 the serving: the day's totals and the per-meal tallies follow it, so a serving tapped into the wrong meal is repaired
 rather than deleted and re-logged under the current time. "Remove this serving"
 is ROW-scoped and is the removal that honours that per-row identity: the group

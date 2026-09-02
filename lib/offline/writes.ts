@@ -1182,10 +1182,11 @@ function applyFoodIntent(
       date,
       OFFLINE_REPLAY,
       loggedAt,
-      mealSlot,
+      // ONE placement, reduced exactly as the online action reduces it (#4729), so a
+      // replay and a live tap cannot answer the same payload differently.
       verdict.kind === "accepted"
         ? { eatenAt: utcInstant(verdict.at), source: "stated" as const }
-        : undefined
+        : mealSlot
     );
     if (outcome.kind === "unknown-group") {
       return {
