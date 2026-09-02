@@ -160,17 +160,19 @@ describe("Chip residual", () => {
 // FILING. Both are matched the same way, in string literals and JSX text only, for
 // the same reason — a comment explaining a retirement must be able to quote it.
 //
-// WHAT THE `Mark …` HALF CANNOT SEE is the list above plus one of its own: the
-// PARTICIPLE IS ENUMERATED. `Mark taken` and `Mark done` are named; a surface that
-// invents `Mark administered` is not caught. An open `Mark \w+` would be worse — it
-// matches "Mark", "Marked up" and every proper noun — so the enumeration is the
-// honest trade, and it is stated here rather than discovered later.
+// WHAT THE `Mark …` HALF CANNOT SEE is the list above plus two of its own. The
+// PARTICIPLE IS ENUMERATED — `Mark taken` and `Mark done` are named, a surface that
+// invents `Mark administered` is not caught — because an open `Mark \\w+` matches
+// "Mark", "Marked up" and every proper noun. And it is the IMPERATIVE only: a control
+// says "Mark taken", while "marked skipped" is a sentence DESCRIBING a record's state
+// ("Not logged — this dose is marked skipped", the write core's own refusal), which is
+// not a verb standing in for an act and must not be swept up with one.
 const RETIRED_VERB = new RegExp(
   [
     // says WHEN: the verb carried the sentence because nothing else on the control did
     "\\b(?:take|taken|log|logged|give|given|start|started|mark|finish|finished|confirm|confirmed)\\s+now\\b",
     // says FILING: the bookkeeping of the act, standing in for the act
-    "\\bmark(?:ed)?\\s+(?:as\\s+|not\\s+)*(?:taken|done|logged|complete|completed|skipped|finished|read)\\b",
+    "\\bmark\\s+(?:as\\s+|not\\s+)*(?:taken|done|logged|complete|completed|skipped|finished|read)\\b",
   ].join("|"),
   "i"
 );
@@ -258,6 +260,11 @@ describe("labeled-verb adoption retires the …now and Mark … verbs (issue #47
       "mounts the chip and negates the bookkeeping framing",
       'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <><LabeledVerbChip label="8:00am" verb="Take" onAct={a} tone="brand" /><button aria-label="Mark not taken" /></>;',
       1,
+    ],
+    [
+      "mounts the chip and DESCRIBES a record's state rather than naming a control",
+      'import { LabeledVerbChip } from "@/components/Chip";\nexport default () => <><LabeledVerbChip label="8:00am" verb="Take" onAct={a} tone="brand" />{"Not logged — this dose is marked skipped"}</>;',
+      0,
     ],
     [
       "mounts the chip and says Mark about a person rather than a filing",

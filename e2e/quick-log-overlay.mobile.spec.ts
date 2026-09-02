@@ -579,7 +579,10 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     // due. The open sheet is a frozen snapshot; its button is about to describe a
     // world that no longer holds.
     setDoseRetired(doseId, true);
-    await settledClick(page, row.getByRole("button", { name: "Mark taken" }));
+    // THE TODAY ROW IS THE CHIP NOW (#4753): its name is the slot it writes
+    // plus the verb, so the row's control is addressed by its testid rather than
+    // by a copy string that moved.
+    await settledClick(page, row.getByTestId("dose-take"));
 
     // THE assertion: it says what actually happened. markDoseTaken wrote nothing,
     // and claiming "Dose logged" here would be a false confirmation of a
@@ -605,9 +608,7 @@ test("the dose overlay answers from the outcome — it never just confirms", asy
     const fresh = await openQuickEntry(page, "log-dose");
     await settledClick(
       page,
-      fresh
-        .getByTestId(`quick-entry-dose-${doseId}`)
-        .getByRole("button", { name: "Mark taken" })
+      fresh.getByTestId(`quick-entry-dose-${doseId}`).getByTestId("dose-take")
     );
     await expect(page.getByText("Dose logged")).toBeVisible();
     // AND THE SHEET STAYS OPEN (#3936). It used to close here, and that was only ever
@@ -783,7 +784,7 @@ test("a dose confirmed from the sheet with no signal queues, then replays", asyn
     await context.setOffline(true);
     // A plain click, not settledClick: this tap deliberately posts NOTHING, so there is
     // no Server Action response to settle on.
-    await row.getByRole("button", { name: "Mark taken" }).click();
+    await row.getByTestId("dose-take").click();
     await expect(
       page.getByText("Dose saved offline — will sync when you reconnect.")
     ).toBeVisible();

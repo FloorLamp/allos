@@ -64,7 +64,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
     await expect(ledger.locator('[data-testid^="ledger-stack-"]')).toHaveCount(
       0
     );
-    const taken = page.getByRole("button", { name: "Mark not taken" });
+    const taken = page.getByRole("button", { name: "Undo take" });
     await expect(taken).toHaveCount(3);
 
     // Teardown through the product's own controls, which is also the both-directions

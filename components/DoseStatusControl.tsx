@@ -394,6 +394,10 @@ export default function DoseStatusControl({
           tone="brand"
           onAct={() => apply("taken")}
           disabled={busy}
+          // The pill's two spans, said as one sentence, plus WHICH dose when the row
+          // does not name it. Spelled rather than left to the default so the name a
+          // reader hears is the label they see, in the order they see it.
+          ariaLabel={named(`${payload} · ${TAKE_VERB}`)}
           testId="dose-take"
         />
       ) : (

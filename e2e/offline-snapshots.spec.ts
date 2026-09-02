@@ -405,7 +405,7 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   await expect(row).toHaveCount(1);
   await context.setOffline(true);
   try {
-    await row.getByRole("button", { name: "Mark taken" }).click();
+    await row.getByRole("button", { name: "Take" }).click();
     await expect(page.getByTestId("offline-queue-badge")).toHaveText(
       /1 queued offline/
     );
@@ -437,19 +437,19 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   // drained, and the leftover replay it certified cost offline-write-gate's R3d a
   // red on the then-shared profile.
   await page.goto("/medications");
-  const takenUndo = row.getByRole("button", { name: "Mark not taken" });
+  const takenUndo = row.getByRole("button", { name: "Undo take" });
   await expect(takenUndo).toBeVisible({ timeout: 20_000 });
   // Only after the drain is OBSERVED is "no badge" a claim about the queue rather
   // than about a page that has not read it yet.
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
   // Un-take the dose through the product's own control, so --repeat-each meets the
-  // same "Mark taken" row every time. Unconditional on purpose: the drain was just
+  // same "Take" row every time. Unconditional on purpose: the drain was just
   // observed, so this is a deterministic undo, not the state-guessing conditional
   // cleanup #3040 rejected. It restores this spec's OWN profile — the only world
   // this spec touches.
   await settledClick(page, takenUndo);
-  await expect(row.getByRole("button", { name: "Mark taken" })).toBeVisible({
+  await expect(row.getByRole("button", { name: "Take" })).toBeVisible({
     timeout: 20_000,
   });
 

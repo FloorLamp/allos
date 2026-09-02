@@ -78,12 +78,12 @@ test("Today panel leads with a due scheduled dose and a PRN administration row",
   await expect(scheduled.getByRole("link")).toContainText("Morning");
   await expect(scheduled).toHaveAttribute("data-past-due", "1");
   await expect(scheduled.getByText("Past due", { exact: true })).toBeVisible();
-  await expect(scheduled.getByTestId("dose-take")).toContainText("Mark taken");
+  await expect(scheduled.getByTestId("dose-take")).toContainText("Take");
   await expect(scheduled.getByTestId("dose-take")).not.toContainText(
     "1 tablet"
   );
 
-  // Once skipped, the skip state owns the emphasis. "Mark taken" remains available
+  // Once skipped, the skip state owns the emphasis. "Take" remains available
   // as a correction, but is no longer styled as the row's primary CTA.
   const skip = scheduled.getByTestId("dose-skip");
   await skip.click();

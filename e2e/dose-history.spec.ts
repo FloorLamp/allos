@@ -55,9 +55,9 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const ledgerRow = ledgerDoseRow(page, name).first(); // first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
-  await ledgerRow.getByRole("button", { name: "Mark taken" }).click();
+  await ledgerRow.getByRole("button", { name: "Take" }).click();
   await expect(
-    ledgerRow.getByRole("button", { name: "Mark not taken" })
+    ledgerRow.getByRole("button", { name: "Undo take" })
   ).toBeVisible();
 
   // The row that OWNS the item — edit, history — is the stack's, on the other tab.
@@ -140,10 +140,8 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Mark taken" }).click();
-  await expect(
-    taken.getByRole("button", { name: "Mark not taken" })
-  ).toBeVisible();
+  await taken.getByRole("button", { name: "Take" }).click();
+  await expect(taken.getByRole("button", { name: "Undo take" })).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
     .getByTestId("supplement-stack")
@@ -162,7 +160,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const entry = panel.getByTestId("dose-history-row");
   await expect(entry).toHaveCount(1);
   await expect(entry).toContainText("250 mg");
-  // #2876: Mark taken asserts an administration at the tap while recorded_at keeps
+  // #2876: the take asserts an administration at the tap while recorded_at keeps
   // the separate immutable storage instant. The history therefore shows the stated
   // administration clock, not the record-chain fallback label.
   // The clock is the row's TRAILING fact since #3671, so it no longer reprints the
@@ -258,10 +256,8 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Mark taken" }).click();
-  await expect(
-    taken.getByRole("button", { name: "Mark not taken" })
-  ).toBeVisible();
+  await taken.getByRole("button", { name: "Take" }).click();
+  await expect(taken.getByRole("button", { name: "Undo take" })).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
     .getByTestId("supplement-stack")

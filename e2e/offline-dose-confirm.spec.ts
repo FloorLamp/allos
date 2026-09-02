@@ -88,7 +88,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   // The dead-reception moment: the pills are in your hand, the network isn't there.
   const ledger = await ledgerRow(page, name);
   await context.setOffline(true);
-  await ledger.getByRole("button", { name: "Mark taken" }).click();
+  await ledger.getByRole("button", { name: "Take" }).click();
 
   // Queued, not failed — and the badge says so.
   await expect(
@@ -106,7 +106,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   // optimistic client state can't fake.
   const reloaded = await ledgerRow(page, name);
   await expect(
-    reloaded.getByRole("button", { name: "Mark not taken" })
+    reloaded.getByRole("button", { name: "Undo take" })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
     reloaded.getByRole("button", { name: "Skip this dose" })
@@ -117,7 +117,7 @@ test("a dose confirmed offline queues, then replays as a real taken dose (#1427)
   await page.reload();
   await expandLedgerDueGroups(page);
   await expect(
-    ledgerDoseRow(page, name).getByRole("button", { name: "Mark not taken" })
+    ledgerDoseRow(page, name).getByRole("button", { name: "Undo take" })
   ).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
@@ -137,7 +137,7 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
 
   // Tap ✅ with no signal — the confirm goes into the queue.
   await context.setOffline(true);
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  await row.getByRole("button", { name: "Take" }).click();
   await expect(page.getByTestId("offline-queue-badge")).toHaveText(
     /1 queued offline/
   );
@@ -175,9 +175,10 @@ test("a queued confirm that lands on an already-skipped dose is surfaced, not si
   await expect(
     reloaded.getByRole("button", { name: "Undo skip" })
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    reloaded.getByRole("button", { name: "Mark taken" })
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(reloaded.getByRole("button", { name: "Take" })).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
 
   await page.goto("/nutrition?tab=supplements");
   await deleteIntakeItem(page, name);
