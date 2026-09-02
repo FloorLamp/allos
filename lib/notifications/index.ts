@@ -133,13 +133,11 @@ export async function dispatch(
     return [];
   }
   // COMPOSED ONCE, HERE (#4538) — after the "is anything sending?" gate, so a profile
-  // with no channel costs no reads. Attribution used to be applied by whichever caller
-  // remembered to (eight of them did, the rest did not) while the callback rebuild
-  // applied it unconditionally, so a rebuild could make the "[Name] " label appear on a
-  // message that was sent without it. Every dispatch is an UNBIDDEN send, which is what
-  // `telegram-nudge` means (#3087) — the on-demand surfaces go out through
-  // `sendTelegramMessage` instead — so the origin is a property of the send path rather
-  // than of each mint site.
+  // with no channel costs no reads. Attribution used to depend on which caller
+  // remembered it while the rebuild applied it unconditionally, so a label could appear
+  // on a message that was sent without one. Every dispatch is an UNBIDDEN send, which
+  // is what `telegram-nudge` means (#3087); the on-demand surfaces go out through
+  // `sendTelegramMessage` instead.
   const composed = composeForSend(profileId, msg, "telegram-nudge");
   const results = await settleWithinDeadline(
     channels.map((c) => ({

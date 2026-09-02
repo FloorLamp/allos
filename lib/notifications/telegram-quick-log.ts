@@ -964,16 +964,14 @@ export async function handleFoodCommand(
       skipped.push(getProfileNameById(pid) ?? "Profile");
       continue;
     }
-    // THE THIRD HOST OF THE COMPOSED ONE-TAP (#4538, #2460). The tick's two hosts — the
-    // window's dose reminder and its food nudge — carried the bundle and this reply,
-    // which renders the SAME nudge for the SAME window, did not: a habitual morning
-    // reached from `/food` offered the per-group buttons and not the one that logs the
-    // whole routine. Minted here for the same reason the tick mints at its hosts: this
-    // is the moment a host message actually exists, so a window with nothing to offer
-    // leaves no offer row behind. The consent gate the tick applies (`foodTelegram`)
-    // is not one here — this is a reply to a message the reader just sent, which is the
-    // same reasoning that leaves `/food` itself ungated.
-    // Attribution and the pre-dispatch assertion are the chokepoint's (#4538).
+    // THE THIRD HOST OF THE COMPOSED ONE-TAP (#4538, #2460). The tick's two hosts carry
+    // the bundle; this reply renders the SAME nudge for the SAME window and did not, so
+    // a habitual morning reached from `/food` offered the per-group buttons and not the
+    // one that logs the whole routine. Minted HERE for the reason the tick mints at its
+    // hosts: the host message exists, so a window with nothing to offer leaves no offer
+    // row behind. The tick's `foodTelegram` consent gate is not one here, for the same
+    // reason `/food` itself is ungated — this is a reply to a message just sent.
+    // Attribution and the pre-dispatch assertion are the chokepoint's.
     await sendTelegramMessage(
       chatId,
       attachUsualRoutine(built, mintUsualRoutineAttachment(pid, window, date)),

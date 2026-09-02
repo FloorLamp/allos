@@ -620,14 +620,10 @@ export async function sendTelegramMessage(
   subject: TelegramSendSubject
 ): Promise<void> {
   // COMPOSED HERE, NOT BY THE CALLER (#4538). Every send through this function is a
-  // reply to something the reader just did — a slash command, a reply to a prompt, a
-  // Settings test send — so the chat origin is `telegram-command` by construction
-  // rather than by each mint site remembering to say so.
-  //
-  // ATTRIBUTION FOLLOWS THE DECLARED SUBJECT (#1995): a message ABOUT a profile
-  // carries that profile's "[Name] " label, and a CHAT_WIDE message covers the chat
-  // (or has no data subject at all) and names nobody — labelling it with the chat's
-  // stable representative would say the list belongs to one member of a family chat.
+  // reply to something the reader just did, so `telegram-command` is a property of the
+  // send path rather than of each mint site. Attribution follows the DECLARED SUBJECT
+  // (#1995): a CHAT_WIDE message covers the chat and names nobody, and labelling it
+  // with the chat's representative would hand a family's list to one member.
   const composed = composeMessage(
     msg,
     typeof subject === "number" ? prefixForProfile(subject) : "",
@@ -696,11 +692,10 @@ export async function rebuildMessage(
   // what currently stands, so a half already logged falls out of the named line and the
   // whole button disappears once nothing stands.
   //
-  // THE SAME COMPOSITION A SEND RUNS (#4538): one `composeForSend` both ways, so a
-  // rebuilt keyboard can only ever differ from the delivered one by what the stored
-  // offer no longer stands for. No origin is passed — a rebuild PRESERVES whatever the
-  // live keyboard declares, which its callers read off the tapped token or the pointer
-  // and have already applied.
+  // THE SAME COMPOSITION A SEND RUNS (#4538), so a rebuilt keyboard can differ from the
+  // delivered one only by what the stored offer no longer stands for. No origin: a
+  // rebuild PRESERVES what the live keyboard declares, which its callers already read
+  // off the tapped token or the pointer and applied.
   const attributed = composeForSend(
     profileId,
     msg,
