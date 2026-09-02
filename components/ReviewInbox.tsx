@@ -5,6 +5,7 @@ import type { UnitPrefs } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/registry";
 import { isStaleSyncEvent } from "@/lib/integrations/staleness";
 import {
+  dataSectionHref,
   integrationDetailHref,
   medicationEditHref,
   nutritionTabHref,
@@ -34,6 +35,7 @@ import type {
 } from "@/lib/queries/integrations";
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
 import type { getUnreadableDoseAmounts } from "@/lib/queries/data-quality";
+import type { OverlappingSleepPair } from "@/lib/queries/sleep";
 import type {
   ActivityDupCluster,
   BodyMetricConflictPair,
@@ -84,6 +86,7 @@ export default function ReviewInbox({
   bodyMetricPairs = [],
   unitMislabels = [],
   unreadableDoseAmounts = [],
+  overlappingSleep = [],
   correctionSources,
   initialCorrectionField = null,
   units,
@@ -111,6 +114,10 @@ export default function ReviewInbox({
   unitMislabels?: UnitMislabelReviewRow[];
   // Exact stored text the shared dose parser refuses; Review never guesses a locale.
   unreadableDoseAmounts?: ReturnType<typeof getUnreadableDoseAmounts>;
+  // Same-origin sleep sessions that overlap, so one night is stored twice (#3628). The
+  // ingest rule collapses a pair only when the device's heart rate says which window is
+  // the night; these are the ones it could not read, and only a person can settle them.
+  overlappingSleep?: OverlappingSleepPair[];
   // Bulk corrections (#1603): which source runs exist per correctable field, for
   // the "Fix a run of data" panel's pickers.
   correctionSources: CorrectionSourcesByField;
@@ -134,7 +141,8 @@ export default function ReviewInbox({
     <div className="space-y-6" data-testid="review-inbox">
       {(escalated.length > 0 ||
         leftoverIssues.length > 0 ||
-        unreadableDoseAmounts.length > 0) && (
+        unreadableDoseAmounts.length > 0 ||
+        overlappingSleep.length > 0) && (
         <div
           className="card border-rose-200 dark:border-rose-900/50"
           data-testid="needs-attention-sources"
@@ -221,6 +229,38 @@ export default function ReviewInbox({
                     className="mt-2 inline-block text-sm text-link"
                   >
                     Review dose
+                  </DestinationLink>
+                </li>
+              ))}
+            </ul>
+          )}
+          {overlappingSleep.length > 0 && (
+            <ul className="mt-3 space-y-3" data-testid="overlapping-sleep">
+              {overlappingSleep.map((pair) => (
+                <li
+                  key={pair.sessions.map((s) => s.id).join(":")}
+                  className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-900/50 dark:bg-rose-950/20"
+                >
+                  <p className="font-medium text-slate-800 dark:text-slate-100">
+                    One night is stored twice
+                  </p>
+                  <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
+                    These two sleep sessions from {pair.origin} overlap, so a day
+                    shows a night that did not happen. Delete the wrong one.
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+                    {pair.sessions.map((session) => (
+                      <li key={session.id}>
+                        <SyncTimestamp value={session.started_at} /> ·{" "}
+                        {session.minutes} min
+                      </li>
+                    ))}
+                  </ul>
+                  <DestinationLink
+                    href={dataSectionHref("manage")}
+                    className="mt-2 inline-block text-sm text-link"
+                  >
+                    Delete a sleep session
                   </DestinationLink>
                 </li>
               ))}

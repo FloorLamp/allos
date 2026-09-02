@@ -26,6 +26,7 @@ import {
   pushedMeasures,
   reconcileRekeyedBodyMetrics,
 } from "./ingest-timezone-reconcile";
+import { collapseSleepSessionOverlaps } from "./sleep-overlap-db";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -249,6 +250,23 @@ export function ingestHealthConnectPayload(
         hrMinutes = foldCounts([hrMinutes, c]);
       }
     );
+    // ── THE SLEEP OVERLAP COLLAPSE (#3628) ── AFTER THE HEART RATE, AND THAT IS WHY IT
+    // IS HERE RATHER THAN IN THE SAMPLE CHUNKS ABOVE. A re-timed sleep session is decided
+    // by the heart rate the device recorded inside each claimed window, and this push's
+    // minutes only reach the store in the chunks that just committed — planned any
+    // earlier it would judge the corrected night against a store that cannot yet see it.
+    // Its own transaction, so the deletes and their tombstones land together; a failure
+    // in the chunks above leaves it unrun rather than half-run, and the store keeps both
+    // nights until a later push re-derives it.
+    samples = foldCounts([
+      samples,
+      {
+        ...emptyCounts(),
+        superseded: writeTx(() =>
+          collapseSleepSessionOverlaps(profileId, source, pushedAt)
+        ),
+      },
+    ]);
     commitChunks(
       parsed.activities,
       (slice, sink) => upsertActivities(profileId, slice, source, sink),
