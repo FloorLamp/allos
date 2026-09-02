@@ -1736,6 +1736,18 @@ describe("FoodLogBar composed usual bundle", () => {
     });
     appActions.usualRoutineOffersOn.mockReset();
     appActions.usualRoutineOffersOn.mockResolvedValue([]);
+    // The single-serving add shares this mount's sticky statement and is the CONVERSE
+    // half of the case below, so it needs an answer to settle against. Evening because
+    // that is where a 20:00 statement files against these boundaries — the same
+    // derivation the bar makes client-side, so the adopt path is exercised honestly.
+    actions.logFoodServing.mockReset();
+    actions.logFoodServing.mockResolvedValue({
+      ok: true,
+      eventId: 41,
+      servings: 1,
+      mealSlot: "Evening",
+      mealServings: 1,
+    });
   });
 
   it("names and posts the dose half beside the food half", async () => {
@@ -1780,9 +1792,17 @@ describe("FoodLogBar composed usual bundle", () => {
     );
     const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
     expect(sent.get("occurred_at")).toBeNull();
-    // And the single-serving add beside it is untouched — it still states the hour,
-    // because a serving is what an eating time is a statement about.
-    expect(sent.get("meal_slot")).toBe("Midday");
+
+    // AND THE SINGLE-SERVING ADD BESIDE IT STILL STATES THE HOUR — the converse, and
+    // the half that makes the assertion above mean "the bundle declines it" rather than
+    // "this mount states nothing at all". Read off `logFoodServing`'s OWN FormData: an
+    // earlier spelling asserted `sent.get("meal_slot")` here, which is the BUNDLE's
+    // post, so it could not fail however the single-serving path behaved.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const single = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(single.get("occurred_at")).toBe("20:00");
   });
 
   it("re-reads the dose half when the day picker moves, and drops a late answer for a day already left", async () => {
