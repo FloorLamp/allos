@@ -212,16 +212,10 @@ function logAdminAt(
   return Number(
     db
       .prepare(
-        // A REAL administration STATES its instant (both columns, as `logAdministration`
-        // writes them). Since #4686 the ceiling window and the arming clock judge
-        // `occurred_at` and anchor a row that states none at its day's noon, so a fixture
-        // writing only the capture stamp would exercise the untimed arm while meaning "a
-        // dose N hours ago".
-        `INSERT INTO intake_item_logs
-           (dose_id, item_id, date, recorded_at, occurred_at, status)
-         VALUES (?, ?, ?, ?, ?, 'taken')`
+        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+         VALUES (?, ?, ?, ?, 'taken')`
       )
-      .run(med.doseId, med.itemId, today(profileId), at, at).lastInsertRowid
+      .run(med.doseId, med.itemId, today(profileId), at).lastInsertRowid
   );
 }
 
@@ -245,7 +239,7 @@ describe("/dose renders its safety verdicts (#1717)", () => {
     await handleIncomingMessage({ chat: { id: "5550777" }, text: "/dose" });
     const label = lastDoseLabels().find((l) => l.includes("Ibuprofen"))!;
     expect(label).toContain("Max reached");
-    expect(label).toContain("4 of 4 in 24h");
+    expect(label).toContain("4 of 4 today");
   });
 
   it("names the wait while the minimum interval is still open", async () => {
@@ -258,7 +252,7 @@ describe("/dose renders its safety verdicts (#1717)", () => {
     await handleIncomingMessage({ chat: { id: "5550778" }, text: "/dose" });
     const label = lastDoseLabels().find((l) => l.includes("Naproxen"))!;
     expect(label).toContain("Next dose in ~2h");
-    expect(label).toContain("1 of 4 in 24h");
+    expect(label).toContain("1 of 4 today");
   });
 
   it("never invents a ceiling the user did not confirm", async () => {
@@ -270,7 +264,7 @@ describe("/dose renders its safety verdicts (#1717)", () => {
 
     await handleIncomingMessage({ chat: { id: "5550779" }, text: "/dose" });
     const label = lastDoseLabels().find((l) => l.includes("Paracetamol"))!;
-    expect(label).toContain("1 in 24h");
+    expect(label).toContain("1 today");
     expect(label).not.toContain("Max reached");
     expect(label).not.toContain("of ");
   });
@@ -289,7 +283,7 @@ describe("/dose renders its safety verdicts (#1717)", () => {
     await handleIncomingMessage({ chat: { id: "5550780" }, text: "/dose" });
     const label = lastDoseLabels().find((l) => l.includes("Ibuprofen 800 mg"))!;
     // Family-wide: 3 across 2 items — the item-only count would have said "1 today".
-    expect(label).toContain("3 of 4 in 24h across 2 items");
+    expect(label).toContain("3 of 4 today across 2 items");
   });
 
   it("an at-max tap logs (the app treats the window as guidance) but SAYS the verdict", async () => {
@@ -309,7 +303,7 @@ describe("/dose renders its safety verdicts (#1717)", () => {
     expect(answer).toContain("Logged");
     // The warning is present and the LEDGER agrees with what the answer claims.
     expect(answer).toContain("Max reached");
-    expect(answer).toContain("5 of 4 in 24h");
+    expect(answer).toContain("5 of 4 today");
     const { c } = db
       .prepare(
         `SELECT COUNT(*) AS c FROM intake_item_logs WHERE item_id = ? AND status = 'taken'`

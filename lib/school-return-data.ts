@@ -89,49 +89,64 @@ function schoolReturnStatusForRows(
   //
   // NOON IS A PLACEHOLDER, NOT A MEASUREMENT, and the ordering rule below is what keeps
   // that honest.
-  // THE SELECTION OBEYS THE SAME ORDERING RULE AS THE COMPARISON BELOW. Picking the
-  // newest fever by anchored-instant arithmetic quietly bypassed it: an UNTIMED 103.4
-  // sharing a day with a timed 100.9 lost to noon arithmetic, so the "last fever" was
-  // the one that COULD be ordered, the untimed one was never compared at all, and the
-  // surface read "fever-free 24h/24h" while quoting 100.9 as the last reading.
+  // TWO QUESTIONS, NOT ONE: what ORDERS the readings, and what the surface QUOTES.
   //
-  // Within the latest fever DAY, an unplaced reading could be later than every placed
-  // one, so it is the one that governs — and being unplaced, it makes every same-day
-  // comparison below unprovable, which is the honest outcome rather than a silent one.
+  // The ordering anchor may be an UNPLACED reading — one that states no clock — because
+  // an unplaced reading could be later than every placed one on its day, and letting it
+  // govern is what keeps `establishedAfterFever` below from being bypassed by noon
+  // arithmetic.
+  //
+  // But a placeholder must never become a QUOTED FACT. Letting the unplaced reading
+  // govern `lastFeverDegF` too produced "No reading since 100.5 °F (14h ago)" where the
+  // last measured fever was a LATER, HIGHER 103.4 at 19:00 — the line quoted the lower
+  // reading and doubled the elapsed time, both off a noon placeholder, both in the
+  // reassuring direction, on a surface whose whole posture is the person's own logged
+  // facts. So the quoted reading is the latest fever that actually STATES a time, and
+  // only when no fever states one at all does the unplaced reading get quoted, because
+  // then there is nothing else to quote.
   let lastFever: { ms: number; day: string; timed: boolean } | null = null;
-  let lastFeverDegF = 0;
+  let quoted: { ms: number; degF: number } | null = null;
+  let unplacedFallback: { ms: number; degF: number } | null = null;
   for (const t of episode.temperatures) {
     if (t.flag !== "high") continue;
     const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
     if (!at) continue;
     const ms = at.getTime();
     const timed = !!t.time;
+
+    // The ORDERING anchor. A later DAY always wins; on the SAME day an unplaced
+    // reading wins over a placed one, a later placed instant wins between two placed
+    // ones, and the later in the episode's own order wins between two unplaced ones.
     if (lastFever == null) {
       lastFever = { ms, day: t.date, timed };
-      lastFeverDegF = t.degF;
-      continue;
+    } else {
+      const laterDay = t.date > lastFever.day;
+      const sameDay = t.date === lastFever.day;
+      const wins = laterDay
+        ? true
+        : !sameDay
+          ? false
+          : lastFever.timed && !timed
+            ? true
+            : lastFever.timed === timed
+              ? ms >= lastFever.ms
+              : false;
+      if (wins) lastFever = { ms, day: t.date, timed };
     }
-    // A later DAY always wins. On the SAME day, an unplaced reading wins over a placed
-    // one; between two placed ones the later instant wins; between two unplaced ones
-    // the later in the episode's own order wins.
-    const laterDay = t.date > lastFever.day;
-    const sameDay = t.date === lastFever.day;
-    const wins = laterDay
-      ? true
-      : !sameDay
-        ? false
-        : lastFever.timed && !timed
-          ? true
-          : lastFever.timed === timed
-            ? ms >= lastFever.ms
-            : false;
-    if (wins) {
-      lastFever = { ms, day: t.date, timed };
-      lastFeverDegF = t.degF;
+
+    // The QUOTED reading, tracked separately: the latest fever that states a time.
+    if (timed) {
+      if (quoted == null || ms >= quoted.ms) quoted = { ms, degF: t.degF };
+    } else if (unplacedFallback == null || ms >= unplacedFallback.ms) {
+      unplacedFallback = { ms, degF: t.degF };
     }
   }
   if (lastFever == null) return null;
-  const lastFeverAtMs = lastFever.ms;
+  // Quoted from a measured reading whenever one exists; the placeholder only when no
+  // fever in this episode states a time.
+  const quotedFever = quoted ?? unplacedFallback!;
+  const lastFeverAtMs = quotedFever.ms;
+  const lastFeverDegF = quotedFever.degF;
 
   // THE EVIDENCE (#4685): the first IN-RANGE reading established to be AFTER that
   // fever.

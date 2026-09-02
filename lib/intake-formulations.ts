@@ -93,7 +93,7 @@ export function defaultFormulationSlug(input: {
 // leading number + mass unit, so it reads "240 mg / 7.5 mL" perfectly well — an
 // mg-leading string with the volume appended is NOT the hazard. The hazard is the
 // literal reading of "volume-first": "7.5 mL (240 mg)" and "7.5 mL" both parse to
-// null. And `prnWindowExposure` treats an unreadable amount as a reason to abandon the
+// null. And `prnDayExposure` treats an unreadable amount as a reason to abandon the
 // milligram basis — `PrnExposureBasis` flips from "mg" to "count", so a confirmed
 // mg/day ceiling silently stops being a mg/day ceiling and becomes a dose count.
 // That would land on a child's liquid medicine, which is the single case where the

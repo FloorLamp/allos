@@ -93,7 +93,7 @@ function logThree(profileId: number, itemId: number) {
 describe("deleteAdministrationLog / restoreAdministrationLog — window + supply round-trip", () => {
   // Freeze the clock at a fixed mid-day. logThree logs administrations at now − 30/20/10
   // minutes; run in the 00:00–00:30 window those relative times straddle midnight and land
-  // on YESTERDAY's profile-local date, while the assertions query today() — so count24h
+  // on YESTERDAY's profile-local date, while the assertions query today() — so countToday
   // reads 0 (a time-of-day flake, unrelated to supply accounting). Freezing now() and
   // today() to the same mid-day instant makes the fixture deterministic regardless of when
   // CI runs; the delete/restore round-trip assertions below are unchanged.
@@ -115,7 +115,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
 
     // Three administrations: count 3, supply 10 − 3 = 7, over the max of 2.
     logThree(profileId, itemId);
-    expect(getRedoseArmingState(profileId, itemId).count24h).toBe(3);
+    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(3);
     expect(onHand(itemId)).toBe(7);
     let over = getPrnOverMaxItems(profileId, date);
     expect(over.map((o) => o.id)).toContain(itemId);
@@ -127,7 +127,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     const removed = deleteAdministrationLog(profileId, logId);
     expect(typeof removed?.undoId).toBe("number");
     const undoId = removed!.undoId;
-    expect(getRedoseArmingState(profileId, itemId).count24h).toBe(2);
+    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(2);
     expect(onHand(itemId)).toBe(8);
     expect(getPrnOverMaxItems(profileId, date).map((o) => o.id)).not.toContain(
       itemId
@@ -136,7 +136,7 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     // Restore → count back to 3 (a NEW ledger row), over-max fires again, supply
     // re-decremented 8 → 7.
     expect(restoreAdministrationLog(profileId, undoId!)).toBe(true);
-    expect(getRedoseArmingState(profileId, itemId).count24h).toBe(3);
+    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(3);
     expect(onHand(itemId)).toBe(7);
     over = getPrnOverMaxItems(profileId, date);
     expect(over.find((o) => o.id === itemId)!.total).toBe(3);

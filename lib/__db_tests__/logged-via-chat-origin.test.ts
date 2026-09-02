@@ -568,21 +568,11 @@ describe("a redose notice tap records telegram-nudge", () => {
         )
         .run(itemId).lastInsertRowid
     );
-    // One administration seven hours ago: the window is open. The instant is STATED
-    // (both columns, as the real writer sets them) — since #4686 the arming clock
-    // judges `occurred_at` and anchors a row that states none at its day's noon, so
-    // writing only the capture stamp would have meant "some time midday", not 07:00.
+    // One administration seven hours ago: the window is open.
     db.prepare(
-      `INSERT INTO intake_item_logs
-         (dose_id, item_id, date, recorded_at, occurred_at, status, logged_via)
-       VALUES (?, ?, ?, ?, ?, 'taken', 'page')`
-    ).run(
-      doseId,
-      itemId,
-      today(profileId),
-      "2026-06-17 07:00:00",
-      "2026-06-17T07:00:00Z"
-    );
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, logged_via)
+       VALUES (?, ?, ?, ?, 'taken', 'page')`
+    ).run(doseId, itemId, today(profileId), "2026-06-17 07:00:00");
 
     await runRedoseNotices(
       profileId,

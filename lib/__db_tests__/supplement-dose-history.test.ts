@@ -847,12 +847,12 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
     );
     const logId = getIntakeDoseHistory(p, itemId, "0001-01-01")[0].id;
 
-    const before = getRedoseArmingState(p, itemId);
+    const before = getRedoseArmingState(p, itemId, date);
     expect(before.latestGivenAt).toContain("10:00");
 
     // Moving the administration event moves the safety clock without changing row id.
     updateHistoricalDose(p, itemId, logId, date, at(date, "14:00"), null);
-    const after = getRedoseArmingState(p, itemId);
+    const after = getRedoseArmingState(p, itemId, date);
     expect(after.latestGivenAt).toContain("14:00");
     expect(after.latestId).toBe(before.latestId);
 
@@ -881,21 +881,14 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       )
     ).toEqual({ kind: "duplicate" });
 
-    // CLEARING THE EVENT TAKES THE ROW OUT OF THE ARMING CANDIDATES ENTIRELY (#4686
-    // pass three). It used to fall back to the immutable capture stamp — asserted here
-    // as an identity — and then, briefly, to the row's own day at noon; both were
-    // stand-ins for a time nobody recorded, and both read as an elapsed interval on a
-    // safety line. A row that states no instant now arms nothing: the clock is the
-    // newest row that DOES state one, and the unplaced row makes the interval UNKNOWN
-    // for as long as it sits inside the ceiling window.
+    // Clearing the event makes the safety read fall back to immutable capture.
+    // State that as the identity it is: the read IS the row's own recorded_at.
+    // Asserting the absence of "14:00" instead reds for the minute the real clock
+    // spells it, because the fallback value is that clock (#3180).
     updateHistoricalDose(p, itemId, logId, date, null, null);
-    const cleared = getRedoseArmingState(p, itemId);
-    expect(cleared.latestGivenAt).toBe(`${date}T10:01:00Z`);
-    expect(cleared.latestGivenAt).not.toBe(logRow(logId).recorded_at);
-    // …and it is OUTSIDE the ceiling window (a backfilled past day), so it does not
-    // make the interval unknown — only an unplaced row the window actually holds can
-    // do that. The boundary is asserted rather than assumed.
-    expect(cleared.untimedInWindow).toBe(false);
+    expect(getRedoseArmingState(p, itemId, date).latestGivenAt).toBe(
+      logRow(logId).recorded_at
+    );
   });
 });
 

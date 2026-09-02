@@ -265,8 +265,12 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 7,
-    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated — the shared dose-history ordering, which keeps three scopes identical. #4686's SAFETY readers left this set: the ceiling window and the redose arming clock both judge the administration instant and anchor a row that states none at its own day's noon, so neither pairs the two columns at all. What remains is history DISPLAY ordering, where a capture-time fallback only decides which of two rows is drawn first.",
+    count: 9,
+    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation.",
+  },
+  "lib/queries/intake/prn-family.ts": {
+    count: 2,
+    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,

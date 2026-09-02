@@ -51,7 +51,7 @@ export async function handleDoseCommand(
           // Family-aware throughout (#1027): the count the app shows spans the
           // ingredient family, so the list can't read "1 today" where the card says
           // "3 of 4 today across 2 items".
-          count24h: m.familyCount,
+          countToday: m.familyCount,
           maxDailyCount: m.familyMaxDailyCount ?? m.maxDailyCount,
           familyMemberCount: m.familyMemberCount,
         })}`,

@@ -1431,7 +1431,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-${fid}`}>
-                      Maximum doses per 24 hours
+                      Maximum doses per day
                     </label>
                     <input
                       id={`redose-max-${fid}`}
@@ -1450,7 +1450,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-mg-${fid}`}>
-                      Maximum mg per 24 hours
+                      Maximum mg per day
                     </label>
                     <input
                       id={`redose-max-mg-${fid}`}

@@ -326,7 +326,7 @@ export function loadMedicationsData(
   // FAMILY's latest administration / combined count / most conservative confirmed
   // max (an OTC ibuprofen dose holds the Rx item's "Redose OK"); the day label
   // stays the item's OWN administrations.
-  const familyStates = getMedicationFamilyStates(profileId);
+  const familyStates = getMedicationFamilyStates(profileId, todayStr);
   const prnInfoFor = (
     s: IntakeItem
   ): {
@@ -364,12 +364,12 @@ export function loadMedicationsData(
       : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
-    const famCount = fam?.count24h ?? admins.length;
+    const famCount = fam?.countToday ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
     // The daily max is optional (#1458): the interval + an administration are all
     // the "next dose in ~Nh" half needs, so the gate asks only for those.
-    if (s.min_interval_hours != null && (famLast || fam?.untimedInWindow)) {
+    if (s.min_interval_hours != null && famLast) {
       const redoseStatus = redoseWindowStatus({
         minIntervalHours: s.min_interval_hours,
         maxDailyCount: effectiveMaxDailyCount(
@@ -377,14 +377,11 @@ export function loadMedicationsData(
           fam?.minConfirmedMax
         ),
         latestGivenAt: parseUtcSql(famLast),
-        count24h: famCount,
+        countToday: famCount,
         now: nowInstant,
         // The family's amount-aware exposure (#1854): the card's "N of M" line
         // reads milligrams when a mg/day max is confirmed and amounts are known.
         exposure: fam?.exposure ?? null,
-        // #4686 pass three: an unplaced administration in the window makes the
-        // interval unknowable, and this card must say so rather than compute one.
-        untimedInWindow: fam?.untimedInWindow,
       });
       redoseLine = redoseCardLabel(redoseStatus, fam?.memberIds.length ?? 1);
       redosePrimary = redoseActionIsPrimary(redoseStatus);

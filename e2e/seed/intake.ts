@@ -7,7 +7,7 @@ import "../../scripts/load-env";
 
 import { db, today } from "../../lib/db";
 import { now as clockNow } from "../../lib/clock";
-import { shiftDateStr, utcInstant, utcSqlString } from "../../lib/date";
+import { shiftDateStr, utcSqlString } from "../../lib/date";
 import {
   E2E_LOGIN_SUPPLY,
   SUPPLY_PARENT_PROFILE,
@@ -201,24 +201,16 @@ export function seedPrnLedger(): void {
   // to today() (not derived from recorded_at) so the count stays "today" even if an offset
   // crosses UTC midnight at boot.
   const prnToday = today(PROFILE_ID);
-  // A REAL administration STATES its instant in `occurred_at` as well as the capture
-  // stamp, exactly as `logAdministration` writes it. Since #4686 the ceiling window and
-  // the redose arming clock judge `occurred_at`, anchoring a row that states none at
-  // its day's local NOON — so a fixture writing only `recorded_at` would mean "some
-  // time around midday", not "N hours ago".
   const insAdmin = db.prepare(
-    `INSERT INTO intake_item_logs
-       (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
-   VALUES (?, ?, ?, ?, ?, '400 mg', 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
+   VALUES (?, ?, ?, ?, '400 mg', 'taken')`
   );
   for (const minutesAgo of [90, 45]) {
-    const at = new Date(clockNow().getTime() - minutesAgo * 60 * 1000);
     insAdmin.run(
       prnDoseId,
       prnMedId,
       prnToday,
-      utcSqlString(at),
-      utcInstant(at)
+      utcSqlString(new Date(clockNow().getTime() - minutesAgo * 60 * 1000))
     );
   }
 
@@ -228,7 +220,7 @@ export function seedPrnLedger(): void {
 
   // A second PRN med with a CONFIRMED redose notice (#798): min interval 6h, max 4/day,
   // opt-in on, and ONE administration ~7h ago — so the redose window is OPEN and the
-  // card/widget render the "Redose OK — min interval passed · 1 of 4 in 24h" status line.
+  // card/widget render the "Redose OK — min interval passed · 1 of 4 today" status line.
   // Synthetic name → matches no interaction dataset; high supply so it never joins the
   // low-supply fixtures. Idempotent (recreated each boot, administration stays
   // today-relative).
@@ -258,17 +250,14 @@ export function seedPrnLedger(): void {
     `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
    VALUES (?, ?, NULL, NULL, 'PRN redose — e2e fixture')`
   ).run(redoseMedId, shiftDateStr(today(PROFILE_ID), -30));
-  const redoseAt = new Date(clockNow().getTime() - 7 * 60 * 60 * 1000);
   db.prepare(
-    `INSERT INTO intake_item_logs
-       (dose_id, item_id, date, recorded_at, occurred_at, amount, status)
-   VALUES (?, ?, ?, ?, ?, '200 mg', 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
+   VALUES (?, ?, ?, ?, '200 mg', 'taken')`
   ).run(
     redoseDoseId,
     redoseMedId,
     today(PROFILE_ID),
-    utcSqlString(redoseAt),
-    utcInstant(redoseAt)
+    utcSqlString(new Date(clockNow().getTime() - 7 * 60 * 60 * 1000))
   );
   console.log(
     `e2e: seeded PRN redose-notice fixture "${REDOSE_MED_NAME}" (#798)`
@@ -451,17 +440,14 @@ export function seedPrnCounter(): void {
       .run(prnRxId).lastInsertRowid
   );
   // The sibling administration: 1h before the frozen clock, on the profile-local day.
-  const prnRxAt = new Date(clockNow().getTime() - 3_600_000);
   db.prepare(
-    `INSERT INTO intake_item_logs
-       (dose_id, item_id, date, recorded_at, occurred_at, status)
-   VALUES (?, ?, ?, ?, ?, 'taken')`
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+   VALUES (?, ?, ?, ?, 'taken')`
   ).run(
     prnRxDoseId,
     prnRxId,
     today(prnFamilyId),
-    utcSqlString(prnRxAt),
-    utcInstant(prnRxAt)
+    utcSqlString(new Date(clockNow().getTime() - 3_600_000))
   );
   seedMemberLogin(E2E_LOGIN_PRN_FAMILY, prnFamilyId, "write");
   console.log(
@@ -668,12 +654,15 @@ export function seedUpcomingAggregate(): void {
       .run(prnId).lastInsertRowid
   );
   for (const backMs of [7_200_000, 3_600_000]) {
-    const at = new Date(clockNow().getTime() - backMs);
     db.prepare(
-      `INSERT INTO intake_item_logs
-         (dose_id, item_id, date, recorded_at, occurred_at, status)
-       VALUES (?, ?, ?, ?, ?, 'taken')`
-    ).run(prnDoseId, prnId, aggDay, utcSqlString(at), utcInstant(at));
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+       VALUES (?, ?, ?, ?, 'taken')`
+    ).run(
+      prnDoseId,
+      prnId,
+      aggDay,
+      utcSqlString(new Date(clockNow().getTime() - backMs))
+    );
   }
 
   // The Later band (#2579-A): four dated goals — the fold — beside one scheduled

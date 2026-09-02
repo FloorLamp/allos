@@ -2,7 +2,7 @@
 //
 // The sick-kid scenario: a caregiver quick-adds "Acetaminophen 160 mg", ticks As
 // needed, fills in "Minimum hours between doses = 6", and leaves the OPTIONAL
-// "Maximum doses per 24 hours" blank — it is the field a parent is least likely to know
+// "Maximum doses per day" blank — it is the field a parent is least likely to know
 // offhand. Before this fix both med-data gathers ANDed the two fields together, so a
 // stored 6-hour interval produced no redose guidance at all: the single number wanted
 // at 2am was computable, stored, and never shown.
@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { utcInstant, utcSqlString } from "@/lib/date";
+import { utcSqlString } from "@/lib/date";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 
 function newProfile(name: string): number {
@@ -59,18 +59,11 @@ function logAdministration(
   date: string,
   hoursAgo: number
 ): void {
-  // A REAL administration STATES its instant (both columns, as `logAdministration`
-  // writes them). Since #4686 the ceiling window and the arming clock judge
-  // `occurred_at` and anchor a row that states none at its day's noon, so a fixture
-  // writing only the capture stamp would exercise the untimed arm while meaning "a
-  // dose N hours ago".
-  const at = new Date(Date.now() - hoursAgo * 3_600_000);
-  const recordedAt = utcSqlString(at);
+  const recordedAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
   db.prepare(
-    `INSERT INTO intake_item_logs
-       (dose_id, item_id, date, recorded_at, occurred_at, status)
-     VALUES (?, ?, ?, ?, ?, 'taken')`
-  ).run(doseId, itemId, date, recordedAt, utcInstant(at));
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
+     VALUES (?, ?, ?, ?, 'taken')`
+  ).run(doseId, itemId, date, recordedAt);
 }
 
 // The redose line for an item on each of the two gathers the loader emits.
@@ -98,7 +91,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     // 6h interval, dosed an hour ago → ~5h to go. The count stays bare rather than
     // inventing a ceiling, and the line names that no daily limit is on record.
     expect(lines.card).toBe(
-      "Next dose in ~5h · 1 in 24h · no daily limit on record"
+      "Next dose in ~5h · 1 today · no daily limit on record"
     );
     expect(lines.todayPanel).toBe(lines.card);
   });
@@ -118,7 +111,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
 
     const lines = redoseLines(p, itemId);
     expect(lines.card).toBe(
-      "Redose OK — min interval passed · 3 in 24h · no daily limit on record"
+      "Redose OK — min interval passed · 3 today · no daily limit on record"
     );
     expect(lines.card).not.toContain("Max reached");
     expect(lines.todayPanel).toBe(lines.card);
@@ -166,7 +159,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     // The max-less Rx item inherits the family's confirmed ceiling, and the sibling's
     // dose arms its clock.
     expect(redoseLines(p, rx.itemId).card).toBe(
-      "Next dose in ~5h · 1 of 4 in 24h across 2 items"
+      "Next dose in ~5h · 1 of 4 today across 2 items"
     );
   });
 });

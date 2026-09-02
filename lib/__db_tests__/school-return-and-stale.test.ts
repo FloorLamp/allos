@@ -254,9 +254,31 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     // 24h after the 20:00 normal: the retired rule read "fever-free 24h/24h, met",
     // quoting 100.9 back as the last fever.
     const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T20:00:00Z`))!;
-    expect(s.lastFeverDegF).toBe(103.4);
+    // The unplaced 103.4 governs the ORDERING — so the 20:00 normal cannot be proven
+    // later and there is no fever-free claim — while the QUOTED reading stays the
+    // latest one somebody actually measured. A placeholder orders; it never speaks.
     expect(s.evidence).toBe("none");
     expect(s.met).toBe(false);
+    expect(s.lastFeverDegF).toBe(100.9);
+  });
+
+  // AND THE PLACEHOLDER NEVER OUT-QUOTES A REAL READING. An unplaced 100.5 beside a
+  // later, higher, placed 103.4 read "No reading since 100.5 °F (14h ago)": the lower
+  // reading quoted back and the elapsed time doubled, both off a noon anchor, both in
+  // the reassuring direction.
+  it("quotes the last MEASURED fever, not the unplaced one", () => {
+    const p = newProfile("sr-quoted-fever");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 3);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 100.5, "F", yd, "page", null); // unplaced → noon
+    logTemperatureCore(p, 103.4, "F", yd, "page", "19:00"); // later, higher, measured
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T02:00:00Z`))!;
+    expect(s.lastFeverDegF).toBe(103.4);
+    expect(s.hoursSinceFever).toBe(7); // 02:00 − 19:00, not 14h off the placeholder
   });
 
   it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {

@@ -36,13 +36,8 @@ import {
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
-import {
-  armingAdministration,
-  getMedicationFamilyStates,
-  prnCeilingWindowClause,
-  redoseWindowState,
-} from "./prn-family";
-import type { PrnWindowExposure, PrnExposureBasis } from "../../prn-redose";
+import { getMedicationFamilyStates, redoseWindowState } from "./prn-family";
+import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -350,21 +345,6 @@ function applyDoseStatusCore(
     // actually taken even after a later dosage edit rewrites the dose row. A skip
     // records no amount — nothing was consumed.
     const amount = target === "taken" ? owned.amount : null;
-
-    // A CHECK-OFF FOR A PAST DAY STATES NO ADMINISTRATION INSTANT (#4686). The capture
-    // clock is today's; stamping it onto a row dated two days ago writes an
-    // administration that never happened at that moment, and the PRN ceiling — which
-    // judges the administration instant over a trailing 24h — then counts a catch-up as
-    // a dose given now. `recorded_at` still records WHEN THIS WAS FILED; what retires
-    // is the claim that filing time is intake time on a day it cannot be.
-    //
-    // ABOVE BOTH WRITERS, deliberately. This core has two: the INSERT for a first
-    // resolution and the UPDATE for a correction. The first version of this fix guarded
-    // only the INSERT, so the tri-state's ordinary skip→taken on a past day — which
-    // lands in the UPDATE — went on stamping the clock, and the identical catch-up
-    // reached that way still filled the ceiling. One question, asked once, consumed by
-    // both arms.
-    const statesNowIsHonest = date === today(profileId);
     if (!existing) {
       // `recorded_at` is immutable capture; `occurred_at` is the administration the
       // Taken action asserts. An offline replay may carry the captured administration
@@ -404,19 +384,14 @@ function applyDoseStatusCore(
         target,
         utcInstant(capturedAt),
         target === "taken" && !explicitlyUntimed
-          ? stamp
-            ? utcInstant(stamp)
-            : statesNowIsHonest
-              ? utcInstant(capturedAt)
-              : null
+          ? utcInstant(stamp ?? capturedAt)
           : null,
         opts.notifyMessageId ?? null,
         loggedVia
       );
     } else {
       // The immutable record stamp stays put. The explicit target owns whether this row
-      // states an administration: taken means now ON TODAY, and states none on a day
-      // whose "now" has passed (see statesNowIsHonest above); skipped means none.
+      // states an administration: taken means now, skipped means none.
       db.prepare(
         `UPDATE intake_item_logs
             SET status = ?, amount = ?, supply_adjusted = ?, occurred_at = ?
@@ -425,7 +400,7 @@ function applyDoseStatusCore(
         target,
         amount,
         target === "taken" ? 1 : 0,
-        target === "taken" && statesNowIsHonest ? instantNow() : null,
+        target === "taken" ? instantNow() : null,
         doseId,
         date
       );
@@ -1732,65 +1707,54 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
 
 // The arming state for one PRN item's redose one-shot: the latest administration's id
 // + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
-// discipline) and the CEILING WINDOW's administration count (drives the "N of M" + max
-// suppression). Profile-scoped via the parent item.
-//
-// The count is the trailing 24h, not a calendar day (#4686) — this is the per-item
-// fallback the redose orchestrator uses when a race leaves an item outside the family
-// map, so it has to judge the same window the family gather does or the fallback is
-// laxer than the thing it stands in for.
+// discipline) and today's administration count (drives the "N of M" + max
+// suppression). Profile-scoped via the parent item. `date` is the profile-local day.
 export interface RedoseArmingState {
   latestId: number | null;
   latestGivenAt: string | null;
-  count24h: number;
-  // As the family gather's field of the same name (#4686 pass three): an unplaced
-  // administration in the window makes the interval unknowable. Reported here too, or
-  // this fallback would be laxer than the thing it stands in for — which is the exact
-  // failure the shared window predicate was introduced to end.
-  untimedInWindow: boolean;
+  countToday: number;
 }
 
 export function getRedoseArmingState(
   profileId: number,
-  itemId: number
+  itemId: number,
+  date: string
 ): RedoseArmingState {
   // The most-recent administration (by intake time, id as tiebreak) that arms the
   // one-shot. Scoped through the parent item so a forged itemId can't read across
   // profiles.
-  // The SAME instant rule as the family gather and the window (#4686): the stated
-  // administration instant, or the row's own day's local noon when it states none —
-  // never the capture stamp, so this fallback cannot answer differently from the
-  // thing it stands in for.
-  const latest = armingAdministration(profileId, [itemId]);
-  // The SAME window predicate the family gather uses (#4686) — one spelling, so this
-  // fallback can never be laxer than the thing it stands in for.
-  const window = prnCeilingWindowClause(profileId);
-  const count = db
+  const latest = db
     .prepare(
-      `SELECT COUNT(*) AS n,
-              SUM(CASE WHEN l.occurred_at IS NULL THEN 1 ELSE 0 END) AS unplaced
+      `SELECT l.id AS id,
+              COALESCE(l.occurred_at, l.recorded_at) AS administeredAt
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND ${window.sql}`
+        ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
+        LIMIT 1`
     )
-    .get(profileId, itemId, ...window.params) as {
-    n: number;
-    unplaced: number | null;
-  };
+    .get(profileId, itemId) as
+    { id: number; administeredAt: string } | undefined;
+  const count = db
+    .prepare(
+      `SELECT COUNT(*) AS n
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
+          AND l.status = 'taken'`
+    )
+    .get(profileId, itemId, date) as { n: number };
   return {
     latestId: latest?.id ?? null,
     latestGivenAt: latest?.administeredAt ?? null,
-    count24h: count.n,
-    untimedInWindow: (count.unplaced ?? 0) > 0,
+    countToday: count.n,
   };
 }
 
-// A PRN med (or ingredient FAMILY, #1027) whose administration count IN THE CEILING
-// WINDOW has EXCEEDED the confirmed max (#798) — the input to the over-max care
-// finding (the #148 UL-warning shape). "Over" is strictly greater than the max (you
-// have logged MORE than the label allows in 24 hours). The window is the label's own
-// trailing 24h since #4686, so the finding cannot go blind across midnight.
+// A PRN med (or ingredient FAMILY, #1027) whose today's administration count has
+// EXCEEDED the confirmed daily max (#798) — the input to the over-max care finding
+// (the #148 UL-warning shape applied per-day). "Over" is strictly greater than the
+// max (you've logged MORE than the label allows today).
 //
 // FAMILY-AWARE (#1027 ask 2): the exposure is the ingredient family's COMBINED
 // taken administrations (OTC ibuprofen + Rx ibuprofen 800 together), compared
@@ -1803,15 +1767,15 @@ export function getRedoseArmingState(
 // #798 liability gate).
 //
 // AMOUNT-AWARE (#1854): basis/total/max come straight from the family state's
-// prnWindowExposure verdict — summed snapshotted MILLIGRAMS against a confirmed
+// prnDayExposure verdict — summed snapshotted MILLIGRAMS against a confirmed
 // mg/day max when every administration's amount parses (3 × 800 mg is 2400 mg,
 // not a calm "3 of 6"), the administration COUNT as the fallback for unparseable
 // amounts. `basis` tells the copy which one was used.
 export interface PrnOverMaxItem {
   id: number;
   name: string;
-  // The basis the window was judged on, its total and confirmed ceiling — mg for the
-  // amount-aware path, administrations for the count fallback (prnWindowExposure).
+  // The basis the day was judged on, its total and confirmed ceiling — mg for the
+  // amount-aware path, administrations for the count fallback (prnDayExposure).
   basis: PrnExposureBasis;
   total: number;
   max: number;
@@ -1829,7 +1793,7 @@ export function getPrnOverMaxItems(
 ): PrnOverMaxItem[] {
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
-  const states = getMedicationFamilyStates(profileId);
+  const states = getMedicationFamilyStates(profileId, date);
   // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
   // the active PRN-configured meds once (profile-scoped). Either ceiling form
   // (count or mg/day, #1854) makes an item "configured".
@@ -1906,13 +1870,10 @@ export interface PrnMedForQuickLog {
   familyLastGivenAt: string | null;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
-  // The family's amount-aware ceiling-window exposure (#1854) from the ONE family
-  // gather — null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
+  // The family's amount-aware day exposure (#1854) from the ONE family gather —
+  // null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
   // quick-log/card/Telegram "N of M" line reads milligrams when they're known.
-  familyExposure: PrnWindowExposure | null;
-  // An administration in the ceiling window states no instant (#4686 pass three), so
-  // the interval half of every redose surface reads UNKNOWN rather than guessing.
-  familyUntimedInWindow: boolean;
+  familyExposure: PrnDayExposure | null;
   // Number of active items in the ingredient family (1 for a solo item) — lets the
   // quick-log content note that the counters span sibling items.
   familyMemberCount: number;
@@ -1954,19 +1915,17 @@ function getPrnQuickLogItems(
     | "familyLastGivenAt"
     | "familyMaxDailyCount"
     | "familyExposure"
-    | "familyUntimedInWindow"
     | "familyMemberCount"
   >[];
-  const families = getMedicationFamilyStates(profileId);
+  const families = getMedicationFamilyStates(profileId, date);
   return rows.map((r) => {
     const fam = families.get(r.id);
     return {
       ...r,
-      familyCount: fam?.count24h ?? r.count,
+      familyCount: fam?.countToday ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
       familyExposure: fam?.exposure ?? null,
-      familyUntimedInWindow: fam?.untimedInWindow ?? false,
       familyMemberCount: fam?.memberIds.length ?? 1,
     };
   });

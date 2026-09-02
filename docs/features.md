@@ -200,9 +200,7 @@ dates on which the illness situation was active.
 An episode page presents that range as a story:
 
 - symptom-severity series and the temperature curve;
-- as-needed doses, the next safe dose window, and the running count against the
-  label's own 24-hour maximum ("3 of 5 in 24h") rather than a calendar day, so a
-  midnight boundary cannot reset a ceiling the label states in hours;
+- as-needed doses and the next safe dose window;
 - visits, appointments, documents, and medication courses during the range — a
   **cancelled** appointment is shown as cancelled rather than dropped (#2136),
   because the visit that fell through is real history and is often why a gap in
@@ -458,7 +456,7 @@ fold is unchanged — the same **Mark taken**, the same per-item snooze/dismiss,
 the same link.
 
 The **count is never hidden**, and the **safety classes are never folded**: a
-**PRN over its 24-hour maximum** and any safety-tier reminder render as
+**PRN over its confirmed daily max** and any safety-tier reminder render as
 individual rows **above** the fold, in both states. A **drug-allergy** match
 keeps its own row too — it deliberately outranks a pairwise interaction — as do
 the singular findings (a fever pattern, a screening, a pre-procedure note). A

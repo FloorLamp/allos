@@ -742,9 +742,9 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     const { profileId, otcItemId } = seedFamilyProfile("TickFamLifetime");
     const date = today(profileId);
     const first = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId).get(otcItemId)
+      getMedicationFamilyStates(profileId, date).get(otcItemId)
     );
-    expect(first?.count24h).toBe(2);
+    expect(first?.countToday).toBe(2);
 
     // A dose confirmed between ticks — the write that must never be missed.
     const dose = db
@@ -753,13 +753,13 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     logAdministration(otcItemId, dose.id, date, 0, "200 mg");
 
     const second = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId).get(otcItemId)
+      getMedicationFamilyStates(profileId, date).get(otcItemId)
     );
-    expect(second?.count24h).toBe(3);
+    expect(second?.countToday).toBe(3);
     // And with no scope at all, every read is fresh.
-    expect(getMedicationFamilyStates(profileId).get(otcItemId)?.count24h).toBe(
-      3
-    );
+    expect(
+      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+    ).toBe(3);
   });
 
   it("WITHIN one scope the snapshot is stable — which is why the tick may not write these inputs", async () => {
@@ -778,17 +778,17 @@ describe("a tick scope's memo cannot outlive its tick", () => {
 
     await runInTickScope(async () => {
       expect(
-        getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
+        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
       ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
       expect(
-        getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
+        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
-    expect(getMedicationFamilyStates(profileId).get(otcItemId)?.count24h).toBe(
-      3
-    );
+    expect(
+      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+    ).toBe(3);
   });
 
   it("a profile tick that THROWS still closes its scope", async () => {

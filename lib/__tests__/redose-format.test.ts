@@ -12,7 +12,7 @@ import {
   redoseNoticeMessage,
 } from "@/lib/redose-format";
 import type { RedoseStatus } from "@/lib/prn-redose";
-import { prnWindowExposure } from "@/lib/prn-redose";
+import { prnDayExposure } from "@/lib/prn-redose";
 
 describe("redoseNoticeMessage", () => {
   it("renders the issue's example phrasing", () => {
@@ -20,12 +20,12 @@ describe("redoseNoticeMessage", () => {
       name: "Ibuprofen",
       sinceHours: 6,
       lastClock: "4:02pm",
-      count24h: 2,
+      countToday: 2,
       maxDailyCount: 4,
     });
     expect(m.title).toBe("💊 Redose window open: Ibuprofen");
     expect(m.body).toBe(
-      "6h since Ibuprofen (4:02pm) — your minimum interval has passed · 2 of 4 in 24h."
+      "6h since Ibuprofen (4:02pm) — your minimum interval has passed · 2 of 4 today."
     );
   });
 
@@ -38,7 +38,7 @@ describe("redoseNoticeMessage", () => {
       profileName: "Ada",
       sinceHours: 6,
       lastClock: "4:02pm",
-      count24h: 2,
+      countToday: 2,
       maxDailyCount: 4,
     });
     expect(m.title).toBe("💊 Redose window open: Ada — Ibuprofen");
@@ -50,7 +50,7 @@ describe("redoseNoticeMessage", () => {
       profileName: "  ",
       sinceHours: 6,
       lastClock: "",
-      count24h: 1,
+      countToday: 1,
       maxDailyCount: 4,
     });
     expect(m.title).toBe("💊 Redose window open: Ibuprofen");
@@ -61,7 +61,7 @@ describe("redoseNoticeMessage", () => {
       name: "Tylenol",
       sinceHours: 4,
       lastClock: "",
-      count24h: 1,
+      countToday: 1,
       maxDailyCount: 6,
     });
     expect(m.body).not.toMatch(/\(/);
@@ -75,7 +75,7 @@ describe("redoseNoticeMessage", () => {
       product: "Children's oral suspension (160 mg / 5 mL)",
       sinceHours: 4,
       lastClock: "5:00 PM",
-      count24h: 1,
+      countToday: 1,
       maxDailyCount: 5,
     });
     expect(m.body).toContain("Acetaminophen · 160 mg / 5 mL");
@@ -83,35 +83,16 @@ describe("redoseNoticeMessage", () => {
 });
 
 describe("redoseCardLabel", () => {
-  // The interval half is a UNION now (#4686 pass three), so the fixture takes the flat
-  // knobs the cases are written in and assembles it. `interval: { known: false }` is
-  // reachable by passing it through.
-  const status = (
-    over: Partial<
-      Omit<RedoseStatus, "interval"> & {
-        open: boolean;
-        sinceHours: number;
-        opensInHours: number;
-        interval: RedoseStatus["interval"];
-      }
-    >
-  ): RedoseStatus => {
-    const {
-      open = false,
-      sinceHours = 3,
-      opensInHours = 3,
-      interval,
-      ...rest
-    } = over;
-    return {
-      interval: interval ?? { known: true, open, sinceHours, opensInHours },
-      atMax: false,
-      count24h: 1,
-      maxDailyCount: 4,
-      exposure: null,
-      ...rest,
-    };
-  };
+  const status = (over: Partial<RedoseStatus>): RedoseStatus => ({
+    open: false,
+    atMax: false,
+    countToday: 1,
+    maxDailyCount: 4,
+    sinceHours: 3,
+    opensInHours: 3,
+    exposure: null,
+    ...over,
+  });
 
   it("null status → null", () => {
     expect(redoseCardLabel(null)).toBeNull();
@@ -119,31 +100,31 @@ describe("redoseCardLabel", () => {
 
   it("at max wins over open", () => {
     expect(
-      redoseCardLabel(status({ open: true, atMax: true, count24h: 4 }))
-    ).toBe("Max reached · 4 of 4 in 24h");
+      redoseCardLabel(status({ open: true, atMax: true, countToday: 4 }))
+    ).toBe("Max reached · 4 of 4 today");
   });
 
   it("keeps confirmed-max open-window copy unchanged (#4254)", () => {
-    expect(redoseCardLabel(status({ open: true, count24h: 2 }))).toBe(
-      "Redose OK — min interval passed · 2 of 4 in 24h"
+    expect(redoseCardLabel(status({ open: true, countToday: 2 }))).toBe(
+      "Redose OK — min interval passed · 2 of 4 today"
     );
   });
 
   it("not yet open shows the countdown", () => {
     expect(redoseCardLabel(status({ open: false, opensInHours: 2 }))).toBe(
-      "Next dose in ~2h · 1 of 4 in 24h"
+      "Next dose in ~2h · 1 of 4 today"
     );
   });
 
   // #1458 — the parent who filled in "6 hours" and left "maximum per day" blank.
   it("keeps the window guidance with no confirmed daily max", () => {
-    const noMax = (over: Parameters<typeof status>[0]) =>
+    const noMax = (over: Partial<RedoseStatus>) =>
       redoseCardLabel(status({ maxDailyCount: null, ...over }));
-    expect(noMax({ open: false, opensInHours: 5, count24h: 1 })).toBe(
-      "Next dose in ~5h · 1 in 24h · no daily limit on record"
+    expect(noMax({ open: false, opensInHours: 5, countToday: 1 })).toBe(
+      "Next dose in ~5h · 1 today · no daily limit on record"
     );
-    expect(noMax({ open: true, count24h: 1 })).toBe(
-      "Redose OK — min interval passed · 1 in 24h · no daily limit on record"
+    expect(noMax({ open: true, countToday: 1 })).toBe(
+      "Redose OK — min interval passed · 1 today · no daily limit on record"
     );
   });
 
@@ -151,10 +132,10 @@ describe("redoseCardLabel", () => {
     // atMax cannot be true without a max (redoseWindowStatus guarantees it), but the
     // formatter must not invent the phrase from a high count either.
     const label = redoseCardLabel(
-      status({ open: true, maxDailyCount: null, count24h: 12 })
+      status({ open: true, maxDailyCount: null, countToday: 12 })
     );
     expect(label).toBe(
-      "Redose OK — min interval passed · 12 in 24h · no daily limit on record"
+      "Redose OK — min interval passed · 12 today · no daily limit on record"
     );
     expect(label).not.toContain("Max reached");
     expect(label).not.toContain("of");
@@ -164,7 +145,7 @@ describe("redoseCardLabel", () => {
     expect(
       redoseCardLabel(status({ open: true, maxDailyCount: null }), 2)
     ).toBe(
-      "Redose OK — min interval passed · 1 in 24h across 2 items · no daily limit on record"
+      "Redose OK — min interval passed · 1 today across 2 items · no daily limit on record"
     );
   });
 
@@ -185,7 +166,7 @@ describe("helpers", () => {
     expect(hoursLabel(-1)).toBe("0h");
   });
   it("countFragment", () => {
-    expect(countFragment(2, 4)).toBe("2 of 4 in 24h");
+    expect(countFragment(2, 4)).toBe("2 of 4 today");
   });
 });
 
@@ -194,14 +175,16 @@ describe("helpers", () => {
 // The Telegram list rendered a bare item-only count while the gather already carried
 // the interval, the confirmed max and the family counters — so a tap could pass the
 // confirmed daily max with no warning, and a family-fed counter read "1 today" where
-// the card said "3 of 4 in 24h across 2 items". These pin that the list label IS the
+// the card said "3 of 4 today across 2 items". These pin that the list label IS the
 // card's classification.
 describe("prnQuickLogLabel (#1717)", () => {
   const status = (over: Partial<RedoseStatus> = {}): RedoseStatus => ({
-    interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
+    open: true,
     atMax: false,
-    count24h: 2,
+    countToday: 2,
     maxDailyCount: 4,
+    sinceHours: 7,
+    opensInHours: 0,
     exposure: null,
     ...over,
   });
@@ -212,7 +195,7 @@ describe("prnQuickLogLabel (#1717)", () => {
         name: "Ibuprofen",
         dose: "200 mg",
         status: status(),
-        count24h: 2,
+        countToday: 2,
         maxDailyCount: 4,
       })
     ).toBe(`Ibuprofen · 200 mg — ${redoseCardLabel(status())}`);
@@ -222,37 +205,34 @@ describe("prnQuickLogLabel (#1717)", () => {
     const label = prnQuickLogLabel({
       name: "Ibuprofen",
       dose: "200 mg",
-      status: status({ count24h: 4, atMax: true }),
-      count24h: 4,
+      status: status({ countToday: 4, atMax: true }),
+      countToday: 4,
       maxDailyCount: 4,
     });
-    expect(label).toBe("Ibuprofen · 200 mg — Max reached · 4 of 4 in 24h");
+    expect(label).toBe("Ibuprofen · 200 mg — Max reached · 4 of 4 today");
   });
 
   it("names the wait when the interval hasn't passed", () => {
     const label = prnQuickLogLabel({
       name: "Ibuprofen",
       dose: "200 mg",
-      status: status({
-        interval: { known: true, open: false, sinceHours: 4, opensInHours: 2 },
-        count24h: 1,
-      }),
-      count24h: 1,
+      status: status({ open: false, countToday: 1, opensInHours: 2 }),
+      countToday: 1,
       maxDailyCount: 4,
     });
-    expect(label).toBe("Ibuprofen · 200 mg — Next dose in ~2h · 1 of 4 in 24h");
+    expect(label).toBe("Ibuprofen · 200 mg — Next dose in ~2h · 1 of 4 today");
   });
 
   it("counts the ingredient FAMILY, matching the card (#1027)", () => {
     const label = prnQuickLogLabel({
       name: "Ibuprofen Rx",
       dose: "600 mg",
-      status: status({ count24h: 3 }),
-      count24h: 3,
+      status: status({ countToday: 3 }),
+      countToday: 3,
       maxDailyCount: 4,
       familyMemberCount: 2,
     });
-    expect(label).toContain("3 of 4 in 24h across 2 items");
+    expect(label).toContain("3 of 4 today across 2 items");
   });
 
   it("never invents a ceiling that wasn't configured", () => {
@@ -262,10 +242,10 @@ describe("prnQuickLogLabel (#1717)", () => {
       name: "Tylenol",
       dose: "500 mg",
       status: null,
-      count24h: 2,
+      countToday: 2,
       maxDailyCount: null,
     });
-    expect(label).toBe("Tylenol · 500 mg — 2 in 24h");
+    expect(label).toBe("Tylenol · 500 mg — 2 today");
     expect(label).not.toContain("Max reached");
   });
 
@@ -276,7 +256,7 @@ describe("prnQuickLogLabel (#1717)", () => {
         name: "Tylenol",
         dose: "500 mg",
         status: noMax,
-        count24h: 2,
+        countToday: 2,
         maxDailyCount: null,
       })
     ).toBe(`Tylenol · 500 mg — ${redoseCardLabel(noMax)}`);
@@ -288,7 +268,7 @@ describe("prnQuickLogLabel (#1717)", () => {
       prnQuickLogLabel({
         name: "Tylenol",
         status: null,
-        count24h: 0,
+        countToday: 0,
         maxDailyCount: 4,
       })
     ).toBe("Tylenol");
@@ -300,7 +280,7 @@ describe("prnQuickLogLabel (#1717)", () => {
         name: "Tylenol",
         prefix: "Ada: ",
         status: null,
-        count24h: 0,
+        countToday: 0,
         maxDailyCount: null,
       })
     ).toBe("Ada: Tylenol");
@@ -314,20 +294,17 @@ describe("prnLogAnswerText (#1717)", () => {
         "Logged ✅ Ibuprofen — 5 today",
         true,
         {
-          interval: {
-            known: true,
-            open: false,
-            sinceHours: 0,
-            opensInHours: 6,
-          },
+          open: false,
           atMax: true,
-          count24h: 5,
+          countToday: 5,
           maxDailyCount: 4,
+          sinceHours: 0,
+          opensInHours: 6,
           exposure: null,
         },
         1
       )
-    ).toBe("Logged ✅ Ibuprofen — 5 today · Max reached · 5 of 4 in 24h");
+    ).toBe("Logged ✅ Ibuprofen — 5 today · Max reached · 5 of 4 today");
   });
 
   it("leaves a REFUSED tap's honest text alone — no verdict on a non-write", () => {
@@ -353,7 +330,7 @@ describe("exposureFragment (#1854)", () => {
   it("reads milligrams on the mg basis", () => {
     expect(
       exposureFragment(
-        prnWindowExposure({
+        prnDayExposure({
           amounts: ["800 mg", "400 mg"],
           maxDailyAmountMg: 2400,
           maxDailyCount: 6,
@@ -361,13 +338,13 @@ describe("exposureFragment (#1854)", () => {
         2,
         6
       )
-    ).toBe("1200 of 2400 mg in 24h");
+    ).toBe("1200 of 2400 mg today");
   });
 
   it("says 'at least' on the mg lower bound — never full precision it doesn't have", () => {
     expect(
       exposureFragment(
-        prnWindowExposure({
+        prnDayExposure({
           amounts: ["800 mg", "1 tablet"],
           maxDailyAmountMg: 1200,
           maxDailyCount: null,
@@ -375,13 +352,13 @@ describe("exposureFragment (#1854)", () => {
         2,
         null
       )
-    ).toBe("at least 800 of 1200 mg in 24h");
+    ).toBe("at least 800 of 1200 mg today");
   });
 
   it("falls back to the plain count fragment on the count basis and with no exposure", () => {
     expect(
       exposureFragment(
-        prnWindowExposure({
+        prnDayExposure({
           amounts: ["800 mg", "1 tablet"],
           maxDailyAmountMg: 1200,
           maxDailyCount: 4,
@@ -389,9 +366,9 @@ describe("exposureFragment (#1854)", () => {
         2,
         4
       )
-    ).toBe("2 of 4 in 24h");
-    expect(exposureFragment(null, 2, 4)).toBe("2 of 4 in 24h");
-    expect(exposureFragment(null, 2, null)).toBe("2 in 24h");
+    ).toBe("2 of 4 today");
+    expect(exposureFragment(null, 2, 4)).toBe("2 of 4 today");
+    expect(exposureFragment(null, 2, null)).toBe("2 today");
   });
 });
 
@@ -405,37 +382,41 @@ describe("mgLabel", () => {
 
 describe("redoseCardLabel × exposure (#1854)", () => {
   it("keeps amount-ceiling copy unchanged when the count max is null (#4254)", () => {
-    const exposure = prnWindowExposure({
+    const exposure = prnDayExposure({
       amounts: ["800 mg"],
       maxDailyAmountMg: 1200,
       maxDailyCount: null,
     });
     expect(
       redoseCardLabel({
-        interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
+        open: true,
         atMax: exposure!.atMax,
-        count24h: 1,
+        countToday: 1,
         maxDailyCount: null,
+        sinceHours: 7,
+        opensInHours: 0,
         exposure,
       })
-    ).toBe("Redose OK — min interval passed · 800 of 1200 mg in 24h");
+    ).toBe("Redose OK — min interval passed · 800 of 1200 mg today");
   });
 
   it("the card's Max reached verdict and fragment both follow the mg basis", () => {
-    const exposure = prnWindowExposure({
+    const exposure = prnDayExposure({
       amounts: ["800 mg", "800 mg", "800 mg"],
       maxDailyAmountMg: 1200,
       maxDailyCount: 6,
     });
     const s: RedoseStatus = {
-      interval: { known: true, open: true, sinceHours: 7, opensInHours: 0 },
+      open: true,
       atMax: exposure!.atMax,
-      count24h: 3,
+      countToday: 3,
       maxDailyCount: 6,
+      sinceHours: 7,
+      opensInHours: 0,
       exposure,
     };
     expect(redoseCardLabel(s, 2)).toBe(
-      "Max reached · 2400 of 1200 mg in 24h across 2 items"
+      "Max reached · 2400 of 1200 mg today across 2 items"
     );
   });
 });
@@ -449,10 +430,10 @@ describe("prnOverMaxDetail (#1854)", () => {
       unknownAmounts: 0,
       memberNames: ["Ibuprofen", "Ibuprofen 800 mg"],
     });
-    expect(d).toContain("2400 mg logged in 24h");
+    expect(d).toContain("2400 mg logged today");
     expect(d).toContain("summed from your logged dose amounts");
     expect(d).toContain("across Ibuprofen + Ibuprofen 800 mg");
-    expect(d).toContain("most conservative confirmed max of 1200 mg per 24h");
+    expect(d).toContain("most conservative confirmed max of 1200 mg per day");
     expect(d).toContain("Informational");
   });
 
@@ -463,7 +444,7 @@ describe("prnOverMaxDetail (#1854)", () => {
       max: 1200,
       unknownAmounts: 2,
     });
-    expect(d).toContain("At least 1600 mg logged in 24h");
+    expect(d).toContain("At least 1600 mg logged today");
     expect(d).toContain("(2 doses had no recorded amount)");
     expect(d).not.toContain("summed from");
   });
@@ -476,7 +457,7 @@ describe("prnOverMaxDetail (#1854)", () => {
       unknownAmounts: 0,
     });
     expect(d).toContain(
-      "5 doses logged in 24h vs your confirmed max of 4 per 24h"
+      "5 doses logged today vs your confirmed max of 4 per day"
     );
     expect(d).not.toContain("mg");
   });
@@ -486,14 +467,14 @@ describe("prnOverMaxDetail (#1854)", () => {
       name: "Ibuprofen",
       sinceHours: 6,
       lastClock: "4:02pm",
-      count24h: 1,
+      countToday: 1,
       maxDailyCount: 6,
-      exposure: prnWindowExposure({
+      exposure: prnDayExposure({
         amounts: ["800 mg"],
         maxDailyAmountMg: 2400,
         maxDailyCount: 6,
       }),
     });
-    expect(m.body).toContain("800 of 2400 mg in 24h");
+    expect(m.body).toContain("800 of 2400 mg today");
   });
 });
