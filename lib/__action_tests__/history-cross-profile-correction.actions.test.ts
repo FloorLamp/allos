@@ -269,9 +269,7 @@ const stoolTypeOf = (id: number, profileId: number): number | null =>
         `SELECT value FROM metric_samples
           WHERE id = ? AND profile_id = ? AND metric = ?`
       )
-      .get(id, profileId, BRISTOL_STOOL_METRIC) as
-      | { value: number }
-      | undefined
+      .get(id, profileId, BRISTOL_STOOL_METRIC) as { value: number } | undefined
   )?.value ?? null;
 
 // ── The five kinds, as a table ────────────────────────────────────────────────

@@ -439,10 +439,7 @@ test.describe("the record's stool rows (#4433)", () => {
     // offers the type ALONE — the reading's instant is its address, so a time field
     // here would fork the row rather than move it.
     const misTapped = rows.filter({ hasText: "Type 3" });
-    await hydratedClick(
-      page,
-      misTapped.getByTestId("overflow-menu-trigger")
-    );
+    await hydratedClick(page, misTapped.getByTestId("overflow-menu-trigger"));
     // The menu is portalled, so the item is addressed on the PAGE — the row scope
     // above is what decided which ⋯ opened it.
     await page.getByTestId("history-row-edit").click();
@@ -463,10 +460,7 @@ test.describe("the record's stool rows (#4433)", () => {
 
     // THE DELETE, through the shared undo-capture contract (#2642).
     const corrected = rows.filter({ hasText: "Type 4" });
-    await hydratedClick(
-      page,
-      corrected.getByTestId("overflow-menu-trigger")
-    );
+    await hydratedClick(page, corrected.getByTestId("overflow-menu-trigger"));
     await page.getByTestId("history-row-delete").click();
     await settledClick(
       page,

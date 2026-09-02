@@ -66,10 +66,7 @@ import { getIntegration } from "./integrations/registry";
 import type { IntegrationId } from "./types/integrations";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getBristolRows } from "./queries/bristol-stool";
-import {
-  BRISTOL_STOOL_METRIC,
-  bristolStoolType,
-} from "./bristol-stool";
+import { BRISTOL_STOOL_METRIC, bristolStoolType } from "./bristol-stool";
 import { getSymptomPhotosInRange } from "./symptom-photo-write";
 import { symptomLabel, severityLabelFor } from "./symptoms";
 import { getMoodLogs, getMoodOnDate, hasMoodLogs } from "./queries/mood";
