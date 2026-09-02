@@ -201,3 +201,51 @@ describe("the as-of form (#2615 item 3)", () => {
     );
   });
 });
+
+describe("the long form's two spoken days (#4757)", () => {
+  // "Wednesday, September 2" IS today, and a reader should not do calendar math to
+  // learn a reading is current. Only the freshest two days are worded — the day after
+  // yesterday is already a date worth naming — and a stale reading is untouched, since
+  // nothing inside a floor is both due and yesterday. Lowercase: the token follows the
+  // value on one line. The compact form keeps its column-cell "Today".
+  it.each([
+    ["2026-08-12", "current", "today"],
+    ["2026-08-11", "current", "yesterday"],
+    ["2026-08-10", "current", "Monday, August 10"],
+    ["2026-08-13", "current", "today"], // future-dated: the same side as today
+    ["2022-03-08", "due", "4 years ago"],
+  ] as const)("%s (%s) reads %s", (date, freshness, text) => {
+    expect(
+      glanceAgeToken({
+        date,
+        today: TODAY,
+        freshness,
+        form: "long",
+        floorLabel: VITAL_PRESENTATION_FLOORS["resting-hr"].label,
+        dateLabel: "Monday, August 10",
+      }).text
+    ).toBe(text);
+  });
+
+  it("leaves the compact and as-of forms alone", () => {
+    expect(
+      glanceAgeToken({
+        date: TODAY,
+        today: TODAY,
+        freshness: "current",
+        form: "compact",
+        floorLabel: RECENT_LAB_STALE_LABEL,
+      }).text
+    ).toBe("Today");
+    expect(
+      glanceAgeToken({
+        date: TODAY,
+        today: TODAY,
+        freshness: "current",
+        form: "as-of",
+        floorLabel: "a week",
+        dateLabel: "Aug 12",
+      }).text
+    ).toBe("as of Aug 12");
+  });
+});
