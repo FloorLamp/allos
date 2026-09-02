@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import OfferRow from "@/components/OfferRow";
+import { LabeledVerbChip } from "@/components/Chip";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
@@ -42,12 +44,6 @@ export interface DoseHistoryEntry {
   amount: string | null;
   product: string | null;
 }
-
-// The offer row's shape: the sheet-row grammar the app already draws an offer in —
-// a full-width bordered row at the #644 tap floor, not a button-control. No new
-// `globals.css` utility for four rows that exist inside one panel.
-const OFFER_ROW_CLASS =
-  "press flex min-h-11 w-full items-center rounded-lg border border-(--border) bg-surface px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-(--ghost-hover) disabled:opacity-50 dark:text-slate-200";
 
 // What the backfill door is showing. `offers` is the missed-day list; `form` is
 // today's form, either blank ("Another date…") or seeded with a day the offer could
@@ -306,7 +302,13 @@ export default function DoseHistoryPanel({
       ) : null}
       {canWrite && backfill?.kind === "offers" ? (
         <div
-          className="mt-2 flex flex-col gap-1"
+          // A run of chips WRAPS and a column of rows STACKS, and the gap differs
+          // because the chips are coarse-pointer targets that reach 6px past their
+          // own box: `gap-3` is twice that reach, the floor #3938 set for adjacent
+          // targets. The full-width rows tile a column and take the list gap.
+          className={`mt-2 flex gap-1 ${
+            soleDose ? "flex-wrap items-center gap-3" : "flex-col"
+          }`}
           data-testid="dose-backfill-offers"
         >
           {/* THE TAP IS THE WRITE (#1505/#3674). Each row names the day and the dose
@@ -314,29 +316,44 @@ export default function DoseHistoryPanel({
               — its plausibility gates, bounds, course binding and as-needed handling
               unchanged and still re-checked server-side. There is no second write
               path here, only a second way to reach the one there is. */}
-          {offeredDays.map((date) => (
-            <button
-              key={date}
-              type="button"
-              data-testid="dose-backfill-offer"
-              disabled={ledger.blocked(date)}
-              onClick={() => logMissedDay(date)}
-              className={OFFER_ROW_CLASS}
-            >
-              {`${formatLongDate(date, formatPrefs)} · ${
-                soleDose ? offerPromise : "choose a dose"
-              }`}
-            </button>
-          ))}
-          <button
-            type="button"
-            data-testid="dose-backfill-other"
-            onClick={() => setBackfill({ kind: "form" })}
-            className={OFFER_ROW_CLASS}
+          {/* AND THE LABEL CARRIES THE DAY (#4753), which is what makes a wrong-day
+              tap visibly wrong. With ONE live dose the tap writes, so it is the
+              labeled-verb chip. With several it can only OPEN the picker — not a
+              write, so the applicability test leaves it the row it was. `soleDose` is
+              a property of the ITEM, so a panel renders one shape or the other and
+              never a mixed list. */}
+          {offeredDays.map((date) =>
+            soleDose ? (
+              <LabeledVerbChip
+                key={date}
+                tone="neutral"
+                testId="dose-backfill-offer"
+                label={`${formatLongDate(date, formatPrefs)} · ${offerPromise}`}
+                verb="Log"
+                disabled={ledger.blocked(date)}
+                onAct={() => logMissedDay(date)}
+              />
+            ) : (
+              <OfferRow
+                key={date}
+                tone="neutral"
+                testId="dose-backfill-offer"
+                onAct={() => logMissedDay(date)}
+              >
+                {`${formatLongDate(date, formatPrefs)} · choose a dose`}
+              </OfferRow>
+            )
+          )}
+          {/* A door, not an offer: no payload to name, so no chip. `w-full` puts it
+              on its own line below the wrapped run. */}
+          <OfferRow
+            tone="neutral"
+            testId="dose-backfill-other"
+            onAct={() => setBackfill({ kind: "form" })}
           >
             Another date…
-          </button>
-          <div>
+          </OfferRow>
+          <div className="w-full">
             <button
               type="button"
               onClick={() => setBackfill(null)}

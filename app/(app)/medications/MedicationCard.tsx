@@ -268,7 +268,6 @@ export default function MedicationCard({
             closeInitialAction();
           }}
           pediatric={pediatric}
-          age={age}
           conditions={conditions}
           ingredients={ingredients}
           purposes={parseItemPurposes(s.purposes_json)}

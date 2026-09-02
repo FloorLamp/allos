@@ -72,6 +72,7 @@ import { prnDefaultsFor, redoseLabelDefaults } from "@/lib/prn-defaults";
 import type { PediatricBand } from "@/lib/datasets/prn-defaults";
 import {
   formulationSlugForProduct,
+  pediatricAgeYears,
   PEDIATRIC_MAX_AGE_MONTHS,
   pediatricDoseSuggestion,
   type PediatricFormContext,
@@ -176,7 +177,6 @@ export default function IntakeItemForm({
   pairs: initialPairs = [],
   onDone,
   pediatric,
-  age = null,
   course,
   todayStr,
   initialSupply = null,
@@ -203,7 +203,6 @@ export default function IntakeItemForm({
   pairs?: IntakePair[];
   onDone?: () => void;
   pediatric?: PediatricFormContext;
-  age?: number | null;
   course?: MedicationCourse;
   todayStr?: string;
   initialSupply?: SupplyOption | null;
@@ -1136,7 +1135,7 @@ export default function IntakeItemForm({
         stackItems={stackItems}
         pgxVariants={pgxVariants}
         excludeId={s?.id}
-        age={age}
+        age={pediatricAgeYears(pediatricContext)}
       />
 
       {openPanel == null ? (

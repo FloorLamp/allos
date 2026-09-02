@@ -890,6 +890,26 @@
   @apply inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border-black/10 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750 dark:disabled:bg-ink-750 dark:disabled:text-slate-400;
 }
 
+@utility series-point {
+  /* THE SERIES POINT (#4760): a chart mark that is its own door to its value.
+     `VisualizationDetails` used to restate every mark in a labelled fold beside
+     the chart; the fold retired, so the mark carries the value itself — named
+     for AT by `aria-label`, focusable for the keyboard, and showing that same
+     name while hovered or focused. The readout is GENERATED from the label: no
+     second copy to drift, and no DOM text for a spec's `hasText` filter to trip
+     on. Positioning stays the mark's own — an absolute mark is already the
+     readout's containing block; a static one adds `relative`. */
+  @apply cursor-default outline-hidden focus:ring-2 focus:ring-brand-500;
+  &::after {
+    content: attr(aria-label);
+    @apply pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden -translate-x-1/2 rounded-md border border-white/10 bg-slate-900 px-2 py-1 text-xs leading-4 font-normal whitespace-nowrap text-slate-100 shadow-lg dark:bg-ink-700;
+  }
+  &:hover::after,
+  &:focus::after {
+    @apply block;
+  }
+}
+
 @utility button-control-primary {
   /* THE TYPED BUTTON'S ONE PRIMARY VARIANT (owner decision, #3982). #3759 moved
      four hand-rolled actions onto `Button` for their behavior, and two of them —
@@ -1037,6 +1057,30 @@
   &[aria-pressed="true"],
   &[aria-selected="true"] {
     @apply bg-brand-600 text-white dark:bg-brand-500 dark:text-ink-950;
+  }
+}
+
+/* A THIRD ROLE, AND IT IS AN ACTION (#4753). The two roles above are a DESTINATION
+   and a SELECTION; `chip-base + chip-offer` is a chip whose tap WRITES what its label
+   says — `Aug 30 · 250 mg` with a `Log` nub. It picks its role by what it does,
+   exactly as the vocabulary above asks a new strip to.
+
+   IT PAINTS NO SELECTED STATE, deliberately, and that is the whole difference from
+   `chip-filter`. An offer chip is never "on": it performs its write and the surface
+   that hosted it re-renders into whatever now stands. So there is no `aria-pressed`
+   rule here — a control that cannot be selected must not be able to look selected.
+
+   The outline construction is `chip-nav`'s, because the border is part of the 34px
+   box (see the note above) and an action chip must measure the same as the nav chip
+   it may sit beside. The VERB NUB's fill is not here: it is the offer tone declared
+   in `components/OfferRow.tsx`, so the compact offer and the full-width one cannot
+   drift into two vocabularies. */
+@utility chip-offer {
+  @apply rounded-full text-slate-700 dark:text-slate-200;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  &:hover {
+    background-color: var(--ghost-hover);
   }
 }
 

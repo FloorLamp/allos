@@ -5,7 +5,7 @@ import {
   type WeeklyAdherenceState,
 } from "@/lib/supplement-weekly-adherence";
 import { weekdayOfDateStr } from "@/lib/date";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StateLegend, stateCellClass } from "@/components/StateCells";
 
 const STATE_CLASS: Record<WeeklyAdherenceState, string> = {
@@ -114,24 +114,23 @@ export default function SupplementWeeklyAdherence({
               >
                 {weekdayLabel(day.date)}
               </span>
-              <div
+              <SeriesPoint
                 data-testid="supplement-weekly-adherence-day"
                 data-state={day.state}
-                aria-label={dayDescription(day, fullLabel)}
-                className={stateCellClass("tile", STATE_CLASS[day.state])}
+                label={dayDescription(day, fullLabel)}
+                className={`relative ${stateCellClass("tile", STATE_CLASS[day.state])}`}
               >
                 {cellText(day)}
-              </div>
+              </SeriesPoint>
             </div>
           );
         })}
       </div>
-      <VisualizationDetails
-        label="Daily details"
+      <SeriesSummary
+        label="Daily supplement adherence this week"
         items={summary.days.map((day) =>
           dayDescription(day, labels[day.date] ?? day.date)
         )}
-        data-testid="supplement-adherence-details"
       />
       <StateLegend
         label="Adherence state legend"

@@ -297,9 +297,17 @@ export default function Combobox({
       // real trap rather than reading this attribute — the marker is what looked
       // decisive on #3426 and wasn't.
       //
-      // WHAT THIS DOES NOT DO is the other half of #3432's ruling: dropping an
-      // un-navigated draft on the same press. That half is not here, and the reason is
-      // in the issue rather than in a comment nobody can act on.
+      // THE OTHER HALF — dropping the typed draft on this same press — IS NOT HERE, and
+      // the ruled boundary for it is why. #3432's second-half ruling restricts the drop
+      // to pickers WITHOUT `allowFreeText`, "where the typed text cannot be the value".
+      // That boundary is not in this component: `allowFreeText` decides whether a
+      // "Use '<query>'" ROW is offered, not whether the caller keeps what was typed, and
+      // two shipped pickers with the flag OFF keep it anyway — GenomicVariantForm's Gene
+      // field, whose own empty state reads "type any symbol", and AnalyzePicker, whose
+      // `options` are opaque identities under `labelFor` labels, so its value matches no
+      // option in ANY state and a bare Escape over the analyze title would blank it with
+      // nothing typed. Both measured; see components/__tests__/combobox-escape.test.tsx,
+      // which pins today's behaviour so the next attempt starts from the counterexamples.
       data-escape-layer={listOpen ? "true" : undefined}
     >
       {!titleAppearance && (

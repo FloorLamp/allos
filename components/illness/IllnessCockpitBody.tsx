@@ -146,7 +146,7 @@ export default function IllnessCockpitBody({
                   meds={controls.prnMeds}
                   tz={timeZone}
                   profileId={target}
-                  pediatric={controls.pediatric}
+                  intakeContext={controls.intakeForm}
                   canAdd={!crossProfile}
                   nowIso={nowIso}
                 />

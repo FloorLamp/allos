@@ -1,6 +1,5 @@
 import { chartActivityRamp } from "@/lib/chart-colors";
 import type { ProtocolHeatmap } from "@/lib/protocol-heatmap";
-import VisualizationDetails from "@/components/VisualizationDetails";
 
 const LEVEL_CLASS = [
   chartActivityRamp.emptyClass,
@@ -18,7 +17,9 @@ function densityClasses(weeks: number): {
 
 // Shared compact practice/session pattern. Protocol cards supply their bounded
 // experiment window; Wellness cards supply the same trailing calendar window for
-// every practice, including target-only and history-only cards.
+// every practice, including target-only and history-only cards. A GLANCE surface
+// (#4384): the `role="img"` summary is its whole accessible statement, and per-day
+// reading is the session ledger's and /history's job — no per-cell door here.
 export default function PracticeHeatmap({
   data,
   label = "Practice activity",
@@ -81,18 +82,6 @@ export default function PracticeHeatmap({
             : summary}
         </span>
       </div>
-      <VisualizationDetails
-        label={`${label} daily details`}
-        items={data.columns.flatMap((column) =>
-          column.flatMap((cell) =>
-            cell.outside
-              ? []
-              : [
-                  `${cell.date} — ${cell.count} ${cell.count === 1 ? unit : `${unit}s`}`,
-                ]
-          )
-        )}
-      />
     </div>
   );
 }

@@ -243,9 +243,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // longer in any className. The claim is unchanged.
     await expect(doseLink).toHaveClass(/text-link/);
     await expect(doseWorkingRow).toContainText(/\d+(?:\.\d+)?\s*(?:mg|mL)/i);
+    // The verb never says "now" (#4753): the name is the sentence the labeled-verb
+    // chip composes on the labeled surfaces, spoken here by the icon-only arm that
+    // keeps its shipped shape.
     await expect(
       doseWorkingRow.getByTestId("prn-log-now")
-    ).toHaveAccessibleName("Taken now");
+    ).toHaveAccessibleName(/^Take .+/);
     await expect(
       doseWorkingRow.getByTestId("prn-log-more")
     ).toHaveAccessibleName("Earlier dose");
@@ -466,25 +469,24 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const eventEditor = page.getByTestId("illness-event-editor");
     await expect(eventEditor).toBeVisible();
     const dateTime = eventEditor.getByTestId("illness-event-date-time");
-    await expect(
-      dateTime.getByRole("button", { name: "Open calendar" })
-    ).toBeVisible();
-    const dateBox = await dateTime
-      .locator('input:not([type="hidden"])')
-      .first() // first-ok: the date input in the scoped event-editor date-time control, measured for layout — order-agnostic
-      .boundingBox();
-    // The visible time input lives in the shared WhenControl (#2236/#2228); the
-    // form's `time` field itself is a hidden input kept in sync with the pair.
-    const timeBox = await dateTime
-      .getByTestId("illness-event-when-time")
-      .boundingBox();
+    // ONE DOOR FOR THE PAIR (#4218). A temperature reading REQUIRES its minute, on
+    // a day the reader may still move inside the episode's window, so the editor
+    // states both halves through ONE composed field over one panel holding the
+    // calendar and the time wheel — where it used to draw a date box beside a
+    // time box and this test measured that they shared a row.
+    //
+    // That row claim is now true by construction, so asserting it again would be
+    // asserting nothing. What replaces it is the claim the composition actually
+    // makes: there is exactly one field here, and no loose text box beside it.
+    const whenDoor = dateTime.getByTestId("illness-event-when-when");
+    await expect(whenDoor).toBeVisible();
+    await expect(dateTime.locator('input:not([type="hidden"])')).toHaveCount(0);
     const saveBox = await eventEditor
       .getByRole("button", { name: "Save" })
       .boundingBox();
     const cancelBox = await eventEditor
       .getByRole("button", { name: "Cancel" })
       .boundingBox();
-    expect(Math.abs((dateBox?.y ?? 0) - (timeBox?.y ?? 0))).toBeLessThan(2);
     expect(Math.abs((saveBox?.y ?? 0) - (cancelBox?.y ?? 0))).toBeLessThan(2);
     const editorActions = eventEditor.getByTestId(
       "illness-event-editor-actions"
