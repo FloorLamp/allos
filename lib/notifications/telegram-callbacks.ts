@@ -133,7 +133,11 @@ import {
   recordUsualBackfillAudit,
   usualRoutineDoseLogged,
 } from "../usual-routine-write";
-import { usualRoutineAnswerText } from "../usual-routine";
+import {
+  usualRoutineAnswerText,
+  usualRoutineFoodMembers,
+  usualRoutineWriteAnswer,
+} from "../usual-routine";
 import { foodGroupName } from "../food-groups";
 import { readOfferRow } from "./offer-store";
 import { isDoseDateAccepted } from "../dose-log-window";
@@ -1519,6 +1523,23 @@ async function handleUsualRoutineTap(
   const messageId = cq.message?.message_id;
   const notifyMessageId =
     messageId != null ? messagePointerIdAt(profileId, chatId, messageId) : null;
+  // THIS TAP STATES NO EATING TIME, AND #4438 ITEM 3 ASKED IT TO — LEFT UNDONE ON
+  // PURPOSE, because doing it moves the servings out of the window the button promised.
+  //
+  // The sibling `food:` and protein buttons on this keyboard do stamp
+  // `{ eatenAt: tapAt, source: "tap" }`, and item 3 asks for parity. But their label
+  // names a GROUP; this one names a WINDOW — "Your usual Morning" — and
+  // `logFoodServingCore`'s one chokepoint (#2269) stores no `meal_slot` beside a stated
+  // instant and derives the window FROM it. Measured on the DB tier, whose clock sits at
+  // 23:45: a Morning bundle tapped then wrote both servings into EVENING, the Morning
+  // offer still stood afterwards, and the label had promised something the ledger did
+  // not hold. In production that is hour-of-day dependent — right for a nudge tapped
+  // inside its own window, wrong for one tapped late.
+  //
+  // Which way that resolves is an owner question (does the bundle's window follow the
+  // tap, or does the bundle keep stating no hour?), not a lane's, so the WEB half of
+  // item 3 landed — the bar's sticky statement, where the person names the time and the
+  // surface says out loud which window it lands in — and this half waits for the ruling.
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
@@ -1526,7 +1547,10 @@ async function handleUsualRoutineTap(
     offer.groups,
     offer.doseIds,
     NUDGE,
-    notifyMessageId
+    notifyMessageId,
+    // The grams THIS MESSAGE promised (#4379) — the stored offer's, not the preset as it
+    // stands now, so a scoop changed since the send does not move a promise already read.
+    offer.proteinGrams ?? undefined
   );
   // THE DATED-WRITE TRAIL HAS NO HOLE ON THE MOST-USED SURFACE (#4306, owner ruling
   // 2026-08-31). A backfill from a nudge writes the rows the web backfill writes, so it
@@ -1540,14 +1564,25 @@ async function handleUsualRoutineTap(
     t
   );
   const wrote = outcome.kind === "logged";
-  const doses = wrote ? outcome.doses : [];
   await answerCallbackQuery(
     cq.id,
-    usualRoutineAnswerText(
-      wrote ? outcome.groups.map((g) => foodGroupName(g.groupKey)) : [],
-      doses.filter((d) => usualRoutineDoseLogged(d.outcome)).map((d) => d.name),
-      doses.filter((d) => !usualRoutineDoseLogged(d.outcome)).map((d) => d.name)
-    ),
+    // ONE ANSWER FOR EVERY HOST OF THIS BUNDLE (#4438 item 5, #4379). This ack used to
+    // build its own sentence from `outcome.groups` alone, which made it the one host
+    // that could not name the protein member — and in one reachable composition it said
+    // "Nothing left to log" over a write. The stored offer names the SAME members the
+    // line and the label promised, and the helper reports only what the core says landed.
+    wrote
+      ? usualRoutineWriteAnswer(
+          // `proteinGrams` is optional on the STORED shape — a row minted before #4379
+          // simply has no field — and absent means the same as null here: that send
+          // promised no scoop, so its ack may not name one.
+          usualRoutineFoodMembers(
+            { groups: offer.groups, proteinGrams: offer.proteinGrams ?? null },
+            foodGroupName
+          ),
+          outcome
+        )
+      : usualRoutineAnswerText([], [], []),
     // An outcome that contradicts the ✅ demands a dismissal; a partial does not —
     // it says what landed, and what landed is on the screen behind it.
     { alert: !wrote }
