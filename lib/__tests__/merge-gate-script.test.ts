@@ -329,52 +329,74 @@ describe("merge-gate.mjs", () => {
     expect(other.kind).toBe("incomplete");
   });
 
-  // ONE VERDICT PER CHECK NAME (#4800). GitHub returns the latest run per name
-  // PER CHECK SUITE, so a push that races the previous run's start carries two
-  // runs called `merge-gate-job` — the one the workflow's `concurrency` group
-  // cancelled, beside the green that replaced it. Counting both closed the gate
-  // on #4797 while its checks tab read green. Ids are creation order.
-  const job = (
-    id: number,
-    conclusion: string | null,
-    status = "completed"
-  ) => ({
+  // A CANCELLED RUN IS NOT A VERDICT (#4800). GitHub returns the latest run per
+  // name PER CHECK SUITE, so a head whose workflow was triggered twice carries
+  // the concurrency-cancelled run beside the green that replaced it. Discard
+  // cancellations; of what is left under a name, ALL must be green.
+  //
+  // A RE-RUN NEVER REACHES THIS FUNCTION, which is why the tempting "prefer
+  // red" rule is wrong rather than merely redundant: `rerun_failed_jobs` makes
+  // a NEW run in the SAME suite (on #4800's head, `e2e (6)` failure 21:59:18
+  // then success 22:10:28, both in suite 91296879440), and merge-gate.mjs reads
+  // the DEFAULT listing, which hands over only the newest run of each suite —
+  // 20 runs where `filter=all` returns 37. The last row is that head's real
+  // input; preferring red would have blocked a sanctioned re-run.
+  const job = (conclusion: string | null, status = "completed") => ({
     name: "merge-gate-job",
     status,
     conclusion,
-    id,
   });
   it.each([
     [
-      "newest green supersedes a cancelled older run",
-      [job(2, "success"), job(1, "cancelled")],
+      "a cancelled run beside its replacement is green",
+      [job("cancelled"), job("success")],
       "pass",
     ],
     [
-      "oldest listed first — order does not decide it",
-      [job(1, "cancelled"), job(2, "success")],
+      "order carries no meaning — nothing picks a winner",
+      [job("success"), job("cancelled")],
       "pass",
     ],
     [
-      "newest red over an older green still fails",
-      [job(2, "failure"), job(1, "success")],
+      "a real failure beside a success still fails",
+      [job("failure"), job("success")],
       "fail",
     ],
     [
-      "a pending newest is not a verdict",
-      [job(2, null, "in_progress"), job(1, "success")],
+      "a pending run beside a completed one is not a verdict",
+      [job(null, "in_progress"), job("success")],
       "incomplete",
     ],
-  ])("supersession: %s", (_case, runs, kind) => {
+    [
+      "every run cancelled is no verdict, not a red",
+      [job("cancelled"), job("cancelled")],
+      "incomplete",
+    ],
+    [
+      "a re-run's discarded failure never arrives — one success is the input",
+      [green("e2e (6)")],
+      "pass",
+    ],
+  ])("cancelled is not a verdict: %s", (_case, runs, kind) => {
     expect(checkRunsVerdict(runs, null, HEAD).kind).toBe(kind);
   });
 
-  it("counts a superseded name once, and never reads dedupe as an exclusion", () => {
-    const runs = [green("lint"), job(2, "success"), job(1, "cancelled")];
+  it("names the check whose every run was cancelled, and does not call it red", () => {
+    const result = checkRunsVerdict(
+      [green("lint"), job("cancelled")],
+      null,
+      HEAD
+    );
+    expect(result.kind).toBe("incomplete");
+    expect(result.message).toContain("no verdict for merge-gate-job");
+  });
+
+  it("counts a discarded cancellation out, and never reads it as an exclusion", () => {
+    const runs = [green("lint"), job("cancelled"), job("success")];
     const result = checkRunsVerdict(runs, null, HEAD);
     expect(result.message).toContain("all 2 checks green");
-    // `ignored` answers "did --ignore-check drop something", so dropping a
-    // superseded run must not make the CLI announce an exclusion nobody asked for.
+    // `ignored` answers "did --ignore-check drop something", so discarding a
+    // cancellation must not make the CLI announce an exclusion nobody asked for.
     expect(result.ignored).toBe(false);
     const cli = runGate({ checkRuns: runs });
     expect(cli.status).toBe(0);
@@ -441,13 +463,11 @@ describe("merge-gate.mjs", () => {
   const at = (
     name: string,
     conclusion: string | null,
-    status = "completed",
-    id = 0
+    status = "completed"
   ) => ({
     name,
     status,
     conclusion,
-    id,
     head_sha: SHA,
   });
   it.each([
@@ -465,17 +485,18 @@ describe("merge-gate.mjs", () => {
       "is green (2 shards)",
     ],
     [[at("lint", "failure")], "no verdict on main"],
-    // The same supersession the head checks get (#4800): a re-run main shard
-    // leaves its cancelled predecessor standing, and the notice must not
-    // attribute a red that the newest run already replaced.
+    // The same reading of `cancelled` the head checks get (#4800): a shard whose
+    // run was cancelled and re-triggered must not be attributed as a red, and a
+    // shard set that was ENTIRELY cancelled has no verdict rather than a green.
     [
       [
-        at("e2e-main (1)", "success", "completed", 1),
-        at("e2e-main (2)", "cancelled", "completed", 2),
-        at("e2e-main (2)", "success", "completed", 3),
+        at("e2e-main (1)", "success"),
+        at("e2e-main (2)", "cancelled"),
+        at("e2e-main (2)", "success"),
       ],
       "is green (2 shards)",
     ],
+    [[at("e2e-main (1)", "cancelled")], "every shard run was cancelled"],
   ])("reports main's e2e-main standing: %#", (runs, expected) => {
     expect(baseDetectorNotice(runs, "main")).toContain(expected);
   });

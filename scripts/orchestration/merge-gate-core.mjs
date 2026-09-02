@@ -72,41 +72,29 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
   };
 }
 
-// One head, one verdict per check NAME (#4800). GitHub returns the latest run
-// per name PER CHECK SUITE, so a push that races the previous run's start
-// leaves TWO runs under one name: the one the workflow's `concurrency` group
-// cancelled, beside the one that replaced it. Counting both reads the cancelled
-// one as red on a head the checks tab shows green — and it fails toward
-// blocking a landing. The newest run supersedes the earlier ones; ids are
-// assigned in creation order, which `started_at` is the readable form of.
+// A `cancelled` run never reached a verdict, so it is not one (#4800). The
+// gate was reading "never ran" as "ran and failed": a push that races the
+// previous run's start leaves the cancelled run standing beside the green that
+// replaced it, and counting the cancellation closed the gate on a head whose
+// checks tab was green.
 //
-// THE ASSUMPTION IS THAT A SHARED NAME MEANS A REPLACEMENT, and one pair here
-// is independent instead: gitleaks.yml fires on `pull_request` AND on branch
-// `push`, so every PR head carries two `gitleaks` runs and this drops one.
-// Same scanner, same commit — but NOT the same range (`base..HEAD` for the PR
-// event, `before..HEAD` for the push), so the two can genuinely disagree about
-// a secret sitting in an earlier branch commit. What makes the drop lossless
-// is ORDER, not equivalence: the push registers first, so the run that
-// survives is the PR's, which is the broader scan of the two (8 of 8 recent PR
-// heads, by run id from `actions/runs?head_sha=<sha>`). An inverted order
-// would keep the NARROWER scan.
-//
-// AND A NAME COLLISION BETWEEN TWO WORKFLOWS WOULD BE MASKED HERE WITH NO
-// SIGNAL AT ALL: ci.yml and ci-main.yml both define `check`, `test-unit` and
-// `test-db`, and the only thing keeping that pair off one head is
-// ci-main.yml's `branches: [main]` push filter.
-function currentRuns(runs) {
-  const newest = new Map();
-  for (const run of runs) {
-    const held = newest.get(run.name);
-    if (!held || run.id > held.id) newest.set(run.name, run);
-  }
-  return [...newest.values()];
-}
+// Discarding cancellations is the whole rule. Nothing here picks a winner
+// between two runs, so nothing here can mask a red: of what is left under one
+// name, ALL must be green. That is the right reading of every duplicate the
+// gate can actually see. GitHub's default listing already collapses each check
+// SUITE to its newest run — 20 runs on #4800's head, where `filter=all` returns
+// 37 — so a re-run never arrives here, and the duplicates that do are
+// cross-suite, genuinely separate runs. gitleaks is the standing example: it
+// fires on `pull_request` AND on branch `push`, and those scan different ranges
+// (`base..HEAD` against `before..HEAD`), so requiring both is requiring both
+// scans. Two workflows sharing a job name — ci.yml and ci-main.yml both define
+// `check`, `test-unit` and `test-db` — would likewise both be required, rather
+// than one silently standing in for the other.
+const reachedAVerdict = (run) => run.conclusion !== "cancelled";
 
 export function checkRunsVerdict(allRuns, ignoreCheck, head) {
   const named = allRuns.filter((run) => run.name !== ignoreCheck);
-  const checkRuns = currentRuns(named);
+  const checkRuns = named.filter(reachedAVerdict);
   const pending = checkRuns.filter((run) => run.status !== "completed");
   const red = checkRuns.filter(
     (run) =>
@@ -114,13 +102,25 @@ export function checkRunsVerdict(allRuns, ignoreCheck, head) {
       !["success", "neutral", "skipped"].includes(run.conclusion)
   );
   const ignored = Boolean(ignoreCheck && named.length !== allRuns.length);
-  if (checkRuns.length === 0 || pending.length) {
+  // A name whose EVERY run was cancelled has no verdict at all — not green, and
+  // not red either, because nothing failed. Incomplete is the honest state, and
+  // the wrapper publishes it as `pending`, which asks for a re-run instead of
+  // sending someone to hunt a failure that never happened.
+  const decided = new Set(checkRuns.map((run) => run.name));
+  const noVerdict = [...new Set(named.map((run) => run.name))].filter(
+    (name) => !decided.has(name)
+  );
+  if (checkRuns.length === 0 || pending.length || noVerdict.length) {
     return {
       kind: "incomplete",
       ignored,
       message:
         `CI INCOMPLETE on ${head.slice(0, 8)}: ${checkRuns.length} registered, ` +
-        `${pending.length} pending. Not a verdict — run ci-watch.mjs to settlement.`,
+        `${pending.length} pending` +
+        (noVerdict.length
+          ? `, no verdict for ${noVerdict.join(", ")} (every run cancelled — re-run it)`
+          : "") +
+        ". Not a verdict — run ci-watch.mjs to settlement.",
     };
   }
   if (red.length) {
@@ -154,11 +154,12 @@ export function closedStatusDescription(failure) {
 // separate ruling.
 export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const at = runs[0]?.head_sha ? `${ref}@${runs[0].head_sha.slice(0, 8)}` : ref;
-  const shards = currentRuns(
-    runs.filter((run) => run.name.startsWith(detector))
-  );
+  const detected = runs.filter((run) => run.name.startsWith(detector));
+  const shards = detected.filter(reachedAVerdict);
   if (!shards.length)
-    return `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
+    return detected.length
+      ? `${detector}: no verdict on ${at} — every shard run was cancelled; re-run it`
+      : `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
   const red = shards.filter(
     (run) =>
       run.status === "completed" &&
