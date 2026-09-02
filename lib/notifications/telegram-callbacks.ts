@@ -128,6 +128,7 @@ import {
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
+import { newDoseBundle } from "../dose-bundle";
 import {
   logUsualRoutineCore,
   recordUsualBackfillAudit,
@@ -1261,6 +1262,10 @@ async function handleAllTaken(
     chatId != null && allMessageId != null
       ? messagePointerIdAt(profileId, chatId, allMessageId)
       : null;
+  // ONE BUNDLE FOR THE WHOLE TAP (#4328) — the chat's bulk take is one composed action
+  // exactly as the ledger's is, so the rows it writes record that instead of leaving
+  // the Day ledger to guess it from the minute they share.
+  const bundleId = newDoseBundle();
   let logged = 0;
   for (const e of entries) {
     // A deliberately-skipped dose (#232) is already resolved — "✅ All" marks the
@@ -1275,7 +1280,8 @@ async function handleAllTaken(
         all.date,
         NUDGE,
         undefined,
-        notifyMessageId
+        notifyMessageId,
+        bundleId
       ) === "logged"
     ) {
       logged++;
@@ -1383,6 +1389,10 @@ async function handleStackTaken(
     chatId != null && messageId != null
       ? messagePointerIdAt(profileId, chatId, messageId)
       : null;
+  // ONE BUNDLE FOR THE WHOLE TAP (#4328): the per-stack one-tap is the composed write
+  // the Day ledger's stack row is FOR, so it is the last surface that should have its
+  // composition inferred.
+  const bundleId = newDoseBundle();
   let logged = 0;
   let alreadyResolved = 0;
   for (const e of current) {
@@ -1399,7 +1409,8 @@ async function handleStackTaken(
         date,
         NUDGE,
         undefined,
-        notifyMessageId
+        notifyMessageId,
+        bundleId
       ) === "logged"
     ) {
       logged++;

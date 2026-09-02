@@ -31,6 +31,7 @@ import {
   getBodyMetricConflicts,
   getUnitMislabelReviews,
   getUnreadableDoseAmounts,
+  getOverlappingSleepSessions,
   getQuietStreamRows,
 } from "@/lib/queries";
 
@@ -137,6 +138,9 @@ export default async function DataPage(
         bodyMetricPairs={bodyMetricPairs}
         unitMislabels={unitMislabels}
         unreadableDoseAmounts={getUnreadableDoseAmounts(profile.id)}
+        // Sleep sessions of one origin that overlap (#3628) — a night stored twice
+        // that the ingest collapse could not settle from the device's heart rate.
+        overlappingSleep={getOverlappingSleepSessions(profile.id)}
         // Bulk corrections (#1603): the "Fix a run of data" panel's source runs.
         correctionSources={listCorrectionSources(profile.id)}
         initialCorrectionField={isCorrectionFieldId(rawFix) ? rawFix : null}

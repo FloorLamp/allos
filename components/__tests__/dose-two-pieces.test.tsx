@@ -277,7 +277,7 @@ function ledgerGroups(): LedgerGroup[] {
           stack: null,
           status: "taken",
           skipReason: null,
-          writeMinute: `${YESTERDAY}T08:06`,
+          bundleId: null,
         },
       ],
     },

@@ -67,29 +67,12 @@ import {
   type RepeatSourceSet,
   type PartFault,
 } from "./model";
+import Stepper from "@/components/Stepper";
 
-// Weight and reps share one symmetric control; stepReps keeps #1524's zero clamp.
-function StepperButton({
-  direction,
-  label,
-  onClick,
-}: {
-  direction: -1 | 1;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      onClick={onClick}
-      aria-label={label}
-      className="flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-9 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-    >
-      {direction === -1 ? "−" : "+"}
-    </button>
-  );
-}
+// The four set-row steppers share one frame; only the border says whether the field
+// is what a stuck change is waiting on.
+const fieldBorder = (blocked: boolean) =>
+  blocked ? blockedField : "border-black/10 dark:border-white/10";
 
 // A compact, optional per-set RPE selector (issue #743): −/value/+ in half-point
 // steps over the 5–10 scale, BLANK by default (logging RPE is never required).
@@ -1006,19 +989,14 @@ export default function StrengthSets({
                             {isRight ? "R" : "L"}
                           </span>
                           {!timed && !isBodyweight(p.name) ? (
-                            <div
-                              data-testid="weight-stepper"
-                              className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
-                                flags.weight
-                                  ? blockedField
-                                  : "border-black/10 dark:border-white/10"
-                              }`}
+                            <Stepper
+                              testId="weight-stepper"
+                              tabStops={false}
+                              onStep={stepSideWeight}
+                              decreaseLabel="Decrease weight"
+                              increaseLabel="Increase weight"
+                              className={`min-w-28 flex-1 basis-0 ${fieldBorder(flags.weight)}`}
                             >
-                              <StepperButton
-                                direction={-1}
-                                onClick={() => stepSideWeight(-1)}
-                                label="Decrease weight"
-                              />
                               <input
                                 type="number"
                                 step="0.5"
@@ -1042,12 +1020,7 @@ export default function StrengthSets({
                                 placeholder={units.weightUnit}
                                 className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                               />
-                              <StepperButton
-                                direction={1}
-                                onClick={() => stepSideWeight(1)}
-                                label="Increase weight"
-                              />
-                            </div>
+                            </Stepper>
                           ) : (
                             <input
                               type="number"
@@ -1079,19 +1052,14 @@ export default function StrengthSets({
                             ×
                           </span>
                           {!timed ? (
-                            <div
-                              data-testid="reps-stepper"
-                              className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
-                                flags.effort
-                                  ? blockedField
-                                  : "border-black/10 dark:border-white/10"
-                              }`}
+                            <Stepper
+                              testId="reps-stepper"
+                              tabStops={false}
+                              onStep={stepSideReps}
+                              decreaseLabel="Decrease reps"
+                              increaseLabel="Add a rep"
+                              className={`min-w-28 flex-1 basis-0 ${fieldBorder(flags.effort)}`}
                             >
-                              <StepperButton
-                                direction={-1}
-                                onClick={() => stepSideReps(-1)}
-                                label="Decrease reps"
-                              />
                               {effortInput(
                                 sideR,
                                 (v) =>
@@ -1104,12 +1072,7 @@ export default function StrengthSets({
                                 canAddSet ? onAddSet : undefined,
                                 true
                               )}
-                              <StepperButton
-                                direction={1}
-                                onClick={() => stepSideReps(1)}
-                                label="Add a rep"
-                              />
-                            </div>
+                            </Stepper>
                           ) : (
                             effortInput(
                               sideD,
@@ -1135,21 +1098,18 @@ export default function StrengthSets({
                     className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-0 sm:basis-0"
                   >
                     {!timed && !isBodyweight(p.name) ? (
-                      <div
-                        data-testid={
+                      <Stepper
+                        testId={
                           si === 0 ? "set1-weight-stepper" : "weight-stepper"
                         }
-                        className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
-                          sideFlags(s.weight, s.reps, s.duration).weight
-                            ? blockedField
-                            : "border-black/10 dark:border-white/10"
-                        }`}
+                        tabStops={false}
+                        onStep={(direction) =>
+                          stepWeight(si, "weight", direction * weightStep)
+                        }
+                        decreaseLabel="Decrease weight"
+                        increaseLabel="Increase weight"
+                        className={`min-w-28 flex-1 basis-0 ${fieldBorder(sideFlags(s.weight, s.reps, s.duration).weight)}`}
                       >
-                        <StepperButton
-                          direction={-1}
-                          onClick={() => stepWeight(si, "weight", -weightStep)}
-                          label="Decrease weight"
-                        />
                         <input
                           type="number"
                           step="0.5"
@@ -1175,12 +1135,7 @@ export default function StrengthSets({
                           }
                           className="number-no-spinner min-w-0 w-full border-x border-y-0 border-black/10 bg-transparent px-2 py-2 text-sm outline-hidden focus:ring-0 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
-                        <StepperButton
-                          direction={1}
-                          onClick={() => stepWeight(si, "weight", weightStep)}
-                          label="Increase weight"
-                        />
-                      </div>
+                      </Stepper>
                     ) : (
                       <input
                         type="number"
@@ -1213,21 +1168,14 @@ export default function StrengthSets({
                       ×
                     </span>
                     {!timed ? (
-                      <div
-                        data-testid={
-                          si === 0 ? "set1-reps-stepper" : "reps-stepper"
-                        }
-                        className={`flex min-w-28 flex-1 basis-0 overflow-hidden rounded-lg border bg-field focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 ${
-                          sideFlags(s.weight, s.reps, s.duration).effort
-                            ? blockedField
-                            : "border-black/10 dark:border-white/10"
-                        }`}
+                      <Stepper
+                        testId={si === 0 ? "set1-reps-stepper" : "reps-stepper"}
+                        tabStops={false}
+                        onStep={(direction) => stepReps(si, "reps", direction)}
+                        decreaseLabel="Decrease reps"
+                        increaseLabel="Add a rep"
+                        className={`min-w-28 flex-1 basis-0 ${fieldBorder(sideFlags(s.weight, s.reps, s.duration).effort)}`}
                       >
-                        <StepperButton
-                          direction={-1}
-                          onClick={() => stepReps(si, "reps", -1)}
-                          label="Decrease reps"
-                        />
                         {effortInput(
                           s.reps,
                           (v) => onUpdateSet(si, { reps: v }),
@@ -1237,12 +1185,7 @@ export default function StrengthSets({
                           true,
                           `set${si + 1}-reps`
                         )}
-                        <StepperButton
-                          direction={1}
-                          onClick={() => stepReps(si, "reps", 1)}
-                          label="Add a rep"
-                        />
-                      </div>
+                      </Stepper>
                     ) : (
                       effortInput(
                         s.duration,

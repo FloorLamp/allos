@@ -23,6 +23,7 @@ import { bestKnownInstant } from "../row-instants";
 import { detailSegment } from "../history-format";
 import { doseBucketOn } from "../intake-schedule";
 import type { LedgerDose } from "../day-ledger";
+import type { DoseBundleId } from "../dose-bundle";
 import type { IntakeDose } from "../types/intake";
 import { getIntakeDosesForHistory } from "./intake/schedule";
 
@@ -38,6 +39,7 @@ type DayDoseLogRow = {
   product: string | null;
   item_name: string;
   stack: string | null;
+  bundle_id: string | null;
 };
 
 /**
@@ -60,7 +62,7 @@ export function getDayDoseLedger(
   const rows = db
     .prepare(
       `SELECT l.id, l.dose_id, l.item_id, l.status, l.skip_reason,
-              l.occurred_at, l.recorded_at, l.amount, l.product,
+              l.occurred_at, l.recorded_at, l.amount, l.product, l.bundle_id,
               s.name AS item_name, s.stack
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
@@ -106,9 +108,10 @@ export function getDayDoseLedger(
       bucket: schedule ? doseBucketOn(schedule, date) : "Anytime",
       hhmm: zonedDateParts(tz, instant).hhmm,
       clockKind: when.semantic === "event" ? "stated" : "logged",
-      // The composed tap's identity is the minute it wrote in — `recorded_at` is the
-      // immutable tap, never the stated instant a later correction can move.
-      writeMinute: row.recorded_at.slice(0, 16),
+      // The composed action that wrote this row (#4328), or null when nothing composed
+      // it. Carried across as stored: it is an identity two rows either share or do
+      // not, never a value anybody reads.
+      bundleId: row.bundle_id as DoseBundleId | null,
     });
   }
   return out;

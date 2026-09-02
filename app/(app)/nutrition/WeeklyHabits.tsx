@@ -24,22 +24,25 @@ import RightSizeSuggestions from "@/components/RightSizeSuggestions";
 import SubmitButton from "@/components/SubmitButton";
 import Disclosure from "@/components/Disclosure";
 import { EmptyState } from "@/components/ui";
+import { StateCells } from "@/components/StateCells";
+import { chartAdherenceState } from "@/lib/chart-colors";
 import { foodGroupBySlug } from "@/lib/food-groups";
 import type { GroupServingTotal } from "@/lib/food-daily-totals";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
 
-// Per-verdict cell styling for the N-week consistency strip (#954). `met` reads green,
-// `short`/`empty` amber/slate, the in-progress current week a hollow brand ring, and a
-// not-applicable (pre-target) week a faint dashed placeholder — an honest cold start,
-// never a red miss.
-const TREND_CELL_CLASS: Record<HabitWeekVerdict, string> = {
-  met: "bg-emerald-500 dark:bg-emerald-500",
-  short: "bg-amber-400 dark:bg-amber-500",
-  empty: "bg-slate-200 dark:bg-slate-700",
-  current:
-    "bg-transparent ring-1 ring-inset ring-brand-400 dark:ring-brand-500",
-  na: "bg-transparent ring-1 ring-inset ring-dashed ring-slate-200 dark:ring-slate-700 opacity-50",
+// The N-week consistency strip (#954) speaks the app's ONE adherence vocabulary
+// (#4543): a week that met its target is `taken`, a short week is `partial` — some
+// of the same thing, which is exactly what the shared pair means — an empty week the
+// neutral `skipped` rather than a red miss, the in-progress week `pending`, and a
+// pre-target week `na`. It used to hand-pick its own Tailwind classes, which is a
+// palette decision made outside `lib/chart-colors`.
+const TREND_TONE: Record<HabitWeekVerdict, string> = {
+  met: chartAdherenceState.taken.class,
+  short: chartAdherenceState.partial.class,
+  empty: chartAdherenceState.skipped.class,
+  current: chartAdherenceState.pending.class,
+  na: chartAdherenceState.na.class,
 };
 
 // THIS WEEK, AS ONE LIST (issue #580, consolidated by #3987).
@@ -187,22 +190,18 @@ export default function WeeklyHabits({
                   )}
                 </div>
                 {cells.length > 0 && (
-                  <div
-                    data-testid={`habit-trend-${row.slug}`}
-                    className="mt-1.5 flex items-center gap-1 pl-6"
-                    role="img"
-                    aria-label={`Consistency over the last ${cells.length} weeks: ${cells
+                  <StateCells
+                    testId={`habit-trend-${row.slug}`}
+                    className="mt-1.5 pl-6"
+                    label={`Consistency over the last ${cells.length} weeks: ${cells
                       .map((c) => c.label)
                       .join("; ")}`}
-                  >
-                    {cells.map((c) => (
-                      <span
-                        key={c.start}
-                        data-verdict={c.verdict}
-                        className={`h-3 w-3 shrink-0 rounded-xs ${TREND_CELL_CLASS[c.verdict]}`}
-                      />
-                    ))}
-                  </div>
+                    cells={cells.map((c) => ({
+                      key: c.start,
+                      tone: TREND_TONE[c.verdict],
+                      state: c.verdict,
+                    }))}
+                  />
                 )}
                 {interactions.length > 0 && (
                   <ul
