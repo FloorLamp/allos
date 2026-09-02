@@ -25,9 +25,13 @@ import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
-import { useCockpitDay } from "@/components/illness/CockpitDayContext";
+import {
+  useCockpitDay,
+  useDayBinding,
+} from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
+import { dateStrInTz, zonedDateParts } from "@/lib/date";
 import {
   logSymptom,
   logTemperature,
@@ -142,8 +146,13 @@ export default function SymptomLogBar({
   // the quick-entry sheet) are single-day surfaces and stand on the day they were
   // handed.
   const card = useCockpitDay();
-  const activeDate = card?.activeDate ?? date;
-  const isPrimaryDay = card ? card.isPrimaryDay : true;
+  // The binding, card or no card — so an UNWRAPPED mount (`/history?day=<past>`, the
+  // cycles page) answers the has-a-now question from the calendar too, rather than
+  // assuming yes. That assumption is what let a past-day reading through those mounts
+  // without a stated time.
+  const day = useDayBinding(date, timeZone);
+  const activeDate = day.activeDate;
+  const isPrimaryDay = day.isPrimaryDay;
   const hasToggle = !!card?.altDate;
 
   const [severitiesByDate, setSeveritiesByDate] = useState<
@@ -255,6 +264,13 @@ export default function SymptomLogBar({
     const altDay = card?.altDate ?? altDate;
     const targetDate =
       intakeStaged.dayOffset === -1 && altDay ? altDay : activeDate;
+    // THE COMPOSITE STATES NO TIME, and it has no control to ask through — a typed
+    // sentence carries a day at best. So it goes through the same has-a-now question
+    // every other write here does: a reading whose day has ENDED is filed on that day
+    // UNTIMED rather than stamped with a clock nobody read. The school-return
+    // derivation knows an untimed row cannot be ordered against a same-day one, so an
+    // honest gap stays a gap instead of becoming a false clearance.
+    const targetHasNow = targetDate === dateStrInTz(timeZone ?? tempZone);
     for (const s of intakeStaged.symptoms) {
       const fd = new FormData();
       fd.set("symptom", s.slug);
@@ -268,6 +284,9 @@ export default function SymptomLogBar({
       fd.set("temperature", String(intakeStaged.temperature.value));
       fd.set("temp_unit", intakeStaged.temperature.unit);
       fd.set("date", targetDate);
+      if (targetHasNow) {
+        fd.set("time", zonedDateParts(timeZone ?? tempZone, new Date()).hhmm);
+      }
       await logTemperature(withTarget(fd));
     }
     const count = intakeStaged.symptoms.length;

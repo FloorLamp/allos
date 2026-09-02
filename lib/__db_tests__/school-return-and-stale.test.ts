@@ -187,6 +187,52 @@ describe("schoolReturnStatusFor — gather (#859 item 2)", () => {
     expect(after.evidence).toBe("measured");
   });
 
+  // ORDERING MUST BE ESTABLISHED, NOT ASSUMED. An UNTIMED reading is anchored at local
+  // noon so it has somewhere to sit on the clock — but noon is a placeholder, not a
+  // measurement, so a same-day reading cannot be proven to have come after it. With a
+  // fever row that states no time, a normal reading at 13:00 the same day beat noon and
+  // cleared the child, even though the fever may well have been at 19:10.
+  it("a same-day reading cannot outrank an UNTIMED fever", () => {
+    const p = newProfile("sr-untimed-fever");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 2);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    // The fever states no time (the row type a past-day backfill produces).
+    logTemperatureCore(p, 103.4, "F", yd, "page", null);
+    logTemperatureCore(p, 98.6, "F", yd, "page", "13:00");
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T13:00:00Z`))!;
+    expect(s.evidence).toBe("none");
+    expect(s.met).toBe(false);
+
+    // …and the converse: a reading on a LATER DAY is unambiguously after it, whatever
+    // hour either row states, so it IS evidence.
+    logTemperatureCore(p, 98.4, "F", td, "page", "08:00");
+    const after = schoolReturnStatusFor(
+      p,
+      assembleIllnessEpisode(p, episodeForProfileDate(p, td)!),
+      Date.parse(`${td}T13:00:00Z`)
+    )!;
+    expect(after.evidence).toBe("measured");
+  });
+
+  it("a same-day UNTIMED reading cannot outrank a timed fever either", () => {
+    const p = newProfile("sr-untimed-normal");
+    setProfileSetting(p, "timezone", "UTC");
+    makeSick(p, 2);
+    const td = today(p);
+    const yd = shiftDateStr(td, -1);
+    logTemperatureCore(p, 103.4, "F", yd, "page", "06:00");
+    // Noon > 06:00 arithmetically, but the reading states no time at all.
+    logTemperatureCore(p, 98.6, "F", yd, "page", null);
+
+    const ep = assembleIllnessEpisode(p, episodeForProfileDate(p, td)!);
+    const s = schoolReturnStatusFor(p, ep, Date.parse(`${td}T13:00:00Z`))!;
+    expect(s.evidence).toBe("none");
+  });
+
   it("a stated occurred_at renders the note's clock unmarked (#2228)", () => {
     const p = newProfile("sr-stated");
     setProfileSetting(p, "timezone", "UTC");

@@ -92,7 +92,11 @@ vi.mock("@/components/Toast", () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-const TODAY = "2026-08-20";
+// THE PROFILE'S ACTUAL TODAY. `isPrimaryDay` asks the calendar (#4691 review), so a
+// fixed literal calling itself "today" is a past day and the time becomes required —
+// which is the rule working. Anything asserting the has-a-now behaviour must stand on
+// the real one; FOUND_DAY stays a fixed past day, which is what it always was.
+const TODAY = new Date().toISOString().slice(0, 10);
 const FOUND_DAY = "2026-08-18";
 const SUBJECT = 42;
 const ROW = {
@@ -527,8 +531,11 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     }
     // What the fold DISPLAYS: the shared control is pinned to the bar's day, so it
     // draws it as text rather than a picker and the pair rule holds by construction.
-    // (Both fixture days are in the past, so neither renders as "Today" here.)
-    expect(screen.getByTestId("temp-quick-date").textContent).toContain(day);
+    // The control renders the primary day as "Today" (it IS today now) and the alt
+    // day as its date — either way, the day it SHOWS is the day it writes below.
+    expect(screen.getByTestId("temp-quick-date").textContent).toContain(
+      day === TODAY ? "Today" : day
+    );
     // …and what it WRITES is that same day.
     await saveTemp();
     expect(payload("temperature").date).toBe(day);

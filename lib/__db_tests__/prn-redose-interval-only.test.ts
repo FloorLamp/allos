@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { utcSqlString } from "@/lib/date";
+import { utcInstant, utcSqlString } from "@/lib/date";
 import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 
 function newProfile(name: string): number {
@@ -59,11 +59,18 @@ function logAdministration(
   date: string,
   hoursAgo: number
 ): void {
-  const recordedAt = utcSqlString(new Date(Date.now() - hoursAgo * 3_600_000));
+  // A REAL administration STATES its instant (both columns, as `logAdministration`
+  // writes them). Since #4686 the ceiling window and the arming clock judge
+  // `occurred_at` and anchor a row that states none at its day's noon, so a fixture
+  // writing only the capture stamp would exercise the untimed arm while meaning "a
+  // dose N hours ago".
+  const at = new Date(Date.now() - hoursAgo * 3_600_000);
+  const recordedAt = utcSqlString(at);
   db.prepare(
-    `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-     VALUES (?, ?, ?, ?, 'taken')`
-  ).run(doseId, itemId, date, recordedAt);
+    `INSERT INTO intake_item_logs
+       (dose_id, item_id, date, recorded_at, occurred_at, status)
+     VALUES (?, ?, ?, ?, ?, 'taken')`
+  ).run(doseId, itemId, date, recordedAt, utcInstant(at));
 }
 
 // The redose line for an item on each of the two gathers the loader emits.

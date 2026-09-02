@@ -40,6 +40,7 @@ import {
 import { now as clockNow } from "../../clock";
 import {
   dateStrInTz,
+  parseUtcSql,
   shiftDateStr,
   utcInstant,
   zonedWallTimeToUtc,
@@ -230,6 +231,71 @@ export interface PrnCeilingWindow {
   untimedDates: string[];
 }
 
+// THE ARMING ADMINISTRATION, on the SAME instant rule the ceiling window uses.
+//
+// One state must not give two answers. This read used to take `COALESCE(occurred_at,
+// recorded_at)` — the capture stamp again — three lines from a predicate whose comment
+// says it is never judged on. A parent who ticked off yesterday's missed ibuprofen was
+// told "Next dose in ~6h" from a filing time, and after local noon the same state read
+// `count24h: 0` beside a `latestGivenAt` of a moment ago: nothing in 24 hours and dosed
+// just now, at once.
+//
+// The anchor cannot be written in SQL, because SQLite has no timezone and local noon
+// moves with the zone and with DST. So SQL narrows to the latest local DAY that has an
+// administration — sound on its own, since every instant on a later local day follows
+// every instant on an earlier one — and JS resolves the anchor across that one day's
+// rows, which is a handful for one family.
+export function armingAdministration(
+  profileId: number,
+  itemIds: readonly number[]
+): { id: number; administeredAt: string; itemId: number } | null {
+  if (itemIds.length === 0) return null;
+  const placeholders = itemIds.map(() => "?").join(", ");
+  // ONE statement: the correlated MAX picks the latest local DAY that has an
+  // administration, and the outer select returns that day's rows. Narrowing by day in
+  // SQL is sound on its own — every instant on a later local day follows every instant
+  // on an earlier one — and it keeps this read at the query count the budget records.
+  const rows = db
+    .prepare(
+      `SELECT l.id AS id, l.occurred_at AS occurredAt, l.item_id AS itemId,
+              l.date AS day
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
+          AND l.status = 'taken'
+          AND l.date = (SELECT MAX(l2.date)
+                          FROM intake_item_logs l2
+                         WHERE l2.item_id IN (${placeholders})
+                           AND l2.status = 'taken')`
+    )
+    .all(profileId, ...itemIds, ...itemIds) as {
+    id: number;
+    occurredAt: string | null;
+    itemId: number;
+    day: string;
+  }[];
+  if (rows.length === 0) return null;
+  const tz = getTimezone(profileId);
+  const noon = zonedWallTimeToUtc(tz, rows[0].day, "12:00");
+  let best: { id: number; administeredAt: string; itemId: number } | null =
+    null;
+  let bestMs = -Infinity;
+  for (const r of rows) {
+    // A row that STATES an administration instant is judged on it; one that states
+    // none sits at its own day's local noon, exactly as the window and the
+    // school-return derivation anchor it.
+    const at = r.occurredAt ? parseUtcSql(r.occurredAt) : noon;
+    if (!at) continue;
+    const ms = at.getTime();
+    // Same tie-break as the retired ORDER BY: later instant first, higher id second.
+    if (ms > bestMs || (ms === bestMs && best != null && r.id > best.id)) {
+      bestMs = ms;
+      best = { id: r.id, administeredAt: utcInstant(at), itemId: r.itemId };
+    }
+  }
+  return best;
+}
+
 export function prnCeilingWindow(profileId: number): PrnCeilingWindow {
   const now = clockNow();
   const from = new Date(now.getTime() - PRN_CEILING_WINDOW_HOURS * 3_600_000);
@@ -285,20 +351,7 @@ function getMedicationFamilyStatesUncached(
   for (const family of getActiveMedicationFamilies(profileId)) {
     const ids = family.members.map((m) => m.id);
     const placeholders = ids.map(() => "?").join(", ");
-    const latest = db
-      .prepare(
-        `SELECT l.id AS id,
-                COALESCE(l.occurred_at, l.recorded_at) AS administeredAt,
-                l.item_id AS itemId
-           FROM intake_item_logs l
-           JOIN intake_items s ON s.id = l.item_id
-          WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
-            AND l.status = 'taken'
-          ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
-          LIMIT 1`
-      )
-      .get(profileId, ...ids) as
-      { id: number; administeredAt: string; itemId: number } | undefined;
+    const latest = armingAdministration(profileId, ids);
     // The CEILING WINDOW's taken administrations WITH their snapshotted amounts — the
     // count is the row count, and the amounts feed the amount-aware exposure (#1854).
     // The window predicate and its reasoning live in prnCeilingWindowClause above.

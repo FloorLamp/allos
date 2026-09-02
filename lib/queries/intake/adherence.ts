@@ -37,6 +37,7 @@ import {
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
 import {
+  armingAdministration,
   getMedicationFamilyStates,
   prnCeilingWindowClause,
   redoseWindowState,
@@ -349,6 +350,21 @@ function applyDoseStatusCore(
     // actually taken even after a later dosage edit rewrites the dose row. A skip
     // records no amount — nothing was consumed.
     const amount = target === "taken" ? owned.amount : null;
+
+    // A CHECK-OFF FOR A PAST DAY STATES NO ADMINISTRATION INSTANT (#4686). The capture
+    // clock is today's; stamping it onto a row dated two days ago writes an
+    // administration that never happened at that moment, and the PRN ceiling — which
+    // judges the administration instant over a trailing 24h — then counts a catch-up as
+    // a dose given now. `recorded_at` still records WHEN THIS WAS FILED; what retires
+    // is the claim that filing time is intake time on a day it cannot be.
+    //
+    // ABOVE BOTH WRITERS, deliberately. This core has two: the INSERT for a first
+    // resolution and the UPDATE for a correction. The first version of this fix guarded
+    // only the INSERT, so the tri-state's ordinary skip→taken on a past day — which
+    // lands in the UPDATE — went on stamping the clock, and the identical catch-up
+    // reached that way still filled the ceiling. One question, asked once, consumed by
+    // both arms.
+    const statesNowIsHonest = date === today(profileId);
     if (!existing) {
       // `recorded_at` is immutable capture; `occurred_at` is the administration the
       // Taken action asserts. An offline replay may carry the captured administration
@@ -356,15 +372,6 @@ function applyDoseStatusCore(
       // clock. A skip records the action but asserts no administration.
       const capturedAt = clockNow();
       const explicitlyUntimed = opts.takenAt === null;
-      // A CHECK-OFF FOR A PAST DAY STATES NO ADMINISTRATION INSTANT (#4686). The
-      // capture clock is today's; stamping it onto a row dated two days ago writes an
-      // administration that never happened at that moment, and the PRN ceiling — which
-      // judges the administration instant over a trailing 24h — then counted a
-      // catch-up as a dose given now. `recorded_at` still records WHEN THIS WAS FILED;
-      // what retires is the claim that filing time is intake time on a day it cannot
-      // be. A caller that genuinely carries a captured instant (the offline replay)
-      // still supplies it below and is unaffected.
-      const statesNowIsHonest = date === today(profileId);
       const stamp = opts.takenAt
         ? resolveQueuedTakenAt(
             opts.takenAt,
@@ -408,7 +415,8 @@ function applyDoseStatusCore(
       );
     } else {
       // The immutable record stamp stays put. The explicit target owns whether this row
-      // states an administration: taken means now, skipped means none.
+      // states an administration: taken means now ON TODAY, and states none on a day
+      // whose "now" has passed (see statesNowIsHonest above); skipped means none.
       db.prepare(
         `UPDATE intake_item_logs
             SET status = ?, amount = ?, supply_adjusted = ?, occurred_at = ?
@@ -417,7 +425,7 @@ function applyDoseStatusCore(
         target,
         amount,
         target === "taken" ? 1 : 0,
-        target === "taken" ? instantNow() : null,
+        target === "taken" && statesNowIsHonest ? instantNow() : null,
         doseId,
         date
       );
@@ -1744,18 +1752,11 @@ export function getRedoseArmingState(
   // The most-recent administration (by intake time, id as tiebreak) that arms the
   // one-shot. Scoped through the parent item so a forged itemId can't read across
   // profiles.
-  const latest = db
-    .prepare(
-      `SELECT l.id AS id,
-              COALESCE(l.occurred_at, l.recorded_at) AS administeredAt
-         FROM intake_item_logs l
-         JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-        ORDER BY COALESCE(l.occurred_at, l.recorded_at) DESC, l.id DESC
-        LIMIT 1`
-    )
-    .get(profileId, itemId) as
-    { id: number; administeredAt: string } | undefined;
+  // The SAME instant rule as the family gather and the window (#4686): the stated
+  // administration instant, or the row's own day's local noon when it states none —
+  // never the capture stamp, so this fallback cannot answer differently from the
+  // thing it stands in for.
+  const latest = armingAdministration(profileId, [itemId]);
   // The SAME window predicate the family gather uses (#4686) — one spelling, so this
   // fallback can never be laxer than the thing it stands in for.
   const window = prnCeilingWindowClause(profileId);

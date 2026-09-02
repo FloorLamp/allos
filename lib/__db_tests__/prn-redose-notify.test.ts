@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
-import { utcSqlString } from "@/lib/date";
+import { utcInstant, utcSqlString } from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
 import { collectUpcoming, dismissFinding } from "@/lib/queries";
 import { prnMaxSignalKey } from "@/lib/prn-redose";
@@ -80,16 +80,21 @@ function logAdmin(
   hoursAgo: number,
   now: Date
 ): number {
-  const recordedAt = utcSqlString(
-    new Date(now.getTime() - hoursAgo * 3_600_000)
-  );
+  // A REAL administration STATES its instant (both columns, as `logAdministration`
+  // writes them). Since #4686 the ceiling window and the arming clock judge
+  // `occurred_at` and anchor a row that states none at its day's noon, so a fixture
+  // writing only the capture stamp would exercise the untimed arm while meaning "a
+  // dose N hours ago".
+  const at = new Date(now.getTime() - hoursAgo * 3_600_000);
+  const recordedAt = utcSqlString(at);
   return Number(
     db
       .prepare(
-        `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status)
-         VALUES (?, ?, ?, ?, 'taken')`
+        `INSERT INTO intake_item_logs
+           (dose_id, item_id, date, recorded_at, occurred_at, status)
+         VALUES (?, ?, ?, ?, ?, 'taken')`
       )
-      .run(doseId, itemId, date, recordedAt).lastInsertRowid
+      .run(doseId, itemId, date, recordedAt, utcInstant(at)).lastInsertRowid
   );
 }
 

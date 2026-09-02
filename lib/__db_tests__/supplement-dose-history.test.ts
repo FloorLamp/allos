@@ -881,12 +881,19 @@ describe("the amend path writes occurred_at, never recorded_at (#2228)", () => {
       )
     ).toEqual({ kind: "duplicate" });
 
-    // Clearing the event makes the safety read fall back to immutable capture.
-    // State that as the identity it is: the read IS the row's own recorded_at.
-    // Asserting the absence of "14:00" instead reds for the minute the real clock
-    // spells it, because the fallback value is that clock (#3180).
+    // Clearing the event makes the safety read fall back to THE ROW'S OWN DAY, at
+    // local noon — not to the immutable capture stamp, which this used to assert as
+    // an identity. #4686 retired that substitution: `recorded_at` is when the row was
+    // FILED, and here it is two days after the day the row is about (the amend runs
+    // on the tier's frozen today while `date` is the backfilled day), so quoting it as
+    // an administration instant said the dose was given two days after it was given.
+    // A row that states no time now sits at noon of its own date, the same anchor the
+    // ceiling window and the school-return derivation use.
     updateHistoricalDose(p, itemId, logId, date, null, null);
     expect(getRedoseArmingState(p, itemId).latestGivenAt).toBe(
+      `${date}T12:00:00Z`
+    );
+    expect(getRedoseArmingState(p, itemId).latestGivenAt).not.toBe(
       logRow(logId).recorded_at
     );
   });

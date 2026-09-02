@@ -71,6 +71,7 @@ export default function EpisodeLogPanel({
       date={date}
       altDate={ongoing ? altDate : undefined}
       altDateLabel={altDateLabel}
+      tz={timeZone}
     >
       <div data-testid="episode-log-panel">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

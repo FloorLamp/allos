@@ -23,7 +23,10 @@ import {
   utcSqlString,
 } from "@/lib/date";
 import { runRedoseNotices, redoseMarkerKey } from "@/lib/notifications/redose";
-import { markDoseTaken } from "@/lib/queries/intake/adherence";
+import {
+  markDoseTaken,
+  setDoseStatusCore,
+} from "@/lib/queries/intake/adherence";
 import {
   collectUpcoming,
   dismissFinding,
@@ -648,6 +651,63 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     );
     expect(label).toContain("2 of 3 in 24h");
     expect(label).not.toContain("Max reached");
+  });
+
+  // THE SAME RULE ON THE TRANSITION ARM. `applyDoseStatusCore` has two writers: the
+  // INSERT for a first resolution and the UPDATE for a correction. The tri-state's
+  // ordinary skip→taken on a past day lands in the UPDATE, which stamped
+  // `instantNow()` with no day check — so the identical catch-up, reached by
+  // correcting a skip instead of by a first tap, put today's clock on a past row and
+  // the ceiling counted it. Driven through `setDoseStatusCore` with a non-clear
+  // `from`, because `markDoseTaken` is resolveOnly and returns before the UPDATE.
+  it("a past-day skip CORRECTED to taken states no administration instant either", () => {
+    vi.setSystemTime(MORNING);
+    const p = newProfile("Win24Correct");
+    const prn = seedMed(p, "Ibuprofen", {
+      amount: "200 mg",
+      minInterval: 4,
+      maxDaily: 3,
+    });
+    const sched = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, obligation)
+           VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'should')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const schedDose = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '200 mg', 'anytime', 'any', 0)`
+        )
+        .run(sched).lastInsertRowid
+    );
+
+    logAdmin(prn.itemId, prn.doseId, today(p), 5.27, MORNING, "200 mg");
+    // Skip the two missed days, then CORRECT both to taken — the transition arm.
+    for (const back of [1, 2]) {
+      const day = shiftDateStr(today(p), -back);
+      setDoseStatusCore(p, schedDose, day, "skipped", "page");
+      setDoseStatusCore(p, schedDose, day, "taken", "page");
+    }
+
+    // No corrected row claims an administration instant it cannot have.
+    const stamped = db
+      .prepare(
+        `SELECT l.date AS date, l.occurred_at AS occurredAt
+           FROM intake_item_logs l
+          WHERE l.item_id = ? AND l.status = 'taken' ORDER BY l.date`
+      )
+      .all(sched) as { date: string; occurredAt: string | null }[];
+    expect(stamped.map((r) => r.occurredAt)).toEqual([null, null]);
+
+    const state = getMedicationFamilyStates(p).get(prn.itemId)!;
+    // As in the first-tap case: this morning's real dose plus yesterday's noon anchor.
+    expect(state.count24h).toBe(2);
+    expect(state.exposure?.atMax).toBe(false);
   });
 
   it("five doses spanning midnight inside 24h reach the ceiling", () => {

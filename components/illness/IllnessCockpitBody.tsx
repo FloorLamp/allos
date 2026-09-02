@@ -67,7 +67,7 @@ export default function IllnessCockpitBody({
   // — and no row loses its tap floor (the declared `min-h-*` is untouched
   // everywhere; it reads `min-h-11` since #3514 ruled the floor at 44).
   return (
-    <CockpitDayProvider date={date} altDate={controls?.altDate}>
+    <CockpitDayProvider date={date} altDate={controls?.altDate} tz={timeZone}>
       <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
         <EpisodeLatestReadings
           episode={episode}

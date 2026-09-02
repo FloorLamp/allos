@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState } from "react";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 
 // THE DAY A CARD IS STANDING ON (issue #4691), supplied to every control beneath it.
 //
@@ -24,9 +26,15 @@ export interface CockpitDay {
   altDate?: string;
   // The day every write and statement beneath this card binds to.
   activeDate: string;
-  // Whether `activeDate` is the primary day. A day that has ENDED has no "now", so
-  // anything that would otherwise stamp the current clock — a reading time, a dose
-  // time — must ask instead. Expressed once, here, rather than at each mount.
+  // Whether `activeDate` is THE PROFILE'S TODAY — not merely the card's primary day.
+  // A day that has ENDED has no "now", so anything that would otherwise stamp the
+  // current clock — a reading time, a dose time — must ask instead.
+  //
+  // THE DISTINCTION IS THE WHOLE POINT, and reading it as "the primary prop" was a
+  // real defect: a CLOSED episode's panel stands on the episode's last active day, and
+  // `/history?day=<past>` stands on the day being read, so both had a "primary" day
+  // that ended weeks ago and neither asked for the minute. The action then stored those
+  // readings untimed. Asked of the calendar, this cannot drift with the mount.
   isPrimaryDay: boolean;
   dateLabel: string;
   altDateLabel: string;
@@ -40,26 +48,43 @@ export function CockpitDayProvider({
   altDate,
   dateLabel = "Today",
   altDateLabel = "Yesterday",
+  tz,
   children,
 }: {
   date: string;
   altDate?: string;
   dateLabel?: string;
   altDateLabel?: string;
+  // The SUBJECT profile's zone, for a card logging a household member (#858). Defaults
+  // to the app-wide provider, the acting profile's.
+  tz?: string;
   children: React.ReactNode;
 }) {
+  const appTz = useTimezone();
   const [activeDate, setActiveDate] = useState(date);
+  // THE CARD'S DAY RESYNCS WHEN THE SERVER'S DOES. `date` is server state, and a
+  // cockpit left open across local midnight is the overnight fevered-child case this
+  // card exists for: yesterday's date arrives as the new `date`, the untouched state
+  // still holds it, and every write beneath silently binds to the previous day. The
+  // two-day drift self-corrects through the primary-day floor below; the one-day case
+  // is exactly the one that does not, because the stale value is the new alt day.
+  const [seenDate, setSeenDate] = useState(date);
+  if (seenDate !== date) {
+    setSeenDate(date);
+    setActiveDate(date);
+  }
   // The primary day is the floor: a card whose alt day is withdrawn (an episode that
   // closed while open in another tab) can never be left standing on a day it no
   // longer offers.
   const day = activeDate === altDate && altDate ? altDate : date;
+  const todayStr = dateStrInTz(tz ?? appTz);
   return (
     <CockpitDayContext.Provider
       value={{
         date,
         altDate,
         activeDate: day,
-        isPrimaryDay: day === date,
+        isPrimaryDay: day === todayStr,
         dateLabel,
         altDateLabel,
         select: setActiveDate,
@@ -73,4 +98,24 @@ export function CockpitDayProvider({
 // The card's day, or null when this control is not inside one.
 export function useCockpitDay(): CockpitDay | null {
   return useContext(CockpitDayContext);
+}
+
+// THE DAY BINDING EVERY CONTROL READS, card or no card — so `isPrimaryDay` has ONE
+// definition rather than a context arm and a hand-written fallback that drifted from
+// it. An unwrapped mount is a single-day surface standing on the day it was handed;
+// asking the calendar whether that day is today is the same question the provider
+// asks, which is what makes the required-time rule reach the unwrapped mounts too.
+export function useDayBinding(fallbackDate: string, tz?: string): CockpitDay {
+  const card = useCockpitDay();
+  const appTz = useTimezone();
+  const todayStr = dateStrInTz(tz ?? appTz);
+  if (card) return card;
+  return {
+    date: fallbackDate,
+    activeDate: fallbackDate,
+    isPrimaryDay: fallbackDate === todayStr,
+    dateLabel: "Today",
+    altDateLabel: "Yesterday",
+    select: () => {},
+  };
 }
