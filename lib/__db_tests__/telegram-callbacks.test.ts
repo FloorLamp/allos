@@ -652,6 +652,36 @@ describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
     expect(rowB?.status).toBe("taken");
     expect(lastAnswerText()).toBe("All logged ✅");
   });
+
+  // ONE TAP, ONE BUNDLE (#4328) — the chat's bulk take is a composed action exactly as
+  // the ledger's Take-all is, so the rows it writes say so instead of leaving the Day
+  // ledger to infer it from the minute they share. Both rows are written by THIS tap
+  // (the pre-logged row above is cleared first), which is what makes the DISTINCT a
+  // claim about sharing rather than about one row.
+  it("stamps one bundle across every dose the bulk tap wrote", async () => {
+    const date = today(hp.profileId);
+    db.prepare(`DELETE FROM intake_item_logs WHERE dose_id IN (?, ?)`).run(
+      doseA,
+      doseB
+    );
+
+    await handleCallbackQuery(
+      cq(`all:${hp.profileId}:Morning:${date}`, ALL_CHAT)
+    );
+
+    const rows = db
+      .prepare(
+        `SELECT dose_id, bundle_id FROM intake_item_logs
+          WHERE dose_id IN (?, ?) AND date = ? ORDER BY dose_id`
+      )
+      .all(doseA, doseB, date) as {
+      dose_id: number;
+      bundle_id: string | null;
+    }[];
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r.bundle_id)).size).toBe(1);
+    expect(rows[0].bundle_id).not.toBeNull();
+  });
 });
 
 // ---- The per-stack one-tap (#3098, on the offer substrate since #3282) ------
@@ -773,6 +803,20 @@ describe("stacktake writes only the listed-and-still-pending intersection (#3098
     expect(logsFor(retiredDose, date)).toEqual([]);
     expect(logsFor(foreignDose, date)).toEqual([]);
     expect(lastAnswerText()).toBe("Logged ✅");
+    // ONE TAP, ONE BUNDLE (#4328). The per-stack one-tap is the composed write the Day
+    // ledger's stack row exists for, so it records itself rather than being inferred
+    // from the minute its rows landed in. Asserted DISTINCT over the two rows that were
+    // actually written — a single row would satisfy "one bundle" without composing.
+    const bundles = (
+      db
+        .prepare(
+          `SELECT DISTINCT bundle_id FROM intake_item_logs
+            WHERE dose_id IN (?, ?) AND date = ?`
+        )
+        .all(doseA, doseB, date) as { bundle_id: string | null }[]
+    ).map((r) => r.bundle_id);
+    expect(bundles).toHaveLength(1);
+    expect(bundles[0]).not.toBeNull();
   });
 
   it("a second tap answers nothing-to-log instead of confirming again", async () => {

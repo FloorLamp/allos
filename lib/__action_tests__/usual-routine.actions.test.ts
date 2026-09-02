@@ -68,6 +68,21 @@ function doseLogs(profileId: number, date: string) {
     .all(profileId, date) as { dose_id: number; status: string }[];
 }
 
+// The composed action each dose row records having been written by (#4328). Distinct,
+// not listed: the claim is that ONE tap left ONE bundle across its rows.
+function doseBundles(profileId: number, date: string): (string | null)[] {
+  return (
+    db
+      .prepare(
+        `SELECT DISTINCT l.bundle_id FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE s.profile_id = ? AND l.date = ?`
+      )
+      .all(profileId, date) as { bundle_id: string | null }[]
+  ).map((r) => r.bundle_id);
+}
+
 function tap(profileId: number, group: string, date: string, hhmmss: string) {
   db.prepare(
     `INSERT INTO food_daily_totals (profile_id, date, group_key, servings) VALUES (?, ?, ?, 1)
@@ -201,6 +216,27 @@ describe("logUsualRoutine", () => {
     ]);
     expect(revalidate).toHaveBeenCalledWith("/");
     expect(revalidate).toHaveBeenCalledWith("/medications");
+  });
+
+  // #4328 — THE TAP RECORDS ITSELF. The Day ledger used to read a composed write off a
+  // shared write minute, which two independent confirms can also produce. This is the
+  // write half of the replacement: the rows one tap wrote carry ONE bundle between them,
+  // and it is a value, not the absence the individual path leaves.
+  it("stamps one bundle across every dose row the tap wrote", async () => {
+    const { profile, anchor, doses } = seedMorning("routine-bundle");
+    await logUsualRoutine(
+      fd({
+        meal_slot: "Morning",
+        groups: "berries,fermented",
+        dose_ids: `${doses.creatine},${doses.collagen}`,
+      })
+    );
+    // Two rows, asserted separately from the bundle: a tap that wrote one row would
+    // satisfy "one distinct bundle" without composing anything.
+    expect(doseLogs(profile.id, anchor)).toHaveLength(2);
+    const bundles = doseBundles(profile.id, anchor);
+    expect(bundles).toHaveLength(1);
+    expect(bundles[0]).not.toBeNull();
   });
 
   it("writes only the intersection — a forged group, a forged dose id and another profile's dose land nothing", async () => {
@@ -374,6 +410,10 @@ describe("logUsualRoutine on a past day", () => {
     expect(doseLogs(profile.id, target)).toEqual([
       { dose_id: creatine, status: "taken" },
     ]);
+    // ONE TAP IS ONE TAP THROUGH THE DEEP DOOR TOO (#4328): a day past the ±2 window
+    // routes the dose half to `logHistoricalDose`, and which writer the day picks is not
+    // a fact about how many taps happened — so the row still records its bundle.
+    expect(doseBundles(profile.id, target)[0]).not.toBeNull();
     // Nothing on today, which is what a silent fallback would have produced.
     expect(servings(profile.id, anchor)).toEqual([]);
     expect(doseLogs(profile.id, anchor)).toEqual([]);

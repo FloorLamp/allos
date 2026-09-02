@@ -23,10 +23,11 @@ const STACK = "Ledger Stack (e2e)";
 const ITEMS = ["Ledger Alpha (e2e)", "Ledger Beta (e2e)", "Ledger Gamma (e2e)"];
 const SKIPPED_ITEM = "Ledger Skipped (e2e)";
 const SKIP_REASON = "felt queasy";
-// The minute the composed tap wrote in. Two doses sharing it are one write; a third
-// dose of the same routine written at a different minute is not (the ledger keys the
-// collapse on the write minute, never on the bucket).
+// The minute the composed tap was filed in, and the bundle it stamped (#4328). The
+// BUNDLE is what makes two rows one write — the ledger keys the collapse on the
+// recorded composed action, never on the bucket and no longer on the shared minute.
 const WRITE_HHMM = "07:07";
+const WRITE_BUNDLE = "ledger e2e bundle 1";
 const STATED_HHMM = "09:30";
 
 function openDb(): Database.Database {
@@ -125,9 +126,9 @@ function seed(): Seeded {
       const itemId = itemIds[doseIds.indexOf(doseId)];
       db.prepare(
         `INSERT INTO intake_item_logs
-           (dose_id, item_id, date, status, amount, recorded_at)
-         VALUES (?, ?, ?, 'taken', '1 cap', ?)`
-      ).run(doseId, itemId, day, stampAt(day, WRITE_HHMM));
+           (dose_id, item_id, date, status, amount, recorded_at, bundle_id)
+         VALUES (?, ?, ?, 'taken', '1 cap', ?, ?)`
+      ).run(doseId, itemId, day, stampAt(day, WRITE_HHMM), WRITE_BUNDLE);
     }
 
     // A SKIP, with its stored reason, on an unstacked item — a recorded event, never

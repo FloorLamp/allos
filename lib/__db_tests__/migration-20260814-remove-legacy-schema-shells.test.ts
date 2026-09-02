@@ -75,6 +75,10 @@ describe("20260814-remove-legacy-schema-shells", () => {
       "notify_message_id",
       // #3087, as above.
       "logged_via",
+      // #4328: which composed action wrote the row, so the Day ledger reads a
+      // recorded bundle instead of inferring one from a shared write minute.
+      // Additive and nullable, appended by 20260902-dose-write-bundle.
+      "bundle_id",
     ]);
     expect(names(db, "illness_episodes")).toEqual([
       "id",

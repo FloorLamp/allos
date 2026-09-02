@@ -197,32 +197,28 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     const date = today(profile.id);
     const a = seedDose(profile.id, "Creatine amend", "Morning stack");
     const b = seedDose(profile.id, "Collagen amend", "Morning stack");
+    // THREE members, not two, and the third is what makes this case reachable at all.
+    // A two-member tap with one member amended out leaves a SINGLETON, which the
+    // builder dissolves to a loose row — so there was no stack row left for the loop
+    // below to inspect and it ran zero times, on this tree and on the one before it.
+    const c = seedDose(profile.id, "Boron amend", "Morning stack");
 
-    // ONE composed tap at 08:07 — both members, one bundle (#4328). Stamped rather
-    // than left to a shared minute: two bare confirms are two taps now, and this case
-    // is about what an amendment does to a real composed write.
+    // ONE composed tap at 08:07 — all three members, one bundle (#4328). Stamped rather
+    // than left to a shared minute: three bare confirms are three taps now, and this
+    // case is about what an amendment does to a real composed write.
     const tap = newDoseBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T08:07:00Z";
-    markDoseTaken(
-      profile.id,
-      a.doseId,
-      a.itemId,
-      date,
-      "page",
-      undefined,
-      null,
-      tap
-    );
-    markDoseTaken(
-      profile.id,
-      b.doseId,
-      b.itemId,
-      date,
-      "page",
-      undefined,
-      null,
-      tap
-    );
+    for (const member of [a, b, c])
+      markDoseTaken(
+        profile.id,
+        member.doseId,
+        member.itemId,
+        date,
+        "page",
+        undefined,
+        null,
+        tap
+      );
 
     // The user corrects ONE of them through the shipped dose-history amend: it was
     // actually taken at 05:15, three hours before the other.
@@ -257,9 +253,16 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
         s.written.map((d) => `${d.name}@${d.hhmm}`),
       ])
     );
-    // THE FIXTURE'S REACH: the amend has to leave a stack row behind for the loop below
-    // to be able to fail — a split that dissolved BOTH rows would pass vacuously.
-    expect(stacks, "the unamended member's row survives").toHaveLength(1);
+    // THE FIXTURE'S REACH, asserted rather than assumed: the amend has to leave a stack
+    // row behind for the loop below to be able to fail at all, and the amended member
+    // has to have left it. A count taken here is the only thing standing between this
+    // case and the vacuous version it replaced.
+    expect(stacks, "the unamended members still read as one tap").toHaveLength(
+      1
+    );
+    expect(stacks[0].written.map((d) => d.doseId).sort()).toEqual(
+      [a.doseId, c.doseId].sort()
+    );
     // The two doses now state 05:15 and 08:07. They must not read as one timestamped row.
     const clocks = new Set(rows.map((r) => r.hhmm));
     for (const s of stacks)
