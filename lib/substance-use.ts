@@ -658,6 +658,15 @@ export function isSubstanceLogged(v: unknown): v is SubstanceKey {
 // shared with Nutrition's one-tap bar (one store, two surfaces, one computation).
 export const ALCOHOL_FOOD_GROUP = "alcohol";
 
+// IS THIS CURATED FOOD GROUP A SUBSTANCE ONE (#4072)? Alcohol is the only member today,
+// and the CLASS is what three surfaces have to agree on: the record's gathers, which
+// hand such a row to the substance half; the record's food correction, which may not
+// offer a known minor a group their record has no home for; and the write behind that
+// correction. Named once, beside the key itself, so the three cannot drift apart.
+export function isSubstanceFoodGroup(slug: string): boolean {
+  return slug === ALCOHOL_FOOD_GROUP;
+}
+
 // The largest sane weekly cap for any substance (mirrors the food-habit
 // MAX_PER_WEEK clamp scale).
 export const MAX_WEEKLY_CAP = 70;

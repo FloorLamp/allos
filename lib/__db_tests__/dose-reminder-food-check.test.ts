@@ -63,9 +63,11 @@ function logServing(
     today(profileId),
     "page",
     at(minutesAgo),
-    "Morning",
+    // One placement (#4729): the stated minute when there is one, and the declared
+    // window otherwise. The core dropped the declaration beside a statement anyway,
+    // so this seeds the same rows it always did.
     statedAgo == null
-      ? undefined
+      ? "Morning"
       : { eatenAt: at(statedAgo), source: "stated" as const }
   );
 }

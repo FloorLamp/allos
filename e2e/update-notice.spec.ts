@@ -601,7 +601,29 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   //
   //       registered   → marker written → the draft auto-applies, no banner
   //       unregistered → marker removed → today's offer banner, an empty field
-  await expect(page.getByTestId("routines-section")).toBeVisible();
+  // THE RELOAD'S OLD TREE IS BRIEFLY STILL IN THE DOCUMENT, and this assertion runs
+  // right after one. Measured on 2026-09-02: this line failed on `main` and on an
+  // unrelated PR with `strict mode violation: getByTestId('routines-section') resolved
+  // to 2 elements`, both of them `hidden` — the outgoing page and the incoming one,
+  // caught mid-transition. Only one mount exists (`PlanSection` renders
+  // `RoutinesSection` once, and its comment records that a second anchor would emit a
+  // duplicate id), so two is a transition artifact, never a shipped duplicate.
+  //
+  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated
+  // — but it has to be waited for on the RIGHT locator, and the first attempt at this
+  // (2026-09-02) got that wrong. `toHaveCount(1)` passed and the very next line still
+  // saw two, because the reload's two trees do not overlap in the direction that fix
+  // assumed: the count reaches one when the outgoing document is alone, and goes back
+  // to two as the incoming one mounts beside it. A settle assertion on the raw locator
+  // can therefore pass BEFORE the moment it was added to survive.
+  //
+  // So the wait is on the live tree instead: exactly one VISIBLE section. Both trees
+  // are `hidden` mid-transition (that is what the failure printed), so this cannot pass
+  // early, and it still reds on a genuine duplicate id — two visible sections is two,
+  // which is the claim `.first()` would have thrown away.
+  await expect(
+    page.getByTestId("routines-section").filter({ visible: true })
+  ).toHaveCount(1);
   await hydratedClick(page, page.getByTestId("routine-new"));
   const reopened = page.getByTestId("routine-builder");
   await expect(reopened).toBeVisible();

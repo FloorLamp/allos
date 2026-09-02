@@ -1325,17 +1325,26 @@ Morning / Midday / Evening groups — one physical morning, one list, where the 
 used to draw the same facts as meal cards, a logged-today list, and a separate
 schedule on the Manage tab. Doses written by one composed tap collapse to a
 single expandable row; a partly-answered routine says "4 of 6" rather than a bare
-tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
-every dose it will write and writes only the ones the day still owes. That due
+tick. A bucket's still-due doses are one row, which names
+every dose it will write and writes only the ones the day still owes. Its bulk verb
+reads by count (#4477): one dose names itself (**Take Glycine**), two read **Take
+both**, and a number appears only from three (**Take all 4**). That due
 row **leads** its group (#4315): the ledger is opened to act, so the one
 actionable row reads first and the record keeps its stated order unchanged
 below it — the rule for any surface rendering due-and-done together, and a
 surface with no single aggregated due row is outside it (the Medications Today
-panel's slots stay in dose-day order, #2652). A **skip**
+panel's slots stay in dose-day order, #2652). It also carries the ledger's one
+accent fill and states only what is owed ("3 doses due"), because the group's
+heading has already named the bucket and the record beneath is the surface's
+quiet ground (#4477). A **skip**
 shows with the reason you gave it. A row with no stated time says which clock it is
 showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
 actions to **correct** it — the food group, the day, or the meal it belongs to — or
-to **remove** that one serving. A correction MOVES
+to **remove** that one serving. On a **known minor's** row the group list omits the
+substance groups (#4072): the record has no substance half for that profile, so a
+serving corrected into one would vanish from the only surface that could undo it. A
+row already in such a group keeps its own entry, so its meal and time stay
+correctable and it can still be moved back out. A correction MOVES
 the serving: the day's totals and the per-meal tallies follow it, so a serving tapped into the wrong meal is repaired
 rather than deleted and re-logged under the current time. "Remove this serving"
 is ROW-scoped and is the removal that honours that per-row identity: the group
