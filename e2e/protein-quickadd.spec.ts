@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import type { Locator } from "@playwright/test";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 import { E2E_LOGIN_PROTEIN, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Protein-grams quick-add in the Nutrition Food logging list (issue #824). Protein
@@ -61,7 +61,13 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
 
     // Enter 30 g and add — the running total ticks up and the card flips to COMBINED,
     // naming the composition (estimated foods + logged grams).
-    await page.getByTestId("protein-quickadd-input").fill("30");
+    // settledFill, not fill: a bare fill landing before React claims the input never
+    // reaches `setAmount`, so `amount` stays "" and Add renders disabled — and the
+    // GUARDED click on the next line then waits out its budget against a control the
+    // unguarded line above was supposed to arm. #4399 reproduced exactly that on this
+    // control (in offline-food-log.spec.ts, which holds the forced-window regression
+    // test) and fixed the one call site it found; this is the other one.
+    await settledFill(page, page.getByTestId("protein-quickadd-input"), "30");
     await settledClick(page, page.getByTestId("protein-quickadd-add"));
     await expect(total).toHaveText(/30g today/);
     await expect(card).toHaveAttribute("data-basis", "combined");
