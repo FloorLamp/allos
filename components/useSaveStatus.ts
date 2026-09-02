@@ -26,8 +26,12 @@ export interface SaveStatusApi<T> {
   value: T;
   // Move the on-screen value WITHOUT saving — the keystrokes of a save-on-blur
   // field. A failed save reverts to the last SAVED value, not to the last keystroke.
-  // `useState`'s setter, updater form included, because a caller reconciling one
-  // field from a callback must merge onto the latest draft rather than its render's.
+  //
+  // DELIBERATELY `useState`'s full setter rather than `(next: T) => void`, and the
+  // reason is one named call site: NotificationPrefs.mergeLocal reconciles a single
+  // field from a CHILD's callback after one of #2217's exits wrote it through its own
+  // action, so it must merge onto the latest draft rather than onto the one its
+  // render closed over. Narrowing this type would compile and silently drop that.
   edit: Dispatch<SetStateAction<T>>;
   // Paint `next` now, run the save, and put the last saved value back if it throws.
   // `run` may resolve a value to commit what the server actually stored (a
@@ -45,6 +49,13 @@ export function useSaveStatus<T>(initial: T): SaveStatusApi<T> {
   const [value, setValue] = useState(initial);
   // The last value the server accepted. A ref, because the restore is read when the
   // save SETTLES, not in the render whose closure started it.
+  //
+  // AND THAT DEFINITION IS THE ANSWER TO CONCURRENT SAVES, not a gap in one. With two
+  // writes in flight, a failure restores whatever the server last took — NOT the value
+  // this particular save was fired from, which a later save may already have replaced
+  // on the server. Putting that back would un-do a write that actually landed. So
+  // there is no sequencing here on purpose: the right definition covers the case a
+  // second mechanism would have been built to guard.
   const saved = useRef(initial);
 
   const save = useCallback((next: T, run: () => Promise<T | void>) => {
