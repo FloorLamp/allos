@@ -34,6 +34,7 @@ import {
   getTimezone,
   getUnitPrefs,
 } from "@/lib/settings";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { IntakeOptionsProvider } from "@/components/IntakeOptionsContext";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
@@ -407,6 +408,18 @@ export default async function EpisodePage(props: {
                       : undefined
                   }
                 >
+                  {/* THE HOST STATES ITS OWN SECTION (#4752 item 4). The med
+                      logger draws a chip row and nothing above it: on the illness
+                      cockpit the card's own recovery header already says what this
+                      is, and a "Meds" heading over three chips was the boilerplate
+                      that rebuild removed. Here the logger IS a section among
+                      sections, so this page says so — the same split
+                      QuickLogPrnContent's `title` note describes. */}
+                  <CardSectionHeader
+                    title="Meds"
+                    href="/medications"
+                    variant="section"
+                  />
                   <IntakeOptionsProvider
                     options={getIntakeCatalogOptions(profileId)}
                   >

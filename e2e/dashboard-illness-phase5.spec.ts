@@ -277,7 +277,10 @@ test("an active illness renders the real cockpit with exact candidate identity",
     await expect(cockpit).toHaveCount(1);
     await expect(cockpit).toHaveAttribute("data-expanded", "true");
     await expect(cockpit.getByTestId("symptom-log-bar")).toBeVisible();
-    await expect(cockpit.getByTestId("episode-latest-readings")).toBeVisible();
+    // THE HEADER IS THE STATUS (#4752 item 1). The three-stat readings grid it
+    // replaces is retired from the cockpit; the recovery header states the same
+    // facts as one prose line under the countdown.
+    await expect(cockpit.getByTestId("cockpit-recovery-header")).toBeVisible();
     await expect(cockpit).toHaveAttribute(
       "data-candidate-id",
       /illness\.state:/
@@ -424,7 +427,10 @@ test("target-profile authorization controls every household cockpit write", asyn
     await readOnly.goto("/");
     const cockpit = memberCockpit(readOnly, "admin");
     await expand(cockpit);
-    await expect(cockpit.getByTestId("episode-latest-readings")).toBeVisible();
+    // THE HEADER IS THE STATUS (#4752 item 1). The three-stat readings grid it
+    // replaces is retired from the cockpit; the recovery header states the same
+    // facts as one prose line under the countdown.
+    await expect(cockpit.getByTestId("cockpit-recovery-header")).toBeVisible();
     await expect(cockpit.getByTestId("symptom-log-bar")).toHaveCount(0);
     await expect(cockpit.getByTestId("cockpit-prn")).toHaveCount(0);
     await expect(cockpit.getByTestId("cockpit-end-episode")).toHaveCount(0);
