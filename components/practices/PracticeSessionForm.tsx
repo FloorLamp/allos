@@ -3,9 +3,12 @@
 import { useState, type FormEvent } from "react";
 import DateField from "@/components/DateField";
 import InlineError from "@/components/InlineError";
+import TimeRangeFields from "@/components/TimeRangeFields";
+import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { editPracticeSession, logPractice } from "@/app/(app)/wellness/actions";
+import { minutesBetween } from "@/lib/activity-meta";
 import { practiceLogOutcomeText } from "@/lib/practice";
 
 // THE PRACTICE DOMAIN'S ONE FORM (#4424 ruling 1), named by
@@ -28,10 +31,13 @@ import { practiceLogOutcomeText } from "@/lib/practice";
 // THE SUBJECT IS OPTIONAL AND SPELLED ONCE (ruling 4): absent is the acting profile,
 // present posts `profile_id` and is re-gated by `gateItemProfile` server-side.
 //
-// THE START/END PAIR IS RAW, and stays on the #2236 ratchet's allowlist for the reason
-// its entry gives: a two-clock RANGE on one day is a shape `WhenControl` does not
-// model. Converging the door and the record row onto this form moved two hand-rolled
-// spellings ONTO the one allowlisted file rather than adding a fifth.
+// THE START/END PAIR IS THE HOUSE ONE (#4384 fix 6). It is still raw relative to
+// `WhenControl` — a two-clock RANGE on one day is a shape that control does not model —
+// but it is no longer this form's own: `components/TimeRangeFields.tsx` is the pair,
+// and the activity form mounts the same one. What that buys here is #336's interplay,
+// which this form did not have: a "now" on each clock, a ±duration offer that fills the
+// other one, the third of {Start, End, Duration} DERIVED rather than typed twice, and
+// an End before its Start refused in the same words the activity form refuses it in.
 
 export interface PracticeSessionRow {
   id: number;
@@ -81,9 +87,31 @@ export default function PracticeSessionForm({
   // on the Wellness card, in the launcher, on the record's door and in its rows, and
   // the action cannot know which.
   const stampLoggedVia = useLoggedViaStamp();
+  const tz = useTimezone();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [practice, setPractice] = useState(practices[0] ?? "");
+  // The window and the duration are CONTROLLED because they read each other (#336):
+  // an uncoupled trio cannot offer a shortcut, cannot derive a third, and cannot know
+  // that its end precedes its start. A seeded row's own values win, exactly as the
+  // uncontrolled defaults they replace did.
+  const [startTime, setStartTime] = useState(row?.startTime ?? "");
+  const [endTime, setEndTime] = useState(row?.endTime ?? "");
+  const [duration, setDuration] = useState(
+    String(row?.durationMin ?? defaultDurationMin ?? "")
+  );
+  const timeError = !!startTime && !!endTime && endTime < startTime;
+  // With both clocks stated the span IS the duration, so the field stops being a
+  // second place to type one. `minutesBetween` is null for anything that is not a
+  // positive span, so an inverted window derives nothing and the refusal below is what
+  // the reader sees. The typed value is kept in state underneath: clearing a clock
+  // hands the reader back what they had rather than an empty box.
+  const span = minutesBetween(startTime, endTime);
+  const typedDuration = Number(duration);
+  // What the ± offers are worth: only a duration the reader actually stated.
+  const derivableDurationMin =
+    Number.isFinite(typedDuration) && typedDuration > 0 ? typedDuration : null;
+  const shownDuration = span != null ? String(span) : duration;
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -160,36 +188,47 @@ export default function PracticeSessionForm({
       {/* START AND END (#3142). Both optional and both presence-posted: an empty
           Start is the statement "this session has no instant", which `logPractice`
           reads as null rather than stamping the filing minute onto a past day. */}
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        Start
-        <input
-          type="time"
-          name="start_time"
-          defaultValue={row?.startTime ?? ""}
-          className="input mt-1 w-full"
-        />
-      </label>
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        End
-        <input
-          type="time"
-          name="end_time"
-          defaultValue={row?.endTime ?? ""}
-          min={row?.startTime ?? undefined}
-          className="input mt-1 w-full"
-        />
-      </label>
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        Duration (minutes)
-        <input
-          type="number"
-          name="duration_min"
-          min="1"
-          step="1"
-          defaultValue={row?.durationMin ?? defaultDurationMin ?? ""}
-          className="input mt-1 w-full"
-        />
-      </label>
+      <TimeRangeFields
+        idPrefix="practice"
+        startTime={startTime}
+        endTime={endTime}
+        tz={tz}
+        timeError={timeError}
+        derivableDurationMin={derivableDurationMin}
+        startName="start_time"
+        endName="end_time"
+        onStartTime={setStartTime}
+        onEndTime={setEndTime}
+      />
+      <div>
+        <label className="label mb-0" htmlFor="practice-duration">
+          Duration
+        </label>
+        <div className="relative mt-1">
+          <input
+            id="practice-duration"
+            type="number"
+            name="duration_min"
+            inputMode="numeric"
+            min="1"
+            step="1"
+            value={shownDuration}
+            readOnly={span != null}
+            onChange={(event) => setDuration(event.target.value)}
+            className={`input pr-9 ${
+              span != null ? "text-slate-500 dark:text-slate-400" : ""
+            }`}
+          />
+          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
+            min
+          </span>
+        </div>
+        {span != null && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Calculated from start and end.
+          </p>
+        )}
+      </div>
       {/* Both cores rewrite the note they are handed, so a form without this field
           would silently clear one somebody wrote. */}
       <label className="text-sm font-medium text-slate-700 dark:text-slate-200 sm:col-span-2">
@@ -205,7 +244,7 @@ export default function PracticeSessionForm({
       <div className="flex items-end gap-2 sm:col-span-2">
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || timeError}
           className="btn w-fit disabled:opacity-50"
           data-testid="practice-log-detailed-submit"
         >
