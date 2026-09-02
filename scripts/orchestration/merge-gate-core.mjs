@@ -110,3 +110,29 @@ export function closedStatusDescription(failure) {
     ? description
     : `${description.slice(0, 137)}...`;
 }
+
+// What `e2e-main` says about the branch this PR merges INTO (#4722).
+//
+// That workflow runs on pushes to main, so it never appears on a PR head and
+// nothing in the exact-head evidence above can see it. Main was red there for
+// eight consecutive merges while every PR read 19/19 green. This states the
+// standing verdict beside the merge decision; it does not close the gate,
+// because .github/workflows/e2e-main.yml reserves detector-to-gate as a
+// separate ruling.
+export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
+  const at = runs[0]?.head_sha ? `${ref}@${runs[0].head_sha.slice(0, 8)}` : ref;
+  const shards = runs.filter((run) => run.name.startsWith(detector));
+  if (!shards.length)
+    return `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
+  const red = shards.filter(
+    (run) =>
+      run.status === "completed" &&
+      !["success", "neutral", "skipped"].includes(run.conclusion)
+  );
+  if (red.length)
+    return `${detector}: ${at} is RED — ${red.map((run) => run.name).join(", ")}. Attribute it before merging onto it (#4722)`;
+  const pending = shards.filter((run) => run.status !== "completed");
+  if (pending.length)
+    return `${detector}: still running on ${at} (${pending.length} of ${shards.length})`;
+  return `${detector}: ${at} is green (${shards.length} shards)`;
+}

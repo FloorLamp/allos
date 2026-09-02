@@ -776,7 +776,11 @@ export interface ImagingStudy {
   // falls back to a curated typical-dose-by-modality ESTIMATE, kept separate from
   // recorded doses. MRI / ultrasound use no ionizing radiation (dose 0).
   dose_msv: number | null;
+  // The impression alone, and the report narrative it was parsed out of (#3594).
+  // An imported row from before the split — and any report that never labelled its
+  // impression — carries only the narrative, so read them through studyFindingText.
   impression: string | null;
+  report_narrative: string | null;
   indication: string | null;
   status: string | null;
   ordering_provider_id: number | null;

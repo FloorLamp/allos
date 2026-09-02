@@ -89,7 +89,7 @@ export function getImagingStudiesForProfiles(
   const rows = db
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
-              study_date, dose_msv, impression, indication, status,
+              study_date, dose_msv, impression, report_narrative, indication, status,
               ordering_provider_id, reading_provider_id,
               (SELECT p.name FROM providers p WHERE p.id = imaging_studies.ordering_provider_id)
                 AS ordering_provider_name,

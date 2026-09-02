@@ -283,7 +283,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await doseWorkingRow.getByTestId("prn-log-more").click();
     const earlierDose = doseWorkingRow.getByTestId("prn-log-options");
     await expect(earlierDose).toContainText("When was it taken?");
-    await expect(earlierDose.getByLabel("Specific time today")).toBeVisible();
+    await expect(earlierDose.getByLabel("Specific time")).toBeVisible();
     const earlierDoseBox = await earlierDose
       .getByText("When was it taken?")
       .boundingBox();

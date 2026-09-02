@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveProfileNotifyMute } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -24,12 +23,10 @@ export default function ProfileMuteToggle({
   // fan-out uses; independent of this login's own current mute state.
   lastUnmutedManaging: boolean;
 }) {
-  const [isMuted, setIsMuted] = useState(muted);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const { status, value: isMuted, save: runSave } = useSaveStatus(muted);
 
   function toggle(next: boolean) {
-    setIsMuted(next);
-    runSave(async () => {
+    runSave(next, async () => {
       const fd = new FormData();
       fd.set("profile_id", String(profileId));
       fd.set("muted", next ? "1" : "0");
@@ -43,7 +40,7 @@ export default function ProfileMuteToggle({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Mute {profileName} for me
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
         <input

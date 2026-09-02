@@ -21,19 +21,26 @@ export default function SmtpSettings({
   publicUrl: string;
 }) {
   const router = useRouter();
-  const [host, setHost] = useState(config.host);
-  const [port, setPort] = useState(String(config.port));
-  const [user, setUser] = useState(config.user);
-  const [from, setFrom] = useState(config.from);
-  const [password, setPassword] = useState("");
-  const [clearPassword, setClearPassword] = useState(false);
   const [testTo, setTestTo] = useState("");
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    host: config.host,
+    port: String(config.port),
+    user: config.user,
+    from: config.from,
+    password: "",
+    clearPassword: false,
+  });
+  const { host, port, user, from, password, clearPassword } = draft;
   const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -47,11 +54,12 @@ export default function SmtpSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       await saveSmtpConfig(buildFormData());
       setResult(null);
-      setPassword("");
-      setClearPassword(false);
+      // The secret is write-only: once it has landed the field goes back to empty,
+      // and that emptied form is what the hook commits (and restores later).
+      return { ...draft, password: "", clearPassword: false };
     });
   }
 
@@ -70,8 +78,7 @@ export default function SmtpSettings({
           message: "Couldn't send the test email. Try again.",
         });
       }
-      setPassword("");
-      setClearPassword(false);
+      edit({ ...draft, password: "", clearPassword: false });
       // Survives the #1473 sweep: sendTestEmail PERSISTS the form through
       // saveSmtpConfigSync and deliberately skips revalidatePath, so nothing else
       // repaints the stored-config lines this card renders.
@@ -85,7 +92,7 @@ export default function SmtpSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Outbound email (SMTP)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -126,7 +133,7 @@ export default function SmtpSettings({
           <input
             type="text"
             value={host}
-            onChange={(e) => setHost(e.target.value)}
+            onChange={(e) => edit({ ...draft, host: e.target.value })}
             placeholder="smtp.example.com"
             data-testid="smtp-host"
             className="input"
@@ -137,7 +144,7 @@ export default function SmtpSettings({
           <input
             type="number"
             value={port}
-            onChange={(e) => setPort(e.target.value)}
+            onChange={(e) => edit({ ...draft, port: e.target.value })}
             placeholder="587"
             data-testid="smtp-port"
             className="input"
@@ -148,7 +155,7 @@ export default function SmtpSettings({
           <input
             type="email"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => edit({ ...draft, from: e.target.value })}
             placeholder="allos@example.com"
             data-testid="smtp-from"
             className="input"
@@ -159,7 +166,7 @@ export default function SmtpSettings({
           <input
             type="text"
             value={user}
-            onChange={(e) => setUser(e.target.value)}
+            onChange={(e) => edit({ ...draft, user: e.target.value })}
             autoComplete="off"
             data-testid="smtp-user"
             className="input"
@@ -170,7 +177,7 @@ export default function SmtpSettings({
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => edit({ ...draft, password: e.target.value })}
             placeholder={config.hasPassword ? "•••••• (stored)" : ""}
             autoComplete="new-password"
             disabled={clearPassword}
@@ -182,7 +189,9 @@ export default function SmtpSettings({
               <input
                 type="checkbox"
                 checked={clearPassword}
-                onChange={(e) => setClearPassword(e.target.checked)}
+                onChange={(e) =>
+                  edit({ ...draft, clearPassword: e.target.checked })
+                }
                 className="h-3.5 w-3.5 accent-brand-600"
               />
               Remove stored password

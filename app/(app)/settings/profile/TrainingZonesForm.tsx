@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { saveTrainingZones } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
@@ -22,23 +22,26 @@ export default function TrainingZonesForm({
   // is the honest default: nothing counts steps against a number nobody chose.
   stepsTarget: number | null;
 }) {
-  const [maxHr, setMaxHr] = useState(
-    maxHrOverride == null ? "" : String(maxHrOverride)
-  );
-  const [target, setTarget] = useState(String(zone2Target));
-  const [steps, setSteps] = useState(
-    stepsTarget == null ? "" : String(stepsTarget)
-  );
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    maxHr: maxHrOverride == null ? "" : String(maxHrOverride),
+    target: String(zone2Target),
+    steps: stepsTarget == null ? "" : String(stepsTarget),
+  });
+  const { maxHr, target, steps } = draft;
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
-  function save(next: { maxHr: string; target: string; steps: string }) {
+  function save(next: typeof draft) {
     const fd = new FormData();
     fd.set("max_hr_override", next.maxHr);
     fd.set("zone2_weekly_target_min", next.target);
     fd.set("steps_daily_target", next.steps);
-    runSave(async () => {
+    runSave(next, async () => {
       await saveTrainingZones(fd);
     });
   }
@@ -53,7 +56,7 @@ export default function TrainingZonesForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Training heart-rate zones
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>
@@ -72,8 +75,8 @@ export default function TrainingZonesForm({
               ? `${estimatedMaxHr} (age estimate)`
               : "e.g. 185"
           }
-          onChange={(e) => setMaxHr(e.target.value)}
-          onBlur={() => save({ maxHr, target, steps })}
+          onChange={(e) => edit({ ...draft, maxHr: e.target.value })}
+          onBlur={() => save(draft)}
           className="input"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -98,8 +101,8 @@ export default function TrainingZonesForm({
           step={5}
           value={target}
           placeholder="e.g. 150"
-          onChange={(e) => setTarget(e.target.value)}
-          onBlur={() => save({ maxHr, target, steps })}
+          onChange={(e) => edit({ ...draft, target: e.target.value })}
+          onBlur={() => save(draft)}
           className="input"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -122,8 +125,8 @@ export default function TrainingZonesForm({
           step={500}
           value={steps}
           placeholder="e.g. 8000"
-          onChange={(e) => setSteps(e.target.value)}
-          onBlur={() => save({ maxHr, target, steps })}
+          onChange={(e) => edit({ ...draft, steps: e.target.value })}
+          onBlur={() => save(draft)}
           className="input"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

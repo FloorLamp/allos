@@ -59,10 +59,22 @@ test.describe("Illness round 3 (#859)", () => {
 
     // Item 2: once a fever-range reading exists, a compact school-return status
     // joins the latest temperature and medication row (after router.refresh()).
+    // With NOTHING measured since that 104.5 the status says exactly that (#4685) —
+    // a countdown here would be counting the minutes since the fever as fever-free.
     const feverFreeStatus = page.getByTestId("school-return-status");
     await expect(feverFreeStatus).toBeVisible();
-    await expect(feverFreeStatus).toContainText(/Fever-free \d+h\/\d+h/i);
+    await expect(feverFreeStatus).toContainText(/No reading since/i);
+    await expect(feverFreeStatus).not.toContainText(/Fever-free/i);
     await expect(feverFreeStatus).toHaveClass(/text-slate-500/);
+
+    // THE CONVERSE IS NOT ASSERTABLE HERE, and saying so is the point. Both readings
+    // this bar can take land on the run's FROZEN minute, and the clock's evidence must
+    // be a normal reading STRICTLY after the fever — a same-minute pair is a tie
+    // nothing in the data can break, so the conservative arm is the right one. The
+    // measured arm is pinned where the clock is controllable: the four measured cases
+    // in lib/__tests__/school-return.test.ts and the gather's own in
+    // lib/__db_tests__/school-return-and-stale.test.ts, which renders 8h from a normal
+    // reading three hours after a fever.
     const latestReadings = page.getByTestId("episode-latest-readings");
     await expect(
       latestReadings.getByTestId("school-return-status")

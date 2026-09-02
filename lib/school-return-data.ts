@@ -16,6 +16,7 @@ import { getTimezone, getProfileSetting } from "./settings";
 import { formatGivenAtClock } from "./administration-format";
 import { parseRxcuiIngredients } from "./rxnorm";
 import { isAntipyreticIntakeItem } from "./prn-defaults";
+import { isOutOfRange } from "./reference-range/flags";
 import type { AssembledEpisode } from "./illness-episode-format";
 import { computeSchoolReturn, type SchoolReturnStatus } from "./school-return";
 
@@ -66,7 +67,9 @@ export function getSchoolReturnThresholdHours(profileId: number): number {
 
 // Compute the school-return countdown for an assembled OPEN episode, or null when it
 // doesn't apply yet — there has been no fever-range reading in the episode, so there
-// is nothing to count down from. `nowMs` is injectable for tests.
+// is nothing to count down from. A fever WITHOUT a later normal reading is a
+// different state, not an absent one: the status is returned with no fever-free claim
+// in it (#4685). `nowMs` is injectable for tests.
 function schoolReturnStatusForRows(
   profileId: number,
   episode: AssembledEpisode,
@@ -78,24 +81,111 @@ function schoolReturnStatusForRows(
 
   // Last FEVER-RANGE reading: the newest temperature whose reference-range flag is
   // "high". The episode's temperatures are date-then-time ascending.
-  let lastFeverAtMs: number | null = null;
-  let lastFeverDegF = 0;
+  //
+  // A day-granular reading with no clock time is anchored at local noon (a neutral
+  // mid-day instant) — the countdown is informational and hour-granular. An unreadable
+  // clock is SKIPPED, not anchored at noon: the countdown this feeds is a
+  // return-to-school clearance, and a fabricated fever instant would move it (#2245).
+  //
+  // NOON IS A PLACEHOLDER, NOT A MEASUREMENT, and the ordering rule below is what keeps
+  // that honest.
+  // TWO QUESTIONS, NOT ONE: what ORDERS the readings, and what the surface QUOTES.
+  //
+  // The ordering anchor may be an UNPLACED reading — one that states no clock — because
+  // an unplaced reading could be later than every placed one on its day, and letting it
+  // govern is what keeps `establishedAfterFever` below from being bypassed by noon
+  // arithmetic.
+  //
+  // But a placeholder must never become a QUOTED FACT. Letting the unplaced reading
+  // govern `lastFeverDegF` too produced "No reading since 100.5 °F (14h ago)" where the
+  // last measured fever was a LATER, HIGHER 103.4 at 19:00 — the line quoted the lower
+  // reading and doubled the elapsed time, both off a noon placeholder, both in the
+  // reassuring direction, on a surface whose whole posture is the person's own logged
+  // facts. So the quoted reading is the latest fever that actually STATES a time, and
+  // only when no fever states one at all does the unplaced reading get quoted, because
+  // then there is nothing else to quote.
+  let lastFever: { ms: number; day: string; timed: boolean } | null = null;
+  let quoted: { ms: number; degF: number } | null = null;
+  let unplacedFallback: { ms: number; degF: number } | null = null;
   for (const t of episode.temperatures) {
     if (t.flag !== "high") continue;
-    // A day-granular reading with no clock time is anchored at local noon (a neutral
-    // mid-day instant) — the countdown is informational and hour-granular.
-    // An unreadable clock is SKIPPED, not anchored at noon: the countdown this
-    // feeds is a return-to-school clearance, and a fabricated fever instant would
-    // move it (#2245).
     const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
     if (!at) continue;
     const ms = at.getTime();
-    if (lastFeverAtMs == null || ms >= lastFeverAtMs) {
-      lastFeverAtMs = ms;
-      lastFeverDegF = t.degF;
+    const timed = !!t.time;
+
+    // The ORDERING anchor. A later DAY always wins; on the SAME day an unplaced
+    // reading wins over a placed one, a later placed instant wins between two placed
+    // ones, and the later in the episode's own order wins between two unplaced ones.
+    if (lastFever == null) {
+      lastFever = { ms, day: t.date, timed };
+    } else {
+      const laterDay = t.date > lastFever.day;
+      const sameDay = t.date === lastFever.day;
+      const wins = laterDay
+        ? true
+        : !sameDay
+          ? false
+          : lastFever.timed && !timed
+            ? true
+            : lastFever.timed === timed
+              ? ms >= lastFever.ms
+              : false;
+      if (wins) lastFever = { ms, day: t.date, timed };
+    }
+
+    // The QUOTED reading, tracked separately: the latest fever that states a time.
+    if (timed) {
+      if (quoted == null || ms >= quoted.ms) quoted = { ms, degF: t.degF };
+    } else if (unplacedFallback == null || ms >= unplacedFallback.ms) {
+      unplacedFallback = { ms, degF: t.degF };
     }
   }
-  if (lastFeverAtMs == null) return null;
+  if (lastFever == null) return null;
+  // Quoted from a measured reading whenever one exists; the placeholder only when no
+  // fever in this episode states a time.
+  const quotedFever = quoted ?? unplacedFallback!;
+  const lastFeverAtMs = quotedFever.ms;
+  const lastFeverDegF = quotedFever.degF;
+
+  // THE EVIDENCE (#4685): the first IN-RANGE reading established to be AFTER that
+  // fever.
+  //
+  // OUT OF RANGE IN EITHER DIRECTION IS NOT CLEARANCE. Skipping only `high` let a
+  // HYPOTHERMIC reading start the fever-free clock: 103.4 then 95.0 read as
+  // "Fever-free 24h/24h, met" — and 95 °F in a sick child is a red flag, not a
+  // recovery. `isOutOfRange` is the shipped predicate (high / low / abnormal) and is
+  // null-safe, which matters because a normal manual reading stores flag NULL rather
+  // than "normal" — testing for the string would have matched nothing at all and
+  // stranded every parent at "No reading since".
+  //
+  // AND "AFTER" MUST BE ESTABLISHED, NOT ARITHMETIC. Comparing the two anchored
+  // instants treats noon as if somebody had measured at noon: an untimed 103.4 and a
+  // 13:00 normal on the same day resolved to "the normal came after" and cleared the
+  // child, though the fever may have been at 19:10. Ordering between two readings on
+  // ONE day is knowable only when BOTH state a clock; across days it is knowable from
+  // the days alone, because every instant on a later day follows every instant on an
+  // earlier one. Anything else is unproven, and unproven is not evidence.
+  const establishedAfterFever = (day: string, timed: boolean, ms: number) =>
+    day > lastFever.day
+      ? true
+      : day < lastFever.day
+        ? false
+        : lastFever.timed && timed && ms > lastFever.ms;
+
+  let firstNormalAfterFeverAtMs: number | null = null;
+  for (const t of episode.temperatures) {
+    if (isOutOfRange(t.flag)) continue;
+    const at = zonedWallTimeToUtc(tz, t.date, t.time ?? "12:00");
+    if (!at) continue;
+    const ms = at.getTime();
+    if (
+      establishedAfterFever(t.date, !!t.time, ms) &&
+      (firstNormalAfterFeverAtMs == null || ms < firstNormalAfterFeverAtMs)
+    ) {
+      firstNormalAfterFeverAtMs = ms;
+    }
+  }
 
   // Last ANTIPYRETIC administration in the episode window. Mirrors
   // assembleIllnessEpisode's PRN gather (obligation 'may' + status 'taken', profile-scoped by
@@ -147,6 +237,7 @@ function schoolReturnStatusForRows(
   return computeSchoolReturn({
     lastFeverAtMs,
     lastFeverDegF,
+    firstNormalAfterFeverAtMs,
     lastAntipyreticAtMs,
     lastAntipyreticName,
     lastAntipyreticClockLabel,

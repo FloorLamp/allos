@@ -159,7 +159,11 @@ describe("applyFoodServingPlacements", () => {
       'profileToast(noticeScope, "Serving corrected.")',
       'profileToast(noticeScope, "Serving removed."',
       "offerEndFast(noticeScope, outcome.endFastOffer, endFastOwner)",
-      "profileToast(\n          noticeScope,\n          `Logged ${namesPhrase(",
+      // The composed bundle's answer is `usualRoutineWriteAnswer` since #4438 — the one
+      // sentence every host of this bundle renders — where it used to be a food-only
+      // "Logged …" built here. Same claim about scope, new spelling of the thing it is
+      // asserted on.
+      "profileToast(\n          noticeScope,\n          usualRoutineWriteAnswer(",
       "offerEndFast(noticeScope, result.endFastOffer, endFastOwner)",
       "undoEnd(scope, undoFastId, owner)",
     ]) {

@@ -17,7 +17,7 @@ import {
 import type { PrnMedForQuickLog } from "./queries/intake/adherence";
 import type { PediatricFormContext } from "./prn-dosing";
 import { schoolReturnStatusesFor } from "./school-return-data";
-import { schoolReturnCompactClause } from "./school-return";
+import { schoolReturnCompactLabel } from "./school-return";
 import {
   getStaleNudgeAcked,
   type StaleEpisodeNudge,
@@ -161,9 +161,9 @@ export function gatherDashboardIllnessCockpits(
           (temperature) => temperature.flag === "high"
         )
           ? {
-              label: schoolReturnCompactClause(schoolStatus).replace(
-                /^fever-free/,
-                "Fever-free"
+              label: schoolReturnCompactLabel(
+                schoolStatus,
+                options.temperatureUnit
               ),
               met: schoolStatus.met,
             }

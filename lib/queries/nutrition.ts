@@ -782,9 +782,24 @@ export function getProteinTapsOnDate(profileId: number, date: string): number {
 //
 // Windows come from the SAME precedence the tallies and the ranking use, so a habit is a
 // habit however its window was established (declared on the backfill tab, captured as an
-// eating time, or derived from the tap). The reserved `__protein__` key and any retired
-// slug are dropped: a habit has to be a catalog group, because everything downstream
-// names one to the user.
+// eating time, or derived from the tap). A retired slug is dropped — nothing downstream
+// can name it.
+//
+// ── `__protein__` IS MEASURED HERE (#4379, owner ruling 2026-08-30) ──────────
+//
+// It used to be dropped beside the retired slugs, on the stated reason that "a habit has
+// to be a catalog group, because everything downstream names one to the user". That
+// reason does not hold for THIS measure's consumers: both of them are the usual bundle,
+// and the bundle's own vocabulary already names the key — "+30g protein" is the nudge
+// button's shipped label (#1073). Dropping it meant the one physical event the bundle
+// exists to cover (#2458: a smoothie, "one physical event and five taps") wrote every
+// row except the protein one, however many mornings the ledger held.
+//
+// It is lifted for this measure ONLY, which is what "no parallel measure" means here:
+// `getFoodPeriodHabits` runs the day-grain read and keeps its exclusion, because the
+// coaching sentence it feeds ("you consistently …") was not re-ruled. Anything that
+// grows a third consumer of this function inherits the key and must say what it does
+// with it — the split is the CONSUMER's, not the arithmetic's.
 //
 // ── THE EVIDENCE GUARD (#4118) ───────────────────────────────────────────────
 //
@@ -816,7 +831,7 @@ export function getFoodRegularity(profileId: number): FoodRegularity {
   const boundaries = profileFoodSlotBoundaries(profileId);
   const events: FoodRegularityEvent[] = [];
   for (const row of rows) {
-    if (!foodGroupBySlug(row.name)) continue;
+    if (!foodGroupBySlug(row.name) && !isProteinNudgeKey(row.name)) continue;
     events.push({
       groupKey: row.name,
       date: row.date,
@@ -934,9 +949,59 @@ export function getUsualFoodOffer(
   }).map((g) => g.groupKey);
   const logged =
     getFoodMealDays(profileId, [date])[0]?.slotCounts[window] ?? {};
-  return usualFoodOffer(
-    habitual,
-    new Set(Object.keys(logged).filter((slug) => (logged[slug] ?? 0) > 0))
+  const already = new Set(
+    Object.keys(logged).filter((slug) => (logged[slug] ?? 0) > 0)
+  );
+  // THE REDUCTION COVERS PROTEIN TOO (#4379). The meal grouping above deliberately drops
+  // the reserved key — a shake is not a food-group serving and must not render as a
+  // mystery meal chip — so a protein tap is invisible to it, and without this the bundle
+  // would keep offering grams already in the window. "Any `__protein__` tap already in
+  // the window drops the member, exactly as a logged group falls out" is the ruling's own
+  // sentence, and this is where a member falls out.
+  //
+  // ASKED ONLY WHERE IT CAN CHANGE THE ANSWER. The read is a query, and this function is
+  // on the dashboard's path for every profile — the query-budget test priced it at +1
+  // per persona when it ran unconditionally, on six personas that have no protein habit
+  // to reduce. A window whose habitual set does not name the key cannot lose it, so the
+  // question is only worth asking where the feature applies.
+  if (
+    habitual.includes(PROTEIN_NUDGE_KEY) &&
+    proteinWindowsLoggedOn(profileId, date).has(window)
+  )
+    already.add(PROTEIN_NUDGE_KEY);
+  return usualFoodOffer(habitual, already);
+}
+
+// WHICH WINDOWS THE RESERVED PROTEIN KEY LANDED IN, on one day (#4379). The same
+// `foodEventWindow` precedence every other read of this ledger uses, so a shake counts
+// for the window the tallies count it for. Profile-scoped via the food_log_events filter.
+export function proteinWindowsLoggedOn(
+  profileId: number,
+  date: string
+): Set<FoodSlot> {
+  const rows = db
+    .prepare(
+      `SELECT recorded_at, meal_slot, occurred_at
+         FROM food_log_events
+        WHERE profile_id = ? AND date = ? AND group_key = ?`
+    )
+    .all(profileId, date, PROTEIN_NUDGE_KEY) as Pick<
+    FoodLedgerEvent,
+    "recorded_at" | "meal_slot" | "occurred_at"
+  >[];
+  if (rows.length === 0) return new Set();
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  return new Set(
+    rows.map((row) =>
+      foodEventWindow(
+        row.recorded_at,
+        tz,
+        boundaries,
+        row.meal_slot,
+        row.occurred_at
+      )
+    )
   );
 }
 

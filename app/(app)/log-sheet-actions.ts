@@ -9,7 +9,8 @@ import { getTimezone } from "@/lib/settings";
 import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlot, collectDueDosesNow } from "@/lib/queries";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
-import { foodGroupBySlug } from "@/lib/datasets/food-groups";
+import { foodGroupName } from "@/lib/food-groups";
+import { usualRoutineFoodMembers } from "@/lib/usual-routine";
 import type { UsualRoutineControlProps } from "@/components/dashboard/UsualRoutineControl";
 
 // The log sheet's "Due & usual now" row (issue #2651) — its DATA half.
@@ -87,10 +88,8 @@ export async function loadLogSheetContext(): Promise<LogSheetContext> {
     const scope = await requireScope();
     routine = {
       window: offer.window,
-      food: offer.groups.map((slug) => ({
-        slug,
-        name: foodGroupBySlug(slug)?.name ?? slug,
-      })),
+      food: usualRoutineFoodMembers(offer, foodGroupName),
+      proteinGrams: offer.proteinGrams,
       doses: offer.doses.map((d) => ({
         id: d.doseId,
         name: d.name,

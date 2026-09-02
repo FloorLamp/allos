@@ -31,6 +31,7 @@ function study(over: Partial<ImagingStudy> & { id: number }): ImagingStudy {
     study_date: over.study_date ?? null,
     dose_msv: over.dose_msv ?? null,
     impression: over.impression ?? null,
+    report_narrative: over.report_narrative ?? null,
     indication: null,
     status: null,
     ordering_provider_id: null,

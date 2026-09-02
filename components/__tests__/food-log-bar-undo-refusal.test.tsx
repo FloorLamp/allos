@@ -38,7 +38,12 @@ const actions = vi.hoisted(() => ({
   readFoodServingTruth: vi.fn(),
   deleteFoodLogEvent: vi.fn(),
   updateFoodLogEvent: vi.fn(),
-  logUsualFood: vi.fn(),
+}));
+// The composed bundle's action lives on the app-root module (#4438), not on the
+// nutrition one — the bar posts the SAME action the dashboard control does.
+const appActions = vi.hoisted(() => ({
+  logUsualRoutine: vi.fn(),
+  usualRoutineOffersOn: vi.fn(async (_date: string) => [] as unknown[]),
 }));
 const fastActions = vi.hoisted(() => ({
   endFastAction: vi.fn(),
@@ -46,6 +51,7 @@ const fastActions = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/(app)/nutrition/actions", () => actions);
+vi.mock("@/app/(app)/actions", () => appActions);
 // This suite owns receipt lifecycle, not the unopened preferences modal. Loading
 // the real form also loads its settings Server Action and the full DB graph.
 vi.mock("@/app/(app)/settings/profile/DietaryPreferencesForm", () => ({
@@ -322,7 +328,7 @@ describe("FoodLogBar projection publication", () => {
     actions.readFoodServingTruth.mockReset();
     actions.deleteFoodLogEvent.mockReset();
     actions.updateFoodLogEvent.mockReset();
-    actions.logUsualFood.mockReset();
+    appActions.logUsualRoutine.mockReset();
     fastActions.endFastAction.mockReset();
     fastActions.undoEndFastAction.mockReset();
     fastActions.endFastAction.mockResolvedValue({
@@ -1623,5 +1629,222 @@ describe("FoodLogBar projection publication", () => {
     expect(screen.getByTestId("projection-slot-morning").textContent).toBe("0");
     expect(screen.getByTestId("projection-slot-evening").textContent).toBe("1");
     expect(frames).toHaveLength(1);
+  });
+});
+
+// ── THE COMPOSED BUNDLE ON THE PAGE FOOD IS ACTUALLY LOGGED ON (#4438) ───────
+//
+// The dashboard, the quick-log menu and the record door have offered both halves of
+// the "usual" since #2458; `/nutrition` offered the food half alone. These cases pin
+// the three things that changed, plus the sequenced re-read the record door used to
+// own — it moved here with the day PICKER, which is the only surface that still has
+// one (#4424 ruling 2 retired the door's shared date field).
+describe("FoodLogBar composed usual bundle", () => {
+  const OTHER = "2026-08-23";
+  const SECOND_GROUP: FoodGroup = {
+    slug: "berries",
+    name: "Berries",
+    serving: "1 cup",
+    tier: "encourage",
+    nutrients: [],
+  };
+  const BOTH = Object.fromEntries(
+    ["Morning", "Midday", "Evening"].map((slot) => [
+      slot,
+      [GROUP, SECOND_GROUP],
+    ])
+  ) as Record<FoodSlot, FoodGroup[]>;
+  const HABIT = {
+    Morning: [],
+    Midday: ["cruciferous", "berries"],
+    Evening: [],
+  } as Record<FoodSlot, string[]>;
+  const DOSE = { id: 9, name: "Creatine", stack: null };
+  const otherDay: FoodLogDay = { ...DAY, date: OTHER, label: "Yesterday" };
+  const offer = (
+    window: FoodSlot,
+    doses = [DOSE],
+    proteinGrams: number | null = null
+  ) => ({
+    window,
+    food: [
+      { slug: "cruciferous", name: "Cruciferous vegetables" },
+      { slug: "berries", name: "Berries" },
+      ...(proteinGrams === null
+        ? []
+        : [{ slug: "__protein__", name: `+${proteinGrams}g protein` }]),
+    ],
+    proteinGrams,
+    doses,
+  });
+
+  function mount(seeded: ReturnType<typeof offer>[]) {
+    return render(
+      <TimezoneProvider tz="UTC">
+        <ActiveProfileProvider profileId={7}>
+          <ConfirmProvider>
+            <ToastProvider>
+              <ProfileSwitchWatcher activeProfileId={7} />
+              <FoodSelectedDateProvider today={DATE} days={[DAY, otherDay]}>
+                <FoodLogBar
+                  today={DATE}
+                  days={[DAY, otherDay]}
+                  groupsBySlot={BOTH}
+                  usualBySlot={HABIT}
+                  usualRoutine={{ date: DATE, offers: seeded }}
+                  slot="Midday"
+                  slotBoundaries={{ midday: 660, evening: 900 }}
+                  dayLedger={ledgerFor(DAY)}
+                />
+              </FoodSelectedDateProvider>
+            </ToastProvider>
+          </ConfirmProvider>
+        </ActiveProfileProvider>
+      </TimezoneProvider>
+    );
+  }
+
+  const pickDay = async (label: string) => {
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("food-day-menu-trigger"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitemradio", { name: label }));
+    });
+  };
+
+  beforeEach(() => {
+    window.matchMedia = mediaQuery;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    appActions.logUsualRoutine.mockReset();
+    appActions.logUsualRoutine.mockResolvedValue({
+      ok: true,
+      window: "Midday",
+      date: DATE,
+      groups: [
+        { groupKey: "cruciferous", servings: 1, mealServings: 1 },
+        { groupKey: "berries", servings: 1, mealServings: 1 },
+      ],
+      doses: [{ doseId: 9, name: "Creatine", outcome: "logged" }],
+    });
+    appActions.usualRoutineOffersOn.mockReset();
+    appActions.usualRoutineOffersOn.mockResolvedValue([]);
+    // The single-serving add shares this mount's sticky statement and is the CONVERSE
+    // half of the case below, so it needs an answer to settle against. Evening because
+    // that is where a 20:00 statement files against these boundaries — the same
+    // derivation the bar makes client-side, so the adopt path is exercised honestly.
+    actions.logFoodServing.mockReset();
+    actions.logFoodServing.mockResolvedValue({
+      ok: true,
+      eventId: 41,
+      servings: 1,
+      mealSlot: "Evening",
+      mealServings: 1,
+    });
+  });
+
+  it("names and posts the dose half beside the food half", async () => {
+    mount([offer("Midday")]);
+    const button = screen.getByTestId("food-usual-offer");
+    // THE LABEL IS THE PROMISE, through the one phrase every host renders (#2458), so
+    // the page cannot name this write differently from the dashboard.
+    expect(button.getAttribute("data-doses")).toBe("9");
+    expect(screen.getByTestId("food-usual-names").textContent).toContain(
+      "Creatine"
+    );
+    await act(async () => fireEvent.click(button));
+    const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
+    expect(sent.get("dose_ids")).toBe("9");
+    expect(sent.get("groups")).toBe("cruciferous,berries");
+    // The ANSWER is the shared sentence, not the food-only "Logged …".
+    expect(
+      screen
+        .getAllByTestId("toast")
+        .map((t) => t.textContent)
+        .join(" ")
+    ).toContain("1 dose taken");
+  });
+
+  // THE STICKY STATEMENT DOES NOT RIDE THE BUNDLE, and this is the converse of the
+  // single-serving assertion above it rather than a gap. The statement is per-DAY and
+  // this button names a WINDOW, so carrying it would file the servings outside the
+  // window the offer was derived for — after which the offer never reduces and the tap
+  // double-logs without bound (proved at the action tier, `food-usual.actions.test.ts`).
+  it("does not carry the bar's day-wide stated time onto the bundle", async () => {
+    mount([offer("Midday")]);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("food-when-time"), {
+        target: { value: new Date(`${DATE}T20:00:00.000Z`).toISOString() },
+      });
+    });
+    // THE FIXTURE REACHES THE STATE THE ASSERTION FORBIDS: the statement really is set,
+    // so this is "the bundle declines to carry it" and not "nothing was there to carry".
+    expect(screen.getByTestId("food-when-set").textContent).toBe("20:00");
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("food-usual-offer"))
+    );
+    const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
+    expect(sent.get("occurred_at")).toBeNull();
+
+    // AND THE SINGLE-SERVING ADD BESIDE IT STILL STATES THE HOUR — the converse, and
+    // the half that makes the assertion above mean "the bundle declines it" rather than
+    // "this mount states nothing at all". Read off `logFoodServing`'s OWN FormData: an
+    // earlier spelling asserted `sent.get("meal_slot")` here, which is the BUNDLE's
+    // post, so it could not fail however the single-serving path behaved.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("log-cruciferous"));
+    });
+    const single = actions.logFoodServing.mock.calls[0][0] as FormData;
+    expect(single.get("occurred_at")).toBe("20:00");
+  });
+
+  it("re-reads the dose half when the day picker moves, and drops a late answer for a day already left", async () => {
+    // Two day changes are two in-flight reads and the network may answer in either
+    // order; the label names every dose the tap will confirm, so a late reply for an
+    // abandoned day would repaint a promise about a day nobody is looking at.
+    let releaseOther: (offers: ReturnType<typeof offer>[]) => void = () => {};
+    appActions.usualRoutineOffersOn.mockImplementation(async (date: string) =>
+      date === OTHER
+        ? new Promise((resolve) => {
+            releaseOther = resolve;
+          })
+        : []
+    );
+    mount([offer("Midday")]);
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
+
+    await pickDay("Yesterday");
+    expect(appActions.usualRoutineOffersOn).toHaveBeenCalledWith(OTHER);
+    await pickDay("Today");
+    // Back on the seeded day, the seed answers and no read is needed for it.
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
+
+    // The abandoned day answers LAST, with a rider that must not land.
+    await act(async () =>
+      releaseOther([offer("Midday", [{ id: 77, name: "Zinc", stack: null }])])
+    );
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
+  });
+
+  it("degrades to the food half when the read fails, and never promises a dose it could not ask about", async () => {
+    appActions.usualRoutineOffersOn.mockRejectedValue(new Error("offline"));
+    mount([offer("Midday")]);
+    await pickDay("Yesterday");
+    const button = screen.getByTestId("food-usual-offer");
+    expect(button.getAttribute("data-doses")).toBe("");
+    expect(button.getAttribute("data-groups")).toBe("cruciferous,berries");
   });
 });

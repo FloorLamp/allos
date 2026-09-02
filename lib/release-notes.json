@@ -1,6 +1,555 @@
 {
   "days": [
     {
+      "date": "2026-09-02",
+      "entries": [
+        {
+          "pr": 4704,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Trimmed coaching notes keep the most relevant ones, not the alphabetical first",
+          "issues": [4069]
+        },
+        {
+          "pr": 4704,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Off-pace weight goals no longer crowd out every biomarker goal",
+          "issues": [4069]
+        },
+        {
+          "pr": 4706,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Logging a drink on a day you already logged one adds to it instead of refusing",
+          "issues": [4435]
+        },
+        {
+          "pr": 4706,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a drink count keeps what it removed in Trash, so it can be restored",
+          "issues": [4435]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "Bowel movements appear in History, where they can be corrected or deleted",
+          "issues": [4433]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "A bowel movement can be logged for an earlier day",
+          "issues": [4433]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "A movement time that has not happened yet is refused",
+          "issues": [4433]
+        },
+        {
+          "pr": 4710,
+          "title": "A weather sync problem is described in plain words instead of a status code",
+          "kind": "fix",
+          "category": "Connected apps",
+          "issues": [3639]
+        },
+        {
+          "pr": 4710,
+          "title": "Body-fat entry is not offered for a growing child",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [3639]
+        },
+        {
+          "pr": 4710,
+          "title": "A body-fat reading already recorded still shows",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [3639]
+        },
+        {
+          "pr": 4718,
+          "title": "Right-size suggestions name the targets you are furthest from meeting",
+          "kind": "fix",
+          "category": "Training",
+          "issues": [4069]
+        },
+        {
+          "pr": 4718,
+          "title": "The supplement suggested for demotion is the one lapsed longest, counted in days",
+          "kind": "fix",
+          "category": "Medications",
+          "issues": [4069]
+        },
+        {
+          "pr": 4718,
+          "title": "Outcome goals created in the same moment keep the order you added them",
+          "kind": "fix",
+          "category": "Trends",
+          "issues": [4069]
+        },
+        {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A dose can be logged for yesterday from the illness card",
+          "issues": [4691]
+        },
+        {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A temperature typed under Yesterday is saved to yesterday",
+          "issues": [4691]
+        },
+        {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The fever-free countdown counts from a normal reading, not from silence",
+          "issues": [4685]
+        },
+        {
+          "pr": 4727,
+          "title": "Food uses one form and one row control everywhere",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "Correcting a food entry can set the time you ate",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "Your usual bundle can include your protein scoop",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [4379]
+        },
+        {
+          "pr": 4727,
+          "title": "A protein scoop in your usual is no longer silently skipped",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4379]
+        },
+        {
+          "pr": 4727,
+          "title": "Tapping your usual twice no longer logs it twice",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4438]
+        },
+        {
+          "pr": 4727,
+          "title": "Logging your usual from History uses the same button as elsewhere",
+          "kind": "feature",
+          "category": "History",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "A chat reply names the protein scoop it logged",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [4379]
+        },
+        {
+          "pr": 4728,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "One flu shot from overlapping documents appears once, in Timeline and search",
+          "issues": [4366]
+        },
+        {
+          "pr": 4728,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "An imported report's impression shows the finding, not the whole document",
+          "issues": [4366]
+        },
+        {
+          "pr": 4737,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A settings toggle that fails to save goes back to its saved value",
+          "issues": [4688]
+        }
+      ]
+    },
+    {
+      "date": "2026-09-01",
+      "entries": [
+        {
+          "pr": 4590,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "The tracked-fiber note is right when a supplement provides some of it",
+          "issues": []
+        },
+        {
+          "pr": 4593,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Health Connect resends keep their original local time",
+          "issues": []
+        },
+        {
+          "pr": 4595,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "Import progress messages stop following you to another profile",
+          "issues": [4592]
+        },
+        {
+          "pr": 4597,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Sleep history uses one rule for whether a dose exists",
+          "issues": []
+        },
+        {
+          "pr": 4601,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Logging a practice from a target writes it to the right place",
+          "issues": []
+        },
+        {
+          "pr": 4603,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Mobility coverage counts your week, not the server's",
+          "issues": []
+        },
+        {
+          "pr": 4610,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The activity overlay keeps clear of the top edge",
+          "issues": [4515]
+        },
+        {
+          "pr": 4610,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A dead strip of jump chips is gone",
+          "issues": [4515]
+        },
+        {
+          "pr": 4611,
+          "kind": "feature",
+          "category": "Connected apps",
+          "title": "Connected sources are laid out as one list",
+          "issues": []
+        },
+        {
+          "pr": 4615,
+          "kind": "feature",
+          "category": "General",
+          "title": "Substances use one form and one row control everywhere",
+          "issues": [4424]
+        },
+        {
+          "pr": 4616,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A live practice session survives midnight, and very long ones stop growing",
+          "issues": [3143]
+        },
+        {
+          "pr": 4621,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Symptoms use one form and one row control everywhere",
+          "issues": [4424]
+        },
+        {
+          "pr": 4625,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Weekly dose days agree wherever they are shown",
+          "issues": []
+        },
+        {
+          "pr": 4630,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Logging from a shared bottle fills in the right amount",
+          "issues": []
+        },
+        {
+          "pr": 4632,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Manually added hydration adds up instead of replacing",
+          "issues": []
+        },
+        {
+          "pr": 4633,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Practices use one form and one row control, and Upcoming stops offering its own",
+          "issues": [4424]
+        },
+        {
+          "pr": 4636,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "Measurements use one form and one reading control everywhere",
+          "issues": [4424, 4568]
+        },
+        {
+          "pr": 4636,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "A stated temperature time is checked",
+          "issues": [4424, 4568]
+        },
+        {
+          "pr": 4638,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Relative timestamps appear in one place per row",
+          "issues": [4419]
+        },
+        {
+          "pr": 4642,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "Import errors read as plain language",
+          "issues": []
+        },
+        {
+          "pr": 4645,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Offers stop appearing under Now when they are not due",
+          "issues": []
+        },
+        {
+          "pr": 4648,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Quick-log rows read the same way across the sheet",
+          "issues": []
+        },
+        {
+          "pr": 4650,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Doses use one form behind one picker",
+          "issues": [4424]
+        },
+        {
+          "pr": 4650,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A dose row no longer changes shape on past days",
+          "issues": [4424]
+        },
+        {
+          "pr": 4652,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Repeat doses and past-day offline timing are correct",
+          "issues": []
+        },
+        {
+          "pr": 4653,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The retired page-visit tally is cleared from your browser",
+          "issues": [4102]
+        },
+        {
+          "pr": 4654,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Editing a live practice that crossed midnight keeps its end and duration",
+          "issues": [3143]
+        },
+        {
+          "pr": 4655,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "The fasting card appears and clears at the right times",
+          "issues": []
+        },
+        {
+          "pr": 4656,
+          "kind": "feature",
+          "category": "General",
+          "title": "Mood check-ins use one form, and they appear in History",
+          "issues": [4424, 4427]
+        },
+        {
+          "pr": 4657,
+          "kind": "fix",
+          "category": "History",
+          "title": "Day labels line up with their columns",
+          "issues": []
+        },
+        {
+          "pr": 4658,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A refused reminder explains itself the same way everywhere",
+          "issues": []
+        },
+        {
+          "pr": 4659,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "Sync events are counted once",
+          "issues": []
+        },
+        {
+          "pr": 4680,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Discarding a draft actually clears it",
+          "issues": []
+        },
+        {
+          "pr": 4683,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Long clinical result panels are paged instead of rendering all at once",
+          "issues": []
+        },
+        {
+          "pr": 4692,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Nutrition becomes Day and Manage",
+          "issues": [3987]
+        },
+        {
+          "pr": 4692,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Your supplements come first, with the safety notes below them",
+          "issues": [3987]
+        },
+        {
+          "pr": 4692,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Food preferences move onto Manage instead of hiding in settings",
+          "issues": [3987]
+        },
+        {
+          "pr": 4696,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Upcoming groups a slot into one row you can expand",
+          "issues": [2579]
+        },
+        {
+          "pr": 4696,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "Each dose in a slot logs from the shared control",
+          "issues": [2579]
+        },
+        {
+          "pr": 4696,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Every unmet weekly target shows on Upcoming, not only the ones behind pace",
+          "issues": [2579]
+        },
+        {
+          "pr": 4697,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A menu closes the moment you tap it instead of spinning over the row",
+          "issues": [2641]
+        },
+        {
+          "pr": 4697,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Dismissing a finding that cannot be dismissed now says so",
+          "issues": [2641]
+        },
+        {
+          "pr": 4697,
+          "kind": "perf",
+          "category": "Training",
+          "title": "Training paints its header and tabs before the rest of the page is ready",
+          "issues": [2641]
+        },
+        {
+          "pr": 4687,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Adding a medicine, a supplement or an as-needed item offers the same controls",
+          "issues": []
+        },
+        {
+          "pr": 4689,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "The Home Assistant share-link guidance is correct",
+          "issues": []
+        },
+        {
+          "pr": 4695,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Drawer links no longer point at pages that were retired",
+          "issues": []
+        },
+        {
+          "pr": 4698,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Picking a shared bottle keeps your choice while you log",
+          "issues": []
+        },
+        {
+          "pr": 4699,
+          "kind": "fix",
+          "category": "General",
+          "title": "When AI features are not set up, every screen says so the same way",
+          "issues": []
+        },
+        {
+          "pr": 4701,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Logging a practice reports its result the same way everywhere",
+          "issues": []
+        },
+        {
+          "pr": 4702,
+          "kind": "feature",
+          "category": "Household",
+          "title": "The household card shows what changed this week for each person",
+          "issues": [1463]
+        },
+        {
+          "pr": 4702,
+          "kind": "security",
+          "category": "Household",
+          "title": "Mood check-ins stay off shared household surfaces",
+          "issues": [1463]
+        }
+      ]
+    },
+    {
       "date": "2026-08-31",
       "entries": [
         {
@@ -51,6 +600,286 @@
           "kind": "fix",
           "category": "Nutrition",
           "issues": [4353]
+        },
+        {
+          "pr": 4372,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Why you take a medicine stays visible when you change its kind",
+          "issues": []
+        },
+        {
+          "pr": 4373,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A compound ingredient listed twice adds up to one amount",
+          "issues": []
+        },
+        {
+          "pr": 4381,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "A stated eating time stays on the day you were living, not the server's",
+          "issues": []
+        },
+        {
+          "pr": 4391,
+          "kind": "fix",
+          "category": "History",
+          "title": "Something you logged on a page no longer joins a chat correction burst",
+          "issues": []
+        },
+        {
+          "pr": 4396,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Dashboard rows line up the same way in every section",
+          "issues": []
+        },
+        {
+          "pr": 4397,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Immunization doses show in the right order in History",
+          "issues": []
+        },
+        {
+          "pr": 4401,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The button for logging a past dose stops changing its label",
+          "issues": [3911]
+        },
+        {
+          "pr": 4416,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Measurement fields clear after an offline save is partly refused",
+          "issues": []
+        },
+        {
+          "pr": 4420,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "An explainer appears once per screen, and per-row facts sit with their row",
+          "issues": []
+        },
+        {
+          "pr": 4422,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "A pending portal upload is protected again",
+          "issues": []
+        },
+        {
+          "pr": 4441,
+          "kind": "perf",
+          "category": "Nutrition",
+          "title": "The Food tab stops re-fetching the same dose schedule",
+          "issues": []
+        },
+        {
+          "pr": 4443,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A backfilled dose keeps a record of where it came from",
+          "issues": []
+        },
+        {
+          "pr": 4447,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Protein quick-add works on past days",
+          "issues": []
+        },
+        {
+          "pr": 4457,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Re-timing a food entry clears the meal slot it declared",
+          "issues": []
+        },
+        {
+          "pr": 4465,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Confirming a past-day dose without a time works",
+          "issues": []
+        },
+        {
+          "pr": 4466,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a day-ledger entry cannot place it in the future",
+          "issues": []
+        },
+        {
+          "pr": 4468,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A dose appears on the dashboard when its slot arrives, not before",
+          "issues": []
+        },
+        {
+          "pr": 4474,
+          "kind": "security",
+          "category": "Security",
+          "title": "A refused request no longer prints the token it refused",
+          "issues": []
+        },
+        {
+          "pr": 4476,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "As-needed medicines log from the quick sheet",
+          "issues": []
+        },
+        {
+          "pr": 4479,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Dashboard rows emphasise what needs attention correctly",
+          "issues": []
+        },
+        {
+          "pr": 4480,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "Ahead opens on its own, and each row says why it is there",
+          "issues": []
+        },
+        {
+          "pr": 4494,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "A usual meal can be logged up to six days back",
+          "issues": []
+        },
+        {
+          "pr": 4494,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "A chat entry names who sent it",
+          "issues": []
+        },
+        {
+          "pr": 4498,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The quick-log sheet no longer sits under the bottom edge",
+          "issues": []
+        },
+        {
+          "pr": 4502,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A practice tap gives clear feedback during its cooldown",
+          "issues": []
+        },
+        {
+          "pr": 4506,
+          "kind": "feature",
+          "category": "History",
+          "title": "The History calendar opens as a panel, and its marks match the view you are in",
+          "issues": []
+        },
+        {
+          "pr": 4514,
+          "kind": "feature",
+          "category": "Nutrition",
+          "title": "Doses that are due lead their group in the day ledger",
+          "issues": []
+        },
+        {
+          "pr": 4519,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Pages keep clear of the phone's notch consistently",
+          "issues": []
+        },
+        {
+          "pr": 4526,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "The protein total identifies its own entries correctly",
+          "issues": []
+        },
+        {
+          "pr": 4531,
+          "kind": "feature",
+          "category": "Interface",
+          "title": "The last-synced time sits in one place, and per-row facts move to their row",
+          "issues": []
+        },
+        {
+          "pr": 4532,
+          "kind": "fix",
+          "category": "History",
+          "title": "A history row keeps its own name whatever the subject is called",
+          "issues": []
+        },
+        {
+          "pr": 4535,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "The expired-food nudge's view controls work",
+          "issues": []
+        },
+        {
+          "pr": 4556,
+          "kind": "fix",
+          "category": "Training",
+          "title": "A finished workout stops showing as in progress",
+          "issues": []
+        },
+        {
+          "pr": 4562,
+          "kind": "fix",
+          "category": "History",
+          "title": "History titles link where they say they do",
+          "issues": []
+        },
+        {
+          "pr": 4566,
+          "kind": "fix",
+          "category": "History",
+          "title": "A long history title shortens instead of running off a narrow screen",
+          "issues": [4394]
+        },
+        {
+          "pr": 4570,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "The dashboard's Vitals starting point is back",
+          "issues": [4160]
+        },
+        {
+          "pr": 4572,
+          "kind": "feature",
+          "category": "History",
+          "title": "History day rows all read the same way",
+          "issues": []
+        },
+        {
+          "pr": 4577,
+          "kind": "feature",
+          "category": "Sleep",
+          "title": "Sleep source controls explain what they cover",
+          "issues": []
+        },
+        {
+          "pr": 4579,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "If camera permission cannot be read, the file chooser opens",
+          "issues": []
+        },
+        {
+          "pr": 4582,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Practice time-correction hints and double taps behave",
+          "issues": []
         }
       ]
     },

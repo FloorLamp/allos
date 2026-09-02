@@ -211,6 +211,17 @@ export default function ImagingStudyForm({
           defaultValue={study?.impression ?? ""}
           placeholder="The radiologist's impression / findings, verbatim"
         />
+        {/* The imported report, when one was stored (#3594). An import keeps the
+            whole rendered report rather than guessing which sentence is the
+            finding, so it is shown here — as the record, not as an editable
+            impression — and the list's "the full text is one tap away in the
+            form" stays true for an imported study. */}
+        {study?.report_narrative ? (
+          <p className="mt-2 whitespace-pre-wrap text-xs text-slate-400">
+            <span className="font-medium">Imported report: </span>
+            {study.report_narrative}
+          </p>
+        ) : null}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>

@@ -321,6 +321,29 @@ node "$REPO_DIR/scripts/orchestration/release-notes-gather.mjs" --check 2>/dev/n
   echo "  (lag check unavailable — needs GH_TOKEN/GITHUB_TOKEN or gh auth)"
 echo
 
+# 4c. Is main itself green? `e2e-main` reports on main and NOTHING READ IT:
+#     eight consecutive merges were red there while every PR showed 19/19
+#     green (#4722). The merge gate says this at a merge now; those eight reds
+#     lived BETWEEN merges, which is the window a catch-up is for. The verdict
+#     is the gate's own function, imported rather than re-spelled, so the two
+#     surfaces cannot drift apart.
+echo "--- main detector (e2e-main) ---"
+MAIN_CHECKS=$(fetch "$API/commits/main/check-runs?per_page=100")
+CORE="$REPO_DIR/scripts/orchestration/merge-gate-core.mjs" node --input-type=module -e '
+  const { baseDetectorNotice } = await import(process.env.CORE);
+  let d="";
+  process.stdin.on("data", (c) => (d += c)).on("end", () => {
+    let parsed;
+    try { parsed = JSON.parse(d); } catch { parsed = []; }
+    // fetch() degrades to a bare [], so an ARRAY here means the read FAILED —
+    // not that main carries no checks. Saying which is the point of the section.
+    if (Array.isArray(parsed)) {
+      console.log("  (check runs for main unreadable — see the fetch warning above)");
+      return;
+    }
+    console.log("  " + baseDetectorNotice(parsed.check_runs ?? [], "main"));
+  });' <<<"$MAIN_CHECKS"
+echo
 # 5. Advance the anchor only on a full, non-peek run: a --peek or --since read
 #    must not move what "since last catch-up" means for the next one.
 echo

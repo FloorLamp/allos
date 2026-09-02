@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveMentalHealthShareFull } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -15,13 +14,12 @@ export default function MentalHealthPrivacyForm({
 }: {
   shareFull: boolean;
 }) {
-  const [on, setOn] = useState(shareFull);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const { status, value: on, save: runSave } = useSaveStatus(shareFull);
 
   function save(next: boolean) {
     const fd = new FormData();
     fd.set("mental_health_share_full", next ? "1" : "0");
-    runSave(async () => {
+    runSave(next, async () => {
       await saveMentalHealthShareFull(fd);
     });
   }
@@ -32,7 +30,7 @@ export default function MentalHealthPrivacyForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Mental-health visit privacy
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input
@@ -40,10 +38,7 @@ export default function MentalHealthPrivacyForm({
           className="mt-1"
           checked={on}
           data-testid="mental-health-share-full"
-          onChange={(e) => {
-            setOn(e.target.checked);
-            save(e.target.checked);
-          }}
+          onChange={(e) => save(e.target.checked)}
         />
         <span>
           Show mental-health visits in full detail on shared surfaces (the

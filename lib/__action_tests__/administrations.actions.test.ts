@@ -10,6 +10,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
+import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
+import { logHistoricalDose } from "@/lib/queries";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { seedActor, fd } from "./harness";
 
@@ -149,6 +152,77 @@ describe("logMedicationAdministration action (#797)", () => {
     expect(second).toEqual({ ok: true, outcome: "duplicate" });
     expect(adminRows(itemId)).toBe(1);
     expect(onHand(itemId)).toBe(9); // decremented once
+  });
+
+  // THE STATEMENT'S DAY REACHES THE WRITE (#4691). The action used to resolve every
+  // custom time against `today(profileId)`, so a row rendered under a Yesterday
+  // toggle wrote today anyway and no cockpit path could reach last night's dose. The
+  // parity assertion is against the DEEP DOOR's own row for the same instant: the
+  // clinical content a reader sees — the day, the administration instant, the dose
+  // it hangs off and its snapshotted amount — is identical whichever door it came
+  // through. (`logged_via` and `supply_adjusted` differ by construction: they RECORD
+  // which door and whether the caregiver asked for a supply move.)
+  it("writes the stated past day, matching the deep door's row for the same instant", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    const yesterday = shiftDateStr(today(profile.id), -1);
+    const res = await logMedicationAdministration(
+      fd({ id: itemId, offset: "custom", time: "19:15", date: yesterday })
+    );
+    expect(res).toEqual({ ok: true, outcome: "logged" });
+
+    const doseId = (
+      db
+        .prepare("SELECT id FROM intake_item_doses WHERE item_id = ?")
+        .get(itemId) as { id: number }
+    ).id;
+    const viaDeepDoor = logHistoricalDose(
+      profile.id,
+      itemId,
+      doseId,
+      zonedWallTimeToUtc(getTimezone(profile.id), yesterday, "15:00")!,
+      null,
+      false,
+      "page"
+    );
+    expect(viaDeepDoor).toEqual({ kind: "logged", date: yesterday });
+
+    const rows = db
+      .prepare(
+        `SELECT date, occurred_at, dose_id, amount FROM intake_item_logs
+          WHERE item_id = ? AND status = 'taken' ORDER BY id`
+      )
+      .all(itemId) as {
+      date: string;
+      occurred_at: string;
+      dose_id: number;
+      amount: string | null;
+    }[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].date).toBe(yesterday);
+    expect({ ...rows[0], occurred_at: "" }).toEqual({
+      ...rows[1],
+      occurred_at: "",
+    });
+    // …and each instant is the minute that was STATED, not a "now" (the two are
+    // hours apart so the shared administration dedup window cannot collapse them).
+    expect(rows[0].occurred_at).toMatch(/T19:15:00Z$/);
+    expect(rows[1].occurred_at).toMatch(/T15:00:00Z$/);
+  });
+
+  it("refuses a day the tap's reach does not cover, without writing", async () => {
+    const { profile } = seedActor();
+    const itemId = seedPrnMed(profile.id);
+    const res = await logMedicationAdministration(
+      fd({
+        id: itemId,
+        offset: "custom",
+        time: "19:15",
+        date: shiftDateStr(today(profile.id), -30),
+      })
+    );
+    expect(res.ok).toBe(false);
+    expect(adminRows(itemId)).toBe(0);
   });
 
   it("returns an error for a missing / other-profile item", async () => {
