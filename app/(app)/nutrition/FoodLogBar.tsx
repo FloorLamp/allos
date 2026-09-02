@@ -494,7 +494,10 @@ export default function FoodLogBar({
       for (const [key, owner] of lifecycles) dismissToast(key, owner);
       barMountedRef.current = false;
       activeProfileRef.current = undefined;
-      releaseCorrectionClaim();
+      // The correction claim is NOT finished here, and that is not an omission: it lives
+      // in this bar's own `servingBursts` ref, which is going away with the bar. Nothing
+      // outside reads it, and every consumer of it gates on `isMountedProfile()` first.
+      correctionClaim.current = null;
       correctionUiGeneration.current += 1;
       removalUiGeneration.current += 1;
     };
@@ -930,12 +933,20 @@ export default function FoodLogBar({
       // coordinates rather than painting a stale pair.
       if (isMountedProfile()) {
         void reconcileServingTruthIfIdle(
-          foodServingToastKey(receiptProfileId, saved.from.date, saved.from.groupKey),
+          foodServingToastKey(
+            receiptProfileId,
+            saved.from.date,
+            saved.from.groupKey
+          ),
           saved.from.date,
           saved.from.groupKey
         );
         void reconcileServingTruthIfIdle(
-          foodServingToastKey(receiptProfileId, saved.to.date, saved.to.groupKey),
+          foodServingToastKey(
+            receiptProfileId,
+            saved.to.date,
+            saved.to.groupKey
+          ),
           saved.to.date,
           saved.to.groupKey
         );
@@ -1729,29 +1740,44 @@ export default function FoodLogBar({
   // PICKER actually is (#4424 ruling 2 retired the door's date field, so it stopped
   // needing it). The label names every dose the tap will confirm, so a late reply for an
   // abandoned day would repaint a promise about a day nobody is looking at any more.
-  const [usualDoses, setUsualDoses] = useState<UsualRoutineDayOffer[]>(
-    usualRoutine.offers
-  );
+  // A READ IS STATE ONLY WHILE IT IS NEWER THAN THE SEED. The seeded day needs no read
+  // at all, so nothing is mirrored into state for it — which is also what keeps this
+  // effect from calling `setState` in its own body, the shape React asks surfaces not to
+  // take.
+  const [fetched, setFetched] = useState<{
+    date: string;
+    offers: UsualRoutineDayOffer[];
+  } | null>(null);
   const seededUsualDate = usualRoutine.date;
   const latestUsualRead = useRef(0);
   useEffect(() => {
-    if (activeDate === seededUsualDate) {
-      latestUsualRead.current += 1;
-      setUsualDoses(usualRoutine.offers);
-      return;
-    }
+    if (activeDate === seededUsualDate) return;
     const ticket = (latestUsualRead.current += 1);
     void usualRoutineOffersOn(activeDate)
       .then((offers) => {
-        if (latestUsualRead.current === ticket) setUsualDoses(offers);
+        if (latestUsualRead.current === ticket)
+          setFetched({ date: activeDate, offers });
       })
       .catch(() => {
         // A failed read must not leave a promise standing about doses it could not ask
         // about. The food half is untouched, so the bundle degrades to exactly the offer
         // that shipped before this — never to a claim it cannot keep.
-        if (latestUsualRead.current === ticket) setUsualDoses([]);
+        if (latestUsualRead.current === ticket)
+          setFetched({ date: activeDate, offers: [] });
       });
-  }, [activeDate, seededUsualDate, usualRoutine.offers]);
+  }, [activeDate, seededUsualDate]);
+  // AND AN ANSWER FOR ANOTHER DAY IS NOT AN ANSWER. A read still in flight renders no
+  // dose half rather than the previous day's — the label names every dose the tap will
+  // confirm, so promising yesterday's while the picker says today is the label lying.
+  const usualDoses = useMemo(
+    () =>
+      activeDate === seededUsualDate
+        ? usualRoutine.offers
+        : fetched?.date === activeDate
+          ? fetched.offers
+          : [],
+    [activeDate, seededUsualDate, usualRoutine.offers, fetched]
+  );
   const usualDoseOffer = useMemo(
     () => usualDoses.find((offer) => offer.window === activeSlot) ?? null,
     [usualDoses, activeSlot]

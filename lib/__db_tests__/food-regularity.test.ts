@@ -766,7 +766,6 @@ describe("usualRoutineDayOffers", () => {
   );
 });
 
-
 // ── PROTEIN IS A BUNDLE MEMBER (#4379, owner ruling 2026-08-30) ──────────────
 //
 // The owner's own morning: 29 protein quick-add taps on record alongside the 21/21

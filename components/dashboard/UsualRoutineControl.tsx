@@ -75,8 +75,7 @@ export default function UsualRoutineControl({
         // outside the offer that currently stands.
         fd.set("groups", groups.join(","));
         fd.set("dose_ids", doseIds.join(","));
-        if (proteinGrams != null)
-          fd.set("protein_grams", String(proteinGrams));
+        if (proteinGrams != null) fd.set("protein_grams", String(proteinGrams));
         return logUsualRoutine(fd);
       },
       settle: (result) => {

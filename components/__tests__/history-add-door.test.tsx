@@ -228,7 +228,7 @@ const VOCABULARY = {
     },
   ],
   foodSlotBoundaries: { midday: 660, evening: 1020 },
-    doseDefaultTime: "08:00",
+  doseDefaultTime: "08:00",
 };
 
 function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {
@@ -619,9 +619,6 @@ describe("the composed usual on the add door", () => {
     // about the bundle: no dose, no audit, no backfill provenance.
     expect(posted.logFoodServing ?? []).toHaveLength(0);
   });
-
-
-
 
   // ── THE ANSWER NAMES WHAT WAS WRITTEN (#232, #4118) ────────────────────────
   //

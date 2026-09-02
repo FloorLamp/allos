@@ -1649,7 +1649,10 @@ describe("FoodLogBar composed usual bundle", () => {
     nutrients: [],
   };
   const BOTH = Object.fromEntries(
-    ["Morning", "Midday", "Evening"].map((slot) => [slot, [GROUP, SECOND_GROUP]])
+    ["Morning", "Midday", "Evening"].map((slot) => [
+      slot,
+      [GROUP, SECOND_GROUP],
+    ])
   ) as Record<FoodSlot, FoodGroup[]>;
   const HABIT = {
     Morning: [],
@@ -1750,7 +1753,10 @@ describe("FoodLogBar composed usual bundle", () => {
     expect(sent.get("groups")).toBe("cruciferous,berries");
     // The ANSWER is the shared sentence, not the food-only "Logged …".
     expect(
-      screen.getAllByTestId("toast").map((t) => t.textContent).join(" ")
+      screen
+        .getAllByTestId("toast")
+        .map((t) => t.textContent)
+        .join(" ")
     ).toContain("1 dose taken");
   });
 
@@ -1783,17 +1789,25 @@ describe("FoodLogBar composed usual bundle", () => {
         : []
     );
     mount([offer("Midday")]);
-    expect(screen.getByTestId("food-usual-offer").getAttribute("data-doses")).toBe("9");
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
 
     await pickDay("Yesterday");
     expect(appActions.usualRoutineOffersOn).toHaveBeenCalledWith(OTHER);
     await pickDay("Today");
     // Back on the seeded day, the seed answers and no read is needed for it.
-    expect(screen.getByTestId("food-usual-offer").getAttribute("data-doses")).toBe("9");
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
 
     // The abandoned day answers LAST, with a rider that must not land.
-    await act(async () => releaseOther([offer("Midday", [{ id: 77, name: "Zinc", stack: null }])]));
-    expect(screen.getByTestId("food-usual-offer").getAttribute("data-doses")).toBe("9");
+    await act(async () =>
+      releaseOther([offer("Midday", [{ id: 77, name: "Zinc", stack: null }])])
+    );
+    expect(
+      screen.getByTestId("food-usual-offer").getAttribute("data-doses")
+    ).toBe("9");
   });
 
   it("degrades to the food half when the read fails, and never promises a dose it could not ask about", async () => {

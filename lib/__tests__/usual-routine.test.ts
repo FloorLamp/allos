@@ -27,12 +27,9 @@ const dose = (doseId: number, name: string) => ({
 describe("usualRoutineOffer (#2458)", () => {
   it("composes both halves when the food half stands", () => {
     expect(
-      usualRoutineOffer(
-        "Morning",
-        ["fermented", "berries"],
-        null,
-        [dose(1, "Creatine")]
-      )
+      usualRoutineOffer("Morning", ["fermented", "berries"], null, [
+        dose(1, "Creatine"),
+      ])
     ).toEqual({
       window: "Morning",
       groups: ["fermented", "berries"],
@@ -42,7 +39,12 @@ describe("usualRoutineOffer (#2458)", () => {
   });
 
   it("degrades to the plain food offer with no pending doses", () => {
-    const offer = usualRoutineOffer("Morning", ["fermented", "berries"], null, []);
+    const offer = usualRoutineOffer(
+      "Morning",
+      ["fermented", "berries"],
+      null,
+      []
+    );
     expect(offer?.groups).toEqual(["fermented", "berries"]);
     expect(offer?.doses).toEqual([]);
   });
@@ -52,12 +54,10 @@ describe("usualRoutineOffer (#2458)", () => {
     // FOOD_USUAL_MIN_GROUPS — so an empty list here means the offer does not stand,
     // and a dose-only bundle is deliberately not a thing this feature builds.
     expect(
-      usualRoutineOffer(
-        "Morning",
-        [],
-        null,
-        [dose(1, "Creatine"), dose(2, "Collagen")]
-      )
+      usualRoutineOffer("Morning", [], null, [
+        dose(1, "Creatine"),
+        dose(2, "Collagen"),
+      ])
     ).toBeNull();
     expect(usualRoutineOffer("Morning", [], null, [])).toBeNull();
   });
@@ -185,8 +185,16 @@ describe("usualRoutineAnswerText — never claims more than was written", () => 
 describe("the protein member", () => {
   it.each([
     // groups, proteinGrams, what the offer is
-    [["fermented", "berries"], 30, "a bundle with the scoop named beside the groups"],
-    [["fermented"], 30, "a bundle when one group plus the scoop is two members"],
+    [
+      ["fermented", "berries"],
+      30,
+      "a bundle with the scoop named beside the groups",
+    ],
+    [
+      ["fermented"],
+      30,
+      "a bundle when one group plus the scoop is two members",
+    ],
     [[], 30, "still a bundle — the scoop IS the food half here"],
     [[], null, "no control at all"],
   ] as [string[], number | null, string][])(
@@ -217,7 +225,10 @@ describe("the protein member", () => {
     ]);
     // And says nothing at all where there is no member to name.
     expect(
-      usualRoutineFoodMembers({ groups: ["berries"], proteinGrams: null }, () => "Berries")
+      usualRoutineFoodMembers(
+        { groups: ["berries"], proteinGrams: null },
+        () => "Berries"
+      )
     ).toEqual([{ slug: "berries", name: "Berries" }]);
   });
 

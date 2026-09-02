@@ -954,11 +954,20 @@ export function getUsualFoodOffer(
   );
   // THE REDUCTION COVERS PROTEIN TOO (#4379). The meal grouping above deliberately drops
   // the reserved key — a shake is not a food-group serving and must not render as a
-  // mystery meal chip — so a protein tap is invisible to it, and without this line the
-  // bundle would keep offering grams already in the window. "Any `__protein__` tap
-  // already in the window drops the member, exactly as a logged group falls out" is the
-  // ruling's own sentence, and this is where a member falls out.
-  if (proteinWindowsLoggedOn(profileId, date).has(window))
+  // mystery meal chip — so a protein tap is invisible to it, and without this the bundle
+  // would keep offering grams already in the window. "Any `__protein__` tap already in
+  // the window drops the member, exactly as a logged group falls out" is the ruling's own
+  // sentence, and this is where a member falls out.
+  //
+  // ASKED ONLY WHERE IT CAN CHANGE THE ANSWER. The read is a query, and this function is
+  // on the dashboard's path for every profile — the query-budget test priced it at +1
+  // per persona when it ran unconditionally, on six personas that have no protein habit
+  // to reduce. A window whose habitual set does not name the key cannot lose it, so the
+  // question is only worth asking where the feature applies.
+  if (
+    habitual.includes(PROTEIN_NUDGE_KEY) &&
+    proteinWindowsLoggedOn(profileId, date).has(window)
+  )
     already.add(PROTEIN_NUDGE_KEY);
   return usualFoodOffer(habitual, already);
 }

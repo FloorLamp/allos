@@ -137,7 +137,11 @@ export default function FoodServingForm({
   });
 
   function moveWhen(next: WhenValue): void {
-    if (!mealTouched && next.statedAt !== null && next.statedAt !== when.statedAt) {
+    if (
+      !mealTouched &&
+      next.statedAt !== null &&
+      next.statedAt !== when.statedAt
+    ) {
       const offered = eatingHoursOnDate(
         next.date,
         tz,
@@ -177,9 +181,7 @@ export default function FoodServingForm({
     setPending(true);
     let outcome;
     try {
-      outcome = row
-        ? await updateFoodLogEvent(fd)
-        : await logFoodServing(fd);
+      outcome = row ? await updateFoodLogEvent(fd) : await logFoodServing(fd);
     } catch {
       setPending(false);
       setError("Couldn't save that serving.");
@@ -218,8 +220,8 @@ export default function FoodServingForm({
           {row.eatenAt
             ? `Ate at ${row.eatenAt}.`
             : `No eating time recorded${row.loggedAt ? ` — logged at ${row.loggedAt}` : ""}.`}{" "}
-          Correcting moves this serving — the day&rsquo;s totals and meal tallies
-          follow it.
+          Correcting moves this serving — the day&rsquo;s totals and meal
+          tallies follow it.
         </p>
       ) : null}
       <label className="text-xs text-slate-500 dark:text-slate-400">
