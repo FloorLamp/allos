@@ -288,13 +288,15 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
 // hues instead — met/short/empty/current/na as emerald/amber/slate/brand — which is
 // the same palette decision in the shape the ramp rule deliberately does not match.
 //
-// It is NOT matched by shape here either, and that is the finding rather than a gap:
-// a rule over "keyed object of bg-class strings" matches 23 shipped files of ordinary
-// badge, chip and status styling, so it would ship as a 23-entry allowlist policing
-// nothing. What DOES constitute membership is the import: a surface that paints state
-// cells mounts the shared primitive, and the primitive's tones come from the palette
-// module. So the rule is keyed on that, and it fails on the file that reaches for the
-// primitive while inventing its own colors.
+// It is NOT matched by shape here either, and that is the finding rather than a gap.
+// Run the shape over the same files this suite scans — an object literal of three or
+// more `"…bg-<hue>-<step>…"` values — and it returns 21 maps in 20 files, every one
+// ordinary badge, chip and status styling. It would ship as a 20-entry allowlist
+// policing nothing.
+//
+// What constitutes membership is the IMPORT: a surface that paints state cells mounts
+// the shared primitive, and the primitive's tones come from the palette module. So the
+// rule is keyed on that, and it fails on the file the escape actually lived in.
 describe("state-cell surfaces take their tones from the palette (issue #4543)", () => {
   it("every StateCells/StateLegend mount also imports @/lib/chart-colors", () => {
     const offenders = tsxFiles()
