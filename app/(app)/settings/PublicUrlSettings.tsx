@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { savePublicUrl } from "./server/actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
 
 // The externally reachable base URL of the app — one shared setting consumed by
 // everything that hands a URL to a third party (Telegram webhook, Strava OAuth
@@ -30,10 +30,10 @@ export default function PublicUrlSettings({
       const res = await savePublicUrl(fd);
       if (!res.ok) {
         setValidationError(res.error);
-        // Throw so the hook records a failure (error icon, no "saved" chip)
-        // rather than treating the rejected value as a successful save — and so
-        // the rejected text is taken back off the field.
-        throw new Error(res.error);
+        // Declined, not failed: the error icon shows and no "saved" chip does, but
+        // the rejected text stays on the field, because correcting it is the whole
+        // point of being told what is wrong with it.
+        return REFUSED;
       }
       setValidationError(null);
       // Reflect the normalization (added scheme, stripped trailing slash): the hook

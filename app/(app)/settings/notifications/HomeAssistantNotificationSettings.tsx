@@ -7,7 +7,7 @@ import {
   sendTestHomeAssistant,
 } from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
 
 // Home Assistant as a third delivery channel (#248). A per-profile outbound webhook
 // so HA can announce reminders on a kitchen speaker (TTS), flash lights on
@@ -58,9 +58,10 @@ export default function HomeAssistantNotificationSettings({
       const res = await saveHomeAssistantPrefs(buildFormData());
       if (!res.ok) {
         setResult({ ok: false, message: res.error });
-        // Throw so the hook records a failure (no "saved" chip) rather than
-        // treating a rejected config as a successful save.
-        throw new Error(res.error);
+        // Declined, not failed: no "saved" chip, and the typed URL stays put so it
+        // can be corrected — a throw here would roll the whole card back to the
+        // stored config, un-ticking Enable and hiding the field being fixed.
+        return REFUSED;
       }
       setResult(null);
     });

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import ProfileMuteToggle from "@/app/(app)/settings/notifications/ProfileMuteToggle";
 import RecommendationCadenceForm from "@/app/(app)/settings/profile/RecommendationCadenceForm";
 import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
+import PublicUrlSettings from "@/app/(app)/settings/PublicUrlSettings";
 import { isStaleActionError } from "@/lib/sw-update";
 
 const saveProfileNotifyMute = vi.hoisted(() => vi.fn());
@@ -12,6 +13,9 @@ const saveRecommendationCadence = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/settings/profile/actions", () => ({
   saveRecommendationCadence,
 }));
+
+const savePublicUrl = vi.hoisted(() => vi.fn());
+vi.mock("@/app/(app)/settings/server/actions", () => ({ savePublicUrl }));
 
 type Save = (fd: FormData) => Promise<void>;
 
@@ -166,4 +170,38 @@ describe("a failed save takes back what it painted (#4688)", () => {
     expect(screen.getByLabelText("Couldn’t save")).toBeTruthy();
     expect(isStaleActionError(stale)).toBe(true);
   });
+
+  // A REFUSAL IS NOT A FAILURE, and the difference is what the person keeps. Both
+  // store nothing and both show the error icon — but a throw means the painted value
+  // is a claim the server never accepted, while a typed refusal is the app telling
+  // someone to fix the draft they have not sent yet. Taking that draft away deletes
+  // their work; on the Home Assistant card it also un-ticks Enable and hides the very
+  // field they were told to correct, which is how e2e/home-assistant-notify.spec.ts
+  // found this. Both directions here, because a test for only the first would pass on
+  // a hook that had simply stopped rolling back.
+  it.each([
+    { outcome: "refuses", answer: { ok: false, error: "Enter a valid URL." } },
+    { outcome: "throws", answer: new Error("nope") },
+  ])(
+    "a save that $outcome keeps the error, and only a throw reverts",
+    async ({ outcome, answer }) => {
+      const refused = outcome === "refuses";
+      savePublicUrl.mockImplementation(async () => {
+        if (!refused) throw answer;
+        return answer;
+      });
+      render(<PublicUrlSettings publicUrl="https://old.example" />);
+      const field = screen.getByPlaceholderText("https://your-app.example.com");
+
+      fireEvent.change(field, { target: { value: "not-a-url" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText("Couldn\u2019t save")).toBeTruthy()
+      );
+      expect((field as HTMLInputElement).value).toBe(
+        refused ? "not-a-url" : "https://old.example"
+      );
+    }
+  );
 });

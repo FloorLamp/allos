@@ -17,6 +17,24 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 // `setIsMuted(next)`, a throw, and a checkbox still claiming the profile is muted.
 // Making the revert each call site's job made it nobody's. Here, `save` restores the
 // last value the server accepted whatever the caller did.
+/**
+ * `run` resolves this instead of a value when the server DECLINED — a typed
+ * `FormResult` refusal the card has already explained ("that isn't a valid URL").
+ *
+ * A REFUSAL AND A FAILURE ARE NOT THE SAME EVENT, which is why this exists. Both
+ * stored nothing, so neither shows "Saved" and both raise the error icon. But a
+ * throw means the write did not happen and the painted value is a claim the server
+ * never accepted — that one goes back. A refusal is the app mid-sentence with the
+ * person, whose UNSENT DRAFT is still theirs to correct; taking it away deletes the
+ * work and, on a card whose fields sit behind an enable toggle, removes the very
+ * field they were told to fix. Caught by e2e/home-assistant-notify.spec.ts.
+ *
+ * So this is for the cards where the person composes a draft and presses Save. A
+ * control whose TAP IS THE SAVE has no draft to protect, and a refused pick left
+ * painted is exactly the lie #4688 is about — those still throw.
+ */
+export const REFUSED = Symbol("save refused");
+
 export interface SaveStatusApi<T> {
   // Exactly <SaveStatus />'s props, grouped so a card spreads them (`{...status}`)
   // instead of re-plumbing the same three names.
@@ -36,10 +54,11 @@ export interface SaveStatusApi<T> {
   // Paint `next` now, run the save, and put the last saved value back if it throws.
   // `run` may resolve a value to commit what the server actually stored (a
   // normalized URL), which then becomes both what shows and what a later failure
-  // restores. A rejection is caught and surfaced as `error` instead of reaching the
-  // error boundary; it is never inspected, so the deploy-skew and offline
-  // classifications downstream see the error the action threw.
-  save: (next: T, run: () => Promise<T | void>) => void;
+  // restores, or REFUSED to report a decline that keeps the draft. A rejection is
+  // caught and surfaced as `error` instead of reaching the error boundary; it is
+  // never inspected, so the deploy-skew and offline classifications downstream see
+  // the error the action threw.
+  save: (next: T, run: () => Promise<T | void | typeof REFUSED>) => void;
 }
 
 export function useSaveStatus<T>(initial: T): SaveStatusApi<T> {
@@ -58,26 +77,35 @@ export function useSaveStatus<T>(initial: T): SaveStatusApi<T> {
   // second mechanism would have been built to guard.
   const saved = useRef(initial);
 
-  const save = useCallback((next: T, run: () => Promise<T | void>) => {
-    setValue(next);
-    startTransition(async () => {
-      try {
-        const settled = await run();
-        const landed = settled === undefined ? next : settled;
-        saved.current = landed;
-        setValue(landed);
-        setError(false);
-        setSavedAt(Date.now());
-      } catch {
-        // Keep the form mounted and show the inline "Couldn't save" icon rather
-        // than letting the rejection reach the route error boundary — and take the
-        // painted value back, so the icon stops sitting next to a value that
-        // contradicts it.
-        setValue(saved.current);
-        setError(true);
-      }
-    });
-  }, []);
+  const save = useCallback(
+    (next: T, run: () => Promise<T | void | typeof REFUSED>) => {
+      setValue(next);
+      startTransition(async () => {
+        try {
+          const settled = await run();
+          if (settled === REFUSED) {
+            // Declined, not failed: nothing was stored, so no "Saved" — but the draft
+            // on screen is the person's to correct, so it stays exactly as typed.
+            setError(true);
+            return;
+          }
+          const landed = settled === undefined ? next : settled;
+          saved.current = landed;
+          setValue(landed);
+          setError(false);
+          setSavedAt(Date.now());
+        } catch {
+          // Keep the form mounted and show the inline "Couldn't save" icon rather
+          // than letting the rejection reach the route error boundary — and take the
+          // painted value back, so the icon stops sitting next to a value that
+          // contradicts it.
+          setValue(saved.current);
+          setError(true);
+        }
+      });
+    },
+    []
+  );
 
   return { status: { pending, savedAt, error }, value, edit: setValue, save };
 }
