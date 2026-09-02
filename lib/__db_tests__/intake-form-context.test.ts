@@ -151,6 +151,8 @@ describe("loadIntakeFormContext is keyed on the write's subject (#4609)", () => 
   it("carries the weight unit the caller asked for", () => {
     const { childId } = household();
     expect(loadIntakeFormContext(childId).pediatric.weightUnit).toBe("kg");
-    expect(loadIntakeFormContext(childId, "lb").pediatric.weightUnit).toBe("lb");
+    expect(loadIntakeFormContext(childId, "lb").pediatric.weightUnit).toBe(
+      "lb"
+    );
   });
 });

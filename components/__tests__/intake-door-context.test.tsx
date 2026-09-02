@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import MedicationAddWorkspace from "@/app/(app)/medications/MedicationAddWorkspace";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
@@ -139,7 +145,9 @@ async function openDoor(door: Door, ctx: IntakeFormContext, name: string) {
   );
   fireEvent.click(
     screen.getByTestId(
-      door === "medications" ? "medication-add-toggle" : "illness-add-medication"
+      door === "medications"
+        ? "medication-add-toggle"
+        : "illness-add-medication"
     )
   );
   fireEvent.change(screen.getByRole("combobox", { name: "Name" }), {
@@ -179,25 +187,31 @@ describe("every add door feeds IntakeItemForm the same subject context (#4609)",
     }
   );
 
-  it.each(DOORS)("%s: surfaces the stack interaction and the PGx note", async (door) => {
-    const { notices } = await openDoor(door, CHILD, "Warfarin");
-    await waitFor(() => expect(notices()).toContain("pgx-notice"));
-    expect(notices()).toContain("interaction-notice");
-    expect(screen.getByTestId("interaction-notice").textContent).toContain(
-      "Warfarin + Ibuprofen"
-    );
-    expect(screen.getByTestId("pgx-notice").textContent).toContain("CYP2C9");
-    cleanup();
-  });
+  it.each(DOORS)(
+    "%s: surfaces the stack interaction and the PGx note",
+    async (door) => {
+      const { notices } = await openDoor(door, CHILD, "Warfarin");
+      await waitFor(() => expect(notices()).toContain("pgx-notice"));
+      expect(notices()).toContain("interaction-notice");
+      expect(screen.getByTestId("interaction-notice").textContent).toContain(
+        "Warfarin + Ibuprofen"
+      );
+      expect(screen.getByTestId("pgx-notice").textContent).toContain("CYP2C9");
+      cleanup();
+    }
+  );
 
   // `todayStr` is not cosmetic: with it absent the form posts no `started_on`, and
   // addIntakeItem skips its whole start-date branch on `formData.has("started_on")`.
-  it.each(DOORS)("%s: posts the subject's local day as the start date", async (door) => {
-    addIntakeItem.mockClear();
-    await openDoor(door, CHILD, "Tylenol");
-    screen.getByRole("button", { name: "Add" }).click();
-    await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
-    expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBe(TODAY);
-    cleanup();
-  });
+  it.each(DOORS)(
+    "%s: posts the subject's local day as the start date",
+    async (door) => {
+      addIntakeItem.mockClear();
+      await openDoor(door, CHILD, "Tylenol");
+      screen.getByRole("button", { name: "Add" }).click();
+      await waitFor(() => expect(addIntakeItem).toHaveBeenCalledOnce());
+      expect(addIntakeItem.mock.calls[0]![0].get("started_on")).toBe(TODAY);
+      cleanup();
+    }
+  );
 });
