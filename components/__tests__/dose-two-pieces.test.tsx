@@ -50,7 +50,17 @@ vi.mock("@/components/FormatPrefsProvider", () => ({
 vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: vi.fn() }),
 }));
-vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
+vi.mock("@/components/ConfirmDialog", () => ({
+  useConfirm: () => vi.fn(),
+  useConfirmOpen: () => false,
+}));
+// The panel's rows are the shared EntryHistoryTable, whose ⋯ delete runs through
+// `useUndoableDelete`. Only its Server Action import is stood in for; the hook itself
+// is real, so the amend door below opens through the same menu the app draws.
+vi.mock("@/app/(app)/undo-actions", () => ({
+  undoDelete: vi.fn(),
+  undoDeletes: vi.fn(),
+}));
 // The shared ledger stands in, but its `tap` RUNS the write: a stubbed one makes every
 // click a no-op and any assertion about what a click posts passes vacuously.
 vi.mock("@/components/useOptimisticLedger", () => ({
@@ -80,6 +90,7 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   logHistoricalDose: mocks.logHistoricalDose,
   updateHistoricalDose: mocks.updateHistoricalDose,
   setDoseStatus: mocks.setDoseStatus,
+  deleteAdministration: vi.fn(),
   resolveDayDoses: vi.fn(),
 }));
 
@@ -664,4 +675,119 @@ describe("the dose-history panel posts its container's subject (#4693)", () => {
       expect(fields().profile_id).toBe(expected);
     }
   );
+});
+
+// AND IT COLLECTS ON THAT SUBJECT'S CLOCK (#4693 fix round). The id above is only half
+// the pair: both of this panel's forms COLLECT A WALL CLOCK, and `updateHistoricalDose`
+// / `logHistoricalDose` re-anchor it in the GATED profile's zone. A panel that named the
+// subject and collected on the caregiver's calendar moved the administration time on a
+// save with nothing edited — and the action could not refuse it, because the shifted
+// instant's subject-local DATE still matched the posted date.
+//
+// The pair is `HistoryRows.tsx:529`'s, which passes `subjectProfileId` AND `tz` for this
+// exact reason. Asserted here as a CLOCK, not as an id: the acting profile is the file's
+// UTC `useTimezone` and the subject is eleven hours behind it, so every value below
+// differs between the two zones while the DAY does not.
+describe("the dose-history panel collects its subject's wall clock (#4693)", () => {
+  const SUBJECT = 42;
+  // UTC−11, no DST — so the offset is the same on every day this suite names.
+  const SUBJECT_TZ = "Pacific/Niue";
+  // 05:00Z on the 28th: the caregiver's today is TODAY, the subject's is YESTERDAY at
+  // 18:00. Frozen because "today" is a rendered state here (the Now offer), not an input.
+  const NOW = "2026-08-28T05:00:00Z";
+
+  const PANEL = {
+    itemId: 7,
+    itemName: "Creatine",
+    product: null,
+    doses: [{ id: 11, amount: "5 g", time_of_day: "08:00" }],
+    asNeeded: false,
+    courseBound: false,
+    defaultTime: "08:00",
+    subjectProfileId: SUBJECT,
+    tz: SUBJECT_TZ,
+  };
+
+  // 20:30Z on the 20th is 09:30 on the SUBJECT's 20th and 20:30 on the caregiver's.
+  // BOTH are that day, which is why the pair rule at the write boundary sees nothing.
+  const ROW = {
+    id: 77,
+    doseId: 11,
+    date: "2026-08-20",
+    time: "9:30am",
+    statedAt: "2026-08-20 20:30:00",
+    amount: "5 g",
+    product: null,
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    window.matchMedia ??= ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    })) as any;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("amends a row unchanged and posts the time back unmoved", async () => {
+    render(<DoseHistoryPanel {...PANEL} maxDate={TODAY} history={[ROW]} />);
+
+    fireEvent.click(screen.getByTestId("overflow-menu-trigger"));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }))
+    );
+    // READ BEFORE SAVING: the editor opening on the caregiver's clock is the same
+    // defect seen one step earlier, and the form unmounts on success.
+    expect(
+      (screen.getByTestId("historical-dose-time") as HTMLInputElement).value
+    ).toBe("09:30");
+
+    await submitForm();
+    // Nothing was edited, so nothing may move. `toMatchObject` on the three fields
+    // that carry the statement; the id half is the suite above's.
+    expect(fields()).toMatchObject({
+      log_id: "77",
+      date: "2026-08-20",
+      time: "09:30",
+      profile_id: String(SUBJECT),
+    });
+  });
+
+  // THE ADD DOOR'S "NOW", which is the same root and the symptom a reader meets first:
+  // the chip decides whether to render AND what to fill from the zone it was handed, so
+  // on the caregiver's it is offered on the wrong day and fills the wrong hour. The
+  // subject's today is YESTERDAY here, so a chip drawn on the caregiver's today is not
+  // drawn at all — and the assertion is the posted clock, not the chip's presence.
+  it("offers Now on the subject's today and fills the subject's clock", async () => {
+    render(<DoseHistoryPanel {...PANEL} maxDate={YESTERDAY} history={[]} />);
+
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("dose-history-add"))
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("historical-dose-now"))
+    );
+    await submitForm();
+    expect(fields()).toMatchObject({
+      date: YESTERDAY,
+      time: "18:00",
+      profile_id: String(SUBJECT),
+    });
+  });
 });

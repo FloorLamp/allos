@@ -868,6 +868,11 @@ export default function MedicationCard({
             defaultTime={defaultHistoryTime}
             canWrite={canWrite || doseHistorySubjectProfileId != null}
             subjectProfileId={doseHistorySubjectProfileId}
+            // The card's `timezone` is `loadMedicationsData(profileId)`'s, so on a
+            // cross-profile detail page it already IS the subject's zone — the panel's
+            // forms collect their wall clock on the calendar the write re-anchors it
+            // against, rather than on the caregiver's.
+            tz={timezone}
             backfillDisabledReason={
               doses.length === 0
                 ? "This medication has no dose to log against"

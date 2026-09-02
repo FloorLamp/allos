@@ -95,6 +95,7 @@ export default function DoseHistoryPanel({
   defaultTime,
   canWrite = true,
   subjectProfileId,
+  tz,
   courseBound = true,
   backfillDisabledReason,
   note,
@@ -123,6 +124,14 @@ export default function DoseHistoryPanel({
   // The panel is one surface, so it takes one subject: a door that inherited and a
   // row control that did not would file two halves of the same page on two people.
   subjectProfileId?: number;
+  // The SUBJECT's timezone, and the other half of `subjectProfileId` (#4009's pair,
+  // restated at app/(app)/history/HistoryRows.tsx:529). The backfill and the amend both
+  // COLLECT A WALL CLOCK, and the actions re-anchor it in the gated profile's zone — so
+  // a panel that named the subject and collected on the caregiver's calendar would move
+  // the administration time on a save with nothing edited, and would offer a "Now" that
+  // is not the subject's. Absent on every single-subject mount, where the form's own
+  // fallback to the app-wide provider is already the right zone.
+  tz?: string;
   // Whether this item's history is bounded by a medication course (see the form).
   courseBound?: boolean;
   // Why a backfill can't be offered right now (no live dose, no course covering any
@@ -372,6 +381,7 @@ export default function DoseHistoryPanel({
           initialDate={backfill.date}
           defaultTime={defaultTime}
           subjectProfileId={subjectProfileId}
+          tz={tz}
           onDone={() => setBackfill(null)}
         />
       ) : null}
@@ -398,6 +408,7 @@ export default function DoseHistoryPanel({
                   amount: entry.amount,
                 }}
                 subjectProfileId={subjectProfileId}
+                tz={tz}
                 onDone={done}
               />
             )}
