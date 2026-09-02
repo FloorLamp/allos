@@ -3,7 +3,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconPlus, IconMinus, IconChevronDown } from "@tabler/icons-react";
+import { IconPlus, IconChevronDown } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
 import { FOOD_QUICK_COUNT, proteinSplitIndex } from "@/lib/food-rank";
 import {
@@ -12,11 +12,7 @@ import {
   type FoodSlot,
   type FoodSlotBoundaries,
 } from "@/lib/food-slot";
-import {
-  statedHhmm,
-  statedInstantOnDate,
-  STATED_TIME_REFUSAL_NOTE,
-} from "@/lib/stated-time";
+import { statedHhmm, STATED_TIME_REFUSAL_NOTE } from "@/lib/stated-time";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
 import FoodGroupIcon, {
@@ -30,7 +26,10 @@ import {
   useToast,
   useToastProfileScopeGetter,
 } from "@/components/Toast";
-import RollingNumber from "@/components/RollingNumber";
+import FoodServingControl from "@/components/nutrition/FoodServingControl";
+import FoodServingForm, {
+  type FoodServingSaved,
+} from "@/components/nutrition/FoodServingForm";
 import { useUndoableAction } from "@/components/useUndoableAction";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // The list-naming phrase is shared with the dashboard's composed control (#2458), so
@@ -58,7 +57,6 @@ import { useActiveProfileId } from "@/components/ActiveProfileProvider";
 import { UNDO_TOAST_MS } from "@/components/useUndoableDelete";
 import { undoDelete } from "@/app/(app)/undo-actions";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
-import { eatingHoursOnDate } from "@/lib/food-eating-time";
 import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
@@ -74,7 +72,6 @@ import {
   logUsualFood,
   readFoodServingTruth,
   undoFoodServing,
-  updateFoodLogEvent,
   type FoodEventDeleteResult,
   type FoodEventEditResult,
   type FoodLogResult,
@@ -299,19 +296,21 @@ export default function FoodLogBar({
   // Optimistic daily totals and meal-slot counts live in the parent date context:
   // food_daily_totals remains the source-of-truth day counter, while food_log_events powers
   // meal history. Sharing them keeps the selected-day sidebar summary in lockstep.
-  // The serving being corrected, plus its in-flight draft. Null = the modal is closed.
-  // `when` is the day + eating-time PAIR the shared control owns (#2227/#2236);
-  // `mealTouched` is decision 4's flag — Meal follows the chosen hour until the user
-  // sets Meal by hand in this sheet.
+  // The serving being corrected. Null = the modal is closed. The FIELDS are
+  // `FoodServingForm` (#4424 ruling 1) — the draft, the day/eating-time pair and the
+  // meal-follows-the-hour rule moved into it with them, so the record's rows and the
+  // door state a serving through the same three fields this sheet does.
   const [editing, setEditing] = useState<FoodLogEvent | null>(null);
-  const [draft, setDraft] = useState<{
-    groupKey: string;
-    mealSlot: FoodSlot;
-    when: WhenValue;
-    mealTouched: boolean;
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
   const correctionUiGeneration = useRef(0);
+  // The source coordinate's mutation claim, held for as long as the modal is OPEN.
+  // It used to be taken around the request alone; the modal makes that window wider by
+  // exactly the time the user spends typing, during which this bar's own rows are
+  // covered and can start nothing — so the claim is strictly more conservative, and the
+  // supersession questions `areServingMutationsCurrent` answers are unchanged.
+  const correctionClaim = useRef<ReadonlyMap<
+    string,
+    { epoch: number; owner: symbol }
+  > | null>(null);
   // The serving whose row-scoped removal is in flight (#1963), or null. An id, so the
   // one row the user named is the only one that dims.
   const [removingId, setRemovingId] = useState<number | null>(null);
@@ -464,6 +463,7 @@ export default function FoodLogBar({
       for (const [key, owner] of lifecycles) dismissToast(key, owner);
       barMountedRef.current = false;
       activeProfileRef.current = undefined;
+      releaseCorrectionClaim();
       correctionUiGeneration.current += 1;
       removalUiGeneration.current += 1;
     };
@@ -863,154 +863,54 @@ export default function FoodLogBar({
 
   function openCorrection(event: FoodLogEvent) {
     correctionUiGeneration.current += 1;
-    setSaving(false);
+    releaseCorrectionClaim();
+    correctionClaim.current = beginServingMutations([
+      foodServingToastKey(receiptProfileId, event.date, event.groupKey),
+    ]);
     setEditing(event);
-    setDraft({
-      groupKey: event.groupKey,
-      mealSlot: event.mealSlot,
-      when: {
-        date: event.date,
-        // The row's stated instant, rebuilt from its local wall clock on its own day
-        // (the list carries "HH:MM", minute grain — the grain this sheet displays and
-        // edits at). An untouched time is OMITTED from the save below, precisely so
-        // this reconstruction is never written back over a second-precision original.
-        statedAt: event.eatenAt
-          ? (statedInstantOnDate(
-              event.date,
-              event.eatenAt,
-              tz
-            )?.toISOString() ?? null)
-          : null,
-      },
-      mealTouched: false,
-    });
+  }
+
+  function releaseCorrectionClaim() {
+    const held = correctionClaim.current;
+    correctionClaim.current = null;
+    if (held) finishServingMutations(held);
   }
 
   function closeCorrection() {
     correctionUiGeneration.current += 1;
-    setSaving(false);
+    releaseCorrectionClaim();
     setEditing(null);
-    setDraft(null);
   }
 
-  // The day + eating-time pair moved (via the shared control, which owns the pair
-  // rule). Decision 4 (#2227): a newly chosen hour drags the Meal select with it —
-  // each offered hour carries its derived window (eatingHoursOnDate), and a
-  // minute-grain instant (a "Now" fill, the row's own pinned minute) derives through
-  // the same boundary function — until the user touches Meal by hand in this sheet.
-  function setCorrectionWhen(next: WhenValue) {
-    setDraft((d) => {
-      if (!d) return d;
-      let mealSlot = d.mealSlot;
-      if (
-        !d.mealTouched &&
-        next.statedAt !== null &&
-        next.statedAt !== d.when.statedAt
-      ) {
-        const offered = eatingHoursOnDate(
-          next.date,
-          tz,
-          new Date(),
-          slotBoundaries
-        ).find((option) => option.iso === next.statedAt);
-        mealSlot =
-          offered?.slot ??
-          foodSlotForHhmm(statedHhmm(next.statedAt, tz), slotBoundaries);
-      }
-      return { ...d, when: next, mealSlot };
-    });
-  }
-
-  async function saveCorrection() {
-    if (!editing || !draft) return;
+  // The form has written and the SERVER answered with both placements (#1934): the pair
+  // is one projection transition, and when only the window changes both name the same
+  // (date, group), with `from` clearing the source window and `to` settling the
+  // destination at post-move truth. The bar adopts those figures rather than its guess.
+  function settleCorrection(saved: FoodServingSaved) {
+    if (saved.kind !== "corrected") return;
     const noticeScope = currentReceiptProfileScope();
-    // The bounded-days policy the retired Day dropdown physically enforced, kept at
-    // save time for a hand-typed date: this sheet recovers a recent meal, it is not an
-    // unrestricted historical editor.
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(draft.when.date) ||
-      draft.when.date < minCorrectionDay ||
-      draft.when.date > maxCorrectionDay
-    ) {
-      profileToast(noticeScope, "Pick a day from the log's own recent range.", {
-        tone: "error",
-      });
-      return;
-    }
-    const correctionEpochs = beginServingMutations([
-      foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
-      foodServingToastKey(receiptProfileId, draft.when.date, draft.groupKey),
-    ]);
-    const correctionUi = ++correctionUiGeneration.current;
-    setSaving(true);
-    const fd = new FormData();
-    fd.set("event_id", String(editing.id));
-    fd.set("group_key", draft.groupKey);
-    fd.set("date", draft.when.date);
-    fd.set("meal_slot", draft.mealSlot);
-    // The eating-time wire (#2227): an untouched time is OMITTED (the row's stored
-    // instant — seconds included — stays byte-identical), "none" clears, "HH:MM"
-    // states that wall time on the submitted day. The pair travels as (day, wall
-    // time), so a day change re-anchors the statement instead of stranding an instant
-    // off its own day.
-    const draftHhmm = statedHhmm(draft.when.statedAt, tz) || null;
-    if (draftHhmm === null) {
-      if (editing.eatenAt !== null) fd.set("occurred_at", "none");
-    } else if (
-      draftHhmm !== editing.eatenAt ||
-      draft.when.date !== editing.date
-    ) {
-      fd.set("occurred_at", draftHhmm);
-    }
-    let outcome: FoodEventEditResult;
-    try {
-      outcome = await updateFoodLogEvent(fd);
-    } catch {
-      const current = areServingMutationsCurrent(correctionEpochs);
-      finishServingMutations(correctionEpochs);
-      if (correctionUiGeneration.current === correctionUi) setSaving(false);
-      if (current || !isMountedProfile())
-        profileToast(
-          noticeScope,
-          "Couldn't correct that serving — try again.",
-          {
-            tone: "error",
-          }
-        );
-      return;
-    }
-    const current = areServingMutationsCurrent(correctionEpochs);
-    finishServingMutations(correctionEpochs);
-    if (correctionUiGeneration.current === correctionUi) setSaving(false);
-    if (!outcome.ok) {
-      if (current || !isMountedProfile())
-        profileToast(noticeScope, outcome.error, { tone: "error" });
-      return;
-    }
-    if (correctionUiGeneration.current === correctionUi) closeCorrection();
+    const claim = correctionClaim.current;
+    const current = claim ? areServingMutationsCurrent(claim) : false;
+    closeCorrection();
     if (!current) {
+      // A newer mutation on this coordinate superseded the claim while the form was
+      // open, so this answer is no longer the latest word about it. Re-read both
+      // coordinates rather than painting a stale pair.
       if (isMountedProfile()) {
         void reconcileServingTruthIfIdle(
-          foodServingToastKey(receiptProfileId, editing.date, editing.groupKey),
-          editing.date,
-          editing.groupKey
+          foodServingToastKey(receiptProfileId, saved.from.date, saved.from.groupKey),
+          saved.from.date,
+          saved.from.groupKey
         );
         void reconcileServingTruthIfIdle(
-          foodServingToastKey(
-            receiptProfileId,
-            draft.when.date,
-            draft.groupKey
-          ),
-          draft.when.date,
-          draft.groupKey
+          foodServingToastKey(receiptProfileId, saved.to.date, saved.to.groupKey),
+          saved.to.date,
+          saved.to.groupKey
         );
       }
       return;
     }
-    // The pair is one projection transition. When only the window changes, both name
-    // the same (date, group), with `from` clearing the source window and `to` settling
-    // the destination at post-move truth.
-    applyPlacements([outcome.from, outcome.to]);
+    applyPlacements([saved.from, saved.to]);
     profileToast(noticeScope, "Serving corrected.");
   }
 
@@ -1941,61 +1841,17 @@ export default function FoodLogBar({
             <div className="min-w-0 flex-1">
               <FoodRowLabel group={g} />
             </div>
-            {/* NO MINUS AT ZERO (#3987). A permanently disabled control is chrome
-                that says nothing, on the row people tap most; there is nothing to
-                remove until something is logged. The 32px box is kept for the ones
-                that do render — `.tap-target` adds a fixed 12px, so the 44px floor
-                (#3486/#3514) is reached only from 32px up. */}
-            {mealCount > 0 && (
-              <button
-                type="button"
-                data-testid={`undo-${g.slug}`}
-                aria-label={`Remove a ${g.name} serving from ${activeSlot}`}
-                onClick={() => void bump(g, -1)}
-                className="tap-target flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 dark:hover:bg-ink-800"
-              >
-                <IconMinus className="h-4 w-4" stroke={2} />
-              </button>
-            )}
-            <span
-              data-testid={`count-${g.slug}`}
-              className={`w-5 text-center text-sm font-semibold tabular-nums ${
-                mealCount === 0
-                  ? "text-slate-500 dark:text-slate-400"
-                  : "text-slate-700 dark:text-slate-200"
-              }`}
-            >
-              <RollingNumber
-                value={mealCount}
-                testId={`rolling-count-${g.slug}`}
-              />
-            </span>
-            <button
-              type="button"
-              data-testid={`log-${g.slug}`}
-              aria-label={`Add a ${g.name} serving to ${activeSlot}`}
-              onClick={() => void bump(g, 1)}
-              className="group tap-target flex h-8 w-8 items-center justify-center rounded-full text-white"
-            >
-              {/* The full-size painted chip inside carries the one-shot settle class.
-                  It is still the tapped chip people see, while the button keeps focus
-                  and its 44px effective target throughout. */}
-              <span
-                data-testid={`food-settle-${g.slug}`}
-                data-motion="settle"
-                data-reduced-motion={reducedMotion ? "true" : "false"}
-                data-settling={
-                  settlingCoordinates.has(renderedCoordinate) ? "true" : "false"
-                }
-                className={`flex h-full w-full items-center justify-center rounded-full bg-brand-600 transition group-hover:bg-brand-700${
-                  settlingCoordinates.has(renderedCoordinate)
-                    ? ` ${settlePlan.className}`
-                    : ""
-                }`}
-              >
-                <IconPlus className="h-4 w-4" stroke={2} />
-              </span>
-            </button>
+            {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3). */}
+            <FoodServingControl
+              slug={g.slug}
+              name={g.name}
+              slot={activeSlot}
+              count={mealCount}
+              settling={settlingCoordinates.has(renderedCoordinate)}
+              reducedMotion={reducedMotion}
+              settleClassName={settlePlan.className}
+              onBump={(delta) => void bump(g, delta)}
+            />
           </li>
         );
       })}
@@ -2259,113 +2115,35 @@ export default function FoodLogBar({
         </section>
         {nutrientSummary}
       </div>
-      {editing && draft && (
+      {editing && (
         <ModalShell
           title="Correct this serving"
           onClose={closeCorrection}
           size="sm"
         >
-          <div data-testid="food-correct-modal" className="space-y-3">
-            <p
-              data-testid="food-correct-provenance"
-              className="text-xs text-slate-500 dark:text-slate-400"
-            >
-              {/* The one place the eating-time/tap split is answered (#2227 decision
-                  7): the binary a reader cares about is whether an eating time exists
-                  at all, and "Logged at" over an eating time was a wrong claim. */}
-              {editing.eatenAt
-                ? `Ate at ${editing.eatenAt}.`
-                : `No eating time recorded — logged at ${editing.loggedTime}.`}{" "}
-              Correcting moves this serving — the day&rsquo;s totals and meal
-              tallies follow it.
-            </p>
-            <div>
-              <label className="label" htmlFor="food-correct-group">
-                Food group
-              </label>
-              <select
-                id="food-correct-group"
-                data-testid="food-correct-group"
-                className="input py-1.5 text-sm"
-                value={draft.groupKey}
-                onChange={(e) =>
-                  setDraft((d) => d && { ...d, groupKey: e.target.value })
-                }
-              >
-                {catalogGroups.map((group) => (
-                  <option key={group.slug} value={group.slug}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <span className="label">When</span>
-              {/* The day + eating-time PAIR, owned together by the shared control
-                  (#2227/#2236): hour grain (the data's own precision), correct mode
-                  ("Not stated" is first and clears), bounded to the same recent days
-                  the retired Day dropdown offered. `recorded_at` is deliberately not
-                  here — the tap instant is audit history, never editable. */}
-              <WhenControl
-                mode="correct"
-                grain="hour"
-                value={draft.when}
-                onChange={setCorrectionWhen}
-                minDate={minCorrectionDay}
-                maxDate={maxCorrectionDay}
-                dateLabel="Day"
-                timeLabel="Time eaten"
-                testId="food-correct-time"
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="food-correct-slot">
-                Meal
-              </label>
-              <select
-                id="food-correct-slot"
-                data-testid="food-correct-slot"
-                className="input py-1.5 text-sm"
-                value={draft.mealSlot}
-                onChange={(e) =>
-                  // A hand-set Meal wins from here on: the follow-the-hour default
-                  // (decision 4) stops moving it once the user has spoken.
-                  setDraft(
-                    (d) =>
-                      d && {
-                        ...d,
-                        mealSlot: e.target.value as FoodSlot,
-                        mealTouched: true,
-                      }
-                  )
-                }
-              >
-                {FOOD_SLOTS.map((meal) => (
-                  <option key={meal} value={meal}>
-                    {meal}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-2 border-t border-black/10 pt-3 dark:border-white/10">
-            <button
-              type="button"
-              data-testid="food-correct-cancel"
-              className="btn-ghost"
-              onClick={closeCorrection}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              data-testid="food-correct-save"
-              className="btn"
-              disabled={saving}
-              onClick={saveCorrection}
-            >
-              {saving ? "Saving…" : "Save correction"}
-            </button>
+          <div data-testid="food-correct-modal">
+            {/* THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from the
+                row. This modal used to spell its own group select, when-control and
+                meal select; the record's rows and the add door spelled two more. */}
+            <FoodServingForm
+              groups={catalogGroups}
+              date={editing.date}
+              slotBoundaries={slotBoundaries}
+              minDate={minCorrectionDay}
+              maxDate={maxCorrectionDay}
+              row={{
+                eventId: editing.id,
+                groupKey: editing.groupKey,
+                date: editing.date,
+                mealSlot: editing.mealSlot,
+                eatenAt: editing.eatenAt,
+                loggedAt: editing.loggedTime,
+              }}
+              subjectProfileId={activeProfileId ?? undefined}
+              testId="food-correct"
+              onSaved={settleCorrection}
+              onCancel={closeCorrection}
+            />
           </div>
         </ModalShell>
       )}
