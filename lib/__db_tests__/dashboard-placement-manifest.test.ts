@@ -940,23 +940,25 @@ describe("actual atomic dashboard manifests", () => {
   // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
-  // +1 on EVERY persona (#4767 item 2): the Today band's intraday chart asks for the
-  // profile's latest worn HR day before anything else, and none of these six has one
-  // on today, so all six pay exactly that one indexed read and stop. That is the
-  // gate doing its job — a profile that DOES have today's minutes pays the day
-  // gather as well, which is the cost of drawing the chart rather than of asking.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 227,
-    "marathon-runner": 226,
-    household: 270,
-    pregnant: 223,
-    "diabetic-cgm": 234,
+    // −3 each (#4228 A): the recap's adherence walk stops before today, so no
+    // persona makes today's three per-day reads any more — the day's activities,
+    // its taken set and its skipped set. `household` is unmoved because its acting
+    // profile has no active intake items, so `windowAdherence` returns before the
+    // walk and never made them; measured by instrumenting the walk and rendering
+    // all six personas, which reported five walking one day fewer and household
+    // short-circuiting.
+    bodybuilder: 223,
+    "marathon-runner": 222,
+    household: 269,
+    pregnant: 219,
+    "diabetic-cgm": 230,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 249,
+    biohacker: 245,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

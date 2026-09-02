@@ -5,7 +5,7 @@ import {
   type WeekSpine as WeekSpineData,
 } from "@/lib/training-week-spine";
 import { ACTIVITY_TYPES } from "@/lib/types";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StateLegend } from "@/components/StateCells";
 
 // THE WEEK SPINE (#2566, Viz 1) — Training → Overview's week, as a band.
@@ -59,15 +59,15 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
           const shown = squares.slice(0, MAX_BLOCKS);
           const overflow = squares.length - shown.length;
           return (
-            <div
+            <SeriesPoint
               key={day.date}
               role="listitem"
               data-testid="week-spine-day"
               data-date={day.date}
               data-state={day.state}
               data-sessions={day.sessions}
-              aria-label={summary}
-              className="flex flex-col items-center gap-1"
+              label={summary}
+              className="relative flex flex-col items-center gap-1"
             >
               <span
                 className={`text-xs font-medium uppercase ${
@@ -106,14 +106,13 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
                   </span>
                 )}
               </div>
-            </div>
+            </SeriesPoint>
           );
         })}
       </div>
-      <VisualizationDetails
-        label="Daily details"
+      <SeriesSummary
+        label="Training day by day this week"
         items={spine.days.map(weekSpineDaySummary)}
-        data-testid="week-spine-details"
       />
 
       <p
