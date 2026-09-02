@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import type { Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -10,7 +11,6 @@ import {
 import { workerDbPath } from "./worker-env";
 import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
 import {
-  expectControlBoxHeight,
   openDashboardAll,
   settledBoxes,
   settledClick,
@@ -900,9 +900,15 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     await expect(
       spark.getByTestId("standing-sparkline-endpoint")
     ).toBeAttached();
-    const titles = await spark
-      .locator("[data-testid='standing-sparkline-point'] title")
-      .allTextContents();
+    // One focusable band per reading names it (#4760): the hover readout, the
+    // touch and keyboard door, and the AT name are one attribute.
+    const pointLabels = (family: Locator) =>
+      family
+        .getByTestId("standing-sparkline-point")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("aria-label") ?? "")
+        );
+    const titles = await pointLabels(weight);
     expect(titles.length).toBeGreaterThan(1);
     // "63.6 kg · Friday, August 21" — a value with its unit, then the day in the
     // login's own date format. The exact value is the fixture's business, not this
@@ -922,11 +928,7 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
       "series"
     );
     await expect(restingHrSpark).toHaveAttribute("data-sparkline-points", "2");
-    expect(
-      await restingHrSpark
-        .locator("[data-testid='standing-sparkline-point'] title")
-        .allTextContents()
-    ).toEqual([
+    expect(await pointLabels(restingHr)).toEqual([
       expect.stringMatching(/^60 bpm · /),
       expect.stringMatching(/^58 bpm · /),
     ]);
@@ -968,21 +970,10 @@ test("Standing draws its aligned sparkline column on the desktop", async ({
     expect(column.plotTop).toBeLessThan(column.factsBottom);
     expect(column.plotBottom).toBeGreaterThan(column.factsTop);
 
-    // DESKTOP DENSITY, NOT THE PHONE FLOOR (#3896). `button-control` renders at the
-    // 44px tap floor and sheds it from sm upward, but the summary carried
-    // `min-h-11! min-w-11!` — important declarations outrank that reset at EVERY
-    // width, so all 18 consumers stayed pinned at 44px on the desktop. 1280px is well
-    // above sm, so the compact row height is what must render here.
-    const summary = weight
-      .getByTestId("standing-sparkline-details")
-      .locator("summary");
-    await expect(summary).toBeVisible();
-    // #3938 retired `button-control`'s compact desktop height into the one control
-    // box. `< 44` passed on 34, on 26 and on 12 — an inequality written for a value
-    // that no longer exists stops testing anything. This summary is
-    // `whitespace-normal`, so the claim is the box plus WHOLE line boxes: a wrap is
-    // the construction working, a fraction of a line is ad-hoc padding.
-    await expectControlBoxHeight(summary, "standing sparkline summary at 1280");
+    // NO FOLD BESIDE THE PLOT (#4760): the history is the plot's own bands and a
+    // hidden summary, never a visible "history details" control.
+    await expect(weight.locator("details, summary")).toHaveCount(0);
+    await expect(weight.getByText(/history details/)).toHaveCount(0);
 
     // A family whose domain has no trend read draws nothing — that is the rule, and
     // the column still holds its place for the families that do.

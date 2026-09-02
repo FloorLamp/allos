@@ -4,7 +4,7 @@ import { strengthLevelLabel } from "@/lib/strength-standards";
 import type { StrengthLadderRow } from "@/lib/strength-ladder";
 import { fmtWeight } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 const BANDS = [
   "Untrained",
@@ -41,7 +41,12 @@ export default function StrengthStandardsLadder({
         </p>
       ) : (
         <div className="mt-4 space-y-5">
-          {rows.map(({ exercise, placement }) => (
+          {rows.map(({ exercise, placement }) => {
+            const prior = placement.prior
+              ? `About 90 days ago: ${fmtWeight(placement.prior.e1rmKg, weightUnit)}`
+              : null;
+            const now = `Now: ${fmtWeight(placement.current.e1rmKg, weightUnit)} e1RM · ${strengthLevelLabel(placement.current.level)}`;
+            return (
             <div key={exercise} data-testid="strength-ladder-row">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <Link
@@ -60,11 +65,12 @@ export default function StrengthStandardsLadder({
                 className="relative mt-2 h-5"
                 aria-label={`${exercise} at ${strengthLevelLabel(placement.current.level)}`}
               >
-                <div className="absolute inset-x-0 top-1/2 flex h-2 -translate-y-1/2 overflow-hidden rounded-full">
+                <div className="absolute inset-x-0 top-1/2 flex h-2 -translate-y-1/2">
                   {BANDS.map((band, index) => (
-                    <span
+                    <SeriesPoint
                       key={band}
-                      className={
+                      label={band}
+                      className={`relative first:rounded-l-full last:rounded-r-full ${
                         [
                           "bg-slate-300 dark:bg-slate-700",
                           "bg-slate-400 dark:bg-slate-600",
@@ -73,37 +79,33 @@ export default function StrengthStandardsLadder({
                           "bg-sky-500",
                           "bg-violet-500",
                         ][index]
-                      }
+                      }`}
                       style={{ width: `${100 / BANDS.length}%` }}
                     />
                   ))}
                 </div>
-                {placement.priorPercent != null && (
-                  <span
+                {placement.priorPercent != null && prior && (
+                  <SeriesPoint
+                    label={prior}
                     className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-500 bg-white dark:bg-ink-900"
                     style={{ left: `${placement.priorPercent}%` }}
                     data-testid="strength-ladder-prior"
                   />
                 )}
-                <span
+                <SeriesPoint
+                  label={now}
                   className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-slate-900 shadow-sm dark:border-ink-950 dark:bg-white"
                   style={{ left: `${placement.currentPercent}%` }}
                   data-testid="strength-ladder-current"
                 />
               </div>
-              <VisualizationDetails
-                label={`${exercise} ladder details`}
-                items={[
-                  ...BANDS,
-                  ...(placement.prior
-                    ? [
-                        `About 90 days ago: ${fmtWeight(placement.prior.e1rmKg, weightUnit)}`,
-                      ]
-                    : []),
-                ]}
+              <SeriesSummary
+                label={`${exercise} standards ladder`}
+                items={[...BANDS, ...(prior ? [prior] : []), now]}
               />
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

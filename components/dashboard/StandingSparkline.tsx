@@ -7,7 +7,7 @@ import {
 import { fillDailySeries } from "@/lib/day-fill";
 import { glanceSeriesToneClass } from "@/lib/glance-age";
 import SingleReadingMark from "@/components/SingleReadingMark";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // THE STANDING SPARKLINE COLUMN (#3252) — one aligned column, desktop only.
 //
@@ -34,8 +34,8 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 //
 // INLINE SVG, no chart library. The page adds none, and the marks here are the issue's
 // own spec: a 2px stroke, a ~12% area fill under it, an emphasized endpoint dot, and
-// a nearest-point SVG title naming the exact value and date. The shared disclosure
-// below exposes the same history to touch and keyboard users without a custom scrub.
+// one band per reading over the plot naming the exact value and date — the hover
+// readout, and the same band is the touch, keyboard and AT door to it (#4760).
 //
 // The GAP is not decided here either: `seriesGapForSeriesKey` already declares, per
 // series, whether a missing day is a hole a level may cross or an absence the stroke
@@ -169,12 +169,11 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
-    <>
-      <div
-        className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
-        style={{ width: WIDTH }}
-      >
-        <svg
+    <div
+      className={`relative hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
+      style={{ width: WIDTH }}
+    >
+      <svg
           data-testid="standing-sparkline"
           data-sparkline-state="series"
           data-sparkline-points={values.length}
@@ -223,30 +222,28 @@ export default function StandingSparkline({
               fill="currentColor"
             />
           )}
-          {strokes.flat().map((point) => (
-            // One transparent band per reading carries semantic SVG naming; the
-            // disclosure below carries the same values for sighted touch and keyboard.
-            <rect
-              key={point.date}
-              data-testid="standing-sparkline-point"
-              x={Math.max(0, point.x - band / 2)}
-              y={0}
-              width={band}
-              height={HEIGHT}
-              fill="transparent"
-            >
-              <title>{series.pointLabel(point)}</title>
-            </rect>
-          ))}
-        </svg>
-      </div>
-      <div className="relative z-10 hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
-        <VisualizationDetails
-          label={`${series.name} history details`}
-          items={strokes.flat().map((point) => series.pointLabel(point))}
-          data-testid="standing-sparkline-details"
+      </svg>
+      {strokes.flat().map((point) => (
+        // One band per reading, laid over the plot in the same coordinates it is
+        // drawn in (the viewBox renders 1:1). It names the reading and is the door
+        // to it for hover, touch and keyboard alike.
+        <SeriesPoint
+          key={point.date}
+          data-testid="standing-sparkline-point"
+          label={series.pointLabel(point)}
+          className="absolute top-0"
+          style={{
+            left: Math.max(0, point.x - band / 2),
+            width: band,
+            height: HEIGHT,
+          }}
         />
-      </div>
-    </>
+      ))}
+      <SeriesSummary
+        label={`${series.name} history`}
+        items={strokes.flat().map((point) => series.pointLabel(point))}
+        data-testid="standing-sparkline-summary"
+      />
+    </div>
   );
 }
