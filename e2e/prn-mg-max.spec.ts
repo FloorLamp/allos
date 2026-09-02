@@ -13,7 +13,7 @@ import { hydratedClick } from "./helpers";
 //     mg/day max is confirmed and the amounts are known — 3 × 800 mg = 2400 mg
 //     against a 1200 mg/day ceiling that "3 of 6 doses" would have read as calm —
 //     and its copy states the mg basis, never a dose count;
-//   • the med form's "Maximum mg per day" field round-trips through save/edit.
+//   • the med form's "Maximum mg per 24 hours" field round-trips through save/edit.
 //
 // Each test owns its fixture rows (unique names on profile 1, idempotent cleanup
 // in beforeEach + finally) and asserts only on those; dates derive from

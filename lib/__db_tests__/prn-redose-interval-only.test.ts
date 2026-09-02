@@ -2,7 +2,7 @@
 //
 // The sick-kid scenario: a caregiver quick-adds "Acetaminophen 160 mg", ticks As
 // needed, fills in "Minimum hours between doses = 6", and leaves the OPTIONAL
-// "Maximum doses per day" blank — it is the field a parent is least likely to know
+// "Maximum doses per 24 hours" blank — it is the field a parent is least likely to know
 // offhand. Before this fix both med-data gathers ANDed the two fields together, so a
 // stored 6-hour interval produced no redose guidance at all: the single number wanted
 // at 2am was computable, stored, and never shown.

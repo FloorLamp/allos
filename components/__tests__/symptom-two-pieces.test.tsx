@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SymptomForm from "@/components/illness/SymptomForm";
 import SymptomRowControl from "@/components/illness/SymptomRowControl";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 
 // THE SYMPTOM DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.symptom.pieces`).
@@ -425,23 +426,28 @@ describe("SymptomLogBar mounts both pieces", () => {
 // the fold DISPLAYS is what it WRITES — so it is asserted through the control's own
 // rendered day and the posted `date` together, on both sides of the toggle.
 describe("the day the bar shows is the day it writes (#4691)", () => {
+  // THE TOGGLE IS THE CARD'S (#4691), so the fixture supplies the card. A bar rendered
+  // WITHOUT a provider is a single-day surface with no toggle at all, which is the
+  // Timeline/cycles/quick-entry shape and is covered by the mounts above.
   function toggledBar(): void {
     render(
-      <SymptomLogBar
-        date={TODAY}
-        altDate={FOUND_DAY}
-        initial={{}}
-        initialAlt={{}}
-        initialNotes={{}}
-        symptoms={PICKER_SYMPTOMS}
-        customNames={[]}
-        suggestActivateIllness={false}
-        showTemperature
-        temperatureUnit="F"
-        timeZone="UTC"
-        profileId={SUBJECT}
-        showTitle={false}
-      />
+      <CockpitDayProvider date={TODAY} altDate={FOUND_DAY}>
+        <SymptomLogBar
+          date={TODAY}
+          altDate={FOUND_DAY}
+          initial={{}}
+          initialAlt={{}}
+          initialNotes={{}}
+          symptoms={PICKER_SYMPTOMS}
+          customNames={[]}
+          suggestActivateIllness={false}
+          showTemperature
+          temperatureUnit="F"
+          timeZone="UTC"
+          profileId={SUBJECT}
+          showTitle={false}
+        />
+      </CockpitDayProvider>
     );
   }
 

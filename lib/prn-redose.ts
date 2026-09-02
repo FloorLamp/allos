@@ -269,7 +269,7 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // notification marker, because a card should always show the current window state, not
 // go silent after the notice fired. Returns null when nothing has been logged yet
 // (no window to describe). The interval/max are the item's confirmed numbers.
-// The daily max is OPTIONAL on this path (#1458). "Maximum doses per day" is the
+// The daily max is OPTIONAL on this path (#1458). "Maximum doses per 24 hours" is the
 // field a caregiver is least likely to know offhand, and the single number they want
 // at 2am — when is the next dose OK — is computable from the minimum interval alone.
 // So a null max means only that the count-ceiling half of the status is unknown:

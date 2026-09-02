@@ -6,7 +6,7 @@ import { medicationsToday, prnTodayItem } from "./med-card-helpers";
 import { workerDbPath } from "./worker-env";
 
 // #1458 — the sick-kid path, end to end. A caregiver adds a PRN medication with a
-// minimum interval and leaves the OPTIONAL "Maximum doses per day" blank, logs a dose,
+// minimum interval and leaves the OPTIONAL "Maximum doses per 24 hours" blank, logs a dose,
 // and must still get the one number they want at 2am: when the next dose is OK.
 // Before the fix both med-data gathers ANDed interval AND max, so this exact config
 // rendered `prn-redose-line` nowhere.

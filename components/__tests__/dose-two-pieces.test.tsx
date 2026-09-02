@@ -11,6 +11,8 @@ import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { LedgerGroup } from "@/lib/day-ledger";
 
 // TWO PIECES FOR THE DOSE DOMAIN (#4424): `HistoricalDoseForm` and
@@ -59,6 +61,16 @@ vi.mock("@/components/useOptimisticLedger", () => ({
       settle: (outcome: T) => unknown;
     }) => op.settle(await op.write()),
   }),
+}));
+vi.mock("@/app/(app)/symptom-actions", () => ({
+  logSymptom: vi.fn(async () => ({ ok: true })),
+  editSymptom: vi.fn(async () => ({ ok: true })),
+  lowerSymptom: vi.fn(async () => ({ ok: true })),
+  setSymptomNote: vi.fn(async () => ({ ok: true })),
+  removeSymptom: vi.fn(async () => ({ ok: true })),
+  logTemperature: vi.fn(async () => ({ ok: true, degF: 98.6, flag: null })),
+  activateIllnessForSymptoms: vi.fn(async () => ({ ok: true })),
+  suggestSymptomsFromText: vi.fn(async () => ({ ok: false, reason: "empty" })),
 }));
 vi.mock("@/app/(app)/medications/actions", () => ({
   logMedicationAdministration: mocks.logMedicationAdministration,
@@ -485,6 +497,76 @@ describe("the PRN row's earlier-dose statement reaches a past day (#4691)", () =
       fireEvent.click(screen.getByTestId("prn-log-custom"))
     );
     expect(fields().date).toBe(TODAY_UTC);
+  });
+
+  // THE PAYOFF OF THE DAY CONTEXT (#4691): the Meds row is a SIBLING of the Symptoms
+  // section, and before the lift it could not see the toggle at all — one card showed
+  // Yesterday while this row could only ever write today. It now reads the card's day,
+  // so the two cannot disagree by construction rather than by both remembering to.
+  it("opens its statement on the card's day when it is inside one", async () => {
+    render(
+      <CockpitDayProvider date={TODAY} altDate={YESTERDAY}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "19:15" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    // TODAY here is the card's primary day, which is where the provider starts.
+    expect(fields().date).toBe(TODAY);
+  });
+
+  // …AND IT MOVES WITH THE TOGGLE. Both real siblings under one card: the Symptoms
+  // bar renders the toggle, the Meds row reads the day it sets. This is the assertion
+  // the whole lift exists for — before it, the toggle was local state inside the bar
+  // and this row could not observe it at all.
+  it("follows the toggle its SIBLING renders", async () => {
+    render(
+      <CockpitDayProvider date={TODAY} altDate={YESTERDAY}>
+        <SymptomLogBar
+          date={TODAY}
+          altDate={YESTERDAY}
+          initial={{}}
+          initialNotes={{}}
+          symptoms={[]}
+          customNames={[]}
+          suggestActivateIllness={false}
+          showTitle={false}
+        />
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "19:15" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    expect(fields().date).toBe(YESTERDAY);
   });
 
   it("the taken-now tap states no day at all — its action stamps today", async () => {

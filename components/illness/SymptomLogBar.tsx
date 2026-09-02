@@ -25,6 +25,7 @@ import { fmtTemp } from "@/lib/units";
 import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import TemperatureField from "@/components/vitals/TemperatureField";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { statedHhmm } from "@/lib/stated-time";
 import {
@@ -66,8 +67,6 @@ const SYMPTOM_LABEL_OPTIONS = symptomLabelOptions();
 export default function SymptomLogBar({
   date,
   altDate,
-  dateLabel = "Today",
-  altDateLabel = "Yesterday",
   initial,
   initialAlt,
   initialNotes,
@@ -90,8 +89,6 @@ export default function SymptomLogBar({
   date: string;
   // Optional second date for the toggle (yesterday on the dashboard). Absent → single-day.
   altDate?: string;
-  dateLabel?: string;
-  altDateLabel?: string;
   // symptom key → severity already logged, for the primary and alt dates.
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
@@ -138,15 +135,16 @@ export default function SymptomLogBar({
   // name their symptoms and show the viewer's own, so those mounts omit it.
   analysisHref?: AppRoute;
 }) {
-  const hasToggle = !!altDate;
-  const [mode, setMode] = useState<"primary" | "alt">("primary");
-  // THE DAY THIS BAR IS STANDING ON (#4691). Everything beneath the toggle binds to
-  // it — the severity taps, the notes, a confirmed text sentence, and the temperature
-  // fold — because the day a surface DISPLAYS is the day its writes state.
-  const activeDate = mode === "alt" && altDate ? altDate : date;
-  // Whether the bar is standing on its PRIMARY day — the day whose "now" is a real
-  // instant. Everything that may fall back to the current clock is gated on this.
-  const isPrimaryDay = activeDate === date;
+  // THE DAY THIS BAR IS STANDING ON (#4691) comes from the CARD, not from this
+  // component: the toggle sets the card's day context and every control beneath it —
+  // this bar's taps, notes and temperature fold, and the Meds rows that are this bar's
+  // SIBLING — reads the same answer. Unwrapped mounts (the Timeline day view, cycles,
+  // the quick-entry sheet) are single-day surfaces and stand on the day they were
+  // handed.
+  const card = useCockpitDay();
+  const activeDate = card?.activeDate ?? date;
+  const isPrimaryDay = card ? card.isPrimaryDay : true;
+  const hasToggle = !!card?.altDate;
 
   const [severitiesByDate, setSeveritiesByDate] = useState<
     Record<string, Record<string, number>>
@@ -185,12 +183,9 @@ export default function SymptomLogBar({
   // Switching the day re-anchors the pair rather than leaving a time stated on the
   // day the user just left — the WhenControl's own invariant 1, applied by the owner
   // of the day it is pinned to.
-  function selectDay(next: "primary" | "alt"): void {
-    setMode(next);
-    setTempWhen({
-      date: next === "alt" && altDate ? altDate : date,
-      statedAt: null,
-    });
+  function selectDay(next: string): void {
+    card?.select(next);
+    setTempWhen({ date: next, statedAt: null });
   }
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
@@ -257,8 +252,9 @@ export default function SymptomLogBar({
     setIntakePending(true);
     // The day the bar is standing on, unless the sentence itself said "yesterday"
     // and the toggle offers that day.
+    const altDay = card?.altDate ?? altDate;
     const targetDate =
-      intakeStaged.dayOffset === -1 && altDate ? altDate : activeDate;
+      intakeStaged.dayOffset === -1 && altDay ? altDay : activeDate;
     for (const s of intakeStaged.symptoms) {
       const fd = new FormData();
       fd.set("symptom", s.slug);
@@ -501,7 +497,7 @@ export default function SymptomLogBar({
               </span>
             </p>
           )}
-          {hasToggle && (
+          {card?.altDate && (
             <div
               data-testid="symptom-day-toggle"
               className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
@@ -509,20 +505,20 @@ export default function SymptomLogBar({
               <button
                 type="button"
                 data-testid="symptom-day-primary"
-                aria-pressed={mode === "primary"}
-                onClick={() => selectDay("primary")}
-                className={`px-2 py-1 ${mode === "primary" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+                aria-pressed={isPrimaryDay}
+                onClick={() => selectDay(card.date)}
+                className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
               >
-                {dateLabel}
+                {card.dateLabel}
               </button>
               <button
                 type="button"
                 data-testid="symptom-day-alt"
-                aria-pressed={mode === "alt"}
-                onClick={() => selectDay("alt")}
-                className={`px-2 py-1 ${mode === "alt" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+                aria-pressed={!isPrimaryDay}
+                onClick={() => selectDay(card.altDate!)}
+                className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
               >
-                {altDateLabel}
+                {card.altDateLabel}
               </button>
             </div>
           )}

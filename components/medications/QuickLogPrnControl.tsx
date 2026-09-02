@@ -7,6 +7,7 @@ import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
+import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
@@ -97,12 +98,27 @@ export default function QuickLogPrnControl({
   const [open, setOpen] = useState(false);
   const todayStr = dateStrInTz(tz);
   const days = doseLogDays(todayStr);
+  // THE CARD'S DAY (#4691), when this row is inside one. The illness cockpit's toggle
+  // is the day context for every control beneath it, so flipping to Yesterday opens
+  // this statement on yesterday — the Meds row and the Symptoms section can no longer
+  // disagree about which day the card is showing. Outside a cockpit (the medications
+  // page, the dashboard's own dose card) there is no card day and the statement opens
+  // on today.
+  const card = useCockpitDay();
+  const cardDay = card?.activeDate ?? todayStr;
   // The earlier-dose pair (#2236): the day starts on the day this row displays and
   // the time starts UNSTATED — the control never defaults it to now.
   const [when, setWhen] = useState<WhenValue>(() => ({
-    date: todayStr,
+    date: cardDay,
     statedAt: null,
   }));
+  // The card's day is server state; when it changes under an OPEN statement, the pair
+  // moves with it rather than leaving a time stated on the day the user just left.
+  const [seenCardDay, setSeenCardDay] = useState(cardDay);
+  if (seenCardDay !== cardDay) {
+    setSeenCardDay(cardDay);
+    setWhen({ date: cardDay, statedAt: null });
+  }
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
@@ -136,7 +152,7 @@ export default function QuickLogPrnControl({
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
         setOpen(false);
-        setWhen({ date: todayStr, statedAt: null });
+        setWhen({ date: cardDay, statedAt: null });
         return { kind: "keep" };
       },
       onError: () => {
