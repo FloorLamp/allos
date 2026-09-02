@@ -330,6 +330,11 @@ for (const { rows, why } of CLAIM_HEIGHTS) {
   });
 }
 
+// Long enough that the panel is still painting its slide when the assertion
+// below reads it, on any machine: the shipped arrival is 240ms (`--overlay-ms`)
+// and the read follows two CDP round-trips after the sheet's body renders.
+const ARRIVAL_HOLD_MS = 10_000;
+
 test("the quick-log sheet claims while its body is still arriving, and releases on close (#4334)", async ({
   page,
 }) => {
@@ -341,20 +346,67 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   // happen.
   await page.goto("/nutrition");
   const logSheet = await openLogSheet(page);
-  await settledClick(page, await showLogRow(logSheet, "log-food"));
+  const logFood = await showLogRow(logSheet, "log-food");
+  // HOLD THE NEXT ARRIVAL OPEN, so the read below lands inside it every run
+  // (#4796). At the shipped `--overlay-ms` (240ms) this was a race the local box
+  // always won: measured 2026-09-02, the panel still had 195ms of its enter
+  // animation left on the frame `food-log-bar` became visible, and the two CDP
+  // round-trips that followed landed AFTER it ended — so the half named SETTLING
+  // only ever examined the settled state, and it went red the three times CI was
+  // slow enough to land inside the arrival. Nothing else reads this token, and
+  // `usePresence` times the unmount from lib/motion's JS constant, so the
+  // sheet's lifecycle is untouched — only how long the panel paints its slide.
+  //
+  // LAND WHAT IS ALREADY ON SCREEN IN THE SAME TURN. Growing the token retimes
+  // keyframes that have already FINISHED — a non-filling animation whose duration
+  // now exceeds its current time is running again — so this sheet's own slide
+  // replays over the new duration and the click below waits out Playwright's
+  // stability check on it. Measured: `settledClick` took the hold plus ~120ms, at
+  // both 3s and 10s.
+  await page.evaluate((ms) => {
+    document.documentElement.style.setProperty("--overlay-ms", `${ms}ms`);
+    for (const animation of document.getAnimations()) animation.finish();
+  }, ARRIVAL_HOLD_MS);
+  await settledClick(page, logFood);
   const sheet = page.getByTestId("quick-entry-sheet");
   const panel = sheet.locator("[data-sheet-panel]");
   await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
 
   const viewport = page.viewportSize()!.height;
-  // SETTLING: read before waiting for anything, while the body is still arriving.
-  const arriving = (await panel.boundingBox())!;
-  expect(await claimedOffset(page)).toBeGreaterThanOrEqual(
-    viewport - arriving.y - 1
-  );
+  // SETTLING: ONE observation, not two statements apart. The claim and the box
+  // it is compared against are read in the same synchronous turn, and the read
+  // carries the proof that it happened mid-arrival — `animating` is the panel's
+  // own running keyframe, so this can never quietly go back to measuring the
+  // settled state.
+  const arriving = await panel.evaluate((el) => ({
+    top: el.getBoundingClientRect().top,
+    claimed: parseFloat(
+      document.documentElement.style.getPropertyValue("--bottom-edge-offset") ||
+        "0"
+    ),
+    animating: el.getAnimations().length > 0,
+  }));
+  expect(arriving.animating).toBe(true);
+  expect(arriving.claimed).toBeGreaterThanOrEqual(viewport - arriving.top - 1);
+
+  // Release the hold and land the panel where ten seconds of waiting would have
+  // put it — the slowdown exists only so the read above can happen inside the
+  // arrival, and the rest of this case is about the settled state.
+  await panel.evaluate((el) => {
+    document.documentElement.style.removeProperty("--overlay-ms");
+    for (const animation of el.getAnimations()) animation.finish();
+  });
   // SETTLED: and now it is the panel's top edge exactly.
   const [settled] = await settledBoxes([panel]);
   expect(await claimedOffset(page)).toBeCloseTo(viewport - settled.y, 0);
+  // …and the mid-arrival reading was ALREADY that number. THIS is the assertion
+  // the SETTLING half was reaching for: the claim is the panel's RESTING top
+  // edge from its first frame, never one that catches up when the animation
+  // ends. Before #4796 it read the edge the panel was sliding up FROM (or, in
+  // the window where the quick-log sheet is still playing its own exit, that
+  // departing panel's stale claim), and a notice raised during those ~240ms came
+  // to rest on the sheet.
+  expect(arriving.claimed).toBeCloseTo(viewport - settled.y, 0);
 
   // Closing RELEASES the claim down to the nav dock — the same shape the
   // workout-dock test pins for a session ending, and the half that a claim which is
