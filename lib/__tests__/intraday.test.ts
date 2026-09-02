@@ -730,10 +730,8 @@ describe("intradayFreshness (#4767)", () => {
   // window that closed AFTER the last sample. HR runs 06:00–07:00; "now" and the
   // block are what move.
   const hr = hrRun(DAY, 360, 61, () => 62);
-  const model = (
-    nowMinute: number | null,
-    over: Partial<IntradayInput> = {}
-  ) => buildIntradayModel(input({ hr, nowMinute, ...over }))!;
+  const model = (nowMinute: number | null, over: Partial<IntradayInput> = {}) =>
+    buildIntradayModel(input({ hr, nowMinute, ...over }))!;
 
   it.each([
     ["a past day states no lag at all", null, null],
