@@ -87,24 +87,31 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
 }) => {
   await page.goto("/training?tab=log");
 
+  // A FILTERED LOG IS A PLACE (#4079): the search is a GET form and the type chips
+  // are links, so every refinement below is a navigation rather than a client filter.
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
   await search.fill(OWN_TITLE);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.waitForURL(/[?&]q=/);
 
-  // The Server-Action round-trip ceiling used across the training log specs.
   // The feed renders slim rows (#2897); the row itself carries the type glyph.
   const row = page.getByTestId("history-row").filter({ hasText: OWN_TITLE });
   await expect(row).toBeVisible({ timeout: 20_000 });
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
   // medal. `data-icon` is the icon KEY, so this reads the resolution, not a class name.
+  // A training row icons off its own structured sport rather than off the shared
+  // substrate's one-glyph-per-kind registry, which is what keeps this assertion
+  // meaningful now that the Log renders through that substrate.
   const glyph = row.getByTestId("activity-icon");
   await expect(glyph).toHaveAttribute("data-icon", "activity");
 
   // The type chips can NAME this row. Without a chip it would be visible and
   // unfilterable at the same time — present in the feed, absent from the filter bar.
   const chips = page.getByRole("group", { name: "Activity type" });
-  await chips.getByRole("button", { name: "Unspecified" }).click();
+  await chips.getByRole("link", { name: "Unspecified" }).click();
+  await page.waitForURL(/[?&]type=unclassified/);
   await expect(
     page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toBeVisible({
@@ -112,7 +119,8 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   });
 
   // …and it is a real filter, not a no-op: switching to Cardio drops the row.
-  await chips.getByRole("button", { name: "Cardio" }).click();
+  await chips.getByRole("link", { name: "Cardio" }).click();
+  await page.waitForURL(/[?&]type=cardio/);
   await expect(
     page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toHaveCount(0, {

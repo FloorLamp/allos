@@ -1120,6 +1120,19 @@ export function gatherHistoryLog(
               linkedScope: event.linkedRefsScope,
             }
           : {}),
+        // THE ROW'S OWN GLYPH, carried across on the same terms (#4079). Only the
+        // activity composer sets these, and a row without `iconType` keeps the closed
+        // kind registry's glyph — so this widens nothing for the kinds that never
+        // asked.
+        ...(event.iconType
+          ? {
+              iconType: event.iconType,
+              ...(event.iconTitle ? { iconTitle: event.iconTitle } : {}),
+              ...(event.iconSportNames && event.iconSportNames.length > 0
+                ? { iconSportNames: event.iconSportNames }
+                : {}),
+            }
+          : {}),
       });
     }
   }

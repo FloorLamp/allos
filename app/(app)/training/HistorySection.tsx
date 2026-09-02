@@ -23,6 +23,8 @@ import {
   parseTimelineOpen,
   renderedTimelineDays,
   timelineFoldCounts,
+  timelineMonthKey,
+  timelineYearKey,
   toggledTimelineOpen,
   windowTimelineDays,
   type TimelineFold,
@@ -190,7 +192,27 @@ export default async function HistorySection({
   });
 
   const days = mergeMemberTimelines(feeds);
-  const windowed = windowTimelineDays(days, todayStr, openFolds);
+  // …AND THE FOLD IS PART OF THE WINDOW. Exempting the GATHER from the bound is only
+  // half of #1634: the substrate then folds everything outside the recent band into
+  // month and year cards, so a search whose matches are all old renders one auto-opened
+  // month and a spine of closed cards over the rest — three matches, one visible. That
+  // is the "no matches" defect wearing a fold, and it fails the same way: the reader
+  // typed a question and the page answered with furniture. So a filtered read opens
+  // every period it returned. The bound that keeps this finite is the gather's ceiling
+  // above; the fold spine is a convenience for SCROLLING, and a reader who has typed
+  // is not scrolling.
+  const windowed = windowTimelineDays(
+    days,
+    todayStr,
+    filtered
+      ? new Set(
+          days.flatMap((day) => [
+            timelineMonthKey(day.date),
+            timelineYearKey(day.date),
+          ])
+        )
+      : openFolds
+  );
   const renderedDays = renderedTimelineDays(windowed);
   const rowCount = renderedDays.reduce((n, d) => n + d.events.length, 0);
   const hasMore = feeds.some((feed) => feed.gather.hasMore);
