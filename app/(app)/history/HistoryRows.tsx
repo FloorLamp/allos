@@ -537,7 +537,11 @@ export default function HistoryRows({
             }}
             subjectProfileId={row.profileId}
             tz={row.tz}
-            onSaved={done}
+            testId={`history-row-food-${edit.eventId}`}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
             onCancel={done}
           />
         );

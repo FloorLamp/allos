@@ -5,8 +5,8 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
-  usualRoutineAnswerText,
   usualRoutinePhrase,
+  usualRoutineWriteAnswer,
 } from "@/lib/usual-routine";
 import { logUsualRoutine, type UsualRoutineResult } from "@/app/(app)/actions";
 
@@ -82,22 +82,7 @@ export default function UsualRoutineControl({
           });
           return { kind: "rollback" };
         }
-        const wrote = new Set(result.groups.map((g) => g.groupKey));
-        toast(
-          usualRoutineAnswerText(
-            food.filter((f) => wrote.has(f.slug)).map((f) => f.name),
-            result.doses
-              .filter(
-                (d) => d.outcome === "logged" || d.outcome === "logged-off-day"
-              )
-              .map((d) => d.name),
-            result.doses
-              .filter(
-                (d) => d.outcome !== "logged" && d.outcome !== "logged-off-day"
-              )
-              .map((d) => d.name)
-          )
-        );
+        toast(usualRoutineWriteAnswer(food, result));
         return { kind: "keep" };
       },
       onError: () => {

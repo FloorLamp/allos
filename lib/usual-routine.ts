@@ -163,3 +163,32 @@ export function usualRoutineAnswerText(
     parts.push(`${namesPhrase(dosesRefused)} not logged`);
   return parts.length > 0 ? parts.join(" · ") : "Nothing left to log";
 }
+
+// THE ANSWER, FROM ONE OUTCOME, IN ONE PLACE (#4438 item 5). Three surfaces render the
+// bundle's sentence — the dashboard control, the record door and the nutrition bar —
+// and each had spelled the same three filters itself: intersect the NAMED groups with
+// the ones the core says it wrote, then split the doses on whether their confirm moved
+// the ledger. Three copies of a rounding decision is three chances to round it
+// differently, which is the one thing `usualRoutineAnswerText` exists to prevent.
+//
+// `landed` is spelled here rather than imported from `usualRoutineDoseLogged`, which
+// sits beside the write core and would pull the database into a client bundle. The
+// outcome arrives as its own string union from the action's typed result, so a value
+// this cannot name does not typecheck at the call site.
+export function usualRoutineWriteAnswer(
+  // What the BUTTON named, slug-paired with the label it promised.
+  named: readonly { slug: string; name: string }[],
+  written: {
+    groups: readonly { groupKey: string }[];
+    doses: readonly { name: string; outcome: string }[];
+  }
+): string {
+  const wrote = new Set(written.groups.map((g) => g.groupKey));
+  const landed = (outcome: string) =>
+    outcome === "logged" || outcome === "logged-off-day";
+  return usualRoutineAnswerText(
+    named.filter((f) => wrote.has(f.slug)).map((f) => f.name),
+    written.doses.filter((d) => landed(d.outcome)).map((d) => d.name),
+    written.doses.filter((d) => !landed(d.outcome)).map((d) => d.name)
+  );
+}

@@ -48,6 +48,13 @@ import {
 // instead of stranding an instant off its own day, and an UNTOUCHED time is OMITTED
 // from a correction — the row's stored instant, seconds included, stays byte-identical.
 //
+// THE MOUNT ANNOUNCES, NOT THE FORM, and food is the domain where that matters. Its
+// siblings toast from inside because their surfaces have one notice channel; the
+// nutrition bar's is PROFILE-SCOPED (`profileToast`) because a correction resolving
+// after a profile switch must not surface a note about the previous subject's food. A
+// toast fired from in here could not know which scope it was in, so `onSaved` carries
+// the outcome out and each mount says its own sentence in its own channel.
+//
 // THE SUBJECT IS OPTIONAL AND SPELLED ONCE (ruling 4): absent is the acting profile,
 // present posts `profile_id` and is re-gated server-side by `gateItemProfile`.
 
@@ -108,7 +115,13 @@ export default function FoodServingForm({
   tz?: string;
   onSaved: (saved: FoodServingSaved) => void;
   onCancel: () => void;
-  testId?: string;
+  /**
+   * The marker prefix every field on this form hangs off — `{testId}-group`,
+   * `-slot`, `-when`, `-save`, `-cancel`, `-provenance`. Required, because a form
+   * that mounts on three surfaces cannot carry ONE set of fixed ids: the record's
+   * row and the nutrition sheet can be on screen at the same time.
+   */
+  testId: string;
 }) {
   // WHICH SURFACE THIS WRITE CAME FROM (#3087), read off the region: one form renders
   // on the record, in the bar's modal and in the door, and the action cannot know which.
@@ -199,7 +212,7 @@ export default function FoodServingForm({
   return (
     <form
       className="grid gap-2 sm:grid-cols-2"
-      data-testid={testId}
+      data-testid={`${testId}-form`}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -210,7 +223,7 @@ export default function FoodServingForm({
         // binary a reader cares about is whether an eating time exists at all, and
         // "Logged at" over an eating time was a wrong claim.
         <p
-          data-testid="food-correct-provenance"
+          data-testid={`${testId}-provenance`}
           className="text-xs text-slate-500 sm:col-span-2 dark:text-slate-400"
         >
           {row.eatenAt
@@ -224,7 +237,7 @@ export default function FoodServingForm({
         Food group
         <select
           name="group_key"
-          data-testid="food-form-group"
+          data-testid={`${testId}-group`}
           className="input mt-1 w-full"
           value={groupKey}
           onChange={(event) => setGroupKey(event.target.value)}
@@ -240,7 +253,7 @@ export default function FoodServingForm({
         Meal
         <select
           name="meal_slot"
-          data-testid="food-form-slot"
+          data-testid={`${testId}-slot`}
           className="input mt-1 w-full"
           value={mealSlot}
           onChange={(event) => {
@@ -269,9 +282,9 @@ export default function FoodServingForm({
           tz={tzProp}
           minDate={minDate}
           maxDate={maxDate}
-          dateLabel="Day"
+          dateLabel="Date"
           timeLabel={row ? "Time eaten" : "Time"}
-          testId={testId ? `${testId}-when` : "food-form-when"}
+          testId={`${testId}-time`}
         />
       </div>
       <InlineError>{error}</InlineError>
@@ -279,7 +292,7 @@ export default function FoodServingForm({
         <button
           className="btn"
           type="submit"
-          data-testid="food-form-save"
+          data-testid={`${testId}-save`}
           disabled={pending}
         >
           {pending ? "Saving…" : row ? "Save" : "Add"}
@@ -287,7 +300,7 @@ export default function FoodServingForm({
         <button
           className="btn-ghost"
           type="button"
-          data-testid="food-form-cancel"
+          data-testid={`${testId}-cancel`}
           onClick={onCancel}
         >
           Cancel

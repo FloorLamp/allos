@@ -88,6 +88,7 @@ import { statedInstantOnDate } from "./stated-time";
 import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
+import type { FoodEatingTime } from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
 import { logHistoricalDose, markDoseTaken } from "./queries/intake/adherence";
@@ -215,7 +216,12 @@ export function logUsualRoutineCore(
   // origin paths `handleFoodLog` and `handleDoseTap` use — so one composed tap is
   // attributed exactly as the individual taps it replaces would have been. The
   // dashboard control passes nothing and both stores record NULL.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // WHEN THE BUNDLE WAS EATEN (#4438) — the bar's sticky statement, or the chat tap's
+  // own instant. It reaches the FOOD half only: a dose's administration time is the
+  // dose half's own question, already answered by the writer this core picks below, and
+  // an eating time is not a claim about when a capsule went down.
+  time?: FoodEatingTime
 ): UsualRoutineOutcome {
   const t = today(profileId);
   // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
@@ -233,6 +239,7 @@ export function logUsualRoutineCore(
           namedGroups,
           loggedVia,
           undefined,
+          time,
           { notifyMessageId }
         )
       : ({ kind: "nothing-to-log" } as const);

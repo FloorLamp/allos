@@ -24,6 +24,9 @@ import type {
   DoseUndoResult,
 } from "@/lib/dose-outcome-text";
 import { isFoodSlot, type FoodSlot } from "@/lib/food-slot";
+import { normalizeClockTime } from "@/lib/vitals-input";
+import { zonedWallTimeToUtc } from "@/lib/date";
+import { getTimezone } from "@/lib/settings";
 import {
   usualRoutineDayOffers,
   type UsualRoutineDayOffer,
@@ -294,6 +297,18 @@ export async function logUsualRoutine(
   const day = today(profile.id);
   const rawDate = String(formData.get("date") ?? "").trim();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : day;
+  // WHEN THE BUNDLE WAS EATEN (#4438). The nutrition bar's sticky statement — "8pm",
+  // set once and carried across the taps that follow — used to ride the single-serving
+  // add and be dropped by the bundle beside it, so "8pm" plus "log my usual dinner"
+  // landed untimed rows. Read here the way every other food write reads it: an ABSOLUTE
+  // profile-local wall clock resolved against the SUBMITTED day and the profile's zone,
+  // never a client instant (#2053). A malformed or DST-gap statement records no eating
+  // time rather than refusing the bundle — the validate-never-drop rule this domain
+  // already holds at log time: the servings land, the statement is what is lost.
+  const stated = normalizeClockTime(String(formData.get("occurred_at") ?? ""));
+  const eatenAt = stated
+    ? zonedWallTimeToUtc(getTimezone(profile.id), date, stated)
+    : null;
   const outcome = logUsualRoutineCore(
     profile.id,
     rawWindow,
@@ -307,7 +322,9 @@ export async function logUsualRoutine(
     // dose rows, on a surface it was never mounted on. The two mountings that reach
     // this each declare their region; `page` is the honest fallback for a third that
     // does not, exactly as it is everywhere else.
-    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
+    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
+    undefined,
+    eatenAt ? { eatenAt: eatenAt.toISOString(), source: "stated" } : undefined
   );
   if (outcome.kind === "invalid-date")
     return { ok: false, error: "That day is out of range." };
@@ -325,6 +342,11 @@ export async function logUsualRoutine(
     promptsEndOfFast(getActiveFastCached(profile.id), outcome.date, day);
   revalidateRoute("/");
   revalidateRoute("/nutrition");
+  // THE RECORD, TOO (#4438). The retired food-only spelling revalidated `/history` and
+  // this one did not, so once the nutrition bar posts the composed action every surface
+  // it used to refresh has to be here or the bundle's servings would land off-screen on
+  // the page built for finding gaps.
+  revalidateRoute("/history");
   revalidateRoute("/medications");
   revalidateRoute("/upcoming");
   revalidateRoute("/trends");

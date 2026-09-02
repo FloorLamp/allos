@@ -1519,6 +1519,12 @@ async function handleUsualRoutineTap(
   const messageId = cq.message?.message_id;
   const notifyMessageId =
     messageId != null ? messagePointerIdAt(profileId, chatId, messageId) : null;
+  // WHEN THE BUNDLE WAS EATEN (#4438), on the same terms as the `food:` and protein
+  // buttons sitting on this very keyboard: a contemporaneous chat tap's declared
+  // contract IS "I'm having this now", so it stamps its own instant with source `tap`.
+  // On a day that has ended nothing is invented — a backfilled morning states no hour,
+  // exactly as the sibling buttons leave one unstated (#4118).
+  const tapAt = instantNow();
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
@@ -1526,7 +1532,8 @@ async function handleUsualRoutineTap(
     offer.groups,
     offer.doseIds,
     NUDGE,
-    notifyMessageId
+    notifyMessageId,
+    date === t ? { eatenAt: tapAt, source: "tap" } : undefined
   );
   // THE DATED-WRITE TRAIL HAS NO HOLE ON THE MOST-USED SURFACE (#4306, owner ruling
   // 2026-08-31). A backfill from a nudge writes the rows the web backfill writes, so it

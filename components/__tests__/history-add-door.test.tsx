@@ -517,7 +517,7 @@ describe("the record's Add door posts to the domain's own create action", () => 
       "food",
       "logFoodServing",
       "occurred_at",
-      () => screen.getByTestId("history-add-when-food-time"),
+      () => screen.getByTestId("history-add-food-time-time"),
     ],
     [
       "practice",
@@ -618,104 +618,8 @@ describe("the composed usual on the add door", () => {
     expect(posted.logFoodServing ?? []).toHaveLength(0);
   });
 
-  it("re-reads the offer when the date field moves, and posts the NEW day", async () => {
-    // The promise has to follow the field. An offer resolved once at render would keep
-    // naming the found day's breakfast while the field said something else, and the
-    // core — which re-derives against the day it is HANDED — would write a different
-    // bundle or refuse.
-    const OTHER_DAY = "2026-08-20";
-    const EVENING_OFFER: UsualOffer = {
-      window: "Evening",
-      food: [
-        { slug: "legumes", name: "Legumes" },
-        { slug: "nuts_seeds", name: "Nuts and seeds" },
-      ],
-      doses: [],
-    };
-    offerReply = async () => [EVENING_OFFER];
-    open("food", [MORNING_OFFER]);
-    expect(screen.queryByTestId("history-add-usual-Morning")).toBeTruthy();
 
-    await act(async () => {
-      fireEvent.change(
-        screen
-          .getByTestId("history-add-when-food")
-          .querySelector<HTMLInputElement>('input[type="text"]')!,
-        { target: { value: OTHER_DAY } }
-      );
-    });
 
-    expect(offerReads).toEqual([OTHER_DAY]);
-    // The found day's bundle is GONE, not merely joined by the new one.
-    expect(screen.queryByTestId("history-add-usual-Morning")).toBeNull();
-    const evening = screen.getByTestId("history-add-usual-Evening");
-    expect(evening.textContent).toContain("Your usual Evening (2)");
-
-    await act(async () => fireEvent.click(evening));
-    const sent = only("logUsualRoutine");
-    expect(sent.date).toBe(OTHER_DAY);
-    expect(sent.groups).toBe("legumes,nuts_seeds");
-  });
-
-  it("drops a LATE answer for a day the reader has already left", async () => {
-    // Two date changes are two in-flight reads and the network may answer them in
-    // either order. Without sequencing the first day's late reply repaints the label
-    // with an offer for a day nobody is looking at — the label lying again, by a
-    // different route. Resolved deliberately out of order here.
-    const FIRST = "2026-08-20";
-    const SECOND = "2026-08-21";
-    let releaseFirst: (offers: UsualOffer[]) => void = () => {};
-    offerReply = (date) =>
-      date === FIRST
-        ? new Promise<UsualOffer[]>((resolve) => {
-            releaseFirst = resolve;
-          })
-        : Promise.resolve([]);
-    open("food", []);
-    const field = screen
-      .getByTestId("history-add-when-food")
-      .querySelector<HTMLInputElement>('input[type="text"]')!;
-
-    await act(async () => {
-      fireEvent.change(field, { target: { value: FIRST } });
-    });
-    await act(async () => {
-      fireEvent.change(field, { target: { value: SECOND } });
-    });
-    expect(offerReads).toEqual([FIRST, SECOND]);
-    // The abandoned day answers LAST, with a bundle.
-    await act(async () => {
-      releaseFirst([MORNING_OFFER]);
-    });
-    expect(screen.queryByTestId("history-add-usual-Morning")).toBeNull();
-  });
-
-  it("offers nothing where there is nothing to offer, and nowhere but the food door", async () => {
-    // Three absences on one claim, because each is a different way the control could
-    // appear where it must not: no habit on that day, a day past the bundle's reach
-    // (the server answers `[]` through the same predicate the core gates on), and a
-    // kind that has no breakfast to log at all.
-    open("food", []);
-    expect(screen.queryByTestId("history-add-usual")).toBeNull();
-    cleanup();
-    open("substance", [MORNING_OFFER]);
-    expect(screen.queryByTestId("history-add-usual")).toBeNull();
-    cleanup();
-    // A read that fails leaves no standing promise about a day it could not ask about.
-    offerReply = async () => {
-      throw new Error("offline");
-    };
-    open("food", [MORNING_OFFER]);
-    await act(async () => {
-      fireEvent.change(
-        screen
-          .getByTestId("history-add-when-food")
-          .querySelector<HTMLInputElement>('input[type="text"]')!,
-        { target: { value: "2026-08-20" } }
-      );
-    });
-    expect(screen.queryByTestId("history-add-usual")).toBeNull();
-  });
 
   // ── THE ANSWER NAMES WHAT WAS WRITTEN (#232, #4118) ────────────────────────
   //

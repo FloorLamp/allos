@@ -52,7 +52,11 @@
 import { instantNow } from "./clock";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
-import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
+import {
+  logFoodServingCore,
+  type FoodEatingTime,
+  type FoodWriteOrigin,
+} from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import type { FoodSlot } from "./food-slot";
 import { getUsualFoodOffer } from "./queries/nutrition";
@@ -126,6 +130,11 @@ export function logUsualFoodCore(
   // Nutrition page's own, or the composed Telegram one-tap. Required, no default.
   loggedVia: LoggedVia,
   loggedAt: string = instantNow(),
+  // WHEN THE BUNDLE WAS EATEN (#4438), when the tap stated one. Every row the bundle
+  // writes carries it, because one tap is one physical event. Absent keeps the declared
+  // meal window and a NULL eating instant, which is what a backfill with nothing stated
+  // honestly holds.
+  time?: FoodEatingTime,
   // Which message's tap this is (#2264/#2460) — the Telegram composed one-tap only;
   // the web control passes nothing and stores NULL, exactly as the bar does.
   origin?: FoodWriteOrigin
@@ -149,9 +158,11 @@ export function logUsualFoodCore(
 
       const groups: UsualFoodLogged[] = [];
       for (const groupKey of toLog) {
-        // The window is a DECLARATION here, exactly as the bar's meal tab is (#2269):
-        // the offer is about a meal window and states no eating time, so the serving
-        // carries the declared slot and a NULL eating instant rather than a guessed one.
+        // The window is a DECLARATION here when nothing was stated, exactly as the bar's
+        // meal tab is (#2269). WHEN A TIME IS STATED the serving carries it and
+        // `logFoodServingCore`'s one chokepoint derives the window from the instant —
+        // the same rule the single-serving tap beside this one has always obeyed, and
+        // the reason the statement is threaded rather than dropped (#4438).
         const outcome = logFoodServingCore(
           profileId,
           groupKey,
@@ -159,7 +170,7 @@ export function logUsualFoodCore(
           via,
           loggedAt,
           window,
-          undefined,
+          time,
           origin
         );
         // Unreachable in practice — the offer only ever contains catalog slugs — but a

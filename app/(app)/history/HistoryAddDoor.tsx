@@ -7,8 +7,8 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { logUsualRoutine } from "@/app/(app)/actions";
 import {
-  usualRoutineAnswerText,
   usualRoutinePhrase,
+  usualRoutineWriteAnswer,
 } from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
@@ -247,28 +247,10 @@ export default function HistoryAddDoor({
                     fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
                     const outcome = await logUsualRoutine(fd);
                     if (!outcome.ok) return outcome.error;
-                    // `usualRoutineAnswerText` — the SAME sentence the dashboard
-                    // control and the Telegram ack render, so three surfaces cannot
-                    // round one outcome three ways. The logged/refused split is spelled
-                    // as the dashboard spells it rather than through
-                    // `usualRoutineDoseLogged`, which lives beside the write core and
-                    // would pull the database into this client bundle.
-                    const wrote = new Set(
-                      outcome.groups.map((g) => g.groupKey)
-                    );
-                    const landed = (o: string) =>
-                      o === "logged" || o === "logged-off-day";
-                    answer = usualRoutineAnswerText(
-                      offer.food
-                        .filter((f) => wrote.has(f.slug))
-                        .map((f) => f.name),
-                      outcome.doses
-                        .filter((d) => landed(d.outcome))
-                        .map((d) => d.name),
-                      outcome.doses
-                        .filter((d) => !landed(d.outcome))
-                        .map((d) => d.name)
-                    );
+                    // The SAME sentence the dashboard control, the nutrition bar and
+                    // the Telegram ack render, through the one helper that owns the
+                    // rounding (#4438 item 5).
+                    answer = usualRoutineWriteAnswer(offer.food, outcome);
                     return null;
                   },
                   () => answer ?? "Added to the record."
@@ -301,7 +283,9 @@ export default function HistoryAddDoor({
             date={date}
             slotBoundaries={vocabulary.foodSlotBoundaries}
             maxDate={maxDate}
+            testId="history-add-food"
             onSaved={() => {
+              toast("Added to the record.");
               close();
               router.refresh();
             }}

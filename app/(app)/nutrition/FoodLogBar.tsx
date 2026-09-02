@@ -34,7 +34,16 @@ import { useUndoableAction } from "@/components/useUndoableAction";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // The list-naming phrase is shared with the dashboard's composed control (#2458), so
 // the Food tab and the dashboard can never name a write differently.
-import { namesPhrase } from "@/lib/usual-routine";
+import {
+  usualRoutinePhrase,
+  usualRoutineWriteAnswer,
+} from "@/lib/usual-routine";
+import {
+  logUsualRoutine,
+  usualRoutineOffersOn,
+  type UsualRoutineResult,
+} from "@/app/(app)/actions";
+import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
   foodServingCoordinate,
@@ -69,14 +78,12 @@ import { endFastAction, undoEndFastAction } from "./fast-actions";
 import {
   deleteFoodLogEvent,
   logFoodServing,
-  logUsualFood,
   readFoodServingTruth,
   undoFoodServing,
   type FoodEventDeleteResult,
   type FoodEventEditResult,
   type FoodLogResult,
   type FoodServingTruthResult,
-  type UsualFoodResult,
 } from "./actions";
 import {
   useFoodSelectedDate,
@@ -168,12 +175,22 @@ export interface FoodLogDay {
   events: FoodLogEvent[];
 }
 
+// A STABLE EMPTY DEFAULT, not an inline literal. The dose half's read effect depends on
+// `usualRoutine.offers`, and a fresh `[]` per render is a fresh identity per render —
+// which is a render loop, not a default. The mount with no shortcut (the global
+// quick-entry sheet) shares this one object forever.
+const NO_USUAL_ROUTINE: { date: string; offers: UsualRoutineDayOffer[] } = {
+  date: "",
+  offers: [],
+};
+
 export default function FoodLogBar({
   today,
   days,
   groupsBySlot,
   proteinRankBySlot,
   usualBySlot,
+  usualRoutine = NO_USUAL_ROUTINE,
   slot,
   slotBoundaries,
   initialFoodGroup,
@@ -200,6 +217,12 @@ export default function FoodLogBar({
   // renders as nothing: silence, not a hedge. Optional and defaulted, so a surface that
   // has no use for the shortcut (the global quick-entry sheet) simply omits it.
   usualBySlot?: Record<FoodSlot, string[]>;
+  // THE DOSE HALF OF THE COMPOSED BUNDLE (#4438), seeded for the day the page rendered
+  // so the button's first paint is the server's answer rather than a food-only flash
+  // that grows a rider. `date` is which day `offers` describes; a picker moved off it
+  // re-reads. Defaulted empty for the mount that has no shortcut at all (the global
+  // quick-entry sheet), which degrades the button to exactly the food half it was.
+  usualRoutine?: { date: string; offers: UsualRoutineDayOffer[] };
   // The profile's current food window (#950), derived server-side from the same
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
@@ -301,6 +324,12 @@ export default function FoodLogBar({
   // meal-follows-the-hour rule moved into it with them, so the record's rows and the
   // door state a serving through the same three fields this sheet does.
   const [editing, setEditing] = useState<FoodLogEvent | null>(null);
+  // WHICH OPENING THIS IS. The form seeds its own draft on mount, so re-opening the
+  // modal — for another row, or for the same row while an earlier save is still in
+  // flight — has to give a FRESH form rather than one still holding the last draft and
+  // its disabled Save. This counter is the key that says so; the row id alone cannot,
+  // because correcting the same serving twice is exactly the case that needs it.
+  const [correctionOpening, setCorrectionOpening] = useState(0);
   const correctionUiGeneration = useRef(0);
   // The source coordinate's mutation claim, held for as long as the modal is OPEN.
   // It used to be taken around the request alone; the modal makes that window wider by
@@ -863,6 +892,7 @@ export default function FoodLogBar({
 
   function openCorrection(event: FoodLogEvent) {
     correctionUiGeneration.current += 1;
+    setCorrectionOpening((n) => n + 1);
     releaseCorrectionClaim();
     correctionClaim.current = beginServingMutations([
       foodServingToastKey(receiptProfileId, event.date, event.groupKey),
@@ -1680,6 +1710,63 @@ export default function FoodLogBar({
     [usualOffer, groupsBySlot, activeSlot]
   );
 
+  // ---- THE DOSE HALF, ON THIS PAGE TOO (#4438) ----
+  //
+  // The bundle is one physical event — a smoothie with the supplements in it — and the
+  // dashboard, the quick-log menu and the record door have all offered both halves since
+  // #2458. The page food is actually LOGGED on offered the food half alone, so the one
+  // surface dedicated to it was the one where the morning stayed two taps.
+  //
+  // THE FOOD HALF STAYS CLIENT-DERIVED and the dose half is READ, because they answer to
+  // different things. Which groups still stand is a question about the optimistic counts
+  // the rows beside this button are already moving, so deriving it locally is what makes
+  // the offer disappear on the same tap. Which doses are still pending is server state
+  // this component has no copy of.
+  //
+  // THE READ IS SEQUENCED, and this is the door's own machinery arriving where the day
+  // PICKER actually is (#4424 ruling 2 retired the door's date field, so it stopped
+  // needing it). The label names every dose the tap will confirm, so a late reply for an
+  // abandoned day would repaint a promise about a day nobody is looking at any more.
+  const [usualDoses, setUsualDoses] = useState<UsualRoutineDayOffer[]>(
+    usualRoutine.offers
+  );
+  const seededUsualDate = usualRoutine.date;
+  const latestUsualRead = useRef(0);
+  useEffect(() => {
+    if (activeDate === seededUsualDate) {
+      latestUsualRead.current += 1;
+      setUsualDoses(usualRoutine.offers);
+      return;
+    }
+    const ticket = (latestUsualRead.current += 1);
+    void usualRoutineOffersOn(activeDate)
+      .then((offers) => {
+        if (latestUsualRead.current === ticket) setUsualDoses(offers);
+      })
+      .catch(() => {
+        // A failed read must not leave a promise standing about doses it could not ask
+        // about. The food half is untouched, so the bundle degrades to exactly the offer
+        // that shipped before this — never to a claim it cannot keep.
+        if (latestUsualRead.current === ticket) setUsualDoses([]);
+      });
+  }, [activeDate, seededUsualDate, usualRoutine.offers]);
+  const usualDoseRider = useMemo(
+    () => usualDoses.find((offer) => offer.window === activeSlot)?.doses ?? [],
+    [usualDoses, activeSlot]
+  );
+  // The bundle promises doses only while it promises FOOD: the food half is the offer's
+  // gate (lib/usual-routine.ts), and a dose-only "usual" is a worse copy of the dose
+  // rows that already exist. Empty groups therefore means no bundle at all, exactly as
+  // it does on every other host.
+  const usualDosesOffered = usualGroups.length > 0 ? usualDoseRider : [];
+  const doseIds = usualDosesOffered.map((d) => d.id);
+  // The label is the promise, through the ONE phrase every host of this bundle renders
+  // (#2458) — so the nutrition page and the dashboard cannot name one write differently.
+  const usualPhrase = usualRoutinePhrase(
+    usualGroups.map((g) => g.name),
+    usualDosesOffered
+  );
+
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
     if (slugs.length === 0) return;
@@ -1704,7 +1791,7 @@ export default function FoodLogBar({
         setServingCounts(activeDate, window, slug, () => value);
       }
     };
-    await usualLedger.tap<UsualFoodResult>({
+    await usualLedger.tap<UsualRoutineResult>({
       from: before,
       optimistic: Object.fromEntries(
         slugs.map((slug) => [
@@ -1719,11 +1806,17 @@ export default function FoodLogBar({
         // THE DAY BEING FILLED, posted (#4118). Without it the action fell back to
         // today, so the control on a past day would have written to the wrong one.
         fd.set("date", activeDate);
-        // The keys the BUTTON named. The core intersects them with the offer it
-        // re-derives from fresh state, so this list is an upper bound on the write and
-        // never an instruction to write outside the offer that currently stands.
+        // The keys and ids the BUTTON named. The core intersects BOTH with the bundle it
+        // re-derives from fresh state, so neither is an instruction to write outside the
+        // offer that currently stands.
         fd.set("groups", slugs.join(","));
-        return logUsualFood(stampLoggedVia(fd));
+        fd.set("dose_ids", doseIds.join(","));
+        // THE STICKY STATEMENT RIDES THE BUNDLE (#4438), exactly as it rides the
+        // single-serving add twenty lines up. It used to be dropped here, so "8pm" plus
+        // "log my usual dinner" landed untimed rows on the one surface that had a time
+        // field at all.
+        if (statedTime) fd.set("occurred_at", statedTime);
+        return logUsualRoutine(stampLoggedVia(fd));
       },
       settle: (result) => {
         if (!result.ok) {
@@ -1740,15 +1833,15 @@ export default function FoodLogBar({
           return isMountedProfile() ? { kind: "rollback" } : { kind: "keep" };
         }
         if (!isMountedProfile()) return { kind: "keep" };
+        // The SAME sentence the dashboard control, the record door and the Telegram ack
+        // render (#4438 item 5) — a bundle that lands four servings and refuses one dose
+        // says so here exactly as it does there.
         profileToast(
           noticeScope,
-          `Logged ${namesPhrase(
-            result.groups.map(
-              (g) =>
-                usualGroups.find((group) => group.slug === g.groupKey)?.name ??
-                g.groupKey
-            )
-          )}.`
+          usualRoutineWriteAnswer(
+            usualGroups.map((g) => ({ slug: g.slug, name: g.name })),
+            result
+          )
         );
         // ONE prompt for the whole bundle (#2756): the server answers a bundled write
         // with a single flag, so a usual-tap that landed five servings asks once.
@@ -1940,9 +2033,8 @@ export default function FoodLogBar({
               type="button"
               data-testid="food-usual-offer"
               data-groups={usualGroups.map((g) => g.slug).join(",")}
-              aria-label={`Log your usual ${activeSlot}: ${namesPhrase(
-                usualGroups.map((g) => g.name)
-              )}`}
+              data-doses={doseIds.join(",")}
+              aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
               disabled={usualLedger.blocked()}
               onClick={() => void logUsual()}
               className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
@@ -1959,7 +2051,7 @@ export default function FoodLogBar({
                   data-testid="food-usual-names"
                   className="block truncate text-xs text-slate-600 dark:text-slate-300"
                 >
-                  {namesPhrase(usualGroups.map((g) => g.name))}
+                  {usualPhrase}
                 </span>
               </span>
             </button>
@@ -2126,6 +2218,7 @@ export default function FoodLogBar({
                 row. This modal used to spell its own group select, when-control and
                 meal select; the record's rows and the add door spelled two more. */}
             <FoodServingForm
+              key={correctionOpening}
               groups={catalogGroups}
               date={editing.date}
               slotBoundaries={slotBoundaries}

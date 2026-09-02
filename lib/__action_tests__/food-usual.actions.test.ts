@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
-import { logUsualFood } from "@/app/(app)/nutrition/actions";
+import { logUsualRoutine } from "@/app/(app)/actions";
 import { getUsualFoodOffer } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -60,20 +60,21 @@ beforeEach(() => {
   revalidate.mockClear();
 });
 
-describe("logUsualFood", () => {
+describe("logUsualRoutine, food half", () => {
   it("logs one serving of each offered group into the window, on today", async () => {
     const { profile, anchor } = seedUsualMorning("usual-happy");
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented" })
     );
 
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       ok: true,
       window: "Morning",
       groups: [
         { groupKey: "berries", servings: 1, mealServings: 1 },
         { groupKey: "fermented", servings: 1, mealServings: 1 },
       ],
+      doses: [],
     });
     expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([
       { date: anchor, group_key: "berries", servings: 1 },
@@ -97,10 +98,10 @@ describe("logUsualFood", () => {
 
   it("refuses a second tap rather than logging a second breakfast", async () => {
     const { profile, anchor } = seedUsualMorning("usual-repeat");
-    await logUsualFood(
+    await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented" })
     );
-    const again = await logUsualFood(
+    const again = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented" })
     );
 
@@ -115,7 +116,7 @@ describe("logUsualFood", () => {
 
   it("writes only the intersection with the standing offer — a forged list lands nothing extra", async () => {
     const { profile, anchor } = seedUsualMorning("usual-forged");
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({
         meal_slot: "Morning",
         // Two groups that ARE offered, plus three that are not — a habitual group of
@@ -137,7 +138,7 @@ describe("logUsualFood", () => {
 
   it("refuses when nothing in the submitted list is still offered", async () => {
     const { profile, anchor } = seedUsualMorning("usual-stale");
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "red_meat,alcohol" })
     );
     expect(res.ok).toBe(false);
@@ -146,7 +147,7 @@ describe("logUsualFood", () => {
 
   it("refuses a window with no habit", async () => {
     const { profile, anchor } = seedUsualMorning("usual-cold-window");
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Evening", groups: "berries,fermented" })
     );
     expect(res.ok).toBe(false);
@@ -156,10 +157,10 @@ describe("logUsualFood", () => {
   it("rejects a bad window and an empty group list without touching the ledger", async () => {
     const { profile, anchor } = seedUsualMorning("usual-shape");
     expect(
-      (await logUsualFood(fd({ meal_slot: "Brunch", groups: "berries" }))).ok
+      (await logUsualRoutine(fd({ meal_slot: "Brunch", groups: "berries" }))).ok
     ).toBe(false);
     expect(
-      (await logUsualFood(fd({ meal_slot: "Morning", groups: "  " }))).ok
+      (await logUsualRoutine(fd({ meal_slot: "Morning", groups: "  " }))).ok
     ).toBe(false);
     expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([]);
   });
@@ -168,7 +169,7 @@ describe("logUsualFood", () => {
     const { login, profile, anchor } = seedUsualMorning("usual-readonly");
     actAs(login, profile, "read");
     await expect(
-      logUsualFood(fd({ meal_slot: "Morning", groups: "berries,fermented" }))
+      logUsualRoutine(fd({ meal_slot: "Morning", groups: "berries,fermented" }))
     ).rejects.toThrow();
     expect(servings(profile.id).filter((r) => r.date === anchor)).toEqual([]);
   });
@@ -177,7 +178,7 @@ describe("logUsualFood", () => {
     const { profile } = seedUsualMorning("usual-scope-a");
     const otherLogin = createLogin();
     const other = createProfile("usual-scope-b", otherLogin.id);
-    await logUsualFood(
+    await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented" })
     );
     expect(servings(other.id)).toEqual([]);
@@ -193,7 +194,7 @@ describe("logUsualFood", () => {
 // bounds it, and a day outside that bound is a REFUSAL rather than a silent fallback to
 // today. That distinction is the whole test — a parse that quietly substituted today
 // would look identical from the caller and would write a breakfast onto the wrong day.
-describe("logUsualFood on a past day", () => {
+describe("logUsualRoutine on a past day, food half", () => {
   function eventsOn(profileId: number, date: string) {
     return db
       .prepare(
@@ -225,7 +226,7 @@ describe("logUsualFood on a past day", () => {
     }
     const target = shiftDateStr(anchor, -6);
 
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented", date: target })
     );
     expect(res.ok).toBe(true);
@@ -259,7 +260,7 @@ describe("logUsualFood on a past day", () => {
     // would pass the assertion above and would silently delete the contemporaneous tap
     // from the evidence that makes the offer exist at all.
     const { profile, anchor } = seedUsualMorning("usual-dated-today");
-    await logUsualFood(
+    await logUsualRoutine(
       fd({
         meal_slot: "Morning",
         groups: "berries,fermented",
@@ -285,7 +286,7 @@ describe("logUsualFood on a past day", () => {
     // already occupies the past week, so "nothing on that day" would be a false claim
     // there, and a bounded assertion would miss a fallback landing anywhere else.
     const before = servings(profile.id);
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented", date: target })
     );
     expect(res.ok, why).toBe(false);
@@ -301,7 +302,7 @@ describe("logUsualFood on a past day", () => {
     // exactly as `logFoodServing`'s and `addProteinGrams`' parses already do. A
     // WELL-FORMED day out of reach is a claim, and that is what gets refused.
     const { profile, anchor } = seedUsualMorning("usual-garbage-date");
-    const res = await logUsualFood(
+    const res = await logUsualRoutine(
       fd({ meal_slot: "Morning", groups: "berries,fermented", date: "soon" })
     );
     expect(res.ok).toBe(true);
