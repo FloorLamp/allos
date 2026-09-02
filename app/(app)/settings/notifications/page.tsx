@@ -45,7 +45,15 @@ import {
   resolveEmailRecipients,
 } from "@/lib/notifications/email";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
-import { channelReadiness } from "@/lib/notifications/matrix-liveness";
+import {
+  channelReadiness,
+  columnLiveness,
+  isColumnReady,
+  type ChannelReadiness,
+} from "@/lib/notifications/matrix-liveness";
+import { readDeliveryOutcome } from "@/lib/notifications/delivery-marker";
+import { channelRowState } from "@/lib/notifications/delivery-status";
+import type { ChannelId } from "@/lib/notifications/types";
 import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { notifyScopeForLogin } from "@/lib/notify-scope-db";
 import { notifyScopeCaption } from "@/lib/notify-scope";
@@ -61,6 +69,7 @@ import EmailNotificationSettings from "./EmailNotificationSettings";
 import ProfileMuteToggle from "./ProfileMuteToggle";
 import HouseholdRoundSettings from "./HouseholdRoundSettings";
 import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
+import ChannelRow from "./ChannelRow";
 import NotificationPrefs from "./NotificationPrefs";
 import DigestTuneSettings from "./DigestTuneSettings";
 
@@ -74,6 +83,27 @@ function workoutScheduleSummary(profileId: number): string {
   if (weekdays.length === 7) return `daily ~${at}`;
   if (weekdays.length === 0) return `~${at}`;
   return `${weekdays.map((d) => WD[d]).join(", ")} ~${at}`;
+}
+
+// One strip row's two facts (#2565 A). The setup half is the MATRIX's own liveness —
+// the same `columnLiveness` the column headers read, so "not set up" and whose step is
+// missing are decided once — and the delivery half is that owner's latest recorded
+// attempt. Two axes, neither borrowing the other's credibility: configuration cannot
+// produce "Delivering", and a stale outcome cannot survive the channel going dark,
+// because `channelRowState` lets Not set up dominate.
+function channelRow(
+  readiness: ChannelReadiness,
+  channel: ChannelId,
+  ownerId: number
+) {
+  const liveness = columnLiveness(readiness);
+  return {
+    state: channelRowState(
+      isColumnReady(liveness),
+      readDeliveryOutcome(channel, ownerId)
+    ),
+    blocker: liveness.state === "not-set-up" ? liveness.blocker : null,
+  };
 }
 
 function Section({
@@ -246,7 +276,7 @@ export default async function NotificationsSettingsPage() {
         title="Channels"
         scope={`Telegram, Web Push, and Email follow your login (${login.username}) across every profile; the Home Assistant webhook follows ${profile.name}.`}
       >
-        <PageContainer width="form" className="space-y-6">
+        <PageContainer width="form" className="space-y-3">
           {unroutableReason && (
             <Notice
               tone="amber"
@@ -259,20 +289,52 @@ export default async function NotificationsSettingsPage() {
                 : `${profile.name}'s reminders are built and delivered to no one — every login that receives them has no channel configured.`}
             </Notice>
           )}
-          <LoginTelegramSettings
-            telegram={telegram}
-            botConfigured={botConfigured}
-            reviewNeeded={getNotifyReviewNeeded(login.id)}
-          />
-          <PushNotificationSettings />
+          <ChannelRow
+            channel="telegram"
+            name="Telegram"
+            scope={login.username}
+            profileName={profile.name}
+            {...channelRow(readiness.telegram, "telegram", login.id)}
+          >
+            <LoginTelegramSettings
+              telegram={telegram}
+              botConfigured={botConfigured}
+              reviewNeeded={getNotifyReviewNeeded(login.id)}
+            />
+          </ChannelRow>
+          <ChannelRow
+            channel="push"
+            name="Web Push"
+            scope={login.username}
+            profileName={profile.name}
+            {...channelRow(readiness.push, "push", login.id)}
+          >
+            <PushNotificationSettings />
+          </ChannelRow>
           {!demoRestricted && (
             <>
-              <EmailNotificationSettings
-                email={getLoginEmailNotify(login.id)}
-                address={loginEmailAddress(login.id)}
-                smtpConfigured={smtpConfigured}
-              />
-              <HomeAssistantNotificationSettings config={ha} />
+              <ChannelRow
+                channel="email"
+                name="Email"
+                scope={login.username}
+                profileName={profile.name}
+                {...channelRow(readiness.email, "email", login.id)}
+              >
+                <EmailNotificationSettings
+                  email={getLoginEmailNotify(login.id)}
+                  address={loginEmailAddress(login.id)}
+                  smtpConfigured={smtpConfigured}
+                />
+              </ChannelRow>
+              <ChannelRow
+                channel="home-assistant"
+                name="Home Assistant"
+                scope={profile.name}
+                profileName={profile.name}
+                {...channelRow(readiness.ha, "home-assistant", profile.id)}
+              >
+                <HomeAssistantNotificationSettings config={ha} />
+              </ChannelRow>
             </>
           )}
         </PageContainer>

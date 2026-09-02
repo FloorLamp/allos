@@ -919,6 +919,30 @@ export async function openCareOverviewSection(
   return section;
 }
 
+// Open one channel row of Settings → Notifications' status strip (#2565 A) and return
+// it. The four channel configurations moved behind their rows' disclosures, so a spec
+// that wants a control inside one has to open it first.
+//
+// Same shape as openCareOverviewSection above, and for the same reason: the row is a
+// native `<details>` with a SECOND writer on its open state — RememberedDetails restores
+// this device's remembered state, from a pre-paint script and then from the hydrated
+// store — so a read-then-click races that restore and a bare click can toggle SHUT what
+// the restore just opened. Guarded on the element's own `open`, so an already-open row
+// (an erroring one is forced open every render) is never clicked closed.
+export async function openChannelRow(
+  page: Page,
+  channel: "telegram" | "push" | "email" | "home-assistant"
+): Promise<Locator> {
+  const row = page.getByTestId(`notify-channel-${channel}`);
+  await expect(row).toBeVisible();
+  await expect(async () => {
+    const open = await row.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!open) await row.locator("summary").click();
+    await expect(row).toHaveJSProperty("open", true, { timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose per-device open memory restores asynchronously and races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open row is never clicked shut
+  return row;
+}
+
 // Tap a control whose handler calls `useConfirm()`, and return the confirm dialog
 // (issue #2729).
 //

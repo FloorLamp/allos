@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHANNEL_ROW_LABEL,
+  channelRowLine,
   channelRowState,
   foldFailures,
   type DeliveryOutcomeRow,
@@ -62,6 +63,75 @@ describe("channelRowState — the four truthful states (owner ruling 2026-08-18)
       delivering: "Delivering",
       erroring: "Erroring",
     });
+  });
+});
+
+describe("channelRowLine — what the strip row prints under the channel name", () => {
+  // A stub age, so the sentence is asserted and not the relative-time thresholds
+  // (those are lib/__tests__/format-date's). Its argument is echoed, which is how the
+  // WHICH-instant half of each line is pinned.
+  const age = (at: string) => `AGE(${at})`;
+  const opts = { profileName: "Rosa", age };
+
+  it.each([
+    // Not set up names the tier that owes the step — the mixed-scope trap #2565 B
+    // named for the matrix headers, answered here from the same `columnLiveness`.
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "server" as const,
+      expected: "Not set up — an admin configures it on Settings → Server.",
+    },
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "login" as const,
+      expected: "Not set up — open this row to set it up.",
+    },
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "profile" as const,
+      expected: "Not set up — open this row to set it up for Rosa.",
+    },
+    {
+      state: { state: "ready" } as const,
+      blocker: null,
+      expected: "Ready — not tested yet.",
+    },
+    {
+      state: { state: "delivering", at: "2026-09-01T11:00:00Z" } as const,
+      blocker: null,
+      expected: "Delivering — last message AGE(2026-09-01T11:00:00Z).",
+    },
+    {
+      state: {
+        state: "erroring",
+        detail: "Telegram API 401: Unauthorized",
+        at: "2026-09-01T10:00:00Z",
+      } as const,
+      blocker: null,
+      expected:
+        "Erroring — Telegram API 401: Unauthorized (AGE(2026-09-01T10:00:00Z)).",
+    },
+  ])("$state.state/$blocker", ({ state, blocker, expected }) => {
+    expect(channelRowLine(state, { ...opts, blocker })).toBe(expected);
+  });
+
+  // The dot carries colour and nothing else, so the WORD has to be in the text.
+  it("opens every line with that state's own word", () => {
+    const lines = [
+      channelRowLine({ state: "not-set-up" }, { ...opts, blocker: "login" }),
+      channelRowLine({ state: "ready" }, { ...opts, blocker: null }),
+      channelRowLine(
+        { state: "delivering", at: "2026-09-01T11:00:00Z" },
+        { ...opts, blocker: null }
+      ),
+      channelRowLine(
+        { state: "erroring", detail: "boom", at: "2026-09-01T10:00:00Z" },
+        { ...opts, blocker: null }
+      ),
+    ];
+    expect(lines.map((l) => l.split(" — ")[0])).toEqual(
+      Object.values(CHANNEL_ROW_LABEL)
+    );
   });
 });
 

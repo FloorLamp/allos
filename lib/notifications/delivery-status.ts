@@ -27,6 +27,8 @@
 // no generation counter to compare, because the write that would advance one removes
 // the rows it would have out-dated.
 
+import type { ChannelScope } from "./matrix-liveness";
+
 // A stored owner outcome. `failing` is the #942 marker's own state word, kept so the
 // legacy aggregate row and the scoped rows read through one vocabulary; `delivering` is
 // the success the old marker never stored (healthy ⇒ no row was its whole design, and
@@ -77,6 +79,40 @@ export function channelRowState(
     detail: row.detail ?? "unknown send failure",
     at: row.at,
   };
+}
+
+// The one line a strip row prints under its channel name. The state word comes from
+// CHANNEL_ROW_LABEL above; this is the rest of the sentence — what the reader can DO
+// about it, or when the last attempt was.
+//
+// `age` is injected rather than imported so this stays pure: the caller passes
+// `formatCompactRelativeTime`, which is where the app's relative-time thresholds live.
+//
+// NOT SET UP NAMES THE OWNER, because this page is mixed-tier and "not set up" meant
+// three different obligations (`lib/notifications/matrix-liveness.ts` header). The
+// blocker comes from `columnLiveness`, so the strip and the matrix's column headers
+// answer "whose step is missing" from ONE decision.
+export function channelRowLine(
+  state: ChannelRowState,
+  opts: { blocker: ChannelScope | null; profileName: string; age: (at: string) => string }
+): string {
+  const word = CHANNEL_ROW_LABEL[state.state];
+  switch (state.state) {
+    case "not-set-up":
+      return opts.blocker === "server"
+        ? `${word} — an admin configures it on Settings → Server.`
+        : opts.blocker === "profile"
+          ? `${word} — open this row to set it up for ${opts.profileName}.`
+          : `${word} — open this row to set it up.`;
+    // A configured channel nothing has been sent through is NOT delivering, and this
+    // is the sentence that says so without sounding broken.
+    case "ready":
+      return `${word} — not tested yet.`;
+    case "delivering":
+      return `${word} — last message ${opts.age(state.at)}.`;
+    case "erroring":
+      return `${word} — ${state.detail} (${opts.age(state.at)}).`;
+  }
 }
 
 // The aggregate marker Settings → Server and the logs still read (the #131 surface).

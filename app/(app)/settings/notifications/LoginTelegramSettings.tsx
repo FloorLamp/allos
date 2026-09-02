@@ -68,14 +68,7 @@ export default function LoginTelegramSettings({
   }
 
   return (
-    <div id="login-telegram" className="card space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Telegram (your chat)
-        </h2>
-        <SaveStatus {...status} />
-      </div>
-
+    <div id="login-telegram" className="space-y-5">
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Reminders for every profile you manage arrive in this Telegram chat,
         with one-tap “taken” buttons. Find your chat id at{" "}
@@ -125,7 +118,13 @@ export default function LoginTelegramSettings({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={busy} className="btn">
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          className="btn"
+          data-testid="login-telegram-save"
+        >
           Save
         </button>
         {enabled && (
@@ -134,10 +133,12 @@ export default function LoginTelegramSettings({
             onClick={test}
             disabled={busy}
             className="btn-ghost"
+            data-testid="login-telegram-test"
           >
-            Send test notification
+            Send test
           </button>
         )}
+        <SaveStatus {...status} />
       </div>
 
       {result && (
