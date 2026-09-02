@@ -296,7 +296,9 @@ export async function logMedicationAdministration(
     case "duplicate":
       return { ok: true, outcome: outcome.kind };
     case "invalid-time":
-      return formError("That time is out of range — pick a recent day and time.");
+      return formError(
+        "That time is out of range — pick a recent day and time."
+      );
     case "inactive":
       return formError("This medication is paused — resume it to log a dose.");
     case "stale-item":

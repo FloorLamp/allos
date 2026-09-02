@@ -333,7 +333,11 @@ describe("prnWindowExposure — basis selection (#1854)", () => {
 
   it("an empty day on the mg basis is 0 of max", () => {
     expect(
-      prnWindowExposure({ amounts: [], maxDailyAmountMg: 1200, maxDailyCount: 6 })
+      prnWindowExposure({
+        amounts: [],
+        maxDailyAmountMg: 1200,
+        maxDailyCount: 6,
+      })
     ).toMatchObject({ basis: "mg", total: 0, over: false, atMax: false });
   });
 });

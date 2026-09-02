@@ -757,9 +757,9 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     );
     expect(second?.count24h).toBe(3);
     // And with no scope at all, every read is fresh.
-    expect(
-      getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
-    ).toBe(3);
+    expect(getMedicationFamilyStates(profileId).get(otcItemId)?.count24h).toBe(
+      3
+    );
   });
 
   it("WITHIN one scope the snapshot is stable — which is why the tick may not write these inputs", async () => {
@@ -786,9 +786,9 @@ describe("a tick scope's memo cannot outlive its tick", () => {
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
-    expect(
-      getMedicationFamilyStates(profileId).get(otcItemId)?.count24h
-    ).toBe(3);
+    expect(getMedicationFamilyStates(profileId).get(otcItemId)?.count24h).toBe(
+      3
+    );
   });
 
   it("a profile tick that THROWS still closes its scope", async () => {

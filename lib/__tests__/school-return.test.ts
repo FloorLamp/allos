@@ -151,7 +151,9 @@ describe("no fever-free claim without a normal reading after the fever (#4685)",
     expect(s.evidence).toBe("none");
     expect(s.hoursSinceFever).toBe(14);
     expect(s.met).toBe(false);
-    expect(schoolReturnCompactClause(s)).toBe("no reading since 103.4 °F (14h ago)");
+    expect(schoolReturnCompactClause(s)).toBe(
+      "no reading since 103.4 °F (14h ago)"
+    );
     expect(formatSchoolReturnLine(s, "F")).toContain(
       "No reading since 103.4 °F (14h ago)"
     );

@@ -562,7 +562,14 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     ];
     let latestId = 0;
     for (const [day, hoursAgo] of sequence)
-      latestId = logAdmin(med.itemId, med.doseId, day, hoursAgo, MORNING, "500 mg");
+      latestId = logAdmin(
+        med.itemId,
+        med.doseId,
+        day,
+        hoursAgo,
+        MORNING,
+        "500 mg"
+      );
 
     const state = getMedicationFamilyStates(p).get(med.itemId)!;
     expect(state.count24h).toBe(5);
