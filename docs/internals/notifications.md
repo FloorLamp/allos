@@ -352,7 +352,7 @@ when the app has no public URL, a `getUpdates` long-poll loop
 channel adapter records the outcome of every send it makes against the
 DELIVERY OWNER it addressed — `(telegram, login_id)`, `(push, login_id)`,
 `(email, login_id)`, `(home-assistant, profile_id)` — as one `notify_lifecycle`
-row per owner (`delivery:<channel>:<owner>`; migration
+row per owner (`delivery-<channel>-<owner>`; migration
 `20260902-notify-lifecycle-owner` adds `owner_id` to the #942 table). The row
 holds the LATEST attempt under the current configuration: `delivering` or
 `failing`, the transport's error sentence, and the instant. A shared Telegram

@@ -57,9 +57,7 @@ export const DISCLOSURE_MEMORY_KEY = "allos:disclosure:v1";
  * a test to update, never an inheritance — see the scope rules above.
  */
 export type DisclosureId =
-  | "settings-group"
-  | "dashboard-all"
-  | "notify-channel";
+  "settings-group" | "dashboard-all" | "notify-channel";
 
 export interface DisclosureDeclaration {
   /** Why this fold is ROUTINE — the daily return that makes re-opening it friction. */

@@ -94,7 +94,11 @@ export function channelRowState(
 // answer "whose step is missing" from ONE decision.
 export function channelRowLine(
   state: ChannelRowState,
-  opts: { blocker: ChannelScope | null; profileName: string; age: (at: string) => string }
+  opts: {
+    blocker: ChannelScope | null;
+    profileName: string;
+    age: (at: string) => string;
+  }
 ): string {
   const word = CHANNEL_ROW_LABEL[state.state];
   switch (state.state) {
@@ -156,5 +160,7 @@ export function foldFailures(
         CHANNEL_ORDER.indexOf(a.channel) - CHANNEL_ORDER.indexOf(b.channel)
     );
   const top = ranked[0];
-  return top ? { error: top.detail, at: top.at ?? "", channel: top.channel } : null;
+  return top
+    ? { error: top.detail, at: top.at ?? "", channel: top.channel }
+    : null;
 }

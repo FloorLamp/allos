@@ -9,6 +9,15 @@ Push**, a **Home Assistant** webhook, and **email** — that share the same
 schedule and per-day/slot dedup. Enable any or all; a profile with several
 configured gets each reminder on each.
 
+**Where the channels live.** The four channels are a **status strip** at the top of
+**Settings → Notifications** (#2565): one row each, saying whether it is **Not set
+up**, **Ready** (set up, nothing sent through it yet), **Delivering** (a message got
+through, with when) or **Erroring** (with what went wrong). Telegram, Web Push and
+Email follow your login; the Home Assistant webhook follows the profile you are
+looking at, and each row says which. Open a row to set that channel up; a row that is
+erroring opens itself. Below the strip come the message kinds, the household dose
+round, the schedule, the morning digest, and mute.
+
 **Email** (issue #1855) is per person and opt-in: turn it on under **Settings →
 Notifications → Email**, and reminders for every profile you manage go to your
 account's email address (the one invitations and password resets use; the

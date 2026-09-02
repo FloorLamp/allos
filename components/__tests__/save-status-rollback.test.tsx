@@ -49,7 +49,12 @@ function mountPrefs(save: Save): void {
   render(
     <NotificationPrefs
       schedule={{
-        supplementMinutes: { Morning: 480, Midday: null, Evening: null, Bedtime: null },
+        supplementMinutes: {
+          Morning: 480,
+          Midday: null,
+          Evening: null,
+          Bedtime: null,
+        },
         workoutEnabled: false,
         morningAuto: false,
         digestMinute: null,
@@ -169,7 +174,8 @@ const SHAPES: Shape[] = [
         (screen.getByTestId("matrix-cell-telegram-refill") as HTMLInputElement)
           .checked
       ),
-    flip: () => fireEvent.click(screen.getByTestId("matrix-cell-telegram-refill")),
+    flip: () =>
+      fireEvent.click(screen.getByTestId("matrix-cell-telegram-refill")),
     before: "true",
     after: "false",
   },

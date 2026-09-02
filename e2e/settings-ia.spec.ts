@@ -174,9 +174,9 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     for (const c of ["telegram", "push", "email", "home-assistant"]) {
       await expect(page.getByTestId(`notify-channel-${c}`)).toBeVisible();
     }
-    await expect(page.getByTestId("notify-channel-household-round")).toHaveCount(
-      0
-    );
+    await expect(
+      page.getByTestId("notify-channel-household-round")
+    ).toHaveCount(0);
     await expect(page.getByTestId("notify-schedule")).toBeVisible();
     await expect(page.getByTestId("notification-kinds")).toBeVisible();
     await openChannelRow(page, "push");

@@ -1286,7 +1286,6 @@ export default function NotificationPrefs({
           </div>
         </div>
       </div>
-
     </div>
   );
 }

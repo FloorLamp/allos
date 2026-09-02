@@ -108,7 +108,10 @@ export const homeAssistantChannel: NotificationChannel = {
     return cfg.enabled && isValidWebhookUrl(cfg.webhookUrl);
   },
   owners(profileId: number, msg: NotificationMessage) {
-    return isKindEnabled(msg.kind, getProfileHomeAssistant(profileId).disabledKinds)
+    return isKindEnabled(
+      msg.kind,
+      getProfileHomeAssistant(profileId).disabledKinds
+    )
       ? [profileId]
       : [];
   },

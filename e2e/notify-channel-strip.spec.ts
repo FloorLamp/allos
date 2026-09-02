@@ -218,7 +218,7 @@ test.describe("Settings → Notifications channel strip (#2565 A)", () => {
              ON CONFLICT(key) DO UPDATE SET state = 'delivering', at = excluded.at`
           )
           .run(
-            `delivery:home-assistant:${profileId()}`,
+            `delivery-home-assistant-${profileId()}`,
             profileId(),
             "2026-09-01T09:00:00Z"
           )

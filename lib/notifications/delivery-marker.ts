@@ -4,7 +4,7 @@
 // ./delivery-status.ts; this module only reads and writes.
 //
 // STORAGE. The #942 marker table, extended by migration 20260902-notify-lifecycle-owner
-// with `owner_id`: a scoped row is keyed `delivery:<channel>:<owner>` and carries the
+// with `owner_id`: a scoped row is keyed `delivery-<channel>-<owner>` and carries the
 // channel, the owner id (a login for Telegram/Push/Email, a profile for Home Assistant),
 // the state, the failure detail and the attempt instant. Nothing else — never a chat id,
 // an address, a webhook URL or a secret: `detail` is the transport's error sentence, the
@@ -37,8 +37,13 @@ const log = createLogger("delivery-lifecycle");
 // The pre-#2565 instance-wide marker's key (#942, migration 061).
 export const LEGACY_DELIVERY_HEALTH_KEY = "delivery-health";
 
+// KEYED LIKE ITS SIBLING, `delivery-health` — dashes, not colons. A colon-joined
+// `word:...` head is the app's TELEGRAM CALLBACK TOKEN shape, and this key is a
+// `notify_lifecycle` row id that never reaches a button; spelling it that way put a
+// storage key into the callback-vocabulary census (#1779), which then asks for a
+// reconciler for something no message can carry.
 export function deliveryKey(channel: ChannelId, ownerId: number): string {
-  return `delivery:${channel}:${ownerId}`;
+  return `delivery-${channel}-${ownerId}`;
 }
 
 export type DeliveryOutcome = { ok: true } | { ok: false; error: string };
@@ -147,8 +152,7 @@ export function readDeliveryOutcome(
   const row = db
     .prepare("SELECT state, detail, at FROM notify_lifecycle WHERE key = ?")
     .get(deliveryKey(channel, ownerId)) as
-    | { state: string; detail: string | null; at: string | null }
-    | undefined;
+    { state: string; detail: string | null; at: string | null } | undefined;
   if (!row) return null;
   return {
     state: row.state === "delivering" ? "delivering" : "failing",

@@ -18,8 +18,6 @@
 // Every value is synthetic: fake chat ids, a fake bot token, example.com addresses.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { db } from "@/lib/db";
 import {
@@ -44,6 +42,7 @@ import {
 } from "@/lib/notifications/delivery-marker";
 import { up as addOwnerColumn } from "@/lib/migrations/versions/20260902-notify-lifecycle-owner";
 import { seedLoginTelegram } from "./fixtures";
+import { makeTmpDir } from "../__tests__/tmp-dir";
 
 // web-push routes by endpoint suffix so one send can hold both outcomes.
 vi.mock("web-push", () => ({
@@ -77,8 +76,7 @@ function newLogin(email: string | null = null): number {
       .prepare(
         "INSERT INTO logins (username, password_hash, role, email) VALUES (?, 'x', 'member', ?)"
       )
-      .run(`lifecycle login ${++loginSeq}`, email)
-      .lastInsertRowid
+      .run(`lifecycle login ${++loginSeq}`, email).lastInsertRowid
   );
 }
 function stubWire(opts: { telegramOk?: boolean; haStatus?: number } = {}) {
@@ -104,12 +102,17 @@ function stubWire(opts: { telegramOk?: boolean; haStatus?: number } = {}) {
   );
   return calls;
 }
-const stateOf = (channel: "telegram" | "push" | "email" | "home-assistant", owner: number) =>
-  readDeliveryOutcome(channel, owner)?.state ?? null;
+const stateOf = (
+  channel: "telegram" | "push" | "email" | "home-assistant",
+  owner: number
+) => readDeliveryOutcome(channel, owner)?.state ?? null;
 
 beforeEach(() => {
   db.prepare("DELETE FROM notify_lifecycle").run();
-  setTelegramBotConfig({ telegramBotToken: "bot-token-2565", telegramMode: "poll" });
+  setTelegramBotConfig({
+    telegramBotToken: "bot-token-2565",
+    telegramMode: "poll",
+  });
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -122,10 +125,17 @@ describe("Telegram owners", () => {
     const a = seedLoginTelegram(p, "chat-shared");
     const b = seedLoginTelegram(p, "chat-shared");
     const c = seedLoginTelegram(p, "chat-own");
-    expect([a, b, c].map((l) => stateOf("telegram", l))).toEqual([null, null, null]);
+    expect([a, b, c].map((l) => stateOf("telegram", l))).toEqual([
+      null,
+      null,
+      null,
+    ]);
 
     // C's chat is already Erroring from an earlier attempt.
-    recordDeliveryOutcome("telegram", [c], { ok: false, error: "chat not found" });
+    recordDeliveryOutcome("telegram", [c], {
+      ok: false,
+      error: "chat not found",
+    });
 
     const calls = stubWire();
     const results = await dispatch(p, DOSE);
@@ -148,7 +158,9 @@ describe("Telegram owners", () => {
     stubWire({ telegramOk: false });
     await dispatch(q, DOSE);
     expect(stateOf("telegram", z)).toBe("failing");
-    expect(readDeliveryOutcome("telegram", z)?.detail).toContain("Unauthorized");
+    expect(readDeliveryOutcome("telegram", z)?.detail).toContain(
+      "Unauthorized"
+    );
 
     vi.unstubAllGlobals();
     stubWire({ telegramOk: true });
@@ -169,20 +181,47 @@ describe("Telegram owners", () => {
     setLoginTelegram(a, { telegramEnabled: true, telegramChatId: "chat-1" });
     expect(stateOf("telegram", a)).toBe("delivering");
     setLoginTelegram(a, { telegramEnabled: true, telegramChatId: "chat-9" });
-    expect([stateOf("telegram", a), stateOf("telegram", b)]).toEqual([null, "delivering"]);
+    expect([stateOf("telegram", a), stateOf("telegram", b)]).toEqual([
+      null,
+      "delivering",
+    ]);
 
-    setTelegramBotConfig({ telegramBotToken: "bot-token-2565", telegramMode: "webhook" });
+    setTelegramBotConfig({
+      telegramBotToken: "bot-token-2565",
+      telegramMode: "webhook",
+    });
     expect(stateOf("telegram", b)).toBe("delivering");
-    setTelegramBotConfig({ telegramBotToken: "bot-token-new", telegramMode: "poll" });
+    setTelegramBotConfig({
+      telegramBotToken: "bot-token-new",
+      telegramMode: "poll",
+    });
     expect(stateOf("telegram", b)).toBeNull();
   });
 });
 
 describe("Web Push owners", () => {
   it.each([
-    { name: "partial success is Delivering", endpoints: ["/ok", "/fail"], state: "delivering", throws: false, left: 2 },
-    { name: "every live attempt failing is Erroring", endpoints: ["/fail", "/fail"], state: "failing", throws: true, left: 2 },
-    { name: "the last browser pruned leaves no row and no subscription", endpoints: ["/gone"], state: null, throws: false, left: 0 },
+    {
+      name: "partial success is Delivering",
+      endpoints: ["/ok", "/fail"],
+      state: "delivering",
+      throws: false,
+      left: 2,
+    },
+    {
+      name: "every live attempt failing is Erroring",
+      endpoints: ["/fail", "/fail"],
+      state: "failing",
+      throws: true,
+      left: 2,
+    },
+    {
+      name: "the last browser pruned leaves no row and no subscription",
+      endpoints: ["/gone"],
+      state: null,
+      throws: false,
+      left: 0,
+    },
   ])("$name", async ({ endpoints, state, throws, left }) => {
     ensureVapidKeys();
     const login = newLogin();
@@ -198,17 +237,30 @@ describe("Web Push owners", () => {
     else await expect(send).resolves.toBe(endpoints.length);
     expect(stateOf("push", login)).toBe(state);
     expect(
-      (db.prepare("SELECT COUNT(*) AS n FROM push_subscriptions WHERE login_id = ?").get(login) as { n: number }).n
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM push_subscriptions WHERE login_id = ?"
+          )
+          .get(login) as { n: number }
+      ).n
     ).toBe(left);
   });
 
   it("subscribing or unsubscribing a browser returns the login to Ready", () => {
     ensureVapidKeys();
     const login = newLogin();
-    const sub = { endpoint: `https://push.example/${login}/ok`, p256dh: "p256dh-0001", auth: "auth-0001" };
+    const sub = {
+      endpoint: `https://push.example/${login}/ok`,
+      p256dh: "p256dh-0001",
+      auth: "auth-0001",
+    };
     savePushSubscription(login, sub);
     recordDeliveryOutcome("push", [login], { ok: true });
-    savePushSubscription(login, { ...sub, endpoint: `https://push.example/${login}-b/ok` });
+    savePushSubscription(login, {
+      ...sub,
+      endpoint: `https://push.example/${login}-b/ok`,
+    });
     expect(stateOf("push", login)).toBeNull();
     recordDeliveryOutcome("push", [login], { ok: true });
     deletePushSubscription(login, sub.endpoint);
@@ -218,23 +270,37 @@ describe("Web Push owners", () => {
 
 describe("Email owners", () => {
   it("a test mail moves only the sending login; the relay or the enable toggle out-dates it", async () => {
-    setSmtpConfig({ host: "smtp.example.com", port: 587, user: "", from: "allos@example.com" });
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lifecycle-mail-"));
+    setSmtpConfig({
+      host: "smtp.example.com",
+      port: 587,
+      user: "",
+      from: "allos@example.com",
+    });
+    const dir = makeTmpDir("lifecycle-mail");
     process.env.EMAIL_TEST_CAPTURE = path.join(dir, "mailbox.jsonl");
     const a = newLogin("a-lifecycle@example.com");
     const b = newLogin("b-lifecycle@example.com");
-    for (const l of [a, b]) setLoginEmailNotify(l, { emailEnabled: true, emailFullContent: false });
+    for (const l of [a, b])
+      setLoginEmailNotify(l, { emailEnabled: true, emailFullContent: false });
     recordDeliveryOutcome("email", [b], { ok: false, error: "relay refused" });
 
     await expect(sendTestEmailToLogin(a)).resolves.toBe("sent");
-    expect([stateOf("email", a), stateOf("email", b)]).toEqual(["delivering", "failing"]);
+    expect([stateOf("email", a), stateOf("email", b)]).toEqual([
+      "delivering",
+      "failing",
+    ]);
 
     // Content mode is not a target change; the enable toggle is.
     setLoginEmailNotify(a, { emailEnabled: true, emailFullContent: true });
     expect(stateOf("email", a)).toBe("delivering");
     setLoginEmailNotify(a, { emailEnabled: false, emailFullContent: true });
     expect(stateOf("email", a)).toBeNull();
-    setSmtpConfig({ host: "smtp2.example.com", port: 587, user: "", from: "allos@example.com" });
+    setSmtpConfig({
+      host: "smtp2.example.com",
+      port: 587,
+      user: "",
+      from: "allos@example.com",
+    });
     expect(stateOf("email", b)).toBeNull();
   });
 });
@@ -242,7 +308,12 @@ describe("Email owners", () => {
 describe("Home Assistant owner", () => {
   it("records the profile; a routing-only write keeps the row, a target change drops it", async () => {
     const p = newProfile("HA lifecycle");
-    const cfg = { enabled: true, webhookUrl: HA_URL, secret: "", disabledKinds: [] };
+    const cfg = {
+      enabled: true,
+      webhookUrl: HA_URL,
+      secret: "",
+      disabledKinds: [],
+    };
     setProfileHomeAssistant(p, cfg);
     expect(stateOf("home-assistant", p)).toBeNull();
 
@@ -273,18 +344,27 @@ describe("the pre-#2565 instance-wide row", () => {
       channel: "telegram",
     });
     expect(
-      db.prepare("SELECT COUNT(*) AS n FROM notify_lifecycle WHERE owner_id IS NOT NULL").get()
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM notify_lifecycle WHERE owner_id IS NOT NULL"
+        )
+        .get()
     ).toEqual({ n: 0 });
 
     // Another channel's scoped failure outranks the fallback but does not retire it.
-    recordDeliveryOutcome("home-assistant", [1], { ok: false, error: "HTTP 500" });
+    recordDeliveryOutcome("home-assistant", [1], {
+      ok: false,
+      error: "HTTP 500",
+    });
     expect(getNotifyError()?.channel).toBe("home-assistant");
     db.prepare("DELETE FROM notify_lifecycle WHERE owner_id IS NOT NULL").run();
 
     recordDeliveryOutcome("telegram", [1], { ok: true });
     expect(getNotifyError()).toBeNull();
     expect(
-      db.prepare("SELECT COUNT(*) AS n FROM notify_lifecycle WHERE key = ?").get(LEGACY_DELIVERY_HEALTH_KEY)
+      db
+        .prepare("SELECT COUNT(*) AS n FROM notify_lifecycle WHERE key = ?")
+        .get(LEGACY_DELIVERY_HEALTH_KEY)
     ).toEqual({ n: 0 });
   });
 });
