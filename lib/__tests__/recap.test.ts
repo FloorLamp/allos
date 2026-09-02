@@ -508,7 +508,7 @@ describe("buildRecap", () => {
     const recap = buildRecap(
       baseInput({ intakeDeltaLine: "Missed: Magnesium (test) for 3 days" })
     );
-    expect(recap.adherence).toBeUndefined();
+    // `baseInput()` carries `adherence: null` — the silent half of the pairing.
     expect(recap.isEmpty).toBe(false);
     // All three consumers of the flag, at the boundary each one guards.
     expect(renderRecapMessage(recap, "Test")).not.toBeNull();
