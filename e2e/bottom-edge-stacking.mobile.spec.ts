@@ -343,7 +343,9 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   // sheet's body loads behind a Server Action, so the panel is still growing after
   // it opens and the rows sit lower while it does. A claim measured once on mount
   // would be correct only after everything settled — which is not when the taps
-  // happen.
+  // happen. The panel's SLIDE is the tail of that window, and the longer half:
+  // sampled frame by frame on 2026-09-02, the body's height was already final by
+  // the time `food-log-bar` rendered, and the arrival still had 195ms to run.
   await page.goto("/nutrition");
   const logSheet = await openLogSheet(page);
   const logFood = await showLogRow(logSheet, "log-food");
@@ -373,11 +375,11 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
 
   const viewport = page.viewportSize()!.height;
-  // SETTLING: ONE observation, not two statements apart. The claim and the box
-  // it is compared against are read in the same synchronous turn, and the read
-  // carries the proof that it happened mid-arrival — `animating` is the panel's
-  // own running keyframe, so this can never quietly go back to measuring the
-  // settled state.
+  // SETTLING: ONE observation, not two statements apart. The published claim,
+  // where the panel actually is, and whether it is still moving all come from
+  // the same synchronous turn — so the assertions below the settle describe one
+  // instant rather than three, which is what the old pair of reads a CDP
+  // round-trip apart could not do.
   const arriving = await panel.evaluate((el) => ({
     top: el.getBoundingClientRect().top,
     claimed: parseFloat(
@@ -386,8 +388,6 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
     ),
     animating: el.getAnimations().length > 0,
   }));
-  expect(arriving.animating).toBe(true);
-  expect(arriving.claimed).toBeGreaterThanOrEqual(viewport - arriving.top - 1);
 
   // Release the hold and land the panel where ten seconds of waiting would have
   // put it — the slowdown exists only so the read above can happen inside the
@@ -399,13 +399,19 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   // SETTLED: and now it is the panel's top edge exactly.
   const [settled] = await settledBoxes([panel]);
   expect(await claimedOffset(page)).toBeCloseTo(viewport - settled.y, 0);
-  // …and the mid-arrival reading was ALREADY that number. THIS is the assertion
-  // the SETTLING half was reaching for: the claim is the panel's RESTING top
-  // edge from its first frame, never one that catches up when the animation
-  // ends. Before #4796 it read the edge the panel was sliding up FROM (or, in
-  // the window where the quick-log sheet is still playing its own exit, that
-  // departing panel's stale claim), and a notice raised during those ~240ms came
-  // to rest on the sheet.
+  // The reading above really was taken mid-flight — a running keyframe, and the
+  // panel still BELOW where it comes to rest. Both halves of that, because a
+  // keyframe can be running with the panel already there.
+  expect(arriving.animating).toBe(true);
+  expect(arriving.top).toBeGreaterThan(settled.y);
+  // …and the claim was ALREADY the settled top edge at that moment. THIS is what
+  // the SETTLING half was reaching for, and what a threshold derived from a
+  // second read taken a CDP round-trip later could never say: the claim is the
+  // panel's RESTING edge from its first frame, not a number that catches up when
+  // the animation ends. Before #4796 it read the edge the panel was sliding up
+  // FROM — 505.04 here — or, while the quick-log sheet was still playing its own
+  // exit, that departing panel's stale 582, and a notice raised in that window
+  // came to rest on the sheet.
   expect(arriving.claimed).toBeCloseTo(viewport - settled.y, 0);
 
   // Closing RELEASES the claim down to the nav dock — the same shape the
