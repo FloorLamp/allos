@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
-import type { RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 
 // Shared autosave state for the settings cards (issue #477). Every settings form
 // used to do `startTransition(async () => { await saveX(fd); setSavedAt(...) })`
@@ -10,38 +10,104 @@ import type { RefObject } from "react";
 // error boundary, nuking the whole settings page instead of showing the inline
 // error icon `SaveStatus` already supports.
 //
-// This hook owns the pending/savedAt/error triad and the catch: `save(run)` runs
-// `run` inside a transition, marks `savedAt` on success, and flips `error` true on
-// a throw (cleared on the next successful save). Feed all three into <SaveStatus />.
-export interface SaveStatusApi {
-  pending: boolean;
-  savedAt: number;
-  error: boolean;
-  // Run an async save; a rejection is caught and surfaced as `error` instead of
-  // reaching the error boundary. Returns nothing — read state from the fields.
-  save: (run: () => Promise<void>) => void;
+// This hook owns the pending/savedAt/error triad, the catch, AND the value the
+// control shows (#4688). It owns the value because the rollback has to be
+// structural: every one of these surfaces used to keep its own `useState` and paint
+// it before the save, so a REFUSED write stayed on screen beside the error icon —
+// `setIsMuted(next)`, a throw, and a checkbox still claiming the profile is muted.
+// Making the revert each call site's job made it nobody's. Here, `save` restores the
+// last value the server accepted whatever the caller did.
+/**
+ * `run` resolves this instead of a value when the server DECLINED — a typed
+ * `FormResult` refusal the card has already explained ("that isn't a valid URL").
+ *
+ * A REFUSAL AND A FAILURE ARE NOT THE SAME EVENT, which is why this exists. Both
+ * stored nothing, so neither shows "Saved" and both raise the error icon. But a
+ * throw means the write did not happen and the painted value is a claim the server
+ * never accepted — that one goes back. A refusal is the app mid-sentence with the
+ * person, whose UNSENT DRAFT is still theirs to correct; taking it away deletes the
+ * work and, on a card whose fields sit behind an enable toggle, removes the very
+ * field they were told to fix. Caught by e2e/home-assistant-notify.spec.ts.
+ *
+ * So this is for the cards where the person composes a draft and presses Save. A
+ * control whose TAP IS THE SAVE has no draft to protect, and a refused pick left
+ * painted is exactly the lie #4688 is about — those still throw.
+ */
+export const REFUSED = Symbol("save refused");
+
+export interface SaveStatusApi<T> {
+  // Exactly <SaveStatus />'s props, grouped so a card spreads them (`{...status}`)
+  // instead of re-plumbing the same three names.
+  status: { pending: boolean; savedAt: number; error: boolean };
+  // What the control shows: the destination value from the moment of the tap, then
+  // whatever the save settled on.
+  value: T;
+  // Move the on-screen value WITHOUT saving — the keystrokes of a save-on-blur
+  // field. A failed save reverts to the last SAVED value, not to the last keystroke.
+  //
+  // DELIBERATELY `useState`'s full setter rather than `(next: T) => void`, and the
+  // reason is one named call site: NotificationPrefs.mergeLocal reconciles a single
+  // field from a CHILD's callback after one of #2217's exits wrote it through its own
+  // action, so it must merge onto the latest draft rather than onto the one its
+  // render closed over. Narrowing this type would compile and silently drop that.
+  edit: Dispatch<SetStateAction<T>>;
+  // Paint `next` now, run the save, and put the last saved value back if it throws.
+  // `run` may resolve a value to commit what the server actually stored (a
+  // normalized URL), which then becomes both what shows and what a later failure
+  // restores, or REFUSED to report a decline that keeps the draft. A rejection is
+  // caught and surfaced as `error` instead of reaching the error boundary; it is
+  // never inspected, so the deploy-skew and offline classifications downstream see
+  // the error the action threw.
+  save: (next: T, run: () => Promise<T | void | typeof REFUSED>) => void;
 }
 
-export function useSaveStatus(): SaveStatusApi {
+export function useSaveStatus<T>(initial: T): SaveStatusApi<T> {
   const [pending, startTransition] = useTransition();
   const [savedAt, setSavedAt] = useState(0);
   const [error, setError] = useState(false);
+  const [value, setValue] = useState(initial);
+  // The last value the server accepted. A ref, because the restore is read when the
+  // save SETTLES, not in the render whose closure started it.
+  //
+  // AND THAT DEFINITION IS THE ANSWER TO CONCURRENT SAVES, not a gap in one. With two
+  // writes in flight, a failure restores whatever the server last took — NOT the value
+  // this particular save was fired from, which a later save may already have replaced
+  // on the server. Putting that back would un-do a write that actually landed. So
+  // there is no sequencing here on purpose: the right definition covers the case a
+  // second mechanism would have been built to guard.
+  const saved = useRef(initial);
 
-  const save = useCallback((run: () => Promise<void>) => {
-    startTransition(async () => {
-      try {
-        await run();
-        setError(false);
-        setSavedAt(Date.now());
-      } catch {
-        // Keep the form mounted and show the inline "Couldn't save" icon rather
-        // than letting the rejection reach the route error boundary.
-        setError(true);
-      }
-    });
-  }, []);
+  const save = useCallback(
+    (next: T, run: () => Promise<T | void | typeof REFUSED>) => {
+      setValue(next);
+      startTransition(async () => {
+        try {
+          const settled = await run();
+          if (settled === REFUSED) {
+            // Declined, not failed: nothing was stored, so no "Saved" — but the draft
+            // on screen is the person's to correct, so it stays exactly as typed.
+            setError(true);
+            return;
+          }
+          const landed = settled === undefined ? next : settled;
+          saved.current = landed;
+          setValue(landed);
+          setError(false);
+          setSavedAt(Date.now());
+        } catch {
+          // Keep the form mounted and show the inline "Couldn't save" icon rather
+          // than letting the rejection reach the route error boundary — and take the
+          // painted value back, so the icon stops sitting next to a value that
+          // contradicts it.
+          setValue(saved.current);
+          setError(true);
+        }
+      });
+    },
+    []
+  );
 
-  return { pending, savedAt, error, save };
+  return { status: { pending, savedAt, error }, value, edit: setValue, save };
 }
 
 // The save-on-blur tier rule (issue #794 cluster 10b). Autosave-on-blur is the

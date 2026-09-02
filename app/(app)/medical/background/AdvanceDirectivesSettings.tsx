@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import SaveStatus from "@/components/SaveStatus";
 import DateField from "@/components/DateField";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
@@ -50,8 +50,12 @@ export default function AdvanceDirectivesSettings({
 }: {
   directives: AdvanceDirectives;
 }) {
-  const [draft, setDraft] = useState<Draft>(draftFrom(directives));
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus(draftFrom(directives));
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
@@ -65,7 +69,7 @@ export default function AdvanceDirectivesSettings({
     fd.set("healthcare_proxy_phone", next.proxyPhone);
     fd.set("organ_donor", next.organDonor);
     fd.set("directive_documents_at", next.documentsAt);
-    runSave(async () => {
+    runSave(next, async () => {
       await saveAdvanceDirectives(fd);
     });
   }
@@ -78,8 +82,8 @@ export default function AdvanceDirectivesSettings({
   // save on change (select / date) rather than on blur.
   const update = (patch: Partial<Draft>, immediate: boolean) => {
     const next = { ...draft, ...patch };
-    setDraft(next);
     if (immediate) save(next);
+    else edit(next);
   };
 
   return (
@@ -93,7 +97,7 @@ export default function AdvanceDirectivesSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Code status &amp; directives
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

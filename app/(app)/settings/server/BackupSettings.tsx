@@ -47,19 +47,26 @@ export default function BackupSettings({
     lastError: string | null;
   };
 }) {
-  const [enabled, setEnabled] = useState(settings.enabled);
-  const [hour, setHour] = useState(settings.hour);
-  const [keepDaily, setKeepDaily] = useState(settings.keepDaily);
-  const [keepWeekly, setKeepWeekly] = useState(settings.keepWeekly);
-  const [stalenessHours, setStalenessHours] = useState(settings.stalenessHours);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: settings.enabled,
+    hour: settings.hour,
+    keepDaily: settings.keepDaily,
+    keepWeekly: settings.keepWeekly,
+    stalenessHours: settings.stalenessHours,
+  });
+  const { enabled, hour, keepDaily, keepWeekly, stalenessHours } = draft;
   // "Back up now" is a distinct action with its own result message, not tied to
   // the "saved" chip — keep its own transition so it doesn't flip savedAt.
   const [runningNow, startRunNow] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || runningNow;
+  const busy = status.pending || runningNow;
 
   function save() {
     const fd = new FormData();
@@ -68,7 +75,7 @@ export default function BackupSettings({
     fd.set("backup_keep_daily", String(keepDaily));
     fd.set("backup_keep_weekly", String(keepWeekly));
     fd.set("backup_staleness_hours", String(stalenessHours));
-    runSave(async () => {
+    runSave(draft, async () => {
       await saveBackupSettings(fd);
       setResult(null);
     });
@@ -112,7 +119,7 @@ export default function BackupSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Automated backups
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -127,7 +134,7 @@ export default function BackupSettings({
         <input
           type="checkbox"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={(e) => edit({ ...draft, enabled: e.target.checked })}
           className="h-4 w-4 rounded-sm border-slate-300 text-brand-600 dark:border-slate-600"
         />
         Enable nightly backups
@@ -140,7 +147,9 @@ export default function BackupSettings({
               <label className="label">Hour</label>
               <select
                 value={hour}
-                onChange={(e) => setHour(Number(e.target.value))}
+                onChange={(e) =>
+                  edit({ ...draft, hour: Number(e.target.value) })
+                }
                 className="input"
               >
                 {Array.from({ length: 24 }, (_, i) => (
@@ -156,7 +165,9 @@ export default function BackupSettings({
                 type="number"
                 min={0}
                 value={keepDaily}
-                onChange={(e) => setKeepDaily(Number(e.target.value))}
+                onChange={(e) =>
+                  edit({ ...draft, keepDaily: Number(e.target.value) })
+                }
                 className="input"
               />
             </div>
@@ -166,7 +177,9 @@ export default function BackupSettings({
                 type="number"
                 min={0}
                 value={keepWeekly}
-                onChange={(e) => setKeepWeekly(Number(e.target.value))}
+                onChange={(e) =>
+                  edit({ ...draft, keepWeekly: Number(e.target.value) })
+                }
                 className="input"
               />
             </div>
@@ -177,7 +190,9 @@ export default function BackupSettings({
                 min={1}
                 max={8760}
                 value={stalenessHours}
-                onChange={(e) => setStalenessHours(Number(e.target.value))}
+                onChange={(e) =>
+                  edit({ ...draft, stalenessHours: Number(e.target.value) })
+                }
                 className="input"
                 data-testid="backup-staleness-hours"
               />
@@ -326,7 +341,7 @@ export default function BackupSettings({
           <button
             type="button"
             onClick={verifyOffsite}
-            disabled={pending}
+            disabled={status.pending}
             className="btn-ghost"
           >
             Verify destination

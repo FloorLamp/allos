@@ -7,7 +7,7 @@ import {
   sendTestHomeAssistant,
 } from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
-import { useSaveStatus } from "@/components/useSaveStatus";
+import { REFUSED, useSaveStatus } from "@/components/useSaveStatus";
 
 // Home Assistant as a third delivery channel (#248). A per-profile outbound webhook
 // so HA can announce reminders on a kitchen speaker (TTS), flash lights on
@@ -26,17 +26,24 @@ export default function HomeAssistantNotificationSettings({
 }: {
   config: ProfileHomeAssistant;
 }) {
-  const [enabled, setEnabled] = useState(config.enabled);
-  const [webhookUrl, setWebhookUrl] = useState(config.webhookUrl);
-  const [secret, setSecret] = useState(config.secret);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: config.enabled,
+    webhookUrl: config.webhookUrl,
+    secret: config.secret,
+  });
+  const { enabled, webhookUrl, secret } = draft;
   // The test send drives the result message, not the "saved" chip, so it keeps its
   // own transition.
   const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -47,13 +54,14 @@ export default function HomeAssistantNotificationSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       const res = await saveHomeAssistantPrefs(buildFormData());
       if (!res.ok) {
         setResult({ ok: false, message: res.error });
-        // Throw so the hook records a failure (no "saved" chip) rather than
-        // treating a rejected config as a successful save.
-        throw new Error(res.error);
+        // Declined, not failed: no "saved" chip, and the typed URL stays put so it
+        // can be corrected — a throw here would roll the whole card back to the
+        // stored config, un-ticking Enable and hiding the field being fixed.
+        return REFUSED;
       }
       setResult(null);
     });
@@ -87,7 +95,7 @@ export default function HomeAssistantNotificationSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Home Assistant)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -119,7 +127,7 @@ export default function HomeAssistantNotificationSettings({
         <input
           type="checkbox"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={(e) => edit({ ...draft, enabled: e.target.checked })}
           className="h-4 w-4 accent-brand-600"
           data-testid="ha-enable"
         />
@@ -132,7 +140,7 @@ export default function HomeAssistantNotificationSettings({
             <label className="label">Webhook URL</label>
             <input
               value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
+              onChange={(e) => edit({ ...draft, webhookUrl: e.target.value })}
               placeholder="http://homeassistant.local:8123/api/webhook/allos-mom"
               className="input"
               data-testid="ha-webhook-url"
@@ -143,7 +151,7 @@ export default function HomeAssistantNotificationSettings({
             <label className="label">Shared secret (optional)</label>
             <input
               value={secret}
-              onChange={(e) => setSecret(e.target.value)}
+              onChange={(e) => edit({ ...draft, secret: e.target.value })}
               placeholder="a random string HA checks on the request header"
               className="input"
               data-testid="ha-secret"
