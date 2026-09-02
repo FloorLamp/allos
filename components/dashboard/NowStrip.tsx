@@ -1,6 +1,9 @@
-import NowCards, { type NowStripRow } from "./NowCards";
+import NowCards, {
+  type NowStripRow,
+  type NowSubjectLabel,
+} from "./NowCards";
 
-export type { NowStripRow };
+export type { NowStripRow, NowSubjectLabel };
 
 // The dashboard "Now" strip (issue #1413, section A) — the facts the moment makes
 // most relevant, above the user's own grid. Ordinary relevance is capped at two;

@@ -698,6 +698,24 @@ async function renderDashboard(
   });
   const illnessUi = getIllnessNowUi(profile.id);
 
+  // WHO EACH NOW CLUSTER IS ABOUT (#4752 item 6). The ranker keys a group by profile
+  // id and only groups at all when a cross-profile row is present, so this map is
+  // consulted exactly when there is more than one subject on screen. The viewer's own
+  // cluster says "You", not their name — that is what a person reading their own
+  // dashboard recognizes above their own rows.
+  const nowSubjectNames = disambiguateProfileNames(accessible);
+  const nowSubjects = new Map(
+    accessible.map((p) => [
+      String(p.id),
+      {
+        key: String(p.id),
+        profile: p,
+        name:
+          p.id === profile.id ? "You" : (nowSubjectNames.get(p.id) ?? p.name),
+      },
+    ])
+  );
+
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
   // window (the SAME episodeReopenEligibility rule the detail page uses). Cross-profile
@@ -1264,14 +1282,18 @@ async function renderDashboard(
       control: canWrite ? (
         <>
           {item.doseId != null && (
+            /* ONE ACTION GRAMMAR SECTION-WIDE (#4752 item 7). "Mark taken" was a
+               bare verb beside a row that already said everything except WHEN, so
+               the slot moves onto the control that writes it and the verb becomes
+               one word. Same action, same undo — only the sentence changed. */
             <DoseConfirmButton
               action={markAttentionDose}
               undoAction={undoAttentionDose}
               fields={{ dose_id: item.doseId }}
+              payload={attentionAheadDetail(item, on, formatPrefs)}
+              ariaLabel={`Take ${item.title}`}
               testid="attention-mark-taken"
-            >
-              Mark taken
-            </DoseConfirmButton>
+            />
           )}
           {item.followUpResolve != null && (
             <FollowUpResolveControls
@@ -2838,6 +2860,7 @@ async function renderDashboard(
           presentations={presentations}
           aheadPresentations={aheadPresentations}
           attentionBadgeCount={attentionBadgeCount}
+          nowSubjects={nowSubjects}
           illnessGroupNode={
             placedIllnessCockpits.length > 0 ? (
               <IllnessNowGroup
