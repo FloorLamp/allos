@@ -22,6 +22,12 @@ import {
   getFamilyHistory,
 } from "@/lib/queries";
 import { getTimelineEvents } from "@/lib/timeline";
+import { searchAll } from "@/lib/queries/search";
+import { flattenHits } from "@/lib/search-rank";
+import {
+  buildImmunizationRecord,
+  immunizationRecordDoseCount,
+} from "@/lib/immunization-record";
 import {
   persistDocumentImport,
   clearImportedDocumentRows,
@@ -281,6 +287,61 @@ describe("cross-source read-layer de-duplication", () => {
     expect(
       getImmunizations(profileId).filter((i) => i.vaccine === "mmr")
     ).toHaveLength(1);
+  });
+
+  // #4366 — the reported /history shape: three overlapping portal CCDAs each write
+  // their own physical row for ONE administration (storage stays per-document, per
+  // scopedExternalId). The record page reads the deduped getImmunizations and always
+  // showed one dose; the Timeline read the table FLAT, so /history rendered the same
+  // flu shot three times. Same collapse, same registry identity, one computation.
+  it("de-dups the same immunization dose on the TIMELINE across three documents", () => {
+    const docs = ["A.ccd", "B.ccd", "C.ccd"].map((f) =>
+      newDocument(profileId, f)
+    );
+    for (const doc of docs) {
+      persistDocumentImport(profileId, doc, glucoseInput());
+    }
+    const physical = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM immunizations WHERE profile_id = ? AND vaccine = 'mmr'"
+      )
+      .get(profileId) as { n: number };
+    expect(physical.n).toBe(3);
+
+    const doses = () =>
+      getTimelineEvents(profileId).filter((e) => e.category === "immunization");
+    expect(doses()).toHaveLength(1);
+    // flattenHits, not the group list: searchAll returns ONE group per domain, so
+    // filtering the groups counts domains and can never see a duplicate row.
+    expect(
+      flattenHits(searchAll(profileId, "MMR")).filter(
+        (h) => h.domain === "immunization"
+      )
+    ).toHaveLength(1);
+    // The record page's list and its "N doses" header count representatives too.
+    expect(
+      immunizationRecordDoseCount(
+        buildImmunizationRecord(getImmunizations(profileId))
+      )
+    ).toBe(1);
+
+    // Lineage survives the collapse: deleting one contributing document leaves the
+    // dose on the Timeline, carried by a surviving document's physical row.
+    clearImportedDocumentRows(profileId, docs[0]);
+    expect(doses()).toHaveLength(1);
+  });
+
+  it("keeps distinct administrations apart on the TIMELINE", () => {
+    const doc = newDocument(profileId, "A.ccd");
+    persistDocumentImport(profileId, doc, glucoseInput());
+    // Same day, different vaccine; and the same vaccine on another day.
+    db.prepare(
+      `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, source)
+       VALUES (?, ?, 'hepa', '1', ?), (?, '2021-04-01', 'mmr', '2', ?)`
+    ).run(profileId, DATE, `document:${doc}`, profileId, `document:${doc}`);
+    expect(
+      getTimelineEvents(profileId).filter((e) => e.category === "immunization")
+    ).toHaveLength(3);
   });
 
   it("prefers a manual immunization dose over an imported twin", () => {

@@ -692,7 +692,7 @@ export function getDocumentImagingStudies(profileId: number, docId: number) {
   return db
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, study_date,
-              impression FROM imaging_studies
+              impression, report_narrative FROM imaging_studies
         WHERE profile_id = ? AND document_id = ?
         ORDER BY COALESCE(study_date, '') DESC, id`
     )
@@ -705,6 +705,7 @@ export function getDocumentImagingStudies(profileId: number, docId: number) {
     contrast: number;
     study_date: string | null;
     impression: string | null;
+    report_narrative: string | null;
   }[];
 }
 

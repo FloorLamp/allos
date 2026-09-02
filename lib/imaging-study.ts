@@ -282,3 +282,72 @@ export function impressionDisplayText(
   // empty one.
   return stripped.length > 0 ? stripped : null;
 }
+
+// WHAT THE REPORT SAID (#3594). A study carries the parsed impression when the import
+// could isolate one, and the report narrative it was parsed out of. Rows imported
+// before the split — and every report whose impression could not be isolated — carry
+// only the narrative, so every surface that asks "what did this report say" reads the
+// impression first and falls back to the narrative rather than going silent.
+export function studyFindingText(study: {
+  impression: string | null;
+  report_narrative?: string | null;
+}): string | null {
+  return study.impression ?? study.report_narrative ?? null;
+}
+
+// THE IMPRESSION SECTION OF A RENDERED REPORT (#3594), or null.
+//
+// The rendered form of a radiology report is a whole document — banner, header,
+// technique, findings, impression, signature — and the only signal we trust for
+// where the impression starts and stops is a section heading.
+//
+// A CAPS TOKEN THAT CARRIES PROSE ON ITS LINE IS DATA, NOT A HEADING, and this is
+// the rule the whole parser turns on. Clinical writing is full of capitalised labels
+// that end in a colon and are followed by the finding itself — spine levels
+// ("L4-L5: severe left lateral recess stenosis"), quadrant lines ("RIGHT BREAST: 8 mm
+// irregular mass"), hyphenated disease names ("COVID-19:"), quadrant abbreviations
+// ("RLQ:"). Level-by-level lines are THE canonical spine-MRI impression format, so
+// treating one as the next section is not an exotic failure: it keeps the summary
+// line and drops the finding. That fragment then OUTRANKS the intact narrative
+// everywhere, because studyFindingText prefers the impression. A verbose impression
+// is at least true; a truncated one is not, so "err toward storing less" means
+// answering NULL, never answering a fragment.
+//
+// So a closing heading must OWN ITS WHOLE LINE: an ALL-CAPS label whose colon ends
+// the line, with the section running to the end of the text when none does.
+//
+// The opening rule is deliberately looser, and the asymmetry is principled rather
+// than convenient: the opening label is a KNOWN WORD ("impression" / "conclusion",
+// optionally qualified — CLINICAL, FINAL, RADIOLOGIC — or compounded, IMPRESSION/
+// RECOMMENDATION), so a colon after it identifies a heading on its own and the prose
+// that follows on the same line is the impression's first sentence. The closing rule
+// matches ANY caps token, so it cannot tell a heading from a data line by vocabulary
+// and needs the structural signal instead.
+//
+// Both ends still anchor to a line start. A document the decoders collapsed onto ONE
+// line has no line structure left to read, so unless it BEGINS with the impression
+// label there is nothing here to trust and the answer is null.
+//
+// NO HEADING, NO PARSE. A report that does not label its impression contributes
+// nothing to this field and is read through the narrative fallback above, which shows
+// the whole report — so declining hides nothing from anybody.
+const IMPRESSION_HEADING =
+  /(?:^|\n)[ \t]*(?:[a-z]+[ \t]+){0,2}(?:impressions?|conclusions?)(?:[ \t]*\/[ \t]*[a-z]+)?[ \t]*[:\-\u2013\u2014][ \t]*/i;
+// The next section's heading: a line whose ONLY content is an ALL-CAPS label and its
+// colon ("RECOMMENDATION:", "ELECTRONICALLY SIGNED BY:"). The lookahead runs to the
+// end of that line, which is what keeps "L4-L5: no significant canal stenosis" — a
+// label with a finding after it — from ending the section.
+const NEXT_SECTION_HEADING =
+  /\n[ \t]*(?=[A-Z][A-Z0-9 /&'-]{2,}:[ \t]*(?:\r?\n|$))/;
+
+export function parseImpressionSection(
+  narrative: string | null | undefined
+): string | null {
+  if (!narrative) return null;
+  const match = IMPRESSION_HEADING.exec(narrative);
+  if (!match) return null;
+  const after = narrative.slice(match.index + match[0].length);
+  const cut = NEXT_SECTION_HEADING.exec(after);
+  const section = (cut ? after.slice(0, cut.index) : after).trim();
+  return section.length > 0 ? section : null;
+}

@@ -1044,12 +1044,13 @@ export const DATASETS: ExportDataset[] = [
       "contrast_agent",
       "study_date",
       "impression",
+      "report_narrative",
       "indication",
       "status",
       "notes",
     ],
     select: `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
-              study_date, impression, indication, status, notes
+              study_date, impression, report_narrative, indication, status, notes
        FROM imaging_studies WHERE profile_id = ?
        ORDER BY COALESCE(study_date, '') DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM imaging_studies WHERE profile_id = ?`,

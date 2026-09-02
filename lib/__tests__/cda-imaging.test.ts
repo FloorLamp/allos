@@ -210,7 +210,7 @@ describe("CDA radiology impression fold (#708 follow-up)", () => {
     expect(r.observations.some((x) => x.category === "report")).toBe(false);
   });
 
-  it("prefers the IMPRESSION over the fuller narrative", () => {
+  it("splits the IMPRESSION from the fuller narrative (#3594)", () => {
     const r = parseCcda(
       organizerDoc(
         `<content ID="Imp">Impression text.</content><content ID="Nar">Full narrative body.</content>`,
@@ -219,17 +219,23 @@ describe("CDA radiology impression fold (#708 follow-up)", () => {
           proseComponent("IMP", "Imp")
       )
     );
+    // Epic labels its own blocks, so this is the one path that KNOWS which text is
+    // the impression: IMP is the finding, NAR the report it came from — kept both.
     expect(r.imagingStudies![0].impression).toBe("Impression text.");
+    expect(r.imagingStudies![0].report_narrative).toBe("Full narrative body.");
   });
 
-  it("falls back to the narrative when there is no impression component", () => {
+  it("stores a narrative-only report as the narrative, with no impression", () => {
     const r = parseCcda(
       organizerDoc(
         `<content ID="Nar">Narrative-only body.</content>`,
         studyComponent + proseComponent("NAR", "Nar")
       )
     );
-    expect(r.imagingStudies![0].impression).toBe("Narrative-only body.");
+    // Nothing was labelled an impression, so none is claimed — the narrative holds
+    // it and every finding surface reads through studyFindingText.
+    expect(r.imagingStudies![0].impression).toBeNull();
+    expect(r.imagingStudies![0].report_narrative).toBe("Narrative-only body.");
   });
 
   it("preserves line breaks in a multi-line impression (block map + br→newline)", () => {
