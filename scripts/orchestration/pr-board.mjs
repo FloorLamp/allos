@@ -119,14 +119,31 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
   // board can no longer be green while either endpoint is red.
   const combined = gh(`commits/${p.head.sha}/status`);
   const ctx = Array.isArray(combined?.statuses) ? combined.statuses : [];
+  // A `cancelled` RUN NEVER REACHED A VERDICT, so it is not one (#4800, #4802).
+  // GitHub returns the newest run per name PER CHECK SUITE, so a head whose
+  // workflow was triggered twice carries the concurrency-cancelled run beside
+  // the green that replaced it. Counting it did both harms at once: it inflated
+  // the denominator (`18/20` on a head with 20 real checks) and painted a
+  // settled-green row red. Nothing here picks a winner between two runs, so a
+  // real red beside a cancellation still counts.
+  const decided = list.filter((r) => r.conclusion !== "cancelled");
   let ok = 0,
     pending = 0;
   const failed = [];
-  for (const r of list) {
+  for (const r of decided) {
     if (r.status !== "completed") pending++;
     else if (r.conclusion === "success" || r.conclusion === "skipped") ok++;
     else failed.push(r);
   }
+  // A name whose every run was cancelled has no verdict — not green, and not
+  // red either. It counts as outstanding so the row cannot read GREEN, and the
+  // row says which name, because "re-run it" is the action and a bare `0/1`
+  // does not say that.
+  const named = new Set(decided.map((r) => r.name));
+  const noVerdict = [...new Set(list.map((r) => r.name))].filter(
+    (name) => !named.has(name)
+  );
+  pending += noVerdict.length;
   for (const s of ctx) {
     if (s.state === "pending") pending++;
     else if (s.state === "success") ok++;
@@ -141,7 +158,7 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
         isStatus: true,
       });
   }
-  const total = list.length + ctx.length;
+  const total = decided.length + noVerdict.length + ctx.length;
   const state = failed.length
     ? `RED ${failed.length}`
     : pending
@@ -159,6 +176,9 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
         .concat(failed.filter((r) => !r.isStatus).map((r) => r.name))
         .join(", ")
         .slice(0, 90)}`
+    : "";
+  const stalled = noVerdict.length
+    ? `  <<< no verdict: ${noVerdict.join(", ").slice(0, 60)} (every run cancelled — re-run it)`
     : "";
   // mergeable is computed lazily by GitHub and is null on a cold read; say
   // "unknown" rather than implying a conflict that may not exist.
@@ -193,7 +213,7 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
     }
   }
   console.log(
-    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${gate}${stale}`
+    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${gate}${stalled}${stale}`
   );
   if (failed.length) red.push({ pr: p.number, failed });
 }
