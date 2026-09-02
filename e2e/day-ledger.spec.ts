@@ -372,15 +372,58 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // they are printed on the list's surface — so what a person sees is the due row
     // against THAT ground, and a hex value asserted against a constant would go on
     // passing if the whole ledger changed colour together.
-    const tones = () =>
-      dueRow.evaluate((el) => ({
-        due: getComputedStyle(el).backgroundColor,
-        ground: getComputedStyle(el.closest('[data-testid="ledger-rows"]')!)
-          .backgroundColor,
-      }));
+    //
+    // AND SETTLE THE READ, because this subtree gets REPLACED rather than updated
+    // (#4815) — a re-render of the food log bar can detach the node between the
+    // visibility wait above and the `evaluate` below. `getComputedStyle` on a
+    // detached node returns EMPTY STRINGS for every property, so an unsettled read
+    // reports "" !== "" as false and this test failed as `Expected: not ""` — a node
+    // that stopped existing, wearing the costume of an accent that stopped differing
+    // (#4835). Two consecutive agreeing NON-EMPTY reads, each through a freshly
+    // resolved locator, so the pair compared belongs to one node still on the page.
+    // Same budget settledBoxes spends on the same question, in the same 50ms steps.
+    const TONE_SETTLE_MS = 10_000;
+    const tones = async (): Promise<{ due: string; ground: string }> => {
+      const deadline = Date.now() + TONE_SETTLE_MS;
+      let previous: { due: string; ground: string } | null = null;
+      for (;;) {
+        const read = await dueRow.evaluate((el) => {
+          // An empty ground rather than a `!` that throws: when the row is detached
+          // from a still-attached list, `closest` finds nothing, and "no reading" is
+          // what that is — the diagnosis below names it.
+          const ground = el.closest('[data-testid="ledger-rows"]');
+          return {
+            due: getComputedStyle(el).backgroundColor,
+            ground: ground ? getComputedStyle(ground).backgroundColor : "",
+          };
+        });
+        if (
+          read.due !== "" &&
+          read.ground !== "" &&
+          previous?.due === read.due &&
+          previous.ground === read.ground
+        ) {
+          return read;
+        }
+        if (Date.now() > deadline) {
+          throw new Error(
+            `[tones] the due row was still being replaced under the read after ` +
+              `${TONE_SETTLE_MS}ms, so no colour was ever measured: last two reads ` +
+              `were ${JSON.stringify(previous)} then ${JSON.stringify(read)}. An ` +
+              `EMPTY string is a detached node (#4815), never a colour — this is ` +
+              `NOT the due row and its ground agreeing.`
+          );
+        }
+        previous = read;
+        await page.waitForTimeout(50);
+      }
+    };
 
     const light = await tones();
-    expect(light.due).not.toBe(light.ground);
+    expect(
+      light.due,
+      "the due row must not be printed in the ledger's own ground colour"
+    ).not.toBe(light.ground);
 
     // DARK BY THE APP'S OWN RULE, not by holding a class on against it. Forcing
     // `classList.add("dark")` reads correct and is a race: components/ThemeReassert.tsx
@@ -397,7 +440,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     await expect(page.locator("html")).toHaveClass(/\bdark\b/);
     await expect(dueRow).toBeVisible();
     const dark = await tones();
-    expect(dark.due).not.toBe(dark.ground);
+    expect(
+      dark.due,
+      "the due row must not be printed in the ledger's own ground colour (dark)"
+    ).not.toBe(dark.ground);
     // …and the theme really switched, so the second reading is not the first one under
     // another name.
     expect(dark.ground).not.toBe(light.ground);
@@ -417,7 +463,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       (el as HTMLElement).style.backgroundColor = bg;
     }, light.ground);
     const forged = await tones();
-    expect(forged.due).toBe(forged.ground);
+    expect(
+      forged.due,
+      "the forged ground colour must reach the same object the assertion reads through"
+    ).toBe(forged.ground);
     await dueRow.evaluate((el) => {
       (el as HTMLElement).style.backgroundColor = "";
     });
