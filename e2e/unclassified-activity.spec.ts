@@ -92,8 +92,14 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
   await search.fill(OWN_TITLE);
+  await expect(search).toHaveValue(OWN_TITLE);
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  await page.waitForURL(/[?&]q=/);
+  // WAIT FOR THE QUERY, NOT FOR THE PARAM. `[?&]q=` also matches `q=` with an EMPTY
+  // value, so a submit that raced the fill satisfies it and the read that follows is
+  // the unfiltered Log — where this 2017 row is folded away and the failure reads as
+  // "the row is missing" rather than "the search never carried the term". Seen once
+  // in three repeats before the value was pinned on both sides of the click.
+  await page.waitForURL(new RegExp(`[?&]q=${OWN_TITLE.replace(/ /g, "\\+")}`));
 
   // The feed renders slim rows (#2897); the row itself carries the type glyph.
   const row = page.getByTestId("history-row").filter({ hasText: OWN_TITLE });
