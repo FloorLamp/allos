@@ -579,9 +579,11 @@ describe("renderRecapMessage", () => {
     expect(lines).toEqual([
       // The headline leads the lines (#3033).
       "2 workouts, a Romanian Deadlift (Rep Trap Bar) PR",
-      "• Workouts: 2 — strength 1, cardio 1 · 1 last week",
+      // News before stats, set apart by a blank line (#4228 D).
       "• PRs: 1 — Romanian Deadlift (Rep Trap Bar)",
       "• Adherence: 92% — 1 missed · 1 skipped",
+      "",
+      "• Workouts: 2 — strength 1, cardio 1 · 1 last week",
     ]);
     expect(lines.join("\n")).not.toMatch(/\(\(|\)\)/);
   });
@@ -1713,21 +1715,109 @@ describe("the reviewed week, rendered as one artifact (#3033)", () => {
     );
     const msg = renderRecapMessage(recap, "Norton")!;
     expect(msg.title).toBe("📊 Weekly recap — Norton");
+    // NEWS BEFORE STATS (#4228 D): the owner's own Aug 23–29 classification — Targets,
+    // PRs, Resumed/Missed, Adherence, Fiber, Zone 2 are news; Workouts, Food, Sleep,
+    // Sleep regularity are stats — with the declared order kept inside each section.
     expect(plainBody(msg.body)).toBe(
       [
         "Aug 9 – Aug 15",
         "6 workouts, a Romanian Deadlift (Rep Trap Bar) PR at 100 kg × 5, fiber missed all week",
-        "• Workouts: 6 — strength 4, cardio 2 · 7 last week",
         "• Targets: 6 of 7 met — short on Back",
         "• PRs: 1 — Romanian Deadlift (Rep Trap Bar) at 100 kg × 5",
         "• Missed: Coenzyme Q10 (Ubiquinol) on Wednesday",
         "• Adherence: 94% — 4 missed · 1 skipped",
-        "• Food: 7/7 days — 13 food groups · protein on target 6 of 7 days",
         "• Fiber: 0 of 7 days on target",
         "• Zone 2: 31 min — 21% of 150 min target",
+        "",
+        "• Workouts: 6 — strength 4, cardio 2 · 7 last week",
+        "• Food: 7/7 days — 13 food groups · protein on target 6 of 7 days",
         "• Sleep: 7h 13m — typical night over 7 nights · 7h 45m last week",
         "• Sleep regularity: SRI 92 — 8m weekend shift",
       ].join("\n")
     );
+    // The card reads `recap.lines` in the declared order, untouched by the split.
+    expect(recap.lines.map((l) => l.key)).toEqual([
+      "workouts",
+      "targets",
+      "prs",
+      "intake-deltas",
+      "adherence",
+      "food",
+      "nutrient-missed",
+      "zone2",
+      "sleep-duration",
+      "sleepRegularity",
+    ]);
+  });
+});
+
+// ── #4228 D: every line declares its section ─────────────────────────────────
+describe("news before stats (#4228 D)", () => {
+  it.each([
+    // [key, override, expected section]
+    ["recovery", { illnessDays: 2 }, "news"],
+    [
+      "workouts",
+      { workouts: [{ date: "2026-07-08", type: "strength" }] },
+      "stats",
+    ],
+    ["prs", { prs: [{ label: "Bench press" }] }, "news"],
+    [
+      "intake-deltas",
+      { intakeDeltaLine: "Missed: Glycine (test) for 2 days" },
+      "news",
+    ],
+    ["adherence", { adherence: { taken: 12, skipped: 1, due: 14 } }, "news"],
+    ["adherence", { adherence: { taken: 13, skipped: 1, due: 14 } }, "stats"],
+    ["adherence", { adherence: { taken: 0, skipped: 3, due: 3 } }, "stats"],
+    ["zone2", { zone2Min: 31, zone2Target: 150 }, "news"],
+    ["zone2", { zone2Min: 150, zone2Target: 150 }, "stats"],
+    ["zone2", { zone2Min: 90, zone2Target: 0 }, "stats"],
+    ["weight", { weights: [{ date: "2026-07-08", weightKg: 74 }] }, "stats"],
+    ["sleepRegularity", { sri: 82 }, "stats"],
+    ["sleep-duration", { sleepMinutes: [433, 420, 445] }, "stats"],
+    ["mood", { mood: { avgValence: 3.5, daysLogged: 4 } }, "stats"],
+    ["goals", { goalsCompleted: ["Run a 10k"] }, "news"],
+    ["goals-missed", { goalsMissed: ["Sleep 7h"] }, "news"],
+    [
+      "fitness-check",
+      { fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 } },
+      "news",
+    ],
+  ] as const)("%s → %s", (key, over, section) => {
+    const line = buildRecap(baseInput(over as Partial<RecapInput>)).lines.find(
+      (l) => l.key === key
+    )!;
+    expect(line.section).toBe(section);
+  });
+
+  it("a recap with only stats has no leading blank line, and only news no trailing one", () => {
+    const statsOnly = plainBody(
+      renderRecapMessage(
+        buildRecap(
+          baseInput({ workouts: [{ date: "2026-07-08", type: "strength" }] })
+        ),
+        "Ada"
+      )!.body
+    );
+    expect(statsOnly.split("\n")).toEqual([
+      "Jul 3 – Jul 9",
+      "1 workout",
+      "• Workouts: 1 — strength 1 · 0 last week",
+    ]);
+    const newsOnly = plainBody(
+      renderRecapMessage(
+        buildRecap(
+          baseInput({
+            workouts: [{ date: "2026-07-08", type: "strength" }],
+            adherence: { taken: 6, skipped: 0, due: 7 },
+          })
+        ),
+        "Ada"
+      )!.body
+    ).split("\n");
+    expect(newsOnly).toContain("• Adherence: 86% — 1 missed");
+    expect(newsOnly.at(-1)).toBe("• Workouts: 1 — strength 1 · 0 last week");
+    expect(newsOnly.filter((l) => l === "")).toHaveLength(1);
   });
 });

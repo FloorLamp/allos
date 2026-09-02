@@ -645,9 +645,21 @@ export function countsAsRecordAt(
   return (RECAP_LINE_MODEL[key].countsAsRecordAt ?? []).includes(scale);
 }
 
+// NEWS BEFORE STATS (#4228 D, owner ruling 2026-08-30). Eleven undifferentiated bullets
+// left the shortfalls interleaved with the routine totals, and the eye had to read
+// everything to find anything. A line is NEWS when it states a CHANGE or a TARGET
+// SHORTFALL — a PR, a missed/resumed delta, the targets verdict, a nutrient at 0 of N,
+// Zone 2 under its target, adherence when it carries misses. A total or a coverage
+// figure is a STAT — the workout count, food coverage, sleep, regularity. Declared on
+// the line where it is built, because two of them turn on their own content. Read by
+// `renderRecapMessage` alone: the headline, `Recap.lines` order and the card's atom
+// layout are unchanged.
+export type RecapSection = "news" | "stats";
+
 export interface RecapLine {
   // A short machine label used as a stable key and (title-cased) as the row label.
   key: RecapLineKey;
+  section: RecapSection;
   label: string;
   value: string;
   // How this line compares itself — exactly one declared idiom, or "none".
@@ -893,6 +905,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (illnessDays > 0) {
     push({
       key: "recovery",
+      section: "news",
       label: "Recovery",
       value: `sick ${illnessDays} day${illnessDays === 1 ? "" : "s"} this ${noun}`,
       comparison: NO_COMPARISON,
@@ -914,6 +927,7 @@ export function buildRecap(input: RecapInput): Recap {
     const breakdown = typeBreakdown(counts);
     push({
       key: "workouts",
+      section: "stats",
       label: "Workouts",
       value: String(workoutCount),
       comparison: { kind: "prior", text: `${prevCount} last ${noun}` },
@@ -939,6 +953,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (targetLine) {
     push({
       key: "targets",
+      section: "news",
       label: "Targets",
       value: targetLine.value,
       comparison: NO_COMPARISON,
@@ -962,6 +977,7 @@ export function buildRecap(input: RecapInput): Recap {
     const priorLead = prevMix?.shares.find((s) => s.type === lead.type);
     push({
       key: "training-mix",
+      section: "stats",
       label: "Training mix",
       value: mix.shares.map((s) => `${s.type} ${s.pct}%`).join(", "),
       comparison: priorLead
@@ -985,6 +1001,7 @@ export function buildRecap(input: RecapInput): Recap {
     const extra = input.prs.length - 3;
     push({
       key: "prs",
+      section: "news",
       label: "PRs",
       value: `${input.prs.length}`,
       comparison: NO_COMPARISON,
@@ -1004,6 +1021,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (input.intakeDeltaLine) {
     push({
       key: "intake-deltas",
+      section: "news",
       label: "Intake",
       value: input.intakeDeltaLine,
       comparison: NO_COMPARISON,
@@ -1029,6 +1047,8 @@ export function buildRecap(input: RecapInput): Recap {
       const missed = intended - taken;
       push({
         key: "adherence",
+        // A rate is a stat; a rate with misses in it is the news the deltas line names.
+        section: missed > 0 ? "news" : "stats",
         label: "Adherence",
         value: `${p}%`,
         comparison: NO_COMPARISON,
@@ -1044,6 +1064,7 @@ export function buildRecap(input: RecapInput): Recap {
       // the value carries the quantity and there is no second fact to qualify it with.
       push({
         key: "adherence",
+        section: "stats",
         label: "Adherence",
         value: `${skipped} dose${skipped === 1 ? "" : "s"} skipped`,
         comparison: NO_COMPARISON,
@@ -1064,6 +1085,7 @@ export function buildRecap(input: RecapInput): Recap {
     if (shape.weekendPct != null) parts.push(`weekends ${shape.weekendPct}%`);
     push({
       key: "adherence-pattern",
+      section: "stats",
       label: "Adherence pattern",
       value: parts.join(", "),
       comparison: NO_COMPARISON,
@@ -1098,6 +1120,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (food && food.daysLogged > 0) {
     push({
       key: "food",
+      section: "stats",
       label: "Food",
       value: `${food.daysLogged}/${windowDays} days`,
       comparison: NO_COMPARISON,
@@ -1125,6 +1148,7 @@ export function buildRecap(input: RecapInput): Recap {
       const label = NUTRIENT_LABELS[n.nutrient];
       push({
         key: "nutrient-missed",
+        section: "news",
         label: label.charAt(0).toUpperCase() + label.slice(1),
         value: `0 of ${n.days} day${n.days === 1 ? "" : "s"} on target`,
         comparison: NO_COMPARISON,
@@ -1149,6 +1173,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (foodHabits.length > 0) {
     push({
       key: "food-habits",
+      section: "stats",
       label: "Eating habits",
       value: `over ${foodHabits[0].observedDays} logged days`,
       comparison: NO_COMPARISON,
@@ -1165,6 +1190,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (capWeeks.length > 0) {
     push({
       key: "caps",
+      section: capWeeks.some((c) => c.overWeeks > 0) ? "news" : "stats",
       label: "Weekly caps",
       value: cadenceCapWeeksSentence(capWeeks[0]),
       comparison: NO_COMPARISON,
@@ -1194,6 +1220,7 @@ export function buildRecap(input: RecapInput): Recap {
         : null;
     push({
       key: "weight",
+      section: "stats",
       label: "Weight",
       value: fmtWeight(latest, wu),
       comparison:
@@ -1231,6 +1258,7 @@ export function buildRecap(input: RecapInput): Recap {
     const perWeek = (trend / windowDays) * 7;
     push({
       key: "weight-trajectory",
+      section: "stats",
       label: "Weight trend",
       value: signedWeight(trend, wu),
       comparison:
@@ -1258,6 +1286,8 @@ export function buildRecap(input: RecapInput): Recap {
         : null;
     push({
       key: "zone2",
+      // Under the weekly target is a shortfall; at or over it, or with no target, a total.
+      section: target != null && input.zone2Min < target ? "news" : "stats",
       label: "Zone 2",
       value: `${input.zone2Min} min`,
       comparison: target
@@ -1287,6 +1317,7 @@ export function buildRecap(input: RecapInput): Recap {
         : null;
     push({
       key: "sleep-duration",
+      section: "stats",
       label: "Sleep",
       value: formatHm(typical),
       comparison:
@@ -1311,6 +1342,7 @@ export function buildRecap(input: RecapInput): Recap {
         : undefined;
     push({
       key: "sleepRegularity",
+      section: "stats",
       label: "Sleep regularity",
       value: sriPresentation(input.sri).text,
       comparison: NO_COMPARISON,
@@ -1334,6 +1366,7 @@ export function buildRecap(input: RecapInput): Recap {
     const days = input.mood.daysLogged;
     push({
       key: "mood",
+      section: "stats",
       label: "Mood",
       value: `${avg}/5`,
       comparison: NO_COMPARISON,
@@ -1349,6 +1382,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (input.goalsCompleted.length > 0) {
     push({
       key: "goals",
+      section: "news",
       label: "Goals reached",
       value: `${input.goalsCompleted.length}`,
       comparison: NO_COMPARISON,
@@ -1368,6 +1402,7 @@ export function buildRecap(input: RecapInput): Recap {
   if (goalsMissed.length > 0) {
     push({
       key: "goals-missed",
+      section: "news",
       label: "Goals not met",
       value: `${goalsMissed.length}`,
       comparison: NO_COMPARISON,
@@ -1389,6 +1424,7 @@ export function buildRecap(input: RecapInput): Recap {
         : null;
     push({
       key: "fitness-check",
+      section: "news",
       label: "Fitness check",
       value:
         fitnessAge != null ? `fitness age ${fitnessAge}` : "battery refreshed",
@@ -1562,15 +1598,28 @@ export function renderRecapMessage(
   // carried, rendered above the lines through the shared grammar (a bare head takes
   // no invented punctuation). Bullet path only — a stored narrative's opener
   // already reads over the same headline, so rendering both would say it twice.
+  //
+  // NEWS BEFORE STATS (#4228 D): the lines split by their declared `section`, news
+  // first, the two groups set apart by a blank line — the digest's own section break.
+  // Within each group the declared line order is kept. This supersedes #3033's
+  // line-order clause for the NOTIFICATION BODY ONLY: `Recap.lines` is untouched, so
+  // the card's atoms and the retrospective read the declared order as before.
+  const bullets = (section: RecapSection) =>
+    joinBody(
+      recap.lines
+        .filter((l) => l.section === section)
+        .map((l) =>
+          formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })
+        ),
+      "\n"
+    );
   const lines: MessageBody[] = narr
     ? [narr]
     : [
         ...(recap.headline
           ? [formatMessageLine({ head: recap.headline })]
           : []),
-        ...recap.lines.map((l) =>
-          formatEmphasizedLine({ glyph: GLYPH.bullet, ...recapMessageLine(l) })
-        ),
+        joinBody([bullets("news"), bullets("stats")], "\n\n"),
       ];
   // The range label is the recap's one structural header — the digest's section headings
   // one surface over — so it carries the same weight they do.

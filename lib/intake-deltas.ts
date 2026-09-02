@@ -183,8 +183,8 @@ export function hasIntakeDeltas(deltas: IntakeDeltas): boolean {
 
 // ---- The one formatter ----------------------------------------------------
 
-// How many items each half names before it collapses to "+N more" — a digest line
-// has to stay a line.
+// How many items each half names before it AGGREGATES to a count plus the run range
+// (#4228 C) — a digest line has to stay a line.
 export const INTAKE_DELTA_MAX_NAMED = 3;
 
 // The period a caller is REPORTING ON, when it spans more than a day (#3033).
@@ -202,6 +202,19 @@ export interface IntakeDeltaReportWindow {
   prefs?: DisplayFormatPrefs;
 }
 
+const dayCount = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
+
+// A run LENGTH as each kind states it. The two kinds read in opposite directions
+// (#4228 B): a miss run is still going — "for 3 days" — while a resume's `days` is the
+// lapse the take ENDED, and "Resumed: X for 8 days" read as eight days back on it. So
+// the resumed half says which way the number points: "after 8 days missed". A lapse
+// longer than the report window is then coherent — it began before the window — and
+// the classifier's 14-day read needs no explaining. The missed half is untouched, so
+// `intakeGapExplainedBy`'s word-for-word agreement (missed-only) still holds.
+function runLength(kind: IntakeDeltaKind, days: string): string {
+  return kind === "missed" ? `for ${days}` : `after ${days} missed`;
+}
+
 // How one delta's RUN reads, without the name in front of it. A SINGLE-occurrence miss
 // inside a multi-day report window names its day — a weekday for a date inside the
 // window, a "Mon, 4 Aug"-style date beyond it (the delta classifier looks back further
@@ -217,7 +230,7 @@ function runSuffix(
         : formatWeekdayDate(d.date, window.prefs ?? DEFAULT_FORMAT_PREFS);
     return `on ${day}`;
   }
-  return `for ${d.days} day${d.days === 1 ? "" : "s"}`;
+  return runLength(d.kind, dayCount(d.days));
 }
 
 function runPhrase(
@@ -241,37 +254,53 @@ function runPhrase(
 // "Missed: Magnesium for 3 days" is the exact phrasing `intakeGapExplainedBy` re-uses
 // word for word when the fraction line absorbs the delta (#1819 item 6) — one item is
 // where those two forms have to agree.
+//
+// PAST THE NAME CAP, THE HALF AGGREGATES (#4228 C). A stack-wide lapse — eleven
+// supplements that stopped and restarted together — is ONE event, and "X for 4 days, Y
+// for 8 days, Z for 7 days, +8 more" reported it eleven times with alphabetical order
+// choosing which three got named. Exactly where the line would have truncated to "+N
+// more", it says the count and the run range instead: "Resumed: 11 supplements after
+// 4–8 days missed", or the one shared run when the runs are uniform. At or below the
+// cap, the per-item form and the #3487 hoist are byte-identical to before.
 function half(
-  label: string,
+  kind: IntakeDeltaKind,
   items: readonly IntakeDelta[],
   window: IntakeDeltaReportWindow | null
 ): string | null {
   if (items.length === 0) return null;
+  const label = kind === "missed" ? "Missed" : "Resumed";
   const suffixes = items.map((d) => runSuffix(d, window));
   const uniform = items.length > 1 && suffixes.every((r) => r === suffixes[0]);
-  const named = items.slice(0, INTAKE_DELTA_MAX_NAMED);
+  if (items.length > INTAKE_DELTA_MAX_NAMED) {
+    const runs = items.map((d) => d.days);
+    const lo = Math.min(...runs);
+    const hi = Math.max(...runs);
+    const run = uniform
+      ? suffixes[0]
+      : runLength(kind, lo === hi ? dayCount(lo) : `${lo}–${hi} days`);
+    return `${label}: ${items.length} supplements ${run}`;
+  }
   const parts = uniform
-    ? named.map((d) => d.name)
-    : named.map((d) => runPhrase(d, window));
-  const rest = items.length - named.length;
-  if (rest > 0) parts.push(`+${rest} more`);
+    ? items.map((d) => d.name)
+    : items.map((d) => runPhrase(d, window));
   return `${uniform ? `${label} ${suffixes[0]}` : label}: ${parts.join(", ")}`;
 }
 
 // THE headline every digest channel renders — "Missed: Magnesium for 3 days ·
-// Resumed: Vitamin D for 2 days", or "Missed for 1 day: Glycine, Magnesium, Zinc" when
-// every item in a half shares one run (#3487 item 3) — or null on a quiet window, which is the signal to
-// omit the line entirely. One formatter so Telegram, the weekly recap and the
-// household card can't drift into three phrasings of the same fact. `window` is
-// the caller's reporting period (see IntakeDeltaReportWindow): absent for the
-// day-scale surfaces, whose copy is unchanged.
+// Resumed: Vitamin D after 2 days missed", or "Missed for 1 day: Glycine, Magnesium,
+// Zinc" when every item in a half shares one run (#3487 item 3), or "Missed: 5
+// supplements for 2–4 days" past the name cap (#4228 C) — or null on a quiet window,
+// which is the signal to omit the line entirely. One formatter so Telegram, the weekly
+// recap and the household card can't drift into three phrasings of the same fact.
+// `window` is the caller's reporting period (see IntakeDeltaReportWindow): absent for
+// the day-scale surfaces, whose copy is unchanged.
 export function intakeDeltaLine(
   deltas: IntakeDeltas,
   window: IntakeDeltaReportWindow | null = null
 ): string | null {
   const parts = [
-    half("Missed", deltas.missed, window),
-    half("Resumed", deltas.resumed, window),
+    half("missed", deltas.missed, window),
+    half("resumed", deltas.resumed, window),
   ].filter((p): p is string => p != null);
   return parts.length ? parts.join(" · ") : null;
 }
@@ -298,5 +327,5 @@ export function intakeGapExplainedBy(
   if (deltas.resumed.length > 0) return null;
   if (deltas.missed.length !== 1) return null;
   const d = deltas.missed[0];
-  return `missed ${d.name} for ${d.days} day${d.days === 1 ? "" : "s"}`;
+  return `missed ${d.name} ${runLength("missed", dayCount(d.days))}`;
 }

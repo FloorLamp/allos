@@ -127,18 +127,29 @@ function asWorkout(a: { date: string; type: string }): RecapWorkout {
   return { date: a.date, type };
 }
 
-// IntakeItem adherence (taken / skipped / due) across the window, using the same
-// due-dose derivation as the digest (isDueOn honoring workout-day + active
-// situations). Deliberate skips (#232) are tallied separately so the recap can
+// IntakeItem adherence (taken / skipped / due) across the window's COMPLETED days,
+// using the same due-dose derivation as the digest (isDueOn honoring workout-day +
+// active situations). Deliberate skips (#232) are tallied separately so the recap can
 // show them alongside taken and exclude them from the percentage denominator.
+//
+// RATE LINES COVER COMPLETED DAYS ONLY (#4228 A). A dose is countable once its day has
+// ended. The walk used to run through `today`, so on the dashboard's in-progress window
+// every dose not taken YET was a miss, and the week's first morning read "Adherence 0% ·
+// 12 missed". The notification's completed window (#1021) already ends before today and
+// is untouched; the card's window loses its last day, and a window with no completed
+// day yields nothing — no line, rather than a rate over zero days. The count lines
+// (workouts) still cover the whole window, so the #223 counter match is unchanged.
 function windowAdherence(
   profileId: number,
   start: string,
-  end: string
+  end: string,
+  today: string
 ): {
   total: { taken: number; skipped: number; due: number };
   days: RecapAdherenceDay[];
 } | null {
+  const last = end < today ? end : shiftDateStr(today, -1);
+  if (last < start) return null;
   const active = getIntakeItems(profileId).filter((s) => s.active);
   if (active.length === 0) return null;
   const itemById = new Map(active.map((item) => [item.id, item]));
@@ -159,7 +170,7 @@ function windowAdherence(
   // The per-day rows the month/quarter PATTERN line reads (#2178). Produced by this
   // SAME loop, so the percentage and the shape can never describe different days.
   const days: RecapAdherenceDay[] = [];
-  for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
+  for (let d = start; d <= last; d = shiftDateStr(d, 1)) {
     const isWorkoutDay = getActivitiesByDate(profileId, d).length > 0;
     const dueIds = doses
       .filter((dose) =>
@@ -431,7 +442,7 @@ export function gatherRecapInput(
   // two gathers that could disagree. Skipped entirely when neither line speaks here.
   const adh =
     speaks("adherence") || speaks("adherence-pattern")
-      ? windowAdherence(profileId, win.start, win.end)
+      ? windowAdherence(profileId, win.start, win.end, td)
       : null;
 
   return {
