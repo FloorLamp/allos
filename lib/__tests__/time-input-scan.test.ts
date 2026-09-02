@@ -27,9 +27,6 @@ import { findTags, scanDirs, REPO } from "./jsx-tag-scan";
 
 const SCAN_DIRS = ["app", "components"];
 
-/** The one legitimate home of a raw event-time input. */
-const CONTROL_FILE = "components/WhenControl.tsx";
-
 /** The frozen hand-rolled set: file → { count, kind, reason }. */
 const HANDROLLED_ALLOW = new Map<
   string,
@@ -144,14 +141,22 @@ const HOW = [
 describe('raw <input type="time"> ratchet (issue #2236)', () => {
   const found = scanRepo();
 
-  it("the shared control itself renders one — the scan is not silently empty", () => {
-    expect(found.get(CONTROL_FILE)).toHaveLength(1);
-  });
-
-  it("every raw time input outside the control is a frozen, reasoned entry", () => {
+  // THE CONTROL'S OWN EXEMPTION RETIRED WITH THE INPUT IT COVERED (#4218).
+  // `components/WhenControl.tsx` was the one legitimate home of a raw time input,
+  // and it no longer renders one: its minute grain is `components/TimeField.tsx`,
+  // a text field plus an authored wheel, so there is nothing left here to exempt.
+  // Deleting the entry means the control is now held to the same rule as
+  // everything else — a raw time input reappearing there fails the build.
+  //
+  // AND THE POSITIVE CONTROL MOVED RATHER THAN GOING AWAY. The retired case
+  // ("the shared control itself renders one") existed so a scan that had stopped
+  // matching anything could not read as a clean sweep. The allowlist-currency
+  // case below is that control now: it asserts a real LINE COUNT in each of five
+  // shipped files, so a reader that matched nothing fails there — over five
+  // files instead of one.
+  it("every raw time input is a frozen, reasoned entry", () => {
     const offenders: string[] = [];
     for (const [rel, lines] of found) {
-      if (rel === CONTROL_FILE) continue;
       const allowed = HANDROLLED_ALLOW.get(rel);
       if (!allowed) {
         offenders.push(`${rel}:${lines.join(",")} — not in HANDROLLED_ALLOW`);
