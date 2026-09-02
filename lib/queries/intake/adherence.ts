@@ -517,10 +517,17 @@ export function setDoseStatusCore(
   // does not extend to a clear the surface only believed in: a list of what a day owes
   // renders every stale row clear, and a ✅ there would flip a skip made elsewhere. A
   // flip or a clear off a state the person could see is unaffected.
-  resolveOnly = false
+  resolveOnly = false,
+  // THE ADMINISTRATION THE TAP STATES (#4426) — the same stamp seam the offline replay
+  // and the Telegram correction already use, reached at last from the web. UNDEFINED
+  // (every existing caller) means "the tap instant", so a confirm that states nothing
+  // writes the row it always wrote; the core still judges the instant against the day
+  // and falls back rather than refusing the dose.
+  takenAt?: Date
 ): DoseStatusOutcome {
   return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, {
     resolveOnly,
+    takenAt,
   });
 }
 export const setDoseStatusCoreDeclares = DOSE_RESOLUTION;

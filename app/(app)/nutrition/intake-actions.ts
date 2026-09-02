@@ -13,6 +13,7 @@ import { revalidateRoute } from "@/lib/revalidate";
 import { db, today, writeTx } from "@/lib/db";
 import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
+import { statedInstantOnDate } from "@/lib/stated-time";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { captureDelete } from "@/lib/undo-delete-db";
@@ -1358,7 +1359,20 @@ export async function setDoseStatus(
     // (#280): a row in a list of what a day still owes renders CLEAR whether or not
     // another device resolved it since, so from clear the tap may only resolve. Absent
     // — a caller rendering no state — keeps the explicit set this action always did.
-    String(formData.get("from") ?? "") === "clear" && target !== "clear"
+    String(formData.get("from") ?? "") === "clear" && target !== "clear",
+    // THE TIME THE TAP STATES (#4426), and the wire carries a WALL TIME, not an
+    // instant: the day is this action's (`date`), so anchoring the two here is what
+    // makes them one claim — a client that sent a resolved instant could contradict
+    // the row it lands on. Only a `taken` states an administration; a skip and a clear
+    // assert none. A malformed or non-existent local time resolves to null and the row
+    // keeps the tap instant, which is the same fallback a refused capture takes.
+    target === "taken"
+      ? (statedInstantOnDate(
+          date,
+          String(formData.get("at") ?? ""),
+          getTimezone(profileId)
+        ) ?? undefined)
+      : undefined
   );
   revalidateIntake();
   return doseStatusResult(outcome, target);

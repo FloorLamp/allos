@@ -2600,7 +2600,9 @@ tri-state — a deliberate skip is a decision, not a missed dose), with adherenc
 and refill tracking. Skips are excluded from the adherence percentage and shown
 as their own count, never decrement your on-hand supply, and never trigger a
 missed-dose escalation; each reminder (web and Telegram) offers a **✅ take**
-and a **⏭️ skip** beside each dose.
+and a **⏭️ skip** beside each dose. A dose you took earlier than you tapped can
+say so: **Taken earlier?** beside the confirm opens a time, and the dose is
+recorded at that time rather than at the tap.
 
 ### Nutrient reference values
 
