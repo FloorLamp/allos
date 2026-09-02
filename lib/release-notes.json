@@ -295,21 +295,21 @@
           "kind": "fix",
           "category": "Reminders",
           "title": "The weekly recap stops counting today’s pending doses as missed",
-          "issues": [4777]
+          "issues": [4228]
         },
         {
           "pr": 4777,
           "kind": "fix",
           "category": "Reminders",
           "title": "A resumed medication says which way its number points",
-          "issues": [4777]
+          "issues": [4228]
         },
         {
           "pr": 4777,
           "kind": "fix",
           "category": "Reminders",
           "title": "The weekly notification leads with its news instead of its totals",
-          "issues": [4777]
+          "issues": [4228]
         },
         {
           "pr": 4777,
@@ -322,35 +322,35 @@
           "pr": 4782,
           "kind": "fix",
           "category": "Trends",
-          "title": "Charts read out their own values instead of a full-width list beneath them",
+          "title": "Each chart point shows its value on hover or focus; the list below it is gone",
           "issues": [4760]
         },
         {
           "pr": 4786,
           "kind": "fix",
           "category": "Medications",
-          "title": "Adding a child’s medication from their illness card uses their details",
+          "title": "A parent adding a child’s medication no longer gets advice meant for adults",
           "issues": [4609]
         },
         {
           "pr": 4786,
           "kind": "fix",
           "category": "Medications",
-          "title": "That form now shows interaction, gene and condition notices it was skipping",
+          "title": "The medication form shows interaction, gene and condition notices it skipped",
           "issues": [4609]
         },
         {
           "pr": 4794,
-          "kind": "fix",
+          "kind": "feature",
           "category": "Interface",
-          "title": "Tapping a time while the wheel is still spinning keeps the time you tapped",
+          "title": "The time field is an in-app wheel instead of the browser’s own time control",
           "issues": [4218]
         },
         {
           "pr": 4794,
-          "kind": "fix",
+          "kind": "feature",
           "category": "Interface",
-          "title": "The date-and-time picker fits on screen instead of running past the bottom",
+          "title": "Where a time is required, one field opens a single date-and-time panel",
           "issues": [4218]
         }
       ]
