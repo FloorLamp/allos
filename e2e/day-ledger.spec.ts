@@ -8,6 +8,7 @@ import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
 import { bulkTakeLabel } from "@/lib/usual-routine";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 // THE DAY LEDGER (#3987 phase 1), on its own seeded stack.
 //
@@ -381,15 +382,30 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
 
     const light = await tones();
     expect(light.due).not.toBe(light.ground);
-    await page.evaluate(() => document.documentElement.classList.add("dark"));
+
+    // DARK BY THE APP'S OWN RULE, not by holding a class on against it. Forcing
+    // `classList.add("dark")` reads correct and is a race: components/ThemeReassert.tsx
+    // re-applies `isDarkTheme` on every route effect and its toggle CLEARS a class the
+    // stored choice disowns, so the second reading landed on the light surface in one
+    // configuration and the dark one in another. Storing the choice removes the race
+    // instead of sampling it — the boot script and the re-assert then agree with the
+    // assertion.
+    await page.evaluate(
+      (key) => localStorage.setItem(key, "dark"),
+      THEME_STORAGE_KEY
+    );
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
     const dark = await tones();
     expect(dark.due).not.toBe(dark.ground);
     // …and the theme really switched, so the second reading is not the first one under
     // another name.
     expect(dark.ground).not.toBe(light.ground);
-    await page.evaluate(() =>
-      document.documentElement.classList.remove("dark")
-    );
+    await page.evaluate((key) => localStorage.removeItem(key), THEME_STORAGE_KEY);
+    await page.reload();
+    await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
 
     // THE CONTROL, THROUGH THE SAME OBJECT the assertion reads through: paint the due
     // row with the ground's own colour and the comparison must agree, then restore and
