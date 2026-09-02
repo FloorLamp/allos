@@ -6,6 +6,7 @@ import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
   comboboxRows,
   expectNoClippedContent,
+  hydratedClick,
   openDashboardAll,
   settledClick,
   settledFill,
@@ -170,24 +171,37 @@ test("simultaneous episodes keep whole controls and close independently", async 
     await owningBar.getByTestId("temp-quick-input").fill("101.9");
     await owningBar.getByTestId("temp-quick-time").fill("12:00");
     await settledClick(page, owningBar.getByTestId("temp-quick-save"));
-    await settledClick(page, owningCockpit.getByTestId("prn-log-now"));
+    // GIVING A MED IS TWO TAPS NOW (#4752 item 4): the chip opens the med and the
+    // panel's labeled-verb chip writes the dose it names. The chip deliberately does
+    // not write — its label is the med's NAME, and a chip whose tap wrote a dose the
+    // reader never saw would break the one thing the primitive promises.
+    await hydratedClick(
+      page,
+      owningCockpit
+        .locator('[data-testid^="cockpit-med-chip-"]')
+        .filter({ hasText: "Ibuprofen" })
+    );
+    await settledClick(
+      page,
+      owningCockpit.getByTestId("cockpit-med-panel").getByTestId("prn-log-now")
+    );
     await page.reload();
     await expect(
-      bySituation("Stomach bug").getByTestId("episode-last-temperature")
+      bySituation("Stomach bug").getByTestId("cockpit-summary-temperature")
     ).toContainText("101.9");
     await expect(
-      bySituation("Stomach bug").getByTestId("episode-last-dose")
+      bySituation("Stomach bug").getByTestId("cockpit-summary-medication")
     ).toContainText("Ibuprofen");
     await expect(
       page
         .getByTestId("illness-now-group")
-        .getByTestId("episode-last-temperature")
+        .getByTestId("cockpit-summary-temperature")
         .filter({ hasText: "101.9" })
     ).toHaveCount(1);
     await expect(
       page
         .getByTestId("illness-now-group")
-        .getByTestId("episode-last-dose")
+        .getByTestId("cockpit-summary-medication")
         .filter({ hasText: "Ibuprofen" })
     ).toHaveCount(1);
 
@@ -391,7 +405,7 @@ test("household episodes stay ordered and a writable accordion logs without swit
     await bar.getByTestId("temp-quick-input").fill("103.4");
     await bar.getByTestId("temp-quick-time").fill("12:00");
     await settledClick(page, bar.getByTestId("temp-quick-save"));
-    await expect(kidA.getByTestId("episode-last-temperature")).toContainText(
+    await expect(kidA.getByTestId("cockpit-summary-temperature")).toContainText(
       "103.4"
     );
     await expect(page.getByTestId("profile-identity-bar")).toContainText(
@@ -512,7 +526,7 @@ test.describe("fresh-profile illness front door", () => {
     await expect(
       page
         .getByTestId("illness-now-group")
-        .getByTestId("episode-last-temperature")
+        .getByTestId("cockpit-summary-temperature")
     ).toContainText("102");
 
     await page.getByTestId("illness-add-medication").click();
@@ -554,13 +568,20 @@ for (const [label, viewport, wide] of [
   test(`the illness cockpit holds a readable measure and expands in place (${label})`, async ({
     browser,
   }) => {
-    const page = await loginAs(browser, credentials(E2E_LOGIN_SICK_SELF));
+    // THE MULTI-EPISODE PROFILE, because it is the one whose cockpit HAS
+    // medications: the chip row this test opens is empty on a profile with none,
+    // and an empty row would let every geometry claim below pass vacuously.
+    resetMultiIllnessWrites();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI_ILLNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
     try {
       await page.setViewportSize(viewport);
       await page.goto("/");
       const card = page
         .getByTestId("illness-now-group")
-        .locator('[data-active="true"]');
+        .locator('[data-situation="Stomach bug"]');
       await expect(card).toHaveAttribute("data-expanded", "true");
       // Wait for the content the measurement is about, not for the card's own
       // visibility: an empty card fits any width.
@@ -596,7 +617,8 @@ for (const [label, viewport, wide] of [
       ];
       const before = await Promise.all(above.map((el) => el.boundingBox()));
       const url = page.url();
-      await settledClick(
+      // A CLIENT TOGGLE, not a write: the chip opens the med and posts nothing.
+      await hydratedClick(
         page,
         chips.locator('[data-testid^="cockpit-med-chip-"]').first()
       ); // first-ok: the row's leading med chip; every chip opens the same panel
