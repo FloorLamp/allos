@@ -1743,14 +1743,17 @@ export function getRedoseArmingState(
     )
     .get(profileId, itemId) as
     { id: number; administeredAt: string } | undefined;
+  // CAST because `strftime` returns TEXT: a bare `>=` compares two epochs as
+  // STRINGS, which inverts below 2001-09-09 (nine digits sort above ten). Same
+  // spelling and same reason as the family window this mirrors.
   const count = db
     .prepare(
       `SELECT COUNT(*) AS n
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
-          AND strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
-              >= strftime('%s', ?)`
+          AND CAST(strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
+                   AS INTEGER) >= CAST(strftime('%s', ?) AS INTEGER)`
     )
     .get(profileId, itemId, prnCeilingWindowStart()) as { n: number };
   return {

@@ -235,7 +235,17 @@ function getMedicationFamilyStatesUncached(
     // the count is the row count, and the amounts feed the amount-aware exposure
     // (#1854). Compared through `strftime` rather than as strings because the
     // administration instant is whichever of the two columns the row has, and
-    // `strftime` reads both stored shapes identically.
+    // `strftime` reads both stored shapes identically — the space-separated SQL
+    // datetime and the Z-suffixed canonical instant.
+    //
+    // THE CAST IS LOAD-BEARING, not decorative. `strftime` returns TEXT, and a bare
+    // `>=` between two TEXT values compares them as strings: right for every 10-digit
+    // epoch, and INVERTED below 2001-09-09, where a 9-digit '999907200' sorts ABOVE a
+    // modern '1788254160'. An ancient or mis-stamped administration would then be
+    // judged inside the trailing window and counted against the ceiling forever — a
+    // "Max reached" nobody earned. The repo's other `strftime` comparisons sit inside
+    // `ABS(a - b)`, where the arithmetic coerces; these two are the only bare ones, so
+    // they spell it the way lib/queries/correction-history.ts already does.
     const windowLogs = db
       .prepare(
         `SELECT l.amount AS amount
@@ -243,8 +253,8 @@ function getMedicationFamilyStatesUncached(
            JOIN intake_items s ON s.id = l.item_id
           WHERE s.profile_id = ? AND l.item_id IN (${placeholders})
             AND l.status = 'taken'
-            AND strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
-                >= strftime('%s', ?)`
+            AND CAST(strftime('%s', COALESCE(l.occurred_at, l.recorded_at))
+                     AS INTEGER) >= CAST(strftime('%s', ?) AS INTEGER)`
       )
       .all(profileId, ...ids, prnCeilingWindowStart()) as {
       amount: string | null;

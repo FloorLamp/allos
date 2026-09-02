@@ -24,6 +24,7 @@ import {
   getFindingSuppressions,
   getMedicationFamilyStates,
   getPrnMedicationsForQuickLog,
+  getRedoseArmingState,
   getPrnOverMaxItems,
 } from "@/lib/queries";
 import { activeFindings } from "@/lib/findings";
@@ -544,6 +545,30 @@ describe("PRN ceilings judge the trailing 24h, not the calendar day (#4686)", ()
     const state = getMedicationFamilyStates(p).get(med.itemId)!;
     expect(state.count24h).toBe(1);
     expect(cardLabel(p, MORNING)).toContain("1 of 5 in 24h");
+  });
+
+  // A NINE-DIGIT EPOCH IS NOT A SMALLER STRING THAN A TEN-DIGIT ONE. The window
+  // predicate compares `strftime('%s', …)`, which returns TEXT — so a bare `>=` is a
+  // text comparison, right for every 10-digit epoch and inverted below 2001-09-09,
+  // where '999907200' sorts ABOVE '1788254160'. A legacy or mis-stamped
+  // administration would then be judged INSIDE the trailing window and counted
+  // against the ceiling forever, which is the direction that fabricates a
+  // "Max reached" nobody earned. Both windows CAST; this is what the CAST is for.
+  it("an ancient administration instant falls OUTSIDE the window, not above it", () => {
+    vi.setSystemTime(MORNING);
+    const p = newProfile("Win24Ancient");
+    const med = seedAcetaminophen(p);
+    const t = today(p);
+    // One real dose this morning, and one stamped in 1999 — a 9-digit epoch.
+    logAdmin(med.itemId, med.doseId, t, 5.27, MORNING, "500 mg");
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, status, amount)
+       VALUES (?, ?, '1999-06-01', '1999-06-01T08:00:00Z', 'taken', '500 mg')`
+    ).run(med.doseId, med.itemId);
+
+    // The window holds the morning dose and nothing else.
+    expect(getMedicationFamilyStates(p).get(med.itemId)!.count24h).toBe(1);
+    expect(getRedoseArmingState(p, med.itemId).count24h).toBe(1);
   });
 
   it("five doses spanning midnight inside 24h reach the ceiling", () => {
