@@ -2286,10 +2286,15 @@ same rule as #3592: house copy on the column, raw cause in the log.
 identical failures in Review's history table and appends a count, so it now reads
 `Reconnect Withings to resume syncing. — all 8 runs`; the composition predates
 this vocabulary (a #3592 sentence already produced the same shape) and is left
-alone. `details.warnings` is a different channel and keeps its own register: it
-carries a PARTIAL run's warning (`weatherPartialWarning`), which still quotes
-Open-Meteo's sentence for the air-quality half, because a partial is not a run
-failure and Review is not the card.
+alone. `details.warnings` is a different channel but keeps the SAME rule since #3639: it
+carries a PARTIAL run's warning (`weatherPartialWarning`), and that warning used to
+quote Open-Meteo's status and sentence for the air-quality half on the reasoning that
+a partial is not a run failure. The ruling on #3639 is that #3618's no-status
+criterion reaches `.details` too — it is a user-facing surface either way — so the
+warning names the missing half in plain language, and the status and the vendor's
+sentence go to `log.error` like every other source's. #3613's earlier ".details stays"
+ruling is superseded narrowly: it protected the diagnostic from being LOST, and
+relocating it keeps that.
 
 `lib/__db_tests__/sync-failure-copy.test.ts` is the reachability proof: a table
 over source × arrival × status that drives the real runners against a stubbed
