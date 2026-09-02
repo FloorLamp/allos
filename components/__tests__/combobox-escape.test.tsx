@@ -111,7 +111,12 @@ describe("a picker only claims the Escape layer while it has a list to close", (
 // IS an option was never a draft, in either mode.
 describe("the press that closes the list drops a draft only where it could not be kept", () => {
   it.each([
-    { picker: "a plain picker, draft typed", free: false, typed: "Zinc", kept: "" },
+    {
+      picker: "a plain picker, draft typed",
+      free: false,
+      typed: "Zinc",
+      kept: "",
+    },
     {
       picker: "a plain picker, an option typed",
       free: false,
@@ -124,11 +129,7 @@ describe("the press that closes the list drops a draft only where it could not b
     ({ free, typed, kept }) => {
       const escaped = vi.fn();
       render(
-        <Panel
-          options={["Creatine"]}
-          onEscape={escaped}
-          allowFreeText={free}
-        />
+        <Panel options={["Creatine"]} onEscape={escaped} allowFreeText={free} />
       );
       fireEvent.focus(field());
       fireEvent.change(field(), { target: { value: typed } });
