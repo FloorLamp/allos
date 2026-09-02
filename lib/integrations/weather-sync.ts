@@ -200,8 +200,9 @@ export async function runWeatherSync(
     timezone
   );
   if (!daily.ok) {
-    partial =
-      daily.error ?? `daily fetch failed (${daily.status ?? "unknown"})`;
+    // No fallback line to write: the result type guarantees a failure carries both
+    // (#3639), and the one this replaced printed a status code on the card.
+    partial = daily.error;
     partialDeterministic = isDeterministicFailure(daily.status);
   } else {
     partial = daily.partial;
@@ -212,11 +213,11 @@ export async function runWeatherSync(
       // A write failure, not a response — a retry is exactly the right advice.
       //
       // THE REASON IS A FRAGMENT, NOT A SENTENCE (#3592). It is interpolated into
-      // weatherPartialWarning's parenthetical beside "air-quality fetch failed
-      // (400)", so the shape that belongs here is an authored clause in that
-      // register — not `userErrorCopy`'s standalone "Couldn't … Try again.", whose
-      // retry advice would then contradict the warning's own tail. The raw cause,
-      // which is SQLite vocabulary, goes to the log like every other write failure.
+      // weatherPartialWarning's parenthetical beside the fetch half's own clause, so
+      // the shape that belongs here is an authored clause in that register — not
+      // `userErrorCopy`'s standalone "Couldn't … Try again.", whose retry advice would
+      // then contradict the warning's own tail. The raw cause, which is SQLite
+      // vocabulary, goes to the log like every other write failure.
       log.error("weather daily upsert failed", {
         profile: profileId,
         err: err instanceof Error ? err.message : String(err),

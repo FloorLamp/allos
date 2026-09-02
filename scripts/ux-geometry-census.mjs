@@ -43,6 +43,15 @@
 // cost more work than fixing a real bug would have — which is the argument for
 // making the instrument honest rather than reading its output more carefully.
 //
+// ── AND A FOURTH, FOR THE COPY THE THIRD ONE HAD TO EXEMPT (#3623) ─────────────
+//
+// `insideEllipsisTruncation` silences every truncated string for probe (a), which is
+// right — an ellipsis is not something off screen — and it left "copy you cannot
+// read", which IS in this census's remit, with no reporter at all. Probe (d) is that
+// reporter, and it is scoped to PERSON NAMES only (ruled 2026-09-01): truncation here
+// is mostly deliberate, so a class that also fired on item names and headings would
+// be the #3325 failure. Its own section below states the rule and what it gives up.
+//
 // ── WHAT IT FOUND ON ITS FIRST RUN, so "it works" is not left as a claim ────────
 //
 // Measured 2026-08-22 against the e2e seed at 390px, by the guard spec itself. Both
@@ -185,6 +194,9 @@ export function geometryProbe(opts) {
       clipCandidates: 0,
       clippedTotal: 0,
       clipped: [],
+      personNamesSeen: 0,
+      truncatedNamesTotal: 0,
+      truncatedNames: [],
       controlRowsExamined: 0,
       heightRowsTotal: 0,
       heightRows: [],
@@ -359,7 +371,8 @@ export function geometryProbe(opts) {
      * ellipsis? `paintedRect` owns which ancestors clip and where they paint; this
      * helper keeps probe (a)'s narrower policy that the clip must signal an
      * ellipsis and its own right edge must remain inside the viewport. Silent
-     * `overflow-x: hidden` is still #3478's reportable shape.
+     * `overflow-x: hidden` is still #3478's reportable shape, and the ellipsis this
+     * exempts is probe (d)'s subject rather than nobody's (#3623).
      */
     const insideEllipsisTruncation = (el) => {
       for (const clip of paintedRect(el).horizontalClips) {
@@ -398,6 +411,67 @@ export function geometryProbe(opts) {
       });
     }
     clipped.sort((a, b) => b.overflowPx - a.overflowPx);
+
+    // ── PROBE (d): a PERSON'S NAME cut short by an ellipsis (#3623) ───────────────
+    //
+    // An ellipsis is copy you cannot read, which is squarely inside this census's
+    // remit — and probe (a) exempts every one of them. That exemption is RIGHT for
+    // the question probe (a) asks ("is anything off screen"), and it left truncation
+    // with no reporter at all, including the case that filed #3623: a household
+    // supplies chip rendering `Supply Parent Loratadine (e2e) · Sup…`, the PERSON
+    // ellipsised on a page whose whole question is whose bottle it is.
+    //
+    // THE RULE, AND THE COST IT ACCEPTS. Only a truncated PERSON'S NAME is reported.
+    // Truncation is everywhere here and nearly all of it is deliberate, so a class
+    // that fired on item names, headings or sentences would be noise — deleted within
+    // a week, taking its real findings with it (#3325). A truncated non-name label
+    // therefore goes unreported, ruled 2026-09-01 as the price of the class existing.
+    //
+    // WHO THE PEOPLE ARE IS THE PAGE'S OWN ANSWER, NOT AN ORTHOGRAPHIC GUESS. The
+    // shell's profile switcher renders one row per accessible profile, and the name
+    // is the only span in that row without a `data-testid`
+    // (components/ProfileSwitcherPanel.tsx). A capitalized-words heuristic was the
+    // alternative and it fails on this app's own data in the direction that matters:
+    // `Atorvastatin` (scripts/seed.ts) and `Supply Parent Loratadine`
+    // (e2e/logins/intake.ts) both read as proper names to it, which is precisely the
+    // noise this class cannot afford, while a name carrying a lowercase particle or a
+    // digit does not fit the shape at all.
+    //
+    // The roster is read from the WHOLE DOCUMENT — the switcher lives in the shell —
+    // while the findings stay scoped to `<main>` like every other probe here. A
+    // single-profile instance renders no switcher, so the roster is empty and this
+    // class is silent; `personNamesSeen` rides beside the findings so that silence
+    // reads as "nobody to name" rather than as "no name was cut".
+    const flatText = (el) => (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    const personNames = new Set();
+    for (const el of document.querySelectorAll(
+      '[data-testid^="switch-to-"] span:not([data-testid])'
+    )) {
+      const n = flatText(el);
+      if (n) personNames.add(n);
+    }
+    const truncatedNames = [];
+    for (const el of clipCandidateEls) {
+      if (!shown(el)) continue;
+      // The chip prints the person as `· <name>` beside the item
+      // (components/ProfileSwitcherChip.tsx), so the separator comes off first.
+      const name = flatText(el).replace(/^[·•—–-]\s*/, "");
+      if (!personNames.has(name)) continue;
+      const p = paintedRect(el);
+      if (!p.horizontalClips.some((c) => c.signalsEllipsis)) continue;
+      // Natural box against PAINTED box, which is the same pair of readings the
+      // exemption above is built on: the name is unreadable by however much its own
+      // rect runs past what its ancestors actually paint.
+      const lostPx = Math.round(el.getBoundingClientRect().right - p.right);
+      if (lostPx <= clipEpsilonPx) continue;
+      truncatedNames.push({
+        el: describe(el),
+        name,
+        lostPx,
+        visiblePx: Math.round(Math.max(0, p.right - p.left)),
+      });
+    }
+    truncatedNames.sort((a, b) => b.lostPx - a.lostPx);
 
     // ── PROBE (b): control heights within one rendered row ────────────────────────
     //
@@ -594,6 +668,9 @@ export function geometryProbe(opts) {
       clipCandidates,
       clippedTotal: clipped.length,
       clipped: clipped.slice(0, maxRowsPerVisit),
+      personNamesSeen: personNames.size,
+      truncatedNamesTotal: truncatedNames.length,
+      truncatedNames: truncatedNames.slice(0, maxRowsPerVisit),
       controlRowsExamined,
       heightRowsTotal: heightRows.length,
       heightRows: heightRows.slice(0, maxRowsPerVisit),
@@ -619,9 +696,12 @@ export function geometryAuditSections(metricsRows, top = 15) {
   const clips = [];
   const rows = [];
   const collisions = [];
+  const cutNames = [];
   for (const r of metricsRows) {
     for (const c of r.clipped ?? [])
       clips.push({ route: r.route, viewport: r.viewport, ...c });
+    for (const n of r.truncatedNames ?? [])
+      cutNames.push({ route: r.route, viewport: r.viewport, ...n });
     for (const h of r.heightRows ?? [])
       rows.push({ route: r.route, viewport: r.viewport, ...h });
     for (const o of r.overlaps ?? [])
@@ -647,6 +727,24 @@ export function geometryAuditSections(metricsRows, top = 15) {
         `| ${c.route} | ${c.viewport} | ${c.el} | ${c.overflowPx} (${c.side}) | ${c.visiblePart} | ${c.width} |`
       );
     const t = truncated("clipped", "clippedTotal");
+    if (t.length) lines.push("", `Truncated per-visit lists: ${t.join(", ")}.`);
+    lines.push("");
+  }
+  if (cutNames.length) {
+    cutNames.sort((a, b) => b.lostPx - a.lostPx);
+    lines.push(
+      "## Truncated person names (an ellipsis eating a profile's name)",
+      "",
+      "PERSON NAMES ONLY. The app truncates deliberately all over, so a class that also reported item names and headings would be noise; a truncated non-name label is not reported and that cost is accepted (#3623). Who counts as a person is the profile switcher's own roster, not a guess about what a name looks like. `lost px` is how far the name's own box runs past what its ancestors paint.",
+      "",
+      "| route | viewport | element | name | lost px | visible px |",
+      "|---|---|---|---|---|---|"
+    );
+    for (const n of cutNames.slice(0, top))
+      lines.push(
+        `| ${n.route} | ${n.viewport} | ${n.el} | ${n.name} | ${n.lostPx} | ${n.visiblePx} |`
+      );
+    const t = truncated("truncatedNames", "truncatedNamesTotal");
     if (t.length) lines.push("", `Truncated per-visit lists: ${t.join(", ")}.`);
     lines.push("");
   }

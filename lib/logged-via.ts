@@ -68,7 +68,7 @@ export const LOGGED_VIA_MEANING: Record<LoggedVia, string> = {
   "usual-backfill":
     'the composed "your usual <window>" one-tap, aimed at a PAST day (#4118) — a person acted, but on a day they were reconstructing rather than living',
   import:
-    "not a user interaction; the row came from an importer (`source` names which, where the write path has one)",
+    "not a user interaction; the row came from an importer — an import row carries `source` where known (#3808)",
 };
 
 /** Every value of the vocabulary, derived from the exhaustive record above. */
@@ -143,14 +143,17 @@ export function parseWebOrigin(
  * the two columns stay legibly orthogonal at every write site.
  *
  * ONE SHIPPED WRITE PATH STAMPS `import` WITH NO `source` AT ALL, and the meaning
- * string above is hedged because of it (#3566). `commitWorkouts`
+ * string above says "where known" because of it (#3566). `commitWorkouts`
  * (app/(app)/data/actions.ts) bulk-imports a training log and receives only the
  * extracted workouts — the document is not in its signature — so there is no id for
- * a `document:<n>` to name, and inventing one would be worse than the NULL. Giving
- * it a real `source` is a signature change plus two product consequences (Trends'
- * source comparison grows a series; `lib/activity-draft.ts` reads `source != null`
- * as "not a draft"), so it is a decision, not a cleanup. Until it is made, `import`
- * means "no person acted" and nothing more on those rows.
+ * a `document:<n>` to name, and inventing one would be worse than the NULL.
+ *
+ * RULED 2026-09-01 (#3808, question 2): IT KEEPS THE NULL, and the vocabulary was
+ * amended instead. Plumbing a real `source` through was considered and overruled —
+ * the two consumer flips it would buy (Trends' source comparison grows a series;
+ * `lib/activity-draft.ts` reads `source != null` as "not a draft") are not worth
+ * attribution nobody has asked for. The notes at those two sites stay as the record
+ * of why. On these rows `import` means "no person acted" and nothing more.
  */
 export const IMPORTED: LoggedVia = "import";
 
@@ -229,6 +232,12 @@ export const USUAL_BACKFILL: LoggedVia = "usual-backfill";
  * That is the creation-not-mutation rule working exactly as #3087 specifies. It is
  * written down because "which surface a person used" reads, at a glance, like a claim
  * about the row's present value, and #3077's ranker is what will read it.
+ *
+ * `substance_daily_totals` (#4435) is the second day-row and follows that same rule,
+ * with one thing worth naming beside it: this row DOES re-stamp `recorded_at` on every
+ * tap, because the day's latest use is a fact about the day. Provenance still does not
+ * move — a nicotine day opened from the page and topped up from the quick-log sheet
+ * reads `page`.
  */
 export const LEDGERS_WITH_LOGGED_VIA = [
   "intake_item_logs",
@@ -238,6 +247,7 @@ export const LEDGERS_WITH_LOGGED_VIA = [
   "body_metrics",
   "symptom_logs",
   "medical_records",
+  "substance_daily_totals",
 ] as const;
 
 export type LedgerWithLoggedVia = (typeof LEDGERS_WITH_LOGGED_VIA)[number];

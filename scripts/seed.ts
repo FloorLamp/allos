@@ -2779,8 +2779,8 @@ for (let d = 30; d >= 8; d--) {
   // Nicotine intake section + trend render with data. Cannabis stays empty
   // (sections render regardless — logging starts in-app).
   const suNic = db.prepare(
-    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at)
-     VALUES (1, ?, 'nicotine', ?, ?)`
+    `INSERT INTO substance_daily_totals (profile_id, date, substance, units, recorded_at, logged_via)
+     VALUES (1, ?, 'nicotine', ?, ?, ${VIA_SEEDED})`
   );
   for (let d = 20; d >= 0; d -= 1) {
     if (d % 3 === 1) continue; // skip some days — a real, uneven pattern

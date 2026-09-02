@@ -95,6 +95,13 @@ plateau, worst adherence, longest lapsed, furthest from target, most recently ad
 duplicate, soonest event — with the older stable order kept as the TIE-BREAK, so
 determinism survives. A new capped family states its relevance signal in the
 detector, not in the builder, so every surface reads one order.
+Four of those signal names read correctly under a meaning that was rejected, so the
+ruling pins the meaning too (2026-09-02): a shortfall is RELATIVE to its floor rather
+than the absolute gap, a lapse is counted in DAYS since the last follow-through rather
+than in scheduled occurrences, same-second goals break on ASCENDING id so an imported
+set keeps the order it was written in, and worst adherence is the miss RATE rather
+than the dose count — the last of which makes a wholly-missed weekday outrank a
+partly-missed weekend that costs more doses, which is accepted.
 `lib/__db_tests__/coaching-finding-caps.test.ts` over-supplies each family and
 asserts the surviving rows by identity and order (#3126/#4069).
 Stale exercises collapse further into one episodic family finding: it names at most

@@ -123,9 +123,11 @@ function refusedMessage(
 //
 // ── Field membership has exactly two life-stage variants ─────────────────────
 // Order is static within a group (a form whose fields move between visits is
-// unusable). Body fat and HRV are gated OFF for a growth-tracked profile (the
-// existing showBodyFat / showHrv gates, #493); height and head circumference are
-// gated ON. Tab order follows visual order because the fields render in that order.
+// unusable). HRV and the whole body-composition class — body fat %, lean mass, bone
+// mass — are gated OFF for a growth-tracked profile (showHrv, #493; and
+// showCompositionEntry, #4147, which gates the three together because they come off
+// one DEXA report); height and head circumference are gated ON. Tab order follows
+// visual order because the fields render in that order.
 //
 // ── What is NOT here ─────────────────────────────────────────────────────────
 // The three #158 functional-fitness markers (grip strength, 30-second chair stand,
@@ -162,9 +164,10 @@ export interface MeasurementsQuickAddProps {
   // The viewer's login temperature-unit preference (#857) — seeds the temp entry
   // unit. Storage stays canonical °F.
   temperatureUnit?: TemperatureUnit;
-  // #493: body fat isn't tracked for a growth-tracked profile — the ONE showBodyFat
-  // predicate, applied here exactly as it is to the charts and the history column.
-  showBodyFat?: boolean;
+  // #493/#4147: manual body-composition entry — body fat %, lean mass, bone mass — is
+  // closed for a growth-tracked profile, as one class. The ONE showCompositionEntry
+  // predicate, applied here exactly as it is on the metric detail routes.
+  showCompositionEntry?: boolean;
   // The minor variant: height (+ head circ) appear and HRV is gated off. Derived
   // server-side from the same lib/growth-metrics gates the Body charts read.
   showGrowth?: boolean;
@@ -248,7 +251,7 @@ export default function MeasurementsQuickAdd({
   maxDate,
   weightUnit,
   temperatureUnit = "F",
-  showBodyFat = true,
+  showCompositionEntry = true,
   showGrowth = false,
   showHeadCirc = false,
   onSaved,
@@ -364,7 +367,7 @@ export default function MeasurementsQuickAdd({
   if (
     metric &&
     !isMeasurementEntryAllowed(metric.key, {
-      showBodyFat,
+      showCompositionEntry,
       showGrowth,
       showHeadCirc,
     })
@@ -1096,12 +1099,14 @@ export default function MeasurementsQuickAdd({
     ],
     body: [
       field.weight,
-      ...(showBodyFat ? [field.bodyFat] : []),
+      ...(showCompositionEntry ? [field.bodyFat] : []),
       ...(showGrowth ? [field.height] : []),
       ...(showGrowth && showHeadCirc ? [field.headCirc] : []),
       field.waistCirc,
-      field.leanMass,
-      field.boneMass,
+      // The composition class travels together (#4147): lean and bone mass come off
+      // the same DEXA reading as the body fat above, so offering two of the three read
+      // as an oversight. The tape and the day's water either side stay ungated.
+      ...(showCompositionEntry ? [field.leanMass, field.boneMass] : []),
       field.hydration,
     ],
     sleep: [field.sleepWindow, field.sleep, ...(showHrv ? [field.hrv] : [])],

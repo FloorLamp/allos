@@ -350,6 +350,13 @@ export function detectDoseAdherencePatterns(
 // someone misses most is the one worth naming — item name was never a relevance
 // signal. Ties keep the pre-ruling stable order (item name, then dose id), so
 // determinism survives. The caller applies the shared findings-bus suppression filter.
+//
+// RULED 2026-09-02 (#4069, refinement 2): WORST ADHERENCE IS THE RATE, NOT THE COUNT,
+// and the consequence was CONSIDERED AND ACCEPTED rather than overlooked. The weekday
+// window holds about 8 applicable days and the weekend about 16, so a 100%-missed
+// Friday outranks a 60%-missed weekend that costs the profile more doses. The count
+// reading was recommended and overruled: what this family reports is the DAY, and a
+// clean day-pattern is the one fix a person can act on. This is a ruling, not a TODO.
 export function detectAdherencePatterns(
   inputs: readonly DoseAdherenceInput[]
 ): AdherencePattern[] {

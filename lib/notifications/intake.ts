@@ -298,9 +298,10 @@ function gatherWindowDoses(
     // the rebuild, so `✅ All` on that message now writes nothing where it used to
     // write `taken`. #558 gives the prediction its job — landing a reminder BEFORE the
     // session — and that job is over once the day is closed; what the day actually
-    // owed is then a question for the record, not the rhythm. Whether a rebuild should
-    // reproduce the message AS SENT (which named the dose) or as the day now reads is
-    // #3996, still open.
+    // owed is then a question for the record, not the rhythm. #3996 has since ruled
+    // that a rebuild reproduces the message AS SENT, and this is the one axis where
+    // that rule cannot be honoured: the prediction has no dated form to reproduce, so
+    // the record is all a closed day leaves to read.
     predictedWorkoutDay: isForToday
       ? isPredictedWorkoutDay(profileId, date)
       : undefined,
@@ -376,6 +377,14 @@ function gatherWindowDoses(
     // stay `must` (reminders + missed-dose escalation intact) precisely because the
     // machinery can now say "not today" instead of the user having to silence it.
     if (!doseDueOn(item, dose, ctx)) continue;
+    // THE SLOT IS THE ONE THIS DOSE SAT IN ON `date`, NOT THE ONE IT SITS IN NOW
+    // (#3996, ruled AS SENT). A rebuild reproduces a message already sent, so the
+    // buttons under Tuesday's reminder mean what they meant on Tuesday — and `✅ All`
+    // writes exactly the set this gather returns, so the bucket decides what a bulk
+    // tap RESOLVES, not only what it says. `doseBucketOn` is the dated resolver for
+    // that; the plain `timeBucket` beside it answers about today and is right for the
+    // live surfaces. Same rule and same reason as the quick-log day switcher (#3936):
+    // a slot label must name a slot the doses actually sat in.
     const bucket = doseBucketOn(dose, date);
     if (doseSendSlot(item.condition, bucket, workoutTimed) !== slot) continue;
     // The TRAVEL gate on the SEND path (#3263), the twin of the #1602 calendar gate

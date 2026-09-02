@@ -109,8 +109,8 @@ const INTERPOLATED_DATETIME_ALLOW: Record<
   { count: number; why: string }
 > = {
   "e2e/bristol-stool.spec.ts": {
-    count: 1,
-    why: "Seeds a metric_samples reading, whose `started_at` is a profile-LOCAL WALL CLOCK for a hand-entered row — the `${date}THH:MM:SS` shape lib/offline/writes.ts builds through zonedDateParts, and the one lib/time-columns.ts documents for that column (convention `mixed`). It is not an instant, and routing it through zonedWallTimeToUtc would store a UTC string the reader's date filter and the natural key would both disagree with under the rotating instance timezone. The spec's other reading is TAPPED through the real UI, so the write core stamps it.",
+    count: 6,
+    why: "Seeds and reads back metric_samples readings, whose `started_at` is a profile-LOCAL WALL CLOCK for a hand-entered row — the `${date}THH:MM:SS` shape lib/offline/writes.ts builds through zonedDateParts, and the one lib/time-columns.ts documents for that column (convention `mixed`). It is not an instant, and routing it through zonedWallTimeToUtc would store a UTC string the reader's date filter and the natural key would both disagree with under the rotating instance timezone. One seeds the panel's two-extreme day; the other five are #4433's record assertions, which read the SAME stored shape back out to prove a correction moved the type without moving the instant. The taps in this spec are stamped by the write core, not by a fixture.",
   },
   "e2e/dose-history.spec.ts": {
     count: 1,

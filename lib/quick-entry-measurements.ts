@@ -10,7 +10,7 @@ import {
   getProfileBirthdate,
 } from "@/lib/settings/profile-attrs";
 import {
-  showBodyFat,
+  showCompositionEntry,
   showGrowthQuickAdd,
   showHeadCircEntry,
 } from "@/lib/growth-metrics";
@@ -61,7 +61,7 @@ export interface MeasurementsQuickEntry {
   profileId: number;
   weightUnit: WeightUnit;
   temperatureUnit: TemperatureUnit;
-  showBodyFat: boolean;
+  showCompositionEntry: boolean;
   showGrowth: boolean;
   showHeadCirc: boolean;
 }
@@ -87,11 +87,11 @@ export function measurementsQuickEntry(
     profileId,
     weightUnit: prefs.weightUnit,
     temperatureUnit: prefs.temperatureUnit,
-    // #493: body fat isn't tracked for a growth-tracked profile, and the page
-    // mount hides the field — the overlay asks the SAME questions (the same
-    // lib/growth-metrics gates) so the two mounts of one component can't
-    // disagree about what's enterable.
-    showBodyFat: showBodyFat(age),
+    // #493/#4147: manual body-composition entry is closed for a growth-tracked
+    // profile, and the page mount hides those fields — the overlay asks the SAME
+    // questions (the same lib/growth-metrics gates) so the two mounts of one
+    // component can't disagree about what's enterable.
+    showCompositionEntry: showCompositionEntry(age),
     showGrowth: showGrowthQuickAdd(age),
     showHeadCirc: showHeadCircEntry(
       birthdate ? ageInMonthsFromBirthdate(birthdate, date) : null
