@@ -26,6 +26,7 @@ import {
   pushedMeasures,
   reconcileRekeyedBodyMetrics,
 } from "./ingest-timezone-reconcile";
+import { collapseSleepSessionOverlaps } from "./sleep-overlap-db";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
@@ -249,6 +250,34 @@ export function ingestHealthConnectPayload(
         hrMinutes = foldCounts([hrMinutes, c]);
       }
     );
+    // ── THE SLEEP OVERLAP COLLAPSE (#3628) ── AFTER THE HEART RATE, AND THAT IS WHY IT
+    // IS HERE RATHER THAN IN THE SAMPLE CHUNKS ABOVE. A re-timed sleep session is decided
+    // by the heart rate the device recorded inside each claimed window, and this push's
+    // minutes only reach the store in the chunks that just committed — planned any
+    // earlier it would judge the corrected night against a store that cannot yet see it.
+    // Its own transaction, so the deletes and their tombstones land together.
+    //
+    // ISOLATED (#1285), like the post-commit work below: the samples and the heart rate
+    // are already durable, so a failure here must not report an otherwise-successful push
+    // as a full sync failure. What it costs is one push of convergence — the rule is
+    // re-derived from the store on every push — and the pair it did not collapse is
+    // listed in Data → Review meanwhile, so the miss is visible rather than silent.
+    try {
+      samples = foldCounts([
+        samples,
+        {
+          ...emptyCounts(),
+          superseded: writeTx(() =>
+            collapseSleepSessionOverlaps(profileId, source, pushedAt)
+          ),
+        },
+      ]);
+    } catch (err) {
+      log.error("sleep overlap collapse failed after Health Connect ingest", {
+        profileId,
+        err,
+      });
+    }
     commitChunks(
       parsed.activities,
       (slice, sink) => upsertActivities(profileId, slice, source, sink),

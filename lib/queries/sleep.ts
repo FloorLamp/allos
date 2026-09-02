@@ -21,6 +21,8 @@ import {
   OURA_SLEEP_SCORE_METRIC,
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
+import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
+import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
 import { getActivityDates } from "./training/activities";
 import { getIntakeDosesForHistory, getIntakeItems } from "./intake/schedule";
@@ -821,4 +823,59 @@ export function latestSleepSyncAt(profileId: number): string | null {
     .get(profileId) as { source: string } | undefined;
   if (!row) return null;
   return getLatestSyncEvent(profileId, row.source)?.at ?? null;
+}
+
+// ── OVERLAPPING SLEEP SESSIONS STILL IN THE STORE (#3628) ──
+//
+// The pairs the ingest collapse (lib/integrations/sleep-overlap-db.ts) did NOT resolve:
+// no heart rate inside one of the windows, heart rate reading as sleep inside BOTH, or
+// the #133 lock holding a row. Nothing was deleted, so both nights are stored and one of
+// the two days is showing a night that did not happen — which is exactly the thing a
+// person can settle in one look and this app cannot.
+//
+// A DERIVED READ, WITH NOTHING STORED BEHIND IT. There is no decision table and no
+// dismissal: the pair is listed while both rows exist and stops being listed the moment
+// either is deleted, which is the #3321 shape (an unreadable dose is listed until it is
+// retyped). That also means a pair that predates the collapse is listed too — the rule
+// only ever runs on a push, and nothing replays it over history.
+export const SLEEP_OVERLAP_REVIEW_DAYS = 90;
+
+export interface OverlappingSleepSession {
+  id: number;
+  date: string;
+  started_at: string;
+  minutes: number;
+}
+
+export interface OverlappingSleepPair {
+  origin: string;
+  sessions: [OverlappingSleepSession, OverlappingSleepSession];
+}
+
+export function getOverlappingSleepSessions(
+  profileId: number
+): OverlappingSleepPair[] {
+  const rows = db
+    .prepare(
+      `SELECT id, date, metric, origin, started_at, ended_at, edited, value
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND source = ?
+          AND date >= ?
+        ORDER BY started_at`
+    )
+    .all(
+      profileId,
+      HEALTH_CONNECT_ID,
+      shiftDateStr(today(profileId), -SLEEP_OVERLAP_REVIEW_DAYS)
+    ) as (SleepSessionRow & { date: string; value: number })[];
+  return sleepOverlapPairs(rows).map(({ a, b }) => ({
+    // `sleepOverlapPairs` only pairs rows of one non-null origin, so either side names it.
+    origin: a.origin as string,
+    sessions: [a, b].map((s) => ({
+      id: s.id,
+      date: s.date,
+      started_at: s.started_at,
+      minutes: Math.round(s.value),
+    })) as [OverlappingSleepSession, OverlappingSleepSession],
+  }));
 }
