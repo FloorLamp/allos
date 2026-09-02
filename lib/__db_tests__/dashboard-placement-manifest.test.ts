@@ -941,6 +941,17 @@ describe("actual atomic dashboard manifests", () => {
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
   const QUERY_BASELINE: Record<string, number> = {
+    // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
+    // as well as their own table, so a profile whose only eye care is VISITS stops
+    // having its pane hidden. That is one representative-id encounters read plus
+    // the shared conditions list, once per render under the request memo.
+    // `household` spends +1 rather than +2 because `hasSpecialtyLensContent`
+    // short-circuits: it reads conditions only when the visits read found nothing,
+    // and on that persona one of the two lines stops at the visits read.
+    // The two bits gate the Records › Specialty panes and nothing else (no nav leaf
+    // carries them), so this is a cost the dashboard pays for a question asked on
+    // another page — recorded here rather than absorbed, and the cheapest way to
+    // remove it later is to drop the two vestigial bits from NavRelevance.
     // −3 each (#4228 A): the recap's adherence walk stops before today, so no
     // persona makes today's three per-day reads any more — the day's activities,
     // its taken set and its skipped set. `household` is unmoved because its acting
@@ -948,17 +959,17 @@ describe("actual atomic dashboard manifests", () => {
     // walk and never made them; measured by instrumenting the walk and rendering
     // all six personas, which reported five walking one day fewer and household
     // short-circuiting.
-    bodybuilder: 223,
-    "marathon-runner": 222,
-    household: 269,
-    pregnant: 219,
-    "diabetic-cgm": 230,
+    bodybuilder: 225,
+    "marathon-runner": 224,
+    household: 270,
+    pregnant: 221,
+    "diabetic-cgm": 232,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 245,
+    biohacker: 247,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

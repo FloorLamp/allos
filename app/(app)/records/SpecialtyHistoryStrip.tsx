@@ -54,7 +54,7 @@ export default function SpecialtyHistoryStrip({
         {SPECIALTY_LINE_HISTORY_TITLE[line]}
       </h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Visits and diagnoses in this area of care, grouped from your record.
+        Visits and diagnoses in this area of care.
       </p>
       <ul className="mt-3 divide-y divide-black/5 dark:divide-white/5">
         {entries.map((e) => (
