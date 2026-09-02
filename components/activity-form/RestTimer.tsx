@@ -9,6 +9,7 @@ import {
 import { formatSeconds } from "@/lib/duration";
 import { useHaptics } from "@/components/useHaptics";
 import FilterPills from "@/components/FilterPills";
+import Stepper from "@/components/Stepper";
 import {
   REST_PRESETS_SEC,
   REST_STEP_SEC,
@@ -179,22 +180,18 @@ export default function RestTimer({
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => nudge(-REST_STEP_SEC)}
-            aria-label="Subtract 15 seconds"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
+          {/* The step size stays on the face, not only in the label: a bare ± on a
+              running clock does not say how far one tap moves it. */}
+          <Stepper
+            className="border-black/10 dark:border-white/10"
+            onStep={(direction) => nudge(direction * REST_STEP_SEC)}
+            decreaseLabel={`Subtract ${REST_STEP_SEC} seconds`}
+            increaseLabel={`Add ${REST_STEP_SEC} seconds`}
           >
-            −15
-          </button>
-          <button
-            type="button"
-            onClick={() => nudge(REST_STEP_SEC)}
-            aria-label="Add 15 seconds"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-black/10 bg-surface text-base font-semibold text-slate-600 hover:bg-slate-50 active:scale-95 dark:border-white/10 dark:text-slate-300"
-          >
-            +15
-          </button>
+            <span className="self-center px-1 text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
+              {REST_STEP_SEC}s
+            </span>
+          </Stepper>
           <button
             type="button"
             onClick={() => (running ? setRunning(false) : start())}

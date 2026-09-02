@@ -136,7 +136,7 @@ test("the wellness lens renders each practice's completed weeks in range (#1632)
     // All three verdicts, each from a deterministic part of the ledger above.
     const cellsWith = (verdict: string) =>
       card.locator(
-        `[data-testid="practice-week-cell"][data-verdict="${verdict}"]`
+        `[data-testid="practice-week-cell"][data-state="${verdict}"]`
       );
     await expect.poll(() => cellsWith("at-ceiling").count()).toBeGreaterThan(0);
     await expect.poll(() => cellsWith("met").count()).toBeGreaterThan(0);

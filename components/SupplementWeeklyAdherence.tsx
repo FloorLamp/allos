@@ -6,6 +6,7 @@ import {
 } from "@/lib/supplement-weekly-adherence";
 import { weekdayOfDateStr } from "@/lib/date";
 import VisualizationDetails from "@/components/VisualizationDetails";
+import { StateLegend, stateCellClass } from "@/components/StateCells";
 
 const STATE_CLASS: Record<WeeklyAdherenceState, string> = {
   taken: chartAdherenceState.taken.class,
@@ -117,7 +118,7 @@ export default function SupplementWeeklyAdherence({
                 data-testid="supplement-weekly-adherence-day"
                 data-state={day.state}
                 aria-label={dayDescription(day, fullLabel)}
-                className={`flex h-9 items-center justify-center rounded-md text-xs font-semibold tabular-nums ${STATE_CLASS[day.state]}`}
+                className={stateCellClass("tile", STATE_CLASS[day.state])}
               >
                 {cellText(day)}
               </div>
@@ -132,21 +133,16 @@ export default function SupplementWeeklyAdherence({
         )}
         data-testid="supplement-adherence-details"
       />
-      <ul
-        aria-label="Adherence state legend"
-        data-testid="supplement-weekly-adherence-legend"
-        className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
-      >
-        {legendStates.map((state) => (
-          <li key={state} className="flex items-center gap-1">
-            <span
-              aria-hidden="true"
-              className={`h-2.5 w-2.5 rounded-xs ${STATE_CLASS[state]}`}
-            />
-            {STATE_LABEL[state]}
-          </li>
-        ))}
-      </ul>
+      <StateLegend
+        label="Adherence state legend"
+        testId="supplement-weekly-adherence-legend"
+        className="mt-3"
+        items={legendStates.map((state) => ({
+          key: state,
+          tone: STATE_CLASS[state],
+          label: STATE_LABEL[state],
+        }))}
+      />
       {summary.days.some((day) => day.isToday && day.state === "pending") && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           Today is still in progress.
