@@ -416,6 +416,22 @@ export function gatherHistoryLog(
   // `getAllSubstanceDailyTotals` reads that counter — so a serving logged through
   // Nutrition still reaches the record, once, as a substance. Food TOTALS are
   // untouched: this is the record's row set, not the nutrition arithmetic.
+  //
+  // …EXCEPT FOR A KNOWN MINOR, WHERE IT DOES DISAPPEAR, AND THAT IS AN OPEN OWNER
+  // QUESTION (#4072). The substance gate below is asked of the SUBJECT's age, so for a
+  // known minor that gather does not run — while the exclusion here is unconditional,
+  // so such a row matches NEITHER and is absent from the record entirely, still
+  // counting in `getAllSubstanceDailyTotals`. That absence is the ruling above working
+  // exactly as it was measured, AND it is a row nobody can see or undo from the surface
+  // that would undo it. The two readings want opposite code and only the owner can
+  // choose, so the exclusion is left as the ruling set it. What this change does is stop
+  // the record from CREATING the state: `substanceCorrectable` below and the matching
+  // age gate in `updateFoodLogEvent`.
+  //
+  // ONE EXPRESSION FOR "DOES THIS SUBJECT'S RECORD CARRY SUBSTANCE CONTENT AT ALL",
+  // read by that gate and by the correction's offer, so the record cannot show a group
+  // it would then refuse to write.
+  const substanceShown = !isMinor(getProfileAge(profileId));
   if (wants(opts, "food")) {
     const boundaries = profileFoodSlotBoundaries(profileId);
     const ledger = getFoodLedgerPage(
@@ -471,6 +487,7 @@ export function gatherHistoryLog(
           clock: hhmm,
           clockKind: stated ? "stated" : "logged",
           slotBoundaries: boundaries,
+          substanceCorrectable: substanceShown,
         },
       });
     }
@@ -613,8 +630,9 @@ export function gatherHistoryLog(
   // LIFE-STAGE GATED, exactly as the surface that owns them is (#1174/#1279): the
   // substance record is adult-only content, and a page that merged it in for a known
   // minor would be widening exposure past what that profile's own pages show. Asked of
-  // the SUBJECT's age, so `?view=everyone` inherits the gate per member.
-  if (wants(opts, "substance") && !isMinor(getProfileAge(profileId))) {
+  // the SUBJECT's age, so `?view=everyone` inherits the gate per member — and it is the
+  // same `substanceShown` the food correction's offer reads (#4072).
+  if (wants(opts, "substance") && substanceShown) {
     const totals = getAllSubstanceDailyTotals(profileId).filter(
       (row) =>
         row.date <= until &&

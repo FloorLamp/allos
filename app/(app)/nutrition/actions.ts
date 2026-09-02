@@ -22,12 +22,14 @@ import { statedInstantOnDate } from "@/lib/stated-time";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
-import { getTimezone } from "@/lib/settings";
+import { getProfileAge, getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   addProteinGramsCore,
   undoProteinGramsCore,
 } from "@/lib/protein-daily-totals-write";
+import { isSubstanceFoodGroup } from "@/lib/substance-use";
+import { isMinor } from "@/lib/life-stage";
 import { getFoodLimitTapNote } from "@/lib/queries/food-limit";
 import { getActiveFastCached } from "@/lib/queries/fasting";
 import { promptsEndOfFast } from "@/lib/fasting";
@@ -415,6 +417,32 @@ export async function updateFoodLogEvent(
   if (rawGroup) {
     if (!isValidFoodGroup(rawGroup)) return formError("Unknown food group.");
     patch.groupKey = rawGroup;
+  }
+  // A CORRECTION MAY NOT MAKE A KNOWN MINOR'S ROW A SUBSTANCE ONE (#4072). Every other
+  // write into this content class asks `isMinor(getProfileAge(subject))` first — the
+  // substance correction beside it on this very record is the pattern (#4067) — and the
+  // record READS these rows behind the same question, so a write that skipped it could
+  // put a member's row into a state their own record was gated against showing. Asked
+  // of the SUBJECT, like the gate above it, because in `?view=everyone` the acting
+  // profile is the wrong profile to ask. Corrections that stay inside food are
+  // untouched: food is gated nowhere and must not start being gated here.
+  //
+  // A ROW ALREADY IN THIS GROUP IS NOT A MOVE, and refusing it would strand the row —
+  // its time and its meal could then never be corrected, on the one surface that can
+  // still see it. Read id + profile_id scoped, so another profile's event answers
+  // nothing and is refused as a move.
+  if (
+    patch.groupKey !== undefined &&
+    isSubstanceFoodGroup(patch.groupKey) &&
+    isMinor(getProfileAge(profileId))
+  ) {
+    const current = db
+      .prepare(
+        "SELECT group_key FROM food_log_events WHERE id = ? AND profile_id = ?"
+      )
+      .get(eventId, profileId) as { group_key: string } | undefined;
+    if (current?.group_key !== patch.groupKey)
+      return formError("That isn't available for this profile.");
   }
   const rawDate = String(formData.get("date") ?? "").trim();
   if (rawDate) {
