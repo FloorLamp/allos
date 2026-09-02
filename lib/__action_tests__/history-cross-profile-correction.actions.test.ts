@@ -62,10 +62,16 @@ import {
 } from "@/app/(app)/trends/reading-actions";
 import { editSymptom, removeSymptom } from "@/app/(app)/symptom-actions";
 import {
+  correctStoolReading,
+  deleteStoolReading,
+} from "@/app/(app)/stool-actions";
+import {
   deleteCycleAction,
   saveCycleAction,
 } from "@/app/(app)/medical/cycles/actions";
 import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
+import { logBristolStool } from "@/lib/offline/writes";
+import { BRISTOL_STOOL_METRIC } from "@/lib/bristol-stool";
 import { createCycleRow } from "@/lib/cycle-store";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -242,6 +248,30 @@ const bodyWeightOf = (profileId: number, date: string) =>
       .get(profileId, date) as { weight_kg: number | null } | undefined
   )?.weight_kg ?? null;
 
+function seedStoolReading(profileId: number, date: string): number {
+  logBristolStool(profileId, date, 3, "08:12");
+  return Number(
+    (
+      db
+        .prepare(
+          `SELECT id FROM metric_samples
+            WHERE profile_id = ? AND metric = ? AND date = ?`
+        )
+        .get(profileId, BRISTOL_STOOL_METRIC, date) as { id: number }
+    ).id
+  );
+}
+
+const stoolTypeOf = (id: number, profileId: number): number | null =>
+  (
+    db
+      .prepare(
+        `SELECT value FROM metric_samples
+          WHERE id = ? AND profile_id = ? AND metric = ?`
+      )
+      .get(id, profileId, BRISTOL_STOOL_METRIC) as { value: number } | undefined
+  )?.value ?? null;
+
 // ── The five kinds, as a table ────────────────────────────────────────────────
 //
 // Each case seeds ONE correctable row on the SUBJECT and describes the post the row's
@@ -378,6 +408,19 @@ const KINDS: Kind[] = [
     removeFn: (form) => removeSymptom(form),
     present: (_id, profileId, date) =>
       symptomSeverityOf(profileId, date) != null,
+  },
+  {
+    name: "stool",
+    seed: seedStoolReading,
+    // The reading's INSTANT is its address, so the correction moves the type alone
+    // (#4433) — the `metric_samples` row id is the whole post beside it.
+    read: (id, profileId) => stoolTypeOf(id, profileId),
+    corrected: 4,
+    correct: (id) => ({ id, type: 4 }),
+    correctFn: (form) => correctStoolReading(form),
+    remove: (id) => ({ id }),
+    removeFn: (form) => deleteStoolReading(form),
+    present: (id, profileId) => stoolTypeOf(id, profileId) != null,
   },
   {
     name: "cycle",

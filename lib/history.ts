@@ -65,6 +65,8 @@ import { mainSleepPeriod } from "./sleep-regularity";
 import { getIntegration } from "./integrations/registry";
 import type { IntegrationId } from "./types/integrations";
 import { getSymptomDaysInRange } from "./queries/symptoms";
+import { getBristolRows } from "./queries/bristol-stool";
+import { BRISTOL_STOOL_METRIC, bristolStoolType } from "./bristol-stool";
 import { getSymptomPhotosInRange } from "./symptom-photo-write";
 import { symptomLabel, severityLabelFor } from "./symptoms";
 import { getMoodLogs, getMoodOnDate, hasMoodLogs } from "./queries/mood";
@@ -230,6 +232,14 @@ export function historyPresentKinds(profileId: number): HistoryKind[] {
     .prepare("SELECT 1 FROM symptom_logs WHERE profile_id = ? LIMIT 1")
     .get(profileId);
   if (symptom != null) out.push("symptom");
+  // STOOL IS A `metric_samples` KIND, so the probe names the metric as well as the
+  // profile — the same reason sleep's does one block up.
+  const stool = db
+    .prepare(
+      "SELECT 1 FROM metric_samples WHERE profile_id = ? AND metric = ? LIMIT 1"
+    )
+    .get(profileId, BRISTOL_STOOL_METRIC);
+  if (stool != null) out.push("stool");
   const cycle = db
     .prepare("SELECT 1 FROM cycles WHERE profile_id = ? LIMIT 1")
     .get(profileId);
@@ -902,6 +912,44 @@ export function gatherHistoryLog(
           },
         });
       }
+    }
+  }
+
+  // ── STOOL ────────────────────────────────────────────────────────────────
+  //
+  // ONE ROW PER READING (#4433). A Bristol reading is filed at INSTANT grain because
+  // several movements a day is ordinary and each is its own observation — the reason
+  // it lives in `metric_samples` rather than in `body_metrics` — so the record lists
+  // them individually and the day's rollup absorbs a bad day's six.
+  //
+  // THE CLOCK IS ALWAYS THE EVENT'S OWN. There is no filing-time fallback to
+  // distinguish: a tap states "the moment IS now" and the fold states a minute, so
+  // both write the observation's instant into `started_at` and the row renders bare.
+  if (wants(opts, "stool")) {
+    const readings = getBristolRows(profileId, since, until, limit + 1);
+    if (readings.length > limit) truncated = true;
+    for (const reading of readings.slice(0, limit)) {
+      // A value outside the scale names no type, and the vocabulary is the one guard
+      // (`isBristolType`) rather than a range comparison repeated per surface.
+      const scale = bristolStoolType(reading.type);
+      if (!scale) continue;
+      rows.push({
+        id: `stool:${reading.id}`,
+        kind: "stool",
+        profileId,
+        tz,
+        date: reading.date,
+        ...historyClockFields(reading.hhmm, "stated", prefs),
+        title: `Type ${scale.type} — ${scale.label}`,
+        // Plain, like the food groups and the substances beside it (#4045 §5): the
+        // Trends panel is a page-level destination every stool row would share.
+        href: null,
+        // NO VERDICT (#2785). The scale's own description is context, not a finding —
+        // nothing here says a type is good or bad.
+        detail: detailSegment([scale.description]),
+        media: 0,
+        edit: { kind: "stool", rowId: reading.id, type: scale.type },
+      });
     }
   }
 
