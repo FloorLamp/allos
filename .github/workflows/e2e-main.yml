@@ -86,6 +86,12 @@ jobs:
   #
   # It also costs less on the runs it applies to: a skipped push paid FOUR
   # full-history checkouts and now pays one.
+  #
+  # ITS NAME MUST NOT START WITH `e2e-main`. `baseDetectorNotice` picks this
+  # workflow's check runs out of main's list by that prefix and counts them as
+  # shards, and this job always succeeds — so `e2e-main-detect` would read as one
+  # shard that ran and passed, which is the very false green above, restored
+  # through the back door.
   detect:
     runs-on: ubuntu-latest
     outputs:
