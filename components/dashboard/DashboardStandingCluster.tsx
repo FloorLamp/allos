@@ -253,7 +253,18 @@ export function DashboardFactRow({
         </div>
       )}
       {presentation.figure != null && (
-        <div className="mt-2" data-testid="dashboard-row-figure">
+        // `inert`, and it is the whole design of this slot rather than a caveat.
+        // The row's link carries `standing-stretch`, whose `::after` insets to the
+        // family's facts cell — measured, not assumed: `elementFromPoint` at the
+        // chart's centre resolves inside the door — so a POINTER already lands on
+        // the door wherever it falls on the figure, which is what "tap → the day
+        // view" means. Without this the KEYBOARD disagreed: the drawing's own
+        // interior anchors (a tick naming `#timeline-entry-…`) stayed in the tab
+        // order, and those fragments name feed rows that exist on the day view and
+        // NOT here, so tabbing into them activated a link that scrolls nowhere.
+        // `inert` makes the two agree — on this surface the figure is a picture and
+        // the row is the door; the exploring happens on the day view, one tap away.
+        <div className="mt-2" data-testid="dashboard-row-figure" inert>
           {presentation.figure}
         </div>
       )}

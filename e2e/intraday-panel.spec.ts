@@ -262,11 +262,59 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(rowValue).toHaveText(/^Synced .+ ago$/);
       const dashboardLag = (await rowValue.textContent())!.trim();
 
+      // THE WHOLE ROW IS ONE DOOR, THE CHART INCLUDED — a decision, so it is
+      // MEASURED. The row's link carries `standing-stretch`, whose `::after` insets
+      // to the family's facts cell, and the figure renders inside that cell: a
+      // pointer anywhere on the drawing lands on the door. That is what this mount
+      // is for ("tap → today's day view"), and it is why the figure is `inert` —
+      // the chart's own tick anchors name `#timeline-entry-…` fragments that exist
+      // on the day view and NOT here, so without it the keyboard would reach a link
+      // that scrolls nowhere while the pointer could not.
+      //
+      // NOT asserted with a click: Playwright refuses to click an element that
+      // another element intercepts, so `click(chart)` fails whether the figure is
+      // correctly covered by the door or simply broken. This asks the question the
+      // behaviour is actually about.
+      const doorReach = await family.evaluate((el) => {
+        const plot = el.querySelector(
+          '[data-variant="compact"]'
+        ) as HTMLElement | null;
+        const door = el.querySelector(
+          'a[href*="day-at-a-glance"]'
+        ) as HTMLElement | null;
+        if (!plot || !door)
+          return { hitInsideDoor: false, ticks: 0, focusable: true };
+        const box = plot.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2
+        );
+        // Through the FIGURE's own anchors — the ones this chart actually renders,
+        // not a fresh query written to check the work.
+        const ticks = Array.from(
+          el.querySelectorAll<HTMLElement>(
+            '[data-testid="dashboard-row-figure"] a[href^="#"]'
+          )
+        );
+        const focusable = ticks.some((tick) => {
+          tick.focus();
+          return document.activeElement === tick;
+        });
+        return {
+          hitInsideDoor: door.contains(hit),
+          ticks: ticks.length,
+          focusable,
+        };
+      });
+      // The control that keeps the focus claim from being vacuous: the figure really
+      // does render tick anchors, so "none is focusable" is about something.
+      expect(doorReach.ticks).toBeGreaterThan(0);
+      expect(doorReach.hitInsideDoor).toBe(true);
+      expect(doorReach.focusable).toBe(false);
+
       await followLink(
         member,
-        // Keyed on the DESTINATION, not on position: the figure inside this same
-        // row carries its own anchors (a tick jumps to a feed entry), and a
-        // `.first()` would be asserting DOM order rather than the door.
+        // Keyed on the DESTINATION, not on position.
         family.locator('a[href*="day-at-a-glance"]'),
         /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
       );
