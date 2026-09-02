@@ -67,9 +67,11 @@ function household(memberAge: number): {
 
 describe("correcting a food row into a substance group (#4072)", () => {
   it("refuses the move on a KNOWN MINOR's row, and lands it on an adult's", async () => {
-    for (const [age, expected] of [
-      [9, "berries"],
-      [41, ALCOHOL_FOOD_GROUP],
+    // A known minor's row keeps the group the control correction left it in; an
+    // adult's takes the move. The control is what proves the login could have written.
+    for (const [age, moveLands, finalGroup] of [
+      [9, false, "eggs"],
+      [41, true, ALCOHOL_FOOD_GROUP],
     ] as const) {
       const { member } = household(age);
       const eventId = seedServing(member.id, "berries");
@@ -97,11 +99,9 @@ describe("correcting a food row into a substance group (#4072)", () => {
         })
       );
       expect(moved.ok, `age ${age} move into a substance group`).toBe(
-        age !== 9
+        moveLands
       );
-      expect(groupOf(eventId), `age ${age} stored group`).toBe(
-        age === 9 ? "eggs" : ALCOHOL_FOOD_GROUP
-      );
+      expect(groupOf(eventId), `age ${age} stored group`).toBe(finalGroup);
     }
   });
 
@@ -142,7 +142,10 @@ describe("correcting a food row into a substance group (#4072)", () => {
       const rows = gatherHistoryLog(member.id, { loginId, limit: 50 }).rows;
       const food = rows.filter((row) => row.edit?.kind === "food");
       // The row has to be on the record before its offer means anything.
-      expect(food.map((row) => row.title), `age ${age}`).toEqual(["Berries"]);
+      expect(
+        food.map((row) => row.title),
+        `age ${age}`
+      ).toEqual(["Berries"]);
       const edit = food[0].edit;
       expect(edit?.kind === "food" && edit.substanceCorrectable).toBe(offered);
     }

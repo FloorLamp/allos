@@ -818,7 +818,8 @@ export default function FoodLogBar({
     const form = new FormData();
     form.set("group_key", slug);
     form.set("date", date);
-    if (activeProfileId != null) form.set("profile_id", String(activeProfileId));
+    if (activeProfileId != null)
+      form.set("profile_id", String(activeProfileId));
     let truth: FoodServingTruthResult;
     try {
       truth = await readFoodServingTruth(form);
