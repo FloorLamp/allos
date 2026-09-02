@@ -367,7 +367,10 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
     "app/(app)/nutrition/DayLedger.tsx",
     {
       kind: "field",
-      why: "the record's correction sheet, opened from a row's ⋯ — a modal the user asked for, not a statement collapsed beside a one-tap",
+      why:
+        "#4118's selection-edit `Set time…` — the web's AFTER-THE-FACT correction " +
+        "path, reached by selecting rows and asking for it. #4426 is explicit that " +
+        "this stays where it is; the shared statement only tells the time AT the tap",
     },
   ],
   [
