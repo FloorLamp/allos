@@ -218,6 +218,69 @@ test.describe("the day view's intraday panel (#1068)", () => {
     }
   });
 
+  // #4767 item 2 — the dashboard mount. The chart is the SAME component and the
+  // SAME day model; what this pins is that it is present on `/`, that it carries
+  // the day's own causes (the shaded ride window), that the row states the lag in
+  // the same words the panel does, and that tapping it lands on the panel.
+  test("the dashboard's Today band draws today's chart and doors to the panel", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/");
+      const family = member.locator('[data-standing-family="intraday-today"]');
+      await expect(family).toBeVisible();
+      // It is in TODAY and nowhere else — the band the issue names.
+      await expect(
+        member
+          .locator('[data-standing-section="today"]')
+          .locator('[data-standing-family="intraday-today"]')
+      ).toHaveCount(1);
+
+      // The figure, in the compact geometry the day view's phone variant uses —
+      // one implementation, selected by the prop that file already had.
+      const figure = family.getByTestId("dashboard-row-figure");
+      const chart = figure.locator('[data-variant="compact"]');
+      await expect(chart).toBeVisible();
+      // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
+      // rather than an axis, and it is the layer the presence gate is about.
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+      // The seeded ride's window, shaded on the axis — the AC's "shaded window".
+      await expect(chart.getByTestId("intraday-block")).toHaveCount(1);
+
+      // The lag sentence, on the row's own facts. Compared against the PANEL's
+      // rather than against a literal: both mounts read one `intradayFreshness`
+      // over one model, so a drift between them is the only failure worth
+      // catching here — and the run's frozen clock moves the minute, not the
+      // sentence's construction.
+      const rowValue = family.getByTestId("standing-value");
+      await expect(rowValue).toHaveText(/^Synced .+ ago$/);
+      const dashboardLag = (await rowValue.textContent())!.trim();
+
+      await followLink(
+        member,
+        // Keyed on the DESTINATION, not on position: the figure inside this same
+        // row carries its own anchors (a tick jumps to a feed entry), and a
+        // `.first()` would be asserting DOM order rather than the door.
+        family.locator('a[href*="day-at-a-glance"]'),
+        /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
+      );
+      const panel = member.getByTestId("intraday-panel");
+      await expect(panel).toBeVisible();
+      await expect(panel).toBeInViewport();
+      await expect(panel.getByTestId("intraday-freshness")).toHaveText(
+        dashboardLag
+      );
+    } finally {
+      await member.context().close();
+    }
+  });
+
   test("is absent on a day with no intraday data", async ({ browser }) => {
     test.slow();
 
