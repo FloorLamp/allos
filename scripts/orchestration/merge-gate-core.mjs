@@ -72,15 +72,32 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
   };
 }
 
+// One head, one verdict per check NAME (#4800). GitHub returns the latest run
+// per name PER CHECK SUITE, so a push that races the previous run's start
+// leaves TWO runs under one name: the one the workflow's `concurrency` group
+// cancelled, beside the one that replaced it. Counting both reads the cancelled
+// one as red on a head the checks tab shows green — and it fails toward
+// blocking a landing. The newest run supersedes the earlier ones; ids are
+// assigned in creation order, which `started_at` is the readable form of.
+function currentRuns(runs) {
+  const newest = new Map();
+  for (const run of runs) {
+    const held = newest.get(run.name);
+    if (!held || run.id > held.id) newest.set(run.name, run);
+  }
+  return [...newest.values()];
+}
+
 export function checkRunsVerdict(allRuns, ignoreCheck, head) {
-  const checkRuns = allRuns.filter((run) => run.name !== ignoreCheck);
+  const named = allRuns.filter((run) => run.name !== ignoreCheck);
+  const checkRuns = currentRuns(named);
   const pending = checkRuns.filter((run) => run.status !== "completed");
   const red = checkRuns.filter(
     (run) =>
       run.status === "completed" &&
       !["success", "neutral", "skipped"].includes(run.conclusion)
   );
-  const ignored = Boolean(ignoreCheck && allRuns.length !== checkRuns.length);
+  const ignored = Boolean(ignoreCheck && named.length !== allRuns.length);
   if (checkRuns.length === 0 || pending.length) {
     return {
       kind: "incomplete",
@@ -121,7 +138,9 @@ export function closedStatusDescription(failure) {
 // separate ruling.
 export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const at = runs[0]?.head_sha ? `${ref}@${runs[0].head_sha.slice(0, 8)}` : ref;
-  const shards = runs.filter((run) => run.name.startsWith(detector));
+  const shards = currentRuns(
+    runs.filter((run) => run.name.startsWith(detector))
+  );
   if (!shards.length)
     return `${detector}: no verdict on ${at} — it debounces, and skips a push with no runtime surface`;
   const red = shards.filter(

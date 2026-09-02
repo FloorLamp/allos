@@ -329,6 +329,59 @@ describe("merge-gate.mjs", () => {
     expect(other.kind).toBe("incomplete");
   });
 
+  // ONE VERDICT PER CHECK NAME (#4800). GitHub returns the latest run per name
+  // PER CHECK SUITE, so a push that races the previous run's start carries two
+  // runs called `merge-gate-job` — the one the workflow's `concurrency` group
+  // cancelled, beside the green that replaced it. Counting both closed the gate
+  // on #4797 while its checks tab read green. Ids are creation order.
+  const job = (
+    id: number,
+    conclusion: string | null,
+    status = "completed"
+  ) => ({
+    name: "merge-gate-job",
+    status,
+    conclusion,
+    id,
+  });
+  it.each([
+    [
+      "newest green supersedes a cancelled older run",
+      [job(2, "success"), job(1, "cancelled")],
+      "pass",
+    ],
+    [
+      "oldest listed first — order does not decide it",
+      [job(1, "cancelled"), job(2, "success")],
+      "pass",
+    ],
+    [
+      "newest red over an older green still fails",
+      [job(2, "failure"), job(1, "success")],
+      "fail",
+    ],
+    [
+      "a pending newest is not a verdict",
+      [job(2, null, "in_progress"), job(1, "success")],
+      "incomplete",
+    ],
+  ])("supersession: %s", (_case, runs, kind) => {
+    expect(checkRunsVerdict(runs, null, HEAD).kind).toBe(kind);
+  });
+
+  it("counts a superseded name once, and never reads dedupe as an exclusion", () => {
+    const runs = [green("lint"), job(2, "success"), job(1, "cancelled")];
+    const result = checkRunsVerdict(runs, null, HEAD);
+    expect(result.message).toContain("all 2 checks green");
+    // `ignored` answers "did --ignore-check drop something", so dropping a
+    // superseded run must not make the CLI announce an exclusion nobody asked for.
+    expect(result.ignored).toBe(false);
+    const cli = runGate({ checkRuns: runs });
+    expect(cli.status).toBe(0);
+    expect(cli.stdout).toContain("GATE OPEN");
+    expect(cli.stdout).not.toContain("ignoring check");
+  });
+
   it("closes on an unresolved review thread, outdated or not", () => {
     const run = runGate({
       threads: [
@@ -388,11 +441,13 @@ describe("merge-gate.mjs", () => {
   const at = (
     name: string,
     conclusion: string | null,
-    status = "completed"
+    status = "completed",
+    id = 0
   ) => ({
     name,
     status,
     conclusion,
+    id,
     head_sha: SHA,
   });
   it.each([
@@ -410,6 +465,17 @@ describe("merge-gate.mjs", () => {
       "is green (2 shards)",
     ],
     [[at("lint", "failure")], "no verdict on main"],
+    // The same supersession the head checks get (#4800): a re-run main shard
+    // leaves its cancelled predecessor standing, and the notice must not
+    // attribute a red that the newest run already replaced.
+    [
+      [
+        at("e2e-main (1)", "success", "completed", 1),
+        at("e2e-main (2)", "cancelled", "completed", 2),
+        at("e2e-main (2)", "success", "completed", 3),
+      ],
+      "is green (2 shards)",
+    ],
   ])("reports main's e2e-main standing: %#", (runs, expected) => {
     expect(baseDetectorNotice(runs, "main")).toContain(expected);
   });
