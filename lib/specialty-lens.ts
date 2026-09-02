@@ -31,8 +31,9 @@ export type SpecialtyLine = (typeof SPECIALTY_LINES)[number];
 
 // The catalog rule whose curated names/codes ARE this line's free-text vocabulary
 // (lib/preventive-concept-map.ts). This is the whole of the sharing: the lens owns
-// no synonym list of its own for free text.
-const LINE_RULE_KEY: Record<SpecialtyLine, string> = {
+// no synonym list of its own for free text. Exported so the pin that the two read
+// ONE vocabulary can be written as a property over the map itself.
+export const SPECIALTY_LINE_RULE_KEY: Record<SpecialtyLine, string> = {
   vision: "vision_exam",
   dental: "dental_cleaning",
   hearing: "hearing_screening",
@@ -40,7 +41,7 @@ const LINE_RULE_KEY: Record<SpecialtyLine, string> = {
 };
 
 const RULE_KEY_LINE = new Map<string, SpecialtyLine>(
-  SPECIALTY_LINES.map((line) => [LINE_RULE_KEY[line], line])
+  SPECIALTY_LINES.map((line) => [SPECIALTY_LINE_RULE_KEY[line], line])
 );
 
 // The STRUCTURED specialty vocabulary — read only from `providers.specialty_code`
