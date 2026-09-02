@@ -10,7 +10,6 @@ import { plainBody } from "@/lib/notifications/rich-text";
 import { describe, it, expect, beforeAll } from "vitest";
 import { today } from "@/lib/db";
 import { setProfileSetting, setProfileBirthdate } from "@/lib/settings";
-import { setProfileSubstanceTelegram } from "@/lib/settings/notifications";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import { addProteinGramsCore } from "@/lib/protein-daily-totals-write";
 import { shiftDateStr } from "@/lib/date";
@@ -105,13 +104,6 @@ describe("capped groups rank on frecency alone (#1980 reversal pin)", () => {
   beforeAll(() => {
     c = seedProfile("food-nudge-capped");
     ct = today(c.profileId);
-    // #3330 PUT THIS FIXTURE ON THE WRONG SIDE OF A NEW BOUNDARY, so it declares its side
-    // explicitly. Alcohol's counter is the substance ledger, and substance content now
-    // reaches a chat only for a profile that opted in — without this line the exemplar is
-    // simply absent from every keyboard below and the #1980 ranking pin asserts nothing.
-    // The two rules are orthogonal: the opt-in decides whether the row may be SENT, this
-    // block decides where it RANKS once it may be.
-    setProfileSubstanceTelegram(c.profileId, true);
     // Alcohol is the profile's single heaviest morning habit — it wins the frecency blend
     // outright, and nothing may take that away from it.
     for (let i = 0; i < 6; i++)

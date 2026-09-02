@@ -86,7 +86,8 @@ import {
   withDoseCorrections,
 } from "./intake";
 import { type IntakeSendSlot } from "./intake-format";
-import { buildFoodNudge, consentedFoodTaps } from "./food";
+import { buildFoodNudge } from "./food";
+import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
@@ -723,7 +724,7 @@ const food: FamilyReconciler = {
       FOOD_TIME_PREFIXES,
       new Set(
         correctionBursts(
-          consentedFoodTaps(profileId, clockNow()),
+          getRecentFoodTaps(profileId, clockNow()),
           clockNow(),
           correctionMessageBinding(profileId, "food", {
             chatId: p.chatId,
@@ -770,7 +771,7 @@ const food: FamilyReconciler = {
       const picker =
         anchor != null
           ? correctionBursts(
-              consentedFoodTaps(profileId, now),
+              getRecentFoodTaps(profileId, now),
               now,
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)
