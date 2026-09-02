@@ -240,7 +240,11 @@ export function standingUsualOffer(
   // Generalised to the composition, because after a reduction the two halves are
   // interchangeable as savings: the remainder must be at least two writes, and it must
   // still contain food — the food half is this offer's GATE and there was never a
-  // dose-only shape of it (lib/usual-routine.ts).
+  // dose-only shape of it (lib/usual-routine.ts). A SCOOP IS THAT FOOD HALF ON ITS OWN
+  // (#4379, owner ruling 2026-09-02): "protein behaves exactly like a food group" means
+  // the floor counts it, so a remainder of one scoop plus one dose passes this gate with
+  // no catalog group left in it. That shape is the ruling applied, not a hole in it — the
+  // scoop is a write the tap performs, and this floor counts writes.
   const foodMembers = groups.length + (proteinGrams === null ? 0 : 1);
   if (foodMembers === 0 || foodMembers + doses.length < 2) return null;
   return { window: stored.window, groups, proteinGrams, doses };

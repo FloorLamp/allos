@@ -141,10 +141,16 @@ describe("a failed save takes back what it painted (#4688)", () => {
       await waitFor(() => expect(read()).toBe(after));
 
       write.fail(new Error("nope"));
-      await waitFor(() => expect(read()).toBe(before));
-      // The failure stays VISIBLE — reverting silently would trade one lie for a
-      // different confusion. It just no longer sits beside a value contradicting it.
-      expect(screen.getByLabelText("Couldn’t save")).toBeTruthy();
+      // Both halves of the claim are awaited TOGETHER (#4747). The failure stays
+      // VISIBLE — reverting silently would trade one lie for a different confusion —
+      // but the restore and the error flag are set in one transition whose `pending`
+      // clears a commit later, and `SaveStatus` renders the spinner in preference to
+      // the error icon while it is true. Read outside this `waitFor`, the icon
+      // assertion can land on that in-between commit.
+      await waitFor(() => {
+        expect(read()).toBe(before);
+        expect(screen.getByLabelText("Couldn’t save")).toBeTruthy();
+      });
     }
   );
 
@@ -166,8 +172,10 @@ describe("a failed save takes back what it painted (#4688)", () => {
     await waitFor(() => expect(checkbox.read()).toBe(checkbox.after));
 
     write.fail(stale);
-    await waitFor(() => expect(checkbox.read()).toBe(checkbox.before));
-    expect(screen.getByLabelText("Couldn’t save")).toBeTruthy();
+    await waitFor(() => {
+      expect(checkbox.read()).toBe(checkbox.before);
+      expect(screen.getByLabelText("Couldn’t save")).toBeTruthy();
+    });
     expect(isStaleActionError(stale)).toBe(true);
   });
 
