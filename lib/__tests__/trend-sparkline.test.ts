@@ -95,9 +95,17 @@ describe("two sources, one day — the companion decision (#2653 state 6)", () =
     const out = sourceSpreadCompanions(
       [
         // Agrees to the printed digit: no fact to add, no mark.
-        { date: "2026-07-20", value: 80.04, sources: spread([{ source: "Oura", value: 80.01 }]) },
+        {
+          date: "2026-07-20",
+          value: 80.04,
+          sources: spread([{ source: "Oura", value: 80.01 }]),
+        },
         // Disagrees at the chart's precision: a companion.
-        { date: "2026-07-21", value: 80.0, sources: spread([{ source: "Oura", value: 80.6 }]) },
+        {
+          date: "2026-07-21",
+          value: 80.0,
+          sources: spread([{ source: "Oura", value: 80.6 }]),
+        },
         // One of two others agrees; only the disagreeing one survives.
         {
           date: "2026-07-22",
@@ -108,17 +116,26 @@ describe("two sources, one day — the companion decision (#2653 state 6)", () =
           ]),
         },
         // A gap day and an uncontested day carry nothing.
-        { date: "2026-07-23", value: null, sources: spread([{ source: "Oura", value: 1 }]) },
+        {
+          date: "2026-07-23",
+          value: null,
+          sources: spread([{ source: "Oura", value: 1 }]),
+        },
         { date: "2026-07-24", value: 79 },
       ],
       print
     );
     expect([...out.keys()]).toEqual(["2026-07-21", "2026-07-22"]);
-    expect(out.get("2026-07-22")?.others).toEqual([{ source: "Oura", value: 81.0 }]);
+    expect(out.get("2026-07-22")?.others).toEqual([
+      { source: "Oura", value: 81.0 },
+    ]);
   });
 
   it.each([
-    [[["2026-07-21", ["Oura"]]], "Showing Withings · 1 day also reported by Oura"],
+    [
+      [["2026-07-21", ["Oura"]]],
+      "Showing Withings · 1 day also reported by Oura",
+    ],
     [
       [
         ["2026-07-21", ["Oura"]],

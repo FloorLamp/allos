@@ -458,6 +458,7 @@ export function metricSourceLabel(
 ): string {
   if (sourceKey(source) === "manual") return "Manual";
   if (source === DOCUMENTS_SOURCE_CLASS) return DOCUMENTS_SOURCE_LABEL;
-  if (documentSourceId(source) != null) return documentSourceLabel(source, docs);
+  if (documentSourceId(source) != null)
+    return documentSourceLabel(source, docs);
   return getIntegration(source as IntegrationId)?.name ?? source;
 }

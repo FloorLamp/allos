@@ -501,7 +501,10 @@ describe("foldDaysBySourceMean — two sources, one day (#2653 state 6)", () => 
         {
           date: D,
           value: 60,
-          sources: { trusted: "health-connect", others: [{ source: "oura", value: 52 }] },
+          sources: {
+            trusted: "health-connect",
+            others: [{ source: "oura", value: 52 }],
+          },
         },
       ],
     ],
@@ -519,7 +522,10 @@ describe("foldDaysBySourceMean — two sources, one day (#2653 state 6)", () => 
         {
           date: D,
           value: 81,
-          sources: { trusted: "manual", others: [{ source: "withings", value: 81.5 }] },
+          sources: {
+            trusted: "manual",
+            others: [{ source: "withings", value: 81.5 }],
+          },
         },
       ],
     ],
@@ -552,7 +558,10 @@ describe("foldDaysBySourceMean — two sources, one day (#2653 state 6)", () => 
         {
           date: D,
           value: 2,
-          sources: { trusted: "vendor-a", others: [{ source: "vendor-b", value: 9 }] },
+          sources: {
+            trusted: "vendor-a",
+            others: [{ source: "vendor-b", value: 9 }],
+          },
         },
       ],
     ],
@@ -585,7 +594,10 @@ describe("displaySourcePoints", () => {
         {
           date: "2026-07-20",
           value: 80,
-          sources: { trusted: "withings", others: [{ source: "oura", value: 81 }] },
+          sources: {
+            trusted: "withings",
+            others: [{ source: "oura", value: 81 }],
+          },
         },
         { date: "2026-07-21", value: 79 },
       ],
@@ -596,7 +608,10 @@ describe("displaySourcePoints", () => {
       {
         date: "2026-07-20",
         value: 160,
-        sources: { trusted: "WITHINGS", others: [{ source: "OURA", value: 162 }] },
+        sources: {
+          trusted: "WITHINGS",
+          others: [{ source: "OURA", value: 162 }],
+        },
       },
       { date: "2026-07-21", value: 158 },
     ]);
