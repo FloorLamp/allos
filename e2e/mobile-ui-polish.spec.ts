@@ -472,7 +472,11 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
   }) => {
     await page.goto("/nutrition?tab=supplements");
 
-    await page.getByTestId("supplement-add-toggle").click();
+    // hydratedClick, not click: this is the first interaction after the goto, on a
+    // server-rendered React button, and a tap that lands before the handler is live is
+    // swallowed with no error (#2742) — the dialog assertion on the next line then
+    // fails as "not found", naming the dialog rather than the lost tap.
+    await hydratedClick(page, page.getByTestId("supplement-add-toggle"));
     const addDialog = page.getByRole("dialog", { name: "Add supplement" });
     await addDialog.getByLabel("Name").fill(NAME);
     const doseEditor1 = await openFact(page, "dose", addDialog);
