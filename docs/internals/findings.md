@@ -86,8 +86,17 @@ next rows from the same family. Closed catalogs remain bounded by their registri
 Every one of those bounds sits AFTER an ordering, so it decides which findings a
 profile sees as much as how many, and a bound asserted only on its count is green
 on a build that truncates from the wrong end.
+**That ordering is RELEVANCE, in every family (#4069).** Five of them once cut on
+an alphabetical or row-id order that recorded only a determinism claim, so a
+profile plateaued on five lifts saw the three whose names sort first and was never
+told the list was cut. Each detector now sorts by its family's own relevance
+signal ahead of the slice — newest bleed, newest suspect, newest lapse, most recent
+plateau, worst adherence, longest lapsed, furthest from target, most recently added
+duplicate, soonest event — with the older stable order kept as the TIE-BREAK, so
+determinism survives. A new capped family states its relevance signal in the
+detector, not in the builder, so every surface reads one order.
 `lib/__db_tests__/coaching-finding-caps.test.ts` over-supplies each family and
-asserts the surviving rows by identity and order (#3126).
+asserts the surviving rows by identity and order (#3126/#4069).
 Stale exercises collapse further into one episodic family finding: it names at most
 three newest-lapsed lifts and says “several” rather than exposing a hidden count when
 the tail is longer. Its key is anchored to the first day of the continuous interval

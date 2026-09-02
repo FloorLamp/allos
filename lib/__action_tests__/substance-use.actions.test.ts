@@ -715,19 +715,41 @@ describe("substance consumption history actions (#2009)", () => {
     }
   });
 
-  it("returns typed conflict/not-found outcomes instead of overwriting another day", async () => {
+  it("adds a second backfill onto the same day, and still refuses to overwrite another", async () => {
     const login = createLogin();
     const profile = createProfile("su-history-outcomes", login.id);
     actAs(login, profile);
     const td = today(profile.id);
+    const yesterday = shiftDateStr(td, -1);
 
     const first = await addSubstanceDailyTotalAction(
       fd({ substance: "cannabis", date: td, amount: "1" })
     );
-    expect(first.kind).toBe("added");
+    if (first.kind !== "added") throw new Error("first backfill was refused");
+    // THE OLD REFUSAL, SEEDED AS A REGRESSION (#4435). This answered
+    // `date-conflict` — so remembering a second use on a day already logged was
+    // unrecordable through the door that exists to record it.
+    const second = await addSubstanceDailyTotalAction(
+      fd({ substance: "cannabis", date: td, amount: "2" })
+    );
+    expect(second).toMatchObject({ kind: "added", id: first.id });
+    expect(getAllSubstanceDailyTotals(profile.id)).toMatchObject([
+      { id: first.id, date: td, amount: 3 },
+    ]);
+
+    // A CORRECTION still refuses: moving a day onto one that already holds the same
+    // substance would merge two entries the user named separately.
+    await addSubstanceDailyTotalAction(
+      fd({ substance: "cannabis", date: yesterday, amount: "1" })
+    );
     expect(
-      await addSubstanceDailyTotalAction(
-        fd({ substance: "cannabis", date: td, amount: "2" })
+      await updateSubstanceDailyTotalAction(
+        fd({
+          id: String(first.id),
+          substance: "cannabis",
+          date: yesterday,
+          amount: "2",
+        })
       )
     ).toEqual({ kind: "date-conflict" });
     expect(

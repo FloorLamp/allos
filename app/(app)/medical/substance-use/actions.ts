@@ -231,7 +231,7 @@ function logOneUnit(
           today(profileId),
           loggedVia
         )
-      : logSubstanceUnitCore(profileId, substance, today(profileId));
+      : logSubstanceUnitCore(profileId, substance, today(profileId), loggedVia);
   if (outcome.kind !== "logged")
     return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();
