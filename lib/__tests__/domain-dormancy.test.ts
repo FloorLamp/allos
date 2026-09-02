@@ -35,7 +35,9 @@ describe("DORMANCY_DOMAINS registry", () => {
       sleep: 90,
       weight: 90,
       "blood-pressure": 365,
-      "resting-hr": 365,
+      // The two vitals split by cadence (#3250): a wearable stream silent for a season
+      // is dormant, an episodic cuff reading at the same age is not.
+      "resting-hr": 90,
     });
   });
 
@@ -73,11 +75,15 @@ describe("DORMANCY_DOMAINS registry", () => {
     // The vitals rows joined this registry by BECOMING window-bounded: past the interval
     // the row renders no value. If a future edit ever lengthened the window past the
     // interval, the row would be collapsing over a span where it could still show a
-    // number — which is the thing the census below exists to catch.
+    // number — which is the thing the census below exists to catch. The equality is per
+    // declaration, which is what let the two intervals part company in #3250.
     expect(VITAL_DORMANCY_DAYS).toBe(365);
+    expect(DORMANCY_DOMAINS["blood-pressure"].collapseAfterDays).toBe(365);
+    expect(DORMANCY_DOMAINS["resting-hr"].collapseAfterDays).toBe(90);
     for (const d of ["blood-pressure", "resting-hr"] as const) {
-      expect(DORMANCY_DOMAINS[d].renderWindowDays).toBe(VITAL_DORMANCY_DAYS);
-      expect(DORMANCY_DOMAINS[d].collapseAfterDays).toBe(VITAL_DORMANCY_DAYS);
+      expect(DORMANCY_DOMAINS[d].renderWindowDays).toBe(
+        DORMANCY_DOMAINS[d].collapseAfterDays
+      );
     }
   });
 

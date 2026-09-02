@@ -6,7 +6,7 @@ import {
   vitalPresentationFreshness,
   vitalsLatestModel,
 } from "@/lib/vitals-latest";
-import { VITAL_DORMANCY_DAYS } from "@/lib/domain-dormancy";
+import { DORMANCY_DOMAINS, VITAL_DORMANCY_DAYS } from "@/lib/domain-dormancy";
 import { shiftDateStr } from "@/lib/date";
 import type { LatestTrend } from "@/lib/latest-trend";
 
@@ -146,11 +146,18 @@ describe("vitalsLatestModel", () => {
     expect(model.restingHr).toBeNull();
   });
 
-  it("marks a year-quiet row dormant and a merely-stale one not", () => {
+  it("marks a quiet row dormant and a merely-stale one not, each on ITS OWN horizon", () => {
+    // The two rows part company at 90 days (#3250): the stream has stopped arriving, the
+    // cuff has not, and one card carries both verdicts at once. `HR` is the resting-HR
+    // horizon and `BP` the blood-pressure one, read off the registry so this reads as
+    // the pairing rather than as two magic numbers.
+    const HR = DORMANCY_DOMAINS["resting-hr"].collapseAfterDays;
+    const BP = DORMANCY_DOMAINS["blood-pressure"].collapseAfterDays;
+
     const stale = vitalsLatestModel(
-      trend(ago(VITAL_DORMANCY_DAYS), 122),
-      trend(ago(VITAL_DORMANCY_DAYS), 78),
-      trend(ago(VITAL_DORMANCY_DAYS), 61),
+      trend(ago(BP), 122),
+      trend(ago(BP), 78),
+      trend(ago(HR), 61),
       TODAY
     )!;
     expect(stale.bp?.dormant).toBe(false);
@@ -160,10 +167,22 @@ describe("vitalsLatestModel", () => {
     expect(stale.bp?.freshness).toBe("due");
     expect(stale.restingHr?.freshness).toBe("due");
 
+    // ONE DATE, TWO VERDICTS, and this is the case the shared year could not express: a
+    // day past the stream's season, and still less than a third of the way to the cuff's
+    // year. Under the old single interval both rows read `false` here.
+    const split = vitalsLatestModel(
+      trend(ago(HR + 1), 122),
+      trend(ago(HR + 1), 78),
+      trend(ago(HR + 1), 61),
+      TODAY
+    )!;
+    expect(split.bp?.dormant).toBe(false);
+    expect(split.restingHr?.dormant).toBe(true);
+
     const quiet = vitalsLatestModel(
-      trend(ago(VITAL_DORMANCY_DAYS + 1), 122),
-      trend(ago(VITAL_DORMANCY_DAYS + 1), 78),
-      trend(ago(VITAL_DORMANCY_DAYS + 1), 61),
+      trend(ago(BP + 1), 122),
+      trend(ago(BP + 1), 78),
+      trend(ago(BP + 1), 61),
       TODAY
     )!;
     expect(quiet.bp?.dormant).toBe(true);
@@ -179,15 +198,28 @@ describe("vitalsLatestModel", () => {
 });
 
 describe("vitalDormant", () => {
-  it("is the boundary the registry declares — AT the interval is awake, one day past is dormant", () => {
-    for (const quantity of ["blood-pressure", "resting-hr"] as const) {
-      expect(vitalDormant(quantity, ago(VITAL_DORMANCY_DAYS), TODAY)).toBe(
-        false
-      );
-      expect(vitalDormant(quantity, ago(VITAL_DORMANCY_DAYS + 1), TODAY)).toBe(
-        true
-      );
+  // Each quantity's boundary is its OWN, and the pair is pinned as literals so a
+  // registry gutted to one shared number fails here rather than re-deriving itself
+  // green (#3250).
+  it.each([
+    { quantity: "blood-pressure", horizon: 365 },
+    { quantity: "resting-hr", horizon: 90 },
+  ] as const)(
+    "$quantity is awake AT $horizon days and dormant one day past it",
+    ({ quantity, horizon }) => {
+      expect(DORMANCY_DOMAINS[quantity].collapseAfterDays).toBe(horizon);
+      expect(vitalDormant(quantity, ago(horizon), TODAY)).toBe(false);
+      expect(vitalDormant(quantity, ago(horizon + 1), TODAY)).toBe(true);
     }
+  );
+
+  it("the two horizons are different spans, not one constant read twice", () => {
+    // The span between them — where the stream has gone quiet and the cuff has not — is
+    // what #3250 bought, and it is the assertion that would have failed before it.
+    const between = ago(DORMANCY_DOMAINS["resting-hr"].collapseAfterDays + 1);
+    expect(vitalDormant("resting-hr", between, TODAY)).toBe(true);
+    expect(vitalDormant("blood-pressure", between, TODAY)).toBe(false);
+    expect(VITAL_DORMANCY_DAYS).toBe(365);
   });
 
   it("never fires on a reading whose age is unknowable", () => {
