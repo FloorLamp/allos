@@ -359,26 +359,36 @@ export function buildMobilitySuggestionFindings(
 export function buildMedicationDuplicationFindings(
   profileId: number
 ): Finding[] {
-  const findings: Finding[] = [];
+  const findings: { finding: Finding; newestMemberId: number }[] = [];
   for (const family of getActiveMedicationFamilies(profileId)) {
     if (family.members.length < 2) continue;
     const copy = medicationDuplicationNote(family.members);
     findings.push({
-      domain: "med-dup",
-      dedupeKey: medDupSignalKey(family.familyKey),
-      title: copy.title,
-      detail: copy.detail,
-      tone: "info",
-      dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
-      evidence: copy.evidence,
-      actionHref: MEDICATIONS_HREF,
-      actionLabel: "View medications",
+      // The id of the member that made the family a duplicate — ids are AUTOINCREMENT
+      // and never recycle (#203), so the largest is the most recently added.
+      newestMemberId: Math.max(...family.members.map((m) => m.id)),
+      finding: {
+        domain: "med-dup",
+        dedupeKey: medDupSignalKey(family.familyKey),
+        title: copy.title,
+        detail: copy.detail,
+        tone: "info",
+        dashboardRelevance: FINDING_DASHBOARD_RELEVANCE.review,
+        evidence: copy.evidence,
+        actionHref: MEDICATIONS_HREF,
+        actionLabel: "View medications",
+      },
     });
   }
-  return findings.slice(
-    0,
-    COACHING_ENTITY_FINDING_LIMITS.medicationDuplication
-  );
+  // Most recently added duplicate first (#4069): the cap below truncates on this
+  // order, and the family a profile just created a second member in is the one the
+  // note is about. The sort is stable, so families that gained their newest member in
+  // the same write keep getActiveMedicationFamilies' first-member input order — the
+  // pre-ruling order, preserved as the tie-break.
+  return findings
+    .sort((a, b) => b.newestMemberId - a.newestMemberId)
+    .slice(0, COACHING_ENTITY_FINDING_LIMITS.medicationDuplication)
+    .map((x) => x.finding);
 }
 
 // ---- Structural data-quality gaps (#1045) ----------------------------------
@@ -1421,8 +1431,13 @@ export function buildGoalPacingFindings(
     profileId,
     bmCandidates.map((x) => x.target.name)
   );
+  // The biomarker half is bounded on its OWN count (#4069). One counter shared with
+  // the body-metric loop above meant three off-pace weight goals silenced EVERY lab
+  // goal — and a weight goal cannot speak for a lab goal, so a full body half must not
+  // decide that a drifting lipid panel goes unmentioned.
+  let biomarkerFindings = 0;
   for (const { g, target, targetDate } of bmCandidates) {
-    if (findings.length >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
+    if (biomarkerFindings >= COACHING_ENTITY_FINDING_LIMITS.goalPacing) break;
     const plot = bmPlots.get(target.name) ?? null;
     if (!plot || !sameUnit(target.unit, plot.unit)) continue;
     const latest = plot.points.at(-1) ?? null;
@@ -1469,6 +1484,7 @@ export function buildGoalPacingFindings(
       actionHref: "/training?tab=goals",
       actionLabel: "Review goal",
     });
+    biomarkerFindings += 1;
   }
 
   // Safe-rate caution — one per profile, independent of any goal.
