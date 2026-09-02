@@ -420,9 +420,9 @@ function buildBrief(opts) {
     : "Defer them until promotion; the landing candidate's CI runs them.";
 
   const brief = `${opts.task ? `Task: ${opts.task}\n\n` : ""}\
-- Worktree setup: git fetch origin main && BASE_SHA=$(git rev-parse FETCH_HEAD) && git worktree add $SCRATCH/${opts.worktree} -b ${opts.branch} "$BASE_SHA" && echo "PINNED_BASE_SHA=$BASE_SHA"
+- Worktree setup (the path is LITERAL, not \`$SCRATCH\` — that variable is unset in most lane shells and two lanes on 2026-09-02 built their tree under the harness scratchpad and had to \`git worktree move\` it, where a check-in scanning ${STATE_DIR} would have read them as absent): git fetch origin main && BASE_SHA=$(git rev-parse FETCH_HEAD) && git worktree add ${STATE_DIR}/${opts.worktree} -b ${opts.branch} "$BASE_SHA" && echo "PINNED_BASE_SHA=$BASE_SHA"
 - Keep the printed PINNED_BASE_SHA in your handoff. For any history edit, reset or rewrite against the printed SHA, never against moving \`origin/main\`; sibling worktrees share its remote-tracking ref.
-- cp -al ${nm.path}/. $SCRATCH/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
+- cp -al ${nm.path}/. ${STATE_DIR}/${opts.worktree}/node_modules${nm.verified ? "" : "\n  (WARNING: better-sqlite3 not found in that tree — run npm ci there first)"}
 ${nodeLine}
 ${landingLines}
 - npm ci in the worktree if better-sqlite3 fails to load — the parent checkout drifts.
