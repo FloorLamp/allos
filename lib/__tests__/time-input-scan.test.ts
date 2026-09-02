@@ -308,3 +308,166 @@ describe("the time-input reader itself", () => {
     ).toEqual([1, 3]);
   });
 });
+
+// ── EVERY DIRECT `<WhenControl>` MOUNT IS CLASSIFIED (#4426) ─────────────────
+//
+// #4426 converged two of the four hand-rolled "reveal a WhenControl" compositions onto
+// `useTimeStatement`. The other two did not converge, and BEFORE this register nothing
+// in the tree recorded that — a third could have joined them and no check would have
+// noticed, which is the state the criterion existed to end.
+//
+// So the claim is made over the WHOLE population rather than over a list of suspects:
+// every file that mounts the control DIRECTLY is exactly one of the three kinds below,
+// and an unclassified mount fails. That is why this is not the allowlist the standing
+// ruling refuses. An allowlist is a silent claim — a name in an array that outlives its
+// reason and that a reader cannot evaluate. Each entry here carries a reason a reader
+// can DISAGREE with, and an `argued` entry additionally carries the issue where the
+// disagreement is being settled, so it goes stale loudly when that issue is ruled.
+//
+// Mounts of the SHARED statement never appear here: they mount no `<WhenControl>` of
+// their own, which is the whole point of converging them.
+type WhenMount =
+  // The shared statement itself — the one legitimate collapsed reveal.
+  | { kind: "shared" }
+  // An always-on-screen field inside a form, a sheet or an editor. Nothing is
+  // collapsed, so there is no reveal to converge; the control IS the field.
+  | { kind: "field"; why: string }
+  // A collapsed reveal that did NOT converge, with the reason and where it is being
+  // decided. The issue number is a literal type: an entry cannot drift onto a
+  // different question without the type changing.
+  | { kind: "argued"; why: string; issue: "#4738" };
+
+const WHEN_MOUNTS = new Map<string, WhenMount>([
+  ["components/TimeStatement.tsx", { kind: "shared" }],
+  [
+    "components/medications/QuickLogPrnControl.tsx",
+    {
+      kind: "argued",
+      why:
+        "since #4691 this states a DAY as well as a time — it hands the control a " +
+        "day RANGE over `doseLogDays` — and the shared statement's doctrine is that " +
+        "it states a TIME, never a DAY (#4118). The two shipped rulings are " +
+        "incompatible, so this cannot converge until one of them moves",
+      issue: "#4738",
+    },
+  ],
+  [
+    "app/(app)/nutrition/FoodLogBar.tsx",
+    {
+      kind: "argued",
+      why:
+        "the eating-time statement is STICKY for the batch by design (#4118's " +
+        "amendment) and is never spent by the tap it answers, which is the shared " +
+        "statement's rule 4 inverted. Converging it needs a stickiness flag and a " +
+        "details/summary shape flag — the variant the line budget forbids",
+      issue: "#4738",
+    },
+  ],
+  [
+    "app/(app)/nutrition/DayLedger.tsx",
+    {
+      kind: "field",
+      why: "the record's correction sheet, opened from a row's ⋯ — a modal the user asked for, not a statement collapsed beside a one-tap",
+    },
+  ],
+  [
+    "app/(app)/trends/MeasurementsQuickAdd.tsx",
+    {
+      kind: "field",
+      why: "the sitting's one shared Time, above the groups (#2154)",
+    },
+  ],
+  [
+    "components/illness/EpisodeTimeline.tsx",
+    { kind: "field", why: "the when half of the event editor (#2236)" },
+  ],
+  [
+    "components/illness/SymptomLogBar.tsx",
+    {
+      kind: "field",
+      why: "the reading's time, beside the temperature field (#4424 ruling 5)",
+    },
+  ],
+  [
+    "components/medications/HistoricalDoseForm.tsx",
+    { kind: "field", why: "the backfill/amend form's date+time pair (#2228)" },
+  ],
+  [
+    "components/nutrition/FoodServingForm.tsx",
+    {
+      kind: "field",
+      why: "the serving's day + eating-time pair (#4424 ruling 1)",
+    },
+  ],
+  [
+    "components/stool/StoolForm.tsx",
+    { kind: "field", why: "the dated door's own when (#4708)" },
+  ],
+]);
+
+/** Files mounting `<WhenControl>` directly. Comments and strings do not count. */
+export function whenControlMounts(): string[] {
+  return [
+    ...scanDirs(SCAN_DIRS, (text) => findTags(text, "WhenControl", () => true)),
+  ]
+    .map(([rel]) => rel)
+    .sort();
+}
+
+describe("every direct WhenControl mount is classified (#4426)", () => {
+  const mounts = whenControlMounts();
+
+  it("has no mount outside the register", () => {
+    const unclassified = mounts.filter((rel) => !WHEN_MOUNTS.has(rel));
+    expect(
+      unclassified,
+      `\nA new hand-rolled "reveal a WhenControl" composition, or a new form field:\n` +
+        `${unclassified.join("\n")}\n` +
+        `Mount the shared statement (components/TimeStatement.tsx), or classify it above.\n`
+    ).toEqual([]);
+  });
+
+  // THE STALENESS HALF, and it is the direction the `<WhenControl`-literal bug in the
+  // census above failed in: an entry describing a file that no longer mounts anything
+  // is a claim about nothing, and it decays silently because nothing else reads it.
+  it("has no entry describing a file that no longer mounts", () => {
+    const stale = [...WHEN_MOUNTS.keys()].filter(
+      (rel) => !mounts.includes(rel)
+    );
+    expect(
+      stale,
+      `\nThese entries describe a file that no longer mounts WhenControl — it converged, ` +
+        `or it moved. Delete the entry:\n${stale.join("\n")}\n`
+    ).toEqual([]);
+  });
+
+  // An argued exclusion is only worth more than an allowlist if its reason is
+  // READABLE, so the shape is enforced rather than trusted.
+  it.each(
+    [...WHEN_MOUNTS].filter(([, m]) => m.kind === "argued") as [
+      string,
+      { kind: "argued"; why: string; issue: "#4738" },
+    ][]
+  )("%s argues its exclusion and says where it is decided", (_rel, entry) => {
+    expect(entry.why.length).toBeGreaterThan(60);
+    expect(entry.issue).toBe("#4738");
+  });
+
+  // THE GUARD CAN SEE. A green sweep over a complying tree says nothing about what
+  // the sweep is able to notice, so run it over sources written to break it — and over
+  // the benign neighbours it must stay quiet on.
+  it.each([
+    ["a plain mount", "<WhenControl mode='state' />", 1],
+    [
+      "a mount inside a reveal",
+      "{open ? <WhenControl grain='hour' /> : null}",
+      1,
+    ],
+    ["two mounts in one file", "<WhenControl /><WhenControl />", 2],
+    ["a mention in a comment", "// mounts <WhenControl one day", 0],
+    ["a mention in a string", 'const s = "<WhenControl>";', 0],
+    ["the shared statement's own name", "useTimeStatement({ day })", 0],
+  ])("%s → %i mount(s)", (_label, source, count) => {
+    expect(findTags(source, "WhenControl", () => true).length).toBe(count);
+  });
+});
