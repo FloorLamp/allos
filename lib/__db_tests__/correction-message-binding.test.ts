@@ -306,18 +306,10 @@ describe("a food correction row renders only on the message that produced it (#2
     await dispatch(pid, buildFoodNudge(pid, "Midday", today(pid))!);
     const pointer = liveMessagePointers(pid)[0];
     setNow(MIDDAY_ISO);
-    logFoodServingCore(
-      pid,
-      "red_meat",
-      today(pid),
-      "page",
-      MIDDAY_ISO,
-      undefined,
-      {
-        eatenAt: "2026-08-05T10:00:00Z",
-        source: "stated",
-      }
-    );
+    logFoodServingCore(pid, "red_meat", today(pid), "page", MIDDAY_ISO, {
+      eatenAt: "2026-08-05T10:00:00Z",
+      source: "stated",
+    });
     logFoodServingCore(pid, "berries", today(pid), "page", MIDDAY_ISO);
 
     const rebuilt = buildFoodNudge(pid, "Midday", today(pid), undefined, {

@@ -402,7 +402,6 @@ describe("updateFoodLogEventCore — eating-time correction (#2227)", () => {
       yesterday,
       "page",
       `${yesterday}T09:00:00Z`,
-      "Morning",
       { eatenAt: `${yesterday}T09:30:00Z`, source: "stated" }
     );
     const eventId = onlyEventId(profileId);

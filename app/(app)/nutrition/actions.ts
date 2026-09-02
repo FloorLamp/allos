@@ -1,6 +1,6 @@
 "use server";
 
-import { requireProfileWriteAccess, requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess } from "@/lib/auth";
 import { gateItemProfile } from "../gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
@@ -22,12 +22,14 @@ import { statedInstantOnDate } from "@/lib/stated-time";
 import type { StatedTimeRefusal, StatedTimeVerdict } from "@/lib/stated-time";
 import { now as clockNow } from "@/lib/clock";
 import { dateStrInTz, utcInstant, zonedWallTimeToUtc } from "@/lib/date";
-import { getTimezone } from "@/lib/settings";
+import { getProfileAge, getTimezone } from "@/lib/settings";
 import { deleteFrequencyTargetRow } from "@/lib/frequency-target-delete";
 import {
   addProteinGramsCore,
   undoProteinGramsCore,
 } from "@/lib/protein-daily-totals-write";
+import { isSubstanceFoodGroup } from "@/lib/substance-use";
+import { isMinor } from "@/lib/life-stage";
 import { getFoodLimitTapNote } from "@/lib/queries/food-limit";
 import { getActiveFastCached } from "@/lib/queries/fasting";
 import { promptsEndOfFast } from "@/lib/fasting";
@@ -97,14 +99,7 @@ export type FoodServingTruthResult =
 export async function readFoodServingTruth(
   formData: FormData
 ): Promise<FoodServingTruthResult> {
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   const truth = foodServingTruthCore(profileId, fields.group, fields.date);
@@ -160,16 +155,14 @@ function parseFields(
 export async function logFoodServing(
   formData: FormData
 ): Promise<FoodLogResult> {
-  // The mounted bar stamps its originating subject. Reauthorize that subject so
-  // an in-flight add cannot be retargeted by a concurrent profile switch.
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  // ONE SPELLING FOR THE SUBJECT (#4730). Every mount stamps `profile_id`, and
+  // `gateItemProfile` is this repo's one reader of it; this action hand-rolled the
+  // same two branches around a camelCase `profileId` nothing posts, so an add
+  // carrying a subject fell through to the ACTING profile — silently, because a
+  // caregiver's own serving is a perfectly valid row. Reading through the gate also
+  // reauthorizes that subject, so an in-flight add cannot be retargeted by a
+  // concurrent profile switch.
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   // The eating-time statement (#2053), when the user made one. The form carries an
@@ -250,12 +243,17 @@ export async function logFoodServing(
     // quick-log sheet, all posting THIS action — so the surface rides the post.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     undefined,
-    fields.mealSlot,
+    // ONE PLACEMENT, REDUCED HERE (#4729). The bar posts a tab and sometimes a stated
+    // hour; the core used to take both and drop the tab. The rule is unchanged — it is
+    // #2269's, a statement supersedes the tab it was made on — only applied at the
+    // boundary that can still see the gesture, so nothing below can be handed a pair.
+    // A refused or absent statement leaves the declaration standing.
+    //
     // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
     // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".
     verdict.kind === "accepted"
       ? { eatenAt: utcInstant(verdict.at), source: "stated" }
-      : undefined
+      : fields.mealSlot
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
   // The core's own day bound (#4118). The picker offers today and six days back; a POST
@@ -314,15 +312,9 @@ export async function undoFoodServing(
 ): Promise<FoodLogResult> {
   // A toast may survive a profile transition. When it carries its originating
   // subject, reauthorize that subject explicitly; never retarget its inverse to
-  // whichever profile happens to be active when Undo is clicked (#3611).
-  const requestedProfileId = Number(formData.get("profileId"));
-  let profileId: number;
-  if (Number.isInteger(requestedProfileId) && requestedProfileId > 0) {
-    await requireProfileWriteAccess(requestedProfileId);
-    profileId = requestedProfileId;
-  } else {
-    profileId = (await requireWriteAccess()).profile.id;
-  }
+  // whichever profile happens to be active when Undo is clicked (#3611). Same one
+  // reader as the add beside it (#4730).
+  const profileId = await gateItemProfile(formData);
   const fields = parseFields(formData, profileId);
   if (!fields) return formError("Unknown food group.");
   const rawExpected = String(formData.get("expected_servings") ?? "").trim();
@@ -423,6 +415,31 @@ export async function updateFoodLogEvent(
   if (rawGroup) {
     if (!isValidFoodGroup(rawGroup)) return formError("Unknown food group.");
     patch.groupKey = rawGroup;
+  }
+  // A CORRECTION MAY NOT MAKE A KNOWN MINOR'S ROW A SUBSTANCE ONE (#4072). Every other
+  // write into this content class asks `isMinor(getProfileAge(subject))` first — the
+  // substance correction on this same record is the pattern (#4067) — and the record
+  // READS these rows behind that question, so a write that skipped it put the row into
+  // a state the subject's own record is gated against showing. Asked of the SUBJECT
+  // like the gate above, because `?view=everyone` makes the acting profile the wrong
+  // one to ask. A correction that stays inside food is untouched: food is gated
+  // nowhere and must not start being gated here.
+  //
+  // A ROW ALREADY IN THIS GROUP IS NOT A MOVE, and refusing it would strand the row's
+  // meal and time as permanently uncorrectable — the same defect wearing the other
+  // face. Scoped by id + profile_id, so another profile's event is refused as a move.
+  if (
+    patch.groupKey !== undefined &&
+    isSubstanceFoodGroup(patch.groupKey) &&
+    isMinor(getProfileAge(profileId))
+  ) {
+    const current = db
+      .prepare(
+        "SELECT group_key FROM food_log_events WHERE id = ? AND profile_id = ?"
+      )
+      .get(eventId, profileId) as { group_key: string } | undefined;
+    if (current?.group_key !== patch.groupKey)
+      return formError("That isn't available for this profile.");
   }
   const rawDate = String(formData.get("date") ?? "").trim();
   if (rawDate) {
