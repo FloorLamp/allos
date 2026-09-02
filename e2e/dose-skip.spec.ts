@@ -44,7 +44,7 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
     .filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
-  const take = row.getByRole("button", { name: "Take" });
+  const take = row.getByRole("button", { name: "Take", exact: true });
   const skip = row.getByRole("button", { name: "Skip this dose" });
   await expect(take).toBeVisible();
   await expect(skip).toBeVisible();
@@ -55,27 +55,24 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   await expect(skipOn).toBeVisible();
   await expect(skipOn).toHaveAttribute("aria-pressed", "true");
   // The dose is NOT counted as taken.
-  await expect(row.getByRole("button", { name: "Take" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Undo the skip → back to clear ───────────────────────────────────────────
   await skipOn.click();
   await expect(
     row.getByRole("button", { name: "Skip this dose" })
   ).toHaveAttribute("aria-pressed", "false");
-  await expect(row.getByRole("button", { name: "Take" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Take it, then flip taken → skipped (an explicit toggle) ──────────────────
-  await row.getByRole("button", { name: "Take" }).click();
-  await expect(row.getByRole("button", { name: "Undo take" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  await row.getByRole("button", { name: "Take", exact: true }).click();
+  await expect(
+    row.getByRole("button", { name: "Undo take", exact: true })
+  ).toHaveAttribute("aria-pressed", "true");
 
   await row.getByRole("button", { name: "Skip this dose" }).click();
   // Now skipped, and no longer taken.
@@ -83,10 +80,9 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
     "aria-pressed",
     "true"
   );
-  await expect(row.getByRole("button", { name: "Take" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Clean up: delete the supplement so the fixture is left as found ──────────
   // Deleting an ITEM is a management act, on the tab that manages the stack.

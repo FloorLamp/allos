@@ -425,9 +425,9 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
   const take = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ has: page.getByRole("button", { name: "Take" }) })
+    .filter({ has: page.getByRole("button", { name: "Take", exact: true }) })
     .first() // first-ok: any dose still offering "Take" — this test is about the gate
-    .getByRole("button", { name: "Take" });
+    .getByRole("button", { name: "Take", exact: true });
   await expect(take).toBeVisible({ timeout: 20_000 });
   await context.setOffline(true);
   await take.click();
@@ -585,7 +585,7 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   const takeable = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ has: page.getByRole("button", { name: "Take" }) });
+    .filter({ has: page.getByRole("button", { name: "Take", exact: true }) });
 
   await login(page);
   await page.goto("/medications");
@@ -626,7 +626,7 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   // rows had not arrived yet, and cutting the network there means they never do.
   const takeAfterReload = takeable
     .first() // first-ok: same untaken dose, re-resolved after the reload
-    .getByRole("button", { name: "Take" });
+    .getByRole("button", { name: "Take", exact: true });
   await expect(takeAfterReload).toBeVisible({ timeout: 20_000 });
 
   await context.setOffline(true);

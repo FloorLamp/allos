@@ -405,7 +405,7 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   await expect(row).toHaveCount(1);
   await context.setOffline(true);
   try {
-    await row.getByRole("button", { name: "Take" }).click();
+    await row.getByRole("button", { name: "Take", exact: true }).click();
     await expect(page.getByTestId("offline-queue-badge")).toHaveText(
       /1 queued offline/
     );
@@ -437,7 +437,7 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   // drained, and the leftover replay it certified cost offline-write-gate's R3d a
   // red on the then-shared profile.
   await page.goto("/medications");
-  const takenUndo = row.getByRole("button", { name: "Undo take" });
+  const takenUndo = row.getByRole("button", { name: "Undo take", exact: true });
   await expect(takenUndo).toBeVisible({ timeout: 20_000 });
   // Only after the drain is OBSERVED is "no badge" a claim about the queue rather
   // than about a page that has not read it yet.
@@ -449,7 +449,9 @@ test("a dose tapped offline shows as queued-resolved in the offline schedule (#2
   // cleanup #3040 rejected. It restores this spec's OWN profile — the only world
   // this spec touches.
   await settledClick(page, takenUndo);
-  await expect(row.getByRole("button", { name: "Take" })).toBeVisible({
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toBeVisible({
     timeout: 20_000,
   });
 

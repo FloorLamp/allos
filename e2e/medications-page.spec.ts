@@ -78,7 +78,9 @@ test("Today panel leads with a due scheduled dose and a PRN administration row",
   await expect(scheduled.getByRole("link")).toContainText("Morning");
   await expect(scheduled).toHaveAttribute("data-past-due", "1");
   await expect(scheduled.getByText("Past due", { exact: true })).toBeVisible();
-  await expect(scheduled.getByTestId("dose-take")).toContainText("Take");
+  // `toHaveText`, not `toContainText`: the resolved spelling is "Taken", so a
+  // substring match would pass on the state this line exists to rule out.
+  await expect(scheduled.getByTestId("dose-take")).toHaveText("Take");
   await expect(scheduled.getByTestId("dose-take")).not.toContainText(
     "1 tablet"
   );

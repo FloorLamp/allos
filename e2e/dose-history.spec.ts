@@ -55,9 +55,9 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const ledgerRow = ledgerDoseRow(page, name).first(); // first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
-  await ledgerRow.getByRole("button", { name: "Take" }).click();
+  await ledgerRow.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
-    ledgerRow.getByRole("button", { name: "Undo take" })
+    ledgerRow.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
 
   // The row that OWNS the item — edit, history — is the stack's, on the other tab.
@@ -140,8 +140,10 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Take" }).click();
-  await expect(taken.getByRole("button", { name: "Undo take" })).toBeVisible();
+  await taken.getByRole("button", { name: "Take", exact: true }).click();
+  await expect(
+    taken.getByRole("button", { name: "Undo take", exact: true })
+  ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
     .getByTestId("supplement-stack")
@@ -256,8 +258,10 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Take" }).click();
-  await expect(taken.getByRole("button", { name: "Undo take" })).toBeVisible();
+  await taken.getByRole("button", { name: "Take", exact: true }).click();
+  await expect(
+    taken.getByRole("button", { name: "Undo take", exact: true })
+  ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
     .getByTestId("supplement-stack")

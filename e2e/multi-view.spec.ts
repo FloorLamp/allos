@@ -183,7 +183,10 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
 
     // Confirm the SHARED profile's dose from its own row (a cross-profile write:
     // acting profile stays the owner). The row drops off once taken.
-    await settledClick(page, sharedRow.getByRole("button", { name: "Take" }));
+    await settledClick(
+      page,
+      sharedRow.getByRole("button", { name: "Take", exact: true })
+    );
     await expect(
       page.getByText(MULTI_SHARED_DOSE, { exact: false })
     ).toHaveCount(0);
