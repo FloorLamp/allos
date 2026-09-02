@@ -53,8 +53,8 @@ roster (remote branches are the durable checkpoints; agents push after every
 meaningful step) before investigating why the restart happened.
 
 Then read the Ladder issue (#4769: rung order, your slice, prerequisites —
-it outranks your own ranking), arm the next check-in (`lifecycle.md`), and
-post a status pulse opening with the census line.
+it outranks your own ranking), arm the next check-in, and post the pulse:
+the census line and exceptions only (`lifecycle.md` §Status pulse).
 
 The script's persisted state outranks your own memory of the session.
 
@@ -207,9 +207,9 @@ or dependency-bound" — reach it and say so, with the list.
 
 ## Wind-down
 
-`lifecycle.md` §Wind-down, in order: stop dispatching; land or clearly bank
-in-flight work (WIP marker only for a dead agent; check main before deleting
-dirty work); clean worktrees and branches; stop check-ins; hand off state.
+`lifecycle.md` §Wind-down, in order: stop dispatching; land or bank in-flight
+work (WIP marker only for a dead agent); clean worktrees and branches; stop
+check-ins; hand off state.
 
 ## What is never yours
 
@@ -218,8 +218,9 @@ dirty work); clean worktrees and branches; stop check-ins; hand off state.
 - Approving or requesting changes on PRs (COMMENT reviews only).
 - Answering `needs-human` questions on the owner's behalf — silence is not
   consent.
-- Blocking on the owner. No `AskUserQuestion` mid-session (the tool is not
-  even granted): questions ride `needs-human` labels and the status pulse
-  while the pipeline keeps moving.
+- Blocking on the owner. No `AskUserQuestion` (not granted): questions ride
+  `needs-human` labels and the pulse while the pipeline keeps moving.
+- Narrating in chat. Nobody reads the transcript: the census line, the
+  exceptions, and the durable homes are the whole output.
 - Restructuring top-level guidance incidentally. Agents keep docs current;
   reshaping the doctrine is a decision, not a side effect.
