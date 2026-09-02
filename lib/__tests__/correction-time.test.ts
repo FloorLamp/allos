@@ -1211,18 +1211,89 @@ describe("the picker's day level (#3010)", () => {
     expect(actions[actions.length - 1].label).toContain("Back");
   });
 
-  it("level two is `statedHoursOnDate` for yesterday — the web sheet's own enumeration", () => {
+  // ONE ROUTE TO EACH INSTANT (#3060 §3): level two is yesterday's `statedHoursOnDate`
+  // — the web sheet's own enumeration — MINUS the instants level one already offers,
+  // deduplicated by resolved instant. The two levels' instant sets are disjoint and
+  // their union reaches every legal previous-day hour exactly once.
+  const levelInstants = (now: Date, tz: string) => {
+    const one = pickerHourOptions(now, tz).map((h) =>
+      statedHourInstant(h, now, tz)!.toISOString()
+    );
+    const two = pickerPrevDayHourOptions(now, tz).map((h) =>
+      offeredHourInstant(h, "prev", now, tz)!.toISOString()
+    );
+    return { one, two };
+  };
+
+  it("level two is yesterday minus what level one reaches, newest first", () => {
     const yesterday = statedHoursOnDate("2026-08-05", TZ, MORNING).map(
       (o) => o.hhmm
     );
     expect(yesterday).toHaveLength(24);
-    // Same set, newest first, which is the order every other picker offer uses.
+    // At 08:00 level one's tail is 23:00–20:00 yesterday; level two starts under it.
     expect(pickerPrevDayHourOptions(MORNING, TZ)).toEqual(
-      [...yesterday].reverse()
+      [...yesterday].reverse().slice(4)
     );
+    expect(pickerPrevDayHourOptions(MORNING, TZ)[0]).toBe("19:00");
     expect(offeredHours(morningBurst, MORNING, TZ, false, "prev")).toEqual(
-      [...yesterday].reverse()
+      pickerPrevDayHourOptions(MORNING, TZ)
     );
+  });
+
+  it.each([
+    // [label, now (UTC), tz] — the DST fixtures are where "HH:MM" and an instant part ways.
+    ["08:00 Berlin, the owner's morning", MORNING, TZ],
+    [
+      "00:30 Berlin, level one entirely yesterday",
+      new Date("2026-08-05T22:30:00Z"),
+      TZ,
+    ],
+    [
+      "10:00 New York on the fall-back day",
+      new Date("2026-11-01T15:00:00Z"),
+      "America/New_York",
+    ],
+    [
+      "10:00 New York the day after fall-back",
+      new Date("2026-11-02T15:00:00Z"),
+      "America/New_York",
+    ],
+    [
+      "10:00 New York the day after spring-forward",
+      new Date("2026-03-09T14:00:00Z"),
+      "America/New_York",
+    ],
+  ] as const)(
+    "the two levels' instants are disjoint and jointly cover yesterday once — %s",
+    (_label, now, tz) => {
+      const { one, two } = levelInstants(now, tz);
+      expect(new Set(two).size).toBe(two.length);
+      expect(two.filter((iso) => one.includes(iso))).toEqual([]);
+      // Every legal previous-day instant is reachable, on exactly one level.
+      const prevDay = statedHoursOnDate(
+        correctionDayDate("prev", now, tz),
+        tz,
+        now
+      );
+      for (const o of prevDay) {
+        expect(
+          Number(one.includes(o.iso)) + Number(two.includes(o.iso)),
+          `${o.hhmm} ${o.iso}`
+        ).toBe(1);
+      }
+    }
+  );
+
+  it("dedupes by INSTANT: on a fall-back day level one's 01:00 is today's, so yesterday's 01:00 stays", () => {
+    const now = new Date("2026-11-01T15:00:00Z"); // 10:00 EST, fall-back day
+    const NY = "America/New_York";
+    expect(pickerHourOptions(now, NY)).toContain("01:00");
+    // Yesterday's 01:00 is a different instant from anything level one offers, and a
+    // wall-clock comparison would have dropped it.
+    expect(pickerPrevDayHourOptions(now, NY)).toContain("01:00");
+    // While 23:00 yesterday IS level one's floor, and is dropped.
+    expect(pickerHourOptions(now, NY)).toContain("23:00");
+    expect(pickerPrevDayHourOptions(now, NY)).not.toContain("23:00");
   });
 
   it("labels the hours that fall on a previous day, and only those", () => {
@@ -1313,10 +1384,11 @@ describe("the picker's day level (#3010)", () => {
       )
     ).toBe(false);
     // The day it IS showing is accepted, so the refusal is about the roll and not about
-    // the hour.
+    // the hour. At 00:05 level one itself reaches 20:00 yesterday (THE DAY RULE), so
+    // level two no longer offers it (#3060 §3); 10:00 sits under level one's floor.
     expect(
       isOfferedHour(
-        "20:00",
+        "10:00",
         lateBurst,
         afterMidnight,
         TZ,
@@ -1380,12 +1452,13 @@ describe("the picker's day level (#3010)", () => {
         TZ
       ).map((a) => String(a.data));
       expect(tokens, prefixes.at).toContain(`${prefixes.at}:3:41:prev`);
+      // Yesterday's 24 hours less the four level one already reaches at 08:00 (#3060 §3).
       expect(
         correctionPickerActions(prefixes, 3, morningBurst, MORNING, TZ, "prev")
           .map((a) => String(a.data))
           .filter((d) => d.includes(":p:")),
         prefixes.at
-      ).toHaveLength(24);
+      ).toHaveLength(20);
     }
   });
 

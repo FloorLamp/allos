@@ -320,7 +320,11 @@ export function wearReminderFalsified(
  * delivery, so this body is computed once and is byte-identical on every later tick; the
  * sweep hashes it, matches, and makes no Telegram call. Correcting once is a property of
  * the SENTENCE here, not of a second marker somebody has to remember to write.
+ *
+ * AND IT MAKES NO FORWARD CLAIM (#3060 §1). "Tonight's sleep is being recorded" is a
+ * statement about a night that has not happened; the no-forward-claims ruling has no
+ * exception here. The sentence states what the stream has shown and stops.
  */
 export function bedtimeWearCorrectedBody(lastSeenLocalHhmm: string): string {
-  return `Your watch picked up again after ${lastSeenLocalHhmm} — tonight's sleep is being recorded.`;
+  return `Your watch picked up again after ${lastSeenLocalHhmm}.`;
 }

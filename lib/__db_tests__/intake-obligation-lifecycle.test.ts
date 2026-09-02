@@ -437,8 +437,9 @@ describe("#1505 part 3 — the digest reports state changes", () => {
     logTaken(d3.doseId, d3.itemId, shiftDateStr(day, -1));
 
     const input = gatherDigestInput(p, "Deltas Resumed (test)");
+    // The lapse direction, not a duration back on it (#4228 B).
     expect(intakeDeltaLine(input.intakeDeltas!)).toBe(
-      "Resumed: Vitamin D (test) for 3 days"
+      "Resumed: Vitamin D (test) after 3 days missed"
     );
   });
 

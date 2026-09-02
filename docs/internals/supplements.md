@@ -993,7 +993,16 @@ weekly recap) passes that window, and a single-occurrence miss then names its da
 ("Missed: Coenzyme Q10 on Wednesday"; a `Mon, Aug 4`-style date when the miss
 precedes the window) — resolved inside the formatter as a function of the window,
 never a per-caller flag (#3033). The day-scale callers pass nothing and keep the
-run-length copy.
+run-length copy. A resume states the lapse it ended in the lapse direction —
+"Resumed: Beta-Glucan after 8 days missed", hoisted as "Resumed after 2 days
+missed: X, Y" — since "for 8 days" read as eight days back on it, and a lapse longer
+than the report window is then coherent (it began before the window; the 14-day
+classifier read is unchanged). The missed half's phrasing is untouched, so
+`intakeGapExplainedBy`'s word-for-word agreement holds. Past `INTAKE_DELTA_MAX_NAMED`
+(3) a half AGGREGATES instead of truncating to "+N more": "Resumed: 11 supplements
+after 4–8 days missed", "Missed: 5 supplements for 2–4 days", the one shared run when
+the runs are uniform — a stack-wide lapse is one event, not eleven comebacks with
+alphabetical order choosing the named three (#4228 B/C).
 
 See [the attention doctrine](findings.md#the-attention-doctrine) for the general
 rules this change is the first implementation of.

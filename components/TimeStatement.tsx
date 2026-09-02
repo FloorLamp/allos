@@ -40,9 +40,9 @@ export interface TimeStatement {
   /**
    * THE SAME STATEMENT, ADDRESSABLE IN TWO PIECES — for a surface whose toggle is
    * already one of its domain action buttons and whose reveal belongs somewhere else
-   * in the layout. The PRN row is that surface: "Earlier dose" sits in a two-button
-   * cluster measured against "Taken now", and the reveal opens in the row's FOOTER,
-   * so no single node can be in both places.
+   * in the layout. The PRN row is that surface: "Earlier dose" sits beside the row's
+   * own dose control — in the labeled-verb chip's clock-door seat (#4753) — while the
+   * reveal opens in the row's FOOTER, so no single node can be in both places.
    *
    * THIS IS NOT A MODE (#4738 ruling 2). Nothing about the statement's behaviour
    * changes with which piece a host renders — same state, same reveal, same four

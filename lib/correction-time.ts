@@ -566,17 +566,32 @@ export function correctionDayDate(day: CorrectionDay, now: Date, tz: string) {
   return day === "prev" ? shiftDateStr(local, -1) : local;
 }
 
-// Level two's hours: every wall hour of the profile-local previous day, newest first.
+// Level two's hours: the profile-local previous day MINUS the instants level one already
+// offers, newest first (#3060 §3 — one route to each instant).
 //
 // `statedHoursOnDate` is the app's ONE enumeration of "the hours of a day" — the web
 // sheet's select reads it, and reading it here is what keeps the chat and the app from
-// drifting. A complete past day offers its whole 24; a spring-forward day simply lacks
-// its nonexistent hour, DST-safe by construction rather than by a check.
+// drifting. A spring-forward day simply lacks its nonexistent hour, DST-safe by
+// construction rather than by a check.
+//
+// THE SUBTRACTION IS BY RESOLVED INSTANT, NEVER BY "HH:MM". Level one's tail reaches
+// into yesterday under THE DAY RULE (at 08:00 it offers 23:00–20:00 yesterday), so
+// those evenings were reachable twice. But an "HH:MM" is not an instant: on a fall-back
+// day level one's "01:00" is today's and yesterday's "01:00" is a different moment that
+// only this level can reach, so a wall-clock comparison would drop an hour nobody else
+// offers. Everything older than level one's floor stays, which is the whole point of
+// the level — last evening's dinner the next morning.
 //
 // Newest first because that is the picker's order everywhere else: `statedHoursOnDate`
 // enumerates ascending, and the drill-down reads down from the most recent.
 export function pickerPrevDayHourOptions(now: Date, tz: string): string[] {
+  const levelOne = new Set(
+    pickerHourOptions(now, tz).map((h) =>
+      statedHourInstant(h, now, tz)?.getTime()
+    )
+  );
   return statedHoursOnDate(correctionDayDate("prev", now, tz), tz, now)
+    .filter((o) => !levelOne.has(new Date(o.iso).getTime()))
     .map((o) => o.hhmm)
     .reverse();
 }
