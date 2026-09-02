@@ -54,7 +54,7 @@ describe("logStoolForm — the unstated tap is unchanged (#3273)", () => {
     expect(await logStoolForm(fd({ type: 4 }))).toEqual({
       ok: true,
       type: 4,
-      todayCount: 1,
+      dayCount: 1,
     });
     // …and the call the action made before #3273 added the parameter, on a second
     // profile at the same frozen instant.
@@ -139,7 +139,7 @@ describe("logStoolForm — a stated earlier time writes THAT instant (#3273)", (
     ]);
     expect(stored.map((r) => r.value)).toEqual([2, 6]);
     expect(await logStoolForm(fd({ type: 6, at: "19:40" }))).toMatchObject({
-      todayCount: 2,
+      dayCount: 2,
     });
   });
 
@@ -178,5 +178,57 @@ describe("logStoolForm — scoping and the vocabulary guard", () => {
     // The seam is what the row was written against, so the fixture's own reading of
     // it is the same instant the action used.
     expect(clockNow().toISOString()).toBe(new Date(NOW_ISO).toISOString());
+  });
+});
+
+// THE DATED MOUNT'S DAY (#4433 / #4424's date context). The action used to re-derive
+// `today(profile.id)` and drop any posted date on the floor, so the record's door could
+// stand on Monday and file Wednesday's row. What only this tier can see is that the
+// posted day REACHES the core — and that the fast path is unchanged: no `date` field
+// still means the profile's today, which is what keeps the sheet's tap byte-identical.
+describe("logStoolForm — the posted day (#4433)", () => {
+  const day = (offset: number) =>
+    new Date(new Date(NOW_ISO).getTime() + offset * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+
+  it.each([
+    ["a week back", day(-7), true],
+    ["yesterday", day(-1), true],
+    ["today, posted", day(0), true],
+    // The shared never-the-future invariant, reported in words rather than as a retry.
+    ["tomorrow", day(1), false],
+    // Not a day the calendar has. It is not a refusal here: the action cannot tell a
+    // crafted string from an absent field, so it falls back to today exactly as an
+    // unstated post does — and `isPastWriteAccepted` would refuse it in the core.
+    ["a day that does not exist", "2026-02-30", true],
+  ])("%s (%s) → ok=%s", async (_label, date, ok) => {
+    const login = createLogin();
+    const profile = createProfile(`posted-${date}`, login.id);
+    actAs(login, profile);
+
+    const outcome = await logStoolForm(fd({ type: 4, date }));
+    expect(outcome.ok).toBe(ok);
+    if (!ok) {
+      expect(outcome).toEqual({
+        ok: false,
+        error: "That day hasn't happened yet.",
+      });
+      expect(rows(profile.id)).toHaveLength(0);
+      return;
+    }
+    const landed = date === "2026-02-30" ? today(profile.id) : date;
+    expect(rows(profile.id)).toMatchObject([{ date: landed }]);
+    // The count answers for THE DAY IT WROTE TO, which on a backfill is not today.
+    expect(outcome).toMatchObject({ dayCount: 1 });
+  });
+
+  it("leaves the unstated post on the profile's today", async () => {
+    const login = createLogin();
+    const profile = createProfile("no-date-posted", login.id);
+    actAs(login, profile);
+
+    await logStoolForm(fd({ type: 4 }));
+    expect(rows(profile.id)).toMatchObject([{ date: today(profile.id) }]);
   });
 });

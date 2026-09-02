@@ -512,7 +512,8 @@ export default async function HistoryPage(props: {
     kind === "practice" ||
     kind === "mood" ||
     kind === "substance" ||
-    kind === "body"
+    kind === "body" ||
+    kind === "stool"
       ? kind
       : kind === "symptom" && day == null
         ? kind

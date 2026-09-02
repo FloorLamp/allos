@@ -224,8 +224,6 @@ const NOT_A_USER_WRITE_LEDGER: Record<string, string> = {
   progress_photos: "user-write ledger, outside #3087's first tranche",
   situations: "user-write ledger, outside #3087's first tranche",
   skin_lesions: "user-write ledger, outside #3087's first tranche",
-  substance_daily_totals:
-    "user-write ledger, outside #3087's first tranche (its alcohol twin rides the stamped food_log_events rows)",
 };
 
 function dirents(dir: string): fs.Dirent[] {
@@ -401,22 +399,26 @@ function census(): Insert[] {
 }
 
 /**
- * The migration's own tranche, read out of its SOURCE TEXT.
+ * EVERY shipped tranche, read out of the migrations' SOURCE TEXT and unioned.
  *
- * Text, not an import, for the reason the migration keeps a second copy at all: a
+ * Text, not an import, for the reason each migration keeps its own copy at all: a
  * migration describes the schema IT shipped, so it exports `up` and nothing else, and
- * importing a list out of it would invite a later tranche to reuse the same array and
- * quietly change what this one means.
+ * importing a list out of one would invite a later tranche to reuse the same array and
+ * quietly change what the earlier one means.
+ *
+ * THE UNION IS WHAT THE COMMENT BELOW PREDICTED. #4435 shipped tranche 2, so a single
+ * migration's literal list can no longer describe the whole tranche; adding the file
+ * here — keeping each migration's list literal — keeps this asking "does the constant
+ * match what was actually shipped" rather than "does it match the first thing shipped".
  */
+const TRANCHE_MIGRATIONS = [
+  "lib/migrations/versions/20260822-logged-via-provenance.ts",
+  "lib/migrations/versions/20260901-substance-logged-via.ts",
+];
+
 function migrationTranche(root: string): string[] {
-  return trancheFromSource(
-    fs.readFileSync(
-      path.join(
-        root,
-        "lib/migrations/versions/20260822-logged-via-provenance.ts"
-      ),
-      "utf8"
-    )
+  return TRANCHE_MIGRATIONS.flatMap((file) =>
+    trancheFromSource(fs.readFileSync(path.join(root, file), "utf8"))
   );
 }
 

@@ -54,6 +54,7 @@ export const HISTORY_LOG_KINDS = [
   "body",
   "sleep",
   "symptom",
+  "stool",
 ] as const;
 export type HistoryLogKind = (typeof HISTORY_LOG_KINDS)[number];
 
@@ -130,6 +131,7 @@ export const HISTORY_KIND_LABELS: Record<HistoryKind, string> = {
   body: "Body",
   sleep: "Sleep",
   symptom: "Symptoms",
+  stool: "Stool",
   activity: "Activities",
   endurance: "Events",
   milestone: "Milestones",
@@ -189,6 +191,7 @@ const ROLLUP_NOUNS: Partial<Record<HistoryKind, [string, string]>> = {
   substance: ["substance", "substances"],
   body: ["reading", "readings"],
   symptom: ["symptom", "symptoms"],
+  stool: ["movement", "movements"],
 };
 
 export function historyRollupNoun(kind: HistoryKind, count: number): string {
@@ -274,6 +277,22 @@ export type HistoryRowEdit =
       symptom: string;
       severity: number;
       note: string | null;
+    }
+  | {
+      /**
+       * ONE BRISTOL READING, BY ITS `metric_samples` ROW ID — and the TYPE is the only
+       * field a correction may move.
+       *
+       * The row's natural key IS its instant (`logBristolStool`), so a date or a time
+       * field here would not MOVE the reading: restating a minute upserts, and a
+       * different minute writes a second row beside the first. The instant is therefore
+       * half the row's address in the sense `symptom`'s (date, symptom) is — carried,
+       * not offered. The mis-taps #4433 names are both type mis-taps ("type 3, meant 4")
+       * and a double tap, which is the delete.
+       */
+      kind: "stool";
+      rowId: number;
+      type: number;
     }
   | {
       /**

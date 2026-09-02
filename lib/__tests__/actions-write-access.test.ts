@@ -339,11 +339,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   // `/history?view=everyone` merges every in-view member's rows, and #3958 rules that
   // "⋯ additionally requires write access on the row's profile, re-checked
   // server-side". Phase 1 satisfied only the safety half by rendering other members'
-  // rows read-only; these THIRTEEN are the capability half — the ten phase-1 entries
+  // rows read-only; these FIFTEEN are the capability half — the ten phase-1 entries
   // (five corrections and five deletes across the record's five Logs kinds) plus the
   // three phase-2 kinds' cores, which #3958's own multiprofile clause requires and
   // which shipped session-scoped: `editSymptom`, `saveCycleAction` and
-  // `deleteCycleAction`. Until they took the row's subject the record drew no ⋯ on
+  // `deleteCycleAction`, plus the stool kind's pair (#4433), which joins the record
+  // with the same ⋯ and therefore the same gate. Until they took the row's subject the record drew no ⋯ on
   // another member's symptom or cycle row at all — containment, not the capability. Each posts the ROW's `profile_id` and
   // gates it through the SAME shared gateItemProfile() the Upcoming and Tier-1
   // per-item writes use — requireProfileWriteAccess(rowProfileId), which redirects a
@@ -455,6 +456,18 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/trends/reading-actions.ts",
     fn: "deleteMetricReading",
     why: "record correction (#4009): removes the ROW's body reading via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
+    fn: "correctStoolReading",
+    why: "record correction (#4433): corrects the ROW's Bristol type via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/stool-actions.ts",
+    fn: "deleteStoolReading",
+    why: "record correction (#4433): removes the ROW's logged movement via gateItemProfile() → requireProfileWriteAccess(rowProfileId)",
     gate: "gateItemProfile",
   },
   {

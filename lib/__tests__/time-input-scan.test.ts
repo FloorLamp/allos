@@ -210,7 +210,7 @@ const SHEET_INSTANT_FORMS = new Map<string, { mounts: boolean; why: string }>([
     { mounts: true, why: "the form's one shared Time control (#2154)" },
   ],
   [
-    "components/quick-entry/QuickStoolForm.tsx",
+    "components/stool/StoolTypeControl.tsx",
     {
       mounts: true,
       why: '"Happened earlier?" over the second-grain key (#2785)',

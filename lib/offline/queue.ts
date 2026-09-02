@@ -685,7 +685,6 @@ export function syncedAnnouncement(
 //   • app/(app)/nutrition/ProteinQuickAdd.tsx — protein grams "+"
 //   • app/(app)/trends/MeasurementsQuickAdd.tsx — body metrics + vitals
 //   • app/(app)/training/MobilityLogBar.tsx — mobility move on-tap
-//   • components/quick-entry/QuickStoolForm.tsx — Bristol stool-form tap
 // lib/__tests__/offline-refused-capture.test.ts pins both halves: every consumer
 // of the queue's `enqueue` references this constant, and the sentence itself
 // exists exactly once.
