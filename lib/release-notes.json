@@ -240,6 +240,55 @@
           "category": "Interface",
           "title": "Escape closes a picker that has a list, and reaches the dialog when it does not",
           "issues": [3432]
+        },
+        {
+          "pr": 4764,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a child’s food row can no longer move it into an adult-only group",
+          "issues": [4072]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "History",
+          "title": "A correction on the day view reaches any past day, not just the last seven",
+          "issues": [4754]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A bulk take names what it takes instead of showing a count",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The row that is actually due wears the day’s one accent",
+          "issues": [4477]
+        },
+        {
+          "pr": 4773,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A bucket says its name once at the top instead of on every row",
+          "issues": [4477]
+        },
+        {
+          "pr": 4783,
+          "kind": "feature",
+          "category": "Medications",
+          "title": "A one-tap offer shows the dose or time it will log, beside the verb",
+          "issues": [4753]
+        },
+        {
+          "pr": 4783,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Backfilling a missed dose names the day on the button itself",
+          "issues": [4753]
         }
       ]
     },
