@@ -52,17 +52,14 @@ import {
   type DoseLedgerItem,
 } from "@/components/intake/dose-ledger-entry";
 import { deleteAdministration } from "@/app/(app)/nutrition/intake-actions";
-import {
-  deleteFoodLogEvent,
-  updateFoodLogEvent,
-} from "@/app/(app)/nutrition/actions";
+import { deleteFoodLogEvent } from "@/app/(app)/nutrition/actions";
 import { removePracticeSession } from "@/app/(app)/wellness/actions";
 import { deleteSubstanceDailyTotalAction } from "@/app/(app)/medical/substance-use/actions";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";
 import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 import { FOOD_GROUPS } from "@/lib/food-groups";
-import { FOOD_SLOTS } from "@/lib/food-slot";
+import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import {
   HISTORY_KIND_LABELS,
   type HistoryKind,
@@ -515,67 +512,36 @@ export default function HistoryRows({
         );
       }
       case "food":
+        // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.
+        // This row's own correction had NO TIME FIELD — it could only re-anchor an
+        // existing eating time when the day moved — so a serving filed at the wrong
+        // hour was correctable on the nutrition page and nowhere else. The shared form
+        // states it, clears it, and follows the meal with it. It stamps `profile_id`
+        // itself, like the dose, substance, symptom and practice forms, so it does not
+        // run through `post()`.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                fd.set("event_id", String(edit.eventId));
-                // MOVING A SERVING MOVES THE (DAY, WALL-TIME) PAIR, rather than
-                // stranding a stated eating instant on a different profile-local
-                // day. An unchanged row omits the patch so its stored precision
-                // stays byte-identical, and a logged-at-only row has no eating-time
-                // statement to invent.
-                const nextDate = String(fd.get("date") ?? "");
-                if (
-                  nextDate !== row.date &&
-                  edit.clockKind === "stated" &&
-                  edit.clock
-                ) {
-                  fd.set("occurred_at", edit.clock);
-                }
-                return updateFoodLogEvent(fd);
-              })
-            }
-          >
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Date
-              <DateField
-                name="date"
-                defaultValue={row.date}
-                max={maxDateFor(row)}
-                required
-                inputClassName="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Food group
-              <select
-                name="group_key"
-                defaultValue={edit.groupKey}
-                className="input mt-1 w-full"
-              >
-                {FOOD_GROUPS.map((group) => (
-                  <option key={group.slug} value={group.slug}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Meal
-              <select
-                name="meal_slot"
-                defaultValue={edit.mealSlot}
-                className="input mt-1 w-full"
-              >
-                {FOOD_SLOTS.map((slot) => (
-                  <option key={slot}>{slot}</option>
-                ))}
-              </select>
-            </label>
-            {buttons}
-          </form>
+          <FoodServingForm
+            groups={FOOD_GROUPS}
+            date={row.date}
+            slotBoundaries={edit.slotBoundaries}
+            maxDate={maxDateFor(row)}
+            row={{
+              eventId: edit.eventId,
+              groupKey: edit.groupKey,
+              date: row.date,
+              mealSlot: edit.mealSlot,
+              eatenAt: edit.clockKind === "stated" ? edit.clock : null,
+              loggedAt: edit.clockKind === "logged" ? edit.clock : null,
+            }}
+            subjectProfileId={row.profileId}
+            tz={row.tz}
+            testId={`history-row-food-${edit.eventId}`}
+            onSaved={() => {
+              toast("Corrected.");
+              done();
+            }}
+            onCancel={done}
+          />
         );
       case "practice":
         // THE DOMAIN'S ONE FORM, IN EDIT MODE (#4424 ruling 1), seeded from this row.

@@ -9,9 +9,12 @@
 import { describe, it, expect } from "vitest";
 import {
   namesPhrase,
+  proteinMemberName,
   usualRoutineAnswerText,
+  usualRoutineFoodMembers,
   usualRoutineOffer,
   usualRoutinePhrase,
+  usualRoutineWriteAnswer,
 } from "@/lib/usual-routine";
 
 const dose = (doseId: number, name: string) => ({
@@ -24,20 +27,24 @@ const dose = (doseId: number, name: string) => ({
 describe("usualRoutineOffer (#2458)", () => {
   it("composes both halves when the food half stands", () => {
     expect(
-      usualRoutineOffer(
-        "Morning",
-        ["fermented", "berries"],
-        [dose(1, "Creatine")]
-      )
+      usualRoutineOffer("Morning", ["fermented", "berries"], null, [
+        dose(1, "Creatine"),
+      ])
     ).toEqual({
       window: "Morning",
       groups: ["fermented", "berries"],
+      proteinGrams: null,
       doses: [dose(1, "Creatine")],
     });
   });
 
   it("degrades to the plain food offer with no pending doses", () => {
-    const offer = usualRoutineOffer("Morning", ["fermented", "berries"], []);
+    const offer = usualRoutineOffer(
+      "Morning",
+      ["fermented", "berries"],
+      null,
+      []
+    );
     expect(offer?.groups).toEqual(["fermented", "berries"]);
     expect(offer?.doses).toEqual([]);
   });
@@ -47,18 +54,17 @@ describe("usualRoutineOffer (#2458)", () => {
     // FOOD_USUAL_MIN_GROUPS — so an empty list here means the offer does not stand,
     // and a dose-only bundle is deliberately not a thing this feature builds.
     expect(
-      usualRoutineOffer(
-        "Morning",
-        [],
-        [dose(1, "Creatine"), dose(2, "Collagen")]
-      )
+      usualRoutineOffer("Morning", [], null, [
+        dose(1, "Creatine"),
+        dose(2, "Collagen"),
+      ])
     ).toBeNull();
-    expect(usualRoutineOffer("Morning", [], [])).toBeNull();
+    expect(usualRoutineOffer("Morning", [], null, [])).toBeNull();
   });
 
   it("copies both halves, so a caller cannot mutate the offer it was handed", () => {
     const groups = ["fermented", "berries"];
-    const offer = usualRoutineOffer("Morning", groups, []);
+    const offer = usualRoutineOffer("Morning", groups, null, []);
     groups.push("eggs");
     expect(offer?.groups).toEqual(["fermented", "berries"]);
   });
@@ -172,5 +178,73 @@ describe("usualRoutineAnswerText — never claims more than was written", () => 
 
   it("says nothing was left rather than confirming an empty write", () => {
     expect(usualRoutineAnswerText([], [], [])).toBe("Nothing left to log");
+  });
+});
+
+// ── PROTEIN IS A MEMBER OF THE FOOD HALF (#4379, owner ruling 2026-08-30) ────
+describe("the protein member", () => {
+  it.each([
+    // groups, proteinGrams, what the offer is
+    [
+      ["fermented", "berries"],
+      30,
+      "a bundle with the scoop named beside the groups",
+    ],
+    [
+      ["fermented"],
+      30,
+      "a bundle when one group plus the scoop is two members",
+    ],
+    [[], 30, "still a bundle — the scoop IS the food half here"],
+    [[], null, "no control at all"],
+  ] as [string[], number | null, string][])(
+    "%s + %s grams is %s",
+    (groups, proteinGrams) => {
+      const offer = usualRoutineOffer("Morning", groups, proteinGrams, []);
+      if (groups.length === 0 && proteinGrams === null) {
+        expect(offer).toBeNull();
+        return;
+      }
+      expect(offer?.proteinGrams).toBe(proteinGrams);
+      // The reserved key never leaks into the GROUP list — the write core's serving
+      // loop would refuse it and take the whole breakfast down with it.
+      expect(offer?.groups).toEqual(groups);
+    }
+  );
+
+  it("names the member as the nudge button already names it (#1073)", () => {
+    expect(proteinMemberName(30)).toBe("+30g protein");
+    expect(
+      usualRoutineFoodMembers(
+        { groups: ["berries"], proteinGrams: 25 },
+        () => "Berries"
+      )
+    ).toEqual([
+      { slug: "berries", name: "Berries" },
+      { slug: "__protein__", name: "+25g protein" },
+    ]);
+    // And says nothing at all where there is no member to name.
+    expect(
+      usualRoutineFoodMembers(
+        { groups: ["berries"], proteinGrams: null },
+        () => "Berries"
+      )
+    ).toEqual([{ slug: "berries", name: "Berries" }]);
+  });
+
+  it("counts the member as written only when the write core says it wrote it", () => {
+    const named = [
+      { slug: "berries", name: "Berries" },
+      { slug: "__protein__", name: "+30g protein" },
+    ];
+    const groups = [{ groupKey: "berries" }];
+    expect(
+      usualRoutineWriteAnswer(named, { groups, doses: [], protein: 30 })
+    ).toBe("Logged Berries and +30g protein");
+    // The offer lost its protein member between render and tap: the answer says so by
+    // NOT naming it, rather than rounding the promise up.
+    expect(
+      usualRoutineWriteAnswer(named, { groups, doses: [], protein: null })
+    ).toBe("Logged Berries");
   });
 });

@@ -54,6 +54,7 @@ import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { today, writeTx } from "./db";
 import { logFoodServingCore, type FoodWriteOrigin } from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
+import { isProteinNudgeKey } from "./protein-nudge";
 import type { FoodSlot } from "./food-slot";
 import { getUsualFoodOffer } from "./queries/nutrition";
 
@@ -140,7 +141,17 @@ export function logUsualFoodCore(
     return writeTx(() => {
       const offered = new Set(getUsualFoodOffer(profileId, window, date));
       // Order follows the button's, so the toast reads back what the user tapped.
-      const toLog = named.filter((groupKey) => offered.has(groupKey));
+      //
+      // THE RESERVED PROTEIN KEY IS A MEMBER OF THE OFFER AND NOT OF THIS LOOP (#4379).
+      // It earns its place through the same measure as any group, so `offered` names it
+      // — but `logFoodServingCore` refuses a non-catalog slug, and a refusal in here
+      // THROWS to the rollback, so leaving it in would let a protein habit take the
+      // whole breakfast down with it. `logUsualRoutineCore` writes the grams through
+      // `addProteinGramsCore`, the one protein write path (#221), as a sibling of this
+      // transaction exactly as the dose half is.
+      const toLog = named.filter(
+        (groupKey) => offered.has(groupKey) && !isProteinNudgeKey(groupKey)
+      );
       // A plain RETURN is correct here and only here: nothing has been written yet, so
       // committing an empty transaction and reporting "nothing to log" are the same
       // fact. Below, where servings already exist, the same shape would be a bug —
@@ -152,6 +163,9 @@ export function logUsualFoodCore(
         // The window is a DECLARATION here, exactly as the bar's meal tab is (#2269):
         // the offer is about a meal window and states no eating time, so the serving
         // carries the declared slot and a NULL eating instant rather than a guessed one.
+        // A bundle may NOT be handed one — see `logUsualRoutineCore`'s header: a stated
+        // hour would drop the very window this offer was derived and labelled for, and
+        // the offer would then never reduce.
         const outcome = logFoodServingCore(
           profileId,
           groupKey,
