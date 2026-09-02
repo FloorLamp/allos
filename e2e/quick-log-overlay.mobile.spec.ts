@@ -649,6 +649,20 @@ test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
     await expect(overlay.getByTestId("quick-entry-dose-list")).toHaveCount(0);
     await expect(overlay.getByTestId("quick-entry-dose-empty")).toHaveCount(0);
 
+    // ── THE CLOCK DOOR IN ITS SEAT (#4753) ─────────────────────────────────
+    // The labeled-verb chip reserves a seat immediately right of the pill and the
+    // wrapper pays the reach gap; this is the shipped mount of it, measured on a
+    // phone where the reach floor is what the gap is FOR (#3938). The door is the
+    // row's own control, so what is asserted is the distance between two
+    // rectangles, never a class.
+    const pillBox = (await prn.getByTestId("prn-log-now").boundingBox())!;
+    const doorBox = (await prn.getByTestId("prn-log-more").boundingBox())!;
+    expect(doorBox.x - (pillBox.x + pillBox.width)).toBeGreaterThanOrEqual(11);
+    expect(doorBox.x - (pillBox.x + pillBox.width)).toBeLessThanOrEqual(13);
+    // One word, and it never says "now".
+    await expect(prn.getByTestId("prn-log-now")).toContainText("Take");
+    await expect(prn.getByTestId("prn-log-now")).not.toContainText("now");
+
     await settledClick(page, prn.getByTestId("prn-log-now"));
     const db = openDb();
     try {

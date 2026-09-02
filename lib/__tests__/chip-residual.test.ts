@@ -117,10 +117,17 @@ describe("Chip residual", () => {
 // and the try produces a list of surfaces that has to be maintained by hand and
 // polices nothing between edits. Mounting the primitive is a fact about the file.
 //
+// WHICH MAKES THE FILE THE UNIT OF ADOPTION, and that is a constraint on adopters
+// rather than an accident: a component that mounts the chip on one arm and keeps a
+// "…now" verb on another reds here, so a partly-adopted file has to finish its copy
+// migration before it can adopt at all. `QuickLogPrnControl` is the shape — its
+// icon-only arm keeps the BUTTON it shipped with (an owner question), and it still
+// had to drop "Taken now" to let the labeled arm mount the pill.
+//
 // AND IT IS SPELLED THE WAY THIS REPO SPELLS IT, not the way the issue describes it:
-// the shipped copy is "Taken now" (as-needed doses), "Start now" (practices) and
-// "Log now" (the prose around them), which is a VERB FOLLOWED BY `now` rather than a
-// single token — so the pattern is the pair, and it is matched in string literals and
+// the copy this was written against was "Taken now" (as-needed doses — retired by the
+// PRN row's adoption), "Start now" (practices, still shipped) and "Log now" (the prose
+// around them), which is a VERB FOLLOWED BY `now` rather than a single token — so the pattern is the pair, and it is matched in string literals and
 // JSX text only, never in comments, because a comment that quotes the retired copy in
 // order to explain the retirement is correct and must stay.
 //
@@ -141,9 +148,9 @@ describe("Chip residual", () => {
 //     reds and a rendered one composed from two halves does not.
 //
 // GREEN ON MAIN, AND THAT IS NOT A PASS. Before this change nothing mounted the chip,
-// so the rule ranged over zero files and could not have failed. It faces FORWARD, at
-// the next family to adopt — which is why the cases below forge both directions
-// rather than trusting the sweep's silence.
+// so the rule ranged over zero files and could not have failed. It ranges over the
+// adopted files now and still faces FORWARD, at the next family — which is why the
+// cases below forge both directions rather than trusting the sweep's silence.
 const RETIRED_VERB =
   /\b(?:take|taken|log|logged|give|given|start|started|mark|finish|finished|confirm|confirmed)\s+now\b/i;
 const CHIP_MOUNT = /\bLabeledVerbChip\b/;
