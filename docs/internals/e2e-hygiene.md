@@ -1925,7 +1925,7 @@ same reason. On the fixed tree the same neighbour pairing is green 3/3 at each o
 
 **A re-run clearing a red is not evidence of a timing flake.** A re-run also reshuffles
 which specs share a worker, so it clears a co-residency failure just as readily — and
-that is the reading that costs an worker a diagnosis. Before blaming the clock or
+that is the reading that costs a worker a diagnosis. Before blaming the clock or
 the zone, run the victim alone, then run it behind a plausible neighbour.
 
 The rest of the suite was swept for the same latent dependency and is clean.

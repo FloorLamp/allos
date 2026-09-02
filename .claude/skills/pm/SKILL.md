@@ -63,7 +63,7 @@ turn without the next one armed. Each watch reads, in order:
 Then judge three things, and send a corrective only when one fails:
 
 - **Saturation**: both E2E lanes full, ordinary lanes near the cap, per
-  container. An worker reporting "review_ready" with two lanes is
+  container. A worker reporting "review_ready" with two lanes is
   under-saturated.
 - **Landing**: `main` green; the slot occupied whenever a green head exists;
   banked branches promoted as the slot frees; a red `main` with the fix
@@ -76,7 +76,7 @@ CI-green event reaches you in minutes, not at the next watch.
 
 ## Relays and correctives
 
-- Deliver a message to an worker with `create_trigger` bound to its
+- Deliver a message to a worker with `create_trigger` bound to its
   session (`persistent_session_id`) and `run_once_at` a few minutes out,
   after reading `date -u`. **Never `fire_trigger`**: it spawns stray
   sessions and delivers once. `SendMessage` works for short replies.
@@ -96,16 +96,6 @@ adds around it.
 
 - Premise-check every question against `main` first (`git log -S`, `git
 grep` on `origin/main`). Two of one sweep's items were already shipped.
-- **Split by visible impact, then rule the low half yourself** (owner ruling
-  2026-09-02: of 48 decisions, the low-impact recommendation was taken 25
-  times of 28, and the overrules went toward less). LOW impact — wording,
-  criteria, closures, ratify-as-built, CI shape, internal tails and formats,
-  tracker routing — the PM rules on its recommendation, records it in the
-  same block shape marked `(PM-ruled, low impact)`, and lists it in the next
-  report. HIGH impact — anything a person sees or does differently: copy,
-  layout, a control, a reach, what data lands where — goes to the owner.
-  Unsure = high. The owner can reverse a PM ruling by saying so; the PM then
-  re-records it and relays.
 - Send explanatory prose as its OWN message, then the picker: the
   `AskUserQuestion` tool hides prose. The owner says "dialog" to summon it.
   When the owner asks for examples, give a concrete walkthrough, not a
@@ -121,7 +111,22 @@ grep` on `origin/main`). Two of one sweep's items were already shipped.
 - Relay every ruling to the worker that owns the issue the same hour,
   saying what it unblocks and what is explicitly NOT ruled.
 
-## Adding an worker
+### Low impact is the PM's to rule
+
+Owner ruling 2026-09-02: of 48 decisions, the low-impact recommendation was
+taken 25 times of 28, and the overrules went toward less. So the PM splits
+every question by VISIBLE impact and rules the low half itself.
+
+- LOW impact — wording, criteria, closures, ratify-as-built, CI shape,
+  internal tails and formats, tracker routing: rule on the recommendation,
+  record it in the same block shape marked `(PM-ruled, low impact)`, and list
+  it in the next report to the owner.
+- HIGH impact — anything a person sees or does differently: copy, layout, a
+  control, a reach, what data lands where. These wait for the owner. Unsure
+  means high.
+- The owner reverses a PM ruling by saying so; re-record it and relay.
+
+## Adding a worker
 
 - One worker per container. A second one doubles agents and E2E lanes;
   it does not double the serial landing path, so expect slot contention.

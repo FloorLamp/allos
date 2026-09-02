@@ -38,7 +38,7 @@
 // `--check` exited 1 for BOTH "I checked, and this is ordinary" and "nobody has
 // ever classified this", and 1 is the code a caller reads as "skip the lane". Five
 // PRs (#2929, #2955, #3004, #3018, #3028) were reported as the first when they
-// were the second, and all five were caught by an worker overriding the tool
+// were the second, and all five were caught by a worker overriding the tool
 // by hand — never by the tool. Exit 1 is now an ANSWER, not a default.
 //
 // The high-stakes list is DECLARED HERE and nowhere else (the runbook points at
@@ -201,7 +201,7 @@ export const HIGH_STAKES = [
 // SAID SO IN WORDS, in its own title, body or linked issue.
 //
 // So this tier reads the claim, not the diff. It never says MANDATORY — a word is
-// not evidence of a defect — it says CONSULT, and an worker decides.
+// not evidence of a defect — it says CONSULT, and a worker decides.
 //
 // ── WHEN THIS VOCABULARY MAY GAIN A TERM ────────────────────────────────────
 //
@@ -236,7 +236,7 @@ export const HIGH_STAKES = [
 // safety boundary in the diff's own subject (#2722's missed-dose escalations,
 // #2720's alcohol logging for a minor, #2697's `isMinor` gate, #2647's `adultOnly`
 // pairs, #2916's contraindications, #2910's age-gated route), so the rate of
-// CONSULTs an worker would resent is 3 in 153, 2.0%. The starting vocabulary
+// CONSULTs a worker would resent is 3 in 153, 2.0%. The starting vocabulary
 // — the terms the ruling listed, unnarrowed — measured 52% on the first window.
 export const SAFETY_VOCABULARY = [
   {

@@ -28,5 +28,8 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
   recommendation, each option's size, and what the answer unblocks. A wording
   question proposes the wording. Ripeness test: does the answer change code
   or a ruling? If not, it is a note, not a question.
+- State whether the answer is VISIBLE to a person (copy, layout, a control,
+  a reach, where data lands). Visible answers wait for the owner; the rest
+  the PM rules on the recommendation (`.claude/skills/pm`).
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
   `parked`; an adopt is merged by the worker.

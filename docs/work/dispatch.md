@@ -63,7 +63,7 @@ closed taxonomy, and `needs-human` handling.
    banked until the preceding merge lands, then rebase once.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
-   the change is an worker-owned E2E fix.
+   the change is a worker-owned E2E fix.
 6. Merge only a green exact head. Serialize conflicting merges.
 7. Close the dispatch, remove its worktree and branch, and verify linked issues
    actually closed.

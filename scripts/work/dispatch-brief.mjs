@@ -2287,7 +2287,7 @@ Merge the PR first, then retire. If the branch is genuinely ABANDONED, pass
 // Reprint a live dispatch's brief, writing nothing.
 //
 // The ledger stores a dispatch's PARAMETERS, not its brief text, and the brief
-// is only ever printed once — at `new`. An worker that loses the text
+// is only ever printed once — at `new`. A worker that loses the text
 // (restart, compaction, a tail that cut it off) has no way back to it, and the
 // obvious move, re-running `new`, silently forked the ledger and the roster.
 // Rebuilding from the recorded parameters is exact: `buildBrief` is a pure

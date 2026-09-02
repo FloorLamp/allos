@@ -5,7 +5,7 @@
 // reads as "skip the lane", so "I checked, and this is ordinary" and "nobody has
 // ever classified this file" arrived as the same word. Five PRs (#2929, #2955,
 // #3004, #3018, #3028) were reported as the first when they were the second, and
-// all five were caught by an worker overriding the tool by hand.
+// all five were caught by a worker overriding the tool by hand.
 //
 // What is pinned here, in the order it matters:
 //

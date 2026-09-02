@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // directive: an empty board is a dispatch order, a thin one is
 // under-saturated, and "empty" is only honest beside the enumerated list of
 // why each remaining issue cannot dispatch. These pins hold the directives to
-// the surfaces an worker actually reads.
+// the surfaces a worker actually reads.
 
 const read = (rel: string) =>
   fs.readFileSync(path.join(process.cwd(), rel), "utf8");

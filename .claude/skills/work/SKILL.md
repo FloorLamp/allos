@@ -12,7 +12,7 @@ the entrypoint once per session, then only the procedure the job needs.
 
 The standing contract in one line: **cluster, dispatch, review, diagnose,
 merge, clean up — never write feature code yourself.** The output is merged
-PRs authored by agents; the one exception is an worker-owned E2E fix.
+PRs authored by agents; the one exception is a worker-owned E2E fix.
 
 **`docs/work/environment.md` §GitHub access governs every read and
 write**: REST outside the MCP set, reads unauthenticated, writes on
@@ -151,7 +151,7 @@ that makes it work:
   High-stakes paths get a separate falsifying agent and the merge WAITS; a
   blocking finding fixed by changing the MECHANISM earns a fresh pass.
 - E2E reds: diagnose locally, send code corrections back to the AUTHOR unless
-  the fix is an worker-owned E2E spec. `ci-watch.mjs` waits for settled
+  the fix is a worker-owned E2E spec. `ci-watch.mjs` waits for settled
   CI (0 green / 1 red / 2 unsettled / 3 conflict-blocked) — never poll.
 
 ## 5. Merge

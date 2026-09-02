@@ -53,7 +53,7 @@ describe("portBaseCollision", () => {
   });
 
   it("names the dispatch already holding the band, not just that one does", () => {
-    // The message is the whole value of the refusal: an worker who is told
+    // The message is the whole value of the refusal: a worker who is told
     // "7600 is taken" still has to go and find out by whom before it can act.
     expect(portBaseCollision(7600, ACTIVE)).toBe(
       "port base 7600 is already held by the active dispatch ride-detail-and-leftovers"

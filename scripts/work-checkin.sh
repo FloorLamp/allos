@@ -102,7 +102,7 @@ ROSTER="$STATE_DIR/.roster"
 # it was that the answer is destroyed by the act of reading it. So the verdict is
 # now STICKY: a detected restart writes this file, every later run keeps treating
 # the fleet as dead while it exists, and only an explicit --relaunched clears it.
-# An worker that forgets to clear it loses nothing but a loud reminder; one
+# A worker that forgets to clear it loses nothing but a loud reminder; one
 # that never sees it loses an agent's uncommitted work.
 RESCUE_FILE="$STATE_DIR/.agents_dead"
 
@@ -744,7 +744,7 @@ if [ ! -s "$WAKE_FILE" ]; then
   alarms=1
 else
   # Tolerate a leading `next:` label, because the check-in PRINTS the armed wake
-  # as "next: <ISO> <id>" and an worker copying its own output back into
+  # as "next: <ISO> <id>" and a worker copying its own output back into
   # the file is the obvious mistake — one that made this alarm lie for a whole
   # session (2026-08-16). `awk '{print $1}'` read "next:", `date -d` refused it,
   # `|| echo 0` turned that refusal into epoch 0, and 0 is in the past — so a
@@ -765,7 +765,7 @@ else
       # AND RECORD IT — arming without recording is why this alarm fired three
       # check-ins running on 2026-08-29 while two wakes were in fact armed. The
       # absent-file branch above prints this command; this branch used to say only
-      # "re-arm", so an worker that re-armed correctly still saw the same
+      # "re-arm", so a worker that re-armed correctly still saw the same
       # alarm next time and had no way to tell a lapse from an unrecorded arm.
       # Both branches say it now, because the step that gets skipped is the write.
       echo "      echo '<fire_at ISO> <trigger_id>' > $WAKE_FILE"
