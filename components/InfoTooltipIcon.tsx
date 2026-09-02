@@ -1,18 +1,8 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 import { IconInfoCircle } from "@tabler/icons-react";
-
-const TOOLTIP_MAX_WIDTH = 256;
-const TOOLTIP_MARGIN = 12;
-const TOOLTIP_GAP = 8;
-
-type TooltipPosition = {
-  left: number;
-  top: number;
-  width: number;
-};
+import { TooltipPanel } from "@/components/ControlTooltip";
 
 export default function InfoTooltipIcon({
   label,
@@ -23,65 +13,10 @@ export default function InfoTooltipIcon({
 }) {
   const tooltipId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const [position, setPosition] = useState<TooltipPosition | null>(null);
   const open = hovered || focused || pinned;
-
-  useLayoutEffect(() => {
-    if (!open) return;
-
-    const place = () => {
-      const button = buttonRef.current;
-      if (!button) return;
-      const rect = button.getBoundingClientRect();
-      const width = Math.min(
-        TOOLTIP_MAX_WIDTH,
-        window.innerWidth - TOOLTIP_MARGIN * 2
-      );
-      const left = Math.min(
-        Math.max(TOOLTIP_MARGIN, rect.left + rect.width / 2 - width / 2),
-        window.innerWidth - width - TOOLTIP_MARGIN
-      );
-      const tooltipHeight = tooltipRef.current?.offsetHeight ?? 0;
-      const fitsRight =
-        rect.right + TOOLTIP_GAP + width <= window.innerWidth - TOOLTIP_MARGIN;
-      const fitsLeft = rect.left - TOOLTIP_GAP - width >= TOOLTIP_MARGIN;
-      const sideTop = Math.min(
-        Math.max(
-          TOOLTIP_MARGIN,
-          rect.top + rect.height / 2 - tooltipHeight / 2
-        ),
-        window.innerHeight - tooltipHeight - TOOLTIP_MARGIN
-      );
-      const fitsAbove =
-        rect.top - TOOLTIP_GAP - tooltipHeight >= TOOLTIP_MARGIN;
-      const top =
-        fitsRight || fitsLeft
-          ? sideTop
-          : fitsAbove
-            ? rect.top - TOOLTIP_GAP - tooltipHeight
-            : rect.bottom + TOOLTIP_GAP;
-      const placedLeft = fitsRight
-        ? rect.right + TOOLTIP_GAP
-        : fitsLeft
-          ? rect.left - TOOLTIP_GAP - width
-          : left;
-      setPosition({ left: placedLeft, top, width });
-    };
-
-    place();
-    const frame = requestAnimationFrame(place);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [label, open]);
 
   useEffect(() => {
     if (!pinned) return;
@@ -138,28 +73,14 @@ export default function InfoTooltipIcon({
       >
         <IconInfoCircle className="h-4 w-4" stroke={2} aria-hidden />
       </button>
-      {open && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              ref={tooltipRef}
-              id={tooltipId}
-              role="tooltip"
-              style={
-                position
-                  ? {
-                      left: position.left,
-                      top: position.top,
-                      width: position.width,
-                    }
-                  : { visibility: "hidden" }
-              }
-              className="pointer-events-none fixed z-100 rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-left text-xs leading-4 text-slate-100 shadow-lg dark:bg-ink-700 dark:text-slate-100"
-            >
-              {label}
-            </div>,
-            document.body
-          )
-        : null}
+      {/* The fact tooltip and the control tooltip are two affordances with one box
+          and one placement (owner ruling 2026-08-31). What stays HERE is the part
+          that is only true of an info affordance: it opens on a TAP and stays
+          pinned, because a fact is something you read rather than something you
+          point at, and Escape closes it as its own layer (#3222/#3409). */}
+      {open ? (
+        <TooltipPanel id={tooltipId} label={label} anchorRef={buttonRef} />
+      ) : null}
     </span>
   );
 }

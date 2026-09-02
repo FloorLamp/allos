@@ -1,6 +1,7 @@
 "use client";
 
 import FactChipRow, { FactChip } from "@/components/facts/FactChipRow";
+import ControlTooltip from "@/components/ControlTooltip";
 import IconButton from "@/components/IconButton";
 import { useEffect, useRef, useState } from "react";
 import type { Equipment } from "@/lib/types";
@@ -108,15 +109,19 @@ function RpeStepper({
       data-testid={testId}
       className="flex items-center overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/10"
     >
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => onChange(stepRpe(tracking, value, -1))}
-        aria-label="Decrease RPE"
-        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-      >
-        −
-      </button>
+      <ControlTooltip label="Decrease RPE">
+        {(anchor) => (
+          <button
+            {...anchor}
+            type="button"
+            tabIndex={-1}
+            onClick={() => onChange(stepRpe(tracking, value, -1))}
+            className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+          >
+            −
+          </button>
+        )}
+      </ControlTooltip>
       <span
         data-testid={testId ? `${testId}-value` : undefined}
         aria-label={value == null ? "RPE not set" : `RPE ${fmtRpe(value)}`}
@@ -128,15 +133,19 @@ function RpeStepper({
       >
         {value == null ? "RPE" : fmtRpe(value)}
       </span>
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => onChange(stepRpe(tracking, value, 1))}
-        aria-label="Increase RPE"
-        className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
-      >
-        +
-      </button>
+      <ControlTooltip label="Increase RPE">
+        {(anchor) => (
+          <button
+            {...anchor}
+            type="button"
+            tabIndex={-1}
+            onClick={() => onChange(stepRpe(tracking, value, 1))}
+            className="flex h-11 w-11 shrink-0 items-center justify-center font-semibold text-slate-500 hover:bg-slate-100 hover:text-brand-600 sm:h-7 sm:w-4 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-brand-400"
+          >
+            +
+          </button>
+        )}
+      </ControlTooltip>
     </div>
   );
 }
@@ -1230,34 +1239,49 @@ export default function StrengthSets({
                   <div className="flex items-center justify-end gap-1 sm:items-start">
                     {/* Warmup toggle (#338): a light per-set "W" — a warmup is excluded
                 from the part's volume total and target markers. One toggle per
-                set (both sides of a per-side set share it). */}
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
-                      aria-pressed={s.warmup}
-                      data-testid={si === 0 ? "set1-warmup" : undefined}
-                      aria-label={
-                        s.warmup ? "Unmark warmup set" : "Mark warmup set"
-                      }
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:mt-1 sm:h-8 sm:w-7 ${
-                        s.warmup
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                          : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
-                      }`}
+                set (both sides of a per-side set share it).
+
+                A TAB STOP SINCE #4511, where it was `tabIndex={-1}`. It is not
+                pointer sugar the way the RPE steppers above are: those step a
+                value whose own field is the tab stop, so skipping them takes
+                nothing away, while this carries `aria-pressed` and is the ONLY
+                way to say a set was a warmup. A toggle that holds state a
+                keyboard cannot reach is not a control. The bare "W" now says
+                what it does on hover and on keyboard focus. */}
+                    <ControlTooltip
+                      label={s.warmup ? "Unmark warmup set" : "Mark warmup set"}
                     >
-                      W
-                    </button>
+                      {(anchor) => (
+                        <button
+                          {...anchor}
+                          type="button"
+                          onClick={() => onUpdateSet(si, { warmup: !s.warmup })}
+                          aria-pressed={s.warmup}
+                          data-testid={si === 0 ? "set1-warmup" : undefined}
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded text-xs font-bold sm:mt-1 sm:h-8 sm:w-7 ${
+                            s.warmup
+                              ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                              : "text-slate-300 hover:bg-slate-100 hover:text-slate-500 dark:text-slate-600 dark:hover:bg-ink-800"
+                          }`}
+                        >
+                          W
+                        </button>
+                      )}
+                    </ControlTooltip>
                     {p.sets.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveSet(si)}
-                        data-testid={`set-remove-${si + 1}`}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                        aria-label="Remove set"
-                      >
-                        <IconX className="h-4 w-4" />
-                      </button>
+                      <ControlTooltip label="Remove set">
+                        {(anchor) => (
+                          <button
+                            {...anchor}
+                            type="button"
+                            onClick={() => onRemoveSet(si)}
+                            data-testid={`set-remove-${si + 1}`}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:mt-1 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                          >
+                            <IconX className="h-4 w-4" />
+                          </button>
+                        )}
+                      </ControlTooltip>
                     )}
                   </div>
                 </div>

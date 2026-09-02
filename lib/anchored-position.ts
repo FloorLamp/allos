@@ -14,7 +14,9 @@
 export const ANCHOR_GAP = 4; // the visual gap between control and panel
 export const ANCHOR_MARGIN = 8; // keep the panel this far from the viewport edges
 
-export type AnchoredAlign = "start" | "end";
+// `center` is the TOOLTIP alignment (#4511): a tooltip is a label for the control
+// it names, so it is centred on it rather than lined up with one of its edges.
+export type AnchoredAlign = "start" | "center" | "end";
 
 export interface AnchorRect {
   top: number;
@@ -81,16 +83,19 @@ export function anchoredPosition({
     ? anchor.top - ANCHOR_GAP - (maxHeight ?? panel.height)
     : anchor.bottom + ANCHOR_GAP;
 
-  // `start` lines the left edges up, `end` the right ones — then the whole panel
-  // is pushed back inside the viewport. The margin wins over the alignment: a
-  // panel aligned perfectly to a control that is itself half off-screen is not
-  // what anyone asked for.
+  // `start` lines the left edges up, `end` the right ones, `center` puts the
+  // panel's midline on the anchor's — then the whole panel is pushed back inside
+  // the viewport. The margin wins over the alignment: a panel aligned perfectly to
+  // a control that is itself half off-screen is not what anyone asked for.
+  const aligned =
+    align === "end"
+      ? anchor.right - width
+      : align === "center"
+        ? anchor.left + anchor.width / 2 - width / 2
+        : anchor.left;
   const left = Math.max(
     ANCHOR_MARGIN,
-    Math.min(
-      align === "end" ? anchor.right - width : anchor.left,
-      viewport.width - width - ANCHOR_MARGIN
-    )
+    Math.min(aligned, viewport.width - width - ANCHOR_MARGIN)
   );
 
   return {
