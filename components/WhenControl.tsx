@@ -32,15 +32,7 @@ export type { WhenValue } from "@/lib/stated-time";
 //   3. IT NEVER DEFAULTS TO NOW, AND OFFERS "NOW" (#2053). An untouched time
 //      field stays empty; the one-tap "Now" fills an absolute local time, and is
 //      only offered while the chosen day is today.
-//   4. THE TIME HALF NEVER RENDERS UNLABELLED (#4384 fix 3). `timeLabel` is a
-//      VISIBLE label in the app's field dress, not an `aria-label`. The quick-log
-//      practice row opened onto an empty time box with nothing beside it saying what
-//      it was, and "the surrounding copy says so" is never true of a control whose
-//      value is EMPTY until somebody states one — which, by invariant 3, is how every
-//      one of them starts. The date half keeps its `sr-only` label because it is the
-//      opposite case: it is `required`, it always renders a date, and where the day is
-//      fixed it renders that day as words.
-//   5. ABSOLUTE LOCAL TIMES, ALWAYS. No relative offsets on a rendered page: a
+//   4. ABSOLUTE LOCAL TIMES, ALWAYS. No relative offsets on a rendered page: a
 //      "-1h" chip is computed at tap time and drifts with every minute the page
 //      sits open; "13:00" cannot (lib/correction-time.ts's argument, applied).
 //
@@ -79,8 +71,6 @@ export interface WhenControlProps {
   minDate?: string;
   maxDate?: string;
   dateLabel?: string;
-  // The time half's VISIBLE label as well as its accessible name (#4384 fix 3), so
-  // keep it short enough to read as a field label — "Time taken", not a sentence.
   timeLabel?: string;
   disabled?: boolean;
   // Prefix for stable ids/test ids: `{testId}-date`, `{testId}-time`,
@@ -161,7 +151,7 @@ export default function WhenControl({
       : null;
 
   return (
-    <div className="flex flex-wrap items-end gap-2" data-testid={testId}>
+    <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
       {fixedDay ? (
         <span
           className="text-sm text-slate-600 dark:text-slate-300"
@@ -185,52 +175,48 @@ export default function WhenControl({
         </label>
       )}
       {grain === "minute" ? (
-        <label className="block">
-          <span className="label">{timeLabel}</span>
-          <input
-            type="time"
-            value={hhmm}
-            onChange={(e) => setHhmm(e.target.value)}
-            required={mode === "state" && timeRequired}
-            disabled={disabled}
-            className="input w-28 text-sm"
-            id={`${testId}-time`}
-            data-testid={`${testId}-time`}
-          />
-        </label>
+        <input
+          type="time"
+          value={hhmm}
+          onChange={(e) => setHhmm(e.target.value)}
+          required={mode === "state" && timeRequired}
+          disabled={disabled}
+          className="input w-28 text-sm"
+          id={`${testId}-time`}
+          aria-label={timeLabel}
+          data-testid={`${testId}-time`}
+        />
       ) : (
-        <label className="block">
-          <span className="label">{timeLabel}</span>
-          <select
-            value={value.statedAt ?? ""}
-            onChange={(e) => {
-              const iso = e.target.value;
-              onChange({ date: value.date, statedAt: iso === "" ? null : iso });
-            }}
-            required={mode === "state" && timeRequired}
-            disabled={disabled}
-            className="input w-32 text-sm"
-            id={`${testId}-time`}
-            data-testid={`${testId}-time`}
-          >
-            {mode === "correct" ? (
-              // The honest default stays reachable: choosing it emits null.
-              <option value="">Not stated</option>
-            ) : timeRequired ? (
-              <option value="" disabled>
-                Select time
-              </option>
-            ) : (
-              <option value="">No time</option>
-            )}
-            {pinned ? <option value={pinned.iso}>{pinned.hhmm}</option> : null}
-            {hourOptions.map((o) => (
-              <option key={o.iso} value={o.iso}>
-                {o.hhmm}
-              </option>
-            ))}
-          </select>
-        </label>
+        <select
+          value={value.statedAt ?? ""}
+          onChange={(e) => {
+            const iso = e.target.value;
+            onChange({ date: value.date, statedAt: iso === "" ? null : iso });
+          }}
+          required={mode === "state" && timeRequired}
+          disabled={disabled}
+          className="input w-32 text-sm"
+          id={`${testId}-time`}
+          aria-label={timeLabel}
+          data-testid={`${testId}-time`}
+        >
+          {mode === "correct" ? (
+            // The honest default stays reachable: choosing it emits null.
+            <option value="">Not stated</option>
+          ) : timeRequired ? (
+            <option value="" disabled>
+              Select time
+            </option>
+          ) : (
+            <option value="">No time</option>
+          )}
+          {pinned ? <option value={pinned.iso}>{pinned.hhmm}</option> : null}
+          {hourOptions.map((o) => (
+            <option key={o.iso} value={o.iso}>
+              {o.hhmm}
+            </option>
+          ))}
+        </select>
       )}
       {value.date === today ? (
         <button

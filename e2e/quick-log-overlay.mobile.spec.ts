@@ -1150,6 +1150,25 @@ test("the sheet keeps its collapsed earlier-time statement for Just finished (#3
 
     await hydratedClick(page, toggle);
     await expect(row.getByTestId("practice-when-date")).toHaveText("Today");
+    // #4384 fix 3: what opens is a LABELLED statement, not a bare box. The label is
+    // asserted VISIBLE and ASSOCIATED — an `aria-label` is what this replaced, and an
+    // `sr-only` span would satisfy every DOM check while looking exactly like the
+    // defect. The dress is asserted on the ROUNDING rather than on a pixel: a native
+    // `<input type="time">` draws its own square border, so a non-zero corner radius
+    // is the part that can only have come from the app's `.input`.
+    const time = row.getByTestId("practice-when-time");
+    await expect(row.getByText("End time", { exact: true })).toBeVisible();
+    await expect(time).toHaveAttribute("id", "practice-when-time");
+    await expect(row.locator('label[for="practice-when-time"]')).toBeVisible();
+    const dress = await time.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        border: parseFloat(style.borderTopWidth),
+        radius: parseFloat(style.borderTopLeftRadius),
+      };
+    });
+    expect(dress.border).toBeGreaterThan(0);
+    expect(dress.radius).toBeGreaterThan(0);
     await row.getByTestId("practice-when-time").fill("07:05");
     await settledClick(page, row.getByTestId("practice-log-button"));
     expect(readShellPracticeLog()).toMatchObject({
@@ -1209,6 +1228,12 @@ test("a practice logs in one tap from the sheet and the week count moves", async
     for (let i = 0; i < 4; i++)
       await hydratedClick(page, row.getByTestId("practice-duration-up"));
     await expect(duration).toHaveValue("20");
+    // #4384 fix 4: the unit is on screen WHILE the field holds a value. It used to be
+    // the placeholder, so the stepper read "20" here and named its unit only when it
+    // had nothing to name it about.
+    await expect(row.getByTestId("practice-inline-duration")).toContainText(
+      "min"
+    );
     // ...and stepping down is the way back, including off the bottom to blank.
     await hydratedClick(page, row.getByTestId("practice-duration-down"));
     await expect(duration).toHaveValue("15");
