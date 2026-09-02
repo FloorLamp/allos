@@ -272,50 +272,18 @@ export default async function NotificationsSettingsPage() {
                 address={loginEmailAddress(login.id)}
                 smtpConfigured={smtpConfigured}
               />
-              <HouseholdRoundSettings
-                enabled={householdRound.enabled}
-                memberIds={householdRound.memberIds}
-                offerable={householdRoundOfferableMembers(profile.id).map(
-                  (m) => ({ profileId: m.profileId, name: m.name })
-                )}
-                telegramConfigured={telegramConfigured}
-              />
               <HomeAssistantNotificationSettings config={ha} />
             </>
           )}
         </PageContainer>
       </Section>
 
-      {notifyScope && (
-        <Section
-          testId="notify-scope-section"
-          title="Profiles"
-          scope={notifyScopeCaption(true, login.username)}
-        >
-          <PageContainer width="form">
-            <NotifyScopeEditor
-              login={{
-                id: login.id,
-                username: login.username,
-                own_profile_id: notifyScope.ownProfileId,
-              }}
-              profiles={notifyScope.profiles}
-              granted={notifyScope.granted}
-              access={notifyScope.access}
-              self
-              // The Section above already carries the heading + caption.
-              chrome="bare"
-            />
-          </PageContainer>
-        </Section>
-      )}
-
       {!demoRestricted && (
         <>
           <Section
             testId="notify-schedule-section"
-            title="Schedule &amp; message kinds"
-            scope={`When ${profile.name}'s reminders are sent, and which kinds go to which channel.`}
+            title="Message kinds &amp; schedule"
+            scope={`Which kinds go to which channel, and when ${profile.name}'s reminders are sent.`}
           >
             {/* The kind list is a matrix — it gets a reading measure rather than the
                 ~520px form column the old page crammed it into (#1451.B). */}
@@ -366,6 +334,19 @@ export default async function NotificationsSettingsPage() {
                 readiness={readiness}
                 isAdmin={login.role === "admin"}
                 profileName={profile.name}
+                // #2565 A′: the household round is a SEND that rides the kinds'
+                // Telegram routing, not a channel — so it sits under the matrix and
+                // above the schedule, and gets no channel row of its own.
+                householdRound={
+                  <HouseholdRoundSettings
+                    enabled={householdRound.enabled}
+                    memberIds={householdRound.memberIds}
+                    offerable={householdRoundOfferableMembers(profile.id).map(
+                      (m) => ({ profileId: m.profileId, name: m.name })
+                    )}
+                    telegramConfigured={telegramConfigured}
+                  />
+                }
               />
             </PageContainer>
           </Section>
@@ -379,6 +360,30 @@ export default async function NotificationsSettingsPage() {
               <DigestTuneSettings demoted={getLoginDigestDemotions(login.id)} />
             </PageContainer>
           </Section>
+
+          {notifyScope && (
+            <Section
+              testId="notify-scope-section"
+              title="Profiles"
+              scope={notifyScopeCaption(true, login.username)}
+            >
+              <PageContainer width="form">
+                <NotifyScopeEditor
+                  login={{
+                    id: login.id,
+                    username: login.username,
+                    own_profile_id: notifyScope.ownProfileId,
+                  }}
+                  profiles={notifyScope.profiles}
+                  granted={notifyScope.granted}
+                  access={notifyScope.access}
+                  self
+                  // The Section above already carries the heading + caption.
+                  chrome="bare"
+                />
+              </PageContainer>
+            </Section>
+          )}
 
           <Section
             testId="notify-mute"
