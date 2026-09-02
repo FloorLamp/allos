@@ -618,6 +618,34 @@ for (const [label, viewport, wide] of [
       const cardAfter = (await card.boundingBox())!;
       expect(cardAfter.x).toBe(cardBox.x);
       expect(cardAfter.width).toBe(cardBox.width);
+      // ── ONE GRAMMAR ACROSS THE WHOLE SECTION (#4752 items 7 and 8) ────────
+      //
+      // A RENDERED sweep, not a source one: what a reader meets is the accessible
+      // name, and a name composed at runtime from two halves is invisible to any
+      // scan of the source that builds it. Every control in the Now section is
+      // read, so the claim covers the ordinary rows and the cockpit at once.
+      const names = await page
+        .getByTestId("now-strip")
+        .getByRole("button")
+        .evaluateAll((nodes) =>
+          nodes.map(
+            (node) =>
+              node.getAttribute("aria-label") ?? node.textContent?.trim() ?? ""
+          )
+        );
+      expect(names.length, "Now section control corpus").toBeGreaterThan(0);
+      // The verb names the ACT, never the bookkeeping of it, and never says "now".
+      expect(
+        names.filter((name) => /mark taken|taken now|earlier dose/i.test(name)),
+        names.join(" | ")
+      ).toEqual([]);
+      // And the clock is the ONE spelling of "happened earlier": every control that
+      // asks the question asks it in those words.
+      expect(
+        names.filter((name) => /happened earlier/i.test(name)).length,
+        names.join(" | ")
+      ).toBeGreaterThan(0);
+
       if (!wide) await expectNoClippedContent(page);
     } finally {
       await page.context().close();
