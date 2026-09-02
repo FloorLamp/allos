@@ -28,6 +28,11 @@
 //      diagnosis needs and nothing else. That is the whole trick, and finding it
 //      by accident after burning the context is why it is written down here.
 //
+//   3. Both CI endpoints, together. A commit's check runs and its commit statuses
+//      are disjoint sets on separate endpoints, and the merge gate lives only in
+//      the second — see the comment on the status read below for how that printed
+//      GREEN over a closed gate.
+//
 // Usage:
 //   node scripts/orchestration/pr-board.mjs                 # every open PR
 //   node scripts/orchestration/pr-board.mjs 2634 2639       # just these
@@ -101,6 +106,19 @@ const red = [];
 for (const p of prs.sort((a, b) => a.number - b.number)) {
   const runs = gh(`commits/${p.head.sha}/check-runs?per_page=100`);
   const list = runs?.check_runs ?? [];
+  // TWO ENDPOINTS, TWO ANSWERS, AND ONLY THE SECOND ONE BLOCKS. A commit carries
+  // check runs (what Actions jobs post) and COMMIT STATUSES (what an external
+  // reporter posts) in two disjoint sets, and neither endpoint mentions the
+  // other's rows. `merge-gate` posts a STATUS. So a board reading only check-runs
+  // prints GREEN for a PR whose gate is closed — this one did, on #4739: 19/19
+  // check runs success, one of them named `merge-gate-job`, beside a failing
+  // `merge-gate` status saying "gate CLOSED — no exact-head receipt". The name
+  // collision is the trap; the run that LOOKS like the gate is not the gate.
+  // Three separate lanes were misled by this same split in a single day, so the
+  // fix is not "remember to check statuses too" — it is that one row of this
+  // board can no longer be green while either endpoint is red.
+  const combined = gh(`commits/${p.head.sha}/status`);
+  const ctx = Array.isArray(combined?.statuses) ? combined.statuses : [];
   let ok = 0,
     pending = 0;
   const failed = [];
@@ -109,13 +127,39 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
     else if (r.conclusion === "success" || r.conclusion === "skipped") ok++;
     else failed.push(r);
   }
+  for (const s of ctx) {
+    if (s.state === "pending") pending++;
+    else if (s.state === "success") ok++;
+    // A status has no annotations endpoint, so it carries its own detail through
+    // to --why instead; `context` is its name and `description` its one line.
+    else
+      failed.push({
+        name: s.context,
+        conclusion: s.state,
+        description: s.description,
+        html_url: s.target_url,
+        isStatus: true,
+      });
+  }
+  const total = list.length + ctx.length;
   const state = failed.length
     ? `RED ${failed.length}`
     : pending
-      ? `run ${ok}/${list.length}`
-      : list.length
+      ? `run ${ok}/${total}`
+      : total
         ? "GREEN"
         : "no CI";
+  // Named on the row, not just counted: "RED 1" beside twenty green check runs
+  // reads as a flaky shard, and the one thing it can be instead — a closed merge
+  // gate — is the thing that changes what you do next.
+  const gate = failed.length
+    ? `  <<< ${failed
+        .filter((r) => r.isStatus)
+        .map((r) => `STATUS ${r.name} ${r.conclusion}`)
+        .concat(failed.filter((r) => !r.isStatus).map((r) => r.name))
+        .join(", ")
+        .slice(0, 90)}`
+    : "";
   // mergeable is computed lazily by GitHub and is null on a cold read; say
   // "unknown" rather than implying a conflict that may not exist.
   const merge =
@@ -149,7 +193,7 @@ for (const p of prs.sort((a, b) => a.number - b.number)) {
     }
   }
   console.log(
-    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${stale}`
+    `#${p.number} ${p.draft ? "draft " : ""}${state.padEnd(9)} ${p.head.ref.slice(0, 34).padEnd(34)} ${p.title.slice(0, 46)}${merge}${gate}${stale}`
   );
   if (failed.length) red.push({ pr: p.number, failed });
 }
@@ -163,6 +207,13 @@ if (!why || !red.length) {
 for (const { pr, failed } of red) {
   for (const r of failed) {
     console.log(`\n=== #${pr} ${r.name} (${r.conclusion}) ===`);
+    if (r.isStatus) {
+      // Statuses have no annotations; what they have is the description line the
+      // reporter wrote, which for merge-gate is the closure reason itself.
+      console.log(`  ${r.description ?? "(no description)"}`);
+      if (r.html_url) console.log(`  ${r.html_url}`);
+      continue;
+    }
     const anns = gh(`check-runs/${r.id}/annotations`);
     if (!Array.isArray(anns) || !anns.length) {
       console.log(`  (no annotations — ${r.html_url})`);
