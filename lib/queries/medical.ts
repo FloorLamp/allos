@@ -30,6 +30,7 @@ export {
   visitContextForEncounter,
 } from "./medical/encounters";
 export {
+  IMMUNIZATION_REPRESENTATIVE_IDS,
   getImmunityTiters,
   getImmunizationOverride,
   getImmunizationOverrides,

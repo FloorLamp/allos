@@ -9,6 +9,7 @@ import { medicationCourseEvents } from "./medication-history";
 import {
   biomarkerPanelKey,
   ENCOUNTER_REPRESENTATIVE_IDS,
+  IMMUNIZATION_REPRESENTATIVE_IDS,
   getImmunizations,
 } from "./queries/medical";
 import {
@@ -756,15 +757,21 @@ function collectEvents(
     assessedImmunizations,
     assessSchedule(assessedImmunizations, null, null, today(profileId))
   );
+  // De-duplicated across documents (#4366) via IMMUNIZATION_REPRESENTATIVE_IDS, the
+  // same registry collapse getImmunizations already applies — three overlapping
+  // portal CCDAs each store their own physical row for one administration, and this
+  // read was the last one showing all three. Its profile_id bind comes right after
+  // the main WHERE's, before the date-bounds params.
   const immunizations = db
     .prepare(
       `SELECT id, date, vaccine, dose_label, notes
          FROM immunizations
-        WHERE profile_id = ?${immunizationBounds.clause}
+        WHERE profile_id = ?
+          AND id IN (${IMMUNIZATION_REPRESENTATIVE_IDS})${immunizationBounds.clause}
         ORDER BY date DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...immunizationBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...immunizationBounds.params, perTableLimit) as {
     id: number;
     date: string;
     vaccine: string;

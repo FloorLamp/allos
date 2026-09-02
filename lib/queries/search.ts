@@ -19,7 +19,10 @@ import {
   type RecordCitation,
 } from "../record-qa";
 import type { IntakeItemKind } from "../types";
-import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
+import {
+  ENCOUNTER_REPRESENTATIVE_IDS,
+  IMMUNIZATION_REPRESENTATIVE_IDS,
+} from "./medical";
 import {
   CONDITION_REPRESENTATIVE_IDS,
   PROCEDURE_REPRESENTATIVE_IDS,
@@ -261,16 +264,18 @@ function immunizationHits(profileId: number, query: string): SearchHit[] {
   // Stored `vaccine` is a short catalog code (e.g. "influenza", "dtap"), so a
   // raw LIKE on it misses human queries. Pull the recent scoped set and filter
   // in JS on the human display name (+ notes). Immunization rows are few, so a
-  // bounded recent fetch is fine.
+  // bounded recent fetch is fine. Representative-collapsed like every other domain
+  // here (#4366), so overlapping portal exports return one hit per administration.
   const rows = db
     .prepare(
       `SELECT id, vaccine, date, dose_label, notes
          FROM immunizations
         WHERE profile_id = ?
+          AND id IN (${IMMUNIZATION_REPRESENTATIVE_IDS})
         ORDER BY date DESC
         LIMIT 200`
     )
-    .all(profileId) as {
+    .all(profileId, profileId) as {
     id: number;
     vaccine: string;
     date: string;

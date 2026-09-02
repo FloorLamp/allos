@@ -2,6 +2,7 @@ import { db, hoistedStatement } from "../../db";
 import {
   REPRESENTATIVE_SPECS,
   representativeCte,
+  representativeIds,
 } from "../../representative-ids";
 import {
   immuneThresholdFor,
@@ -29,6 +30,14 @@ import type {
 // provenance rule becomes two (#2005). Binds profile_id twice (CTE, then the read).
 const IMMUNIZATION_DEDUPED = representativeCte(
   "imm_deduped",
+  REPRESENTATIVE_SPECS.immunizations
+);
+
+// The same collapse as a bare subquery, for the readers that bound the rows
+// themselves and so cannot go through getImmunizations: the Timeline's own
+// date-bounded, limited SELECT (#4366). Takes ONE profile_id bind, like its
+// ENCOUNTER_REPRESENTATIVE_IDS sibling.
+export const IMMUNIZATION_REPRESENTATIVE_IDS = representativeIds(
   REPRESENTATIVE_SPECS.immunizations
 );
 
