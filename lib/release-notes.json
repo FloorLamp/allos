@@ -352,6 +352,13 @@
           "category": "Interface",
           "title": "Where a time is required, one field opens a single date-and-time panel",
           "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The time field uses the 12- or 24-hour clock you chose, not your device’s",
+          "issues": [4218]
         }
       ]
     },
