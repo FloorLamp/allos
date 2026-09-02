@@ -7,6 +7,7 @@ import {
   hydratedClick,
   ledgerDoseRow,
   settledClick,
+  pickComposedWhen,
 } from "./helpers";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -299,8 +300,14 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   const backfill = new Date(`${maxDate}T00:00:00Z`);
   backfill.setUTCDate(backfill.getUTCDate() - 3);
   const backfillDay = backfill.toISOString().slice(0, 10);
-  await form.getByTestId("historical-dose-date").fill(backfillDay);
-  await form.getByTestId("historical-dose-time").fill("06:45");
+  // ONE DOOR FOR THE PAIR (#4218). A backfill states a day AND a minute, so the
+  // control composes them into a single field over one panel holding the calendar
+  // and the time wheel — the two boxes this used to fill are the amend form's
+  // (below), where the time is optional and stays its own field.
+  await pickComposedWhen(page, "historical-dose", {
+    date: backfillDay,
+    hhmm: "06:45",
+  });
   await form.getByLabel("Amount").fill("175 mg");
   await settledClick(page, form.getByRole("button", { name: "Save dose" }));
   await expect(page.getByText(`Logged past dose of ${name}.`)).toBeVisible();

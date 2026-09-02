@@ -7,6 +7,7 @@ import {
   type Request,
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
+import { MONTHS_LONG } from "@/lib/date";
 import {
   CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
@@ -3739,4 +3740,72 @@ export function ledgerDoseRow(page: Page, name: string): Locator {
       'li[data-testid^="ledger-due-dose-"], li[data-testid^="ledger-dose-"]'
     )
     .filter({ hasText: name });
+}
+
+/**
+ * State a day and a minute through `WhenControl`'s COMPOSED DOOR (#4218).
+ *
+ * A `state` mount that requires a time on a day the user may still change renders
+ * ONE field — `{testId}-when` — over one panel holding the calendar and the time
+ * wheel, instead of the split date and time boxes. So a spec that used to
+ * `.fill()` two inputs opens one door here and picks in it, which is what the
+ * user now does; there is no text box to fill.
+ *
+ * The panel is portaled to `<body>` in both presentations (anchored popover from
+ * `md` up, bottom sheet below), so it is addressed off `page` rather than off the
+ * form — the form does not contain it. Everything else is presentation-agnostic
+ * on purpose: the same call drives either host, which is the #2305 guarantee the
+ * fork is built on.
+ */
+export async function pickComposedWhen(
+  page: Page,
+  testId: string,
+  { date, hhmm }: { date?: string; hhmm?: string }
+): Promise<void> {
+  await hydratedClick(page, page.getByTestId(`${testId}-when`));
+  const panel = page
+    .getByTestId(`${testId}-when-panel`)
+    .or(page.getByTestId(`${testId}-when-sheet`));
+  await expect(panel).toBeVisible();
+
+  if (date) {
+    const [year, month, day] = date.split("-").map(Number);
+    // Year before month: the month options are DISABLED outside the control's
+    // bounds, and a month that is out of range in the year on screen may be in
+    // range in the year being moved to.
+    await panel.getByLabel("Year").selectOption(String(year));
+    await panel.getByLabel("Month").selectOption(String(month - 1));
+    // By the cell's own accessible date name (#3744), not the bare numeral — the
+    // grid shows the neighbouring months' days too.
+    await panel
+      .getByRole("button", {
+        name: `${MONTHS_LONG[month - 1]} ${day}, ${year}`,
+        exact: true,
+      })
+      .click();
+  }
+
+  if (hhmm) {
+    const hour24 = Number(hhmm.slice(0, 2));
+    const meridiem = panel.getByRole("listbox", { name: "AM or PM" });
+    // The wheel's columns follow the profile's clock, so which hour row to tap
+    // is a question about the preference and not about the value.
+    const twelve = (await meridiem.count()) > 0;
+    const shownHour = twelve ? (hour24 % 12 === 0 ? 12 : hour24 % 12) : hour24;
+    await panel
+      .getByRole("listbox", { name: "Hour" })
+      .getByRole("option", { name: String(shownHour).padStart(2, "0") })
+      .click();
+    await panel
+      .getByRole("listbox", { name: "Minute" })
+      .getByRole("option", { name: hhmm.slice(3) })
+      .click();
+    if (twelve)
+      await meridiem
+        .getByRole("option", { name: hour24 >= 12 ? "PM" : "AM" })
+        .click();
+  }
+
+  await settledClick(page, page.getByTestId(`${testId}-when-done`));
+  await expect(panel).toHaveCount(0);
 }
