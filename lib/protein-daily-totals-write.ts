@@ -23,8 +23,8 @@ import { instantNow } from "./clock";
 import { proteinDayCounter } from "./day-counter-ledger-db";
 import { setProfileSetting } from "./settings";
 import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
-import { type FoodSlot } from "./food-slot";
-import type { FoodEatingTime, FoodWriteOrigin } from "./food-log-write";
+import { placementColumns } from "./food-log-write";
+import type { FoodPlacement, FoodWriteOrigin } from "./food-log-write";
 
 // The per-profile settings key holding the most recent add amount, so the quick-add
 // pre-fills the last scoop size. A settings-tier value (not profile-owned data), so
@@ -74,17 +74,16 @@ export function addProteinGramsCore(
   // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
   // Injectable so tests can seed a specific slot; production passes the default.
   loggedAt: string = instantNow(),
-  // The explicit consumed WINDOW for the ranking/count event (#1704), mirroring
-  // logFoodServingCore's `mealSlot`. Supplied by a caller that already ASSERTS the
-  // window — the Telegram nudge's callback token, which baked its slot in at send
-  // time — so a late tap on the evening nudge counts for Evening rather than for
-  // whichever slot the tap instant happens to fall in. The web quick-add omits it:
-  // it logs "now" with no asserted window, where the tap-derived slot IS the honest
-  // answer. Never overrides `loggedAt`, which stays the audit/tap time.
-  mealSlot?: FoodSlot,
-  // WHEN IT WAS CONSUMED (#2019) — the same separate fact `logFoodServingCore` records,
-  // on the same columns, so protein distribution reads one ledger with one time model.
-  time?: FoodEatingTime,
+  // WHERE THE SHAKE LANDS — the SAME one fact its food-group sibling takes (#4729,
+  // #2019), through the same reader onto the same columns, so protein distribution
+  // reads one ledger with one time model. A DECLARED window comes from a caller that
+  // already asserts one (#1704) — the Telegram nudge's callback token, which baked its
+  // slot in at send time — so a late tap on the evening nudge counts for Evening rather
+  // than for whichever window the tap instant fell in. A STATED instant is that same
+  // button saying "now". The web quick-add passes neither: it logs "now" with no
+  // asserted window, where the tap-derived slot IS the honest answer. Never overrides
+  // `loggedAt`, which stays the audit/tap time.
+  placement?: FoodPlacement,
   // Which message's tap this is (#2264) — the Telegram "+Xg" button only, so the
   // protein burst's correction row renders on the message that produced it.
   origin?: FoodWriteOrigin
@@ -95,6 +94,7 @@ export function addProteinGramsCore(
   // only, so a forged POST could put grams on a day that has not happened.
   if (!isRealIsoDate(date) || date > today(profileId))
     return { kind: "invalid-date" };
+  const columns = placementColumns(placement);
   return writeTx(() => {
     const total = proteinDayCounter.bump(profileId, date, [], grams);
     // Remember this scoop size as the profile's last-used preset.
@@ -113,9 +113,9 @@ export function addProteinGramsCore(
       PROTEIN_NUDGE_KEY,
       date,
       loggedAt,
-      mealSlot ?? null,
-      time?.eatenAt ?? null,
-      time?.source ?? null,
+      columns.mealSlot,
+      columns.eatenAt,
+      columns.timeSource,
       origin?.notifyMessageId ?? null,
       loggedVia
     );

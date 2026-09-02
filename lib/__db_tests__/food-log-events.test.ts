@@ -494,7 +494,6 @@ describe("getFoodMealDays event times (#2227 decision 7)", () => {
       anchor,
       "page",
       utcInstant(tap),
-      undefined,
       {
         eatenAt: utcInstant(eaten),
         source: "stated",

@@ -58,6 +58,39 @@ export interface FoodEatingTime {
   source: FoodTimeSource;
 }
 
+// WHERE A SERVING LANDS, AS ONE FACT (#4729). A write states EITHER the tab's declared
+// WINDOW or the eater's stated INSTANT — a string is the first, an object the second —
+// and the pair is not a shape a caller can build. It used to be two optional arguments,
+// and the two cores that write `food_log_events` answered the pair differently: this one
+// dropped the declaration (#2269), `addProteinGramsCore` kept it beside the instant, and
+// `foodEventWindow` gives a stored `meal_slot` precedence — so one gesture filed under
+// two different meal sections depending on which core happened to take it. The
+// disagreement is gone because the question is: neither core has a rule to remember.
+//
+// WHICH ONE WINS WHEN A SURFACE HAS BOTH IS NOT DECIDED HERE, and deliberately is not
+// (#4438 item 3 is open). A surface holding a declared tab AND a stated hour reduces
+// them at ITS OWN boundary, where the user's gesture is still legible; what this type
+// settles is only that the ambiguity cannot travel any further down.
+export type FoodPlacement = FoodSlot | FoodEatingTime;
+
+// The three placement columns a `food_log_events` row carries, derived from the one
+// placement in ONE place so the two cores cannot drift again.
+export function placementColumns(placement?: FoodPlacement): {
+  mealSlot: FoodSlot | null;
+  eatenAt: string | null;
+  timeSource: FoodTimeSource | null;
+} {
+  if (placement === undefined)
+    return { mealSlot: null, eatenAt: null, timeSource: null };
+  return typeof placement === "string"
+    ? { mealSlot: placement, eatenAt: null, timeSource: null }
+    : {
+        mealSlot: null,
+        eatenAt: placement.eatenAt,
+        timeSource: placement.source,
+      };
+}
+
 // WHICH MESSAGE'S TAP a serving write came from (#2264): the `notify_messages` row id
 // resolved by the Telegram handler, or absent/null for every other surface (web,
 // offline replay, a chat whose pointer bookkeeping failed). Attribution for the
@@ -175,25 +208,16 @@ export function logFoodServingCore(
   // (#950). Defaults to NOW and always remains the audit/tap time. The instant
   // remains injectable so tests can seed a specific legacy slot.
   loggedAt: string = instantNow(),
-  // The tab's DECLARATION — stored only when it is the only fact there is (#2269).
-  // `meal_slot` is declaration-or-override, never an echo: when an eating time
-  // accompanies the write, the meal DERIVES from the instant (exactly as a Telegram
-  // tap's does, #2019) and NO slot is stored, so a correction moves the meal along
-  // with the time instead of leaving a frozen tab echo contradicting it. A backfill
-  // with no stated time keeps its declared meal. The deliberate incoherent pair —
-  // the 02:00 snack that belongs to dinner — is the correction sheet's hand-set Meal
-  // (updateFoodLogEventCore, the override path), never this log path's.
-  //
-  // Enforced HERE, in the one chokepoint, so the web action, the quick-log sheet and
-  // the offline replay (lib/offline/writes.ts) inherit the rule together and cannot
-  // drift.
-  mealSlot?: FoodSlot,
-  // WHEN IT WAS EATEN (#2019) — a separate fact from `loggedAt`, which stays the tap
-  // stamp migration 056 froze. The Telegram button passes its own tap instant with
-  // source `tap`, because that button's declared contract IS "I'm eating now"; the web
-  // bar passes nothing unless the user states a time, so a backfill records no eating
-  // time rather than a confident wrong one.
-  time?: FoodEatingTime,
+  // WHERE THE SERVING LANDS — the tab's DECLARED window, or the eater's STATED instant
+  // (#4729, and see FoodPlacement). A declaration stores `meal_slot` and no instant; a
+  // statement stores `occurred_at` and NO slot, so the meal DERIVES from the instant
+  // (exactly as a Telegram tap's does, #2019) and a later correction moves the meal
+  // along with the time instead of leaving a frozen tab echo contradicting it. Omitted
+  // is the third answer and the commonest for history: nobody said, and nothing
+  // invents one. The deliberate incoherent pair — the 02:00 snack that belongs to
+  // dinner — is the correction sheet's hand-set Meal (updateFoodLogEventCore, the
+  // override path), never this log path's.
+  placement?: FoodPlacement,
   // Which message's tap this is (#2264) — Telegram handler only; see FoodWriteOrigin.
   origin?: FoodWriteOrigin
 ): FoodLogOutcome {
@@ -212,13 +236,13 @@ export function logFoodServingCore(
   // on the dose side.
   if (!isPastWriteAccepted(today(profileId), date))
     return { kind: "invalid-date" };
-  // A stated time wins at log time (#2269): the slot is not stored beside it, and the
-  // outcome names the DERIVED window — the section the tallies will actually file the
-  // serving under — so a surface can place it visibly rather than under the tab.
-  const storedSlot = time ? null : (mealSlot ?? null);
-  const placedSlot = time
-    ? foodSlotForProfileEvent(profileId, loggedAt, null, time.eatenAt)
-    : (mealSlot ?? null);
+  // The outcome names the window the serving is FILED under — derived from the stated
+  // instant, or the declared one — so a surface can place it visibly rather than under
+  // the tab it was tapped on.
+  const columns = placementColumns(placement);
+  const placedSlot = columns.eatenAt
+    ? foodSlotForProfileEvent(profileId, loggedAt, null, columns.eatenAt)
+    : columns.mealSlot;
   return writeTx(() => {
     const servings = foodDayCounter.bump(profileId, date, [slug], 1);
     // Append the per-tap event in the SAME transaction (#950): the counter and its
@@ -237,9 +261,9 @@ export function logFoodServingCore(
         slug,
         date,
         loggedAt,
-        storedSlot,
-        time?.eatenAt ?? null,
-        time?.source ?? null,
+        columns.mealSlot,
+        columns.eatenAt,
+        columns.timeSource,
         origin?.notifyMessageId ?? null,
         loggedVia
       );

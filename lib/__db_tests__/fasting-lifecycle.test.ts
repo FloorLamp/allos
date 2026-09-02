@@ -848,7 +848,7 @@ describe("the annotation reads real food rows and offers no verdict", () => {
     startFast(adult, start);
 
     // Inside the interval, with a stated eating time.
-    logFoodServingCore(adult, "legumes", day, "page", undefined, undefined, {
+    logFoodServingCore(adult, "legumes", day, "page", undefined, {
       eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
       source: "stated",
     });
@@ -861,7 +861,6 @@ describe("the annotation reads real food rows and offers no verdict", () => {
       "legumes",
       today(other),
       "page",
-      undefined,
       undefined,
       {
         eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),

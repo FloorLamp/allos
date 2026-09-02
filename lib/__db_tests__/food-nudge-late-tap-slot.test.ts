@@ -233,7 +233,6 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
       t,
       "page",
       `${t}T07:00:00Z`,
-      undefined,
       {
         eatenAt: `${t}T07:00:00Z`,
         source: "tap",

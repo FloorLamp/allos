@@ -312,7 +312,6 @@ describe("a food correction row renders only on the message that produced it (#2
       today(pid),
       "page",
       MIDDAY_ISO,
-      undefined,
       {
         eatenAt: "2026-08-05T10:00:00Z",
         source: "stated",
