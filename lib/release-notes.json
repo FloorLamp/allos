@@ -289,6 +289,41 @@
           "category": "Medications",
           "title": "Backfilling a missed dose names the day on the button itself",
           "issues": [4753]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly recap stops counting today’s pending doses as missed",
+          "issues": [4777]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A resumed medication says which way its number points",
+          "issues": [4777]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The weekly notification leads with its news instead of its totals",
+          "issues": [4777]
+        },
+        {
+          "pr": 4777,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A wear reminder states what happened, not a claim about tonight",
+          "issues": [3060]
+        },
+        {
+          "pr": 4782,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Charts read out their own values instead of a full-width list beneath them",
+          "issues": [4760]
         }
       ]
     },
