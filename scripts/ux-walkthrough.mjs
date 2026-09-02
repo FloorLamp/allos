@@ -1629,7 +1629,7 @@ async function doseJourney(browser) {
     return ctx.close();
   }
   const before = await take.getAttribute("aria-label");
-  if (before === "Mark not taken")
+  if (before === "Undo take")
     log("dose-confirm: dose already taken today (prior run) — toggling anyway");
   await shot(page, "dose-before");
   beginTaps("confirm dose (on Medications)");

@@ -418,16 +418,16 @@ test("R3d — a queue flush in flight does not re-write its intents after logout
   //
   // ANY UNTAKEN DOSE, and not a named one — see the note at the top of this file. This
   // test named the seeded Sertraline and failed on CI with "element(s) not found" for its
-  // "Mark taken" button, which reads exactly like the write gate refusing the tap and is
+  // "Take" button, which reads exactly like the write gate refusing the tap and is
   // nothing of the kind: the worker's database is shared by every test on it, and that
   // dose can already be taken by the time this runs. Nothing here is about which
   // medication it is.
   const take = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ has: page.getByRole("button", { name: "Mark taken" }) })
-    .first() // first-ok: any dose still offering "Mark taken" — this test is about the gate
-    .getByRole("button", { name: "Mark taken" });
+    .filter({ has: page.getByRole("button", { name: "Take", exact: true }) })
+    .first() // first-ok: any dose still offering "Take" — this test is about the gate
+    .getByRole("button", { name: "Take", exact: true });
   await expect(take).toBeVisible({ timeout: 20_000 });
   await context.setOffline(true);
   await take.click();
@@ -585,11 +585,11 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   const takeable = page
     .getByTestId("medications-today")
     .locator("[data-today-row]")
-    .filter({ has: page.getByRole("button", { name: "Mark taken" }) });
+    .filter({ has: page.getByRole("button", { name: "Take", exact: true }) });
 
   await login(page);
   await page.goto("/medications");
-  await expect(takeable.first()).toBeVisible({ timeout: 20_000 }); // first-ok: any dose still offering "Mark taken" — this test is about the gate, not about a medication
+  await expect(takeable.first()).toBeVisible({ timeout: 20_000 }); // first-ok: any dose still offering "Take" — this test is about the gate, not about a medication
 
   // Kill the logout POST outright. Not a contrivance — this is what a tap on Log out in a
   // dead zone does, and the failure the error boundary is for.
@@ -626,7 +626,7 @@ test("R-A — a logout that FAILS leaves the device able to save again", async (
   // rows had not arrived yet, and cutting the network there means they never do.
   const takeAfterReload = takeable
     .first() // first-ok: same untaken dose, re-resolved after the reload
-    .getByRole("button", { name: "Mark taken" });
+    .getByRole("button", { name: "Take", exact: true });
   await expect(takeAfterReload).toBeVisible({ timeout: 20_000 });
 
   await context.setOffline(true);
