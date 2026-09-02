@@ -59,9 +59,10 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
 - Applied migrations are keyed by name; numbered migrations 001–185 are closed.
 - Add `YYYYMMDD-slug.ts`, export `{ name, up }`, append it last, then run
   `npm run gen:migration-manifest` for its hash. Never edit a shipped migration.
-- Merge order defines migration order. Resolve `versions/index.ts` conflicts by
-  keeping both entries and appending the later merge last; re-run the generator
-  for `manifest.json` conflicts rather than hand-resolving hash lines.
+- Merge order defines migration order. An APPEND-ONLY file (`versions/index.ts`,
+  a barrel like `lib/queries.ts`) conflicts whenever two lanes append: keep BOTH
+  entries, later merge last, never pick a side. Re-run the generator for
+  `manifest.json` hashes rather than hand-resolving them.
 - Recreate development databases containing abandoned, unknown migration names.
 
 ## Merge
@@ -79,15 +80,14 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   review states SHA and reviewer — on a shared bot account, also that the
   reviewer did not author the change (#4258). A head change voids it.
 - **Run `scripts/orchestration/merge-gate.mjs <pr>` before every merge
-  call** — receipt on the current head, checks green, zero unresolved
-  threads, read-only; exit 0 is the precondition. CI recomputes the same
-  verdict as the `merge-gate` commit status on pushes, reviews, CI settling.
+  call** — receipt on current head, checks green, no unresolved threads;
+  exit 0 is the precondition. CI mirrors it as the `merge-gate` COMMIT
+  STATUS, which check-runs does not list: all-green can still be `unstable`.
 - A later conflicting PR rebases only after the last earlier conflict lands.
 - Resume the author for semantic conflict resolution; do not hand-integrate
   feature code.
-- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`; exit 3
-  means something closes. It reads all ten keywords from the body AND every
-  commit — the natural three miss the rest (failure modes).
+- **Check what a merge would CLOSE**: `closing-keywords.mjs <pr>`, exit 3
+  (failure modes). Blind to your squash text: scan it; `Refs` a PHASED issue.
 - **Require the PR body rewritten in the same push as a rewrite.**
   `adversarial-review-brief.mjs` serves it as "the claims to attack", so a stale
   body aims the next lens at deleted code (failure modes).

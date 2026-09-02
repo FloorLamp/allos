@@ -708,6 +708,12 @@ METHOD
 - Read-only posture: work in a fresh worktree at the PR's MERGE ref
   (git fetch origin pull/${prNumber}/merge && git worktree add $SCRATCH/wt-refute-${prNumber} FETCH_HEAD).
   You never push to this branch and never open a PR; your deliverable is a report.
+  THIS OVERRIDES ANY WORKTREE PATH YOUR DISPATCH MESSAGE NAMES. An attack mutates
+  production files; the authoring lane is usually still committing in its own tree,
+  and one \`git add -A\` there commits your deleted bound onto the landing candidate.
+  That is not hypothetical -- on #4312 a lane found its date bound deleted under it
+  mid-round, twice, because the dispatch pointed this brief at the lane's live tree.
+  If you were handed a path, build your own anyway and say so in your report.
 - For each claim: construct the CONCRETE input, database state, or call sequence
   that would falsify it, and run it (db tier / pure tier / a scratch script
   against an in-memory database). "I read the code and it looks right" is not a
