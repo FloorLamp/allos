@@ -24,6 +24,7 @@ import {
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
 import {
+  getMainSleepNightlyMinutes,
   getOverlappingSleepSessions,
   getSleepStageComposition,
 } from "@/lib/queries";
@@ -178,13 +179,17 @@ describe("a re-timed Health Connect night collapses to the corroborated window",
     expect(sessionsInStore()).toEqual([
       { date: day1, started_at: real().start },
     ]);
-    // The phantom's wake day keeps no breakdown behind it.
+    // The phantom's wake day keeps no breakdown behind it, and the readers the Sleep
+    // page renders from see ONE night, on the right wake day, of the right duration.
     expect(stageDates()).toEqual([day1]);
     expect(
       getSleepStageComposition(profileId, 30).filter(
         (r) => r.deep + r.rem + r.light + r.awake > 0
       )
     ).toHaveLength(1);
+    expect(getMainSleepNightlyMinutes(profileId, 30)).toEqual([
+      { date: day1, value: 377 },
+    ]);
 
     // A tombstone for the session key AND for every stage key it took with it.
     const dead = tombstones();
