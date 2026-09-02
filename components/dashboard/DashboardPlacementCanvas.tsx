@@ -217,6 +217,16 @@ export default function DashboardPlacementCanvas({
   // The illness group stands where its FIRST episode placed, and every other episode
   // placement leaves the strip (their facts are inside the cockpit).
   const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
+  // WHOSE NAME MAY STAND OVER THE ILLNESS GROUP (#4752 item 6). The group is ONE
+  // container holding every ill profile's cockpit, so a subject label above it is
+  // true only while a single subject is ill; with two, the first one's name would
+  // sit over another patient's controls, which is exactly the mis-attribution
+  // #531/#534 made the per-cockpit name a safety feature to prevent. Two ill
+  // profiles therefore draw NO label here and are named where they always were —
+  // on each cockpit's own header, inside the group.
+  const oneIllSubject =
+    new Set(illnessPlacements.map((placement) => placement.nowSubject)).size ===
+    1;
   const now = nowPlacements.flatMap((placement): NowStripRow[] => {
     const subject =
       placement.nowSubject == null
@@ -235,7 +245,13 @@ export default function DashboardPlacementCanvas({
         },
       ];
     return placement.candidate.candidateId === firstIllnessId
-      ? [{ id: "illness-group", subject, node: illnessGroupNode }]
+      ? [
+          {
+            id: "illness-group",
+            subject: oneIllSubject ? subject : undefined,
+            node: illnessGroupNode,
+          },
+        ]
       : [];
   });
   const standing = placementsInLane(placements, "standing");
