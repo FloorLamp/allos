@@ -290,10 +290,6 @@ export function compactList(items: string[], max = 3): string {
   return `${clean.slice(0, max).join(", ")} +${clean.length - max} more`;
 }
 
-export function trainingLogActivityHref(activityId: number): AppRoute {
-  return `/training?tab=log#activity-${activityId}`;
-}
-
 export function normalizeTimelineRange(
   from?: string,
   to?: string

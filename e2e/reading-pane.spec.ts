@@ -1,22 +1,50 @@
 import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
-import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
 
 // The Training Log is the activity index. Every row reaches the canonical
 // activity page at every viewport; records no longer expand into a second
 // desktop pane or a phone-only inline presentation.
 
+// A ROW'S ACTIVITY ID comes off `data-history-row-id` (`feed:activity:N`), which is
+// the substrate's row identity. The DOM `id` is the ANCHOR built from it, and the two
+// are deliberately different spellings — reading the id out of the anchor is what
+// broke when the Log moved onto this substrate.
+const ACTIVITY_ROW =
+  '[data-testid="history-row"][data-history-kind="activity"]';
+
 test("activity rows open the canonical activity page", async ({ page }) => {
   await page.goto("/training?tab=log");
   const row = page
-    .getByTestId("history-row")
+    .locator(ACTIVITY_ROW)
     .filter({ hasText: "Push day" })
-    .first(); // first-ok: newest seeded Push day; its strength parts prove the compact index reuses activity detail
+    .first(); // first-ok: newest seeded Push day; its set summaries prove the compact index reuses the record's own numbers
   await expect(row).toBeVisible();
-  await expect(row.getByTestId("activity-parts")).toBeVisible();
-  await expect(row.getByTestId("training-log-strength-row")).not.toHaveCount(0);
-  const id = (await row.getAttribute("id"))!.replace("activity-", "");
+
+  // THE SETS ARE THE SUBSTRATE'S OWN DISCLOSURE (#4079), not a training layer laid
+  // over it. The activity's timeline event already carries its per-exercise set
+  // summaries as `detailItems`, so the shared row draws the panel with no
+  // training-specific code — and the panel is the row's SIBLING (#4045 §4), so it is
+  // addressed on the page rather than inside the row.
+  const rowId = (await row.getAttribute("data-history-row-id"))!;
+  const id = rowId.replace("feed:activity:", "");
+  expect(id, "an activity row's id is `feed:activity:N`").toMatch(/^\d+$/);
+  await row.getByTestId("history-row-disclosure").click();
+  const panel = page.locator(
+    `[data-testid="history-row-panel"][data-history-row-id="${rowId}"]`
+  );
+  await expect(panel).toBeVisible();
+  // The seed's Push day is these five lifts, and the panel names them — the point of
+  // the disclosure is that the session's CONTENT reads here, not just its title.
+  for (const lift of [
+    "Barbell Bench Press",
+    "Barbell Overhead Press",
+    "Incline Bench Press",
+    "Dumbbell Lateral Raise",
+    "Tricep Pushdown",
+  ]) {
+    await expect(panel).toContainText(lift);
+  }
+
   const detailLink = row.getByRole("link", { name: "Push day", exact: true });
   await expect(detailLink).toHaveAttribute("href", `/training/activity/${id}`);
 
@@ -26,77 +54,41 @@ test("activity rows open the canonical activity page", async ({ page }) => {
   await expect(page.getByTestId("training-log-reading-pane")).toHaveCount(0);
 });
 
-// The deep link has to do TWO things that nothing else in the suite exercises
-// (TrainingLogView's hash effect): page older history in until the target row
-// exists, then scroll it into view. Both halves need care to assert at all.
+// #4079 RETIRED THE `#activity-N` DEEP LINK AND THE HASH AUTO-PAGER IT DROVE. That
+// mechanism existed because the Log's private feed rendered one window and paged
+// older history in on the client, so an address for a row below the window had to
+// page until the row existed and then scroll to it. The bound lives in the URL now
+// and the periods below it are folds, so there is no client pager to drive and no
+// helper builds that address any more (`trainingLogActivityHref` retired with it).
 //
-// The target is deliberately an activity the FIRST PAGE DOES NOT RENDER. Reading
-// the id off a plain, hash-less load — which is what this test used to do — picks a
-// row that is in the DOM either way, so the whole hash machinery could be deleted
-// and the test would still pass (#3172 F1).
-//
-// And `toBeVisible()` is "non-empty bounding box", NOT viewport intersection, so it
-// cannot tell a scrolled-to row from one sitting a thousand pixels below the fold.
-// The position assertion below is the only thing here that speaks about scrolling.
-test("an #activity-N deep link pages older history in and scrolls the row into view", async ({
+// WHAT SURVIVED IS THE DAY ANCHOR, and it is a LIVE contract — `ActiveDaysStrip` and
+// `DayHistory` both build `/training?tab=log#day-YYYY-MM-DD` — so it is pinned here
+// in the retired test's place rather than left to the mount's own comment.
+test("a #day-YYYY-MM-DD anchor still addresses the day it names", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
-  const rows = page.getByTestId("history-row");
-  await expect(rows.first()).toBeVisible(); // first-ok: presence gate before reading ids
-  // Everything the first window renders — the feed opens on 14 days.
-  const firstPage = new Set(
-    await rows.evaluateAll((els) => els.map((el) => el.id))
+  const firstDay = page.getByTestId("training-log-day").first(); // first-ok: the newest rendered day; any rendered day proves the anchor grammar
+  await expect(firstDay).toBeVisible();
+  const anchor = (await firstDay.getAttribute("id"))!;
+  expect(anchor, "the day section keeps the `day-` anchor grammar").toMatch(
+    /^day-\d{4}-\d{2}-\d{2}$/
   );
 
-  const db = new Database(workerDbPath(), { readonly: true });
-  let targetId: number;
-  try {
-    db.pragma("busy_timeout = 5000");
-    // The NEWEST activity the opening window does not render — i.e. the top of
-    // the next page down. Deliberately not the profile's oldest row: the point is
-    // to sit outside the rendered window, and the furthest-back row would also
-    // depend on how deep the server feed pages, which is a different contract.
-    const newestFirst = db
-      .prepare(
-        "SELECT id FROM activities WHERE profile_id = 1 ORDER BY date DESC, id DESC"
-      )
-      .all() as { id: number }[];
-    const pick = newestFirst.find((a) => !firstPage.has(`activity-${a.id}`));
-    // If the seed ever stops carrying more history than one page, this test
-    // stops being able to prove anything — so it says so out loud rather than
-    // passing on a target that was already loaded. That silent degradation is
-    // the exact failure #3172 was filed about.
-    expect(
-      pick,
-      "the seed must carry activity history beyond the opening window for this test to mean anything"
-    ).toBeDefined();
-    targetId = pick!.id;
-  } finally {
-    db.close();
-  }
-
   await page.goto("about:blank");
-  await page.goto(`/training?tab=log#activity-${targetId}`);
-  const target = page.locator(`#activity-${targetId}`);
-
-  // PRESENCE is the paging assertion: this row is below the opening window, so
-  // it can only be here because the hash effect paged older history in.
-  await expect(target).toBeVisible();
-  await expect(
-    target.getByRole("link").first() // first-ok: the canonical title link precedes any exercise links in the uniquely identified row
-  ).toHaveAttribute("href", `/training/activity/${targetId}`);
-
-  // POSITION is the scroll assertion. The jump is smooth-scrolled, so poll the
-  // box rather than reading it once.
+  await page.goto(`/training?tab=log#${anchor}`);
+  const landed = page.locator(`#${anchor}`);
+  await expect(landed).toBeVisible();
+  // POSITION, not visibility: `toBeVisible()` is "non-empty bounding box" and passes
+  // just as happily on a section a thousand pixels below the fold.
   const viewport = page.viewportSize()!;
   await expect
     .poll(
       async () => {
-        const box = await target.boundingBox();
+        const box = await landed.boundingBox();
         return box != null && box.y >= 0 && box.y < viewport.height;
       },
-      { message: "the deep-linked row must be scrolled into the viewport" }
+      { message: "the anchored day must be scrolled into the viewport" }
     )
     .toBe(true);
 });
@@ -104,33 +96,42 @@ test("an #activity-N deep link pages older history in and scrolls the row into v
 test("phone rows use the same canonical destination", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=log");
-  const row = page.getByTestId("history-row").first(); // first-ok: any row proves the shared destination
-  const id = (await row.getAttribute("id"))!.replace("activity-", "");
+  // SCOPED TO AN ACTIVITY ROW. The Training family also carries milestones and
+  // endurance events, whose rows are owned by other surfaces and correctly go
+  // somewhere else — an unscoped `.first()` asserts the activity destination against
+  // whichever kind happened to be newest.
+  const row = page.locator(ACTIVITY_ROW).first(); // first-ok: any activity row proves the shared destination
+  await expect(row).toBeVisible();
+  const id = (await row.getAttribute("data-history-row-id"))!.replace(
+    "feed:activity:",
+    ""
+  );
 
   await followLink(
     page,
-    row.getByRole("link").first(), // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByTestId("history-row-title"),
     new RegExp(`/training/activity/${id}$`)
   );
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
   await expect(page.getByTestId("activity-record-body")).toBeVisible();
 });
 
-// Back from an activity page, into a log the user had paged older history into
+// Back from an activity page, into a log the reader had OPENED older history in
 // (issue #3179). Newly reachable rather than newly broken: before #3099 a row filled
-// a reading pane without navigating, so there was no Back to take, and nothing has
-// ever covered this.
+// a reading pane without navigating, so there was no Back to take.
 //
-// Three mechanisms have to agree and none of them is obviously the one doing the
-// work. App Router restores a scroll offset against a document that is SHORTER on
-// the way back, because `TrainingLogView`'s `visibleDays` is component state and
-// resets to the opening 14 days on remount. What actually rescues the return is the
-// BACK RETURNS TO THE WINDOW YOU WIDENED (#3176's shape, re-based on #4079).
+// BACK RETURNS TO THE VIEW YOU WIDENED (#3176's shape, re-based on #4079). The Log's
+// window lives in the URL now — a fold is a link that writes `?open=`, not a client
+// pager with component state that resets on remount — so the promise is the same and
+// its mechanism is the platform's: opening a row is a real navigation, and Back
+// returns to the URL that was showing the history you had opened.
 //
-// The Log's bound lives in the URL now — "Show more" is a link that widens `?show=`,
-// not a client pager with a scroll-spy writing `#day-…` as you scroll. So the
-// promise is the same and its mechanism is the platform's: opening a row is a real
-// navigation, and Back returns to the widened URL with the history it was showing.
+// THE FOLD, NOT `?show=`, IS THE WIDENING THIS ASSERTS. Both are URL state, but the
+// bound starts at HISTORY_DEFAULT_SHOW = 200 rows and the seeded profile's whole
+// training history is 84 activities, so `hasMore` is false and "Show more" never
+// renders for it — a test written against that control asserts on an element its
+// fixture cannot produce. The fold is what actually replaced the pager, and the
+// fixture reaches it on every run.
 //
 // The guarantee is "you come back to where you were, with the history you had
 // opened", NOT "the pixel offset is restored" — asserting the offset would pin an
@@ -139,20 +140,20 @@ test("Back returns to the widened log with the row you opened still on screen", 
   page,
 }) => {
   await page.goto("/training?tab=log");
-  const rows = page.getByTestId("history-row");
+  const rows = page.locator(ACTIVITY_ROW);
   await expect(rows.first()).toBeVisible(); // first-ok: presence gate before counting
   const openingWindow = await rows.count();
 
-  // Widen the bound. Without this the whole question is trivial — every row would
+  // Open older history. Without this the whole question is trivial — every row would
   // be in the DOM on a plain reload and Back could not tell us anything.
-  const showMore = page.getByTestId("training-log-show-more");
-  await expect(showMore).toBeVisible();
-  await showMore.click();
-  await page.waitForURL(/[?&]show=/);
+  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // first-ok: the newest fold, whichever period it is — order-agnostic
+  await expect(fold).toBeVisible();
+  await fold.locator('[data-testid$="-toggle"]').click();
+  await page.waitForURL(/[?&]open=/);
   await expect
     .poll(() => rows.count(), {
       message:
-        "the seed must carry activity history beyond the opening window for this test to mean anything",
+        "opening a fold must reveal activity rows the opening window did not render",
     })
     .toBeGreaterThan(openingWindow);
   const widened = await rows.count();
@@ -164,7 +165,7 @@ test("Back returns to the widened log with the row you opened still on screen", 
   const targetId = (await target.getAttribute("id"))!;
   await target.scrollIntoViewIfNeeded();
 
-  await target.getByRole("link").first().click(); // first-ok: the canonical title link precedes any other link in the row
+  await target.getByTestId("history-row-title").click();
   await page.waitForURL(/\/training\/activity\/\d+$/);
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
 
