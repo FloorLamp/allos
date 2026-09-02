@@ -364,11 +364,14 @@ export function getNapHistory(
     .map((nap) => ({
       date: nap.wakeDay,
       startMinutes: hhmmToMinutes(
-        zonedDateParts(zoneOf(dayZone, new Date(nap.start)), new Date(nap.start))
-          .hhmm
+        zonedDateParts(
+          zoneOf(dayZone, new Date(nap.start)),
+          new Date(nap.start)
+        ).hhmm
       ),
       endMinutes: hhmmToMinutes(
-        zonedDateParts(zoneOf(dayZone, new Date(nap.end)), new Date(nap.end)).hhmm
+        zonedDateParts(zoneOf(dayZone, new Date(nap.end)), new Date(nap.end))
+          .hhmm
       ),
       durationMin: nap.durationMin,
       source: nap.session.source ?? null,

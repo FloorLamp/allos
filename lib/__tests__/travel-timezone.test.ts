@@ -396,13 +396,13 @@ describe("stored switch history", () => {
     // not happened yet, so an instant two and a half years before "now" still resolves
     // to the zone it was lived in. Under the retired 120-day floor this record was gone
     // and the same instant answered Tokyo only by accident of the current zone.
-    expect(
-      zoneAtInstant(history, NY, new Date("2023-06-01T00:00:00Z"))
-    ).toBe(TOKYO);
+    expect(zoneAtInstant(history, NY, new Date("2023-06-01T00:00:00Z"))).toBe(
+      TOKYO
+    );
     // Before the first record at all: that switch's `from`.
-    expect(
-      zoneAtInstant(history, NY, new Date("2022-12-01T00:00:00Z"))
-    ).toBe(NY);
+    expect(zoneAtInstant(history, NY, new Date("2022-12-01T00:00:00Z"))).toBe(
+      NY
+    );
   });
 
   // The remaining bound is a safety valve on a runaway writer, not a retention

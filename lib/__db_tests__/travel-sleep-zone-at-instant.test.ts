@@ -14,7 +14,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone, switchProfileTimezone, getTimezone } from "@/lib/settings";
+import {
+  setTimezone,
+  switchProfileTimezone,
+  getTimezone,
+} from "@/lib/settings";
 import {
   getLastNightSummary,
   getSleepConsistency,
@@ -61,7 +65,12 @@ afterEach(() => {
   delete process.env.ALLOS_TEST_NOW;
 });
 
-function night(profileId: number, wakeDay: string, startUtc: string, endUtc: string) {
+function night(
+  profileId: number,
+  wakeDay: string,
+  startUtc: string,
+  endUtc: string
+) {
   db.prepare(
     `INSERT INTO metric_samples
        (profile_id, source, origin, metric, date, started_at, ended_at, value)
@@ -128,15 +137,23 @@ describe("a night keeps the clock it was slept on after a travel switch (#3428)"
   // sleep-waiting wake anchor, so a three-hour error here asks for a morning dose in
   // the middle of the night.
   it.each([
-    { name: "typical wake time", read: typicalWakeTime, expected: NY_WAKE_MINUTES },
-    { name: "typical bed time", read: typicalBedTime, expected: NY_BED_MINUTES },
-  ])("$name is the median of the New York nights, not their Los Angeles shadow", ({
-    read,
-    expected,
-  }) => {
-    const profileId = traveller("TZ-SLEEP-TYPICAL");
-    expect(read(profileId)).toBe(expected);
-  });
+    {
+      name: "typical wake time",
+      read: typicalWakeTime,
+      expected: NY_WAKE_MINUTES,
+    },
+    {
+      name: "typical bed time",
+      read: typicalBedTime,
+      expected: NY_BED_MINUTES,
+    },
+  ])(
+    "$name is the median of the New York nights, not their Los Angeles shadow",
+    ({ read, expected }) => {
+      const profileId = traveller("TZ-SLEEP-TYPICAL");
+      expect(read(profileId)).toBe(expected);
+    }
+  );
 
   it("every night on the consistency strip keeps its own zone's hours", () => {
     const profileId = traveller("TZ-SLEEP-STRIP", { post: true });
