@@ -225,7 +225,8 @@ const VOCABULARY = {
       doses: [{ id: 11, amount: "5 g", time_of_day: "Morning" }],
     },
   ],
-  doseDefaultTime: "08:00",
+  foodSlotBoundaries: { midday: 660, evening: 1020 },
+    doseDefaultTime: "08:00",
 };
 
 function open(kind: HistoryAddKind, usual: UsualOffer[] = []): void {

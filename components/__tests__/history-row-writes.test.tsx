@@ -524,6 +524,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           mealSlot: "Morning",
           clock: "08:46",
           clockKind: "stated",
+          slotBoundaries: { midday: 660, evening: 1020 },
         },
       }),
     ]);
@@ -558,6 +559,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           mealSlot: "Morning",
           clock: "08:46",
           clockKind: "stated",
+          slotBoundaries: { midday: 660, evening: 1020 },
         },
       }),
     ]);
@@ -581,6 +583,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           mealSlot: "Morning",
           clock: "12:01",
           clockKind: "logged",
+          slotBoundaries: { midday: 660, evening: 1020 },
         },
       }),
     ]);
@@ -782,6 +785,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           mealSlot: "Midday",
           clock: "12:30",
           clockKind: "stated",
+          slotBoundaries: { midday: 660, evening: 1020 },
         },
       }),
       "updateFoodLogEvent",
@@ -942,6 +946,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
           mealSlot: "Morning",
           clock: null,
           clockKind: "logged",
+          slotBoundaries: { midday: 660, evening: 1020 },
         },
       }),
       "deleteFoodLogEvent",
@@ -1147,6 +1152,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
               mealSlot: "Morning",
               clock: null,
               clockKind: "logged",
+              slotBoundaries: { midday: 660, evening: 1020 },
             },
           }),
           row({
@@ -1161,6 +1167,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
               mealSlot: "Morning",
               clock: null,
               clockKind: "logged",
+              slotBoundaries: { midday: 660, evening: 1020 },
             },
           }),
         ]}
