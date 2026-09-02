@@ -392,4 +392,30 @@ describe("the confirm's named tail reaches its own columns (#4742)", () => {
       bundle_id: bundle,
     });
   });
+
+  // THE EXPLICIT SET HAS THE SAME DOOR (#4745). It was the one resolution core with no
+  // way to say which composed action wrote a row, so a future composed writer built on
+  // it would have produced NULL `bundle_id` rows — a stack that renders as loose ones,
+  // and nothing errors. Both halves are the claim: a stated bundle lands, and an
+  // ordinary tri-state tap still writes none rather than inventing one.
+  it("the tri-state carries a bundle when one is stated, and none when it is not", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const date = today(profileId);
+    const bundle = newDoseBundle();
+    const composed = seedDose(itemId, "1 cap");
+    const alone = seedDose(itemId, "1 cap");
+
+    expect(
+      setDoseStatusCore(profileId, composed, date, "taken", "page", {
+        bundleId: bundle,
+      })
+    ).toBe("logged");
+    expect(setDoseStatusCore(profileId, alone, date, "taken", "page")).toBe(
+      "logged"
+    );
+
+    expect(tail(composed, date).bundle_id).toBe(bundle);
+    expect(tail(alone, date).bundle_id).toBeNull();
+  });
 });

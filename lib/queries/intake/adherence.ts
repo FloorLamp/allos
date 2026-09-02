@@ -261,11 +261,14 @@ interface DoseResolveOptions {
   bundleId?: DoseBundleId;
 }
 
-// WHAT A CONFIRM LETS ITS CALLER STATE (#4742), derived from the one options type
-// above rather than restated beside it, so a field added there reaches this door too.
-// What the Omit takes away is what the door itself decides: `markDoseTaken` IS the
-// resolve-only intent, and it takes the item id as its own argument.
+// WHAT EACH DOOR LETS ITS CALLER STATE (#4742, #4745), derived from the one options
+// type above rather than restated beside it — so a field added there reaches every
+// door, and no door can answer "which composed action wrote this" with silence. What
+// each Omit takes away is what the door itself decides: `markDoseTaken` IS the
+// resolve-only intent and takes the item id as its own argument, and the explicit web
+// set is a tri-state tap — it carries no Telegram message and reads no callback token.
 type DoseConfirmOptions = Omit<DoseResolveOptions, "resolveOnly" | "itemId">;
+type DoseSetOptions = Omit<DoseResolveOptions, "itemId" | "notifyMessageId">;
 
 function applyDoseStatusCore(
   profileId: number,
@@ -511,29 +514,34 @@ export const markDoseSkippedDeclares = DOSE_RESOLUTION;
 // write (#232), auth-blind and profileId-first like every other lib write core. The
 // Server Action (setDoseStatus) is the authorization + validation boundary over it and
 // renders the outcome; it owns no SQL of its own.
+//
+// IT CAN CARRY A BUNDLE (#4745), and until now it was the one resolution core that
+// could not. Nothing composed reaches it today — every composed writer goes through
+// `markDoseTaken` — so this fixed no defect; what it removes is the door a future
+// composed writer would have walked through to produce rows with a NULL `bundle_id`,
+// indistinguishable from a pre-migration row and from a genuine one-at-a-time tap, and
+// wrong in the one way nothing errors on. Making that unreachable BY TYPE was the
+// preferred shape and TypeScript cannot express it — a call site's composedness is not
+// a thing the checker can see — so the answer is the other end of the same rule: there
+// is no longer a core that cannot carry one, so there is nothing to reach.
 export function setDoseStatusCore(
   profileId: number,
   doseId: number,
   date: string,
   target: DoseStatusTarget,
   loggedVia: LoggedVia,
-  // RESOLVE-ONLY, when the control was showing a CLEAR dose (#280, #4424). The
-  // tri-state's licence to overwrite comes from the person LOOKING at the state, so it
-  // does not extend to a clear the surface only believed in: a list of what a day owes
-  // renders every stale row clear, and a ✅ there would flip a skip made elsewhere. A
-  // flip or a clear off a state the person could see is unaffected.
-  resolveOnly = false,
-  // THE ADMINISTRATION THE TAP STATES (#4426) — the same stamp seam the offline replay
-  // and the Telegram correction already use, reached at last from the web. UNDEFINED
-  // (every existing caller) means "the tap instant", so a confirm that states nothing
-  // writes the row it always wrote; the core still judges the instant against the day
-  // and falls back rather than refusing the dose.
-  takenAt?: Date
+  // WHAT THIS TAP STATES, every field documented once on `DoseResolveOptions`. Named
+  // rather than positional for #4742's reason and in the same shape: a fourth trailing
+  // optional on this core is exactly how the drift on its sibling started.
+  //
+  // `resolveOnly` is the one a web caller must think about: the tri-state's licence to
+  // overwrite comes from the person LOOKING at the state, so it does not extend to a
+  // clear the surface only believed in — a list of what a day owes renders every stale
+  // row clear, and a ✅ there would flip a skip made elsewhere. A flip or a clear off a
+  // state the person could see is unaffected.
+  opts: DoseSetOptions = {}
 ): DoseStatusOutcome {
-  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, {
-    resolveOnly,
-    takenAt,
-  });
+  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, opts);
 }
 export const setDoseStatusCoreDeclares = DOSE_RESOLUTION;
 
