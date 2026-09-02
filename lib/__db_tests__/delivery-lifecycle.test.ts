@@ -70,20 +70,16 @@ function newProfile(name: string): number {
       .lastInsertRowid
   );
 }
+let loginSeq = 0;
 function newLogin(email: string | null = null): number {
   return Number(
     db
       .prepare(
         "INSERT INTO logins (username, password_hash, role, email) VALUES (?, 'x', 'member', ?)"
       )
-      .run(`lifecycle_${Math.random().toString(36).slice(2, 8)}`, email)
+      .run(`lifecycle login ${++loginSeq}`, email)
       .lastInsertRowid
   );
-}
-function grant(loginId: number, profileId: number): void {
-  db.prepare(
-    "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write') ON CONFLICT(login_id, profile_id) DO NOTHING"
-  ).run(loginId, profileId);
 }
 function stubWire(opts: { telegramOk?: boolean; haStatus?: number } = {}) {
   const calls: string[] = [];
