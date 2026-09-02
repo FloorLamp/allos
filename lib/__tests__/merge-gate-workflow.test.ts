@@ -40,9 +40,7 @@ describe("the merge-gate workflow trigger contract", () => {
 
   it("publishes the evaluator's exact failing clause, not a generic log pointer", () => {
     const source = fs.readFileSync(WORKFLOW, "utf8");
-    expect(source).toContain(
-      "gate_output=$(node scripts/orchestration/merge-gate.mjs"
-    );
+    expect(source).toContain("gate_output=$(node scripts/work/merge-gate.mjs");
     expect(source).toContain("s/^STATUS: //p");
     expect(source).toContain(
       'payload=$(jq -cn --arg state "$state" --arg desc "$desc"'

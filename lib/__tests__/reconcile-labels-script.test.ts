@@ -23,7 +23,7 @@ import { makeTmpDir } from "./tmp-dir";
 // re-introduces the stale snapshot fails here whatever shape it takes.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/reconcile-labels.ts");
+const SCRIPT = path.join(REPO, "scripts/work/reconcile-labels.ts");
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
 /** The stub. Serves the three endpoints the script uses, from a JSON state file. */

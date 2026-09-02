@@ -7,8 +7,8 @@ allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), 
 # file-issue — investigate first, decide together, file once
 
 Issues here are dispatch briefs, not notes to a future human: an
-orchestrator clusters them and agents implement them by reading the body and
-every comment (`docs/orchestration.md`).
+worker clusters them and agents implement them by reading the body and
+every comment (`docs/work.md`).
 
 That sets the bar — a wrong premise costs a whole dispatch cluster; an
 undecided design question costs a mid-flight round-trip.
@@ -17,7 +17,7 @@ The measured failure mode is not typos: a hand audit found 7 of ~40 open
 issues on stale premises (`docs/internals/tracker-reconciliation.md`). This
 skill files issues that don't join that list.
 
-**`docs/orchestration/environment.md` §GitHub access governs transport** —
+**`docs/work/environment.md` §GitHub access governs transport** —
 REST throughout, `gh api` or plain `curl`, reads unauthenticated, writes on
 `${GH_TOKEN:-$GITHUB_TOKEN}`, no write believed until re-read. No MCP here.
 
@@ -169,7 +169,7 @@ The taxonomy is CLOSED — verify against `KNOWN_LABELS` in
 silently mints unknown labels, validating the next mistake.
 
 Never invent a label — a missing concept is an owner decision — and never
-apply a retired one (`docs/orchestration/labels.md`):
+apply a retired one (`docs/work/labels.md`):
 
 > a11y, biomarkers, body-metrics, bug, ci, dashboard, db, dependencies,
 > design, docs, e2e, feat, findings, goals, infra, insights, intake,
@@ -186,7 +186,7 @@ An issue whose provenance is other agent work ("Found while implementing
 the owner's slot.
 
 A P0/P1 claim on one needs the regression demonstrated in the body
-(`docs/orchestration/dispatch.md` §Dispatch).
+(`docs/work/dispatch.md` §Dispatch).
 
 ## 7. Confirm, then file
 

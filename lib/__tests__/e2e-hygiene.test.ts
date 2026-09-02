@@ -34,7 +34,7 @@ import { stripComments } from "./strip-comments";
 //
 //   (iii) .first() — on a SHARED seeded surface (an offer list, a dose list, a
 //         review inbox) "the first row" is whatever a neighbor spec or a retry
-//         left on top, which the orchestration runbook calls the #1 recurring
+//         left on top, which the work runbook calls the #1 recurring
 //         failure class. A .first() scoped to a spec-OWNED fixture is fine —
 //         mark that line with a `first-ok: <why>` comment and it is not
 //         counted. Everything else is frozen at today's per-file count; new

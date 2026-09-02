@@ -308,7 +308,7 @@ suppressing the flag.
 Run a seeded mini-census while a merged UI change is still fresh:
 
 ```bash
-UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run
+UX_SEED=1 node scripts/work/post-merge-census.mjs HEAD^ HEAD --run
 ```
 
 It maps Git's changed files `app/(app)/X/**` → `UX_ROUTES=/X`, validating

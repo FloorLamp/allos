@@ -1,6 +1,6 @@
 name: E2E full suite (on demand)
 
-# The fresh-runner full-suite gate (flaky-e2e hardening). The orchestration
+# The fresh-runner full-suite gate (flaky-e2e hardening). The work
 # runbook's conclusion after the #1045/#1047 gate trains: "CI on a fresh GitHub
 # runner is the ultimate authority" — a local full-suite run on a long-lived
 # container degrades cumulatively and produces wide fake failure sets that cost

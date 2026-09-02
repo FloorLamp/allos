@@ -1,7 +1,7 @@
 ---
 name: reconcile-tracker
 description: Reconcile the issue tracker and roadmap against main — verify each issue's citations, dependencies and status claims, patch only the factual drift, and flag everything that needs judgment. Use for a scheduled or on-demand tracker maintenance pass, never as a CI gate.
-allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/orchestration/reconcile-tracker.ts:*), Bash(npx tsx scripts/orchestration/reconcile-apply.ts:*), Bash(npx tsx scripts/orchestration/reconcile-labels.ts:*), Bash(npx tsx scripts/orchestration/reconcile-watermark.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
+allowed-tools: Read, Grep, Glob, Bash(npx tsx scripts/work/reconcile-tracker.ts:*), Bash(npx tsx scripts/work/reconcile-apply.ts:*), Bash(npx tsx scripts/work/reconcile-labels.ts:*), Bash(npx tsx scripts/work/reconcile-watermark.ts:*), Bash(git grep:*), Bash(git log:*), Bash(git show:*), Bash(git diff:*), mcp__github__issue_read, mcp__github__list_issues, mcp__github__search_issues, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__search_code
 ---
 
 # Tracker reconciliation
@@ -10,7 +10,7 @@ At this repo's velocity, every issue body is a set of claims about `main`
 with an expiry date nobody stamps. This pass re-checks those claims — it is
 **factual reconciliation only**: fix what is provably wrong, flag the rest.
 
-Two halves. `scripts/orchestration/reconcile-tracker.ts` gathers evidence and
+Two halves. `scripts/work/reconcile-tracker.ts` gathers evidence and
 decides nothing; you read the residue the script could not decide and
 exercise the judgment it cannot.
 
@@ -33,7 +33,7 @@ These are enforced by construction rather than by your compliance:
   a body PATCH (payload built from one field, `body`) and a comment POST
   that announces a body edit on an issue with READERS — a body PATCH is
   silent, and a comment chain or in-flight lane keeps the pre-edit text.
-- The tool comments itself when the chain is non-empty; an ORCHESTRATOR
+- The tool comments itself when the chain is non-empty; an WORKER
   invoking this pass adds `--notify 123,456` with the roster's in-flight
   issues so a quiet-but-dispatched issue is announced too.
 - Reads go through MCP's scoped read tools rather than REST, the deliberate
@@ -61,7 +61,7 @@ These are enforced by construction rather than by your compliance:
 
 Also, standing: **do not run the write half while another reconciliation or
 triage sweep is in flight** — duplicate edits are worse than none. Check with
-the orchestrator first.
+the worker first.
 
 ## The six-step protocol
 
@@ -69,8 +69,8 @@ the orchestrator first.
 
 ```bash
 # .nvmrc-major node on PATH — discovered, never a pinned path (environment.md)
-export PATH=$(node scripts/orchestration/host.mjs node-bin):$PATH
-npx tsx scripts/orchestration/reconcile-tracker.ts \
+export PATH=$(node scripts/work/host.mjs node-bin):$PATH
+npx tsx scripts/work/reconcile-tracker.ts \
   --json /tmp/reconcile-evidence.json --out /tmp/reconcile-report.md
 ```
 
@@ -138,7 +138,7 @@ at), then decide:
 - **Split or pointing nowhere tracked** — ASK the owner, tally in hand, so
   the question is answerable in one line.
 - **Genuinely cross-cutting** — `design` is a real domain and the right
-  answer, not a shrug (`docs/orchestration/labels.md`).
+  answer, not a shrug (`docs/work/labels.md`).
 
 The tally is evidence, not a verdict — it cannot know an issue citing
 `lib/db.ts` is really about notifications; read the issue first. An add may
@@ -188,8 +188,8 @@ A sharp drop in examined counts between runs IS the finding.
 ## Applying patches
 
 ```bash
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json           # dry run
-npx tsx scripts/orchestration/reconcile-apply.ts plan.json --apply [--notify 123,456]
+npx tsx scripts/work/reconcile-apply.ts plan.json           # dry run
+npx tsx scripts/work/reconcile-apply.ts plan.json --apply [--notify 123,456]
 ```
 
 `plan.json` maps issue number → array of `AnchoredPatch`. Dry-run first,
@@ -209,9 +209,9 @@ writing a longer anchor past it is the forbidden fuzzy fallback. Flag it.
 ## Applying label changes
 
 ```bash
-npx tsx scripts/orchestration/reconcile-labels.ts                    # dry run + worksheet
-npx tsx scripts/orchestration/reconcile-labels.ts --apply            # removals + priority
-npx tsx scripts/orchestration/reconcile-labels.ts --plan p.json --apply   # + your domain calls
+npx tsx scripts/work/reconcile-labels.ts                    # dry run + worksheet
+npx tsx scripts/work/reconcile-labels.ts --apply            # removals + priority
+npx tsx scripts/work/reconcile-labels.ts --plan p.json --apply   # + your domain calls
 ```
 
 It builds removal and priority work from the live tracker, takes domain adds
@@ -221,7 +221,7 @@ prints one line per write. Dry run first; never while another sweep runs.
 ## Stamp the watermark — only after the report is read
 
 ```bash
-npx tsx scripts/orchestration/reconcile-watermark.ts stamp \
+npx tsx scripts/work/reconcile-watermark.ts stamp \
   --evidence /tmp/reconcile-evidence.json --apply   # dry run without --apply
 ```
 

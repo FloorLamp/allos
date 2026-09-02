@@ -7,7 +7,7 @@ import { afterAll, expect, it } from "vitest";
 import { makeTmpDir } from "./tmp-dir";
 
 const SCRIPT = fileURLToPath(
-  new URL("../../scripts/orchestration/ci-watch.mjs", import.meta.url)
+  new URL("../../scripts/work/ci-watch.mjs", import.meta.url)
 );
 const bin = makeTmpDir("ci-watch");
 const curl = path.join(bin, "curl");

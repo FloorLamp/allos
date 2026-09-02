@@ -7,7 +7,7 @@ import { makeTmpDir } from "./tmp-dir";
 import {
   closedIssueRefusal,
   unreachableIssueWarning,
-} from "../../scripts/orchestration/dispatch-brief.mjs";
+} from "../../scripts/work/dispatch-brief.mjs";
 
 // A BRIEF IS ONLY AS FRESH AS THE TRACKER READ BEHIND IT (#4451). #4347 was
 // closed at 03:09:32Z and dispatched at 09:43Z; the lane spent half its
@@ -20,7 +20,7 @@ import {
 // measured is reach — GitHub answers, and the ledger and roster stay empty.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/dispatch-brief.mjs");
+const SCRIPT = path.join(REPO, "scripts/work/dispatch-brief.mjs");
 
 const state = (
   number: number,

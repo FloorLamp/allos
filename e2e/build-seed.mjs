@@ -1,5 +1,5 @@
 // Hand a fresh agent worktree a production build instead of making it compile one
-// (#2605). Measured on the 4-core orchestration box: 199 s to build, 1.7 s to seed.
+// (#2605). Measured on the 4-core work box: 199 s to build, 1.7 s to seed.
 //
 // ---------------------------------------------------------------------------
 // WHEN it runs, and why that is the whole design
@@ -8,7 +8,7 @@
 // checkout, guarded on commit equality. Both halves turned out wrong on the real
 // box, and both failures are visible in one measurement:
 //
-//   - THE SOURCE. The main checkout sits on the orchestrator's own dispatch
+//   - THE SOURCE. The main checkout sits on the worker's own dispatch
 //     branch, whose `.next` was eleven hours stale against its own tree and whose
 //     `lib/` genuinely differs from `origin/main`. Seeding from it would have
 //     refused every time. The trees that DO match are the sibling agent
@@ -23,7 +23,7 @@
 // ---------------------------------------------------------------------------
 // WHAT licenses a seed
 //
-// Not the commit. Commit equality is neither necessary (the orchestrator branch
+// Not the commit. Commit equality is neither necessary (the worker branch
 // differs only in `scripts/` and `docs/`, which the build does not read) nor
 // sufficient (same HEAD plus one uncommitted edit under `lib/` is a different
 // bundle). The precondition is a content fingerprint over exactly the files

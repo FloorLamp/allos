@@ -7,7 +7,7 @@ name: E2E (main)
 # regression on main was not merely un-noticed, it was unobservable from main's
 # own pipeline. The receipt, 2026-08-15: the activity-editor redesign merged and
 # broke three specs; four unrelated PRs went red on specs none of them touched;
-# each orchestrator checked "is main green?", saw `CI (main)` success, and
+# each worker checked "is main green?", saw `CI (main)` success, and
 # concluded the failures were unrelated flakes. That conclusion was reasonable
 # and wrong three times in one evening, because the green they checked cannot see
 # e2e. The signal identifying the culprit existed only on the PRs that were
@@ -15,7 +15,7 @@ name: E2E (main)
 #
 # This makes a base regression attributable to the merge that caused it, and
 # gives the "unrelated failure" exoneration path something that actually covers
-# the failing tier to exonerate against (docs/orchestration/e2e-ci.md).
+# the failing tier to exonerate against (docs/work/e2e-ci.md).
 #
 # A DETECTOR, NOT A GATE — same standing as ci-main.yml. A red here means: stop
 # merging, attribute it, fix main first (a follow-up PR or a revert), resume.
@@ -81,7 +81,7 @@ jobs:
 
       # The same runtime-surface rule ci.yml applies to PRs, applied to the merge
       # — see that job for why each path is on the list. Roughly a fifth of recent
-      # main commits are prose, skills, orchestration tooling or unit-test files
+      # main commits are prose, skills, work tooling or unit-test files
       # only, and no browser can exercise those; measured, such a run costs 1.4
       # CI-minutes against 39.6 for the same matrix.
       #
@@ -97,7 +97,7 @@ jobs:
           if [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Cannot resolve the pushed range - running the matrix rather than guessing."
-          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/work/|scripts/work-checkin\.sh$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"

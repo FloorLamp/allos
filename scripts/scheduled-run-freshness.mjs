@@ -8,7 +8,7 @@
 // is the canary failure this repo has now been billed for three times (the
 // canary that couldn't, the wake that wasn't, the wake alarm that lied).
 //
-// So: detect by STATE, the shape scripts/orchestrator-checkin.sh uses for its
+// So: detect by STATE, the shape scripts/work-checkin.sh uses for its
 // durable wake. Ask the only question that matters — is this schedule still
 // firing — and make every answer actionable:
 //
@@ -41,7 +41,7 @@
 // Collapsing it into "fine" would rebuild the exact canary being replaced: a
 // check that goes quiet precisely when it has lost the ability to see. The
 // mirror-image mistake — collapsing unparseable into "stale" — is the one
-// orchestrator-checkin.sh documents: both answers say "act", but the action
+// work-checkin.sh documents: both answers say "act", but the action
 // differs, so an alarm that cannot tell them apart repeats after the fix and
 // teaches its reader to skip it.
 //

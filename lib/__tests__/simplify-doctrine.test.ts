@@ -16,7 +16,7 @@ const read = (rel: string) =>
 
 describe("the simplify-extract-unify doctrine", () => {
   it("every dispatch brief carries it beside the line budget", () => {
-    const brief = read("scripts/orchestration/dispatch-brief.mjs");
+    const brief = read("scripts/work/dispatch-brief.mjs");
     expect(brief).toContain(
       "SIMPLIFY, EXTRACT, UNIFY — OWNER RULING 2026-08-31"
     );
@@ -27,7 +27,7 @@ describe("the simplify-extract-unify doctrine", () => {
   });
 
   it("the reviewer's checklist enforces types-over-guards", () => {
-    const review = read("docs/orchestration/review-merge.md");
+    const review = read("docs/work/review-merge.md");
     expect(review).toContain("Prefer TYPES over guards (owner 2026-08-31)");
     expect(review).toContain("unrepresentable");
     // The convergence rule now cites its ruling, so the date resolves from

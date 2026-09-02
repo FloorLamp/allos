@@ -1011,7 +1011,7 @@ export async function openConfirm(
 // the worker DATABASE in teardown, so it sees the row the client had already stopped
 // drawing, and it fails the spec that started the session — correctly. The failure
 // therefore arrives with a GREEN BODY: the decisive CI sighting (PR #3269, whose diff
-// is a JSON data file and an orchestration script, `e2e (2)`) reported `1 failed`
+// is a JSON data file and a work script, `e2e (2)`) reported `1 failed`
 // with the only annotation at `fixtures.ts:248` and every assertion in the spec
 // passed. There was no timed-out click to find, which is why reading the guard's own
 // advice — "dispose the draft from a `finally`" — would have silenced a guard that

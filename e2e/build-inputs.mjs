@@ -2,15 +2,15 @@
 //
 // `ensureBuild` (e2e/global-setup.ts) has always owned this declaration, to answer
 // "is `.next` older than any source the build compiled". The seeding step in
-// scripts/orchestration/seed-next-build.mjs asks a DIFFERENT question of the same
+// scripts/work/seed-next-build.mjs asks a DIFFERENT question of the same
 // declaration — "would a build of THIS tree produce the bytes already sitting in
 // THAT tree" — so the declaration moved here rather than being copied. Two copies
 // of an invalidation rule is the one shape that fails silently: the copy that is
 // wrong does not throw, it serves a stale bundle.
 //
-// It lives under `e2e/` and not under `scripts/orchestration/` on purpose. The CI
+// It lives under `e2e/` and not under `scripts/work/` on purpose. The CI
 // no-runtime-surface skip set claims nothing in the app or the e2e harness imports
-// `scripts/orchestration/`; global-setup importing from there would falsify that
+// `scripts/work/`; global-setup importing from there would falsify that
 // claim and silently drop the browser matrix for a change that needs it.
 //
 // A `.mjs` because both consumers must load it: TypeScript under Playwright's

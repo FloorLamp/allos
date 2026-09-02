@@ -16,7 +16,7 @@ Maintainer documentation for the Playwright suite's reliability discipline
 browser-e2e bullet; this doc is the deep-dive on WHY the suite flakes and the
 conventions that stop it.
 
-## The four failure classes (from a day of orchestrated verification)
+## The four failure classes (from a day of worker-run verification)
 
 The suite is the right size (~340 specs, ~7m CI) and is **not** classically
 order-dependent. The recurring reds fall into four classes:
@@ -198,7 +198,7 @@ allowlist entry happen in the same PR.
 
 The guard freezes a THIRD pattern: **`.first()`**. On a SHARED seeded surface
 (an offer list, a dose list, a review inbox) "the first row" is whatever a
-neighbor spec or a retry of this spec left on top — the orchestration runbook's
+neighbor spec or a retry of this spec left on top — the work runbook's
 \#1 recurring failure class. The full fixture-ownership rule stays a convention
 gate (below — exact-count assertions can't be linted honestly), but `.first()`
 IS mechanically detectable, so its growth is frozen with the same
@@ -1639,7 +1639,7 @@ problem the audit missed.
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
 Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side
-of the problem; the orchestration runbook `docs/orchestration.md` documents the
+of the problem; the work runbook `docs/work.md` documents the
 pain they replace):
 
 - **The CI e2e job is a 4-way shard matrix.** Each shard is a fresh runner + a
@@ -1680,7 +1680,7 @@ fires at 06:23 UTC, so the next run was four hours away and the history was
 indistinguishable from a dead schedule. That is worth recording as its own lesson:
 eyeballing a run list **cannot** tell "one period has elapsed" from "one period was
 skipped" — you need the schedule and the clock together. `scripts/scheduled-run-freshness.mjs`
-asks exactly that, in `orchestrator-checkin.sh`'s absent-or-past shape, and runs
+asks exactly that, in `work-checkin.sh`'s absent-or-past shape, and runs
 from `ci-main.yml` on every push to main rather than from a schedule of its own —
 a scheduled canary watching a schedule shares the failure mode it watches for. It
 also reads the workflow's `state`, because GitHub disabling a workflow after 60
@@ -1925,7 +1925,7 @@ same reason. On the fixed tree the same neighbour pairing is green 3/3 at each o
 
 **A re-run clearing a red is not evidence of a timing flake.** A re-run also reshuffles
 which specs share a worker, so it clears a co-residency failure just as readily — and
-that is the reading that costs an orchestrator a diagnosis. Before blaming the clock or
+that is the reading that costs an worker a diagnosis. Before blaming the clock or
 the zone, run the victim alone, then run it behind a plausible neighbour.
 
 The rest of the suite was swept for the same latent dependency and is clean.
@@ -2723,8 +2723,8 @@ a run to retry.
 ## The known CI failure classes
 
 Every class here recurred at least once. Format: **tell** — mechanism — fix.
-This is the ONE home for the taxonomy (it moved here from the orchestration
-runbook so spec authors and the orchestrator diagnose from the same list; the
+This is the ONE home for the taxonomy (it moved here from the work
+runbook so spec authors and the worker diagnose from the same list; the
 runbook's "Diagnosing a red" section points here). The census table below
 tracks the individual recurring specs; this list is the general shapes.
 
@@ -2736,7 +2736,7 @@ tracks the individual recurring specs; this list is the general shapes.
    page CONSOLIDATION made a neighbour spec's page-wide `getByRole` ambiguous
    (the #1042 specialty fold). Scope selectors to a container; anchor cards on
    their own heading. When gating a consolidation, re-run any spec that drove
-   the folded-in pages — it is the folding orchestrator's lane.
+   the folded-in pages — it is the folding worker's lane.
 3. **Autosave races** — wait for the Saved indicator before any reload.
 4. **Collapsed `<details>`** — click the summary before asserting contents.
 5. **Component variants** — a testid may cover several visual variants; target

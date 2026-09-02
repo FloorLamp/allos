@@ -14,8 +14,8 @@ import { describe, expect, it } from "vitest";
 const read = (rel: string) =>
   fs.readFileSync(path.join(process.cwd(), rel), "utf8");
 
-const checkin = read("scripts/orchestrator-checkin.sh");
-const digest = read("scripts/orchestration/catchup-digest.sh");
+const checkin = read("scripts/work-checkin.sh");
+const digest = read("scripts/work/catchup-digest.sh");
 
 describe("the check-in's catch-up gate", () => {
   it("the recorder runs the digest when the anchor is stale", () => {

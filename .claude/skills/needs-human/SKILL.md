@@ -6,8 +6,8 @@ allowed-tools: Read, Grep, Glob, AskUserQuestion, Bash(gh api:*), Bash(curl:*), 
 
 # needs-human — the resolution half of the queue
 
-`docs/orchestration/labels.md` defines how questions ENTER the queue: an
-agent states a SPECIFIC question; the orchestrator labels + assigns same-day.
+`docs/work/labels.md` defines how questions ENTER the queue: an
+agent states a SPECIFIC question; the worker labels + assigns same-day.
 
 This skill is how questions LEAVE it — an interactive session with the
 owner. It asks; it never decides for them.
@@ -26,7 +26,7 @@ discovered after.
 
 ## 0. Transport
 
-**`docs/orchestration/environment.md` §GitHub access governs, in full**: REST
+**`docs/work/environment.md` §GitHub access governs, in full**: REST
 outside the MCP set, reads unauthenticated, writes on the token variables, PATCH
 where a sandbox refuses DELETE, no write believed until re-read.
 
@@ -159,7 +159,7 @@ Then route by what the answer was:
 
 - **A merge gate, now satisfied** → merge (protected-branch merges 403 over
   REST — an MCP-only write, §GitHub access). Gate stated but unmet → leave
-  the PR to the orchestrator with the gate recorded; do not sit polling.
+  the PR to the worker with the gate recorded; do not sit polling.
 - **An unblocked issue** → returns to the ordinary queue by its existing
   priority label; removing `needs-human` + the assignment IS the return.
   Note which deferred pieces are now unblocked.

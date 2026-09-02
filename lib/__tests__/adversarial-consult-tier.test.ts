@@ -5,7 +5,7 @@
 // reads as "skip the lane", so "I checked, and this is ordinary" and "nobody has
 // ever classified this file" arrived as the same word. Five PRs (#2929, #2955,
 // #3004, #3018, #3028) were reported as the first when they were the second, and
-// all five were caught by an orchestrator overriding the tool by hand.
+// all five were caught by an worker overriding the tool by hand.
 //
 // What is pinned here, in the order it matters:
 //
@@ -46,14 +46,11 @@ import {
   shipsRuntimeCode,
   vocabularyHits,
   weakenedTests,
-} from "../../scripts/orchestration/adversarial-review-brief.mjs";
+} from "../../scripts/work/adversarial-review-brief.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(
-  REPO,
-  "scripts/orchestration/adversarial-review-brief.mjs"
-);
+const SCRIPT = path.join(REPO, "scripts/work/adversarial-review-brief.mjs");
 
 type FixturePr = {
   number: number;
@@ -187,7 +184,7 @@ describe("the regression suite: the five PRs the registry called ordinary", () =
         );
         expect(hit.quote.toLowerCase()).toContain(hit.matched.toLowerCase());
         // A term is 3-18 characters; a claim is a sentence. If these ever come
-        // out equal, the orchestrator has to go read the PR anyway, which is the
+        // out equal, the worker has to go read the PR anyway, which is the
         // cost this tier exists to remove.
         expect(hit.quote.length).toBeGreaterThan(hit.matched.length + 20);
       }
@@ -453,8 +450,8 @@ describe("the scope rule: a diff that ships no runtime code decides nothing", ()
   it("does not see docs, scripts, e2e or CI config", () => {
     expect(
       shipsRuntimeCode([
-        "docs/orchestration/review-merge.md",
-        "scripts/orchestration/adversarial-review-brief.mjs",
+        "docs/work/review-merge.md",
+        "scripts/work/adversarial-review-brief.mjs",
         "e2e/fasting.spec.ts",
         ".github/workflows/ci.yml",
       ])
@@ -478,14 +475,14 @@ describe("the scope rule: a diff that ships no runtime code decides nothing", ()
     );
   });
 
-  it("keeps a safety-worded orchestration PR ordinary", () => {
+  it("keeps a safety-worded work PR ordinary", () => {
     // #2932's real title. It is entirely about the safety tier and says so in
     // every sentence; it changes one script and two docs, and a bug in it cannot
     // disclose or decide anything at runtime.
     const verdict = classify({
       files: [
-        "scripts/orchestration/adversarial-review-brief.mjs",
-        "docs/orchestration/review-merge.md",
+        "scripts/work/adversarial-review-brief.mjs",
+        "docs/work/review-merge.md",
       ],
       sources: [
         {

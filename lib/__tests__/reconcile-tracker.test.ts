@@ -50,13 +50,13 @@ import {
   type RepoIndex,
   type TrackerIssue,
   type TrackerPr,
-} from "../../scripts/orchestration/reconcile-tracker-core";
+} from "../../scripts/work/reconcile-tracker-core";
 import {
   applyAnchoredPatch,
   applyPatchPlan,
   PATCH_KINDS,
   type AnchoredPatch,
-} from "../../scripts/orchestration/reconcile-patch";
+} from "../../scripts/work/reconcile-patch";
 
 const ROOT = process.cwd();
 
@@ -642,7 +642,7 @@ describe("gatherEvidence", () => {
   });
 });
 
-describe("label hygiene (docs/orchestration/labels.md)", () => {
+describe("label hygiene (docs/work/labels.md)", () => {
   it("flags a doubled priority slot, a missing slot, a missing domain, and a retired label", () => {
     const findings = checkLabelHygiene([
       // The live defect this check exists for: #2701 carried P2 AND parked.
@@ -1529,16 +1529,16 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
   // issues"; a run holding a close-capable tool and a prompt asking it not to
   // is the same theatre as a UI-only gate over a Server Action (#1279/#2107).
   const MODULES = [
-    "scripts/orchestration/reconcile-tracker.ts",
-    "scripts/orchestration/reconcile-tracker-core.ts",
-    "scripts/orchestration/reconcile-repo-index.ts",
-    "scripts/orchestration/reconcile-patch.ts",
-    "scripts/orchestration/reconcile-apply.ts",
-    "scripts/orchestration/reconcile-labels.ts",
-    "scripts/orchestration/delete-unknown-labels.ts",
-    "scripts/orchestration/reconcile-watermark.ts",
-    "scripts/orchestration/usage.mjs",
-    "scripts/orchestration/host.mjs",
+    "scripts/work/reconcile-tracker.ts",
+    "scripts/work/reconcile-tracker-core.ts",
+    "scripts/work/reconcile-repo-index.ts",
+    "scripts/work/reconcile-patch.ts",
+    "scripts/work/reconcile-apply.ts",
+    "scripts/work/reconcile-labels.ts",
+    "scripts/work/delete-unknown-labels.ts",
+    "scripts/work/reconcile-watermark.ts",
+    "scripts/work/usage.mjs",
+    "scripts/work/host.mjs",
   ];
   const SKILL = ".claude/skills/reconcile-tracker/SKILL.md";
 
@@ -1585,7 +1585,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     for (const grant of allowed![1].split(",").map((s) => s.trim())) {
       if (!grant.startsWith("Bash(")) continue;
       expect(grant).toMatch(
-        /^Bash\((?:npx tsx scripts\/orchestration\/reconcile-[a-z-]+\.ts|git (?:grep|log|show|diff)):\*\)$/
+        /^Bash\((?:npx tsx scripts\/work\/reconcile-[a-z-]+\.ts|git (?:grep|log|show|diff)):\*\)$/
       );
     }
   });
@@ -1597,10 +1597,10 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
   // whatsoever; the watermark writer can PATCH one body and CREATE one
   // fixed-title carrier. Everything else in the toolchain holds no write verb.
   const WRITERS = [
-    "scripts/orchestration/reconcile-apply.ts",
-    "scripts/orchestration/reconcile-labels.ts",
-    "scripts/orchestration/delete-unknown-labels.ts",
-    "scripts/orchestration/reconcile-watermark.ts",
+    "scripts/work/reconcile-apply.ts",
+    "scripts/work/reconcile-labels.ts",
+    "scripts/work/delete-unknown-labels.ts",
+    "scripts/work/reconcile-watermark.ts",
   ];
 
   it("the body applier holds two confined writes: body PATCH and comment POST", () => {
@@ -1610,7 +1610,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     // are (2026-08-30). One verb each, one payload field each, and the POST
     // can reach only the comments collection; neither endpoint has a field an
     // issue's status could ride in.
-    const applier = source("scripts/orchestration/reconcile-apply.ts");
+    const applier = source("scripts/work/reconcile-apply.ts");
     expect(applier.match(/"PATCH"/g)).toHaveLength(1);
     expect(applier.match(/"POST"/g)).toHaveLength(1);
     expect(applier).toContain("JSON.stringify({ body })");
@@ -1620,7 +1620,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
   });
 
   it("the label writer touches only the per-issue LABELS endpoints", () => {
-    const labels = source("scripts/orchestration/reconcile-labels.ts");
+    const labels = source("scripts/work/reconcile-labels.ts");
     // Two verbs, one each. DELETE names its target in the PATH and sends no
     // body at all; POST sends a payload built from exactly one field. Neither
     // endpoint HAS a field an issue's state could ride in — which is why this
@@ -1639,7 +1639,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
   });
 
   it("the label deleter holds one verb, aimed only at the repo label collection", () => {
-    const del = source("scripts/orchestration/delete-unknown-labels.ts");
+    const del = source("scripts/work/delete-unknown-labels.ts");
     // One DELETE, no other verb — and no issue URL anywhere in the file, so
     // the only thing it can ever remove is a label from the repo's own list.
     expect(del.match(/"DELETE"/g)).toHaveLength(1);
@@ -1653,7 +1653,7 @@ describe("the toolchain granted to a reconciliation run cannot close an issue", 
     // POST whose payload names its title from the pinned constant — so the
     // only issue it can ever bring into existence is the carrier, and the
     // only thing it can ever edit is a body. No other verb, no state field.
-    const wm = source("scripts/orchestration/reconcile-watermark.ts");
+    const wm = source("scripts/work/reconcile-watermark.ts");
     expect(wm.match(/"PATCH"/g)).toHaveLength(1);
     expect(wm.match(/"POST"/g)).toHaveLength(1);
     expect(wm).not.toMatch(/"(?:PUT|DELETE)"/);

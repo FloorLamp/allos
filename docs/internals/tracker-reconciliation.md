@@ -14,17 +14,17 @@ symbol refreshes, and never changes scope or a decision. Judgment calls are FLAG
 
 ## The pieces
 
-| File                                              | What it is                                                                 |
-| ------------------------------------------------- | -------------------------------------------------------------------------- |
-| `scripts/orchestration/reconcile-tracker-core.ts` | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
-| `scripts/orchestration/reconcile-tracker.ts`      | The read-only entrypoint. GitHub reads, git file list, clock.              |
-| `scripts/orchestration/reconcile-watermark.ts`    | A writer. Stamps the watermark carrier issue; one body, one fixed title.   |
-| `scripts/orchestration/reconcile-patch.ts`        | Pure. Assertion-anchored patching, four kinds wide, refuses by default.    |
-| `scripts/orchestration/reconcile-repo-index.ts`   | The tracked-file list and lazy reads, shared by the scan and the applier.  |
-| `scripts/orchestration/reconcile-apply.ts`        | A writer. Sends exactly one field, `body`.                                 |
-| `scripts/orchestration/reconcile-labels.ts`       | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
-| `.claude/skills/reconcile-tracker/SKILL.md`       | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
-| `lib/__tests__/reconcile-tracker.test.ts`         | Parsers, false-positive floor, guardrails, capability scan.                |
+| File                                        | What it is                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------- |
+| `scripts/work/reconcile-tracker-core.ts`    | Pure. Repo + tracker in as data, an evidence list out. Decides nothing.    |
+| `scripts/work/reconcile-tracker.ts`         | The read-only entrypoint. GitHub reads, git file list, clock.              |
+| `scripts/work/reconcile-watermark.ts`       | A writer. Stamps the watermark carrier issue; one body, one fixed title.   |
+| `scripts/work/reconcile-patch.ts`           | Pure. Assertion-anchored patching, four kinds wide, refuses by default.    |
+| `scripts/work/reconcile-repo-index.ts`      | The tracked-file list and lazy reads, shared by the scan and the applier.  |
+| `scripts/work/reconcile-apply.ts`           | A writer. Sends exactly one field, `body`.                                 |
+| `scripts/work/reconcile-labels.ts`          | A writer. Label ops only, one field, `labels`. Adds come from a plan file. |
+| `.claude/skills/reconcile-tracker/SKILL.md` | The six-step protocol, the guardrails, the report format, `allowed-tools`. |
+| `lib/__tests__/reconcile-tracker.test.ts`   | Parsers, false-positive floor, guardrails, capability scan.                |
 
 ```bash
 npm run reconcile                        # report to stdout
@@ -242,7 +242,7 @@ least once per convention change, and a schedule nobody reads is how a routine
 starts patching in a shape nobody sanctioned. Wire it when the report has been
 boring three runs running.
 
-## Relationship to `scripts/orchestration/`
+## Relationship to `scripts/work/`
 
 This lives beside the dispatch, CI-watch and gate tooling because it is the same
 kind of thing: process rules given teeth. It shares no code with them and reads

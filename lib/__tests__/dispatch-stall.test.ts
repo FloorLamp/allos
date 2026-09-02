@@ -41,11 +41,11 @@ import {
   resumeState,
   stallVerdict,
   worktreeIdleMs,
-} from "../../scripts/orchestration/dispatch-brief.mjs";
+} from "../../scripts/work/dispatch-brief.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/dispatch-brief.mjs");
+const SCRIPT = path.join(REPO, "scripts/work/dispatch-brief.mjs");
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -325,7 +325,7 @@ describe("resumeState", () => {
 
 describe("the dispatch-brief CLI", () => {
   it("still answers every subcommand it is the only tooling for", () => {
-    // A rename or a dropped branch in the dispatcher strands the orchestrator
+    // A rename or a dropped branch in the dispatcher strands the worker
     // and every agent at once, so the command surface is asserted rather than
     // assumed. These commands are each
     // named somewhere in a live runbook.

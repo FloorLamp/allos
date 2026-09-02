@@ -5,12 +5,12 @@ import {
   discoverNodeBin,
   resolveReadToken,
   resolveStateDir,
-} from "../../scripts/orchestration/host.mjs";
+} from "../../scripts/work/host.mjs";
 import { makeTmpDir } from "./tmp-dir";
 
-// HOST RESOLUTION (#3710). The orchestration bootstrap grew up on one Linux
+// HOST RESOLUTION (#3710). The work bootstrap grew up on one Linux
 // container and hard-coded its shape — state in /home/user/scratch, node under
-// /opt/nvm, a token always in the environment — and a macOS orchestrator has
+// /opt/nvm, a token always in the environment — and a macOS worker has
 // none of those. host.mjs is where host variance now lives; these tests pin
 // the resolution ORDER, because the order is the compatibility contract:
 // existing hosts must keep resolving to exactly what they already use.
@@ -45,16 +45,28 @@ describe("resolveStateDir", () => {
 
   it("falls to a durable per-user state dir on any other host", () => {
     expect(resolveStateDir({}, io())).toBe(
-      "/Users/wang/.local/state/allos-orchestration"
+      "/Users/wang/.local/state/allos-work"
     );
     expect(resolveStateDir({ XDG_STATE_HOME: "/xdg/state" }, io())).toBe(
-      "/xdg/state/allos-orchestration"
+      "/xdg/state/allos-work"
     );
+  });
+
+  it("keeps resolving to a pre-rename allos-orchestration dir that already holds state", () => {
+    const legacy = "/Users/wang/.local/state/allos-orchestration";
+    expect(resolveStateDir({}, io({ exists: (p) => p === legacy }))).toBe(
+      legacy
+    );
+    // Once the renamed dir exists it wins, whatever the legacy one still holds.
+    const current = "/Users/wang/.local/state/allos-work";
+    expect(
+      resolveStateDir({}, io({ exists: (p) => p === legacy || p === current }))
+    ).toBe(current);
   });
 
   it("uses tmpdir ONLY when no home resolves — the explicit non-durable last resort", () => {
     expect(resolveStateDir({}, io({ homedir: () => null }))).toBe(
-      "/tmp/allos-orchestration-state"
+      "/tmp/allos-work-state"
     );
   });
 });

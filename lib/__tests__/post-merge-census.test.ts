@@ -7,15 +7,10 @@ import { makeTmpDir } from "./tmp-dir";
 import {
   parseNameStatus,
   planPostMergeCensus,
-} from "../../scripts/orchestration/post-merge-census.mjs";
+} from "../../scripts/work/post-merge-census.mjs";
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(
-  REPO,
-  "scripts",
-  "orchestration",
-  "post-merge-census.mjs"
-);
+const SCRIPT = path.join(REPO, "scripts", "work", "post-merge-census.mjs");
 
 function git(repo: string, args: readonly string[]): string {
   return execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });

@@ -73,8 +73,8 @@
 // chain grows with every merge (#3436).
 const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 
-// ORCHESTRATION-BOX ESCAPE HATCH, in milliseconds, set by
-// `scripts/orchestration/agent-gates.sh` and IGNORED WHEN `CI` IS SET.
+// WORK-BOX ESCAPE HATCH, in milliseconds, set by
+// `scripts/work/agent-gates.sh` and IGNORED WHEN `CI` IS SET.
 //
 // Up to five agents share four cores on the dispatch box. The DB tier measured
 // there took 862 s instead of 161 s at load average 18.1 — 5.35x on wall time,

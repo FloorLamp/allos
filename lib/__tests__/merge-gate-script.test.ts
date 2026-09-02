@@ -10,7 +10,7 @@ import {
   closedStatusDescription,
   readinessVerdict,
   receiptVerdict,
-} from "../../scripts/orchestration/merge-gate-core.mjs";
+} from "../../scripts/work/merge-gate-core.mjs";
 
 // THE MERGE GATE. Verdict branches run against the pure core; the smaller
 // stub-curl set drives the real CLI where process, auth and transport matter.
@@ -20,7 +20,7 @@ import {
 // Each case below is one way a head that must not merge could read as safe.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/merge-gate.mjs");
+const SCRIPT = path.join(REPO, "scripts/work/merge-gate.mjs");
 
 const HEAD = "abcdef1234567890abcdef1234567890abcdef12";
 const OLD_HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -214,7 +214,7 @@ describe("merge-gate.mjs", () => {
   });
 
   it("opens on a shared-identity receipt that states SHA AND non-authorship", () => {
-    // The orchestrator and its lanes post as one account (#4258): a genuine
+    // The worker and its lanes post as one account (#4258): a genuine
     // independent review used to fail on identity rather than content. The
     // claim the gate can actually check is the stated one.
     const result = receipt({
@@ -345,7 +345,7 @@ describe("merge-gate.mjs", () => {
   });
 
   it("opens over REST when GraphQL is refused and NO comment threads exist", () => {
-    // The #4231 degrade: the orchestrator's container 403s every GraphQL
+    // The #4231 degrade: the worker's container 403s every GraphQL
     // call, and exit 2's "re-invoke" never terminated — three passing steps
     // could not open the gate. Zero top-level review comments is a
     // REST-observable proof that zero threads are unresolved.

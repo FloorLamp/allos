@@ -3,7 +3,7 @@ name: CI (main)
 # Post-merge validation for main itself. ci.yml is `pull_request` only, which
 # means every check validates a MERGE COMMIT against the base that existed when
 # the PR's checks ran — main after the squash lands is never tested by anything
-# (docs/orchestration.md, "CI tests the merge commit, not your branch"). At this
+# (docs/work.md, "CI tests the merge commit, not your branch"). At this
 # repo's merge rate that gap is not theoretical: two individually-green PRs have
 # interacted to land a main that failed `tsc` and `npm test` (#1560/#1562), a
 # widened signature has broken two sibling branches in one afternoon (#2245),

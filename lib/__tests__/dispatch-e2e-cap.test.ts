@@ -6,7 +6,7 @@ import {
   E2E_LANE_CAP,
   MACHINE_CAP_WARN,
   e2eLaneRefusal,
-} from "../../scripts/orchestration/dispatch-brief.mjs";
+} from "../../scripts/work/dispatch-brief.mjs";
 
 // The E2E lane cap, moved from an inline count in `new` to a predicate — the
 // same lesson the port-collision rule paid for (#3608): a rule that lives at
@@ -56,7 +56,7 @@ describe("the predicate is applied everywhere a lane can come alive", () => {
   // consult the predicate; only `brief` (a reprint of a lane already alive)
   // has nothing to ask.
   const source = fs.readFileSync(
-    path.join(process.cwd(), "scripts/orchestration/dispatch-brief.mjs"),
+    path.join(process.cwd(), "scripts/work/dispatch-brief.mjs"),
     "utf8"
   );
 

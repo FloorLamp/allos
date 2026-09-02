@@ -15,7 +15,7 @@ import { makeTmpDir } from "./tmp-dir";
 // `./reconcile-tracker.test.ts` cannot reach.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SCRIPT = path.join(REPO, "scripts/orchestration/reconcile-apply.ts");
+const SCRIPT = path.join(REPO, "scripts/work/reconcile-apply.ts");
 const TSX = path.join(REPO, "node_modules/.bin/tsx");
 
 /** Serves GET issue, PATCH body, POST comment from a JSON state file. */

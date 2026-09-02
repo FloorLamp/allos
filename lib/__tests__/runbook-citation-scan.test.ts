@@ -21,26 +21,26 @@ import { describe, expect, it } from "vitest";
 
 const REPO = process.cwd();
 
-/** The scanned surface: runbook, skills, PR template, orchestration scripts. */
+/** The scanned surface: runbook, skills, PR template, work scripts. */
 function scannedFiles(): string[] {
-  const orchestration = readdirSync(path.join(REPO, "docs/orchestration"))
+  const work = readdirSync(path.join(REPO, "docs/work"))
     .filter((name) => name.endsWith(".md"))
-    .map((name) => path.posix.join("docs/orchestration", name));
+    .map((name) => path.posix.join("docs/work", name));
   const skills = readdirSync(path.join(REPO, ".claude/skills"), {
     withFileTypes: true,
   })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.posix.join(".claude/skills", entry.name, "SKILL.md"));
-  const scripts = readdirSync(path.join(REPO, "scripts/orchestration")).map(
-    (name) => path.posix.join("scripts/orchestration", name)
+  const scripts = readdirSync(path.join(REPO, "scripts/work")).map((name) =>
+    path.posix.join("scripts/work", name)
   );
   return [
-    "docs/orchestration.md",
-    ...orchestration,
+    "docs/work.md",
+    ...work,
     ...skills,
     ".github/pull_request_template.md",
     ...scripts,
-    "scripts/orchestrator-checkin.sh",
+    "scripts/work-checkin.sh",
   ].sort();
 }
 
@@ -78,7 +78,7 @@ function anchorRefs(text: string): AnchorRef[] {
 
 /** A cited .md file, resolved as written or against the runbook directory. */
 function resolveDoc(file: string): string | null {
-  for (const candidate of [file, path.posix.join("docs/orchestration", file)]) {
+  for (const candidate of [file, path.posix.join("docs/work", file)]) {
     if (existsSync(path.join(REPO, candidate))) return candidate;
   }
   return null;
@@ -112,12 +112,12 @@ function anchorResolves(anchor: string, heading: string): boolean {
  */
 const DELIBERATE_REFS: Record<string, readonly string[]> = {
   // PROC_PATHS regex fragments: `\.sh` splits one, the other is a prefix.
-  "scripts/orchestration/catchup-digest.sh": [
-    "scripts/orchestrator-checkin",
+  "scripts/work/catchup-digest.sh": [
+    "scripts/work-checkin",
     "docs/internals/e2e",
   ],
   // Doc-comment examples of the path detector's inputs — dead by design.
-  "scripts/orchestration/reconcile-tracker-core.ts": [
+  "scripts/work/reconcile-tracker-core.ts": [
     "app/api/integrations/apple-health/ingest/route.ts",
     "lib/screenings.json",
   ],
@@ -162,9 +162,9 @@ describe("runbook citation scan", () => {
   });
 
   it("scans the whole runbook surface", () => {
-    expect(files).toContain("docs/orchestration/review-merge.md");
-    expect(files).toContain(".claude/skills/orchestrate/SKILL.md");
-    expect(files).toContain("scripts/orchestration/merge-gate.mjs");
+    expect(files).toContain("docs/work/review-merge.md");
+    expect(files).toContain(".claude/skills/work/SKILL.md");
+    expect(files).toContain("scripts/work/merge-gate.mjs");
   });
 
   it("keeps the deliberate-refs allowlist honest in both directions", () => {
@@ -184,9 +184,9 @@ describe("runbook citation scan", () => {
 // over text written to break them.
 describe("the citation scan's reach", () => {
   it("catches a dead rooted path and strips a line suffix first", () => {
-    expect(pathRefs("see `docs/orchestration/vanished.md:12` for why")).toEqual(
-      ["docs/orchestration/vanished.md"]
-    );
+    expect(pathRefs("see `docs/work/vanished.md:12` for why")).toEqual([
+      "docs/work/vanished.md",
+    ]);
   });
 
   it("skips templated and unrooted paths rather than guessing", () => {
@@ -197,11 +197,10 @@ describe("the citation scan's reach", () => {
   });
 
   it("resolves a qualified anchor across a line wrap, prefix + boundary", () => {
-    const wrapped =
-      "per `docs/orchestration/environment.md`\n§GitHub access governs";
+    const wrapped = "per `docs/work/environment.md`\n§GitHub access governs";
     expect(anchorRefs(wrapped)).toEqual([
       {
-        file: "docs/orchestration/environment.md",
+        file: "docs/work/environment.md",
         anchor: "GitHub access governs",
       },
     ]);
@@ -212,9 +211,7 @@ describe("the citation scan's reach", () => {
   });
 
   it("resolves short filenames against the runbook directory", () => {
-    expect(resolveDoc("review-merge.md")).toBe(
-      "docs/orchestration/review-merge.md"
-    );
+    expect(resolveDoc("review-merge.md")).toBe("docs/work/review-merge.md");
     expect(resolveDoc("no-such-doc.md")).toBeNull();
   });
 });

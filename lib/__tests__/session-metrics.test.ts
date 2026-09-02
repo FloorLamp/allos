@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeMetrics,
   renderMetrics,
-} from "../../scripts/orchestration/session-metrics.mjs";
+} from "../../scripts/work/session-metrics.mjs";
 
 // The trend pulse's arithmetic, over fixtures. The point of the script is
 // that caps and cadences get argued from measurement; a pulse that
@@ -120,7 +120,7 @@ describe("computeMetrics", () => {
 describe("session-metrics.mjs is read-only", () => {
   it("holds no write verb — the pulse can never become a hand", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "scripts/orchestration/session-metrics.mjs"),
+      path.join(process.cwd(), "scripts/work/session-metrics.mjs"),
       "utf8"
     );
     expect(source).not.toMatch(/"(?:PATCH|POST|PUT|DELETE)"/);
