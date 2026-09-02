@@ -1,4 +1,9 @@
+"use client";
+
 import DoseStatusControl from "@/components/DoseStatusControl";
+import { useTimeStatement } from "@/components/TimeStatement";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 
 // Scheduled-dose metadata and actions share one presentation on the Medications
 // Today panel and the medication detail page. The amount/time describe the dose;
@@ -7,6 +12,14 @@ import DoseStatusControl from "@/components/DoseStatusControl";
 // the pill control's coarse-pointer reserve: padding contains the full 44px box,
 // while a matching vertical negative margin preserves its 32px visual alignment in
 // surrounding rows. Fine-pointer desktop returns to the original compact geometry.
+//
+// AND THIS IS WHERE A SCHEDULED DOSE TELLS ITS TIME (#4426). Every other one-tap
+// domain could say "this happened earlier than my tap"; the doses — the times with the
+// most clinical weight — could not, on any web surface. A confirm at 09:00 of a dose
+// actually taken at 07:00 had to go through the full backfill form, or through a
+// Telegram correction chip whose restamp has no web caller. The statement is offered
+// only on an UNRESOLVED dose: once a row is taken or skipped, changing what the record
+// says was given is the dose-history panel's audited door, not this tap's.
 export default function ScheduledDoseAction({
   doseId,
   doseLabel,
@@ -30,6 +43,18 @@ export default function ScheduledDoseAction({
   // multi-view Medications board. Absent on the acting board (byte-identical).
   profileId?: number;
 }) {
+  // The row stands on the profile's today — the day `setDoseStatus` files an undated
+  // confirm under. The STATEMENT is a wall time and the action anchors it on that same
+  // day in the OWNING profile's zone, so the pair cannot come apart; this day only
+  // decides what the control renders and offers.
+  const statement = useTimeStatement({
+    shown: !readOnly && !taken && !skipped,
+    day: dateStrInTz(useTimezone()),
+    label: "Taken earlier?",
+    timeLabel: `Time ${doseLabel || "this dose"} was taken`,
+    testId: "scheduled-dose-when",
+    className: "w-full",
+  });
   return (
     <div
       data-testid="scheduled-dose-action"
@@ -83,8 +108,10 @@ export default function ScheduledDoseAction({
           label={taken ? "Taken" : "Mark taken"}
           compact={compactActions}
           profileId={profileId}
+          statement={statement}
         />
       )}
+      {statement.node}
     </div>
   );
 }
