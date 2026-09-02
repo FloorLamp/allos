@@ -19,15 +19,6 @@ import { TIME_BUCKETS, type TimeBucket } from "./intake-schedule";
 import type { DoseBundleId } from "./dose-bundle";
 import type { PendingDayDose } from "./queries/usual-routine";
 
-// HOW MANY DAYS THE LEDGER IS ABOUT: today plus the previous six. The day picker offers
-// exactly these (`FoodTab`), which is enough to recover a missed meal without turning the
-// one-tap habit log into an unrestricted historical editor — the deep doors (`/history`'s
-// food door, `logHistoricalDose`) are the honest path further back. Named here rather than
-// spelled as a literal at each site because the SELECTION EDIT's server-side move bound
-// (#4118, lib/day-ledger-edit.ts) has to be the same span the picker draws, and two
-// spellings of one span is how a forged POST reaches a day the surface never offered.
-export const LEDGER_DAY_SPAN = 7;
-
 /** A serving or a dose as it reads on one line, with the clock already resolved. */
 interface LedgerRowBase {
   /** `${kind}:${rowId}` — unique across kinds, and the ordering's final tie-break. */
