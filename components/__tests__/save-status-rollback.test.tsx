@@ -4,14 +4,25 @@ import ProfileMuteToggle from "@/app/(app)/settings/notifications/ProfileMuteTog
 import RecommendationCadenceForm from "@/app/(app)/settings/profile/RecommendationCadenceForm";
 import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
 import PublicUrlSettings from "@/app/(app)/settings/PublicUrlSettings";
+import NotificationPrefs from "@/app/(app)/settings/notifications/NotificationPrefs";
+import { arrivalStatistics } from "@/lib/notifications/digest-schedule";
+import { channelReadiness } from "@/lib/notifications/matrix-liveness";
 import { isStaleActionError } from "@/lib/sw-update";
 
 const saveProfileNotifyMute = vi.hoisted(() => vi.fn());
-vi.mock("@/app/(app)/settings/actions", () => ({ saveProfileNotifyMute }));
+const saveLoginTelegramNotifyKinds = vi.hoisted(() => vi.fn());
+vi.mock("@/app/(app)/settings/actions", () => ({
+  saveProfileNotifyMute,
+  saveLoginTelegramNotifyKinds,
+  savePushNotifyKinds: vi.fn(),
+  saveLoginEmailNotifyKinds: vi.fn(),
+}));
 
 const saveRecommendationCadence = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(app)/settings/profile/actions", () => ({
   saveRecommendationCadence,
+  saveNotificationPrefs: vi.fn(),
+  saveHomeAssistantNotifyKinds: vi.fn(),
 }));
 
 const savePublicUrl = vi.hoisted(() => vi.fn());
@@ -31,10 +42,65 @@ interface Shape {
   after: string;
 }
 
+// The routing matrix with every channel set up and every kind routed, so any cell is a
+// live tick a refused write has to take back (#4736).
+function mountPrefs(save: Save): void {
+  saveLoginTelegramNotifyKinds.mockImplementation(save);
+  render(
+    <NotificationPrefs
+      schedule={{
+        supplementMinutes: { Morning: 480, Midday: null, Evening: null, Bedtime: null },
+        workoutEnabled: false,
+        morningAuto: false,
+        digestMinute: null,
+        digestMode: "static",
+        weeklyRecapDay: null,
+        weeklyRecapMinute: null,
+        recapScale: "week",
+        milestonesEnabled: false,
+        preventiveEnabled: false,
+        wakingStartHour: 8,
+        wakingEndHour: 21,
+      }}
+      workoutSummary=""
+      trainingRelevant={false}
+      foodTelegramEnabled={false}
+      substanceTelegramEnabled={false}
+      foodLoggingRelevant={false}
+      moodCheckinEnabled={false}
+      moodRecapEnabled={false}
+      sleepDigestEnabled={false}
+      wearReminderEnabled={false}
+      wearReminderPaused={null}
+      wakeMinute={null}
+      arrivalStats={arrivalStatistics([])}
+      timeSuggestion={null}
+      tickMinutes={60}
+      timeFormat="24h"
+      subHourlyAtRisk={null}
+      telegramDisabled={[]}
+      pushDisabled={[]}
+      haDisabled={[]}
+      emailDisabled={[]}
+      readiness={channelReadiness({
+        telegramBotConfigured: true,
+        telegramRecipient: true,
+        pushSubscribed: true,
+        haWebhook: true,
+        smtpConfigured: true,
+        emailRecipient: true,
+      })}
+      isAdmin={false}
+      profileName="Robin"
+    />
+  );
+}
+
 // One surface per CONTROL SHAPE. `useSaveStatus` is the substrate under ~33 settings
-// surfaces, so what these three do on a failed save is what all of them do; the shapes
-// differ because a checkbox commits on change, a select on change, and a text field on
-// blur, and only the last has a draft that outlives its keystroke.
+// surfaces, so what these four do on a failed save is what all of them do; the shapes
+// differ because a checkbox commits on change, a select on change, a text field on
+// blur, and a routing cell writes ONE channel's whole column through that channel's own
+// action (#4736 — the last control that kept a value it failed to save).
 const SHAPES: Shape[] = [
   {
     name: "checkbox",
@@ -95,6 +161,18 @@ const SHAPES: Shape[] = [
     before: "Old line | 000",
     after: "New line | 111",
   },
+  {
+    name: "routing cell",
+    mount: mountPrefs,
+    read: () =>
+      String(
+        (screen.getByTestId("matrix-cell-telegram-refill") as HTMLInputElement)
+          .checked
+      ),
+    flip: () => fireEvent.click(screen.getByTestId("matrix-cell-telegram-refill")),
+    before: "true",
+    after: "false",
+  },
 ];
 
 function held() {
@@ -153,6 +231,30 @@ describe("a failed save takes back what it painted (#4688)", () => {
       });
     }
   );
+
+  it("a refused routing write is caught — never an unhandled rejection (#4736)", async () => {
+    // The routing matrix used to `await saver[channel](fd)` inside its onChange with
+    // no catch, so a refused column write escaped the handler entirely. vitest fails
+    // a run on an unhandled rejection anyway; this listener makes the claim explicit
+    // and local, so the test names the defect instead of the runner naming it.
+    const escaped: unknown[] = [];
+    const onEscape = (reason: unknown) => escaped.push(reason);
+    process.on("unhandledRejection", onEscape);
+    try {
+      const write = held();
+      const cell = SHAPES[3];
+      cell.mount(() => write.promise);
+      cell.flip();
+      await waitFor(() => expect(cell.read()).toBe(cell.after));
+      write.fail(new Error("nope"));
+      await waitFor(() => expect(cell.read()).toBe(cell.before));
+      // Let any orphaned rejection reach the process before counting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(escaped).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onEscape);
+    }
+  });
 
   it("rolls back a stale-action failure, whose classification it leaves alone", async () => {
     // The deploy-skew case is the one where a painted value must NOT survive: this

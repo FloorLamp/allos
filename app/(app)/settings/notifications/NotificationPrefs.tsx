@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { NotifySchedule } from "@/lib/settings";
 import {
   formatNotifyTime,
@@ -498,15 +497,20 @@ export default function NotificationPrefs({
     waking_end_hour: String(schedule.wakingEndHour),
   });
 
-  const [disabled, setDisabled] = useState<
-    Record<ChannelId, Set<NotificationKind>>
-  >(() => ({
+  // The routing columns ride the same owned-value substrate as the schedule bag
+  // (#4736). This used to be a bare `useState` painted before the write, so a refused
+  // column write left the cell flipped and the rejection escaped the onChange handler
+  // with no catch and no indicator; `save` now takes the cell back and raises the icon
+  // in the matrix header below. A second hook rather than a second field on the first:
+  // the two write through different actions to different tiers, and one status cannot
+  // honestly say "saved" for both.
+  const routing = useSaveStatus<Record<ChannelId, Set<NotificationKind>>>({
     telegram: new Set(telegramDisabled),
     push: new Set(pushDisabled),
     ha: new Set(haDisabled),
     email: new Set(emailDisabled),
-  }));
-  const [routing, setRouting] = useState(false);
+  });
+  const disabled = routing.value;
 
   const autoLabel =
     wakeMinute == null
@@ -606,33 +610,29 @@ export default function NotificationPrefs({
     return !disabled[channel].has(kind);
   }
 
-  async function writeColumn(channel: ChannelId, next: Set<NotificationKind>) {
-    setDisabled({ ...disabled, [channel]: next });
-    setRouting(true);
-    try {
+  function writeColumn(channel: ChannelId, next: Set<NotificationKind>) {
+    routing.save({ ...disabled, [channel]: next }, async () => {
       const fd = new FormData();
       fd.set("disabled_kinds", serializeDisabledKinds([...next]));
       await saver[channel](fd);
-    } finally {
-      setRouting(false);
-    }
+    });
   }
 
-  async function toggleRoute(channel: ChannelId, kind: NotificationKind) {
+  function toggleRoute(channel: ChannelId, kind: NotificationKind) {
     const next = new Set(disabled[channel]);
     if (next.has(kind)) next.delete(kind);
     else next.add(kind);
-    await writeColumn(channel, next);
+    writeColumn(channel, next);
   }
 
   // The column select-all: one write of the FULL disabled set for this column through
   // the same tier-correct action a single cell uses. Safety kinds are not in
   // `columnSweep`, so they survive the sweep untouched.
-  async function sweepColumn(channel: ChannelId) {
+  function sweepColumn(channel: ChannelId) {
     const sweep = columnSweep(channel);
     const on = nextColumnBulkTarget(columnBulkState(sweep, disabled[channel]));
     const next = applyColumnBulk([...disabled[channel]], sweep, on);
-    await writeColumn(channel, new Set(next));
+    writeColumn(channel, new Set(next));
   }
 
   // Whether a safety kind will reach NO configured channel — the warn-never-block
@@ -851,8 +851,16 @@ export default function NotificationPrefs({
           className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400"
           data-matrix-head
         >
-          <span data-matrix-head-label>Kind</span>
-          {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
+          {/* The lead cell: "Kind" at desktop, the sweep label below the boundary
+              (each hidden where the other shows — app/globals.css), and the routing
+              columns' OWN save status beside whichever is showing (#4736). It is here
+              and not in the card header because the card header's icon belongs to
+              the schedule bag, and one icon cannot say "saved" for two actions —
+              while a refused column write must show up in the grid the person is
+              tapping in, above the column they tapped. */}
+          <span className="flex items-center gap-2" data-matrix-head-lead>
+            <span data-matrix-head-label>Kind</span>
+            {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
               #3550's review: cutting the intro to one sentence and hiding "Kind"
               were each right and together left four 16px boxes with the same left
               edge, size, font and colour as the routing chips 133px below, and
@@ -874,12 +882,16 @@ export default function NotificationPrefs({
               The label stays true — a kind with no control is not a kind the sweep
               skips — but a reader comparing two columns will count different boxes,
               so the difference is stated here rather than left to be discovered. */}
-          <span
-            className="hidden"
-            data-matrix-sweep-label
-            data-testid="matrix-sweep-label"
-          >
-            All kinds at once &mdash; except safety reminders
+            <span
+              className="hidden"
+              data-matrix-sweep-label
+              data-testid="matrix-sweep-label"
+            >
+              All kinds at once &mdash; except safety reminders
+            </span>
+            <span data-testid="matrix-routing-status">
+              <SaveStatus {...routing.status} />
+            </span>
           </span>
           <span
             className="grid grid-cols-4 gap-1 text-center sm:w-52"
@@ -939,7 +951,7 @@ export default function NotificationPrefs({
                       label={label}
                       checked={state === "all"}
                       indeterminate={state === "mixed"}
-                      disabled={routing || sweep.length === 0}
+                      disabled={routing.status.pending || sweep.length === 0}
                       onChange={() => sweepColumn(c.id)}
                       data-testid={`matrix-column-all-${c.id}`}
                     />
@@ -1219,7 +1231,7 @@ export default function NotificationPrefs({
                           type="checkbox"
                           className={`mx-auto h-4 w-4 ${INK_CLASS[ink]}`}
                           checked={routes(c.id, e.kind)}
-                          disabled={routing}
+                          disabled={routing.status.pending}
                           onChange={() => toggleRoute(c.id, e.kind)}
                           data-testid={`matrix-cell-${c.id}-${e.kind}`}
                           data-ink={ink}
