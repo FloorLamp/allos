@@ -40,7 +40,8 @@ export interface IntakeFormContext {
   pediatric: PediatricFormContext;
   // The profile-local day, for the start-date seed. Its absence is not cosmetic — it
   // decides whether the form posts `started_on` at all, and therefore which validation
-  // branch `addIntakeItem` takes.
+  // branch `addIntakeItem` takes. Hosts pass this through; a host that recomputes the
+  // day is the one way the seed and the staleness gate can disagree.
   todayStr: string;
 }
 
@@ -79,7 +80,10 @@ export function loadIntakeFormContext(
     })),
     pediatric,
     // The same profile-local day the pediatric context resolved, so the weight-staleness
-    // reading and the start-date seed cannot land on different days.
+    // reading and the start-date seed cannot land on different days — provided the host
+    // hands the form THIS day instead of calling today() for its own copy. The
+    // /medications loader did exactly that, and two calls a few lines apart can straddle
+    // profile-local midnight; it now reads this field (app/(app)/medications/med-data.ts).
     todayStr: pediatric.today,
   };
 }

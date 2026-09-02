@@ -60,7 +60,6 @@ import {
   buildMedicationList,
   type MedicationListRow,
 } from "@/lib/medication-list";
-import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
@@ -245,7 +244,12 @@ export function loadMedicationsData(
     retiredByItem.set(d.item_id, arr);
   }
 
-  const todayStr = today(profileId);
+  // The loader's day, not a second today() call (#4609). This is the todayStr handed
+  // to the add workspace and the med card, where the form seeds `started_on` from it
+  // while reading the weight-staleness day from `pediatric.today`. Two independent
+  // today() calls could straddle profile-local midnight and seed a start date one day
+  // off the day the staleness gate used; one value cannot.
+  const todayStr = intakeForm.todayStr;
   const tz = getTimezone(profileId);
   const dayZone = profileDayZone(profileId);
   const takenTimes = getTakenDoseTimes(profileId, todayStr);
