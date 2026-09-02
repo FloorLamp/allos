@@ -102,8 +102,9 @@ export interface DayLedgerProps {
   /**
    * The days a SELECTION may be moved to — the page's own day picker, minus the day
    * being rendered. Empty disables Move to day…, which is the honest rendering when
-   * there is nowhere to move to; the server bounds the same span independently
-   * (`LEDGER_DAY_SPAN`), so this list is the offer and never the gate.
+   * there is nowhere to move to. THE OFFER, NEVER THE GATE: the server takes any real
+   * past day (#4754 retired the shared 7-day bound), so this list is shorter than what
+   * a move may reach, not longer.
    */
   moveDays: { date: string; label: string }[];
   onCorrectServing: (eventId: number) => void;
