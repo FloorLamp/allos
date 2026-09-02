@@ -1704,8 +1704,12 @@ export default function FoodLogBar({
   // beside `/history`'s door. `slotCounts` is already the ACTIVE day's, so the offer
   // shrinks against the day being filled and not against today.
   //
-  // The span needs no gate here: the picker offers today plus six days back, and
-  // `isUsualBackfillDateAccepted` bounds the core at the same six.
+  // The span needs no gate here because two spans agree: the bar's picker offers today
+  // plus six days back as the BAR'S OWN one-tap offer (#4754 — never the shared day
+  // bound, which retired), and `isUsualBackfillDateAccepted` bounds the core at the
+  // same six. When #4477's `+ Add` door replaces the picker, the bar's write reaches
+  // whatever day the page shows while `USUAL_BACKFILL_WINDOW_DAYS` stays where it is —
+  // so that is the change that makes a gate owed here, not this one.
   const usualOffer = useMemo(
     () =>
       usualFoodOffer(
