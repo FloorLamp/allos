@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import type { RefObject } from "react";
+import type { Dispatch, RefObject, SetStateAction } from "react";
 
 // Shared autosave state for the settings cards (issue #477). Every settings form
 // used to do `startTransition(async () => { await saveX(fd); setSavedAt(...) })`
@@ -26,7 +26,9 @@ export interface SaveStatusApi<T> {
   value: T;
   // Move the on-screen value WITHOUT saving — the keystrokes of a save-on-blur
   // field. A failed save reverts to the last SAVED value, not to the last keystroke.
-  edit: (next: T) => void;
+  // `useState`'s setter, updater form included, because a caller reconciling one
+  // field from a callback must merge onto the latest draft rather than its render's.
+  edit: Dispatch<SetStateAction<T>>;
   // Paint `next` now, run the save, and put the last saved value back if it throws.
   // `run` may resolve a value to commit what the server actually stored (a
   // normalized URL), which then becomes both what shows and what a later failure

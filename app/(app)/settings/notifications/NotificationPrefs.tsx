@@ -463,7 +463,14 @@ export default function NotificationPrefs({
   // ONE bag of form-field values keyed by the saveNotificationPrefs field name, so a
   // registry row renders and writes generically — adding a kind is a registry entry,
   // not a new piece of hand-wired state.
-  const [values, setValues] = useState<Record<string, string>>(() => ({
+  const {
+    pending,
+    savedAt,
+    error,
+    value: values,
+    edit,
+    save: runSave,
+  } = useSaveStatus<Record<string, string>>({
     food_telegram_enabled: foodTelegramEnabled ? "1" : "0",
     substance_telegram_enabled: substanceTelegramEnabled ? "1" : "0",
     mood_checkin_enabled: moodCheckinEnabled ? "1" : "0",
@@ -491,7 +498,7 @@ export default function NotificationPrefs({
     preventive_enabled: schedule.preventiveEnabled ? "1" : "0",
     waking_start_hour: String(schedule.wakingStartHour),
     waking_end_hour: String(schedule.wakingEndHour),
-  }));
+  });
 
   const [disabled, setDisabled] = useState<
     Record<ChannelId, Set<NotificationKind>>
@@ -502,7 +509,6 @@ export default function NotificationPrefs({
     email: new Set(emailDisabled),
   }));
   const [routing, setRouting] = useState(false);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
 
   const autoLabel =
     wakeMinute == null
@@ -527,13 +533,12 @@ export default function NotificationPrefs({
   // user never asked for — and would turn a deliberate one-field action into a
   // whole-schedule rewrite, which is the thing it exists to avoid.
   function mergeLocal(patch: Record<string, string>) {
-    setValues((prev) => ({ ...prev, ...patch }));
+    edit((prev) => ({ ...prev, ...patch }));
   }
 
   function setMany(patch: Record<string, string>) {
     const next = { ...values, ...patch };
-    setValues(next);
-    runSave(async () => {
+    runSave(next, async () => {
       const fd = new FormData();
       for (const [k, val] of Object.entries(next)) fd.set(k, val);
       await saveNotificationPrefs(fd);

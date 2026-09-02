@@ -49,79 +49,78 @@ export default function ProfileForm({
   skinType: number | null;
 }) {
   const toast = useToast();
-  const [fullName, setFullName] = useState(initialFullName ?? "");
-  const [sex, setSex] = useState<Sex | "">(initialSex ?? "");
-  // Reproductive (menopausal) status — shown for female profiles only. Cleared when
-  // the sex switches away from female (the server also forces it null in that case).
-  const [reproductiveStatus, setReproductiveStatus] = useState<
-    ReproductiveStatus | ""
-  >(initialReproductiveStatus ?? "");
-  const [birthdate, setBirthdate] = useState(initialBirthdate ?? "");
-  // Manual age fallback, editable only when no birthdate is set (a birthdate
-  // always derives the age and supersedes this). Seeded from a document-supplied
-  // age when present.
-  const [ageFallback, setAgeFallback] = useState(
-    initialBirthdate || initialAge == null ? "" : String(initialAge)
-  );
-  const [timezone, setTimezone] = useState(initialTimezone);
-  const [weekStart, setWeekStart] = useState(initialWeekStart);
-  const [weekMode, setWeekMode] = useState(initialWeekMode);
-  // Home location (issue #570) — coarse coordinates driving sun/daylight features.
-  const [homeLat, setHomeLat] = useState(
-    initialHomeLat == null ? "" : String(initialHomeLat)
-  );
-  const [homeLng, setHomeLng] = useState(
-    initialHomeLng == null ? "" : String(initialHomeLng)
-  );
+  // ONE draft for the whole card, owned by the hook. Every control saves the entire
+  // form, so a save of one field can never wipe another (issue #570's home
+  // coordinates were the case that used to need remembering), and a refused save
+  // puts every field back at once.
+  const {
+    pending,
+    savedAt,
+    error,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    fullName: initialFullName ?? "",
+    sex: (initialSex ?? "") as Sex | "",
+    // Reproductive (menopausal) status — shown for female profiles only. Cleared when
+    // the sex switches away from female (the server also forces it null in that case).
+    reproductiveStatus: (initialReproductiveStatus ?? "") as
+      | ReproductiveStatus
+      | "",
+    birthdate: initialBirthdate ?? "",
+    // Manual age fallback, editable only when no birthdate is set (a birthdate
+    // always derives the age and supersedes this). Seeded from a document-supplied
+    // age when present.
+    ageFallback:
+      initialBirthdate || initialAge == null ? "" : String(initialAge),
+    timezone: initialTimezone,
+    weekStart: initialWeekStart,
+    weekMode: initialWeekMode,
+    // Home location (issue #570) — coarse coordinates driving sun/daylight features.
+    homeLat: initialHomeLat == null ? "" : String(initialHomeLat),
+    homeLng: initialHomeLng == null ? "" : String(initialHomeLng),
+    // Fitzpatrick skin type I–VI (#1172), stored "1".."6" — the burn (MED) threshold
+    // for the overexposure side of the two-sided UV-dose sun model. "" = unset.
+    skinType: initialSkinType == null ? "" : String(initialSkinType),
+  });
+  const {
+    fullName,
+    sex,
+    reproductiveStatus,
+    birthdate,
+    ageFallback,
+    timezone,
+    weekStart,
+    weekMode,
+    homeLat,
+    homeLng,
+    skinType,
+  } = draft;
   const [geoError, setGeoError] = useState<string | null>(null);
-  // Fitzpatrick skin type I–VI (#1172), stored "1".."6" — the burn (MED) threshold
-  // for the overexposure side of the two-sided UV-dose sun model. "" = unset.
-  const [skinType, setSkinType] = useState(
-    initialSkinType == null ? "" : String(initialSkinType)
-  );
 
   // With a birthdate set, the age is derived from it; otherwise the age field
   // below holds the manual/document fallback.
   const derivedAge = birthdate
     ? ageFromBirthdate(birthdate, dateStrInTz(timezone))
     : null;
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
-  function save(next: {
-    fullName?: string;
-    sex: Sex | "";
-    reproductiveStatus?: ReproductiveStatus | "";
-    birthdate: string;
-    age: string;
-    timezone: string;
-    weekStart: number;
-    weekMode: string;
-    homeLat?: string;
-    homeLng?: string;
-    skinType?: string;
-  }) {
+  function save(next: typeof draft) {
     const fd = new FormData();
-    fd.set("full_name", next.fullName ?? fullName);
+    fd.set("full_name", next.fullName);
     fd.set("sex", next.sex);
-    // "" clears it; undefined (caller didn't touch it) falls back to current state.
-    fd.set(
-      "reproductive_status",
-      next.reproductiveStatus ?? reproductiveStatus
-    );
+    fd.set("reproductive_status", next.reproductiveStatus);
     fd.set("birthdate", next.birthdate);
-    fd.set("age", next.age);
+    fd.set("age", next.ageFallback);
     fd.set("timezone", next.timezone);
     fd.set("week_start", String(next.weekStart));
     fd.set("week_mode", next.weekMode);
-    // Always carry the current home coordinates so a save of another field never
-    // wipes them; both blank clears the location (issue #570).
-    fd.set("home_lat", next.homeLat ?? homeLat);
-    fd.set("home_lng", next.homeLng ?? homeLng);
-    // Carry the current skin type so a save of another field never wipes it.
-    fd.set("skin_type", next.skinType ?? skinType);
-    runSave(async () => {
+    fd.set("home_lat", next.homeLat);
+    fd.set("home_lng", next.homeLng);
+    fd.set("skin_type", next.skinType);
+    runSave(next, async () => {
       const res = await saveProfileSettings(fd);
       // Close the findings loop (#1305): if this save satisfied a structural data-quality
       // gap, acknowledge it via the shared toast — the settings autosave path (#794).
@@ -144,18 +143,9 @@ export default function ProfileForm({
           type="text"
           value={fullName}
           placeholder="e.g. Jane Q. Doe"
-          onChange={(e) => setFullName(e.target.value)}
+          onChange={(e) => edit({ ...draft, fullName: e.target.value })}
           onBlur={() => {
-            if (fullName !== (initialFullName ?? ""))
-              save({
-                fullName,
-                sex,
-                birthdate,
-                age: ageFallback,
-                timezone,
-                weekStart,
-                weekMode,
-              });
+            if (fullName !== (initialFullName ?? "")) save(draft);
           }}
           className="input"
         />
@@ -171,19 +161,12 @@ export default function ProfileForm({
           value={sex}
           onChange={(e) => {
             const v = e.target.value as Sex | "";
-            setSex(v);
-            // Reproductive status applies to female physiology only — clear it when
-            // the sex is anything else so it can't linger as stale data.
-            const nextRs = v === "female" ? reproductiveStatus : "";
-            setReproductiveStatus(nextRs);
             save({
+              ...draft,
               sex: v,
-              reproductiveStatus: nextRs,
-              birthdate,
-              age: ageFallback,
-              timezone,
-              weekStart,
-              weekMode,
+              // Reproductive status applies to female physiology only — clear it
+              // when the sex is anything else so it can't linger as stale data.
+              reproductiveStatus: v === "female" ? reproductiveStatus : "",
             });
           }}
           className="input"
@@ -203,19 +186,12 @@ export default function ProfileForm({
             <label className="label">Reproductive status</label>
             <select
               value={reproductiveStatus}
-              onChange={(e) => {
-                const v = e.target.value as ReproductiveStatus | "";
-                setReproductiveStatus(v);
+              onChange={(e) =>
                 save({
-                  sex,
-                  reproductiveStatus: v,
-                  birthdate,
-                  age: ageFallback,
-                  timezone,
-                  weekStart,
-                  weekMode,
-                });
-              }}
+                  ...draft,
+                  reproductiveStatus: e.target.value as ReproductiveStatus | "",
+                })
+              }
               className="input mt-1"
             >
               <option value="">Not specified</option>
@@ -249,19 +225,17 @@ export default function ProfileForm({
                 // or a friendly-formatted display string — would reach the server
                 // and null out the stored birthdate, and a typed future date would
                 // bypass the `max` guard. (Same ISO gate ActivityForm uses.)
-                setBirthdate(v);
                 const today = dateStrInTz(timezone);
-                if (v !== "" && !(isRealIsoDate(v) && v <= today)) return;
-                // A birthdate supersedes the manual age; clear it so the two
-                // never disagree.
-                if (v) setAgeFallback("");
+                if (v !== "" && !(isRealIsoDate(v) && v <= today)) {
+                  edit({ ...draft, birthdate: v });
+                  return;
+                }
                 save({
-                  sex,
+                  ...draft,
                   birthdate: v,
-                  age: v ? "" : ageFallback,
-                  timezone,
-                  weekStart,
-                  weekMode,
+                  // A birthdate supersedes the manual age; clear it so the two
+                  // never disagree.
+                  ageFallback: v ? "" : ageFallback,
                 });
               }}
             />
@@ -277,18 +251,9 @@ export default function ProfileForm({
               // Derived (read-only) when a birthdate is set; editable otherwise.
               value={birthdate ? (derivedAge ?? "") : ageFallback}
               disabled={!!birthdate}
-              onChange={(e) => {
-                const v = e.target.value;
-                setAgeFallback(v);
-                save({
-                  sex,
-                  birthdate,
-                  age: v,
-                  timezone,
-                  weekStart,
-                  weekMode,
-                });
-              }}
+              onChange={(e) =>
+                save({ ...draft, ageFallback: e.target.value })
+              }
               className="input disabled:opacity-60"
             />
           </div>
@@ -305,17 +270,9 @@ export default function ProfileForm({
         <TimezoneSelect
           id="profile-timezone"
           value={timezone}
-          onTimezoneChange={(nextTimezone) => {
-            setTimezone(nextTimezone);
-            save({
-              sex,
-              birthdate,
-              age: ageFallback,
-              timezone: nextTimezone,
-              weekStart,
-              weekMode,
-            });
-          }}
+          onTimezoneChange={(nextTimezone) =>
+            save({ ...draft, timezone: nextTimezone })
+          }
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Decides when each day rolls over — today/yesterday labels, streaks,
@@ -327,18 +284,9 @@ export default function ProfileForm({
         <label className="label">Week starts on</label>
         <select
           value={weekStart}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            setWeekStart(v);
-            save({
-              sex,
-              birthdate,
-              age: ageFallback,
-              timezone,
-              weekStart: v,
-              weekMode,
-            });
-          }}
+          onChange={(e) =>
+            save({ ...draft, weekStart: Number(e.target.value) })
+          }
           className="input mt-1"
         >
           {WEEKDAYS.map((name, i) => (
@@ -357,18 +305,7 @@ export default function ProfileForm({
         <label className="label">Weekly targets count</label>
         <select
           value={weekMode}
-          onChange={(e) => {
-            const v = e.target.value;
-            setWeekMode(v);
-            save({
-              sex,
-              birthdate,
-              age: ageFallback,
-              timezone,
-              weekStart,
-              weekMode: v,
-            });
-          }}
+          onChange={(e) => save({ ...draft, weekMode: e.target.value })}
           className="input mt-1"
         >
           <option value="calendar">The current calendar week</option>
@@ -411,18 +348,7 @@ export default function ProfileForm({
                     const lng = (
                       Math.round(pos.coords.longitude * 10) / 10
                     ).toString();
-                    setHomeLat(lat);
-                    setHomeLng(lng);
-                    save({
-                      sex,
-                      birthdate,
-                      age: ageFallback,
-                      timezone,
-                      weekStart,
-                      weekMode,
-                      homeLat: lat,
-                      homeLng: lng,
-                    });
+                    save({ ...draft, homeLat: lat, homeLng: lng });
                   },
                   () => setGeoError("Couldn’t get your location.")
                 );
@@ -441,17 +367,8 @@ export default function ProfileForm({
               data-testid="home-lat"
               placeholder="Latitude"
               aria-label="Home latitude"
-              onChange={(e) => setHomeLat(e.target.value)}
-              onBlur={() =>
-                save({
-                  sex,
-                  birthdate,
-                  age: ageFallback,
-                  timezone,
-                  weekStart,
-                  weekMode,
-                })
-              }
+              onChange={(e) => edit({ ...draft, homeLat: e.target.value })}
+              onBlur={() => save(draft)}
               className="input"
             />
             <input
@@ -462,17 +379,8 @@ export default function ProfileForm({
               data-testid="home-lng"
               placeholder="Longitude"
               aria-label="Home longitude"
-              onChange={(e) => setHomeLng(e.target.value)}
-              onBlur={() =>
-                save({
-                  sex,
-                  birthdate,
-                  age: ageFallback,
-                  timezone,
-                  weekStart,
-                  weekMode,
-                })
-              }
+              onChange={(e) => edit({ ...draft, homeLng: e.target.value })}
+              onBlur={() => save(draft)}
               className="input"
             />
           </div>
@@ -493,19 +401,7 @@ export default function ProfileForm({
           <select
             value={skinType}
             data-testid="skin-type"
-            onChange={(e) => {
-              const v = e.target.value;
-              setSkinType(v);
-              save({
-                sex,
-                birthdate,
-                age: ageFallback,
-                timezone,
-                weekStart,
-                weekMode,
-                skinType: v,
-              });
-            }}
+            onChange={(e) => save({ ...draft, skinType: e.target.value })}
             className="input"
           >
             <option value="">Not set</option>
