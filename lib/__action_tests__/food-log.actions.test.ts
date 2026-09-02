@@ -862,6 +862,76 @@ describe("scoping + rollup", () => {
   });
 });
 
+// ── THE SUBJECT IS SPELLED ONCE (#4730) ──────────────────────────────────────
+//
+// `FoodServingForm` stamps the subject as `profile_id` on BOTH its paths, and the
+// correction reads it through `gateItemProfile`. The ADD read a camelCase `profileId`
+// nothing posts, so a subject-carrying add resolved to the ACTING profile — no type
+// error, no runtime error, and a caregiver's own serving is a perfectly valid row, so
+// nothing downstream could tell. It was unreachable only because every mount passing a
+// subject today also passes a `row` and takes the edit path; this asks the add itself.
+//
+// BOTH ASSERTIONS READ THE STORE, never the answer: the action returns `{ok:true}`
+// whichever profile it landed on, so the rows are the only witness. And the pair is
+// what makes it a divergence test rather than a write test — a second spelling
+// reappearing anywhere between the form and this gate empties the subject and fills
+// the actor, which is exactly the two lines below inverting.
+describe("logFoodServing — the subject the form posts (#4730)", () => {
+  it("adds to the SUBJECT, and refuses a subject this login cannot write", async () => {
+    const login = createLogin({ role: "member" });
+    const caregiver = createProfile("food-caregiver", login.id);
+    const child = createProfile("food-subject", login.id);
+    const stranger = createProfile("food-stranger"); // granted to no login
+    actAs(login, caregiver);
+
+    // The fixture reaches the state the verdict is about before any verdict is read:
+    // two distinct profiles, the acting one is not the subject, and nobody has a row.
+    expect(child.id).not.toBe(caregiver.id);
+    expect(rows(caregiver.id)).toEqual([]);
+    expect(rows(child.id)).toEqual([]);
+
+    const added = await logFoodServing(
+      fd({ group_key: "berries", date: DATE, profile_id: child.id })
+    );
+    expect(added.ok).toBe(true);
+    expect(rows(child.id)).toEqual([
+      { date: DATE, group_key: "berries", servings: 1 },
+    ]);
+    expect(rows(caregiver.id)).toEqual([]);
+
+    // The gate is a gate in both directions: an ungranted subject is refused rather
+    // than quietly re-aimed at the actor, which is the failure the fallback produced.
+    await expect(
+      logFoodServing(
+        fd({ group_key: "berries", date: DATE, profile_id: stranger.id })
+      )
+    ).rejects.toThrow();
+    expect(rows(stranger.id)).toEqual([]);
+    expect(rows(caregiver.id)).toEqual([]);
+  });
+
+  it("undoes on the SUBJECT the add landed on, not on the acting profile", async () => {
+    const login = createLogin({ role: "member" });
+    const caregiver = createProfile("undo-caregiver", login.id);
+    const child = createProfile("undo-subject", login.id);
+    actAs(login, caregiver);
+    await logFoodServing(
+      fd({ group_key: "berries", date: DATE, profile_id: child.id })
+    );
+    // The inverse is only meaningful against a row that is actually there (#3611).
+    expect(rows(child.id)).toEqual([
+      { date: DATE, group_key: "berries", servings: 1 },
+    ]);
+
+    const undone = await undoFoodServing(
+      fd({ group_key: "berries", date: DATE, profile_id: child.id })
+    );
+    expect(undone.ok).toBe(true);
+    expect(rows(child.id)).toEqual([]);
+    expect(rows(caregiver.id)).toEqual([]);
+  });
+});
+
 // ── THE DAY BOUND IS IN THE CORE NOW (#4118) ─────────────────────────────────
 //
 // Until #4118 the only thing between a posted `date` and the ledger was the day

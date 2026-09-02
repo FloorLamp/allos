@@ -104,6 +104,7 @@ describe("the two grammars are types, not conventions (#4452)", () => {
       clock: "08:46",
       clockKind: "stated",
       slotBoundaries: { midday: 660, evening: 1020 },
+      substanceCorrectable: true,
     };
     expect(edit.clock).toBe("08:46");
   });
