@@ -332,18 +332,37 @@ export const LOG_MANIFEST = {
       history: { kind: "covered", via: "food" },
     },
     pieces: {
-      form: {
-        kind: "unconverged",
-        reason:
-          "`FoodLogBar` is the sheet's form and the `/history` door re-spells its own; #3987 is rebuilding the nutrition page into Day | Manage and DEFINES what food's form and rows are, so this row flips on that leg rather than forking a copy mid-rebuild.",
-        ref: "#3987",
-      },
-      rowControl: {
-        kind: "unconverged",
-        reason:
-          "The Day ledger's row writes and the `/history` food rows are two spellings; #4316's shared row shape is the extraction both compose, and it sits in nutrition's path.",
-        ref: "#3987",
-      },
+      // #4424's food leg, the last of the eight. `FoodServingForm` is add AND
+      // full-statement edit at every mount — the `/history` door, that record row's ⋯,
+      // and the nutrition bar's correction modal — and `FoodServingControl` is the
+      // serving stepper every food-group row carries.
+      //
+      // THE CELL THIS REPLACES WAS WRONG IN BOTH HALVES, on checkable claims, while
+      // right about the shape of the complaint — the eighth time running (#4424's
+      // 05:09 precedent asks each leg to record its own).
+      //
+      //   • the FORM row named TWO spellings and there were THREE. The one it missed —
+      //     `HistoryRows`' food correction — was the one that had dropped a field: it
+      //     carried no eating-time control at all, only a re-anchor of an existing
+      //     clock when the day moved, so a serving filed at the wrong hour was
+      //     correctable on the nutrition page and nowhere else. It also carried no
+      //     meal-follows-the-hour rule, and neither did the door's.
+      //   • the ROW CONTROL row said the Day ledger's row writes and the `/history`
+      //     food rows were "two spellings" of one. The ledger imports no food action:
+      //     its serving row's ⋯ calls back up into the bar, so it was already the
+      //     bar's one implementation seen from another surface. What the ledger does
+      //     own is the SELECTION edit (move/re-time/delete over servings and doses at
+      //     once), which is a composite riding both domains' cores under ruling 5 and
+      //     not a food row control. And `#4316`, named as "the extraction both
+      //     compose", is the shared DUE-DOSE bulk row and closed — it was never a food
+      //     shape and could not have become one.
+      //
+      // SO THE ROW CONTROL WAS ALREADY ONE IMPLEMENTATION AND HAD NO IDENTITY, which
+      // is stool's finding arrived at from the other side: inline markup two thirds of
+      // the way down a 2,300-line page component, with nothing for this cell to name.
+      // Its siblings are all components; now so is it.
+      form: { kind: "shared", component: "FoodServingForm" },
+      rowControl: { kind: "shared", component: "FoodServingControl" },
     },
     writeConventions: { kind: "convention" },
   },

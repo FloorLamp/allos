@@ -33,6 +33,7 @@
 // parameter, not a fork.
 
 import { formatClockValue, type DisplayFormatPrefs } from "./format-date";
+import type { FoodSlot, FoodSlotBoundaries } from "./food-slot";
 import { FOOD_GROUPS } from "./food-groups";
 import { ALCOHOL_FOOD_GROUP } from "./substance-use";
 import { BODY_METRIC_MEASURE_SLUG } from "./body-metric-measures";
@@ -219,9 +220,16 @@ export type HistoryRowEdit =
       kind: "food";
       eventId: number;
       groupKey: string;
-      mealSlot: string;
+      mealSlot: FoodSlot;
       clock: string | null;
       clockKind: HistoryClockKind;
+      /**
+       * The SUBJECT's meal-bucket boundaries (#4424 ruling 1). The shared form's Meal
+       * follows a stated hour, and in `?view=everyone` that hour is read on the row's
+       * own profile's schedule — derived here, beside the `mealSlot` the same
+       * boundaries already produced, rather than assembled per-profile at the mount.
+       */
+      slotBoundaries: FoodSlotBoundaries;
     }
   | {
       kind: "practice";

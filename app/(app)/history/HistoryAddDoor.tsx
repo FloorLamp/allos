@@ -1,26 +1,11 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import WhenControl from "@/components/WhenControl";
-import { statedHhmm, type WhenValue } from "@/lib/stated-time";
-import { useTimezone } from "@/components/TimezoneProvider";
 import InlineError from "@/components/InlineError";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
-import { logFoodServing } from "@/app/(app)/nutrition/actions";
-import { logUsualRoutine, usualRoutineOffersOn } from "@/app/(app)/actions";
-import {
-  usualRoutineAnswerText,
-  usualRoutinePhrase,
-} from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
+import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import {
   doseOptionsFor,
@@ -33,7 +18,8 @@ import SymptomForm from "@/components/illness/SymptomForm";
 import StoolForm from "@/components/stool/StoolForm";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import { FOOD_GROUPS } from "@/lib/food-groups";
-import { FOOD_SLOTS } from "@/lib/food-slot";
+import type { FoodSlotBoundaries } from "@/lib/food-slot";
+import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import type { MeasurementsQuickEntry } from "@/lib/quick-entry-measurements";
 import MoodForm, { type MoodFormDay } from "@/components/mood/MoodForm";
 
@@ -125,6 +111,12 @@ export interface HistoryAddVocabulary {
    * outside the bundle's reach, and for a profile with no habit to offer.
    */
   usual: UsualRoutineDayOffer[];
+  /**
+   * The acting profile's meal-bucket boundaries, so the food form's meal follows the
+   * hour a backfill states on this door exactly as it does in the nutrition bar
+   * (#2227 decision 4). Two numbers; the same read the bar's mount already makes.
+   */
+  foodSlotBoundaries: FoodSlotBoundaries;
 }
 
 export default function HistoryAddDoor({
@@ -140,62 +132,25 @@ export default function HistoryAddDoor({
   vocabulary: HistoryAddVocabulary;
 }) {
   const router = useRouter();
-  const tz = useTimezone();
   const formatPrefs = useFormatPrefs();
-  // THE PAIR, held as one value (#2236 invariant 1). `date` opens on the day the
-  // reader was looking at and `statedAt` opens EMPTY — never defaulted to now.
-  const [when, setWhen] = useState<WhenValue>({ date, statedAt: null });
   const toast = useToast();
-  // WHICH SURFACE THIS WRITE CAME FROM (#3087). The record is a page and `page` is what
-  // this resolves to, but it is declared rather than left to the action's fallback:
-  // three of these four actions read the surface off the post, and an undeclared
-  // mounting answers `page` whether or not it is one.
-  const stampLoggedVia = useLoggedViaStamp();
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ── THE ONE-TAP USUAL, ON A PAST DAY (#4118) ───────────────────────────────
   //
-  // The web's answer to "reconstruct an empty day". Everything below the label is
-  // already built: the offer read is date-parameterized, the write core takes a day,
-  // and the bound is the core's. What the door adds is the affordance the ruling names
-  // — the composed bundle, seeded to the day being read.
+  // The web's answer to "reconstruct an empty day": the composed bundle, seeded to the
+  // day being read. Everything below the label was already built — the offer read is
+  // date-parameterized, the write core takes a day, and the bound is the core's.
   //
-  // THE OFFER FOLLOWS THE DATE FIELD, and that is not a nicety. The label names every
-  // serving and every dose the tap will write, so an offer resolved once at render and
-  // left there would keep promising Tuesday's breakfast while the field said Thursday —
-  // and `logUsualRoutineCore`, which re-derives against the day it is HANDED, would
-  // write something else or refuse. One re-read per date change keeps the promise and
-  // the write describing the same day.
-  //
-  // THE RE-READ IS SEQUENCED, not merely awaited. Two quick date changes are two
-  // in-flight reads, and the network may answer them in either order; a late reply for
-  // an abandoned day would repaint the label with an offer for a day nobody is looking
-  // at any more — the label lying again, by a different route. `latestRead` is the
-  // ticket, and a stale answer is dropped rather than rendered.
-  const seededDate = date;
-  const [usual, setUsual] = useState<UsualRoutineDayOffer[]>(vocabulary.usual);
-  const latestRead = useRef(0);
-  useEffect(() => {
-    if (when.date === seededDate) {
-      // The server already answered for this day; re-asking would repaint the same
-      // list and race the seed on mount.
-      latestRead.current += 1;
-      setUsual(vocabulary.usual);
-      return;
-    }
-    const ticket = (latestRead.current += 1);
-    void usualRoutineOffersOn(when.date)
-      .then((offers) => {
-        if (latestRead.current === ticket) setUsual(offers);
-      })
-      .catch(() => {
-        // A failed read must not leave a promise standing about a day it could not ask
-        // about. No offer is the honest render, and the manual form below is untouched.
-        if (latestRead.current === ticket) setUsual([]);
-      });
-  }, [when.date, seededDate, vocabulary.usual]);
+  // IT STANDS ON THE DOOR'S OWN DAY, and no longer chases a field. The door used to own
+  // a shared date input above every kind's form, so the offer had to re-read whenever
+  // that input moved or its label would keep promising Tuesday's breakfast while the
+  // field said Thursday. Ruling 2 deleted that input — each domain's one form carries
+  // its own date now — so the only day this control can be about is the record day it
+  // is seeded for, which is the day its own label names. The sequenced re-read moved to
+  // the nutrition bar, where a day PICKER still sits above the same offer.
+  const usual = vocabulary.usual;
 
   if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
@@ -206,207 +161,66 @@ export default function HistoryAddDoor({
     setOpen(false);
     setError(null);
   }
-
-  // One submit path for four forms: post, report a refusal inline, and on success
-  // re-read the feed so the row the reader just wrote is IN the record they are
-  // looking at. Without the refresh the door would write silently and read as dead —
-  // the same complaint as the redirect it replaces.
-  //
-  // `announce` EXISTS BECAUSE ONE CALLER CAN PARTLY SUCCEED (#4118). The four forms
-  // each write one row, so "Added to the record." is the whole truth for them. The
-  // composed bundle writes several, and its typed outcome reports each dose
-  // separately — so it supplies its own sentence rather than being flattened into a
-  // confirm it did not earn (#232). Optional, so nothing else has to know.
-  async function submit(
-    fd: FormData,
-    run: (fd: FormData) => Promise<string | null>,
-    announce?: () => string
-  ): Promise<void> {
-    setError(null);
-    setPending(true);
-    let failure: string | null;
-    try {
-      failure = await run(fd);
-    } catch {
-      failure = "Couldn't save that entry.";
-    }
-    setPending(false);
-    if (failure) {
-      setError(failure);
-      return;
-    }
-    toast(announce?.() ?? "Added to the record.");
-    close();
-    router.refresh();
-  }
-
-  async function post(
-    event: FormEvent<HTMLFormElement>,
-    run: (fd: FormData) => Promise<string | null>
-  ): Promise<void> {
-    event.preventDefault();
-    return submit(stampLoggedVia(new FormData(event.currentTarget)), run);
-  }
-
-  // One composed tap for one window. Posts the SAME action the dashboard control and
-  // the Telegram button post, with the door's day — so the audit row, the provenance
-  // stamp and the reach bound are the write core's, not this control's.
+  // THE DOMAIN'S SHARED COMPOSED CONTROL, WITH THE RECORD DAY IN HAND (#4424 ruling 2).
+  // This door used to spell the bundle button a FOURTH time — its own markup, its own
+  // submit path, its own answer rounding — for the one reason that it knows a day. The
+  // shared control takes a `date` now, so the door renders which offers stand and owns
+  // nothing about the write: not the label, not the promise, not the sentence that
+  // answers it. Its `submit()` went with it; every other kind here is already the
+  // domain's own form, owning its own.
   function usualControls(): ReactNode {
     if (usual.length === 0) return null;
     return (
-      <div className="mb-3 grid gap-2" data-testid="history-add-usual">
-        {usual.map((offer) => {
-          const phrase = usualRoutinePhrase(
-            offer.food.map((f) => f.name),
-            offer.doses
-          );
-          return (
-            <button
-              key={offer.window}
-              type="button"
-              disabled={pending}
-              data-testid={`history-add-usual-${offer.window}`}
-              data-groups={offer.food.map((f) => f.slug).join(",")}
-              data-doses={offer.doses.map((d) => d.id).join(",")}
-              aria-label={`Your usual ${offer.window} on ${when.date}: ${phrase}`}
-              className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
-              onClick={() => {
-                // THE ANSWER NAMES WHAT WAS WRITTEN, NEVER WHAT WAS OFFERED. The core
-                // reports every dose separately and refuses to assume any of them away
-                // (lib/usual-routine-write.ts), and `ok: true` only means the bundle
-                // wrote SOMETHING — so a flat "Added to the record." here would tell a
-                // person their creatine was logged when the day was outside the dose
-                // half's own ±2 window and nothing was. That is the unconditional
-                // confirm #232 forbids, on the one surface that can reach those days:
-                // the dashboard has no date field and the Telegram tap is gated to ±2.
-                let answer: string | null = null;
-                void submit(
-                  stampLoggedVia(new FormData()),
-                  async (fd) => {
-                    fd.set("meal_slot", offer.window);
-                    fd.set("date", when.date);
-                    // Both lists are UPPER BOUNDS the core intersects with what still
-                    // stands on that day — never an instruction to write outside it.
-                    fd.set("groups", offer.food.map((f) => f.slug).join(","));
-                    fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
-                    const outcome = await logUsualRoutine(fd);
-                    if (!outcome.ok) return outcome.error;
-                    // `usualRoutineAnswerText` — the SAME sentence the dashboard
-                    // control and the Telegram ack render, so three surfaces cannot
-                    // round one outcome three ways. The logged/refused split is spelled
-                    // as the dashboard spells it rather than through
-                    // `usualRoutineDoseLogged`, which lives beside the write core and
-                    // would pull the database into this client bundle.
-                    const wrote = new Set(
-                      outcome.groups.map((g) => g.groupKey)
-                    );
-                    const landed = (o: string) =>
-                      o === "logged" || o === "logged-off-day";
-                    answer = usualRoutineAnswerText(
-                      offer.food
-                        .filter((f) => wrote.has(f.slug))
-                        .map((f) => f.name),
-                      outcome.doses
-                        .filter((d) => landed(d.outcome))
-                        .map((d) => d.name),
-                      outcome.doses
-                        .filter((d) => !landed(d.outcome))
-                        .map((d) => d.name)
-                    );
-                    return null;
-                  },
-                  () => answer ?? "Added to the record."
-                );
-              }}
-            >
-              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {`Your usual ${offer.window} (${offer.food.length + offer.doses.length})`}
-              </span>
-              <span className="block text-xs text-slate-600 dark:text-slate-300">
-                {phrase}
-              </span>
-            </button>
-          );
-        })}
+      <div className="grid" data-testid="history-add-usual">
+        {usual.map((offer) => (
+          <UsualRoutineControl
+            key={offer.window}
+            window={offer.window}
+            food={offer.food}
+            proteinGrams={offer.proteinGrams}
+            doses={offer.doses.map((d) => ({
+              id: d.id,
+              name: d.name,
+              stack: d.stack,
+            }))}
+            subjectName={null}
+            date={date}
+            testIds={{
+              button: `history-add-usual-${offer.window}`,
+              names: `history-add-usual-${offer.window}-names`,
+            }}
+            // Resolved in place, exactly as the forms beside it are (#4045 §1).
+            onLogged={() => {
+              close();
+              router.refresh();
+            }}
+          />
+        ))}
       </div>
     );
   }
 
-  // The TIMED kinds' field, and the day and the minute come out of it together.
-  // `mode="state"` because a backfill is an assertion rather than an amendment, and
-  // `timeRequired` is false because stating a time is optional here — the record's own
-  // clock grammar already has an honest rendering for a row that names none.
-  const whenField = (
-    <div className="sm:col-span-2">
-      <WhenControl
-        mode="state"
-        grain="minute"
-        value={when}
-        onChange={setWhen}
-        maxDate={maxDate}
-        dateLabel="Date"
-        timeLabel="Time"
-        testId={`history-add-when-${kind}`}
-      />
-      {/* THE WIRE SHAPE IS THE DOMAIN'S, and both of these actions read an ABSOLUTE
-          profile-local wall clock rather than a client instant — the server resolves
-          it against its own clock and the profile's timezone (#2053), so no browser
-          has to be trusted with the answer. `statedHhmm` is the one conversion, and
-          it returns "" for an unstated instant, which is exactly the empty string
-          both actions read as "no time was stated". */}
-      <input type="hidden" name="date" value={when.date} />
-    </div>
-  );
-
-  const buttons = (
-    <div className="flex items-end gap-2">
-      <button className="btn" type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Add"}
-      </button>
-      <button className="btn-ghost" type="button" onClick={close}>
-        Cancel
-      </button>
-    </div>
-  );
-
   function form(): ReactNode {
     switch (kind) {
       case "food":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2): this door's own food
+        // form — a group select, a meal select and a when-control with no
+        // meal-follows-the-hour rule — is deleted and the domain's one form mounts
+        // with the found day in hand.
         return (
-          <form
-            className="grid gap-2 sm:grid-cols-2"
-            onSubmit={(event) =>
-              void post(event, async (fd) => {
-                // The eating-time statement (#2053), as the wall clock the action
-                // reads. Empty when nothing was stated, which `logFoodServing`
-                // already treats as "no eating time" rather than as a refusal.
-                fd.set("occurred_at", statedHhmm(when.statedAt, tz));
-                const outcome = await logFoodServing(fd);
-                return outcome.ok ? null : outcome.error;
-              })
-            }
-          >
-            {whenField}
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Food group
-              <select name="group_key" className="input mt-1 w-full">
-                {FOOD_GROUPS.map((group) => (
-                  <option key={group.slug} value={group.slug}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-slate-500 dark:text-slate-400">
-              Meal
-              <select name="meal_slot" className="input mt-1 w-full">
-                {FOOD_SLOTS.map((slot) => (
-                  <option key={slot}>{slot}</option>
-                ))}
-              </select>
-            </label>
-            {buttons}
-          </form>
+          <FoodServingForm
+            groups={FOOD_GROUPS}
+            date={date}
+            slotBoundaries={vocabulary.foodSlotBoundaries}
+            maxDate={maxDate}
+            testId="history-add-food"
+            onSaved={() => {
+              toast("Added to the record.");
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
         );
       case "dose":
         // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The dose kind already

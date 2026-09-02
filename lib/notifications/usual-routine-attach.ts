@@ -31,6 +31,7 @@
 import { foodGroupName } from "../food-groups";
 import type { FoodSlot } from "../food-slot";
 import {
+  proteinMemberName,
   usualRoutinePhrase,
   type UsualRoutineDose,
   type UsualRoutineOffer,
@@ -59,6 +60,13 @@ export interface StoredUsualOffer {
   window: FoodSlot;
   groups: string[];
   doseIds: number[];
+  // THE SCOOP THIS SEND PROMISED (#4379), or absent/null when protein was not a member.
+  // Unlike the two lists above, the GRAMS are stored rather than re-derived, and that is
+  // the point: "the stored offer's grams are what the tap writes even if the preset
+  // changed after mint" — a message somebody read yesterday may not quietly become a
+  // different promise because they used a bigger scoop this morning. Optional, so every
+  // offer row minted before this shipped still parses and simply names no protein.
+  proteinGrams?: number | null;
 }
 
 // One composed one-tap, already decided: which token, what it promises, what its
@@ -88,13 +96,20 @@ export function usualRoutineAttachmentFor(
   token: string
 ): UsualRoutineAttachment | null {
   if (!callbackDataFits(token)) return null;
-  const foodNames = offer.groups.map((slug) => foodGroupName(slug));
+  // The protein member is named in the same breath as the groups (#4379), so the line,
+  // the count and the label pick it up without a second vocabulary.
+  const foodNames = [
+    ...offer.groups.map((slug) => foodGroupName(slug)),
+    ...(offer.proteinGrams === null
+      ? []
+      : [proteinMemberName(offer.proteinGrams)]),
+  ];
   const phrase = usualRoutinePhrase(foodNames, offer.doses);
   return {
     token,
     // The COUNT is every write the tap performs — servings plus dose confirms — so the
     // number on the button and the things named on the line are the same things.
-    label: `${GLYPH.done} Your usual ${offer.window} (${offer.groups.length + offer.doses.length})`,
+    label: `${GLYPH.done} Your usual ${offer.window} (${foodNames.length + offer.doses.length})`,
     line: `${GLYPH.done} Your usual ${offer.window}: ${phrase}`,
   };
 }
@@ -177,6 +192,7 @@ export function mintUsualRoutineAttachment(
     window: offer.window,
     groups: offer.groups,
     doseIds: offer.doses.map((d) => d.doseId),
+    proteinGrams: offer.proteinGrams,
   };
   const offerId = mintOffer(profileId, USUAL_OFFER_FAMILY, date, payload);
   return usualRoutineAttachmentFor(
@@ -211,6 +227,13 @@ export function standingUsualOffer(
   const doses: UsualRoutineDose[] = fresh.doses.filter((d) =>
     offeredDoses.has(d.doseId)
   );
+  // The protein member reduces exactly as a group does: it survives only while BOTH the
+  // stored offer named it and the fresh one still stands it (#4379). The grams are the
+  // STORED ones — the promise the reader saw — never the preset as it is now.
+  const proteinGrams =
+    stored.proteinGrams != null && fresh.proteinGrams !== null
+      ? stored.proteinGrams
+      : null;
   // THE FLOOR THE REDUCTION BOTTOMS OUT ON. A bundle earns its place by being FASTER
   // than the rows beneath it, which is the same rule `usualFoodOffer` states for the
   // food half alone (FOOD_USUAL_MIN_GROUPS: "a single group is one tap either way").
@@ -218,8 +241,9 @@ export function standingUsualOffer(
   // interchangeable as savings: the remainder must be at least two writes, and it must
   // still contain food — the food half is this offer's GATE and there was never a
   // dose-only shape of it (lib/usual-routine.ts).
-  if (groups.length === 0 || groups.length + doses.length < 2) return null;
-  return { window: stored.window, groups, doses };
+  const foodMembers = groups.length + (proteinGrams === null ? 0 : 1);
+  if (foodMembers === 0 || foodMembers + doses.length < 2) return null;
+  return { window: stored.window, groups, proteinGrams, doses };
 }
 
 // The attachment a LIVE token still stands for, for a rebuild. Null once nothing

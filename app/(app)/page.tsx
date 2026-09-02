@@ -70,7 +70,8 @@ import { requireScope, type ProfileScope } from "@/lib/scope";
 import { writeSubjectName } from "@/lib/own-profile";
 import { currentFoodSlotWindow } from "@/lib/queries/nutrition";
 import { getUsualRoutineOffer } from "@/lib/queries/usual-routine";
-import { foodGroupBySlug } from "@/lib/datasets/food-groups";
+import { foodGroupName } from "@/lib/food-groups";
+import { usualRoutineFoodMembers } from "@/lib/usual-routine";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import {
@@ -1129,10 +1130,8 @@ async function renderDashboard(
   const routineControl = routineOffer
     ? {
         window: routineOffer.window,
-        food: routineOffer.groups.map((slug) => ({
-          slug,
-          name: foodGroupBySlug(slug)?.name ?? slug,
-        })),
+        food: usualRoutineFoodMembers(routineOffer, foodGroupName),
+        proteinGrams: routineOffer.proteinGrams,
         doses: routineOffer.doses.map((d) => ({
           id: d.doseId,
           name: d.name,

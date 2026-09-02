@@ -15,7 +15,6 @@ import {
   updateFoodLogEventCore,
   type FoodEventPlacement,
 } from "@/lib/food-log-write";
-import { logUsualFoodCore } from "@/lib/food-usual-write";
 import { EATEN_AT_FUTURE_SKEW_MS, judgeEatenAt } from "@/lib/food-eating-time";
 import { statedHourInstant } from "@/lib/correction-time";
 import { normalizeClockTime } from "@/lib/vitals-input";
@@ -376,78 +375,7 @@ export async function undoFoodServing(
 // ---- "Log my usual <window>" (issue #2380) ----
 
 // What the one-tap usual offer answers with: the groups it ACTUALLY logged, each with
-// the server's authoritative day + window counts, so the bar adopts server truth for
-// every row it optimistically bumped. `ok: false` covers the stale-offer case — the
-// tap is answered from its typed outcome and never confirmed unconditionally.
-export type UsualFoodResult =
-  | {
-      ok: true;
-      window: FoodSlot;
-      groups: { groupKey: string; servings: number; mealServings: number }[];
-      // ONE "End your fast?" offer for the whole bundle (#2756) — a bundled write
-      // prompts ONCE, however many servings it landed. Since #4118 the bundle may land
-      // on a PAST day, so the predicate is asked with the day the write actually used
-      // rather than with today twice: reconstructing Tuesday's breakfast is not a
-      // reason to offer to end a fast that is running now.
-      endFastOffer?: true;
-    }
-  | { ok: false; error: string };
-
-// Log one serving of each still-offered "usual" group into a meal window, on a day.
-// The user's tap is the write — the app never logs food on anyone's behalf (#2380) —
-// and the button that raised it named every group in `groups`.
-//
-// The action validates SHAPE only. WHICH groups may land is the core's question, and
-// it re-derives the offer from fresh server state rather than trusting this form, so a
-// forged, replayed or simply stale submission can never write outside the offer that
-// currently stands. The `date` field is optional and defaults to today (#4118); how far
-// back it may reach is the CORE's bound, never this parse — so a surface that grows a
-// day picker inherits the rule rather than restating it.
-export async function logUsualFood(
-  formData: FormData
-): Promise<UsualFoodResult> {
-  const { profile } = await requireWriteAccess();
-  const rawWindow = String(formData.get("meal_slot") ?? "").trim();
-  if (!isFoodSlot(rawWindow)) return formError("Unknown meal window.");
-  const named = String(formData.get("groups") ?? "")
-    .split(",")
-    .map((slug) => slug.trim())
-    .filter(Boolean);
-  if (named.length === 0) return formError("Nothing to log.");
-  const rawDate = String(formData.get("date") ?? "").trim();
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
-    ? rawDate
-    : today(profile.id);
-  const outcome = logUsualFoodCore(
-    profile.id,
-    rawWindow,
-    date,
-    named,
-    parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page")
-  );
-  if (outcome.kind === "invalid-date")
-    return formError("That day is out of range.");
-  if (outcome.kind === "nothing-to-log")
-    return formError("Those servings are already logged.");
-  const day = today(profile.id);
-  const endFastOffer = promptsEndOfFast(
-    getActiveFastCached(profile.id),
-    outcome.date,
-    day
-  );
-  revalidateRoute("/nutrition");
-  revalidateRoute("/history");
-  revalidateRoute("/trends");
-  revalidateRoute("/");
-  return {
-    ok: true,
-    window: outcome.window,
-    groups: outcome.groups,
-    ...(endFastOffer ? { endFastOffer: true as const } : {}),
-  };
-}
-
-// The correction's answer (issue #1934): the placement the serving LEFT and the one it
+/// The correction's answer (issue #1934): the placement the serving LEFT and the one it
 // LANDED in, each carrying the authoritative post-write day counter and slot tally. The
 // bar sets both from these numbers rather than computing a move locally, so a corrected
 // serving can never be counted in two places at once.

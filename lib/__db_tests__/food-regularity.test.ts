@@ -11,7 +11,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { setTimezone } from "@/lib/settings";
+import { setProfileSetting, setTimezone } from "@/lib/settings";
+import { PROTEIN_QUICKADD_LAST_KEY } from "@/lib/protein-daily-totals-write";
 import {
   FOOD_REGULARITY_MIN_WINDOW_DAYS,
   FOOD_REGULARITY_SPAN_DAYS,
@@ -23,6 +24,7 @@ import { logFoodServingCore } from "@/lib/food-log-write";
 import { USUAL_BACKFILL, type LoggedVia } from "@/lib/logged-via";
 import {
   getCapDirectionFoodGroups,
+  getFoodPeriodHabits,
   getFoodRegularity,
   getHabitualFoodGroups,
   getUsualFoodOffer,
@@ -83,6 +85,23 @@ function tap(
     extra.mealSlot ?? null,
     extra.eatenAt ?? null
   );
+}
+
+// One protein tap as the ledger holds it (#1073): the reserved key rides
+// `food_log_events` and NEVER `food_daily_totals` — the grams live on their own counter,
+// which is the reserved-key discipline this fixture has to respect or it would be
+// seeding a shape the product cannot produce.
+function proteinTap(
+  profileId: number,
+  date: string,
+  hhmmss: string,
+  extra: { mealSlot?: string } = {}
+): void {
+  db.prepare(
+    `INSERT INTO food_log_events
+       (profile_id, group_key, date, recorded_at, meal_slot)
+     VALUES (?, '__protein__', ?, ?, ?)`
+  ).run(profileId, date, `${date}T${hhmmss}Z`, extra.mealSlot ?? null);
 }
 
 describe("getFoodRegularity (#2380)", () => {
@@ -169,16 +188,48 @@ describe("getFoodRegularity (#2380)", () => {
     expect(measure.Morning).toBeNull();
   });
 
-  it("ignores the reserved protein key — a habit has to be a catalog group", () => {
+  // THE INVERSION #4379 RULED (owner, 2026-08-30). This case asserted the OPPOSITE
+  // until today — "a habit has to be a catalog group" — and the reason it gave stopped
+  // being true for this measure's consumers: both of them are the usual bundle, and the
+  // bundle already names the key out loud ("+30g protein", #1073). What the exclusion
+  // actually did was make the one physical event the bundle exists to cover write every
+  // row except the protein one, however many mornings the ledger held.
+  it("measures the reserved protein key, because the bundle can name it", () => {
     const { profileId, anchor } = makeProfile("regularity-protein-key");
     for (let d = 1; d <= 10; d++) {
       const date = shiftDateStr(anchor, -d);
-      db.prepare(
-        `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
-         VALUES (?, '__protein__', ?, ?)`
-      ).run(profileId, date, `${date}T08:00:00Z`);
+      proteinTap(profileId, date, "08:00:00");
     }
-    expect(getFoodRegularity(profileId).Morning).toBeNull();
+    expect(
+      getFoodRegularity(profileId).Morning?.groups.map((g) => g.groupKey)
+    ).toEqual(["__protein__"]);
+  });
+
+  // AND THE OTHER CONSUMER IS UNMOVED. `getFoodPeriodHabits` runs the day-grain read and
+  // keeps its exclusion, because the coaching sentence it feeds ("you consistently …")
+  // was NOT re-ruled — the ruling is about the bundle. Asserted here rather than left
+  // implicit, because "lifted for THIS consumer" is only a real claim if some other
+  // consumer can be shown still holding it.
+  it("leaves the period habit read's exclusion alone", () => {
+    const { profileId, anchor } = makeProfile("regularity-protein-period");
+    for (let d = 1; d <= 10; d++) {
+      const date = shiftDateStr(anchor, -d);
+      proteinTap(profileId, date, "08:00:00");
+      tap(profileId, "fatty_fish", date, "08:05:00");
+    }
+    const period = getFoodPeriodHabits(
+      profileId,
+      shiftDateStr(anchor, -20),
+      anchor
+    ).map((h) => h.groupKey);
+    expect(period).not.toContain("__protein__");
+    // THE CONTROL, and it is the half that makes the line above mean anything: the same
+    // ten days DO reach this read, so the absence is the exclusion holding rather than
+    // a fixture that produced nothing for it to exclude.
+    expect(period).toContain("fatty_fish");
+    expect(
+      getFoodRegularity(profileId).Morning?.groups.map((g) => g.groupKey)
+    ).toContain("__protein__");
   });
 });
 
@@ -713,4 +764,148 @@ describe("usualRoutineDayOffers", () => {
       expect(write.kind === "invalid-date").toBe(silent);
     }
   );
+});
+
+// ── PROTEIN IS A BUNDLE MEMBER (#4379, owner ruling 2026-08-30) ──────────────
+//
+// The owner's own morning: 29 protein quick-add taps on record alongside the 21/21
+// fermented+berries mornings, and the one tap that exists to cover "one physical event
+// and five taps" (#2458) wrote everything except the protein. These cases are the
+// ruling's acceptance criteria, and the fixture below is the shape it describes — a
+// habitual pair PLUS a habitual scoop, in one window.
+describe("the usual bundle's protein member (#4379)", () => {
+  // The grams as `addProteinGramsCore`'s OWN store holds them — the one write path this
+  // bundle may reach protein through (#221). Read straight off the counter rather than
+  // through `getProteinToday`, which answers null without a declared target and would
+  // make a missing write and an absent goal look the same.
+  const proteinGramsOn = (profileId: number, date: string): number =>
+    (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(grams), 0) AS grams FROM protein_daily_totals
+            WHERE profile_id = ? AND date = ?`
+        )
+        .get(profileId, date) as { grams: number }
+    ).grams;
+
+  // Ten mornings of the pair and the scoop: over the gate
+  // (FOOD_REGULARITY_MIN_WINDOW_DAYS) and over the habitual share for all three.
+  function seedProteinMorning(name: string) {
+    const { profileId, anchor } = makeProfile(name);
+    for (let d = 1; d <= 10; d++) {
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:01:00");
+      proteinTap(profileId, date, "08:02:00");
+    }
+    return { profileId, anchor };
+  }
+
+  it("offers the scoop beside the groups, and one tap writes all three", () => {
+    const { profileId, anchor } = seedProteinMorning("usual-protein-happy");
+    const [offer] = usualRoutineDayOffers(profileId, anchor);
+    // Share-descending, then key — the measure's own total order, which puts the two
+    // equal-share groups in alphabetical order and the member the offer appends last.
+    expect(offer.food.map((f) => f.name)).toEqual([
+      "Berries",
+      "Fermented foods",
+      // The nudge button's own vocabulary, at the default cold-start scoop (#1073).
+      "+30g protein",
+    ]);
+    expect(offer.proteinGrams).toBe(30);
+
+    const wrote = logUsualRoutineCore(
+      profileId,
+      "Morning",
+      anchor,
+      offer.food.map((f) => f.slug),
+      [],
+      "page" as LoggedVia,
+      undefined,
+      offer.proteinGrams ?? undefined
+    );
+    expect(wrote.kind).toBe("logged");
+    if (wrote.kind !== "logged") return;
+    expect(wrote.groups.map((g) => g.groupKey)).toEqual([
+      "berries",
+      "fermented",
+    ]);
+    // ONE WRITE PATH (#221): the grams land on the protein day counter, which is
+    // `addProteinGramsCore`'s own store and nothing else in this bundle touches.
+    expect(wrote.protein).toBe(30);
+    expect(proteinGramsOn(profileId, anchor)).toBe(30);
+    // And the reserved key never reached the SERVING loop — a food_daily_totals row
+    // for it would be the reserved-key discipline broken (lib/protein-nudge.ts).
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM food_daily_totals
+            WHERE profile_id = ? AND group_key = '__protein__'`
+        )
+        .get(profileId)
+    ).toEqual({ n: 0 });
+  });
+
+  it("drops the member once a scoop is already in that window (reduction)", () => {
+    const { profileId, anchor } = seedProteinMorning("usual-protein-reduce");
+    proteinTap(profileId, anchor, "08:30:00");
+    const [offer] = usualRoutineDayOffers(profileId, anchor);
+    // The pair still stands; the scoop has fallen out exactly as a logged group does.
+    expect(offer.food.map((f) => f.slug)).toEqual(["berries", "fermented"]);
+    expect(offer.proteinGrams).toBeNull();
+    // And a replayed grams promise writes nothing: the core re-derives the offer.
+    const wrote = logUsualRoutineCore(
+      profileId,
+      "Morning",
+      anchor,
+      ["fermented", "berries", "__protein__"],
+      [],
+      "page" as LoggedVia,
+      undefined,
+      30
+    );
+    expect(wrote.kind === "logged" && wrote.protein).toBeNull();
+    expect(proteinGramsOn(profileId, anchor)).toBe(0);
+  });
+
+  it("leaves a profile with no protein taps byte-identical", () => {
+    const { profileId, anchor } = makeProfile("usual-protein-absent");
+    for (let d = 1; d <= 10; d++) {
+      const date = shiftDateStr(anchor, -d);
+      tap(profileId, "fermented", date, "08:00:00");
+      tap(profileId, "berries", date, "08:01:00");
+    }
+    expect(usualRoutineDayOffers(profileId, anchor)).toEqual([
+      {
+        window: "Morning",
+        food: [
+          { slug: "berries", name: "Berries" },
+          { slug: "fermented", name: "Fermented foods" },
+        ],
+        proteinGrams: null,
+        doses: [],
+      },
+    ]);
+  });
+
+  it("writes the grams the offer PROMISED, not the preset as it stands now", () => {
+    const { profileId, anchor } = seedProteinMorning("usual-protein-preset");
+    const [minted] = usualRoutineDayOffers(profileId, anchor);
+    expect(minted.proteinGrams).toBe(30);
+    // The person uses a bigger scoop somewhere else between the mint and the tap. The
+    // promise a reader already saw may not move under them (#2460).
+    setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, "45");
+    const wrote = logUsualRoutineCore(
+      profileId,
+      "Morning",
+      anchor,
+      minted.food.map((f) => f.slug),
+      [],
+      "page" as LoggedVia,
+      undefined,
+      minted.proteinGrams ?? undefined
+    );
+    expect(wrote.kind === "logged" && wrote.protein).toBe(30);
+    expect(proteinGramsOn(profileId, anchor)).toBe(30);
+  });
 });
