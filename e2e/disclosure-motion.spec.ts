@@ -76,7 +76,10 @@ async function heightsWhileOpening(
         await new Promise((r) => requestAnimationFrame(() => r(null)));
         samples.push(el.getBoundingClientRect().height);
       }
-      return { samples, replaced: document.querySelector(sel as string) !== el };
+      return {
+        samples,
+        replaced: document.querySelector(sel as string) !== el,
+      };
     },
     [selector, summarySelector, frames] as const
   );
