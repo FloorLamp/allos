@@ -198,7 +198,7 @@ const MEASUREMENTS = {
   profileId: 7,
   weightUnit: "lb" as const,
   temperatureUnit: "F" as const,
-  showBodyFat: true,
+  showCompositionEntry: true,
   showGrowth: false,
   showHeadCirc: false,
 };

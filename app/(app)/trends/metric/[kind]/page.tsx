@@ -16,7 +16,7 @@ import { groupChartValue } from "@/lib/chart-format";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
 import {
   showHeadCircEntry,
-  showBodyFat,
+  showCompositionEntry,
   showGrowthQuickAdd,
 } from "@/lib/growth-metrics";
 import { getOutcomeGoals, getManualBodyMetricStatedAt } from "@/lib/queries";
@@ -389,7 +389,7 @@ export default async function TrendMetricDetailPage(props: {
     : null;
   const age = getProfileAge(profile.id);
   const entryGates = {
-    showBodyFat: showBodyFat(age),
+    showCompositionEntry: showCompositionEntry(age),
     showGrowth: showGrowthQuickAdd(age),
     showHeadCirc: showHeadCircEntry(ageMonths),
   };
@@ -579,7 +579,7 @@ export default async function TrendMetricDetailPage(props: {
                 : null
             }
             temperatureUnit={getUnitPrefs(login.id).temperatureUnit}
-            showBodyFat={entryGates.showBodyFat}
+            showCompositionEntry={entryGates.showCompositionEntry}
             showGrowth={entryGates.showGrowth}
             showHeadCirc={entryGates.showHeadCirc}
           />

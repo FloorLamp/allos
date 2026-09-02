@@ -27,7 +27,8 @@ import {
   planBodyCharts,
   showGrowthQuickAdd,
   showHeadCircEntry,
-  showBodyFat,
+  showCompositionEntry,
+  showBodyFatDisplay,
   type BodyChartKey,
 } from "@/lib/growth-metrics";
 import {
@@ -353,7 +354,15 @@ export default async function BodySection({
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
-  const plan = planBodyCharts({ ageYears, ageMonths });
+  // Chart membership consults the body-fat series read above, because DISPLAY is a
+  // data question now (#4147) — one read answers the plan, the history column and the
+  // tile census below.
+  const bodyFatShown = showBodyFatDisplay(ageYears, bodyFatAll.length > 0);
+  const plan = planBodyCharts({
+    ageYears,
+    ageMonths,
+    hasBodyFat: bodyFatAll.length > 0,
+  });
   const pins = getBodyCardPins(profile.id);
   const savedRefs = getSavedItems(profile.id);
   const subjectContext = buildTrendsSubjectContext(profile.id, todayStr);
@@ -364,12 +373,12 @@ export default async function BodySection({
   // the star pins or unpins it. Only an ALREADY-pinned tile gets a corner menu here,
   // because that run now owns drag, arrow fallback and direct unstar reachability.
   // Unpinned cards keep #1488's full-width header target untouched.
-  // Body fat % is de-prioritized for a growth-tracked profile. #493: apply the ONE
-  // showBodyFat predicate at EVERY interactive surface — the charts (via plan.keys),
-  // the entry field, and the history column — so "not tracked" is consistent instead
-  // of hidden-from-charts-but-still-enterable. (The raw data export keeps the column,
-  // a complete-record contract distinct from this display choice.)
-  const bodyFatShown = showBodyFat(ageYears);
+  // BODY COMPOSITION, TWO RULES (#4147, narrowing #493). ENTRY is life-stage — a
+  // growth-tracked profile is never prompted for body fat, lean mass or bone mass;
+  // that data arrives by document import. DISPLAY is data presence (`bodyFatShown`
+  // above). Both predicates live in lib/growth-metrics so the charts, the entry panel
+  // and the history column cannot answer this differently.
+  const compositionEntryShown = showCompositionEntry(ageYears);
 
   // Height + head-circumference series (canonical cm, from metric_samples — the same
   // store the growth charts read). Read the WHOLE series (ALL_ROWS) before windowing
@@ -1677,7 +1686,7 @@ export default async function BodySection({
         defaultStatedAt={getManualBodyMetricStatedAt(profile.id, todayStr)}
         weightUnit={wu}
         temperatureUnit={units.temperatureUnit}
-        showBodyFat={bodyFatShown}
+        showCompositionEntry={compositionEntryShown}
         showGrowth={showGrowthQuickAdd(ageYears)}
         showHeadCirc={showHeadCircEntry(ageMonths)}
         centerControl={
@@ -1793,6 +1802,8 @@ export default async function BodySection({
                         convention every other numeric table in the app follows —
                         the digits lining up down the column IS the column. */}
                           <th className="th text-right">Weight</th>
+                          {/* Same DISPLAY rule as the chart (#4147): present when
+                        this profile has a reading, or can enter one. */}
                           {bodyFatShown && (
                             <th className="th text-right">Body fat</th>
                           )}
