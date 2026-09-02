@@ -14,9 +14,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // is an explicit "no free days").
 export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: set,
     save: runSave,
   } = useSaveStatus(new Set(freeDays));
@@ -42,7 +40,7 @@ export default function FreeDaysForm({ freeDays }: { freeDays: number[] }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Free days
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

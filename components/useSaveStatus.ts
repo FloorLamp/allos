@@ -18,9 +18,9 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 // Making the revert each call site's job made it nobody's. Here, `save` restores the
 // last value the server accepted whatever the caller did.
 export interface SaveStatusApi<T> {
-  pending: boolean;
-  savedAt: number;
-  error: boolean;
+  // Exactly <SaveStatus />'s props, grouped so a card spreads them (`{...status}`)
+  // instead of re-plumbing the same three names.
+  status: { pending: boolean; savedAt: number; error: boolean };
   // What the control shows: the destination value from the moment of the tap, then
   // whatever the save settled on.
   value: T;
@@ -68,7 +68,7 @@ export function useSaveStatus<T>(initial: T): SaveStatusApi<T> {
     });
   }, []);
 
-  return { pending, savedAt, error, value, edit: setValue, save };
+  return { status: { pending, savedAt, error }, value, edit: setValue, save };
 }
 
 // The save-on-blur tier rule (issue #794 cluster 10b). Autosave-on-blur is the

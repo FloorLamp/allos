@@ -18,9 +18,7 @@ export default function SmokingHistoryForm({
   history: SmokingHistory;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status: saveStatus,
     value: draft,
     edit,
     save: runSave,
@@ -66,7 +64,7 @@ export default function SmokingHistoryForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Smoking history
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...saveStatus} />
       </div>
 
       <div>

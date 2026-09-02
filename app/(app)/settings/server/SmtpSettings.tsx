@@ -23,9 +23,7 @@ export default function SmtpSettings({
   const router = useRouter();
   const [testTo, setTestTo] = useState("");
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -42,7 +40,7 @@ export default function SmtpSettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -94,7 +92,7 @@ export default function SmtpSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Outbound email (SMTP)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

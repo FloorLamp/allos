@@ -36,13 +36,7 @@ export default function DigestTuneSettings({
 }: {
   demoted: DigestCategory[];
 }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: current,
-    save: runSave,
-  } = useSaveStatus(demoted);
+  const { status, value: current, save: runSave } = useSaveStatus(demoted);
 
   function toggle(category: DigestCategory) {
     const next = toggleDigestDemotion(current, category);
@@ -59,7 +53,7 @@ export default function DigestTuneSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Morning digest lines
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <p
         className="text-xs text-slate-500 dark:text-slate-400"

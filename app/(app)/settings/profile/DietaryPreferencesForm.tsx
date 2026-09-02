@@ -44,9 +44,7 @@ export default function DietaryPreferencesForm({
   embedded?: boolean;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: set,
     save: runSave,
   } = useSaveStatus(new Set(excluded));
@@ -87,7 +85,7 @@ export default function DietaryPreferencesForm({
             Dietary preferences
           </h2>
         )}
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

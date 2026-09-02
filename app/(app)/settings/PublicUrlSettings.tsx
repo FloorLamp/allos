@@ -14,9 +14,7 @@ export default function PublicUrlSettings({
   publicUrl: string;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: url,
     edit: setUrl,
     save: runSave,
@@ -50,7 +48,7 @@ export default function PublicUrlSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Public app URL
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -70,7 +68,12 @@ export default function PublicUrlSettings({
             className="input"
           />
         </div>
-        <button type="button" onClick={save} disabled={pending} className="btn">
+        <button
+          type="button"
+          onClick={save}
+          disabled={status.pending}
+          className="btn"
+        >
           Save
         </button>
       </div>

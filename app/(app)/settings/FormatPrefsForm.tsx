@@ -44,13 +44,7 @@ export default function FormatPrefsForm({
 }: {
   prefs: DisplayFormatPrefs;
 }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: format,
-    save: runSave,
-  } = useSaveStatus(prefs);
+  const { status, value: format, save: runSave } = useSaveStatus(prefs);
 
   function save(next: DisplayFormatPrefs) {
     const fd = new FormData();
@@ -67,7 +61,7 @@ export default function FormatPrefsForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Date &amp; time
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

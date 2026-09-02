@@ -23,13 +23,7 @@ export default function ProfileMuteToggle({
   // fan-out uses; independent of this login's own current mute state.
   lastUnmutedManaging: boolean;
 }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: isMuted,
-    save: runSave,
-  } = useSaveStatus(muted);
+  const { status, value: isMuted, save: runSave } = useSaveStatus(muted);
 
   function toggle(next: boolean) {
     runSave(next, async () => {
@@ -46,7 +40,7 @@ export default function ProfileMuteToggle({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Mute {profileName} for me
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
         <input

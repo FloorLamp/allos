@@ -30,9 +30,7 @@ export default function ServerTelegramSettings({
 }) {
   const formatPrefs = useFormatPrefs();
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -47,7 +45,7 @@ export default function ServerTelegramSettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || registering;
+  const busy = status.pending || registering;
 
   function buildFormData() {
     const fd = new FormData();
@@ -90,7 +88,7 @@ export default function ServerTelegramSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram bot
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

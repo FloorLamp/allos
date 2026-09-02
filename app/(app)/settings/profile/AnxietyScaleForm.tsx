@@ -12,13 +12,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // inferable signal who nonetheless wants the daily rating. Off by default. Saves on
 // change (the #794 Settings autosave-on-change pattern).
 export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: on,
-    save: runSave,
-  } = useSaveStatus(enabled);
+  const { status, value: on, save: runSave } = useSaveStatus(enabled);
 
   function save(next: boolean) {
     const fd = new FormData();
@@ -34,7 +28,7 @@ export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Daily check-in scales
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input

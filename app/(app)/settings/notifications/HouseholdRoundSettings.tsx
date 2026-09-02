@@ -28,9 +28,7 @@ export default function HouseholdRoundSettings({
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: round,
     save: runSave,
   } = useSaveStatus({ isOn: enabled, selected: memberIds });
@@ -81,7 +79,7 @@ export default function HouseholdRoundSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Household dose round
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         At your reminder times, also send the doses due for the people below —

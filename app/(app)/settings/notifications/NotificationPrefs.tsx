@@ -464,9 +464,7 @@ export default function NotificationPrefs({
   // registry row renders and writes generically — adding a kind is a registry entry,
   // not a new piece of hand-wired state.
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: values,
     edit,
     save: runSave,
@@ -691,7 +689,7 @@ export default function NotificationPrefs({
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Schedule
           </h3>
-          <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+          <SaveStatus {...status} />
         </div>
         <div>
           <label className="label">Reminder slots</label>
@@ -800,7 +798,7 @@ export default function NotificationPrefs({
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             Message kinds
           </h3>
-          <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+          <SaveStatus {...status} />
         </div>
         {/* ONE SENTENCE (#3495). The second one described where a control SITS
             ("the box under a channel name"), which stopped being true below the

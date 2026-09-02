@@ -7,14 +7,7 @@ import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: ai,
-    edit,
-    save: runSave,
-  } = useSaveStatus(prefs);
+  const { status, value: ai, edit, save: runSave } = useSaveStatus(prefs);
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
@@ -39,7 +32,7 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           AI automation
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

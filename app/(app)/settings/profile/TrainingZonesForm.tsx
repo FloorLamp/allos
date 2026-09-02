@@ -23,9 +23,7 @@ export default function TrainingZonesForm({
   stepsTarget: number | null;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -58,7 +56,7 @@ export default function TrainingZonesForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Training heart-rate zones
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

@@ -51,9 +51,7 @@ export default function AdvanceDirectivesSettings({
   directives: AdvanceDirectives;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -99,7 +97,7 @@ export default function AdvanceDirectivesSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Code status &amp; directives
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

@@ -13,13 +13,7 @@ import type {
 // Unit display preferences — a LOGIN-scoped setting (the signed-in login's
 // display choice), not a property of the active profile.
 export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: units,
-    save: runSave,
-  } = useSaveStatus(prefs);
+  const { status, value: units, save: runSave } = useSaveStatus(prefs);
 
   function save(next: UnitPrefs) {
     const fd = new FormData();
@@ -37,7 +31,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Units
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

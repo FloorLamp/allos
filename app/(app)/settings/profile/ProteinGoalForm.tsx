@@ -29,9 +29,7 @@ export default function ProteinGoalForm({
   embedded?: boolean;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: level,
     save: runSave,
   } = useSaveStatus<ProteinGoalLevel>(goal);
@@ -61,7 +59,7 @@ export default function ProteinGoalForm({
             Protein goal
           </h2>
         )}
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

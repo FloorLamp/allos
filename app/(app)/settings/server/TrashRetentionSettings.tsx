@@ -17,14 +17,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // on the box for longer, and "how long trash keeps things" would hide that. The
 // value is clamped server-side to [MIN, MAX] days.
 export default function TrashRetentionSettings({ days }: { days: number }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value,
-    edit,
-    save: runSave,
-  } = useSaveStatus(String(days));
+  const { status, value, edit, save: runSave } = useSaveStatus(String(days));
 
   function save() {
     const fd = new FormData();
@@ -40,7 +33,7 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Trash retention
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -73,7 +66,7 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
         <button
           type="button"
           onClick={save}
-          disabled={pending}
+          disabled={status.pending}
           className="btn"
           data-testid="trash-retention-save"
         >

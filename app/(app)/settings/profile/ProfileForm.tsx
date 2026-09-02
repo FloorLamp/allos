@@ -54,9 +54,7 @@ export default function ProfileForm({
   // coordinates were the case that used to need remembering), and a refused save
   // puts every field back at once.
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -133,7 +131,7 @@ export default function ProfileForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Personal
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>

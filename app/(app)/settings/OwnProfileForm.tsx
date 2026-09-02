@@ -19,9 +19,7 @@ export default function OwnProfileForm({
   ownProfileId: number | null;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value,
     save: runSave,
   } = useSaveStatus(ownProfileId != null ? String(ownProfileId) : "none");
@@ -41,7 +39,7 @@ export default function OwnProfileForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Which profile is yours?
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Mark one profile as your own. When you log something for anyone else,

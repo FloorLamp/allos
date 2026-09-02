@@ -48,9 +48,7 @@ export default function BackupSettings({
   };
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -68,7 +66,7 @@ export default function BackupSettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || runningNow;
+  const busy = status.pending || runningNow;
 
   function save() {
     const fd = new FormData();
@@ -121,7 +119,7 @@ export default function BackupSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Automated backups
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -343,7 +341,7 @@ export default function BackupSettings({
           <button
             type="button"
             onClick={verifyOffsite}
-            disabled={pending}
+            disabled={status.pending}
             className="btn-ghost"
           >
             Verify destination

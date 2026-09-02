@@ -14,13 +14,7 @@ export default function MentalHealthPrivacyForm({
 }: {
   shareFull: boolean;
 }) {
-  const {
-    pending,
-    savedAt,
-    error,
-    value: on,
-    save: runSave,
-  } = useSaveStatus(shareFull);
+  const { status, value: on, save: runSave } = useSaveStatus(shareFull);
 
   function save(next: boolean) {
     const fd = new FormData();
@@ -36,7 +30,7 @@ export default function MentalHealthPrivacyForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Mental-health visit privacy
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input

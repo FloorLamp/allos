@@ -68,13 +68,7 @@ export default function RiskFactorsForm({
   reviewed: boolean;
 }) {
   const [reviewed, setReviewed] = useState(reviewedInitial);
-  const {
-    pending,
-    savedAt,
-    error,
-    value: attrs,
-    save: runSave,
-  } = useSaveStatus(attributes);
+  const { status, value: attrs, save: runSave } = useSaveStatus(attributes);
 
   function save(next: RiskAttributes) {
     const fd = new FormData();
@@ -100,7 +94,7 @@ export default function RiskFactorsForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Health risk factors
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -163,7 +157,7 @@ export default function RiskFactorsForm({
             type="button"
             className="btn-ghost btn-sm"
             data-testid="risk-none-apply"
-            disabled={pending}
+            disabled={status.pending}
             onClick={() => save(attrs)}
           >
             None of these apply

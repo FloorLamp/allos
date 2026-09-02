@@ -27,9 +27,7 @@ export default function HomeAssistantNotificationSettings({
   config: ProfileHomeAssistant;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -45,7 +43,7 @@ export default function HomeAssistantNotificationSettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -96,7 +94,7 @@ export default function HomeAssistantNotificationSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Home Assistant)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

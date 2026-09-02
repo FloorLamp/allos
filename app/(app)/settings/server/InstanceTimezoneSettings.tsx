@@ -14,9 +14,7 @@ export default function InstanceTimezoneSettings({
   timezone: string;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: timezone,
     save: runSave,
   } = useSaveStatus(initialTimezone);
@@ -35,7 +33,7 @@ export default function InstanceTimezoneSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Instance-default timezone
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

@@ -23,9 +23,7 @@ export default function LoginTelegramSettings({
   reviewNeeded: boolean;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: draft,
     edit,
     save: runSave,
@@ -38,7 +36,7 @@ export default function LoginTelegramSettings({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -75,7 +73,7 @@ export default function LoginTelegramSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram (your chat)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

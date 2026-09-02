@@ -24,9 +24,7 @@ export default function OfflineSnapshotsSettings({
   enabled: boolean;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: enabled,
     save: runSave,
   } = useSaveStatus(initialEnabled);
@@ -76,7 +74,7 @@ export default function OfflineSnapshotsSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Offline reading
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input

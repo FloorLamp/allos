@@ -26,9 +26,7 @@ export default function EmergencyCardSettings({
   contact: EmergencyContactSetting;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value: card,
     edit,
     save: runSave,
@@ -77,7 +75,7 @@ export default function EmergencyCardSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Card settings
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">

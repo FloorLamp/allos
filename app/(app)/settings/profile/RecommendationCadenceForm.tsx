@@ -20,9 +20,7 @@ export default function RecommendationCadenceForm({
   isAdmin: boolean;
 }) {
   const {
-    pending,
-    savedAt,
-    error,
+    status,
     value,
     save: runSave,
   } = useSaveStatus<RecommendationCadence>(cadence);
@@ -41,9 +39,7 @@ export default function RecommendationCadenceForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           AI recommendations
         </h2>
-        {isAdmin && (
-          <SaveStatus pending={pending} savedAt={savedAt} error={error} />
-        )}
+        {isAdmin && <SaveStatus {...status} />}
       </div>
 
       <div>
