@@ -28,6 +28,8 @@ import {
 } from "./home-assistant-core";
 import { GLYPH } from "./glyphs";
 
+import { recordedSend } from "./delivery-marker";
+
 const log = createLogger("home-assistant");
 
 // The tracked person's short display name (profiles.name) for the payload's
@@ -93,7 +95,9 @@ async function deliver(
     profileName: profileDisplayName(profileId),
     sentAt: new Date().toISOString(),
   });
-  await postWebhook(cfg.webhookUrl, cfg.secret, payload);
+  await recordedSend("home-assistant", [profileId], () =>
+    postWebhook(cfg.webhookUrl, cfg.secret, payload)
+  );
   return true;
 }
 
@@ -102,6 +106,11 @@ export const homeAssistantChannel: NotificationChannel = {
   isConfigured(profileId: number) {
     const cfg = getProfileHomeAssistant(profileId);
     return cfg.enabled && isValidWebhookUrl(cfg.webhookUrl);
+  },
+  owners(profileId: number, msg: NotificationMessage) {
+    return isKindEnabled(msg.kind, getProfileHomeAssistant(profileId).disabledKinds)
+      ? [profileId]
+      : [];
   },
   async send(profileId: number, msg: NotificationMessage) {
     const sent = await deliver(profileId, msg);

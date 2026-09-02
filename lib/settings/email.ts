@@ -1,4 +1,5 @@
 import { writeTx } from "../db";
+import { invalidateDeliveryOutcome } from "../notifications/delivery-marker";
 import { getSetting, setSetting, deleteSetting } from "./kv";
 
 // Global SMTP config (issue #985). Outbound mail uses the operator's OWN SMTP
@@ -82,6 +83,8 @@ export interface SmtpConfigInput {
 
 export function setSmtpConfig(cfg: SmtpConfigInput): void {
   writeTx(() => {
+    // A new relay is a new configuration for every Email owner (#2565).
+    invalidateDeliveryOutcome("email");
     setSetting("smtp_host", cfg.host.trim());
     setSetting("smtp_port", String(parsePort(String(cfg.port))));
     setSetting("smtp_user", cfg.user.trim());

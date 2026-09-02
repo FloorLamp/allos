@@ -179,8 +179,8 @@ your HA webhook URL (`http(s)://<host>:8123/api/webhook/<id>` — HA's built-in
 no custom component needed), optionally set a shared secret, and **Send test**.
 Which reminder kinds it forwards (a household may want doses announced but not
 weekly recaps) is the **HA** column of the _Message kinds_ table on that same
-page. Allos joins the same channel-aware delivery-health
-marker, so a wrong URL / unreachable HA surfaces on **Settings → Server**.
+page. A wrong URL / unreachable HA shows as **Erroring** on that channel's row
+on the same page, and in the delivery failure on **Settings → Server**.
 
 - **Payload.** A JSON POST with `title`, `body`, a machine-readable `kind`
   (`dose`/`escalation`/`refill`/…), the profile display `name`, and — for

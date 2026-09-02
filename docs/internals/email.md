@@ -92,10 +92,9 @@ The three questions the issue existed to decide:
 - **Retry posture — the shared budget, nothing email-specific.** The
   #2145-era note ("email wants more retries — SMTP greylisting") was resolved
   by #2121/#2157's attempt bands: two attempts an hour apart at every tick
-  rate, and an hour outlives a greylist. A failed send throws, `dispatch()`
-  folds it into the `notify_lifecycle` delivery-health marker (set/clear/freeze
-  via `decideMarker`, channel-aware clear #192), and the slot's second band
-  retries. No attempt counter, no new `notify_*` marker, nothing added to
+  rate, and an hour outlives a greylist. A failed send throws; the channel
+  records it on each addressed login's `notify_lifecycle` row (the scoped
+  delivery lifecycle, #2565), and the slot's second band retries. No attempt counter, no new `notify_*` marker, nothing added to
   `SEND_MARKER_REGISTRY`.
 
 The rest is inherited, not re-decided: suppression (the findings bus, quiet
