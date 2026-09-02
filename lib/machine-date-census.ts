@@ -120,6 +120,13 @@ export interface KnownOffender {
  * going away: its one entry was the Upcoming biomarker-retest line, and #3526 fixed
  * the surface by moving the composition to the render boundary — so the census went
  * red on the entry and the entry was deleted, exactly as this comment promised.
+ *
+ * WHOEVER ADDS THE NEXT ENTRY should restore the collision control that went with the
+ * last one: an e2e test that forges a date AND a lab unit into the entry's own testid
+ * and asserts the ledger licenses only the date. It needs a registered entry to have a
+ * subject at all, and a committed skip is not allowed here (lib/__tests__/e2e-hygiene),
+ * so it was deleted rather than parked. Its pure half lives on in
+ * lib/__tests__/machine-date-census.test.ts, which loops over whatever is registered.
  */
 export const CENSUS_KNOWN_OFFENDERS: KnownOffender[] = [];
 

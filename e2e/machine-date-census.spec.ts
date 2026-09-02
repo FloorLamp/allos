@@ -745,57 +745,6 @@ test("(3) the census catches synthetic offenders planted in the live DOM", async
   expect(dirty.examined).toBe(clean.examined + 1);
 });
 
-test("a known date offender cannot suppress a collocated lab-unit hit", async ({
-  page,
-}) => {
-  test.slow();
-  // The ledger is EMPTY since #3526 fixed its last entry's surface, and this control
-  // needs a registered entry to forge a collision against. It is skipped rather than
-  // deleted because it comes back the day an entry does — deleting it would quietly
-  // remove the proof that a licensed date hit does not shade its neighbours.
-  test.skip(
-    CENSUS_KNOWN_OFFENDERS.length === 0,
-    "no registered date offender to collide with — the ledger is empty"
-  );
-  const known = CENSUS_KNOWN_OFFENDERS[0]!;
-  await page.goto(known.route);
-  await expect(page.getByRole("main")).toBeVisible();
-
-  await page.evaluate(
-    ({ testId }) => {
-      const main = document.querySelector("main");
-      const p = document.createElement("p");
-      // Same route + testid as the real date ledger entry, deliberately. Only the
-      // forged DATE earns that entry; the adjacent unit must still fail the sweep.
-      p.setAttribute("data-testid", testId);
-      p.textContent = "Forged collision: 2014-03-09 · 1.20 ug / mL";
-      main?.appendChild(p);
-    },
-    { testId: known.testId }
-  );
-
-  const dirty = await census(page, BROWSER_PATTERNS);
-  const forged = dirty.offenders.filter(
-    (offender) =>
-      offender.testId === known.testId &&
-      (offender.text === "2014-03-09" || offender.text === "ug")
-  );
-  expect(forged.map((offender) => [offender.kind, offender.text])).toEqual([
-    ["date", "2014-03-09"],
-    ["lab-unit", "ug"],
-  ]);
-  expect(
-    forged
-      .filter((offender) => knownMachineDateOffender(known.route, offender))
-      .map((offender) => [offender.kind, offender.text])
-  ).toEqual([["date", "2014-03-09"]]);
-  expect(
-    forged
-      .filter((offender) => !knownMachineDateOffender(known.route, offender))
-      .map((offender) => [offender.kind, offender.text])
-  ).toEqual([["lab-unit", "ug"]]);
-});
-
 test("the exemptions hold only while their premises do (#3492 item 3)", async ({
   page,
 }) => {
