@@ -24,6 +24,7 @@ import { weekWindow } from "@/lib/week-window";
 import { shiftDateStr, daysBetweenDateStr } from "@/lib/date";
 import type { WeekStart } from "@/lib/settings";
 import { plainBody } from "@/lib/notifications/rich-text";
+import { composeRecapNarrativeOffline } from "@/lib/recap-narrative";
 
 const TODAY = "2026-07-09"; // a Thursday
 
@@ -491,6 +492,47 @@ describe("buildRecap", () => {
       baseInput({ weights: [{ date: "2026-07-08", weightKg: 73 }] })
     );
     expect(recap.isEmpty).toBe(false);
+  });
+
+  // A DELTA IS EVIDENCE, and #4228 A is what made this reachable. The emptiness test
+  // read adherence only through `due > 0`, which was near-universal for anyone with an
+  // active pushed item — so a live delta beside a silent adherence line was a pairing
+  // no shipped fixture produced. The completed-day walk makes `due === 0` legitimate
+  // (a window whose only due day is today), and the delta is then the whole recap:
+  // suppressing it drops the weekly notification and, worse, makes the offline
+  // narrative say the period is "quiet" over a recap holding a named miss run.
+  //
+  // Unlike a target verdict — a yardstick, deliberately not evidence above — a delta
+  // is an OBSERVED event: a streak that broke, or a lapse that ended.
+  it("a live intake delta is evidence, even when adherence is silent (#4228 A)", () => {
+    const recap = buildRecap(
+      baseInput({ intakeDeltaLine: "Missed: Magnesium (test) for 3 days" })
+    );
+    expect(recap.adherence).toBeUndefined();
+    expect(recap.isEmpty).toBe(false);
+    // All three consumers of the flag, at the boundary each one guards.
+    expect(renderRecapMessage(recap, "Test")).not.toBeNull();
+    expect(plainBody(renderRecapMessage(recap, "Test")!.body)).toContain(
+      "Missed: Magnesium (test) for 3 days"
+    );
+    expect(composeRecapNarrativeOffline(recap, "week")).not.toContain("quiet");
+  });
+
+  it("reads an EMPTY delta line as no delta — the push's own predicate", () => {
+    // `intakeDeltaLine` is `string | null | undefined`; the line push tests it for
+    // truthiness, so "" must not count as evidence for a line that never renders.
+    const recap = buildRecap(baseInput({ intakeDeltaLine: "" }));
+    expect(recap.lines).toEqual([]);
+    expect(recap.isEmpty).toBe(true);
+  });
+
+  it("stays empty when the delta line is the only thing absent", () => {
+    // The converse, so the clause above cannot be satisfied by a constant: the same
+    // input WITHOUT the delta is still the empty week the flag exists to name.
+    const recap = buildRecap(baseInput());
+    expect(recap.isEmpty).toBe(true);
+    expect(renderRecapMessage(recap, "Test")).toBeNull();
+    expect(composeRecapNarrativeOffline(recap, "week")).toContain("quiet");
   });
 });
 

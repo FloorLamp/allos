@@ -1450,10 +1450,24 @@ export function buildRecap(input: RecapInput): Recap {
   // in it is one where "0 of 2 targets met" would be the entire message — a send whose
   // only content is a failure, on a week the person may have spent ill, travelling or
   // deliberately resting. The verdict is a yardstick for news, never the news.
+  //
+  // A DELTA IS THE OTHER KIND, and it has to be named because #4228 A made the omission
+  // reachable. This test read intake only through `adherence.due > 0`, which was near
+  // enough universal for any profile with an active pushed item — so "a live delta with
+  // a silent adherence line" was a state nothing produced. The completed-day walk makes
+  // `due === 0` legitimate (a window whose only due day is today), and the delta is then
+  // the whole recap: without this clause the send is dropped and the offline narrative
+  // calls the period "quiet — no workouts, adherence, or weigh-ins logged yet" while the
+  // recap holds "Missed: Magnesium for 3 days". Unlike a verdict, a delta is an OBSERVED
+  // event — a streak that broke, or a lapse that ended — which is exactly the evidence
+  // this test asks for. Spelled as the LINE PUSH spells it (`if (input.intakeDeltaLine)`
+  // above), not as `!= null`: the field is `string | null | undefined`, so an empty
+  // string would otherwise count as evidence for a line that never renders.
   const isEmpty =
     illnessDays === 0 &&
     workoutCount === 0 &&
     (input.adherence == null || input.adherence.due === 0) &&
+    !input.intakeDeltaLine &&
     input.weights.length === 0 &&
     (food == null || food.daysLogged === 0) &&
     foodHabits.length === 0;

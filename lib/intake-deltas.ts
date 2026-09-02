@@ -272,6 +272,12 @@ function half(
   const suffixes = items.map((d) => runSuffix(d, window));
   const uniform = items.length > 1 && suffixes.every((r) => r === suffixes[0]);
   if (items.length > INTAKE_DELTA_MAX_NAMED) {
+    // KNOWN GAP, DELIBERATELY NOT PAPERED OVER: the aggregate reads `days` and never
+    // reaches `runSuffix`'s day-naming path, so four single-occurrence misses on four
+    // DIFFERENT days all render "4 supplements for 1 day" — identical with or without a
+    // report window, and one shared event where the data says four. The ruling was
+    // written for a stack-wide lapse and does not reach this shape; inventing copy for
+    // it here would be deciding it by accident. Raised for the owner (#4228 C).
     const runs = items.map((d) => d.days);
     const lo = Math.min(...runs);
     const hi = Math.max(...runs);
