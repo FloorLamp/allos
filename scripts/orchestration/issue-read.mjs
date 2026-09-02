@@ -75,6 +75,56 @@ function banner(ch, msg) {
   console.log(`\n${ch.repeat(78)}\n${msg}\n${ch.repeat(78)}`);
 }
 
+// A CLAIM THAT SPANS TWO ITEMS NEEDS A READ THAT SPANS TWO ITEMS (#3365, 2026-09-02).
+//
+// This tool already reconciles one item's body against its own comments. It could
+// not see the failure that actually happened: an unparking comment on #3365 cited
+// #4076's BODY rulings as the thing that unblocked the remainder, while #4076's
+// NEWEST COMMENT — posted three and a half hours earlier — said the conversion had
+// already shipped. A lane was dispatched to rebuild code that had been on main for
+// three days. It is the body-vs-comment trap one level up: the stale note and the
+// live record sat on DIFFERENT items, so reconciling either item alone was
+// perfectly consistent.
+//
+// So whenever an item's text leans on another item, print that item's state and the
+// date of its newest comment. Not the content — that would bury the read — just
+// enough that "waits on #N" cannot be believed without seeing whether #N has moved.
+const CROSS_REF =
+  /(?:waits? on|blocked (?:by|on)|depends? on|dependent on|gated (?:by|on)|tracked in|sequences? on|deferred to)\s+#(\d+)/gi;
+
+function crossRefNotes(text, self) {
+  const seen = new Set();
+  for (const m of text.matchAll(CROSS_REF)) {
+    const n = Number(m[1]);
+    if (n !== self) seen.add(n);
+  }
+  const notes = [];
+  for (const n of [...seen].slice(0, 8)) {
+    let other;
+    try {
+      other = get(`/issues/${n}`);
+    } catch {
+      notes.push(`  #${n} — could not read`);
+      continue;
+    }
+    let newest = null;
+    try {
+      const cs = get(`/issues/${n}/comments?per_page=100`);
+      newest = cs.length ? cs[cs.length - 1] : null;
+    } catch {
+      // comments unreadable; the state line is still worth printing
+    }
+    const state = `${other.state}${other.state_reason ? `/${other.state_reason}` : ""}`;
+    notes.push(
+      `  #${n} ${state} — body updated ${other.updated_at}` +
+        (newest
+          ? `, NEWEST COMMENT ${newest.created_at} by ${newest.user.login}`
+          : `, no comments`)
+    );
+  }
+  return notes;
+}
+
 function readOne(n) {
   const issue = get(`/issues/${n}`);
   const comments = get(`/issues/${n}/comments?per_page=100`);
@@ -188,6 +238,22 @@ function readOne(n) {
       banner("-", `COMMENT by ${c.user.login} at ${c.created_at}`);
       console.log(c.body ?? "(empty)");
     }
+  }
+
+  const xrefs = crossRefNotes(
+    body + "\n" + comments.map((c) => c.body ?? "").join("\n"),
+    n
+  );
+  if (xrefs.length) {
+    banner(
+      "!",
+      `THIS ITEM LEANS ON ${xrefs.length} OTHER ITEM(S). A claim about #N is only as fresh\n` +
+        `as #N's NEWEST COMMENT — read it before believing "waits on", "deferred to" or\n` +
+        `"tracked in". Measured 2026-09-02: a lane was dispatched to rebuild code that had\n` +
+        `shipped three days earlier, because the unblocking ruling was read from one item's\n` +
+        `body while another item's newest comment already said it was done.`
+    );
+    for (const line of xrefs) console.log(line);
   }
 
   banner(
