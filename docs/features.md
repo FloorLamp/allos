@@ -2739,7 +2739,7 @@ until you tap it, taking the supplement again makes it go away on its own, and t
 app never suggests moving anything _up_.
 
 Your daily digest and weekly recap lead with **what changed** rather than a bare
-fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — covering
+fraction — "Missed: magnesium for 3 days · Resumed: vitamin D after 2 days missed" — covering
 only the things you have actually committed to. A quiet week says nothing at all;
 the taken/due count stays alongside as supporting detail.
 
