@@ -3775,8 +3775,12 @@ export async function pickComposedWhen(
     // Year before month: the month options are DISABLED outside the control's
     // bounds, and a month that is out of range in the year on screen may be in
     // range in the year being moved to.
-    await panel.getByLabel("Year").selectOption(String(year));
-    await panel.getByLabel("Month").selectOption(String(month - 1));
+    // Exact names: the calendar's own previous/next buttons are "Previous month"
+    // and "Next month", which a substring match on "Month" also picks up.
+    await panel.getByLabel("Year", { exact: true }).selectOption(String(year));
+    await panel
+      .getByLabel("Month", { exact: true })
+      .selectOption(String(month - 1));
     // By the cell's own accessible date name (#3744), not the bare numeral — the
     // grid shows the neighbouring months' days too.
     await panel
@@ -3808,6 +3812,8 @@ export async function pickComposedWhen(
         .click();
   }
 
-  await settledClick(page, page.getByTestId(`${testId}-when-done`));
+  // Done is a pure client dismissal — it posts nothing, so what it is waited on
+  // for is the panel going away.
+  await hydratedClick(page, page.getByTestId(`${testId}-when-done`));
   await expect(panel).toHaveCount(0);
 }

@@ -303,6 +303,18 @@ export default function WhenControl({
 //
 // KNOWN COST, ACCEPTED (#4218): the phone sheet is tall, calendar above wheel,
 // and it ships as one scrollable sheet rather than a two-step.
+//
+// FROM `md` UP THE TWO SIT SIDE BY SIDE, which is not a second authoring of
+// anything — it is one content tree with a `md:flex-row` on it (#2305 forbids a
+// hidden twin, not a responsive layout). It has to: an anchored popover is
+// `position: fixed` and `AnchoredPanel` does not cap its height, so a stacked
+// calendar-over-wheel panel opened from a control low on the page runs off the
+// bottom of the viewport with its Done button on the other side of the edge.
+// Stacked is right on a phone, where the sheet scrolls and the width is the
+// screen's.
+/** The popover's width: a 16rem calendar beside the wheel, with the gap and padding. */
+const PANEL_WIDTH = 480;
+
 function WhenDoor({
   date,
   hhmm,
@@ -366,25 +378,29 @@ function WhenDoor({
         role="dialog"
         testId={`${testId}-when-panel`}
         sheetTestId={`${testId}-when-sheet`}
-        fallbackWidth={288}
-        panelClassName="w-72 p-3"
+        fallbackWidth={PANEL_WIDTH}
+        panelClassName="w-120 p-3"
         popoverZIndexClass="z-70"
         sheetZIndexClass="z-70"
         escapeLayer
       >
         {() => (
           <>
-            <MonthCalendar
-              binding={{
-                kind: "selectable",
-                value: date,
-                min,
-                max,
-                onSelect: onDate,
-              }}
-            />
-            <div className="mt-2 border-t border-black/10 pt-2 dark:border-white/10">
-              <TimeWheel value={hhmm} onChange={onHhmm} />
+            <div className="md:flex md:items-start md:gap-3">
+              <div className="md:w-64 md:shrink-0">
+                <MonthCalendar
+                  binding={{
+                    kind: "selectable",
+                    value: date,
+                    min,
+                    max,
+                    onSelect: onDate,
+                  }}
+                />
+              </div>
+              <div className="mt-2 border-t border-black/10 pt-2 md:mt-0 md:grow md:border-t-0 md:border-l md:pt-0 md:pl-3 dark:border-white/10">
+                <TimeWheel value={hhmm} onChange={onHhmm} />
+              </div>
             </div>
             <div className="mt-2 flex justify-end border-t border-black/10 pt-2 text-sm dark:border-white/10">
               <button
