@@ -267,11 +267,19 @@ export function detectRightSizeCandidate(
 }
 
 // Every right-size candidate across a profile's targets, FURTHEST FROM TARGET FIRST
-// (#4069) — the shortfall `floor - best`, in the target's own units. The family's cap
-// truncates on this order, and the floor someone is furthest under is the one most
-// worth re-sizing; the label's first letter is not a relevance signal. Ties keep the
-// pre-ruling stable order (label, then target id), so determinism survives. The
-// caller applies the shared findings-bus suppression filter.
+// (#4069) — the RELATIVE shortfall, the share of the floor left unmet. The family's
+// cap truncates on this order, and the floor someone is furthest under is the one most
+// worth re-sizing; the label's first letter is not a relevance signal.
+//
+// Relative rather than the absolute gap (owner ruling 2026-09-02): floors are declared
+// in different units and different sizes, so only the share is comparable across them,
+// and it is how this family already thinks — RIGHTSIZE_MAX_ATTAINMENT above gates on a
+// ratio too. A 3x floor met zero times is wholly unmet and outranks a 7x floor met
+// once, which the absolute gap had the other way round. `floor >= 1` is established
+// before a candidate exists, so the division is total.
+//
+// Ties keep the pre-ruling stable order (label, then target id), so determinism
+// survives. The caller applies the shared findings-bus suppression filter.
 export function detectRightSizeCandidates(
   inputs: readonly RightSizeInput[]
 ): RightSizeCandidate[] {
@@ -280,7 +288,7 @@ export function detectRightSizeCandidates(
     .filter((c): c is RightSizeCandidate => c != null)
     .sort(
       (a, b) =>
-        b.floor - b.best - (a.floor - a.best) ||
+        (b.floor - b.best) / b.floor - (a.floor - a.best) / a.floor ||
         a.label.localeCompare(b.label) ||
         a.targetId - b.targetId
     );
