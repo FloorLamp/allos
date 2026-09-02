@@ -81,9 +81,10 @@ test("PRN med with ONLY a minimum interval still shows redose guidance (#1458)",
   );
   await expect(line).toBeVisible();
   await expect(line).toContainText("Next dose in ~");
-  // The count fragment degrades to a bare "N today" — no invented ceiling, and the
-  // window is freshly closed so it must never read as a reached maximum.
-  await expect(line).toContainText("1 today");
+  // The count fragment degrades to a bare "N in 24h" — no invented ceiling, and the
+  // window is freshly closed so it must never read as a reached maximum. The count
+  // names the window it was taken over (#4686) even with no ceiling to compare it to.
+  await expect(line).toContainText("1 in 24h");
   await expect(line).not.toContainText(" of ");
   await expect(line).not.toContainText("Max reached");
 });
