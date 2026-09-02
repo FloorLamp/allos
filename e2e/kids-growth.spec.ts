@@ -174,9 +174,12 @@ test.describe.serial("kids growth trends", () => {
       page.getByRole("heading", { name: "Height", exact: true })
     ).toBeVisible();
 
-    // Body fat % is de-prioritized out of a child's body census entirely — the chart
-    // heading AND (issue #493) the entry field are both gone, so "not tracked" is
-    // consistent instead of hidden-from-charts-but-still-enterable.
+    // The whole body-composition class is closed for ENTRY on a child's profile
+    // (#493, widened to lean and bone mass by #4147) — a growing profile is never
+    // prompted for these figures; a caregiver's DEXA report arrives by import. DISPLAY
+    // is a data question since #4147, and Riley has no composition reading of any
+    // kind, so the chart heading is absent too. Both halves are asserted because they
+    // now have different causes.
     await expect(page.getByRole("heading", { name: "Body Fat" })).toHaveCount(
       0
     );
@@ -284,7 +287,10 @@ test.describe.serial("kids growth trends", () => {
     // Direct metric URLs must preserve the same life-stage gates as the combined
     // form. A hidden child metric cannot regain a Log Manually action by drilling
     // straight into its detail page.
-    for (const metric of ["body-fat", "hrv"]) {
+    // The composition class travels together (#4147): lean and bone mass were
+    // reachable here while body fat was not, which is the inconsistency that issue
+    // was filed about.
+    for (const metric of ["body-fat", "lean-mass", "bone-mass", "hrv"]) {
       await page.goto(`/trends/metric/${metric}`);
       await expect(page.getByTestId("metric-measurement-toggle")).toHaveCount(
         0
@@ -363,8 +369,9 @@ test.describe.serial("kids growth trends", () => {
     expect(await form.getAttribute("data-life-stage")).toBe("adult");
     await expect(form.getByLabel("Height", { exact: true })).toHaveCount(0);
 
-    // Body fat % is still charted AND enterable for an adult (#493); height/head-circ
-    // are not surfaced as tiles.
+    // Body fat % is still charted AND enterable for an adult — untouched by #4147,
+    // which changed only what a growth-tracked profile sees; height/head-circ are not
+    // surfaced as tiles.
     await expect(page.getByRole("heading", { name: "Body Fat" })).toBeVisible();
     await expect(form.getByLabel("Body Fat", { exact: true })).toBeVisible();
     await expect(
