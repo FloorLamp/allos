@@ -151,8 +151,12 @@ describe("AI extraction lands imaging studies through the persist core", () => {
     // report labels as one. This fixture's study labels none, so the whole body is
     // the narrative and every finding surface reads it through studyFindingText.
     expect(mri.impression).toBeNull();
-    expect(mri.report_narrative).toBe("Small joint effusion. No meniscal tear.");
-    expect(studyFindingText(mri)).toBe("Small joint effusion. No meniscal tear.");
+    expect(mri.report_narrative).toBe(
+      "Small joint effusion. No meniscal tear."
+    );
+    expect(studyFindingText(mri)).toBe(
+      "Small joint effusion. No meniscal tear."
+    );
     expect(mri.indication).toBe("Knee pain");
 
     const cxr = all.find((r) => r.modality === "x-ray")!;

@@ -1454,7 +1454,10 @@ describe("extractionToPersistInput — imaging report body (#4732)", () => {
     ],
     ["no report at all leaves both fields empty", null, null, null],
   ])("%s", (_name, body, impression, narrative) => {
-    expect(shape(body)).toMatchObject({ impression, report_narrative: narrative });
+    expect(shape(body)).toMatchObject({
+      impression,
+      report_narrative: narrative,
+    });
   });
 
   it("bounds BOTH fields — neither is ever written raw", () => {

@@ -676,8 +676,7 @@ describe("one-line weekly targets (#2579-E)", () => {
 describe("itemDetailText", () => {
   const TODAY = "2026-03-10";
   const retestItem = {
-    detail:
-      "Last tested 2025-05-29 (9mo ago) · retest every 6mo",
+    detail: "Last tested 2025-05-29 (9mo ago) · retest every 6mo",
     retest: {
       effectiveDate: "2025-05-29",
       agoMonths: 9,
@@ -691,11 +690,14 @@ describe("itemDetailText", () => {
     // A login that ASKS for ISO gets ISO — the machine shape is a choice here, not
     // the absence of one, which is exactly what the census rule is about.
     ["iso", "Last tested 2025-05-29 (9mo ago) · retest every 6mo"],
-  ] as const)("renders the last-tested day in the %s shape", (dateFormat, want) => {
-    expect(
-      itemDetailText(retestItem, TODAY, { dateFormat, timeFormat: "24h" })
-    ).toBe(want);
-  });
+  ] as const)(
+    "renders the last-tested day in the %s shape",
+    (dateFormat, want) => {
+      expect(
+        itemDetailText(retestItem, TODAY, { dateFormat, timeFormat: "24h" })
+      ).toBe(want);
+    }
+  );
 
   it("passes every other row's detail through untouched", () => {
     // No `retest`, so nothing to re-compose — a producer that never heard of prefs
