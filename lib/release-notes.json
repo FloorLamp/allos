@@ -95,6 +95,27 @@
           "issues": [4069]
         },
         {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A dose can be logged for yesterday from the illness card",
+          "issues": [4691]
+        },
+        {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A temperature typed under Yesterday is saved to yesterday",
+          "issues": [4691]
+        },
+        {
+          "pr": 4721,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The fever-free countdown counts from a normal reading, not from silence",
+          "issues": [4685]
+        },
+        {
           "pr": 4727,
           "title": "Food uses one form and one row control everywhere",
           "kind": "feature",
@@ -142,6 +163,27 @@
           "kind": "fix",
           "category": "Reminders",
           "issues": [4379]
+        },
+        {
+          "pr": 4728,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "One flu shot from overlapping documents appears once, in Timeline and search",
+          "issues": [4366]
+        },
+        {
+          "pr": 4728,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "An imported report's impression shows the finding, not the whole document",
+          "issues": [4366]
+        },
+        {
+          "pr": 4737,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A settings toggle that fails to save goes back to its saved value",
+          "issues": [4688]
         }
       ]
     },
