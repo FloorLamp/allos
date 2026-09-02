@@ -429,18 +429,19 @@ export function geometryProbe(opts) {
     //
     // WHO THE PEOPLE ARE IS THE PAGE'S OWN ANSWER, NOT AN ORTHOGRAPHIC GUESS. The
     // shell's profile switcher renders one row per accessible profile, and the name
-    // span is the only span in that row without a `data-testid`
-    // (components/ProfileSwitcherPanel.tsx). The alternative was a
-    // capitalized-words heuristic, and it fails on this app's own data in the
-    // direction that matters: it calls `Atorvastatin` and `Supply Parent Loratadine`
-    // proper names, which is exactly the noise this class cannot afford, while a real
-    // name like `o'Brien` or `Profile 2` does not fit the shape at all.
+    // is the only span in that row without a `data-testid`
+    // (components/ProfileSwitcherPanel.tsx). A capitalized-words heuristic was the
+    // alternative and it fails on this app's own data in the direction that matters:
+    // `Atorvastatin` (scripts/seed.ts) and `Supply Parent Loratadine`
+    // (e2e/logins/intake.ts) both read as proper names to it, which is precisely the
+    // noise this class cannot afford, while a name carrying a lowercase particle or a
+    // digit does not fit the shape at all.
     //
-    // THE ROSTER IS READ FROM THE WHOLE DOCUMENT — the switcher lives in the shell —
-    // while the FINDINGS stay scoped to `<main>` like every other probe here. A
+    // The roster is read from the WHOLE DOCUMENT — the switcher lives in the shell —
+    // while the findings stay scoped to `<main>` like every other probe here. A
     // single-profile instance renders no switcher, so the roster is empty and this
-    // class is silent; `personNamesSeen` is reported beside the findings so that
-    // silence is legible as "nobody to name" rather than as "no name was cut".
+    // class is silent; `personNamesSeen` rides beside the findings so that silence
+    // reads as "nobody to name" rather than as "no name was cut".
     const flatText = (el) => (el.textContent ?? "").replace(/\s+/g, " ").trim();
     const personNames = new Set();
     for (const el of document.querySelectorAll(
