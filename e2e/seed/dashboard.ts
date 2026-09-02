@@ -1156,12 +1156,17 @@ export function seedHouseholdFolds(): void {
 //     and past the weight card's own 90-day window, which is exactly why the card used
 //     to answer this profile with the onboarding CTA "No weigh-ins yet".
 //   • sleep  — nightly samples ending 150 days ago, from a source that then went quiet.
-//   • vitals — a blood pressure and a resting heart rate 200 days back, and labs a
-//     panel 400 days back. Both are DELIBERATELY not collapsible: those cards render
-//     their latest value at any age under a declared presentation floor (#1216/#2303),
-//     so the spec can assert they stay full-height and keep their numbers while their
-//     two neighbours collapse. Without them the fixture would only be able to show that
+//   • vitals — a blood pressure 200 days back and a resting heart rate 60 days back,
+//     and labs a panel 400 days back. Each of the three is DELIBERATELY past its own
+//     presentation floor and DELIBERATELY inside its own dormancy horizon, so the spec
+//     can assert they stay full-height and keep their numbers while their two
+//     neighbours collapse. Without them the fixture would only be able to show that
 //     collapsing happens, never that it stops.
+//     THE TWO VITAL AGES ARE NOT ONE AGE (#3250). Resting HR's horizon is 90 days and
+//     blood pressure's is 365, so the 200 days that puts a cuff reading squarely in the
+//     stale-but-shown span puts a wearable stream 110 days past dormant. 60 days holds
+//     the stream in the same span its neighbour occupies: four times its 14-day floor,
+//     and a month short of the collapse.
 //
 // The ABSENT control comes free on the same page: this profile has never logged food,
 // so `nutrition-today` renders the onboarding CTA right beside the collapsed lines.
@@ -1185,10 +1190,11 @@ export function seedDormantDomains(): void {
   for (let offset = 163; offset >= 150; offset--) {
     insWeight.run(id, shiftDateStr(on, -offset), 81.5 - (163 - offset) * 0.1);
   }
-  // Vitals: one resting heart rate and one blood pressure, 200 days back.
+  // Vitals: a blood pressure 200 days back, and a resting heart rate 60 days back —
+  // each stale under its own floor and awake under its own horizon (#3250).
   db.prepare(
     `INSERT INTO body_metrics (profile_id, date, resting_hr, source) VALUES (?, ?, 58, 'manual')`
-  ).run(id, shiftDateStr(on, -200));
+  ).run(id, shiftDateStr(on, -60));
   const insBp = db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, value_num, unit, canonical_name)
@@ -1249,6 +1255,6 @@ export function seedDormantDomains(): void {
   }
   seedMemberLogin(E2E_LOGIN_DORMANT, id, "read");
   console.log(
-    `e2e: seeded dormant-domain fixture — profile ${id} (${DORMANT_DOMAINS_PROFILE}): weight/sleep quiet 150d, vitals 200d, labs 400d (#2652)`
+    `e2e: seeded dormant-domain fixture — profile ${id} (${DORMANT_DOMAINS_PROFILE}): weight/sleep quiet 150d, bp 200d, resting hr 60d, labs 400d (#2652)`
   );
 }
