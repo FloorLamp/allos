@@ -6,6 +6,7 @@ import {
 } from "@/lib/training-week-spine";
 import { ACTIVITY_TYPES } from "@/lib/types";
 import VisualizationDetails from "@/components/VisualizationDetails";
+import { StateLegend } from "@/components/StateCells";
 
 // THE WEEK SPINE (#2566, Viz 1) — Training → Overview's week, as a band.
 //
@@ -126,25 +127,17 @@ export default function WeekSpine({ spine }: { spine: WeekSpineData }) {
       </p>
 
       {present.length > 0 && (
-        <ul
-          className="mt-2 flex flex-wrap gap-x-3 gap-y-1"
-          data-testid="week-spine-legend"
-        >
-          {present.map((type) => (
-            <li
-              key={type}
-              data-testid="week-spine-legend-item"
-              data-type={type}
-              className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
-            >
-              <span
-                aria-hidden="true"
-                className={`h-2.5 w-2.5 rounded-xs ${chartActivityTypeBlock[type].blockClass}`}
-              />
-              {WEEK_SPINE_TYPE_LABEL[type]}
-            </li>
-          ))}
-        </ul>
+        <StateLegend
+          label="Activity types this week"
+          testId="week-spine-legend"
+          itemTestId="week-spine-legend-item"
+          className="mt-2"
+          items={present.map((type) => ({
+            key: type,
+            tone: chartActivityTypeBlock[type].blockClass,
+            label: WEEK_SPINE_TYPE_LABEL[type],
+          }))}
+        />
       )}
     </div>
   );
