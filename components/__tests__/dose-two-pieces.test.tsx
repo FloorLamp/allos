@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
@@ -596,4 +597,71 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     expect(fd.offset).toBe("now");
     expect(fd.date).toBeUndefined();
   });
+});
+
+// ADDS FOLLOW THE SURFACE ON A SUBJECT-SCOPED CONTAINER (#4693, amending #4424
+// ruling 4). `/medications/[id]` names one profile, so its dose-history panel writes
+// that profile — and the panel has TWO doors onto the same backfill, the form and the
+// missed-day offer, which build their FormData separately. A subject threaded to one
+// and not the other files half the page on the caregiver, and nothing on screen says
+// so, which is why both doors are driven here rather than the more convenient one.
+//
+// The absent case is the other half of the claim and not a formality: it is every
+// single-subject mount in the app, and it is what makes the action's gate fall back to
+// the acting profile instead of the panel quietly naming a subject everywhere.
+describe("the dose-history panel posts its container's subject (#4693)", () => {
+  const PANEL = {
+    itemId: 7,
+    itemName: "Creatine",
+    product: null,
+    doses: [{ id: 11, amount: "5 g", time_of_day: "08:00" }],
+    asNeeded: false,
+    history: [],
+  };
+
+  it.each([
+    { mount: "a subject-scoped container", subjectProfileId: 42, posted: "42" },
+    {
+      mount: "a single-subject page",
+      subjectProfileId: undefined,
+      posted: undefined,
+    },
+  ])(
+    "$mount posts profile_id=$posted from the form AND the missed-day offer",
+    async ({ subjectProfileId, posted: expected }) => {
+      // A strip with one settled missed day, so the offer row is offered at all; the
+      // trailing pending day keeps `missedDoseDays` from reading the miss as "today".
+      render(
+        <DoseHistoryPanel
+          {...PANEL}
+          strip={[
+            { date: YESTERDAY, state: "missed" },
+            { date: TODAY, state: "missed" },
+          ]}
+          maxDate={TODAY}
+          defaultTime="08:00"
+          courseBound={false}
+          subjectProfileId={subjectProfileId}
+        />
+      );
+
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("dose-history-add"))
+      );
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("dose-backfill-offer"))
+      );
+      expect(fields().profile_id).toBe(expected);
+
+      posted.length = 0;
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("dose-history-add"))
+      );
+      await act(async () =>
+        fireEvent.click(screen.getByTestId("dose-backfill-other"))
+      );
+      await submitForm();
+      expect(fields().profile_id).toBe(expected);
+    }
+  );
 });
