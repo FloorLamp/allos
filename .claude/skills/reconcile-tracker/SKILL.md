@@ -33,7 +33,7 @@ These are enforced by construction rather than by your compliance:
   a body PATCH (payload built from one field, `body`) and a comment POST
   that announces a body edit on an issue with READERS — a body PATCH is
   silent, and a comment chain or in-flight lane keeps the pre-edit text.
-- The tool comments itself when the chain is non-empty; an WORKER
+- The tool comments itself when the chain is non-empty; a WORKER
   invoking this pass adds `--notify 123,456` with the roster's in-flight
   issues so a quiet-but-dispatched issue is announced too.
 - Reads go through MCP's scoped read tools rather than REST, the deliberate
