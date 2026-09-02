@@ -243,13 +243,11 @@ export async function logFoodServing(
     // quick-log sheet, all posting THIS action — so the surface rides the post.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     undefined,
-    // WHERE THIS SERVING LANDS, reduced to ONE fact HERE (#4729). The bar posts a tab
-    // AND, sometimes, a stated hour; the core used to take both and drop the tab
-    // itself. The rule is unchanged and is #2269's — a statement the user made
-    // supersedes the tab they happened to be looking at — it is just applied at the
+    // ONE PLACEMENT, REDUCED HERE (#4729). The bar posts a tab and sometimes a stated
+    // hour; the core used to take both and drop the tab. The rule is unchanged — it is
+    // #2269's, a statement supersedes the tab it was made on — only applied at the
     // boundary that can still see the gesture, so nothing below can be handed a pair.
-    // A refused or absent statement leaves the declaration standing, which is what
-    // "degrades to the declaration, not to nothing" has always meant.
+    // A refused or absent statement leaves the declaration standing.
     //
     // 'stated' for both shapes: "now" and "13:00" are equally a human answering the
     // question. 'tap' belongs to the Telegram button, whose declared contract IS "now".

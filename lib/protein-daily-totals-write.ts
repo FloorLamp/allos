@@ -74,15 +74,12 @@ export function addProteinGramsCore(
   // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
   // Injectable so tests can seed a specific slot; production passes the default.
   loggedAt: string = instantNow(),
-  // WHERE THE SHAKE LANDS — the SAME one fact its food-group sibling takes (#4729,
-  // #2019), through the same reader onto the same columns, so protein distribution
-  // reads one ledger with one time model. A DECLARED window comes from a caller that
-  // already asserts one (#1704) — the Telegram nudge's callback token, which baked its
-  // slot in at send time — so a late tap on the evening nudge counts for Evening rather
-  // than for whichever window the tap instant fell in. A STATED instant is that same
-  // button saying "now". The web quick-add passes neither: it logs "now" with no
-  // asserted window, where the tap-derived slot IS the honest answer. Never overrides
-  // `loggedAt`, which stays the audit/tap time.
+  // WHERE THE SHAKE LANDS — the SAME one fact its food-group sibling takes, through the
+  // same reader onto the same columns (#4729, #2019), so protein distribution reads one
+  // ledger with one time model. A DECLARED window comes from a caller that already
+  // asserts one (#1704 — the nudge token baked its slot in at send time, so a late tap
+  // counts for Evening); the web quick-add passes neither, where the tap-derived slot IS
+  // the honest answer. Never overrides `loggedAt`, which stays the audit/tap time.
   placement?: FoodPlacement,
   // Which message's tap this is (#2264) — the Telegram "+Xg" button only, so the
   // protein burst's correction row renders on the message that produced it.

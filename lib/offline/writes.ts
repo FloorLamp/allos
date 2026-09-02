@@ -1182,10 +1182,8 @@ function applyFoodIntent(
       date,
       OFFLINE_REPLAY,
       loggedAt,
-      // ONE placement, reduced here exactly as the online action reduces it (#4729):
-      // the queued payload carries a tab and may carry a stated hour, and #2269's rule
-      // — the statement supersedes the tab — is applied at this boundary rather than
-      // inside the core, so a replay and a live tap cannot answer differently.
+      // ONE placement, reduced exactly as the online action reduces it (#4729), so a
+      // replay and a live tap cannot answer the same payload differently.
       verdict.kind === "accepted"
         ? { eatenAt: utcInstant(verdict.at), source: "stated" as const }
         : mealSlot

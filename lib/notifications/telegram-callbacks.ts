@@ -1717,9 +1717,9 @@ async function handleFoodLog(
     // does not go through it, so it makes it here. A same-day tap is untouched.
     backfilling ? USUAL_BACKFILL : food.origin,
     tapAt,
-    // A backfill DECLARES the nudge's window; a same-day tap STATES the instant it
-    // was tapped at. One argument now says which (#4729) — the two ternaries this
-    // replaces were a caller remembering that only one of them may be filled in.
+    // A backfill DECLARES the nudge's window; a same-day tap STATES its instant. One
+    // argument says which (#4729); the two ternaries it replaces were a caller
+    // remembering that only one of them may be filled in.
     backfilling ? food.window : { eatenAt: tapAt, source: "tap" },
     origin
   );
