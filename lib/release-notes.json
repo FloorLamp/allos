@@ -343,7 +343,7 @@
           "pr": 4794,
           "kind": "feature",
           "category": "Interface",
-          "title": "The time field is an in-app wheel instead of the browser’s own time control",
+          "title": "The time field opens an in-app wheel instead of the browser’s time control",
           "issues": [4218]
         },
         {
