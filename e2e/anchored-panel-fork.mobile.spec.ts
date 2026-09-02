@@ -1,10 +1,12 @@
 import { test, expect } from "./fixtures";
+import { type Locator } from "@playwright/test";
 import {
   expectControlBoxHeight,
   expectPhoneTapTargets,
   hydratedClick,
   settledBoxes,
   settledClick,
+  settledFill,
 } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 
@@ -209,6 +211,121 @@ test.describe("below md the date picker is a bottom sheet", () => {
   });
 });
 
+// ── THE TIME FIELD'S WHEEL (#4218) ──────────────────────────────────────────
+//
+// `TimeField` is the third consumer of the fork, and the first whose panel is a
+// SCROLL SURFACE rather than a grid of buttons. That is the claim worth making in
+// a browser: the columns are real scroll containers with `scroll-snap-type: y
+// mandatory` and centre-aligned cells, so the momentum and the detents are the
+// platform's own physics and not a gesture recognizer this app would have to own.
+// jsdom cannot say anything about that — components/__tests__/time-field.test.tsx
+// takes the value contract, and everything here is geometry or a real flick.
+//
+// The subject is the measurements sitting's one shared Time (`m-time`), which is
+// the split-field mount: the composed door's own panel is the same wheel over the
+// same host, and is driven by `pickComposedWhen` in the specs that state a
+// required minute.
+
+/** The column geometry, read the way the platform reads it. */
+async function wheelGeometry(column: Locator) {
+  return column.evaluate((el) => {
+    const cell = el.querySelector('[role="option"]') as HTMLElement;
+    return {
+      snapType: getComputedStyle(el).scrollSnapType,
+      cellAlign: getComputedStyle(cell).scrollSnapAlign,
+      cellHeight: cell.getBoundingClientRect().height,
+      overflowY: getComputedStyle(el).overflowY,
+      // A snap container that cannot scroll snaps to nothing.
+      scrollable: el.scrollHeight - el.clientHeight,
+      scrollTop: el.scrollTop,
+    };
+  });
+}
+
+test.describe("below md the time picker is a bottom sheet wheel", () => {
+  test("the wheel is a real snap scroller whose rows a finger can hit, and typing still works beside it", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/?quick=log-measurements");
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    const field = form.getByTestId("m-time");
+
+    // TYPED ENTRY AT EVERY WIDTH, in either clock. This is the invariant #3376
+    // fixed for the date half and the reason the picker is an affordance BESIDE
+    // the field rather than something that opens when the field takes focus: a
+    // sheet that took focus on focus could never be typed into at all.
+    await settledFill(page, field, "7:30pm");
+    await field.blur();
+    await expect(field).toHaveValue("19:30");
+    await expect(page.getByTestId("time-field-sheet")).toHaveCount(0);
+
+    await hydratedClick(
+      page,
+      form.getByRole("button", { name: "Open time picker" })
+    );
+    const sheet = page.getByTestId("time-field-sheet");
+    await expect(sheet).toBeVisible();
+    const wheel = page.getByTestId("time-field-wheel");
+    await expect(wheel).toHaveAttribute("data-anchored-panel", "sheet");
+
+    // THE GEOMETRY, through the same query the browser answers when it snaps.
+    const hours = wheel.getByRole("listbox", { name: "Hour" });
+    const geometry = await wheelGeometry(hours);
+    expect(geometry.snapType).toMatch(/\by\b/);
+    expect(geometry.snapType).toMatch(/mandatory/);
+    expect(geometry.cellAlign).toBe("center");
+    expect(geometry.overflowY).toBe("auto");
+    expect(
+      geometry.scrollable,
+      "a snap container that cannot scroll snaps to nothing"
+    ).toBeGreaterThan(geometry.cellHeight);
+
+    // THE FIELD'S VALUE PARKED THE COLUMN on its own row: 19 is the 20th hour, so
+    // the centre line is exactly 19 cells down. This is what makes the wheel open
+    // showing what the field holds instead of at midnight.
+    expect(geometry.scrollTop).toBeCloseTo(19 * geometry.cellHeight, 0);
+
+    // THE ROW IS THE TARGET, so it is rendered at the tap floor rather than at the
+    // control box plus a coarse-pointer reach — a wheel tiles on the block axis
+    // with no gap, and the reach idiom needs an isolated axis to spend itself on.
+    // Two adjacent rows go in together so the disjointness is asserted on the
+    // EXTENDED boxes, which is the pair that can fight over a pixel.
+    const twenty = hours.getByRole("option", { name: "20" });
+    const twentyOne = hours.getByRole("option", { name: "21" });
+    await expectPhoneTapTargets(page, "the time wheel's rows", [
+      twenty,
+      twentyOne,
+    ]);
+
+    // TAP A ROW, GET A TIME — the whole value, composed from where the other
+    // column is resting.
+    await twenty.click();
+    await expect(field).toHaveValue("20:30");
+
+    // AND A FLICK LANDS ON A DETENT. The scroll is started off-grid on purpose:
+    // what is being asserted is that the BROWSER carries it to a cell boundary
+    // and the field commits the row it stopped on — neither of which this file
+    // does any arithmetic for.
+    const half = Math.round(geometry.cellHeight / 2);
+    await hours.evaluate(
+      (el, by) => el.scrollBy({ top: -by, behavior: "smooth" }),
+      geometry.cellHeight * 3 + half
+    );
+    await expect
+      .poll(
+        async () => {
+          const { scrollTop, cellHeight } = await wheelGeometry(hours);
+          return Math.abs(scrollTop % cellHeight);
+        },
+        { message: "the flick should settle on a cell boundary" }
+      )
+      .toBeLessThan(1);
+    await expect(field).toHaveValue(/^(?:16|17):30$/);
+  });
+});
+
 test.describe("from md up the anchored popover is what opens", () => {
   test.use({ viewport: { width: 1280, height: 900 } });
 
@@ -257,5 +374,47 @@ test.describe("from md up the anchored popover is what opens", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(trigger).toBeFocused();
+  });
+
+  test("the time wheel is an anchored popover beside the field, selectable without a pointer", async ({
+    page,
+  }) => {
+    test.slow();
+    await page.goto("/trends?view=tiles");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
+    const field = form.getByTestId("m-time");
+    await settledFill(page, field, "09:15");
+    await field.blur();
+
+    const opener = form.getByRole("button", { name: "Open time picker" });
+    await hydratedClick(page, opener);
+    await expect(page.getByTestId("time-field-sheet")).toHaveCount(0);
+    const wheel = page.getByTestId("time-field-wheel");
+    await expect(wheel).toHaveAttribute("data-anchored-panel", "popover");
+
+    // ANCHORED means placed against the control that opened it — the thing a
+    // sheet could never satisfy, and the reason this half of the fork exists.
+    const [wheelBox, fieldBox] = await settledBoxes([wheel, field]);
+    expect(wheelBox.y).toBeGreaterThanOrEqual(fieldBox.y);
+
+    // THE SAME SNAP GEOMETRY AT THIS WIDTH. One authored picker, not a `hidden
+    // md:` twin (#2305): if the popover had grown its own list of hours, this is
+    // where the two would drift apart.
+    const hours = wheel.getByRole("listbox", { name: "Hour" });
+    const geometry = await wheelGeometry(hours);
+    expect(geometry.snapType).toMatch(/mandatory/);
+    expect(geometry.cellAlign).toBe("center");
+    expect(geometry.scrollTop).toBeCloseTo(9 * geometry.cellHeight, 0);
+
+    // WITHOUT A POINTER. A wheel is a scroll surface first, so the keyboard route
+    // has to be real: the column takes focus and steps on the arrows.
+    await hours.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(field).toHaveValue("10:15");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("time-field-wheel")).toHaveCount(0);
+    await expect(field).toHaveValue("10:15");
   });
 });

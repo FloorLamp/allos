@@ -3763,9 +3763,11 @@ export async function pickComposedWhen(
   { date, hhmm }: { date?: string; hhmm?: string }
 ): Promise<void> {
   await hydratedClick(page, page.getByTestId(`${testId}-when`));
-  const panel = page
-    .getByTestId(`${testId}-when-panel`)
-    .or(page.getByTestId(`${testId}-when-sheet`));
+  // The CONTENT wrapper, which `AnchoredPanel` marks with the same testid in
+  // both presentations (the sheet's own host testid names the sheet around it).
+  // One locator for both hosts is the point: a spec that had to know which host
+  // it was in would be the `hidden md:` twin the fork exists to avoid.
+  const panel = page.getByTestId(`${testId}-when-panel`);
   await expect(panel).toBeVisible();
 
   if (date) {
