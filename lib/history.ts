@@ -417,18 +417,15 @@ export function gatherHistoryLog(
   // Nutrition still reaches the record, once, as a substance. Food TOTALS are
   // untouched: this is the record's row set, not the nutrition arithmetic.
   //
-  // …EXCEPT FOR A KNOWN MINOR, WHERE IT DOES DISAPPEAR, AND THAT IS AN OPEN OWNER
-  // QUESTION (#4072). The substance gate below is asked of the SUBJECT's age, so for a
-  // known minor that gather does not run — while the exclusion here is unconditional,
-  // so such a row matches NEITHER and is absent from the record entirely, still
-  // counting in `getAllSubstanceDailyTotals`. That absence is the ruling above working
-  // exactly as it was measured, AND it is a row nobody can see or undo from the surface
-  // that would undo it. The two readings want opposite code and only the owner can
-  // choose, so the exclusion is left as the ruling set it. What this change does is stop
-  // the record from CREATING the state: `substanceCorrectable` below and the matching
-  // age gate in `updateFoodLogEvent`.
+  // …EXCEPT FOR A KNOWN MINOR, WHERE IT DISAPPEARS — AN OPEN OWNER QUESTION (#4072).
+  // The substance gate below does not run for one, and this exclusion is unconditional,
+  // so such a row is on NEITHER half while still counting in
+  // `getAllSubstanceDailyTotals`. That is the ruling above working exactly as measured,
+  // and it is a row nobody can undo from the surface that would undo it; the two
+  // readings want opposite code, so the exclusion stays as the ruling set it and this
+  // change stops the record CREATING the state instead.
   //
-  // ONE EXPRESSION FOR "DOES THIS SUBJECT'S RECORD CARRY SUBSTANCE CONTENT AT ALL",
+  // ONE EXPRESSION for "does this subject's record carry substance content at all",
   // read by that gate and by the correction's offer, so the record cannot show a group
   // it would then refuse to write.
   const substanceShown = !isMinor(getProfileAge(profileId));

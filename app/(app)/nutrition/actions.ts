@@ -420,17 +420,16 @@ export async function updateFoodLogEvent(
   }
   // A CORRECTION MAY NOT MAKE A KNOWN MINOR'S ROW A SUBSTANCE ONE (#4072). Every other
   // write into this content class asks `isMinor(getProfileAge(subject))` first — the
-  // substance correction beside it on this very record is the pattern (#4067) — and the
-  // record READS these rows behind the same question, so a write that skipped it could
-  // put a member's row into a state their own record was gated against showing. Asked
-  // of the SUBJECT, like the gate above it, because in `?view=everyone` the acting
-  // profile is the wrong profile to ask. Corrections that stay inside food are
-  // untouched: food is gated nowhere and must not start being gated here.
+  // substance correction on this same record is the pattern (#4067) — and the record
+  // READS these rows behind that question, so a write that skipped it put the row into
+  // a state the subject's own record is gated against showing. Asked of the SUBJECT
+  // like the gate above, because `?view=everyone` makes the acting profile the wrong
+  // one to ask. A correction that stays inside food is untouched: food is gated
+  // nowhere and must not start being gated here.
   //
-  // A ROW ALREADY IN THIS GROUP IS NOT A MOVE, and refusing it would strand the row —
-  // its time and its meal could then never be corrected, on the one surface that can
-  // still see it. Read id + profile_id scoped, so another profile's event answers
-  // nothing and is refused as a move.
+  // A ROW ALREADY IN THIS GROUP IS NOT A MOVE, and refusing it would strand the row's
+  // meal and time as permanently uncorrectable — the same defect wearing the other
+  // face. Scoped by id + profile_id, so another profile's event is refused as a move.
   if (
     patch.groupKey !== undefined &&
     isSubstanceFoodGroup(patch.groupKey) &&

@@ -178,15 +178,14 @@ const ROLLUP_SUBJECT_CAP = "max-w-[calc(100%-84px)] truncate"; // 52 floor + 32 
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
 // symbols still knows the record's. Total means a new kind cannot ship without one.
 // THE CATALOG THIS ROW'S CORRECTION MAY WRITE INTO (#4072). The list was all 25 groups
-// on every row the ⋯ was drawn on, including a known minor's under `?view=everyone`, so
-// a caregiver could move a child's berries into `alcohol` — and the record then had
-// nowhere to show the result. The list is the honest place to answer that: an option
-// that always refuses is worse than one that is not offered.
+// on every row the ⋯ was drawn on, including a known minor's under `?view=everyone`.
+// Answering it in the LIST is the honest half — an option that always refuses is worse
+// than one that is not offered — and `updateFoodLogEvent` asks the same question where
+// a post can reach it.
 //
-// A ROW ALREADY IN A SUBSTANCE GROUP KEEPS ITS OWN ENTRY, which is not a loophole but
-// the thing that makes the row correctable at all: the group select is CONTROLLED and
-// seeded from the row, so a list without the row's current group would render a value
-// it cannot show and re-file the serving under a group nobody chose on a save that only
+// A ROW ALREADY IN A SUBSTANCE GROUP KEEPS ITS OWN ENTRY. The select is CONTROLLED and
+// seeded from the row, so a list missing the row's current group renders a value it
+// cannot show and re-files the serving under a group nobody chose on a save that only
 // meant to fix the hour. Moving such a row OUT is allowed and is the point.
 function correctionGroups(
   groupKey: string,
