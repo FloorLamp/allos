@@ -35,8 +35,24 @@ export interface TimeStatement {
   instant: string | null;
   /** Rule 4: drop the statement `consumed` paid for, and only that one. */
   spend: (consumed: string | null) => void;
-  /** The toggle and its reveal, or null where the surface does not offer them. */
+  /** The toggle and its reveal together, or null where the surface does not offer them. */
   node: ReactNode;
+  /**
+   * THE SAME STATEMENT, ADDRESSABLE IN TWO PIECES — for a surface whose toggle is
+   * already one of its domain action buttons and whose reveal belongs somewhere else
+   * in the layout. The PRN row is that surface: "Earlier dose" sits in a two-button
+   * cluster measured against "Taken now", and the reveal opens in the row's FOOTER,
+   * so no single node can be in both places.
+   *
+   * THIS IS NOT A MODE (#4738 ruling 2). Nothing about the statement's behaviour
+   * changes with which piece a host renders — same state, same reveal, same four
+   * rules — and there is no prop to pass, so the control cannot grow a second
+   * behaviour by being configured into one. What a host chooses is where the two
+   * halves are DRAWN, which was always the host's.
+   */
+  reveal: ReactNode;
+  open: boolean;
+  setOpen: (open: boolean) => void;
 }
 
 export function useTimeStatement({
@@ -51,8 +67,13 @@ export function useTimeStatement({
 }: {
   // Rule 2 — the ONE expression the render and the write both read.
   shown?: boolean;
-  // The day the statement is anchored on (rule 3), and it is FIXED: this control
-  // states a TIME, never a DAY (#4118). Another day is the record's own dated door.
+  // The day the statement is anchored on (rule 3), and it is FIXED here: this control
+  // is the TIME half, and THE DAY COMES FROM THE SURFACE'S DAY CONTEXT (#4118, stated
+  // whole by #4738's ruling 1) — the form's DateField, the history door's record day,
+  // the quick-log sheet's day switcher, or a card-wide day context. That is what lets
+  // one statement serve create and edit: edit seeds the day from the row, create takes
+  // it from the surface, and the statement is the same control in both. A mount that
+  // wants to reach another day moves its SURFACE's day, never this control's.
   day: string;
   // The domain's verb, as the toggle's words and its accessible name.
   label: string;
@@ -78,6 +99,26 @@ export function useTimeStatement({
   }
 
   const at = shown ? statedHhmm(when.statedAt, tz) || null : null;
+  // `minDate === maxDate` is the day clause above made structural: the shared control
+  // renders a FIXED day as text and offers no picker, so no mount can state a day
+  // through it however it is hosted.
+  // The revealed control itself, WITHOUT surrounding spacing — where it sits in a
+  // layout is the host's, which is the whole reason a host renders this piece.
+  const reveal =
+    shown && open ? (
+      <WhenControl
+        mode="state"
+        grain="minute"
+        value={when}
+        onChange={setWhen}
+        tz={tz}
+        minDate={day}
+        maxDate={day}
+        timeLabel={timeLabel}
+        disabled={disabled}
+        testId={testId}
+      />
+    ) : null;
   return {
     at,
     instant: at ? when.statedAt : null,
@@ -87,6 +128,9 @@ export function useTimeStatement({
           ? { date: day, statedAt: null }
           : prev
       ),
+    open,
+    setOpen,
+    reveal,
     node: shown ? (
       <div className={className}>
         <button
@@ -98,22 +142,7 @@ export function useTimeStatement({
         >
           {label}
         </button>
-        {open ? (
-          <div className="mt-2">
-            <WhenControl
-              mode="state"
-              grain="minute"
-              value={when}
-              onChange={setWhen}
-              tz={tz}
-              minDate={day}
-              maxDate={day}
-              timeLabel={timeLabel}
-              disabled={disabled}
-              testId={testId}
-            />
-          </div>
-        ) : null}
+        {reveal ? <div className="mt-2">{reveal}</div> : null}
       </div>
     ) : null,
   };

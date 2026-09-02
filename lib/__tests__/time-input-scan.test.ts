@@ -311,10 +311,16 @@ describe("the time-input reader itself", () => {
 
 // ── EVERY DIRECT `<WhenControl>` MOUNT IS CLASSIFIED (#4426) ─────────────────
 //
-// #4426 converged two of the four hand-rolled "reveal a WhenControl" compositions onto
-// `useTimeStatement`. The other two did not converge, and BEFORE this register nothing
-// in the tree recorded that — a third could have joined them and no check would have
-// noticed, which is the state the criterion existed to end.
+// THE CRITERION, as #4738's ruling states it: no hand-rolled composition outside the
+// shared control or the argued-exclusion register.
+//
+// #4426 converged THREE of the four hand-rolled "reveal a WhenControl" compositions
+// onto `useTimeStatement` — practice, stool and PRN. (PRN was the fourth only until the
+// ruling: its day range existed because the illness cockpit had no day of its own, and
+// once the Today/Yesterday lift gave the card one, the day came from the surface and the
+// statement went back to being the time half.) The food bar is the ONE that did not, and
+// BEFORE this register nothing in the tree recorded that — a second could have joined it
+// and no check would have noticed, which is the state the criterion existed to end.
 //
 // So the claim is made over the WHOLE population rather than over a list of suspects:
 // every file that mounts the control DIRECTLY is exactly one of the three kinds below,
@@ -340,26 +346,18 @@ type WhenMount =
 const WHEN_MOUNTS = new Map<string, WhenMount>([
   ["components/TimeStatement.tsx", { kind: "shared" }],
   [
-    "components/medications/QuickLogPrnControl.tsx",
-    {
-      kind: "argued",
-      why:
-        "since #4691 this states a DAY as well as a time — it hands the control a " +
-        "day RANGE over `doseLogDays` — and the shared statement's doctrine is that " +
-        "it states a TIME, never a DAY (#4118). The two shipped rulings are " +
-        "incompatible, so this cannot converge until one of them moves",
-      issue: "#4738",
-    },
-  ],
-  [
     "app/(app)/nutrition/FoodLogBar.tsx",
     {
       kind: "argued",
       why:
-        "the eating-time statement is STICKY for the batch by design (#4118's " +
-        "amendment) and is never spent by the tap it answers, which is the shared " +
-        "statement's rule 4 inverted. Converging it needs a stickiness flag and a " +
-        "details/summary shape flag — the variant the line budget forbids",
+        "THE ONE ARGUED EXCLUSION (#4738 ruling 4). The eating-time statement is a " +
+        "STANDING CLAIM ABOUT A SESSION OF TAPS, not one tap's time: sticky for the " +
+        "batch by design (#4118's amendment), never spent by the tap it answers — the " +
+        "shared statement's rule 4 inverted — and drawn as a Disclosure with a " +
+        "stated-time badge at `hour` grain. Converging it needs a stickiness flag plus " +
+        "a details/summary shape flag, which is the four-behaviours-one-control shape " +
+        "the ruling refuses. A shared sticky statement gets extracted when a SECOND " +
+        "surface wants one, with two real instances to shape it",
       issue: "#4738",
     },
   ],
@@ -408,6 +406,18 @@ const WHEN_MOUNTS = new Map<string, WhenMount>([
   ],
 ]);
 
+/**
+ * Is this source still the hand-rolled composition its argued entry describes? Both
+ * halves, because either one going false ends the argument: it must still mount the
+ * control ITSELF, and it must not have taken the shared statement.
+ */
+export function stillHandRolled(src: string): boolean {
+  return (
+    findTags(src, "WhenControl", () => true).length > 0 &&
+    !src.includes("useTimeStatement(")
+  );
+}
+
 /** Files mounting `<WhenControl>` directly. Comments and strings do not count. */
 export function whenControlMounts(): string[] {
   return [
@@ -445,15 +455,25 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
   });
 
   // An argued exclusion is only worth more than an allowlist if its reason is
-  // READABLE, so the shape is enforced rather than trusted.
+  // READABLE, so the shape is enforced rather than trusted — and STALE IN BOTH
+  // DIRECTIONS, because only one of the two is the direction a reader would notice.
+  // A file that stopped mounting entirely is caught above; the other direction is a
+  // file that QUIETLY ADOPTED the shared statement while keeping its argument for not
+  // having, which leaves a paragraph in this register describing a surface that no
+  // longer matches it. That is the exact rot that made PRN's entry wrong within a day.
   it.each(
     [...WHEN_MOUNTS].filter(([, m]) => m.kind === "argued") as [
       string,
       { kind: "argued"; why: string; issue: "#4738" },
     ][]
-  )("%s argues its exclusion and says where it is decided", (_rel, entry) => {
+  )("%s argues its exclusion and says where it is decided", (rel, entry) => {
     expect(entry.why.length).toBeGreaterThan(60);
     expect(entry.issue).toBe("#4738");
+    expect(
+      stillHandRolled(fs.readFileSync(path.join(REPO, rel), "utf8")),
+      `${rel} no longer hand-rolls its reveal — it converged, so delete its entry ` +
+        `rather than leaving an argument for an exclusion that ended`
+    ).toBe(true);
   });
 
   // THE GUARD CAN SEE. A green sweep over a complying tree says nothing about what
@@ -472,5 +492,31 @@ describe("every direct WhenControl mount is classified (#4426)", () => {
     ["the shared statement's own name", "useTimeStatement({ day })", 0],
   ])("%s → %i mount(s)", (_label, source, count) => {
     expect(findTags(source, "WhenControl", () => true).length).toBe(count);
+  });
+
+  // …AND SO CAN THE STALENESS HALF. Run over sources written to break it, because a
+  // predicate asserted only over a complying tree is a predicate nobody has watched
+  // fail: the converged shape is what every argued entry eventually becomes.
+  //
+  // DELIBERATELY TREE-INDEPENDENT — this table is green before and after any
+  // convergence, and that is the point. It is the positive control for the assertion
+  // beside it, which reads the real file and can only ever come back `true` while the
+  // register is honest; without this, "the food bar still hand-rolls" would be a green
+  // nobody had ever seen go red.
+  it.each([
+    [
+      "a hand-rolled reveal",
+      "{open ? <WhenControl grain='hour' /> : null}",
+      true,
+    ],
+    [
+      "one that quietly took the shared statement too",
+      "const s = useTimeStatement({ day });\n<WhenControl />",
+      false,
+    ],
+    ["one that fully converged", "const s = useTimeStatement({ day });", false],
+    ["one that mounts nothing at all", "export const x = 1;", false],
+  ])("%s still hand-rolls: %s", (_label, source, expected) => {
+    expect(stillHandRolled(source)).toBe(expected);
   });
 });
