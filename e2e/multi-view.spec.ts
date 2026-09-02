@@ -581,12 +581,12 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await page.goto("/training?tab=log");
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
     ).toBeVisible();
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: MULTI_OWNER_ACTIVITY_B })
     ).toBeVisible();
     await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
@@ -602,7 +602,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // chip on ITS card; the acting (owner) cards never carry a chip.
     await page.goto("/training?tab=log");
     const sharedCard = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
     const sharedChipSlot = sharedCard.getByTestId(
@@ -614,7 +614,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // The owner's own cards are still there, without a chip anywhere on the feed.
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
     ).toBeVisible();
     await expect(
@@ -645,9 +645,11 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // offers its same-DAY same-PROFILE sibling (Bravo) but NEVER the shared
     // member's same-day card. The menu lives on the canonical record.
     const ownerRow = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
-    await hydratedClick(page, ownerRow);
+    // The row is one line with a title LINK (#4079: the Log renders through the
+    // shared history substrate); the record is behind that link, not the whole row.
+    await hydratedClick(page, ownerRow.getByRole("link").first()); // first-ok: the title link precedes any other link in the row
     await page
       .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
@@ -687,7 +689,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await page.goto("/training?tab=log");
 
     const sharedCard = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
 

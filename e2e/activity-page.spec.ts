@@ -82,7 +82,7 @@ test("an overlapping same-day session announces itself, and opens the merge pick
     await followLink(
       member,
       member
-        .getByTestId("training-log-row")
+        .getByTestId("history-row")
         .filter({ hasText: OVERLAP_KEEPER_TITLE }),
       /\/training\/activity\/\d+$/
     );
@@ -116,7 +116,7 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   // page's chart-link provider (see SessionChartLink's UNLINKED).
   await page.goto("/training?tab=log");
   const walkRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: ZONE_WALK_TITLE });
   await followLink(page, walkRow, /\/training\/activity\/\d+$/);
 
@@ -158,7 +158,7 @@ test("a summary-only import says so, instead of leaving a silent short page", as
   await page.goto("/training?tab=log");
   await followLink(
     page,
-    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE }),
+    page.getByTestId("history-row").filter({ hasText: TOTALS_ONLY_TITLE }),
     /\/training\/activity\/\d+$/
   );
 
@@ -290,7 +290,7 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     await followLink(
       member,
       member
-        .getByTestId("training-log-row")
+        .getByTestId("history-row")
         .filter({ hasText: SESSION_PEERS_TITLE })
         .first(), // first-ok: the newest of four same-titled fixture sessions — the subject
       /\/training\/activity\/\d+$/

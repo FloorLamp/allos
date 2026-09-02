@@ -10,7 +10,7 @@ import { workerDbPath } from "./worker-env";
 test("activity rows open the canonical activity page", async ({ page }) => {
   await page.goto("/training?tab=log");
   const row = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: newest seeded Push day; its strength parts prove the compact index reuses activity detail
   await expect(row).toBeVisible();
@@ -42,7 +42,7 @@ test("an #activity-N deep link pages older history in and scrolls the row into v
   page,
 }) => {
   await page.goto("/training?tab=log");
-  const rows = page.getByTestId("training-log-row");
+  const rows = page.getByTestId("history-row");
   await expect(rows.first()).toBeVisible(); // first-ok: presence gate before reading ids
   // Everything the first window renders — the feed opens on 14 days.
   const firstPage = new Set(
@@ -104,7 +104,7 @@ test("an #activity-N deep link pages older history in and scrolls the row into v
 test("phone rows use the same canonical destination", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/training?tab=log");
-  const row = page.getByTestId("training-log-row").first(); // first-ok: any row proves the shared destination
+  const row = page.getByTestId("history-row").first(); // first-ok: any row proves the shared destination
   const id = (await row.getAttribute("id"))!.replace("activity-", "");
 
   await followLink(
@@ -125,63 +125,57 @@ test("phone rows use the same canonical destination", async ({ page }) => {
 // work. App Router restores a scroll offset against a document that is SHORTER on
 // the way back, because `TrainingLogView`'s `visibleDays` is component state and
 // resets to the opening 14 days on remount. What actually rescues the return is the
-// scroll-spy (TrainingLogView's `history.replaceState` as you scroll): it leaves a
-// `#day-YYYY-MM-DD` on the entry being left, and the mount-time hash effect pages
-// older history back in until that day exists, widens the window past it, and
-// scrolls to it.
+// BACK RETURNS TO THE WINDOW YOU WIDENED (#3176's shape, re-based on #4079).
 //
-// So the guarantee is "you come back to where you were, with the history you had
-// paged in", NOT "the pixel offset is restored" — the hash names a DAY, and the row
-// you opened lands somewhere inside the viewport rather than at its old offset.
-// Asserting the offset would pin an accident; asserting viewport containment pins
-// the promise.
-test("Back returns to the paged-in log with the row you opened still on screen", async ({
+// The Log's bound lives in the URL now — "Show more" is a link that widens `?show=`,
+// not a client pager with a scroll-spy writing `#day-…` as you scroll. So the
+// promise is the same and its mechanism is the platform's: opening a row is a real
+// navigation, and Back returns to the widened URL with the history it was showing.
+//
+// The guarantee is "you come back to where you were, with the history you had
+// opened", NOT "the pixel offset is restored" — asserting the offset would pin an
+// accident; asserting viewport containment pins the promise.
+test("Back returns to the widened log with the row you opened still on screen", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
-  const rows = page.getByTestId("training-log-row");
+  const rows = page.getByTestId("history-row");
   await expect(rows.first()).toBeVisible(); // first-ok: presence gate before counting
   const openingWindow = await rows.count();
 
-  // Page older history in. Without this the whole question is trivial — every row
-  // would be in the DOM on a plain reload and Back could not tell us anything.
-  const loadMore = page.getByTestId("training-log-load-more");
-  await expect(loadMore).toBeVisible();
-  await loadMore.click();
+  // Widen the bound. Without this the whole question is trivial — every row would
+  // be in the DOM on a plain reload and Back could not tell us anything.
+  const showMore = page.getByTestId("training-log-show-more");
+  await expect(showMore).toBeVisible();
+  await showMore.click();
+  await page.waitForURL(/[?&]show=/);
   await expect
     .poll(() => rows.count(), {
       message:
         "the seed must carry activity history beyond the opening window for this test to mean anything",
     })
     .toBeGreaterThan(openingWindow);
-  const pagedIn = await rows.count();
+  const widened = await rows.count();
+  const widenedUrl = page.url();
 
   // The DEEPEST row now rendered. It sits outside the opening window, so it can
-  // only be on screen after Back if the older history came back too — and because
-  // the feed renders a PREFIX of the loaded days, the deepest row being rendered is
-  // the whole paged-in window being rendered. One assertion covers both halves.
-  const target = rows.nth(pagedIn - 1);
+  // only be on screen after Back if the widened window came back too.
+  const target = rows.nth(widened - 1);
   const targetId = (await target.getAttribute("id"))!;
   await target.scrollIntoViewIfNeeded();
-  // The spy's hash is what the history entry carries away, so wait for it to be
-  // written rather than racing it.
-  await expect
-    .poll(() => page.evaluate(() => window.location.hash), {
-      message: "the scroll-spy must stamp the entry with the day being read",
-    })
-    .toMatch(/^#day-\d{4}-\d{2}-\d{2}$/);
 
-  await target.getByRole("link").first().click(); // first-ok: the canonical title link precedes any exercise links in the row
+  await target.getByRole("link").first().click(); // first-ok: the canonical title link precedes any other link in the row
   await page.waitForURL(/\/training\/activity\/\d+$/);
   await expect(page.getByTestId("training-activity-page")).toBeVisible();
 
   await page.goBack();
+  await expect(page).toHaveURL(widenedUrl);
   await expect(rows.first()).toBeVisible(); // first-ok: presence gate before measuring
+  expect(await rows.count()).toBe(widened);
 
   // POSITION, not `toBeVisible()`: Playwright's visibility check is "non-empty
   // bounding box" and passes just as happily on a row a thousand pixels below the
   // fold — which is exactly the failure this test exists to catch (#3176's shape).
-  // The restoration is smooth-scrolled, so poll the box rather than reading it once.
   const viewport = page.viewportSize()!;
   await expect
     .poll(

@@ -71,7 +71,12 @@ export default async function TrainingPage(props: {
           />
         );
       case "log":
-        return <HistorySection initialCreateDate={initialCreateDate} />;
+        return (
+          <HistorySection
+            searchParams={searchParams}
+            initialCreateDate={initialCreateDate}
+          />
+        );
       case "plan":
         return <PlanSection />;
       case "overview":

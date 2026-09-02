@@ -192,18 +192,19 @@ test.describe("N-way activity merge (#1081)", () => {
       await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
       const rowEl = page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: "NW card" });
       await expect(rowEl).toHaveCount(1);
       await expect(
-        page.getByTestId("training-log-row").filter({ hasText: "NW sib A" })
+        page.getByTestId("history-row").filter({ hasText: "NW sib A" })
       ).toBeVisible();
       await expect(
-        page.getByTestId("training-log-row").filter({ hasText: "NW sib B" })
+        page.getByTestId("history-row").filter({ hasText: "NW sib B" })
       ).toBeVisible();
 
       // Open the originating canonical record and its overflow menu.
-      await hydratedClick(page, rowEl);
+      // The row is one line with a title LINK (#4079).
+      await hydratedClick(page, rowEl.getByRole("link").first()); // first-ok: the title link precedes any other link in the row
       const cardEl = page.getByTestId("training-activity-page");
       await expect(cardEl).toBeVisible();
       // Open the originating card's overflow menu → "Merge with…" → switch to the
@@ -246,13 +247,13 @@ test.describe("N-way activity merge (#1081)", () => {
       // is back, including the originating record absorbed by the sibling keeper.
       await page.goto("/training?tab=log");
       await expect(
-        page.getByTestId("training-log-row").filter({ hasText: "NW card" })
+        page.getByTestId("history-row").filter({ hasText: "NW card" })
       ).toBeVisible();
       await expect(
-        page.getByTestId("training-log-row").filter({ hasText: "NW sib B" })
+        page.getByTestId("history-row").filter({ hasText: "NW sib B" })
       ).toBeVisible();
       await expect(
-        page.getByTestId("training-log-row").filter({ hasText: "NW sib A" })
+        page.getByTestId("history-row").filter({ hasText: "NW sib A" })
       ).toBeVisible();
     } finally {
       await page.context().close();

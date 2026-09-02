@@ -109,7 +109,7 @@ test("plain-form Finish stamps end and opens the shared Session complete step; e
   // persisted the just-finished session.
   await page.goto("/training?tab=log");
   const row = page
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: title })
     .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
   await expect(row).toBeVisible();
@@ -181,7 +181,7 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
   // the DB.
   await page.goto("/training?tab=log");
   const row = page
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: title })
     .first(); // first-ok: the activity row THIS spec created (filtered by its unique title)
   await expect(row).toBeVisible();
@@ -200,7 +200,7 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
   // Open any seeded activity for editing — a retro/edit surface.
   await openRowForEdit(
     page,
-    page.locator('[id^="activity-"]').first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
+    page.getByTestId("history-row").first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // No live control strip, no finish button, no recap step on an edit.

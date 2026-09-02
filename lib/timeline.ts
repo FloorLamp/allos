@@ -1,5 +1,6 @@
 import { activityComponentSportNames } from "./activity-icon";
 import { trainingActivityPageHref } from "./hrefs";
+import { isDraftActivityRow } from "./activity-draft";
 import { shiftDateStr } from "./date";
 import { db, today } from "./db";
 import type { MemberTimeline } from "./timeline-multi";
@@ -352,9 +353,18 @@ function collectEvents(
 
   if (includeTrainingEvents) {
     const activityBounds = exact("date");
-    const activities = db
+    // A DRAFT IS AN ADDRESS, NOT AN ENTRY (#2870 step 3 / #3056's census), and this
+    // reader was the one still counting the husk. A create-at-start session with
+    // nothing logged in it renders NOWHERE but its own page — the Training Log's
+    // private feed applied that rule and the record's feed never did, so the same
+    // husk was absent from one surface and listed on the other. With the Log tab
+    // reading through this gather (#4079) the disagreement became visible; the rule
+    // belongs here rather than on the consumer, because it is a fact about the ROW.
+    // `set_count` is what `isDraftActivityRow` cannot read off the row itself.
+    const activityRows = db
       .prepare(
-        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components,
+                (SELECT COUNT(*) FROM exercise_sets s WHERE s.activity_id = activities.id) AS set_count
            FROM activities
           WHERE profile_id = ?${activityBounds.clause}
           ORDER BY date DESC, id DESC
@@ -373,7 +383,11 @@ function collectEvents(
       notes: string | null;
       source: string | null;
       components: string | null;
+      set_count: number;
     }[];
+    const activities = activityRows.filter(
+      (a) => !isDraftActivityRow(a, a.set_count)
+    );
     const setSummaries = activitySetSummaries(
       profileId,
       activities.map((a) => a.id),

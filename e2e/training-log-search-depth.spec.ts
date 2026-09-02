@@ -3,10 +3,11 @@ import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { workerDbPath } from "./worker-env";
 
-// The feed is slim rows since #2897 — a training-log-row carrying the title is
-// an activity's presence signal (full cards render only in the reading pane).
+// The feed is slim rows since #2897, and since #4079 they are the shared history
+// substrate's own rows — a history-row carrying the title is an activity's
+// presence signal (full cards render only in the reading pane).
 const feedRow = (page: Page, title: string) =>
-  page.getByTestId("training-log-row").filter({ hasText: title });
+  page.getByTestId("history-row").filter({ hasText: title });
 
 // Training Log search reaches the WHOLE ledger, not the loaded window (#1634).
 //
@@ -89,7 +90,7 @@ test.afterAll(() => {
   cleanup();
 });
 
-test("search finds an activity in an UNFETCHED window without Load more (#1634)", async ({
+test("search reaches a row far below the default bound (#1634)", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
@@ -97,70 +98,49 @@ test("search finds an activity in an UNFETCHED window without Load more (#1634)"
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
 
-  // Precondition: the planted rows are NOT in the first window — otherwise the test
-  // would pass without the fix ever running.
+  // Precondition: the planted rows are NOT in the default window — otherwise the
+  // test would pass without the reach ever being exercised.
   await expect(feedRow(page, MARKER)).toHaveCount(0);
-  const loadMore = page.getByTestId("training-log-load-more");
-  await expect(loadMore).toBeVisible();
 
+  // The search is a GET form now (#4079): a filtered Log is a place. What #1634
+  // guarantees is unchanged — the answer is the record's, not the window's.
   await search.fill(MARKER);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.waitForURL(/[?&]q=/);
 
-  // The store answers through a Server Action (loadTrainingLogPage), whose response
-  // carries a rebuilt window of rows. Named 20 s ceiling for that Server-Action
-  // round-trip on a loaded shard, per docs/internals/e2e-hygiene.md.
-  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible();
   await expect(feedRow(page, MANUAL_TITLE)).toBeVisible();
   await expect(feedRow(page, OLDER_TITLE)).toBeVisible();
 
-  // No "Load more" was clicked anywhere above — the match came from the store.
-  // And the honest-scope apology the old client-side filter had to print is gone:
-  // what the feed shows under a filter IS the answer now.
+  // Nothing was paged: the URL carries the query and nothing else.
+  await expect(page).toHaveURL(/[?&]q=Kayaking\+Larkspur\+Reserve/);
+  await expect(page).not.toHaveURL(/[?&]show=/);
+
+  // And the honest-scope apology the old client-side filter had to print is gone.
   await expect(
     page.getByText("Only loaded activities are searched", { exact: false })
   ).toHaveCount(0);
-
-  // Non-matching seed rows are filtered out, so the feed really is the match set.
-  await expect(page.getByTestId("training-log-search-pending")).toHaveCount(0);
 });
 
-test("'Load more' pages DEEPER under an active filter, and the loaded window sticks", async ({
+test("a run of matching days longer than the default window comes back whole", async ({
   page,
 }) => {
-  await page.goto("/training?tab=log");
+  // THE PAGER RETIRED (#4079's named retirements): folds and the History door
+  // replace it, and a filtered read goes to the substrate's ceiling rather than
+  // walking a cursor. So the property to pin is no longer "the next page lands" —
+  // it is that the WHOLE matching run is the answer, oldest leg included.
+  await page.goto("/training?tab=log&q=" + encodeURIComponent(PAGED_MARKER));
 
-  const search = page.getByPlaceholder("Search activities or exercises…");
-  await search.fill(PAGED_MARKER);
+  await expect(feedRow(page, pagedTitle(PAGED_DAYS - 1))).toBeVisible();
+  await expect(feedRow(page, pagedTitle(0))).toBeVisible();
+  await expect(page.getByTestId("training-log-show-more")).toHaveCount(0);
 
-  // Page one of the filtered feed: the newest 14 matching days, so the newest leg
-  // renders and the oldest does not.
-  await expect(feedRow(page, pagedTitle(PAGED_DAYS - 1))).toBeVisible({
-    timeout: 20_000,
-  }); // Server-Action round-trip ceiling (see above).
-  await expect(feedRow(page, pagedTitle(0))).toHaveCount(0);
-
-  const loadMore = page.getByTestId("training-log-load-more");
-  await expect(loadMore).toBeVisible();
-  await loadMore.click();
-
-  // The next-older MATCHING window lands: the oldest planted day is on the page…
-  await expect(feedRow(page, pagedTitle(0))).toBeVisible({
-    timeout: 20_000, // Server-Action round-trip ceiling (see above).
-  });
-  // …and with the matching set exhausted the pager goes away.
-  await expect(loadMore).toHaveCount(0, { timeout: 20_000 });
-
-  // THE REGRESSION SHAPE, second half: the loaded window must now STICK. The
-  // middleware used to re-set the session cookie on Server Action POSTs, which
-  // marked every loadTrainingLogPage response "revalidated" and re-rendered the page;
-  // TrainingLogView's filtered-feed effect then re-fetched page ONE on each such
-  // refresh — an endless self-sustaining POST loop (~3/s) that clobbered the
-  // loaded older window moments after it rendered. The assertions above race that
-  // first collapse (they pass on first match), so pin the invariant directly: the
-  // settled feed makes NO further requests on its own. In the fixed app nothing
-  // can issue a POST here (no interaction happens), so the quiet window cannot
-  // flake; under the bug the loop's next tick lands well inside it.
+  // AND THE PAGE IS SETTLED — it makes no request of its own. The middleware used to
+  // re-set the session cookie on Server Action POSTs, which marked every feed
+  // response "revalidated"; the client filter effect then re-fetched page one on each
+  // refresh, an endless self-sustaining POST loop that clobbered the loaded window.
+  // With the filter in the URL there is no such effect and no action to loop on, so
+  // this is now a claim that the whole apparatus is gone rather than tamed.
   const strayPost = await page
     .waitForRequest(
       (r) => r.method() === "POST" && new URL(r.url()).pathname === "/training",
@@ -169,43 +149,35 @@ test("'Load more' pages DEEPER under an active filter, and the loaded window sti
     .catch(() => null);
   expect(strayPost, "the filtered feed kept fetching by itself").toBeNull();
 
-  // And the deep window survived the quiet period intact — oldest and newest
-  // matching days both still rendered, pager still exhausted.
   await expect(feedRow(page, pagedTitle(0))).toBeVisible();
   await expect(feedRow(page, pagedTitle(PAGED_DAYS - 1))).toBeVisible();
-  await expect(loadMore).toHaveCount(0);
 });
 
 test("the source filter narrows a matching day by provider (#1634)", async ({
   page,
 }) => {
-  await page.goto("/training?tab=log");
-
-  const search = page.getByPlaceholder("Search activities or exercises…");
-  await search.fill(MARKER);
-  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
-    timeout: 20_000, // Server-Action round-trip ceiling (see above).
-  });
+  await page.goto("/training?tab=log&q=" + encodeURIComponent(MARKER));
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible();
 
   // The option list is born from the ledger's own distinct sources and labelled by
-  // the same activityProvenanceLabel the cards' chips use.
+  // the same activityProvenanceLabel the record's own chips use.
   const source = page.getByTestId("training-log-source-filter");
   await expect(source).toBeVisible();
-  await source.selectOption("strava");
+  await source.getByRole("link", { name: "Strava", exact: true }).click();
+  await page.waitForURL(/[?&]src=strava/);
 
   // Both planted rows sit on ONE day, so this proves the filter separates ROWS, not
   // just days: the Strava row stays, its manual same-day sibling goes.
-  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible({
-    timeout: 20_000, // Server-Action round-trip ceiling (see above).
-  });
+  await expect(feedRow(page, IMPORTED_TITLE)).toBeVisible();
   await expect(feedRow(page, MANUAL_TITLE)).toHaveCount(0);
   await expect(feedRow(page, OLDER_TITLE)).toHaveCount(0);
 
-  // Clearing every filter returns the feed to its newest unfiltered window, which
-  // does not contain the deep rows at all.
-  await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(feedRow(page, MARKER)).toHaveCount(0, {
-    timeout: 20_000, // Server-Action round-trip ceiling (see above).
-  });
-  await expect(search).toHaveValue("");
+  // Clearing every refinement returns the feed to its newest unfiltered window,
+  // which does not contain the deep rows at all.
+  await page.getByTestId("training-log-clear-filters").click();
+  await page.waitForURL(/\/training\?tab=log$/);
+  await expect(feedRow(page, MARKER)).toHaveCount(0);
+  await expect(
+    page.getByPlaceholder("Search activities or exercises…")
+  ).toHaveValue("");
 });

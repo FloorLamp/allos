@@ -50,7 +50,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   await page.goto("/training?tab=log");
 
   const stravaRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Strava morning ride" });
   const stravaCard = await openActivityPage(
     page,
@@ -93,7 +93,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
 
   // A hand-logged session reads "Manual" — provenance distinguishes the two.
   const manualRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   const manualCard = await openActivityPage(
@@ -126,7 +126,7 @@ test("training log cards show a source provenance chip and 'added' timestamp (#1
   // The seeded 5K mirrors a complete Health Connect exercise-session row,
   // including its clock window and provider provenance.
   const healthRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "5k run" });
   const healthConnectCard = await openActivityPage(page, healthRow, "5k run");
   await expect(
@@ -169,7 +169,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await page.goto("/training?tab=log");
 
   const stravaRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Strava morning ride" });
   const stravaCard = await openActivityPage(
     page,
@@ -185,7 +185,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
 
   // A hand-logged session has no route → no thumbnail (swap the pane to it).
   const manualRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Basketball pickup" })
     .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   const manualCard = await openActivityPage(
@@ -203,7 +203,7 @@ test("training log cards prioritize a summary and progressively disclose details
 
   // The canonical page carries the full summary; the feed row stays compact.
   const rideRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Strava morning ride" });
   const ride = await openActivityPage(page, rideRow, "Strava morning ride");
 
@@ -231,7 +231,7 @@ test("training log cards prioritize a summary and progressively disclose details
 
   // Intensity renders on the full record: swap the pane to the hard session.
   const hardRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity THIS spec created (filtered by its name)
   const hardActivity = await openActivityPage(page, hardRow, "Intervals");
@@ -277,7 +277,7 @@ test("strength target status is named and muscle filters are quiet text", async 
   await page.goto("/training?tab=log");
 
   const pushRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
   const push = await openActivityPage(page, pushRow, "Push day");
@@ -335,7 +335,7 @@ test("an imported cycling ride shows the bike icon in the training log", async (
   await page.goto("/training?tab=log");
 
   const stravaRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Strava morning ride" });
   await expect(stravaRow).toBeVisible();
   await expect(stravaRow.getByTestId("activity-icon")).toHaveAttribute(
@@ -351,7 +351,7 @@ test("the activity editor shows all stored Strava measurements as read-only", as
 
   // Row → pane → Edit: the docked editor opens in the log's aside (#2897).
   const stravaRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Strava morning ride" });
   await openActivityPage(page, stravaRow, "Strava morning ride");
   await activityPage(page).getByTestId("activity-page-edit").click();
@@ -453,12 +453,11 @@ test("the activity editor shows all stored Strava measurements as read-only", as
   ).toBe(2);
 });
 
-// #451: the Log feed is paged SERVER-SIDE — only the newest window of days renders on
-// load, and "Load more" fetches an older window on demand (instead of shipping the
-// whole history to the client up front). The seed carries ~16 weeks of Push/Pull/Legs
-// sessions, so there are well over one page of day sections: clicking "Load more"
-// reveals additional, older day groups.
-test("the Log feed pages older days in via 'Load more' (#451)", async ({
+// #4079: the Log feed is BOUNDED and FOLDED, not paged. Only the substrate's default
+// window of rows renders; older months and years are fold cards, and "Show more"
+// widens the bound in the URL. The seed carries ~16 weeks of Push/Pull/Legs sessions,
+// so there is history behind the fold stack to open.
+test("the Log feed folds older history and opens a fold in place (#4079)", async ({
   page,
 }) => {
   await page.goto("/training?tab=log");
@@ -467,12 +466,21 @@ test("the Log feed pages older days in via 'Load more' (#451)", async ({
   await expect(days.first()).toBeVisible(); // first-ok: asserts a day section renders — order-agnostic presence
   const before = await days.count();
 
-  const loadMore = page.getByTestId("training-log-load-more");
-  await expect(loadMore).toBeVisible();
-  await loadMore.click();
+  // A fold card stands for the months the bound left out, and states what it holds.
+  const fold = page.locator('[data-testid^="training-log-fold-"]').first(); // first-ok: the newest fold, whichever month it is — order-agnostic
+  await expect(fold).toBeVisible();
+  await expect(fold).toHaveAttribute("data-fold-open", "false");
+  const toggle = fold.locator('[data-testid$="-toggle"]');
+  await expect(fold.locator('[data-testid$="-counts"]')).toContainText(
+    /\d+ events? · \d+ (day|month)s?/
+  );
 
-  // After loading an older window, strictly more day sections are on the page.
-  await expect
-    .poll(async () => days.count(), { timeout: 10_000 })
-    .toBeGreaterThan(before);
+  await toggle.click();
+  await page.waitForURL(/[?&]open=/);
+
+  // The revealed days render UNDER the card that revealed them, and there are
+  // strictly more day sections than before. Re-queried through the SAME locator the
+  // pre-click assertion ran through, so "it opened" is a claim about that fold.
+  await expect(fold).toHaveAttribute("data-fold-open", "true");
+  await expect.poll(async () => days.count()).toBeGreaterThan(before);
 });

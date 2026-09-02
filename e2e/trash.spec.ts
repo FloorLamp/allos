@@ -47,7 +47,7 @@ let probeSeq = 0;
 function cardsByTitle(page: Page, text: string | RegExp) {
   return page
     .getByRole("main")
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: text });
 }
 

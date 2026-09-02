@@ -93,9 +93,7 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
 
   // The Server-Action round-trip ceiling used across the training log specs.
   // The feed renders slim rows (#2897); the row itself carries the type glyph.
-  const row = page
-    .getByTestId("training-log-row")
-    .filter({ hasText: OWN_TITLE });
+  const row = page.getByTestId("history-row").filter({ hasText: OWN_TITLE });
   await expect(row).toBeVisible({ timeout: 20_000 });
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
@@ -108,7 +106,7 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   const chips = page.getByRole("group", { name: "Activity type" });
   await chips.getByRole("button", { name: "Unspecified" }).click();
   await expect(
-    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+    page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toBeVisible({
     timeout: 20_000,
   });
@@ -116,7 +114,7 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   // …and it is a real filter, not a no-op: switching to Cardio drops the row.
   await chips.getByRole("button", { name: "Cardio" }).click();
   await expect(
-    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+    page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toHaveCount(0, {
     timeout: 20_000,
   });

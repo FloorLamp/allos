@@ -86,11 +86,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
-    file: "app/(app)/training/activity-actions.ts",
-    fn: "loadTrainingLogPage",
-    why: "read-only: fetches an older window of the active profile's Training Log feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
-  },
-  {
     file: "app/(app)/integrations/sync-actions.ts",
     fn: "loadSyncHistoryPage",
     why: "read-only: fetches an older page of the active profile's provider-scoped sync ledger; the cursor selects a profile-local day and the action writes nothing, so requireSession() is the right gate",

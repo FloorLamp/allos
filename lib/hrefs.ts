@@ -335,6 +335,35 @@ export function trainingLogDayHref(date: string): AppRoute {
   return `/training?tab=log#day-${date}`;
 }
 
+// THE LOG TAB'S OWN URL (#4079). The tab renders through the shared history
+// substrate, so its state is the substrate's — the bound, the open folds, the
+// household mode — plus the training-only refinements layered on the mount. One
+// builder, so every control writes the same grammar and a filter change can never
+// drop the bound the reader had widened.
+export function trainingLogHref(
+  params: {
+    q?: string | null;
+    type?: string | null;
+    source?: string | null;
+    fault?: boolean;
+    tag?: { kind: "muscle" | "region"; value: string } | null;
+    everyone?: boolean;
+    show?: number;
+    open?: readonly string[];
+  } = {}
+): AppRoute {
+  const sp = new URLSearchParams({ tab: "log" });
+  if (params.q) sp.set("q", params.q);
+  if (params.type) sp.set("type", params.type);
+  if (params.source) sp.set("src", params.source);
+  if (params.fault) sp.set("fault", "1");
+  if (params.tag) sp.set("tag", `${params.tag.kind}:${params.tag.value}`);
+  if (params.everyone) sp.set("view", "everyone");
+  if (params.show != null) sp.set("show", String(params.show));
+  for (const key of params.open ?? []) sp.append("open", key);
+  return `/training?${sp.toString()}` as AppRoute;
+}
+
 // Turn a day-history panel's domain landing page into its dated CREATE entry
 // point (#2420). The base route remains AppRoute-checked at the server call site;
 // this helper owns the four parameter names so a chart cannot send a date to a

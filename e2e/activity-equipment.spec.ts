@@ -51,7 +51,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 
   // The feed renders slim rows; gear lives on the canonical activity page.
   const row = page
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: "Zone 2 bike" })
     .first(); // first-ok: the seeded "Zone 2 bike" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
@@ -121,7 +121,7 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
 
   // Follow the run's slim row to its canonical page, then open the shared editor.
   const row = page
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: "5k run" })
     .first(); // first-ok: the seeded "5k run" activity row (filtered by its unique title)
   await expect(row).toBeVisible();
@@ -365,7 +365,7 @@ test("the strength picker creates and selects a travel machine without losing th
     await expect(
       page
         .getByRole("main")
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: title })
     ).toHaveCount(0);
 
@@ -640,7 +640,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     await page.goto("/training?tab=log");
     const row = page
       .getByRole("main")
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: title })
       .first(); // first-ok: this run's uniquely-titled probe activity
     await expect(row).toBeVisible();
@@ -661,7 +661,7 @@ test("gear chosen behind a closed panel still saves, and still counts as a chang
     await expect(
       page
         .getByRole("main")
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: title })
     ).toHaveCount(0);
   } finally {

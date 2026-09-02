@@ -57,7 +57,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
   await page.goto("/training?tab=log");
 
   const pushRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
   await pushRow
@@ -138,7 +138,7 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
 
   await page.goto("/training?tab=log");
   const customRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Custom-only lift day (e2e)" })
     .first(); // first-ok: the session row THIS spec created (unique name)
   await customRow
