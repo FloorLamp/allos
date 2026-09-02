@@ -5,6 +5,7 @@ import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { Symptom } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
 import DateField from "@/components/DateField";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
 import type { ReactNode } from "react";
 
 // In-place symptom + temperature logging on the episode page (issue #856 item 11). This
@@ -14,6 +15,9 @@ import type { ReactNode } from "react";
 // pinning it's the same component.
 //
 // Open episode: today + yesterday backfill toggle (parity with the dashboard card).
+// The toggle is the PANEL's day context (#4691), supplied above the bar rather than
+// held inside it, so it means the same thing here as it does on the cockpit — where a
+// Meds row is a sibling that reads it too.
 // Closed episode: a day picker over the episode's range navigates (?logDay=…) so the
 // server re-renders the bar anchored to the chosen day with that day's severities — the
 // backfill mode for populating a retro-created episode. The picker composes AROUND the
@@ -63,67 +67,75 @@ export default function EpisodeLogPanel({
   const router = useRouter();
 
   return (
-    <div data-testid="episode-log-panel">
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Symptoms &amp; Temperature
-          </h3>
-          {!ongoing && (
-            <p
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="resolved-episode-backfill-note"
+    <CockpitDayProvider
+      date={date}
+      altDate={ongoing ? altDate : undefined}
+      altDateLabel={altDateLabel}
+      tz={timeZone}
+    >
+      <div data-testid="episode-log-panel">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Symptoms &amp; Temperature
+            </h3>
+            {!ongoing && (
+              <p
+                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="resolved-episode-backfill-note"
+              >
+                Add a past update to this episode. This won’t reopen it.
+              </p>
+            )}
+          </div>
+          {(!ongoing || photoControl) && (
+            <div
+              className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"
+              data-testid="episode-log-header-actions"
             >
-              Add a past update to this episode. This won’t reopen it.
-            </p>
+              {!ongoing && (
+                <>
+                  <label className="label mb-0" htmlFor="episode-log-date">
+                    Entry date
+                  </label>
+                  <DateField
+                    id="episode-log-date"
+                    value={date}
+                    min={rangeStart ?? undefined}
+                    max={rangeEnd ?? undefined}
+                    inputClassName="h-8 w-40 py-1 text-xs normal-case tracking-normal"
+                    onChange={(v) => {
+                      if (v)
+                        router.push(
+                          `/medical/episodes/${episodeId}?logDay=${v}`
+                        );
+                    }}
+                  />
+                </>
+              )}
+              {photoControl}
+            </div>
           )}
         </div>
-        {(!ongoing || photoControl) && (
-          <div
-            className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"
-            data-testid="episode-log-header-actions"
-          >
-            {!ongoing && (
-              <>
-                <label className="label mb-0" htmlFor="episode-log-date">
-                  Entry date
-                </label>
-                <DateField
-                  id="episode-log-date"
-                  value={date}
-                  min={rangeStart ?? undefined}
-                  max={rangeEnd ?? undefined}
-                  inputClassName="h-8 w-40 py-1 text-xs normal-case tracking-normal"
-                  onChange={(v) => {
-                    if (v)
-                      router.push(`/medical/episodes/${episodeId}?logDay=${v}`);
-                  }}
-                />
-              </>
-            )}
-            {photoControl}
-          </div>
-        )}
+        <SymptomLogBar
+          date={date}
+          altDate={ongoing ? altDate : undefined}
+          initial={initial}
+          initialAlt={initialAlt}
+          initialNotes={initialNotes}
+          initialAltNotes={initialAltNotes}
+          symptoms={symptoms}
+          customNames={customNames}
+          rankedKeys={rankedKeys}
+          suggestActivateIllness={false}
+          showTemperature
+          temperatureUnit={temperatureUnit}
+          timeZone={timeZone}
+          profileId={profileId}
+          showTitle={false}
+          analysisHref={profileId == null ? "/trends/symptoms" : undefined}
+        />
       </div>
-      <SymptomLogBar
-        date={date}
-        altDate={ongoing ? altDate : undefined}
-        altDateLabel={altDateLabel}
-        initial={initial}
-        initialAlt={initialAlt}
-        initialNotes={initialNotes}
-        initialAltNotes={initialAltNotes}
-        symptoms={symptoms}
-        customNames={customNames}
-        rankedKeys={rankedKeys}
-        suggestActivateIllness={false}
-        showTemperature
-        temperatureUnit={temperatureUnit}
-        timeZone={timeZone}
-        profileId={profileId}
-        showTitle={false}
-        analysisHref={profileId == null ? "/trends/symptoms" : undefined}
-      />
-    </div>
+    </CockpitDayProvider>
   );
 }

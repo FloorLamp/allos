@@ -70,6 +70,33 @@
 // The second is a known, accepted cost until #3984 versions amounts — it is exactly what
 // the deep door does today, so it is not a new one.
 //
+// ── THE BUNDLE STATES NO EATING HOUR, ON ANY SURFACE (#4438, ruled 2026-09-02) ──
+//
+// #4438 item 2 asked the composed tap to carry the nutrition bar's sticky eating-time
+// statement, and item 3 asked the same of the Telegram tap. Neither does, and it is one
+// answer rather than two omissions: a stated eating time is a statement about A SERVING,
+// and a bundle is labelled by A WINDOW. Applying one to the other is a category error,
+// and it breaks this core's own headline contract two ways.
+//
+//   • `logFoodServingCore` drops a declared window when it is handed a time (#2269 —
+//     a stated hour wins and the window derives from the instant), so a bundle promising
+//     "your usual Morning" files its servings under Evening. `getUsualFoodOffer` is then
+//     re-derived FOR MORNING, still stands, and EVERY REPEAT TAP WRITES AGAIN, each
+//     answering `ok: true`. "A STALE TAP REFUSES; IT NEVER DOUBLE-LOGS" — broken by the
+//     writes that same tap performed.
+//   • and the two writers disagree about it: `addProteinGramsCore` stores `meal_slot`
+//     AND `occurred_at`, and `foodEventWindow` gives an explicit slot precedence, so one
+//     tap put its servings in Evening and its scoop in Morning. One event, two sections.
+//
+// Reachability was ordinary, not adversarial: the bar's statement is per-DAY, not
+// per-slot, and its own note says so — set 19:00 for dinner, switch to the Morning tab,
+// tap the bundle.
+//
+// So the parameter is gone rather than defaulted, on both paths. Whether a bundle SHOULD
+// carry an hour — and if so whether the window follows it or survives it — is an owner
+// question about what a label promises, and it is now ONE question with one answer for
+// the web and the chat rather than a ruling already pre-empted on one of them.
+//
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
 // No obligation is written (obligation is declared only, forever — #2419). No
@@ -89,6 +116,9 @@ import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
+import { addProteinGramsCore } from "./protein-daily-totals-write";
+import { isProteinNudgeKey } from "./protein-nudge";
+import { getUsualFoodOffer } from "./queries/nutrition";
 import type { FoodSlot } from "./food-slot";
 import { logHistoricalDose, markDoseTaken } from "./queries/intake/adherence";
 import {
@@ -123,6 +153,11 @@ export type UsualRoutineOutcome =
       window: FoodSlot;
       groups: UsualFoodLogged[];
       doses: UsualRoutineDoseResult[];
+      // GRAMS THE TAP ACTUALLY WROTE (#4379), or null when protein was not a member of
+      // the bundle that stood at write time. Reported rather than assumed, on the same
+      // terms as every other half: an offer that had already lost its protein member
+      // between render and tap answers null and the surface says so.
+      protein: number | null;
     }
   | { kind: "nothing-to-log" }
   // The target day is malformed, in the future, or out of the bundle's reach (#4118).
@@ -215,7 +250,12 @@ export function logUsualRoutineCore(
   // origin paths `handleFoodLog` and `handleDoseTap` use — so one composed tap is
   // attributed exactly as the individual taps it replaces would have been. The
   // dashboard control passes nothing and both stores record NULL.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // THE SCOOP THE BUTTON PROMISED (#4379). An UPPER BOUND like `namedGroups` and
+  // `namedDoseIds`, never an instruction: the offer is re-derived below and the grams
+  // are written only while it still names protein. Absent means the tap did not offer
+  // protein, so nothing about it is written.
+  promisedProteinGrams?: number
 ): UsualRoutineOutcome {
   const t = today(profileId);
   // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
@@ -223,6 +263,18 @@ export function logUsualRoutineCore(
   // usual offer has ever named. `logUsualFoodCore` re-asks it for its own callers.
   if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
   const via = date === t ? loggedVia : USUAL_BACKFILL;
+  // WHETHER PROTEIN IS STILL A MEMBER, ASKED BEFORE THE FOOD HALF RUNS (#4379), and the
+  // order is NOT free — a comment here said it was, and the DB tier disproved it in one
+  // run. The offer bottoms out on FOOD_USUAL_MIN_GROUPS ("a single member is one tap
+  // either way"), so writing the two groups first leaves a one-member remainder and the
+  // re-derivation answers []. Asked afterwards, a bundle of fermented + berries + scoop
+  // wrote the scoop NEVER, silently, on exactly the profile the ruling was filed for.
+  //
+  // Re-derived rather than trusted either way: a forged or replayed
+  // `promisedProteinGrams` on a window with no protein habit standing lands nothing.
+  const writesProtein =
+    promisedProteinGrams != null &&
+    getUsualFoodOffer(profileId, window, date).some(isProteinNudgeKey);
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
@@ -281,9 +333,35 @@ export function logUsualRoutineCore(
     });
   }
 
-  if (groups.length === 0 && doses.length === 0)
+  // THE PROTEIN MEMBER (#4379), through `addProteinGramsCore` — the same core the nudge
+  // button and the web quick-add write through, so there is one protein write path
+  // (#221) and one place the day's total moves.
+  //
+  // ITS OWN TRANSACTION, a sibling of the food half's and the dose half's, for the
+  // reason the header already argues about doses: one member refusing must not unwind a
+  // breakfast that genuinely happened. The DECISION was taken above, before the food
+  // half moved the state it is derived from; only the WRITE is here.
+  //
+  // The GRAMS are the caller's, because the label promised a number and a promise a
+  // person has read may not move under them (#2460).
+  let protein: number | null = null;
+  if (writesProtein && promisedProteinGrams != null) {
+    const outcome = addProteinGramsCore(
+      profileId,
+      date,
+      promisedProteinGrams,
+      via,
+      undefined,
+      // The window is a DECLARATION here exactly as it is for the servings beside it
+      // (#1704), and no eating instant is invented to sit under it.
+      window
+    );
+    if (outcome.kind === "logged") protein = promisedProteinGrams;
+  }
+
+  if (groups.length === 0 && doses.length === 0 && protein === null)
     return { kind: "nothing-to-log" };
-  return { kind: "logged", date, window, groups, doses };
+  return { kind: "logged", date, window, groups, doses, protein };
 }
 
 // ── THE DATED BUNDLE'S AUDIT ROW (#4118/#4306) ───────────────────────────────

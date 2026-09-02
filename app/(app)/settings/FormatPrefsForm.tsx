@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveDisplayFormatPrefs } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -45,15 +44,13 @@ export default function FormatPrefsForm({
 }: {
   prefs: DisplayFormatPrefs;
 }) {
-  const [timeFormat, setTimeFormat] = useState<TimeFormat>(prefs.timeFormat);
-  const [dateFormat, setDateFormat] = useState<DateFormat>(prefs.dateFormat);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const { status, value: format, save: runSave } = useSaveStatus(prefs);
 
-  function save(next: { timeFormat: TimeFormat; dateFormat: DateFormat }) {
+  function save(next: DisplayFormatPrefs) {
     const fd = new FormData();
     fd.set("time_format", next.timeFormat);
     fd.set("date_format", next.dateFormat);
-    runSave(async () => {
+    runSave(next, async () => {
       await saveDisplayFormatPrefs(fd);
     });
   }
@@ -64,19 +61,17 @@ export default function FormatPrefsForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Date &amp; time
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>
         <label className="label">Time format</label>
         <select
           data-testid="time-format-select"
-          value={timeFormat}
-          onChange={(e) => {
-            const v = e.target.value as TimeFormat;
-            setTimeFormat(v);
-            save({ timeFormat: v, dateFormat });
-          }}
+          value={format.timeFormat}
+          onChange={(e) =>
+            save({ ...format, timeFormat: e.target.value as TimeFormat })
+          }
           className="input"
         >
           {TIME_OPTIONS.map((o) => (
@@ -94,12 +89,10 @@ export default function FormatPrefsForm({
         <label className="label">Date format</label>
         <select
           data-testid="date-format-select"
-          value={dateFormat}
-          onChange={(e) => {
-            const v = e.target.value as DateFormat;
-            setDateFormat(v);
-            save({ timeFormat, dateFormat: v });
-          }}
+          value={format.dateFormat}
+          onChange={(e) =>
+            save({ ...format, dateFormat: e.target.value as DateFormat })
+          }
           className="input"
         >
           {DATE_OPTIONS.map((o) => (

@@ -67,14 +67,13 @@ export default function RiskFactorsForm({
   // user just made without a round trip.
   reviewed: boolean;
 }) {
-  const [attrs, setAttrs] = useState<RiskAttributes>(attributes);
   const [reviewed, setReviewed] = useState(reviewedInitial);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const { status, value: attrs, save: runSave } = useSaveStatus(attributes);
 
   function save(next: RiskAttributes) {
     const fd = new FormData();
     for (const { key, name } of FIELDS) fd.set(name, next[key] ? "1" : "0");
-    runSave(async () => {
+    runSave(next, async () => {
       await saveRiskFactors(fd);
       // EVERY save stamps the review marker (the action does it unconditionally),
       // so any successful save — a toggle or the footer button — makes the review
@@ -95,7 +94,7 @@ export default function RiskFactorsForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Health risk factors
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -115,11 +114,7 @@ export default function RiskFactorsForm({
               data-testid={`risk-${name}`}
               type="checkbox"
               checked={attrs[key]}
-              onChange={(e) => {
-                const next = { ...attrs, [key]: e.target.checked };
-                setAttrs(next);
-                save(next);
-              }}
+              onChange={(e) => save({ ...attrs, [key]: e.target.checked })}
               className="mt-0.5 h-4 w-4 shrink-0"
             />
             <span className="min-w-0">
@@ -162,7 +157,7 @@ export default function RiskFactorsForm({
             type="button"
             className="btn-ghost btn-sm"
             data-testid="risk-none-apply"
-            disabled={pending}
+            disabled={status.pending}
             onClick={() => save(attrs)}
           >
             None of these apply

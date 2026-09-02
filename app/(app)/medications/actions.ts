@@ -210,17 +210,23 @@ export async function deleteSideEffect(
 }
 
 // Resolve the quick-log offset the widget submits into the real intake time to
-// store: "now" → undefined (the core stamps now); "custom" → an HH:MM wall time
-// TODAY in the profile's timezone, converted to the absolute instant. "invalid"
-// signals a malformed custom time. The relative "30m"/"1h" offsets retired with
-// #2236 — the widget states absolute times through the shared WhenControl, so the
-// wire carries only what a user actually said. The far-off/future guard itself
-// lives in the auth-blind core (isGivenAtAccepted, #614) so it covers the Telegram
-// path too; this only shapes the offset into a Date.
+// store: "now" → undefined (the core stamps now); "custom" → an HH:MM wall time on
+// the STATED day in the profile's timezone, converted to the absolute instant.
+// "invalid" signals a malformed custom date/time. The relative "30m"/"1h" offsets
+// retired with #2236 — the widget states absolute times through the shared
+// WhenControl, so the wire carries only what a user actually said. The far-off/future
+// guard itself lives in the auth-blind core (isGivenAtAccepted, #614) so it covers
+// the Telegram path too; this only shapes the offset into a Date.
+//
+// THE DAY IS THE STATEMENT'S, NOT THE SERVER'S (#4691). It used to be hard-coded to
+// the profile's today, so a row rendered under a Yesterday toggle wrote today anyway
+// and no cockpit path could reach last night's dose. An absent `date` still means
+// today — every host that shows no day of its own says nothing here.
 function resolveGivenAt(
   profileId: number,
   offset: string,
-  time: string | null
+  time: string | null,
+  date: string | null
 ): Date | undefined | "invalid" {
   switch (offset) {
     case "custom": {
@@ -228,8 +234,11 @@ function resolveGivenAt(
       // The shape check IS the helper's refusal (#2245): it reads a real wall clock
       // or returns null, so an unreadable offset is "invalid" rather than midnight.
       return (
-        zonedWallTimeToUtc(getTimezone(profileId), today(profileId), time) ??
-        "invalid"
+        zonedWallTimeToUtc(
+          getTimezone(profileId),
+          date ?? today(profileId),
+          time
+        ) ?? "invalid"
       );
     }
     case "now":
@@ -264,7 +273,8 @@ export async function logMedicationAdministration(
   const given = resolveGivenAt(
     profileId,
     String(formData.get("offset") ?? "now"),
-    strOrNull(formData.get("time"))
+    strOrNull(formData.get("time")),
+    strOrNull(formData.get("date"))
   );
   if (given === "invalid") return formError("Enter a valid time.");
   const outcome = logAdministration(
@@ -286,7 +296,9 @@ export async function logMedicationAdministration(
     case "duplicate":
       return { ok: true, outcome: outcome.kind };
     case "invalid-time":
-      return formError("That time is out of range — pick a time today.");
+      return formError(
+        "That time is out of range — pick a recent day and time."
+      );
     case "inactive":
       return formError("This medication is paused — resume it to log a dose.");
     case "stale-item":

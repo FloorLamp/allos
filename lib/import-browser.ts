@@ -31,6 +31,7 @@ import {
   studyDisplayLabel,
   modalityLabel,
   lateralityLabel,
+  studyFindingText,
 } from "./imaging-study";
 import {
   prescriptionDisplayLabel,
@@ -473,6 +474,7 @@ export function imagingStudyItem(row: {
   contrast: number | boolean;
   study_date: string | null;
   impression: string | null;
+  report_narrative?: string | null;
 }): ProducedItem {
   const contrast =
     row.contrast === 1 || row.contrast === true ? "with contrast" : null;
@@ -491,7 +493,7 @@ export function imagingStudyItem(row: {
       modalityLabel(row.modality),
       side,
       contrast,
-      row.impression
+      studyFindingText(row)
     ),
     date: row.study_date,
     href: "/results/imaging",

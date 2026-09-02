@@ -20,6 +20,7 @@ import {
   getHabitualFoodGroups,
   getFiberSymptomPanel,
 } from "@/lib/queries";
+import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
 import { fiberSymptomPanelHasSignal } from "@/lib/fiber-symptom-panel";
 import FiberSymptomPanel from "@/components/FiberSymptomPanel";
 import { formatWeekdayDate } from "@/lib/format-date";
@@ -628,6 +629,12 @@ export default async function FoodTab({
               groupsBySlot={groupsBySlot}
               proteinRankBySlot={proteinRankBySlot}
               usualBySlot={usualBySlot}
+              // THE DOSE HALF, SEEDED FOR THE DAY THIS PAGE RENDERED (#4438). The bar
+              // re-reads through `usualRoutineOffersOn` when its day picker moves.
+              usualRoutine={{
+                date,
+                offers: usualRoutineDayOffers(profile.id, date),
+              }}
               slot={slot}
               // The same boundaries the tallies derive windows from, so the correction
               // sheet's follow-the-hour Meal default (#2227 d4) can never disagree with

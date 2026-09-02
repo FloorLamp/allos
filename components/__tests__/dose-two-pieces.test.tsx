@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
+import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
+import { CockpitDayProvider } from "@/components/illness/CockpitDayContext";
+import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import type { LedgerGroup } from "@/lib/day-ledger";
 
 // TWO PIECES FOR THE DOSE DOMAIN (#4424): `HistoricalDoseForm` and
@@ -30,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   logHistoricalDose: vi.fn(),
   updateHistoricalDose: vi.fn(),
   setDoseStatus: vi.fn(),
+  logMedicationAdministration: vi.fn(),
 }));
 
 vi.mock("@/components/LoggedViaSurface", () => ({
@@ -57,6 +61,19 @@ vi.mock("@/components/useOptimisticLedger", () => ({
       settle: (outcome: T) => unknown;
     }) => op.settle(await op.write()),
   }),
+}));
+vi.mock("@/app/(app)/symptom-actions", () => ({
+  logSymptom: vi.fn(async () => ({ ok: true })),
+  editSymptom: vi.fn(async () => ({ ok: true })),
+  lowerSymptom: vi.fn(async () => ({ ok: true })),
+  setSymptomNote: vi.fn(async () => ({ ok: true })),
+  removeSymptom: vi.fn(async () => ({ ok: true })),
+  logTemperature: vi.fn(async () => ({ ok: true, degF: 98.6, flag: null })),
+  activateIllnessForSymptoms: vi.fn(async () => ({ ok: true })),
+  suggestSymptomsFromText: vi.fn(async () => ({ ok: false, reason: "empty" })),
+}));
+vi.mock("@/app/(app)/medications/actions", () => ({
+  logMedicationAdministration: mocks.logMedicationAdministration,
 }));
 vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
   logHistoricalDose: mocks.logHistoricalDose,
@@ -98,6 +115,10 @@ beforeEach(() => {
     return { ok: true };
   });
   mocks.setDoseStatus.mockImplementation(async (fd: FormData) => {
+    posted.push(fd);
+    return { ok: true, outcome: "logged" };
+  });
+  mocks.logMedicationAdministration.mockImplementation(async (fd: FormData) => {
     posted.push(fd);
     return { ok: true, outcome: "logged" };
   });
@@ -401,5 +422,158 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
     });
     // The day is the ROW's, and today's row states none — the same post it always made.
     expect(sent.date).toBe(date);
+  });
+});
+
+// THE "EARLIER DOSE" STATEMENT STATES ITS DAY (#4691). The shared PRN row handed the
+// WhenControl `minDate === maxDate === today`, which renders the day as fixed TEXT — so
+// the illness cockpit could show a Yesterday toggle above a row that could only ever
+// write today, and last night's dose had no path from the surface a parent was looking
+// at. The claim is the pair: the control OFFERS a real day range, and whatever day it
+// is left on is the day the write states.
+describe("the PRN row's earlier-dose statement reaches a past day (#4691)", () => {
+  // The component reads its own "today" from the UTC zone it is handed, so the test
+  // derives the pair the same way rather than pinning a literal that ages out.
+  const TODAY_UTC = new Date().toISOString().slice(0, 10);
+  const YESTERDAY_UTC = new Date(Date.now() - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  function row(): void {
+    render(
+      <QuickLogPrnControl
+        itemId={31}
+        name="Ibuprofen"
+        doseAmount="200 mg"
+        dayLabel="1 today · last 4:02pm"
+        tz="UTC"
+      />
+    );
+  }
+
+  async function openStatement(): Promise<void> {
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+  }
+
+  it("offers a real day field, not the fixed-day text a single pinned day renders", async () => {
+    row();
+    await openStatement();
+    // The WhenControl draws a <span> when minDate === maxDate and the editable
+    // DateField otherwise: which ELEMENT is here IS the claim.
+    expect(screen.getByTestId("prn-log-when-date").tagName).toBe("INPUT");
+  });
+
+  it("posts the stated day beside the stated time", async () => {
+    row();
+    await openStatement();
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-date"), {
+        target: { value: YESTERDAY_UTC },
+      })
+    );
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "19:15" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    const fd = fields();
+    expect(fd.offset).toBe("custom");
+    expect(fd.time).toBe("19:15");
+    expect(fd.date).toBe(YESTERDAY_UTC);
+  });
+
+  it("the same statement left on today still writes today", async () => {
+    row();
+    await openStatement();
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "08:05" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    expect(fields().date).toBe(TODAY_UTC);
+  });
+
+  // THE PAYOFF OF THE DAY CONTEXT (#4691): the Meds row is a SIBLING of the Symptoms
+  // section, and before the lift it could not see the toggle at all — one card showed
+  // Yesterday while this row could only ever write today. It now reads the card's day,
+  // so the two cannot disagree by construction rather than by both remembering to.
+  it("opens its statement on the card's day when it is inside one", async () => {
+    render(
+      <CockpitDayProvider date={TODAY} altDate={YESTERDAY}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "19:15" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    // TODAY here is the card's primary day, which is where the provider starts.
+    expect(fields().date).toBe(TODAY);
+  });
+
+  // …AND IT MOVES WITH THE TOGGLE. Both real siblings under one card: the Symptoms
+  // bar renders the toggle, the Meds row reads the day it sets. This is the assertion
+  // the whole lift exists for — before it, the toggle was local state inside the bar
+  // and this row could not observe it at all.
+  it("follows the toggle its SIBLING renders", async () => {
+    render(
+      <CockpitDayProvider date={TODAY} altDate={YESTERDAY}>
+        <SymptomLogBar
+          date={TODAY}
+          altDate={YESTERDAY}
+          initial={{}}
+          initialNotes={{}}
+          symptoms={[]}
+          customNames={[]}
+          suggestActivateIllness={false}
+          showTitle={false}
+        />
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("symptom-day-alt"))
+    );
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.change(screen.getByTestId("prn-log-when-time"), {
+        target: { value: "19:15" },
+      })
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-custom"))
+    );
+    expect(fields().date).toBe(YESTERDAY);
+  });
+
+  it("the taken-now tap states no day at all — its action stamps today", async () => {
+    row();
+    await act(async () => fireEvent.click(screen.getByTestId("prn-log-now")));
+    const fd = fields();
+    expect(fd.offset).toBe("now");
+    expect(fd.date).toBeUndefined();
   });
 });

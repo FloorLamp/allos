@@ -470,6 +470,7 @@ export function gatherHistoryLog(
           ),
           clock: hhmm,
           clockKind: stated ? "stated" : "logged",
+          slotBoundaries: boundaries,
         },
       });
     }

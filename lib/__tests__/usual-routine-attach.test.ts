@@ -21,6 +21,7 @@ import type { NotificationMessage } from "@/lib/notifications/types";
 const OFFER = {
   window: "Morning" as const,
   groups: ["fermented", "berries"],
+  proteinGrams: null,
   doses: [
     { doseId: 1, itemId: 1, name: "Creatine", detail: null },
     { doseId: 8, itemId: 8, name: "Collagen", detail: null },

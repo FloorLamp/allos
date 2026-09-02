@@ -28,6 +28,23 @@ import { workerDbPath, frozenSyncInstant } from "./worker-env";
 // Anything else on the provider was written by a kicked sync during this file's run.
 const SEEDED_SYNC_EVENTS = [frozenSyncInstant(2), frozenSyncInstant(1)];
 
+// How long the ENABLE click's Server Action may honestly take (#4722).
+//
+// `enableWeatherAction` AWAITS `runWeatherSync` before it returns, and that sync
+// spends its time in up to three SEQUENTIAL Open-Meteo requests — hourly, then the
+// daily half's weather and air-quality calls — each bounded by
+// `AbortSignal.timeout(TIMEOUT_MS)` with TIMEOUT_MS = 15_000
+// (lib/integrations/open-meteo.ts). So the POST has a worst case of 3 x 15 s, and
+// settledClick's 15 s default is smaller than ONE of those timeouts: whenever the
+// runner's route to open-meteo stalls rather than refusing, the wait expires by
+// arithmetic. That is how main went red at c72fa628 — the helper's own diagnosis
+// there was that the POST was issued and no response arrived before the deadline.
+//
+// A PRESENCE wait, so the wider ceiling hides nothing: an action that never posts,
+// or never answers, still fails — later. `test.slow()` on the case supplies the
+// test budget the ceiling needs.
+const WEATHER_ENABLE_POST_CEILING_MS = 3 * 15_000 + 5_000;
+
 // Undo what the re-enable's kicked sync wrote. Whatever the network did, the run
 // appends an integration_sync_events row — ok:1 with a today-relative window where
 // open-meteo is reachable, ok:0 where it is not — and the sibling tests in this file
@@ -393,7 +410,9 @@ test.describe("Weather & UV integration (#1172)", () => {
         /Not enabled/i
       );
 
-      await settledClick(member, member.getByTestId("weather-enable"));
+      await settledClick(member, member.getByTestId("weather-enable"), {
+        timeout: WEATHER_ENABLE_POST_CEILING_MS,
+      });
       // This test is about the CONNECTION, so it asserts the connection — NOT the
       // sync-standing badge. Since #1772 `sync-status-weather` reports STANDING,
       // which folds in the recent runs' outcomes, and `enableWeatherAction` kicks a

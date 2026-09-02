@@ -263,14 +263,7 @@ export default function QuickLogMenu({
                   It is why the offers below took ITS full-width shape rather than the
                   other way round — a control that names doses cannot compress into a
                   pill (#3736). */}
-              {context.routine && (
-                <UsualRoutineControl
-                  window={context.routine.window}
-                  food={context.routine.food}
-                  doses={context.routine.doses}
-                  subjectName={context.routine.subjectName}
-                />
-              )}
+              {context.routine && <UsualRoutineControl {...context.routine} />}
               <div className="flex flex-col gap-1">
                 {context.dueDoses.items.length > 0 && (
                   <SheetRow

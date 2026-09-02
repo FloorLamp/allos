@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveInstanceTimezone } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import TimezoneSelect from "@/components/TimezoneSelect";
@@ -14,13 +13,16 @@ export default function InstanceTimezoneSettings({
 }: {
   timezone: string;
 }) {
-  const [timezone, setTimezone] = useState(initialTimezone);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: timezone,
+    save: runSave,
+  } = useSaveStatus(initialTimezone);
 
   function save(tz: string) {
     const fd = new FormData();
     fd.set("timezone", tz);
-    runSave(async () => {
+    runSave(tz, async () => {
       await saveInstanceTimezone(fd);
     });
   }
@@ -31,7 +33,7 @@ export default function InstanceTimezoneSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Instance-default timezone
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -43,10 +45,7 @@ export default function InstanceTimezoneSettings({
       <TimezoneSelect
         id="instance-timezone"
         value={timezone}
-        onTimezoneChange={(nextTimezone) => {
-          setTimezone(nextTimezone);
-          save(nextTimezone);
-        }}
+        onTimezoneChange={save}
       />
     </div>
   );

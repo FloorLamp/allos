@@ -25,6 +25,10 @@
 //      comment threads proves the same thing; any threads fail the gate as
 //      resolution-unknown rather than blocking every merge on exit 2.
 //
+// It also PRINTS, without gating on it, what `e2e-main` says about the base
+// branch (#4722): that workflow reports on main, never on a PR head, so main
+// stayed red there for eight merges while every PR read green.
+//
 // Usage:
 //   node scripts/orchestration/merge-gate.mjs <pr-number> [--repo owner/name]
 //     [--ignore-check <name>]
@@ -45,6 +49,7 @@ import { execFileSync } from "node:child_process";
 import { helpGuard } from "./usage.mjs";
 import { resolveReadToken } from "./host.mjs";
 import {
+  baseDetectorNotice,
   checkRunsVerdict,
   closedStatusDescription,
   readinessVerdict,
@@ -89,7 +94,9 @@ function curl(curlArgs) {
   return { status: Number(out.slice(cut + 1)), body: out.slice(0, cut) };
 }
 
-function gh(pathname) {
+// `soft` is for reads whose failure must not become the gate's verdict: it
+// answers null instead of exiting, so an advisory read can go dark on its own.
+function gh(pathname, soft = false) {
   for (let attempt = 1; ; attempt++) {
     const { status, body } = curl([
       "-H",
@@ -104,6 +111,7 @@ function gh(pathname) {
     }
     if (status >= 200 && status < 300) return JSON.parse(body);
     if (status >= 500 && attempt < 4) continue;
+    if (soft) return null;
     console.error(`GET ${pathname} -> ${status} — cannot evaluate; re-invoke.`);
     process.exit(2);
   }
@@ -219,6 +227,19 @@ for (let page = 1; ; page++) {
   all_runs.push(...batch.check_runs);
   if (all_runs.length >= fetched_count) break;
 }
+// The base branch's own detector, said out loud where the merge is decided
+// (#4722). Advisory: a soft read, and never a `fail()` — see the core.
+const baseRef = pr.base?.ref ?? "main";
+const baseRuns = gh(
+  `repos/${repo}/commits/${baseRef}/check-runs?per_page=100`,
+  true
+);
+console.log(
+  baseRuns
+    ? `NOTE: ${baseDetectorNotice(baseRuns.check_runs ?? [], baseRef)}`
+    : `NOTE: could not read ${baseRef}'s check runs — e2e-main standing unknown`
+);
+
 const checks = checkRunsVerdict(all_runs, ignoreCheck, head);
 if (checks.ignored) {
   console.log(`(ignoring check "${ignoreCheck}" — the gate's own wrapper)`);

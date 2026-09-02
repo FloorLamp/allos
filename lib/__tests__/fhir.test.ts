@@ -231,9 +231,50 @@ describe("parseFhirBundle", () => {
       laterality: "left",
       study_date: "2024-05-02",
       indication: "Knee pain",
-      impression: "MRI Left Knee",
+      // The study's description is its narrative, not a labelled impression (#3594).
+      impression: null,
+      report_narrative: "MRI Left Knee",
       external_id: "fhir:imaging:study:study-1",
     });
+  });
+
+  // #3594: mapImagingStudyResource joins description + note[].text with "\n" and is
+  // the ONLY route that reaches parseImpressionSection with line structure intact —
+  // the DocumentReference and presentedForm decoders collapse whitespace. So it is
+  // the route where a level-by-level impression can be cut at its own data lines,
+  // and the one this has to be proven on end to end rather than against the regex.
+  it("keeps a level-by-level impression whole through the ImagingStudy route (#3594)", () => {
+    const impression =
+      "IMPRESSION:\n" +
+      "Multilevel degenerative disc disease.\n" +
+      "L4-L5: severe left lateral recess stenosis and impingement of the " +
+      "traversing left L5 nerve root.";
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "ImagingStudy",
+          id: "study-lumbar",
+          status: "available",
+          started: "2024-03-04T09:00:00Z",
+          modality: [{ code: "MR" }],
+          description: "MRI Lumbar Spine",
+          note: [{ text: impression }],
+        },
+      ])
+    );
+    const study = r.imagingStudies![0];
+    // The finding survives, not just the summary line above it.
+    expect(study.impression).toContain(
+      "L4-L5: severe left lateral recess stenosis"
+    );
+    expect(study.impression).toBe(
+      "Multilevel degenerative disc disease.\n" +
+        "L4-L5: severe left lateral recess stenosis and impingement of the " +
+        "traversing left L5 nerve root."
+    );
+    // The narrative still holds the whole thing, banner line included.
+    expect(study.report_narrative).toContain("MRI Lumbar Spine");
+    expect(study.report_narrative).toContain("IMPRESSION:");
   });
 
   it("drops an entered-in-error ImagingStudy, records the drop", () => {
@@ -256,7 +297,7 @@ describe("parseFhirBundle", () => {
     ).toBe(true);
   });
 
-  it("captures an imaging DiagnosticReport's conclusion + conclusionCode + inline presentedForm as the impression (#708)", () => {
+  it("stores an imaging DiagnosticReport's conclusion as the impression and its whole narrative beside it (#708/#3594)", () => {
     const r = parseFhirBundle(
       bundle([
         {
@@ -290,9 +331,16 @@ describe("parseFhirBundle", () => {
     const study = r.imagingStudies![0];
     expect(study.modality).toBe("ct");
     expect(study.study_date).toBe("2024-03-15");
+    // conclusion + conclusionCode ARE the impression by FHIR's own definition; the
+    // rendered presentedForm is the report, and it is kept whole rather than folded
+    // into the finding.
     expect(study.impression).toContain("No acute cardiopulmonary process.");
     expect(study.impression).toContain("Normal chest CT");
-    expect(study.impression).toContain("Clear lungs");
+    expect(study.impression).not.toContain("Clear lungs");
+    expect(study.report_narrative).toContain(
+      "No acute cardiopulmonary process."
+    );
+    expect(study.report_narrative).toContain("Clear lungs");
     // The report's discrete Observations still flow to records — no imaging row here.
     expect(r.observations).toHaveLength(0);
   });
@@ -329,6 +377,41 @@ describe("parseFhirBundle", () => {
     expect(rec!.value).toContain("Benign");
     expect(rec!.value_num).toBeNull();
     expect(rec!.external_id).toBe("fhir:dr-conclusion:dr-path");
+  });
+
+  // #3594: the 8000-character narrative cap is an invariant of this field, and the
+  // parsed impression is subject to it exactly as the narrative is. A runaway report
+  // whose labelled IMPRESSION runs to the end parses to the whole body, so an
+  // uncapped parse result puts tens of thousands of characters into the column every
+  // display surface PREFERS — while the narrative beside it stays bounded.
+  it("caps a parsed impression at the same bound as the narrative (#3594)", () => {
+    const body = "Innumerable small nodules are again noted. ".repeat(1400);
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "DocumentReference",
+          id: "docref-runaway",
+          status: "current",
+          type: { text: "Radiology Report" },
+          date: "2024-07-01",
+          content: [
+            {
+              attachment: {
+                contentType: "text/plain",
+                data: b64(`IMPRESSION: ${body}`),
+              },
+            },
+          ],
+        },
+      ])
+    );
+    const study = r.imagingStudies![0];
+    // The source really is far past the bound, so the assertion has something to
+    // discriminate against — a fixture under the cap would pass either way.
+    expect(body.length).toBeGreaterThan(20000);
+    expect(study.report_narrative!.length).toBeLessThanOrEqual(8001);
+    expect(study.impression).not.toBeNull();
+    expect(study.impression!.length).toBeLessThanOrEqual(8001);
   });
 
   it("ingests an inline-text imaging DocumentReference but NOT a binary/remote one (#708 item 4)", () => {
@@ -381,8 +464,10 @@ describe("parseFhirBundle", () => {
     const study = r.imagingStudies![0];
     expect(study.external_id).toBe("fhir:imaging:docref:docref-inline");
     expect(study.study_date).toBe("2024-06-10");
-    // HTML stripped to plain text.
-    expect(study.impression).toBe("IMPRESSION: Normal study.");
+    // HTML stripped to plain text: the whole rendered report is the narrative, and
+    // the impression is only the section the report labels as one (#3594).
+    expect(study.report_narrative).toBe("IMPRESSION: Normal study.");
+    expect(study.impression).toBe("Normal study.");
   });
 
   it("is idempotent — a duplicate ImagingStudy dedupes on external_id", () => {

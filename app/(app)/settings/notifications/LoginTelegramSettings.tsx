@@ -22,14 +22,21 @@ export default function LoginTelegramSettings({
   // channel migration couldn't derive an unambiguous chat for this login.
   reviewNeeded: boolean;
 }) {
-  const [enabled, setEnabled] = useState(telegram.telegramEnabled);
-  const [chatId, setChatId] = useState(telegram.telegramChatId);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: telegram.telegramEnabled,
+    chatId: telegram.telegramChatId,
+  });
+  const { enabled, chatId } = draft;
   const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
   );
-  const busy = pending || testing;
+  const busy = status.pending || testing;
 
   function buildFormData() {
     const fd = new FormData();
@@ -39,7 +46,7 @@ export default function LoginTelegramSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       await saveLoginTelegram(buildFormData());
       setResult(null);
     });
@@ -66,7 +73,7 @@ export default function LoginTelegramSettings({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram (your chat)
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -97,7 +104,7 @@ export default function LoginTelegramSettings({
         <input
           type="checkbox"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={(e) => edit({ ...draft, enabled: e.target.checked })}
           className="h-4 w-4 accent-brand-600"
           data-testid="login-telegram-enabled"
         />
@@ -109,7 +116,7 @@ export default function LoginTelegramSettings({
           <label className="label">Chat ID</label>
           <input
             value={chatId}
-            onChange={(e) => setChatId(e.target.value)}
+            onChange={(e) => edit({ ...draft, chatId: e.target.value })}
             placeholder="e.g. 987654321"
             className="input"
             data-testid="login-telegram-chat-id"

@@ -38,6 +38,7 @@ import {
 import { getTrackedPractices } from "@/lib/queries/wellness";
 import { getTimelineDates } from "@/lib/timeline";
 import { usualRoutineDayOffers } from "@/lib/queries/usual-routine";
+import { profileFoodSlotBoundaries } from "@/lib/profile-food-slot";
 import { getProfileSubstanceKeys } from "@/lib/queries/substance";
 import { substanceDef } from "@/lib/substance-use";
 import { isOnDemand } from "@/lib/intake-schedule";
@@ -572,10 +573,13 @@ export default async function HistoryPage(props: {
             mood: getMoodOnDate(actingProfileId, day ?? todayStr),
           },
           moodShowCalm: isAnxietyScaleRelevant(actingProfileId),
-          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here so the
-          // door's first paint is the server's answer rather than a flash of nothing;
-          // the door re-reads through `usualRoutineOffersOn` when its date field moves.
-          // Empty for every other kind — a `Log a use` door has no breakfast to offer.
+          // The acting profile's meal-bucket boundaries, so the food form's Meal
+          // follows a stated hour here exactly as it does in the nutrition bar.
+          foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
+          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here, and this
+          // is the only day the door's control can be about (#4424 ruling 2 deleted the
+          // shared date input it used to chase). Empty for every other kind — a
+          // `Log a use` door has no breakfast to offer.
           usual:
             addKind === "food"
               ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
