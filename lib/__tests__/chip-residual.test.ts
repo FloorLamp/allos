@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const IMPLEMENTATION = "components/Chip.tsx";
-const TOKENS = new Set(["chip-base", "chip-nav", "chip-filter"]);
+const TOKENS = new Set(["chip-base", "chip-nav", "chip-filter", "chip-offer"]);
 
 function sourceFiles(dir: string): string[] {
   return fs
