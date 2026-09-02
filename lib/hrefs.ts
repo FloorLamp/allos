@@ -328,6 +328,20 @@ export function historyDayHref(date: string): AppRoute {
   return historyHref({ day: date });
 }
 
+// THE DAY VIEW'S INTRADAY PANEL, AS A DESTINATION (#4767 item 1). The panel is the
+// app's one intraday surface, and until now nothing could land on it: it carried
+// testids and no id, so a receipt or a dashboard chart could only drop you at the
+// top of the day and leave the scroll to you.
+//
+// This is NOT the `#timeline-day-<date>` fragment the note above retired. That one
+// named a POSITION IN A FEED, which `?day=` made meaningless; this names a PANEL on
+// the page the day param already selects — the same thing `/data#integrations` is.
+export const INTRADAY_PANEL_ANCHOR = "day-at-a-glance";
+
+export function historyDayIntradayHref(date: string): AppRoute {
+  return `${historyDayHref(date)}#${INTRADAY_PANEL_ANCHOR}` as AppRoute;
+}
+
 // The Training Log's date anchor. Workout-day surfaces land in the domain
 // ledger rather than routing through Timeline; the log owns activity review
 // and editing, while Timeline remains the cross-domain destination.

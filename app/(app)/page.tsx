@@ -241,7 +241,12 @@ import {
   snoozeCoaching,
   undoAttentionDose,
 } from "./actions";
-import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
+import {
+  episodeHref,
+  encounterHref,
+  historyDayIntradayHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
@@ -1497,6 +1502,7 @@ async function renderDashboard(
   }
 
   const finishedActivityId = workoutPresence?.activityId;
+  const finishedDayHref = historyDayIntradayHref(workoutPresence?.date ?? on);
   if (showRecapCard && finishedRecap && finishedActivityId != null) {
     const recapFacts = [
       ["sets", `${finishedRecap.totalWorkingSets} working sets`],
@@ -1516,8 +1522,13 @@ async function renderDashboard(
         ),
         {
           value,
-          href: "/training",
-          moment: { title: "Session complete", href: "/training" },
+          // THE RECEIPT'S PHYSIOLOGY DOOR (#4767 item 4). "Session complete" used to
+          // land on /training, which answers what you LOGGED; the question this
+          // moment raises is what it DID to you, and only the day view's intraday
+          // panel answers that. The session's OWN day, not today — the finished
+          // window carries a day of slack across midnight.
+          href: finishedDayHref,
+          moment: { title: "Session complete", href: finishedDayHref },
         }
       )
     );

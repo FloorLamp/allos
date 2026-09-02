@@ -13,7 +13,8 @@
 // cannot spend.
 import IntradayChart from "@/components/IntradayChart";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
-import type { IntradayModel } from "@/lib/intraday";
+import { intradayFreshness, type IntradayModel } from "@/lib/intraday";
+import { INTRADAY_PANEL_ANCHOR } from "@/lib/hrefs";
 
 export default function IntradayPanel({
   model,
@@ -27,9 +28,14 @@ export default function IntradayPanel({
    *  for the right one. Re-validated against the session server-side. */
   profileId: number;
 }) {
+  const freshness = intradayFreshness(model);
   return (
+    // `scroll-mt-4` for the same reason every other anchored section on the app
+    // carries it: landing on an id puts the element's top edge under the sticky
+    // chrome, and a chart whose header is hidden reads as a chart with no title.
     <div
-      className="card mb-3 overflow-hidden"
+      id={INTRADAY_PANEL_ANCHOR}
+      className="card mb-3 scroll-mt-4 overflow-hidden"
       data-testid="intraday-panel"
       data-intraday-date={model.date}
     >
@@ -41,6 +47,17 @@ export default function IntradayPanel({
           Midnight to midnight · drag to zoom · tap a mark to jump to its entry
         </p>
       </div>
+      {/* The lag sentence (#4767 item 5), on today only. See `intradayFreshness`:
+          the axis runs to midnight whatever the watch has sent, so the distance
+          between the last sample and now is stated rather than drawn. */}
+      {freshness && (
+        <p
+          className="mb-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="intraday-freshness"
+        >
+          {freshness}
+        </p>
+      )}
       <IntradayChart
         model={model}
         formatPrefs={formatPrefs}

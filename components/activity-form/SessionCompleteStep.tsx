@@ -17,6 +17,7 @@ import NotesField from "./NotesField";
 export default function SessionCompleteStep({
   recap,
   unit,
+  date,
   intensity,
   onIntensity,
   notes,
@@ -26,6 +27,8 @@ export default function SessionCompleteStep({
 }: {
   recap: Recap;
   unit: WeightUnit;
+  /** The session's own day — the recap's physiology door (#4767 item 4). */
+  date: string;
   intensity: string;
   onIntensity: (v: string) => void;
   notes: string;
@@ -43,7 +46,7 @@ export default function SessionCompleteStep({
       </div>
 
       <div className="rounded-xl border border-black/5 bg-slate-50/60 p-4 dark:border-white/5 dark:bg-ink-900/40">
-        <SessionRecapView recap={recap} unit={unit} />
+        <SessionRecapView recap={recap} unit={unit} date={date} />
       </div>
 
       {/* Session effort = the existing activities.intensity (easy/moderate/hard),
