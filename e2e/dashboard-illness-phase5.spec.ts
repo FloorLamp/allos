@@ -25,10 +25,18 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 
-// This spec owns the multi-episode profile's cough/nausea, 101.9 °F reading, and
-// Ibuprofen administrations. Reset only those rows before driving it so a retry or
-// repeat starts from the seeded baseline without touching the fixture's headache or
-// any other profile's data.
+// This spec owns the multi-episode profile's three episodes, its cough/nausea, its
+// 101.9 °F reading, and its Ibuprofen administrations. Reset only those rows before
+// driving it so a retry or repeat starts from the seeded baseline without touching
+// the fixture's headache or any other profile's data.
+//
+// IT RESTORES WHAT THIS FILE'S OWN TESTS SPEND. The simultaneous-episode test ENDS
+// all three episodes and its end-episode dialog can stop the Ibuprofen with them, so
+// "reset the writes" had to mean the episodes and the med too — otherwise the first
+// test in a worker consumed the fixture and every later test sharing that DB (and
+// every RETRY of the test itself, which opens by counting three cockpits) ran against
+// a profile with no open illness and no medication. Both restores are UPDATEs against
+// the seeded rows, so the fixture's start dates and dose are unchanged.
 function resetMultiIllnessWrites(): void {
   const db = new Database(workerDbPath());
   try {
@@ -51,6 +59,17 @@ function resetMultiIllnessWrites(): void {
           SELECT id FROM intake_items
            WHERE profile_id = ? AND name = 'Ibuprofen'
         )`
+    ).run(profile.id);
+    db.prepare(
+      `UPDATE illness_episodes SET end_date = NULL WHERE profile_id = ?`
+    ).run(profile.id);
+    db.prepare(
+      `UPDATE situations SET active = 1, illness_type = 1
+        WHERE profile_id = ? AND name IN ('Flu', 'Migraine', 'Stomach bug')`
+    ).run(profile.id);
+    db.prepare(
+      `UPDATE intake_items SET active = 1
+        WHERE profile_id = ? AND name = 'Ibuprofen'`
     ).run(profile.id);
   } finally {
     db.close();
@@ -541,7 +560,16 @@ test.describe("fresh-profile illness front door", () => {
       inline.getByRole("button", { name: "Add", exact: true })
     );
     await expect(inline).toBeHidden({ timeout: 15_000 });
-    await expect(page.getByTestId("prn-log-now")).toBeVisible();
+    // THE ADD LANDS AS A CHIP (#4752 item 4). What a fresh cockpit gains from this
+    // journey is the medication's NAME in the flow row — the dose and the tap that
+    // writes it live one tap inside, so `prn-log-now` is deliberately not on screen
+    // until somebody opens the med.
+    const added = page
+      .getByTestId("cockpit-med-chips")
+      .locator('[data-testid^="cockpit-med-chip-"]')
+      .filter({ hasText: "Ibuprofen" });
+    await expect(added).toBeVisible();
+    await expect(page.getByTestId("prn-log-now")).toHaveCount(0);
     await page.reload();
     await expect(
       page
@@ -589,6 +617,14 @@ for (const [label, viewport, wide] of [
       await expect(card.getByTestId("cockpit-recovery-header")).toBeVisible();
       const chips = card.getByTestId("cockpit-med-chips");
       await expect(chips).toBeVisible();
+      // THE CONTROL THIS WHOLE TEST RESTS ON. Every claim below is about a panel a
+      // med chip opens, and an empty chip row would let the measure assertions pass
+      // on a card with nothing in it — so the row's population is asserted, not
+      // assumed, and a fixture that stops seeding the med fails HERE by name.
+      await expect(
+        chips.locator('[data-testid^="cockpit-med-chip-"]'),
+        "the cockpit's med chips — the subject of every claim below"
+      ).not.toHaveCount(0);
 
       // ONE SETTLED GROUP: every claim below is the card measured AGAINST its own
       // column, so the two boxes have to describe the same layout.
