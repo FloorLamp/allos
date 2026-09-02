@@ -116,7 +116,12 @@ export default function ScheduledDoseAction({
           taken={taken}
           skipped={skipped}
           variant="pill"
-          label={taken ? "Taken" : "Mark taken"}
+          // THE VERB NAMES THE ACT (#4753 ruling 2), and this row is deliberately
+          // NOT the chip: ruling 1 says a control with nothing non-redundant left to
+          // show is a plain verb button, and the row's own link already prints the
+          // amount and the slot this tap would put in a label ("1 tablet", "Morning").
+          // So the copy migrates and the shape does not.
+          label={taken ? "Taken" : "Take"}
           compact={compactActions}
           profileId={profileId}
           statement={statement}

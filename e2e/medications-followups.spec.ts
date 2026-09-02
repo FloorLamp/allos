@@ -10,6 +10,7 @@ import {
   settledBoxes,
   settledClick,
   settledFill,
+  pickComposedWhen,
 } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
 import {
@@ -337,8 +338,12 @@ test("logs, edits, and deletes a historical medication dose", async ({
   // cap is gone and moves the PRN course start backward atomically.
   date.setUTCDate(date.getUTCDate() - 45);
   const beforeStart = date.toISOString().slice(0, 10);
-  await form.getByTestId("historical-dose-date").fill(beforeStart);
-  await form.getByTestId("historical-dose-time").fill("03:17");
+  // ONE DOOR FOR THE PAIR (#4218) — see e2e/dose-history.spec.ts. The EDIT below
+  // is an amendment, where the time is optional and keeps its own field.
+  await pickComposedWhen(page, "historical-dose", {
+    date: beforeStart,
+    hhmm: "03:17",
+  });
   await form.getByLabel("Amount").fill(loggedAmount);
   const submit = form.getByRole("button", { name: "Save dose" });
   const actions = submit.locator("xpath=parent::div");

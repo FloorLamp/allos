@@ -1,6 +1,7 @@
 "use client";
 
 import { IconPlus } from "@tabler/icons-react";
+import OfferRow from "@/components/OfferRow";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
@@ -154,20 +155,22 @@ export default function UsualRoutineControl({
   }
 
   return (
-    <button
-      type="button"
-      data-testid={testIds.button}
-      data-groups={groups.join(",")}
-      data-doses={doseIds.join(",")}
+    <OfferRow
+      tone="brand"
+      testId={testIds.button}
+      data={{
+        "data-groups": groups.join(","),
+        "data-doses": doseIds.join(","),
+      }}
       // The day is named to a screen reader wherever there is one to name: the record
       // door reaches days the reader is not living, and "your usual Morning" without
       // one would be the same sentence for every day it can fill.
-      aria-label={
+      ariaLabel={
         date ? `${heading} on ${date}: ${phrase}` : `${heading}: ${phrase}`
       }
       disabled={ledger.blocked()}
-      onClick={run}
-      className="mb-3 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+      onAct={run}
+      className="mb-3"
     >
       <IconPlus
         className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
@@ -184,6 +187,6 @@ export default function UsualRoutineControl({
           {phrase}
         </span>
       </span>
-    </button>
+    </OfferRow>
   );
 }
