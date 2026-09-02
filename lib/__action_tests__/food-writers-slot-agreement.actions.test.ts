@@ -126,3 +126,86 @@ describe("web bar and Telegram nudge agree on meal_slot (#1704)", () => {
     ]);
   });
 });
+
+// ── ONE PLACEMENT, TWO CORES, ONE ROW SHAPE (#4729) ──────────────────────────
+//
+// The pin above is about the SLOT the two cores store. This is about the whole
+// placement, and it is the half that was wrong: each core took a `(mealSlot, time)`
+// PAIR and answered it differently — `logFoodServingCore` dropped the declaration when
+// a statement came with it (#2269), `addProteinGramsCore` stored both, and
+// `foodEventWindow` gives a stored `meal_slot` precedence over an instant. So one
+// gesture declaring a window AND stating an hour filed under two different meal
+// sections depending on which core happened to take it, with nothing in either row
+// saying so. Latent on the protein side and LIVE on the food side, where the web action
+// and the offline replay both handed the core a tab and a stated hour and relied on it
+// to drop one.
+//
+// Both cores now take ONE `FoodPlacement` — a declared window or a stated instant — so
+// the pair is not a value a caller can build, and both read their columns through
+// `placementColumns`. The precedence question that made the pair ambiguous (#4438 item
+// 3) is untouched and still open: this makes the pair unrepresentable rather than
+// picking a winner for it.
+//
+// IT FAILS IF EITHER CORE IS CHANGED ALONE because the two rows are asserted against
+// EACH OTHER first; the literal beside it is what stops a matching pair of wrong
+// answers from passing quietly.
+describe("both food writers place a serving identically (#4729)", () => {
+  function placementOf(profileId: number, group: string) {
+    const rows = db
+      .prepare(
+        `SELECT meal_slot, occurred_at, time_source FROM food_log_events
+          WHERE profile_id = ? AND date = ? AND group_key = ? ORDER BY id`
+      )
+      .all(profileId, DATE, group) as {
+      meal_slot: string | null;
+      occurred_at: string | null;
+      time_source: string | null;
+    }[];
+    // The row has to exist before its columns mean anything — a core that wrote
+    // nothing would otherwise agree with the other by having nothing to disagree with.
+    expect(rows).toHaveLength(1);
+    return rows[0];
+  }
+
+  const STATED = { eatenAt: LATE_TAP, source: "stated" } as const;
+
+  it.each([
+    [
+      "a declared window stores the slot and no instant",
+      ASSERTED,
+      { meal_slot: ASSERTED, occurred_at: null, time_source: null },
+    ],
+    [
+      "a stated instant stores the instant and no slot",
+      STATED,
+      { meal_slot: null, occurred_at: LATE_TAP, time_source: "stated" },
+    ],
+    [
+      "neither states nothing, and nothing is invented",
+      undefined,
+      { meal_slot: null, occurred_at: null, time_source: null },
+    ],
+  ])("%s", (_name, placement, expected) => {
+    const login = createLogin({ role: "admin" });
+    const web = createProfile("Placement Food");
+    const shake = createProfile("Placement Protein");
+    actAs(login, web);
+
+    expect(
+      logFoodServingCore(web.id, "berries", DATE, "page", LATE_TAP, placement)
+        .kind
+    ).toBe("logged");
+    expect(
+      addProteinGramsCore(shake.id, DATE, 30, "page", LATE_TAP, placement).kind
+    ).toBe("logged");
+
+    const food = placementOf(web.id, "berries");
+    const protein = placementOf(shake.id, PROTEIN_NUDGE_KEY);
+    expect(protein).toEqual(food);
+    expect(food).toEqual(expected);
+    // …and therefore one derived WINDOW, which is what a reader of either row sees.
+    expect(derivedWindows(shake.id, PROTEIN_NUDGE_KEY)).toEqual(
+      derivedWindows(web.id, "berries")
+    );
+  });
+});

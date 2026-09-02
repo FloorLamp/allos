@@ -160,11 +160,11 @@ export function logUsualFoodCore(
 
       const groups: UsualFoodLogged[] = [];
       for (const groupKey of toLog) {
-        // The window is a DECLARATION here, exactly as the bar's meal tab is (#2269):
+        // The placement is a DECLARATION here, exactly as the bar's meal tab is (#2269):
         // the offer is about a meal window and states no eating time, so the serving
         // carries the declared slot and a NULL eating instant rather than a guessed one.
-        // A bundle may NOT be handed one — see `logUsualRoutineCore`'s header: a stated
-        // hour would drop the very window this offer was derived and labelled for, and
+        // A bundle may NOT state an hour instead — see `logUsualRoutineCore`'s header:
+        // that would drop the very window this offer was derived and labelled for, and
         // the offer would then never reduce.
         const outcome = logFoodServingCore(
           profileId,
@@ -173,7 +173,6 @@ export function logUsualFoodCore(
           via,
           loggedAt,
           window,
-          undefined,
           origin
         );
         // Unreachable in practice — the offer only ever contains catalog slugs — but a

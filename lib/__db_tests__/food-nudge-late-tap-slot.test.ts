@@ -227,18 +227,10 @@ describe("a Telegram food tap outside the nudge's window (#1704)", () => {
 
   it("the #950 ranking ranks it by PROXIMITY to when it was eaten (#2019)", () => {
     // A control serving eaten at 07:00 — right on the Morning anchor, far from Midday.
-    logFoodServingCore(
-      p.profileId,
-      "eggs",
-      t,
-      "page",
-      `${t}T07:00:00Z`,
-      undefined,
-      {
-        eatenAt: `${t}T07:00:00Z`,
-        source: "tap",
-      }
-    );
+    logFoodServingCore(p.profileId, "eggs", t, "page", `${t}T07:00:00Z`, {
+      eatenAt: `${t}T07:00:00Z`,
+      source: "tap",
+    });
     // Ranking no longer asks which bucket an event fell in; it weights every tap by how
     // near its EATING minute sits to the window's anchor. So the 12:30 berries lead the
     // midday nudge and the 07:00 eggs lead the morning one …

@@ -84,9 +84,12 @@
 //     re-derived FOR MORNING, still stands, and EVERY REPEAT TAP WRITES AGAIN, each
 //     answering `ok: true`. "A STALE TAP REFUSES; IT NEVER DOUBLE-LOGS" — broken by the
 //     writes that same tap performed.
-//   • and the two writers disagree about it: `addProteinGramsCore` stores `meal_slot`
-//     AND `occurred_at`, and `foodEventWindow` gives an explicit slot precedence, so one
-//     tap put its servings in Evening and its scoop in Morning. One event, two sections.
+//   • and the two writers used to disagree about it: `addProteinGramsCore` stored
+//     `meal_slot` AND `occurred_at`, and `foodEventWindow` gives an explicit slot
+//     precedence, so one tap put its servings in Evening and its scoop in Morning. One
+//     event, two sections. That half is now structural rather than remembered — both
+//     cores take ONE `FoodPlacement`, a declared window or a stated instant (#4729), so
+//     a bundle cannot hand either of them a pair to disagree over.
 //
 // Reachability was ordinary, not adversarial: the bar's statement is per-DAY, not
 // per-slot, and its own note says so — set 19:00 for dinner, switch to the Morning tab,
