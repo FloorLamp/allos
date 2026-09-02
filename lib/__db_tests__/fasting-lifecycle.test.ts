@@ -848,7 +848,7 @@ describe("the annotation reads real food rows and offers no verdict", () => {
     startFast(adult, start);
 
     // Inside the interval, with a stated eating time.
-    logFoodServingCore(adult, "legumes", day, "page", undefined, undefined, {
+    logFoodServingCore(adult, "legumes", day, "page", undefined, {
       eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
       source: "stated",
     });
@@ -856,18 +856,10 @@ describe("the annotation reads real food rows and offers no verdict", () => {
     // is not counted. Silence here is honest.
     logFoodServingCore(adult, "legumes", day, "page");
     // The same stated instant on another profile is also outside this fast's scope.
-    logFoodServingCore(
-      other,
-      "legumes",
-      today(other),
-      "page",
-      undefined,
-      undefined,
-      {
-        eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
-        source: "stated",
-      }
-    );
+    logFoodServingCore(other, "legumes", today(other), "page", undefined, {
+      eatenAt: utcInstant(new Date(Date.now() - 4 * 3_600_000)),
+      source: "stated",
+    });
 
     const ended = endFast(adult);
     expect(ended.kind).toBe("ended");

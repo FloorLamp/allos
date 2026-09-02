@@ -59,6 +59,7 @@ import SubstanceForm from "@/components/substances/SubstanceForm";
 import { deleteMetricReading } from "@/app/(app)/trends/reading-actions";
 import ReadingValueControl from "@/components/vitals/ReadingValueControl";
 import { FOOD_GROUPS } from "@/lib/food-groups";
+import { isSubstanceFoodGroup } from "@/lib/substance-use";
 import FoodServingForm from "@/components/nutrition/FoodServingForm";
 import {
   HISTORY_KIND_LABELS,
@@ -176,6 +177,26 @@ const ROLLUP_SUBJECT_CAP = "max-w-[calc(100%-84px)] truncate"; // 52 floor + 32 
 // ONE GLYPH PER KIND, total over the closed registry — the timeline's own icon
 // vocabulary, re-housed rather than re-chosen, so a reader who knew the feed's
 // symbols still knows the record's. Total means a new kind cannot ship without one.
+// THE CATALOG THIS ROW'S CORRECTION MAY WRITE INTO (#4072). The list was all 25 groups
+// on every row the ⋯ was drawn on, including a known minor's under `?view=everyone`.
+// Answering it in the LIST is the honest half — an option that always refuses is worse
+// than one that is not offered — and `updateFoodLogEvent` asks the same question where
+// a post can reach it.
+//
+// A ROW ALREADY IN A SUBSTANCE GROUP KEEPS ITS OWN ENTRY. The select is CONTROLLED and
+// seeded from the row, so a list missing the row's current group renders a value it
+// cannot show and re-files the serving under a group nobody chose on a save that only
+// meant to fix the hour. Moving such a row OUT is allowed and is the point.
+function correctionGroups(
+  groupKey: string,
+  substanceCorrectable: boolean
+): typeof FOOD_GROUPS {
+  if (substanceCorrectable) return FOOD_GROUPS;
+  return FOOD_GROUPS.filter(
+    (group) => !isSubstanceFoodGroup(group.slug) || group.slug === groupKey
+  );
+}
+
 const KIND_GLYPH: Record<HistoryKind, TablerIcon> = {
   dose: IconPill,
   food: IconApple,
@@ -521,7 +542,7 @@ export default function HistoryRows({
         // run through `post()`.
         return (
           <FoodServingForm
-            groups={FOOD_GROUPS}
+            groups={correctionGroups(edit.groupKey, edit.substanceCorrectable)}
             date={row.date}
             slotBoundaries={edit.slotBoundaries}
             maxDate={maxDateFor(row)}
