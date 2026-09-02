@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveDigestDemotions } from "../actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -37,13 +36,17 @@ export default function DigestTuneSettings({
 }: {
   demoted: DigestCategory[];
 }) {
-  const [current, setCurrent] = useState<DigestCategory[]>(demoted);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: current,
+    save: runSave,
+  } = useSaveStatus(demoted);
 
   function toggle(category: DigestCategory) {
     const next = toggleDigestDemotion(current, category);
-    setCurrent(next);
-    runSave(async () => {
+    runSave(next, async () => {
       const fd = new FormData();
       fd.set("demoted", serializeDigestDemotions(next));
       await saveDigestDemotions(fd);

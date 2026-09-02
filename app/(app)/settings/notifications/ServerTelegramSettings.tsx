@@ -29,9 +29,18 @@ export default function ServerTelegramSettings({
   lastError: NotifyErrorMarker | null;
 }) {
   const formatPrefs = useFormatPrefs();
-  const [botToken, setBotToken] = useState(config.telegramBotToken);
-  const [mode, setMode] = useState<TelegramMode>(config.telegramMode);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    botToken: config.telegramBotToken,
+    mode: config.telegramMode as TelegramMode,
+  });
+  const { botToken, mode } = draft;
   // Register drives the result message, not the "saved" chip, so it keeps its own
   // transition (see the note on register()).
   const [registering, startRegister] = useTransition();
@@ -48,7 +57,7 @@ export default function ServerTelegramSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       await saveTelegramBotConfig(buildFormData());
       setResult(null);
     });
@@ -118,7 +127,7 @@ export default function ServerTelegramSettings({
         <input
           type="text"
           value={botToken}
-          onChange={(e) => setBotToken(e.target.value)}
+          onChange={(e) => edit({ ...draft, botToken: e.target.value })}
           placeholder="123456:ABC-DEF…"
           className="input"
         />
@@ -132,7 +141,7 @@ export default function ServerTelegramSettings({
               type="radio"
               name="telegram_mode"
               checked={mode === "poll"}
-              onChange={() => setMode("poll")}
+              onChange={() => edit({ ...draft, mode: "poll" })}
               className="h-4 w-4 accent-brand-600"
             />
             Polling — no public URL needed; the notify service picks up taps
@@ -142,7 +151,7 @@ export default function ServerTelegramSettings({
               type="radio"
               name="telegram_mode"
               checked={mode === "webhook"}
-              onChange={() => setMode("webhook")}
+              onChange={() => edit({ ...draft, mode: "webhook" })}
               className="h-4 w-4 accent-brand-600"
             />
             Webhook — Telegram calls the app directly (needs the public app URL)

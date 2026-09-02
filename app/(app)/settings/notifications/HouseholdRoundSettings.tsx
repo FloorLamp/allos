@@ -25,38 +25,39 @@ export default function HouseholdRoundSettings({
   offerable: { profileId: number; name: string }[];
   telegramConfigured: boolean;
 }) {
-  const [isOn, setIsOn] = useState(enabled);
-  const [selected, setSelected] = useState<number[]>(memberIds);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: round,
+    save: runSave,
+  } = useSaveStatus({ isOn: enabled, selected: memberIds });
+  const { isOn, selected } = round;
 
   // A profile that is no login's own profile has no offerable members — the round has
   // no one to be about, so the toggle is inert and the card says why (§1).
   const inert = offerable.length === 0;
 
-  function persist(nextOn: boolean, nextSelected: number[]) {
-    runSave(async () => {
+  function persist(next: typeof round) {
+    runSave(next, async () => {
       const fd = new FormData();
-      fd.set("household_round_enabled", nextOn ? "1" : "0");
-      for (const id of nextSelected) {
+      fd.set("household_round_enabled", next.isOn ? "1" : "0");
+      for (const id of next.selected) {
         fd.append("household_round_members", String(id));
       }
       await saveHouseholdRound(fd);
     });
   }
 
-  function toggleEnabled(next: boolean) {
-    setIsOn(next);
-    persist(next, selected);
-  }
-
   function toggleMember(profileId: number, checked: boolean) {
-    const next = checked
-      ? [...selected, profileId].sort((a, b) => a - b)
-      : selected.filter((id) => id !== profileId);
-    setSelected(next);
-    persist(isOn, next);
+    persist({
+      ...round,
+      selected: checked
+        ? [...selected, profileId].sort((a, b) => a - b)
+        : selected.filter((id) => id !== profileId),
+    });
   }
 
   async function runTest() {
@@ -102,7 +103,7 @@ export default function HouseholdRoundSettings({
             <input
               type="checkbox"
               checked={isOn}
-              onChange={(e) => toggleEnabled(e.target.checked)}
+              onChange={(e) => persist({ ...round, isOn: e.target.checked })}
               className="h-4 w-4 accent-brand-600"
               data-testid="household-round-enabled"
             />

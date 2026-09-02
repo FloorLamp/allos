@@ -52,11 +52,15 @@ export default function PeakFlowZoneCard({
   suggestedBest: number | null;
   action: (formData: FormData) => Promise<void>;
 }) {
-  const [value, setValue] = useState(
-    personalBest == null ? "" : String(personalBest)
-  );
   const [error, setError] = useState<string | null>(null);
-  const { pending, savedAt, error: saveError, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error: saveError,
+    value,
+    edit,
+    save: runSave,
+  } = useSaveStatus(personalBest == null ? "" : String(personalBest));
 
   const verdict = peakFlowZone(latest, personalBest);
   const copy = verdict ? PEAK_FLOW_ZONE_COPY[verdict.zone] : null;
@@ -80,7 +84,7 @@ export default function PeakFlowZoneCard({
     setError(null);
     const fd = new FormData();
     fd.set("personal_best", trimmed);
-    runSave(async () => {
+    runSave(next, async () => {
       await action(fd);
     });
   }
@@ -140,8 +144,8 @@ export default function PeakFlowZoneCard({
               step="1"
               min="0"
               className="input w-28"
-              defaultValue={personalBest ?? ""}
-              onChange={(e) => setValue(e.target.value)}
+              value={value}
+              onChange={(e) => edit(e.target.value)}
               onBlur={() => save(value)}
             />
             <span className="text-sm text-slate-500 dark:text-slate-400">

@@ -22,9 +22,18 @@ export default function EmailNotificationSettings({
   address: string;
   smtpConfigured: boolean;
 }) {
-  const [enabled, setEnabled] = useState(email.emailEnabled);
-  const [fullContent, setFullContent] = useState(email.emailFullContent);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: email.emailEnabled,
+    fullContent: email.emailFullContent,
+  });
+  const { enabled, fullContent } = draft;
   const [testing, startTest] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
     null
@@ -39,7 +48,7 @@ export default function EmailNotificationSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       await saveLoginEmailNotify(buildFormData());
       setResult(null);
     });
@@ -104,7 +113,7 @@ export default function EmailNotificationSettings({
         <input
           type="checkbox"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={(e) => edit({ ...draft, enabled: e.target.checked })}
           className="h-4 w-4 accent-brand-600"
           data-testid="login-email-enabled"
         />
@@ -119,7 +128,7 @@ export default function EmailNotificationSettings({
               type="radio"
               name="email_content_mode"
               checked={!fullContent}
-              onChange={() => setFullContent(false)}
+              onChange={() => edit({ ...draft, fullContent: false })}
               className="mt-0.5 h-4 w-4 accent-brand-600"
               data-testid="email-content-free"
             />
@@ -136,7 +145,7 @@ export default function EmailNotificationSettings({
               type="radio"
               name="email_content_mode"
               checked={fullContent}
-              onChange={() => setFullContent(true)}
+              onChange={() => edit({ ...draft, fullContent: true })}
               className="mt-0.5 h-4 w-4 accent-brand-600"
               data-testid="email-full-content"
             />

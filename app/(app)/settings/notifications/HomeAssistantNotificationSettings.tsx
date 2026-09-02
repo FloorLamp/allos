@@ -26,10 +26,19 @@ export default function HomeAssistantNotificationSettings({
 }: {
   config: ProfileHomeAssistant;
 }) {
-  const [enabled, setEnabled] = useState(config.enabled);
-  const [webhookUrl, setWebhookUrl] = useState(config.webhookUrl);
-  const [secret, setSecret] = useState(config.secret);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: config.enabled,
+    webhookUrl: config.webhookUrl,
+    secret: config.secret,
+  });
+  const { enabled, webhookUrl, secret } = draft;
   // The test send drives the result message, not the "saved" chip, so it keeps its
   // own transition.
   const [testing, startTest] = useTransition();
@@ -47,7 +56,7 @@ export default function HomeAssistantNotificationSettings({
   }
 
   function save() {
-    runSave(async () => {
+    runSave(draft, async () => {
       const res = await saveHomeAssistantPrefs(buildFormData());
       if (!res.ok) {
         setResult({ ok: false, message: res.error });
@@ -119,7 +128,7 @@ export default function HomeAssistantNotificationSettings({
         <input
           type="checkbox"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={(e) => edit({ ...draft, enabled: e.target.checked })}
           className="h-4 w-4 accent-brand-600"
           data-testid="ha-enable"
         />
@@ -132,7 +141,7 @@ export default function HomeAssistantNotificationSettings({
             <label className="label">Webhook URL</label>
             <input
               value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
+              onChange={(e) => edit({ ...draft, webhookUrl: e.target.value })}
               placeholder="http://homeassistant.local:8123/api/webhook/allos-mom"
               className="input"
               data-testid="ha-webhook-url"
@@ -143,7 +152,7 @@ export default function HomeAssistantNotificationSettings({
             <label className="label">Shared secret (optional)</label>
             <input
               value={secret}
-              onChange={(e) => setSecret(e.target.value)}
+              onChange={(e) => edit({ ...draft, secret: e.target.value })}
               placeholder="a random string HA checks on the request header"
               className="input"
               data-testid="ha-secret"
