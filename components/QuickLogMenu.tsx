@@ -264,12 +264,7 @@ export default function QuickLogMenu({
                   other way round — a control that names doses cannot compress into a
                   pill (#3736). */}
               {context.routine && (
-                <UsualRoutineControl
-                  window={context.routine.window}
-                  food={context.routine.food}
-                  doses={context.routine.doses}
-                  subjectName={context.routine.subjectName}
-                />
+                <UsualRoutineControl {...context.routine} />
               )}
               <div className="flex flex-col gap-1">
                 {context.dueDoses.items.length > 0 && (

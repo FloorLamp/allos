@@ -52,6 +52,9 @@ export type UsualRoutineResult =
       window: FoodSlot;
       groups: UsualFoodLogged[];
       doses: UsualRoutineDoseResult[];
+      // Grams the tap actually wrote (#4379), or null when protein was not part of the
+      // bundle that stood at write time — reported, never assumed, like every half.
+      protein: number | null;
       // ONE "End your fast?" offer for the whole bundle (#2756) — a bundled write
       // prompts ONCE, however many servings and doses it landed. The offer itself
       // stands down while a fast is active (#2757), so this is reachable only from a
@@ -292,6 +295,7 @@ export async function logUsualRoutine(
     .split(",")
     .map((raw) => Number(raw.trim()))
     .filter((id) => Number.isInteger(id) && id > 0);
+  const proteinGrams = Number(formData.get("protein_grams") ?? 0);
   if (groups.length === 0 && doseIds.length === 0)
     return { ok: false, error: "Nothing to log." };
   const day = today(profile.id);
@@ -324,7 +328,12 @@ export async function logUsualRoutine(
     // does not, exactly as it is everywhere else.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
     undefined,
-    eatenAt ? { eatenAt: eatenAt.toISOString(), source: "stated" } : undefined
+    eatenAt ? { eatenAt: eatenAt.toISOString(), source: "stated" } : undefined,
+    // THE SCOOP THE BUTTON PROMISED (#4379). Shape only, like every other field here:
+    // the core re-derives whether protein still stands and writes nothing if it does
+    // not, so a forged number on a window with no protein habit lands nowhere. What the
+    // number itself may be is `addProteinGramsCore`'s own bound.
+    proteinGrams > 0 ? proteinGrams : undefined
   );
   if (outcome.kind === "invalid-date")
     return { ok: false, error: "That day is out of range." };
@@ -338,7 +347,7 @@ export async function logUsualRoutine(
   // dose-only tap would be the app inferring a meal from a medication. The day the write
   // USED, not today — reconstructing Tuesday is not a reason to end today's fast.
   const endFastOffer =
-    outcome.groups.length > 0 &&
+    (outcome.groups.length > 0 || outcome.protein !== null) &&
     promptsEndOfFast(getActiveFastCached(profile.id), outcome.date, day);
   revalidateRoute("/");
   revalidateRoute("/nutrition");
@@ -355,6 +364,7 @@ export async function logUsualRoutine(
     window: outcome.window,
     groups: outcome.groups,
     doses: outcome.doses,
+    protein: outcome.protein,
     ...(endFastOffer ? { endFastOffer: true as const } : {}),
   };
 }

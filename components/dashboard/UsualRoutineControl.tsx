@@ -28,6 +28,10 @@ export interface UsualRoutineControlProps {
   // is not a promise anybody can read. Kept paired rather than as two parallel arrays
   // so the answer can name exactly the rows the server says it wrote.
   food: { slug: string; name: string }[];
+  // The scoop this offer promises (#4379), or null when protein is not a member. The
+  // member itself rides `food` above, named as the bundle names it; this is the NUMBER
+  // the write needs, resolved when the offer was read so the label and the write agree.
+  proteinGrams: number | null;
   // `stack` (#3098) feeds the shared label compression: an all-one-stack rider is
   // promised as "<Stack> (n)" — the profile's own name for exactly those doses.
   doses: { id: number; name: string; stack?: string | null }[];
@@ -39,6 +43,7 @@ export interface UsualRoutineControlProps {
 export default function UsualRoutineControl({
   window,
   food,
+  proteinGrams,
   doses,
   subjectName,
 }: UsualRoutineControlProps) {
@@ -70,6 +75,8 @@ export default function UsualRoutineControl({
         // outside the offer that currently stands.
         fd.set("groups", groups.join(","));
         fd.set("dose_ids", doseIds.join(","));
+        if (proteinGrams != null)
+          fd.set("protein_grams", String(proteinGrams));
         return logUsualRoutine(fd);
       },
       settle: (result) => {

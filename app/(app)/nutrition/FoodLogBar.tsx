@@ -35,9 +35,11 @@ import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 // The list-naming phrase is shared with the dashboard's composed control (#2458), so
 // the Food tab and the dashboard can never name a write differently.
 import {
+  proteinMemberName,
   usualRoutinePhrase,
   usualRoutineWriteAnswer,
 } from "@/lib/usual-routine";
+import { isProteinNudgeKey, PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
 import {
   logUsualRoutine,
   usualRoutineOffersOn,
@@ -1750,10 +1752,32 @@ export default function FoodLogBar({
         if (latestUsualRead.current === ticket) setUsualDoses([]);
       });
   }, [activeDate, seededUsualDate, usualRoutine.offers]);
-  const usualDoseRider = useMemo(
-    () => usualDoses.find((offer) => offer.window === activeSlot)?.doses ?? [],
+  const usualDoseOffer = useMemo(
+    () => usualDoses.find((offer) => offer.window === activeSlot) ?? null,
     [usualDoses, activeSlot]
   );
+  const usualDoseRider = usualDoseOffer?.doses ?? [];
+  // THE PROTEIN MEMBER (#4379). The client-derived half above cannot resolve the scoop —
+  // the preset is server state — so the grams come off the same seeded read the dose half
+  // does, and the member stands only while BOTH halves say it does: the live offer still
+  // names the reserved key (so a shake logged since the render drops it on the same tap,
+  // like any group) and the server named a number to promise.
+  const usualProteinGrams =
+    usualOffer.some(isProteinNudgeKey) && usualDoseOffer
+      ? usualDoseOffer.proteinGrams
+      : null;
+  // The members the button NAMES, in the food half's own order: the groups, then the
+  // scoop, exactly as `usualRoutineDayOffers` assembles them for every other host.
+  const usualFoodNames = useMemo(
+    () => [
+      ...usualGroups.map((g) => g.name),
+      ...(usualProteinGrams === null
+        ? []
+        : [proteinMemberName(usualProteinGrams)]),
+    ],
+    [usualGroups, usualProteinGrams]
+  );
+
   // The bundle promises doses only while it promises FOOD: the food half is the offer's
   // gate (lib/usual-routine.ts), and a dose-only "usual" is a worse copy of the dose
   // rows that already exist. Empty groups therefore means no bundle at all, exactly as
@@ -1762,10 +1786,7 @@ export default function FoodLogBar({
   const doseIds = usualDosesOffered.map((d) => d.id);
   // The label is the promise, through the ONE phrase every host of this bundle renders
   // (#2458) — so the nutrition page and the dashboard cannot name one write differently.
-  const usualPhrase = usualRoutinePhrase(
-    usualGroups.map((g) => g.name),
-    usualDosesOffered
-  );
+  const usualPhrase = usualRoutinePhrase(usualFoodNames, usualDosesOffered);
 
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
@@ -1811,6 +1832,8 @@ export default function FoodLogBar({
         // offer that currently stands.
         fd.set("groups", slugs.join(","));
         fd.set("dose_ids", doseIds.join(","));
+        if (usualProteinGrams != null)
+          fd.set("protein_grams", String(usualProteinGrams));
         // THE STICKY STATEMENT RIDES THE BUNDLE (#4438), exactly as it rides the
         // single-serving add twenty lines up. It used to be dropped here, so "8pm" plus
         // "log my usual dinner" landed untimed rows on the one surface that had a time
@@ -1839,7 +1862,17 @@ export default function FoodLogBar({
         profileToast(
           noticeScope,
           usualRoutineWriteAnswer(
-            usualGroups.map((g) => ({ slug: g.slug, name: g.name })),
+            [
+              ...usualGroups.map((g) => ({ slug: g.slug, name: g.name })),
+              ...(usualProteinGrams === null
+                ? []
+                : [
+                    {
+                      slug: PROTEIN_NUDGE_KEY,
+                      name: proteinMemberName(usualProteinGrams),
+                    },
+                  ]),
+            ],
             result
           )
         );

@@ -1533,7 +1533,10 @@ async function handleUsualRoutineTap(
     offer.doseIds,
     NUDGE,
     notifyMessageId,
-    date === t ? { eatenAt: tapAt, source: "tap" } : undefined
+    date === t ? { eatenAt: tapAt, source: "tap" } : undefined,
+    // The grams THIS MESSAGE promised (#4379) — the stored offer's, not the preset as it
+    // stands now, so a scoop changed since the send does not move a promise already read.
+    offer.proteinGrams ?? undefined
   );
   // THE DATED-WRITE TRAIL HAS NO HOLE ON THE MOST-USED SURFACE (#4306, owner ruling
   // 2026-08-31). A backfill from a nudge writes the rows the web backfill writes, so it

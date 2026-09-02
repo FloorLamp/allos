@@ -174,12 +174,14 @@ const TODAY = "2026-08-29";
 type UsualOffer = {
   window: "Morning" | "Midday" | "Evening";
   food: { slug: string; name: string }[];
+  proteinGrams: number | null;
   doses: { id: number; name: string; stack: string | null }[];
 };
 
 /** The composed bundle standing on the found day: two servings and one dose. */
 const MORNING_OFFER: UsualOffer = {
   window: "Morning",
+  proteinGrams: null,
   food: [
     { slug: "berries", name: "Berries" },
     { slug: "fermented", name: "Fermented foods" },

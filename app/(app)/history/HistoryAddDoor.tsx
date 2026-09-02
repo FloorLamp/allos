@@ -241,6 +241,8 @@ export default function HistoryAddDoor({
                   async (fd) => {
                     fd.set("meal_slot", offer.window);
                     fd.set("date", date);
+                    if (offer.proteinGrams != null)
+                      fd.set("protein_grams", String(offer.proteinGrams));
                     // Both lists are UPPER BOUNDS the core intersects with what still
                     // stands on that day — never an instruction to write outside it.
                     fd.set("groups", offer.food.map((f) => f.slug).join(","));

@@ -90,6 +90,9 @@ import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
 import type { FoodEatingTime } from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
+import { addProteinGramsCore } from "./protein-daily-totals-write";
+import { isProteinNudgeKey } from "./protein-nudge";
+import { getUsualFoodOffer } from "./queries/nutrition";
 import type { FoodSlot } from "./food-slot";
 import { logHistoricalDose, markDoseTaken } from "./queries/intake/adherence";
 import {
@@ -124,6 +127,11 @@ export type UsualRoutineOutcome =
       window: FoodSlot;
       groups: UsualFoodLogged[];
       doses: UsualRoutineDoseResult[];
+      // GRAMS THE TAP ACTUALLY WROTE (#4379), or null when protein was not a member of
+      // the bundle that stood at write time. Reported rather than assumed, on the same
+      // terms as every other half: an offer that had already lost its protein member
+      // between render and tap answers null and the surface says so.
+      protein: number | null;
     }
   | { kind: "nothing-to-log" }
   // The target day is malformed, in the future, or out of the bundle's reach (#4118).
@@ -221,7 +229,12 @@ export function logUsualRoutineCore(
   // own instant. It reaches the FOOD half only: a dose's administration time is the
   // dose half's own question, already answered by the writer this core picks below, and
   // an eating time is not a claim about when a capsule went down.
-  time?: FoodEatingTime
+  time?: FoodEatingTime,
+  // THE SCOOP THE BUTTON PROMISED (#4379). An UPPER BOUND like `namedGroups` and
+  // `namedDoseIds`, never an instruction: the offer is re-derived below and the grams
+  // are written only while it still names protein. Absent means the tap did not offer
+  // protein, so nothing about it is written.
+  promisedProteinGrams?: number
 ): UsualRoutineOutcome {
   const t = today(profileId);
   // ONE BOUND, ASKED ONCE. A dose-only bundle would otherwise skip the food half's
@@ -288,9 +301,41 @@ export function logUsualRoutineCore(
     });
   }
 
-  if (groups.length === 0 && doses.length === 0)
+  // THE PROTEIN MEMBER (#4379), through `addProteinGramsCore` — the same core the nudge
+  // button and the web quick-add write through, so there is one protein write path
+  // (#221) and one place the day's total moves.
+  //
+  // ITS OWN TRANSACTION, a sibling of the food half's and the dose half's, for the
+  // reason the header already argues about doses: one member refusing must not unwind a
+  // breakfast that genuinely happened. The order is free — the food half writes catalog
+  // groups only, which cannot change whether protein is still offered.
+  //
+  // RE-DERIVED, NEVER TRUSTED: the offer is asked again here, so a forged or replayed
+  // `promisedProteinGrams` on a window whose protein habit no longer stands writes
+  // nothing at all. The GRAMS are the caller's, because the label promised a number and
+  // a promise a person has read may not move under them (#2460).
+  let protein: number | null = null;
+  if (
+    promisedProteinGrams != null &&
+    getUsualFoodOffer(profileId, window, date).some(isProteinNudgeKey)
+  ) {
+    const outcome = addProteinGramsCore(
+      profileId,
+      date,
+      promisedProteinGrams,
+      via,
+      undefined,
+      // The window is a DECLARATION here exactly as it is for the servings beside it
+      // (#1704), and the stated eating time wins over it in the same one chokepoint.
+      window,
+      time
+    );
+    if (outcome.kind === "logged") protein = promisedProteinGrams;
+  }
+
+  if (groups.length === 0 && doses.length === 0 && protein === null)
     return { kind: "nothing-to-log" };
-  return { kind: "logged", date, window, groups, doses };
+  return { kind: "logged", date, window, groups, doses, protein };
 }
 
 // ── THE DATED BUNDLE'S AUDIT ROW (#4118/#4306) ───────────────────────────────

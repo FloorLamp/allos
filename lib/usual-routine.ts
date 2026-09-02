@@ -44,6 +44,7 @@
 // tap refuses instead of logging a second breakfast or a fourth creatine.
 
 import type { FoodSlot } from "./food-slot";
+import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
 
 // One dose the offer would confirm. Ids and label material only: the button names it,
 // the write core re-resolves it, and nothing downstream reads a dose row from here.
@@ -62,8 +63,15 @@ export interface UsualRoutineDose {
 // What one tap would write, both halves. Only ever built when the food half stands.
 export interface UsualRoutineOffer {
   window: FoodSlot;
-  // Catalog group slugs, share-descending — `usualFoodOffer`'s answer verbatim.
+  // Catalog group slugs, share-descending — `usualFoodOffer`'s answer, with the
+  // reserved protein key lifted out into `proteinGrams` below.
   groups: string[];
+  // THE PROTEIN SCOOP THIS OFFER PROMISES (#4379, owner ruling 2026-08-30), or null when
+  // the window has no protein habit standing. Grams rather than a boolean because the
+  // offer may never name less or more than the tap writes (#2460): the profile's own
+  // preset is resolved AT MINT and carried, so a preset changed between the render and
+  // the tap does not move a promise somebody already read.
+  proteinGrams: number | null;
   // Declared-in-window, due-today, still-unresolved doses. May be empty: the rider
   // is optional and its absence degrades the control to the plain food offer.
   doses: UsualRoutineDose[];
@@ -77,10 +85,17 @@ export interface UsualRoutineOffer {
 export function usualRoutineOffer(
   window: FoodSlot,
   groups: readonly string[],
+  // The promised scoop, or null when protein is not a member of this window's bundle.
+  proteinGrams: number | null,
   doses: readonly UsualRoutineDose[]
 ): UsualRoutineOffer | null {
-  if (groups.length === 0) return null;
-  return { window, groups: [...groups], doses: [...doses] };
+  // The food half is still the gate, and protein is now part of that half: it earns its
+  // place through the same window measure and the same habitual share as any group
+  // (#4379), so a bundle that is one group plus the morning scoop is a bundle. What is
+  // still refused is an offer with NO food half at all — a dose-only "usual" is a worse
+  // copy of the dose rows that already exist.
+  if (groups.length === 0 && proteinGrams === null) return null;
+  return { window, groups: [...groups], proteinGrams, doses: [...doses] };
 }
 
 // "Berries", "Berries and Fermented foods", "Berries, Eggs and Fermented foods" — the
@@ -89,6 +104,37 @@ export function usualRoutineOffer(
 // what the tap writes, which is also why the button and its answer format the same
 // list through the same function. Shared by the Food tab's food-only control and the
 // dashboard's composed one (#2458), so the two can never name a write differently.
+// HOW THE BUNDLE NAMES ITS PROTEIN MEMBER — "+30g protein", the vocabulary #1073 already
+// ships on the nudge button, minus that surface's glyph. A member of the food half is
+// named in the same breath as the groups beside it, which is what "protein behaves
+// exactly like a food group" means at the label layer.
+export function proteinMemberName(grams: number): string {
+  return `+${grams}g protein`;
+}
+
+// THE FOOD HALF'S MEMBERS, SLUG-PAIRED WITH THE LABEL THAT PROMISES THEM — one mapping
+// for the four surfaces that build it (the dashboard control's props, the quick-log
+// sheet's, the record door's day offers, and the chat attachment's line). Each had
+// spelled `groups.map(slug => ({ slug, name: foodGroupBySlug(slug)?.name ?? slug }))`
+// itself, and #4379 would have added the protein member to all four independently — four
+// chances for one bundle to name its own write four ways.
+export function usualRoutineFoodMembers(
+  offer: Pick<UsualRoutineOffer, "groups" | "proteinGrams">,
+  nameOf: (slug: string) => string
+): { slug: string; name: string }[] {
+  return [
+    ...offer.groups.map((slug) => ({ slug, name: nameOf(slug) })),
+    ...(offer.proteinGrams === null
+      ? []
+      : [
+          {
+            slug: PROTEIN_NUDGE_KEY,
+            name: proteinMemberName(offer.proteinGrams),
+          },
+        ]),
+  ];
+}
+
 export function namesPhrase(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -176,14 +222,18 @@ export function usualRoutineAnswerText(
 // outcome arrives as its own string union from the action's typed result, so a value
 // this cannot name does not typecheck at the call site.
 export function usualRoutineWriteAnswer(
-  // What the BUTTON named, slug-paired with the label it promised.
+  // What the BUTTON named, slug-paired with the label it promised. A protein member
+  // carries the reserved key as its slug, exactly as it does on the wire.
   named: readonly { slug: string; name: string }[],
   written: {
     groups: readonly { groupKey: string }[];
     doses: readonly { name: string; outcome: string }[];
+    // Grams the tap actually wrote, or null/absent when protein was not part of it.
+    protein?: number | null;
   }
 ): string {
   const wrote = new Set(written.groups.map((g) => g.groupKey));
+  if (written.protein != null) wrote.add(PROTEIN_NUDGE_KEY);
   const landed = (outcome: string) =>
     outcome === "logged" || outcome === "logged-off-day";
   return usualRoutineAnswerText(

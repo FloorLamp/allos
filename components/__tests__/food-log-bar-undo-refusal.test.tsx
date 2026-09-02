@@ -1658,12 +1658,20 @@ describe("FoodLogBar composed usual bundle", () => {
   } as Record<FoodSlot, string[]>;
   const DOSE = { id: 9, name: "Creatine", stack: null };
   const otherDay: FoodLogDay = { ...DAY, date: OTHER, label: "Yesterday" };
-  const offer = (window: FoodSlot, doses = [DOSE]) => ({
+  const offer = (
+    window: FoodSlot,
+    doses = [DOSE],
+    proteinGrams: number | null = null
+  ) => ({
     window,
     food: [
       { slug: "cruciferous", name: "Cruciferous vegetables" },
       { slug: "berries", name: "Berries" },
+      ...(proteinGrams === null
+        ? []
+        : [{ slug: "__protein__", name: `+${proteinGrams}g protein` }]),
     ],
+    proteinGrams,
     doses,
   });
 

@@ -35,14 +35,19 @@ import { doseBucketOn, doseDueOn, type TimeBucket } from "../intake-schedule";
 import { doseScheduleAsOf } from "../intake-cadence";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { FOOD_SLOTS, type FoodSlot } from "../food-slot";
-import { foodGroupBySlug } from "../food-groups";
+import { foodGroupName } from "../food-groups";
 import { isUsualBackfillDateAccepted } from "../food-regularity";
 import {
+  usualRoutineFoodMembers,
   usualRoutineOffer,
   type UsualRoutineDose,
   type UsualRoutineOffer,
 } from "../usual-routine";
-import { getUsualFoodOffer } from "./nutrition";
+import {
+  DEFAULT_PROTEIN_PRESET_GRAMS,
+  isProteinNudgeKey,
+} from "../protein-nudge";
+import { getProteinQuickAddPreset, getUsualFoodOffer } from "./nutrition";
 import { getActiveFastCached } from "./fasting";
 import { standsDownUsualRoutine } from "../fasting-standdown";
 import { now as clockNow } from "../clock";
@@ -331,11 +336,21 @@ export function getUsualRoutineOffer(
 ): UsualRoutineOffer | null {
   if (standsDownUsualRoutine(getActiveFastCached(profileId), clockNow()))
     return null;
-  const groups = getUsualFoodOffer(profileId, window, date);
-  if (groups.length === 0) return null;
+  const keys = getUsualFoodOffer(profileId, window, date);
+  if (keys.length === 0) return null;
+  // THE RESERVED KEY IS LIFTED OUT OF THE GROUP LIST HERE (#4379) and nowhere else: the
+  // measure and the offer treat it as one more member, and only the layers that NAME or
+  // WRITE it need to know it is not a catalog group. The grams are the profile's own
+  // scoop preset resolved AT MINT — the default at cold start (#1073), so the offer can
+  // promise a real number rather than an empty one.
+  const groups = keys.filter((key) => !isProteinNudgeKey(key));
+  const proteinGrams = keys.some(isProteinNudgeKey)
+    ? (getProteinQuickAddPreset(profileId) ?? DEFAULT_PROTEIN_PRESET_GRAMS)
+    : null;
   return usualRoutineOffer(
     window,
     groups,
+    proteinGrams,
     getPendingRoutineDoses(profileId, window, date)
   );
 }
@@ -358,6 +373,8 @@ export function getUsualRoutineOffer(
 export interface UsualRoutineDayOffer {
   window: FoodSlot;
   food: { slug: string; name: string }[];
+  /** The scoop this offer promises (#4379), or null when protein is not a member. */
+  proteinGrams: number | null;
   doses: { id: number; name: string; stack: string | null }[];
 }
 
@@ -378,10 +395,11 @@ export function usualRoutineDayOffers(
     if (!offer) continue;
     offers.push({
       window: offer.window,
-      food: offer.groups.map((slug) => ({
-        slug,
-        name: foodGroupBySlug(slug)?.name ?? slug,
-      })),
+      // The protein member rides the food list, named as the bundle names it (#4379) —
+      // so the label, the count and the posted upper bound all pick it up without a
+      // fourth field, exactly as "protein behaves like a food group" asks.
+      food: usualRoutineFoodMembers(offer, foodGroupName),
+      proteinGrams: offer.proteinGrams,
       doses: offer.doses.map((d) => ({
         id: d.doseId,
         name: d.name,
