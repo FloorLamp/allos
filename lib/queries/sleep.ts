@@ -22,10 +22,7 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "../integrations/oura";
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
-import {
-  sleepOverlapPairs,
-  type SleepSessionRow,
-} from "../sleep-overlap";
+import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
 import { getActivityDates } from "./training/activities";
 import { getIntakeDosesForHistory, getIntakeItems } from "./intake/schedule";

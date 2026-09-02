@@ -245,8 +245,8 @@ export default function ReviewInbox({
                     One night is stored twice
                   </p>
                   <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
-                    These two sleep sessions from {pair.origin} overlap, so a day
-                    shows a night that did not happen. Delete the wrong one.
+                    These two sleep sessions from {pair.origin} overlap, so a
+                    day shows a night that did not happen. Delete the wrong one.
                   </p>
                   <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
                     {pair.sessions.map((session) => (

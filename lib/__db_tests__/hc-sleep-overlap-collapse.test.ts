@@ -23,7 +23,10 @@ import {
 } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { upsertMetricSamples } from "@/lib/integrations/normalize";
-import { getOverlappingSleepSessions, getSleepStageComposition } from "@/lib/queries";
+import {
+  getOverlappingSleepSessions,
+  getSleepStageComposition,
+} from "@/lib/queries";
 import { metricSampleTombstoneKey } from "@/lib/integrations/tombstone-keys";
 
 const HC = HEALTH_CONNECT_ID;
@@ -186,7 +189,9 @@ describe("a re-timed Health Connect night collapses to the corroborated window",
     // A tombstone for the session key AND for every stage key it took with it.
     const dead = tombstones();
     expect(
-      dead.has(metricSampleTombstoneKey("sleep_min", HC, ORIGIN, phantom().start))
+      dead.has(
+        metricSampleTombstoneKey("sleep_min", HC, ORIGIN, phantom().start)
+      )
     ).toBe(true);
     expect(dead.size).toBe(5);
 
@@ -197,6 +202,34 @@ describe("a re-timed Health Connect night collapses to the corroborated window",
       sleep: [session(phantom().start, phantom().end, 4)],
     });
     expect(third.split.inserted).toBe(0);
+    expect(sessionsInStore()).toEqual([
+      { date: day1, started_at: real().start },
+    ]);
+  });
+
+  it("re-collapses a re-send the tombstone cannot recognise", () => {
+    // THE TOMBSTONE IS STRING-KEYED, and the exporter states a session in more than one
+    // spelling. Re-stated as `end_time` + `duration_seconds` with no `start_time`, the
+    // parser DERIVES the same instant in a different spelling ("…:00.000Z"), which is a
+    // different natural key, so the tombstone misses and the phantom is inserted again.
+    // Nothing about the heart rate changed, so the rule takes it again — which is what
+    // makes a missed tombstone a delay rather than the permanent wrong night an
+    // arrival-ranked rule turned it into.
+    pushOne();
+    pushTwo();
+    const w = phantom();
+    const respelled = push({
+      timestamp: at(day1, "16:00"),
+      sleep: [
+        {
+          end_time: w.end,
+          duration_seconds: (msOf(w.end) - msOf(w.start)) / 1000,
+          metadata: { data_origin: ORIGIN },
+        },
+      ],
+    });
+    expect(respelled.split.inserted).toBe(1);
+    expect(respelled.split.superseded).toBe(1);
     expect(sessionsInStore()).toEqual([
       { date: day1, started_at: real().start },
     ]);

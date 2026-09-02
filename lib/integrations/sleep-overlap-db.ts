@@ -244,7 +244,13 @@ export function collapseSleepSessionOverlaps(
       const owned = stagesOwnedBy(
         dropWindow,
         neighbourhood.filter((s) => s.id !== drop.id),
-        findStages.all(profileId, source, drop.origin, from, to) as SleepSessionRow[]
+        findStages.all(
+          profileId,
+          source,
+          drop.origin,
+          from,
+          to
+        ) as SleepSessionRow[]
       );
       // THE #133 LOCK COVERS THE BREAKDOWN, NOT ONLY THE TOTAL. A hand-corrected stage
       // row is the person's, and deleting the session out from under it would leave an

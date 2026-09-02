@@ -108,7 +108,12 @@ export function sleepOverlapPairs<T extends SleepSessionRow>(
       const aEndMs = instantMs(a.ended_at);
       const bStartMs = instantMs(b.started_at);
       const bEndMs = instantMs(b.ended_at);
-      if (aStartMs === null || aEndMs === null || bStartMs === null || bEndMs === null)
+      if (
+        aStartMs === null ||
+        aEndMs === null ||
+        bStartMs === null ||
+        bEndMs === null
+      )
         continue;
       if (!windowsOverlap(a.started_at, a.ended_at, b.started_at, b.ended_at))
         continue;
