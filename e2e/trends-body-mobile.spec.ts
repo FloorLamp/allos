@@ -76,9 +76,14 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     for (const viewport of [PHONE, DESKTOP]) {
       await page.setViewportSize(viewport);
       await openBodyTab(page);
-      // The census itself renders — so the absence below is an observation about
-      // the door, not about a section that never mounted.
-      await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+      // THE POSITIVE CONTROL, AND IT HAS TO HOLD AT BOTH WIDTHS. It used to be
+      // `body-timeline-link`, which #4767 moved into the range-chip row — behind the
+      // phone's context bar, so it is not visible here at PHONE. `body-metric-tiles`
+      // is the opposite half of the same mistake: the tiles view is the phone
+      // presentation and is hidden at DESKTOP. The section that WOULD host the
+      // absent door is the thing this assertion is actually about, and it renders
+      // at every width.
+      await expect(page.getByTestId("trends-body")).toBeVisible();
       await expect(page.getByTestId("body-progress-photos-link")).toHaveCount(
         0
       );

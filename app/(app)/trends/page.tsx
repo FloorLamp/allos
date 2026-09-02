@@ -19,7 +19,7 @@ import TabList from "@/components/TabList";
 import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
 import DestinationLink from "@/components/DestinationLink";
-import { historyDayHref } from "@/lib/hrefs";
+import { historyDayIntradayHref } from "@/lib/hrefs";
 import {
   TrendAnnotationControls,
   TrendAnnotationProvider,
@@ -350,7 +350,7 @@ export default async function TrendsPage(props: {
               trailingChips={
                 overview ? (
                   <DestinationLink
-                    href={historyDayHref(todayStr)}
+                    href={historyDayIntradayHref(todayStr)}
                     data-testid="body-timeline-link"
                     className="inline-flex min-h-(--control-box) shrink-0 items-center whitespace-nowrap text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
                   >
