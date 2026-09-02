@@ -158,10 +158,11 @@ export default function Chip(props: ChipProps) {
 // pill, so a caller placing two of these side by side spends the same `gap-3` every
 // other control row spends (#3938).
 //
-// THE CLOCK DOOR HAS A SEAT, AND THIS PRIMITIVE ONLY RESERVES IT (#4426). A door
-// passed by the adopter renders immediately right of the pill, inside a wrapper that
-// pays the reach gap; passed nothing, there is no wrapper and no seat — the absence
-// is structural rather than an empty element rendering nothing.
+// THE CLOCK DOOR HAS A SEAT, AND THIS PRIMITIVE ONLY RESERVES IT (#4426, whose
+// `components/TimeStatement.tsx` is the door itself). A door passed by the adopter
+// renders immediately right of the pill, inside a wrapper that pays the reach gap;
+// passed nothing, there is no wrapper and no seat — the absence is structural rather
+// than an empty element rendering nothing.
 export function LabeledVerbChip({
   label,
   verb,
