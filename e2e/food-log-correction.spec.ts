@@ -231,7 +231,15 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
 
   // #2038: the precise row control is forgiving too. Undo restores the corrected
   // serving under a new id, while preserving the Evening slot it had when removed.
-  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  //
+  // EXACT, because `name` is a SUBSTRING match and this page also renders the day
+  // ledger. A taken dose's control is named "Undo take" (#4753 renamed it from
+  // "Mark not taken"), so a bare "Undo" resolves the toast AND every taken dose row
+  // — three elements here, and a strict-mode violation rather than a wrong click.
+  await settledClick(
+    page,
+    page.getByRole("button", { name: "Undo", exact: true })
+  );
   await expect(page.getByText("Restored.")).toBeVisible();
   await expect.poll(() => slotTotal(page, "Evening")).toBe(eveningBefore + 2);
   await expect(page.getByTestId("count-shellfish")).toHaveText(

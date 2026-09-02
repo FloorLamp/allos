@@ -83,11 +83,15 @@ export default function HistoricalDoseForm({
     amount: string | null;
   };
   /**
-   * The ROW's profile, when this form is correcting a record that is not the acting
-   * profile's (#4009 item 1). Posted as `profile_id`, which is how this repo spells a
-   * per-item write's subject, and gated server-side by `gateItemProfile`. Absent on
-   * every single-subject mount — including the backfill ADD, which is acting-profile
-   * only by owner ruling.
+   * The SUBJECT this form writes, when that is not the acting profile: the ROW's
+   * profile on a correction (#4009 item 1), and — since the #4693 amendment — the
+   * CONTAINER's subject on an add mounted by a surface that names one profile
+   * (`/medications/[id]` viewed cross-profile). The backfill add was acting-profile
+   * only by owner ruling; that ruling is superseded on subject-scoped containers, so
+   * both modes now carry the same field. Posted as `profile_id`, which is how this
+   * repo spells a per-item write's subject, and gated server-side by
+   * `gateItemProfile`. Absent on every single-subject mount, which is what makes the
+   * gate fall back to the acting profile there.
    */
   subjectProfileId?: number;
   /**
