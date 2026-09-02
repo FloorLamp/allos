@@ -99,11 +99,11 @@ export function useTimeStatement({
   }
 
   const at = shown ? statedHhmm(when.statedAt, tz) || null : null;
-  // `minDate === maxDate` is the day clause above made structural: the shared control
-  // renders a FIXED day as text and offers no picker, so no mount can state a day
-  // through it however it is hosted.
   // The revealed control itself, WITHOUT surrounding spacing — where it sits in a
-  // layout is the host's, which is the whole reason a host renders this piece.
+  // layout is the host's, which is the whole reason a host renders this piece rather
+  // than `node`. `minDate === maxDate` is the day clause above made structural: the
+  // shared control renders a FIXED day as text and offers no picker, so no mount can
+  // state a day through it however it is hosted.
   const reveal =
     shown && open ? (
       <WhenControl
