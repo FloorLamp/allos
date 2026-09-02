@@ -88,6 +88,7 @@ import {
 import { type IntakeSendSlot } from "./intake-format";
 import { buildFoodNudge, consentedFoodTaps } from "./food";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
+import { composeForSend } from "./compose";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
@@ -1613,7 +1614,15 @@ async function reconcileProse(
       })
     );
   if (!rebuilt) return;
-  const hash = messageBodyHash(rebuilt);
+  // COMPOSED BEFORE IT IS HASHED (#4538), for the same reason the bundle is attached
+  // before the keyboard plan is made: the hash the pointer holds was taken on the
+  // message as DELIVERED, attribution prefix and all, and `messageBodyHash` covers the
+  // title. Hashing a raw rebuild against it would differ on nothing but the "[Name] "
+  // label — so every multi-profile digest would draw one Telegram edit that changed
+  // nothing the reader can see, which is precisely the zero-call steady state this arm
+  // exists to hold. The RAW message still goes to `rebuildMessage`; the chokepoint
+  // composes it there, exactly once.
+  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;

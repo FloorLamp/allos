@@ -1473,8 +1473,10 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     const text = String(editText.mock.calls.at(-1)![2]);
     // One tap-all collapses to ONE timed clause; the skip carries no time (#2867).
     expect(text).toMatch(/Tara A, Tara B taken \d\d:\d\d · Tara C skipped\.$/);
-    // The message's own subject still leads it (#1822 item 7).
-    expect(text.startsWith("💊 Morning supplements —")).toBe(true);
+    // The message's own subject still leads it (#1822 item 7) — attributed, because
+    // `dispatch` composes the label onto every send now (#4538) and the close names the
+    // title the pointer recorded at send time.
+    expect(text.startsWith("[Tally Tara] 💊 Morning supplements —")).toBe(true);
     // The domain's own words, and no app pointer (#2274).
     expect(text).not.toContain("logged");
     expect(text).not.toContain("In the app.");
