@@ -79,6 +79,22 @@ export function receiptVerdict(pr, reviews, head = pr.head.sha) {
 // one as red on a head the checks tab shows green — and it fails toward
 // blocking a landing. The newest run supersedes the earlier ones; ids are
 // assigned in creation order, which `started_at` is the readable form of.
+//
+// THE ASSUMPTION IS THAT A SHARED NAME MEANS A REPLACEMENT, and one pair here
+// is independent instead: gitleaks.yml fires on `pull_request` AND on branch
+// `push`, so every PR head carries two `gitleaks` runs and this drops one.
+// Same scanner, same commit — but NOT the same range (`base..HEAD` for the PR
+// event, `before..HEAD` for the push), so the two can genuinely disagree about
+// a secret sitting in an earlier branch commit. What makes the drop lossless
+// is ORDER, not equivalence: the push registers first, so the run that
+// survives is the PR's, which is the broader scan of the two (8 of 8 recent PR
+// heads, by run id from `actions/runs?head_sha=<sha>`). An inverted order
+// would keep the NARROWER scan.
+//
+// AND A NAME COLLISION BETWEEN TWO WORKFLOWS WOULD BE MASKED HERE WITH NO
+// SIGNAL AT ALL: ci.yml and ci-main.yml both define `check`, `test-unit` and
+// `test-db`, and the only thing keeping that pair off one head is
+// ci-main.yml's `branches: [main]` push filter.
 function currentRuns(runs) {
   const newest = new Map();
   for (const run of runs) {
