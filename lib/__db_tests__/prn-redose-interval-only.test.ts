@@ -91,7 +91,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     // 6h interval, dosed an hour ago → ~5h to go. The count stays bare rather than
     // inventing a ceiling, and the line names that no daily limit is on record.
     expect(lines.card).toBe(
-      "Next dose in ~5h · 1 today · no daily limit on record"
+      "Next dose in ~5h · 1 in 24h · no daily limit on record"
     );
     expect(lines.todayPanel).toBe(lines.card);
   });
@@ -111,7 +111,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
 
     const lines = redoseLines(p, itemId);
     expect(lines.card).toBe(
-      "Redose OK — min interval passed · 3 today · no daily limit on record"
+      "Redose OK — min interval passed · 3 in 24h · no daily limit on record"
     );
     expect(lines.card).not.toContain("Max reached");
     expect(lines.todayPanel).toBe(lines.card);
@@ -159,7 +159,7 @@ describe("PRN redose guidance with the daily max left blank (#1458)", () => {
     // The max-less Rx item inherits the family's confirmed ceiling, and the sibling's
     // dose arms its clock.
     expect(redoseLines(p, rx.itemId).card).toBe(
-      "Next dose in ~5h · 1 of 4 today across 2 items"
+      "Next dose in ~5h · 1 of 4 in 24h across 2 items"
     );
   });
 });

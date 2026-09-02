@@ -265,12 +265,12 @@ describe("the published index cannot fall behind the declaration", () => {
 // spelling.
 const PAIRING_ALLOW: Record<string, { count: number; why: string }> = {
   "lib/queries/intake/adherence.ts": {
-    count: 9,
-    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation.",
+    count: 10,
+    why: "SQL readers order or aggregate by the administration event, falling back to immutable capture for rows whose event was never stated. The shared dose-history ordering keeps three scopes identical; the redose readers require the same database-side ordering and aggregation. The tenth is #4686's trailing-24h ceiling COUNT: a window predicate is a WHERE clause, and bestKnownInstant answers about a row already in JS — reading every administration back to filter it in memory is the read this gather exists to avoid.",
   },
   "lib/queries/intake/prn-family.ts": {
-    count: 2,
-    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members.",
+    count: 3,
+    why: "the family safety gather selects and orders the latest administration event, with immutable capture as the fallback for rows whose event is unstated. Both operations must remain database-side across all family members. The third is #4686's trailing-24h ceiling window, which is a WHERE predicate for the same reason — bestKnownInstant judges a row that has already been read, and this counter must not read the family's whole ledger to count one day of it.",
   },
   "lib/queries/nutrition.ts": {
     count: 3,
