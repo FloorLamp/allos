@@ -324,6 +324,34 @@
           "category": "Trends",
           "title": "Charts read out their own values instead of a full-width list beneath them",
           "issues": [4760]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Adding a child’s medication from their illness card uses their details",
+          "issues": [4609]
+        },
+        {
+          "pr": 4786,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "That form now shows interaction, gene and condition notices it was skipping",
+          "issues": [4609]
+        },
+        {
+          "pr": 4794,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Tapping a time while the wheel is still spinning keeps the time you tapped",
+          "issues": [4218]
+        },
+        {
+          "pr": 4794,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "The date-and-time picker fits on screen instead of running past the bottom",
+          "issues": [4218]
         }
       ]
     },
