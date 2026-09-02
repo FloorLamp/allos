@@ -8,7 +8,7 @@
 //   node scripts/work/release-notes-gather.mjs --check
 //
 // --check prints ONE line — how many user-visible-looking merges the notes
-// have not covered — and always exits 0. It exists for catchup-digest.sh:
+// have not covered — and always exits 0. It exists for pm-digest.sh:
 // the batch used to fall behind silently (#4077 caught four uncovered merges
 // by hand), and a lag nobody is shown is a lag nobody closes.
 //

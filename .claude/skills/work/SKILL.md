@@ -46,7 +46,7 @@ bash scripts/work-checkin.sh
 
 First action of every wake and after ANY gap — a flight recorder, not a
 formality: it detects restarts by persisted boot-id (never process liveness),
-prints the dispatch ROSTER, and runs the catch-up digest when due (4h).
+and prints the dispatch ROSTER. The catch-up digest is the PM's, not yours.
 
 After a restart, PRESERVE BEFORE DIAGNOSING: rescue in-flight work from the
 roster (remote branches are the durable checkpoints; agents push after every

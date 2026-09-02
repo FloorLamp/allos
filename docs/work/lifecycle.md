@@ -43,8 +43,8 @@
   blocker, a needs-human filed, a merge. Nobody reads the transcript — no
   narration between tool calls, no plans, no recaps. Findings go to their
   durable homes (PR reviews, issue comments, the ledger); the PM by SendMessage.
-- Its data half is the catch-up digest, which the check-in script runs when
-  the digest's anchor is four hours stale — judgment on it stays yours.
+- Its data half is the check-in's own recorder output. The catch-up digest
+  (`pm-digest.sh`) is the PM's, written for the owner, not a worker's pulse.
 - The pulse OPENS with one census line in a fixed grammar, and the turn's
   status detail carries the same line, so a PM reads saturation without
   inference: `e2e 2/2 · ord 3/5 · slot #4764 green · banked 2 · blocked #4218`.

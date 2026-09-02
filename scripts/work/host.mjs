@@ -128,7 +128,7 @@ export function resolveReadToken(env = process.env, exec = execFileSync) {
   }
 }
 
-// CLI: used by the shell scripts (work-checkin.sh, catchup-digest.sh)
+// CLI: used by the shell scripts (work-checkin.sh, pm-digest.sh)
 // so their STATE_DIR is this resolver's answer, not a re-implementation.
 if (
   process.argv[1] &&

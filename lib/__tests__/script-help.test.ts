@@ -26,7 +26,7 @@ const ENTRY_SCRIPTS = [
   "scripts/work-checkin.sh",
   "scripts/work/adversarial-review-brief.mjs",
   "scripts/work/agent-gates.sh",
-  "scripts/work/catchup-digest.sh",
+  "scripts/work/pm-digest.sh",
   "scripts/work/ci-watch.mjs",
   "scripts/work/closing-keywords.mjs",
   "scripts/work/delete-unknown-labels.ts",

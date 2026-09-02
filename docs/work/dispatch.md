@@ -80,8 +80,8 @@ closed taxonomy, and `needs-human` handling.
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
 - `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
   conflict-blocked.
-- `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
-  its anchor is 4h stale, so it needs no remembering; `--peek` any time.
+- `pm-digest.sh`: the owner's catch-up — shipped for people, incidents and
+  the workflow changes they caused, progress. The PM runs it, not a worker.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.
 - `queue-snapshot.mjs`: the dispatchable queue in `$SCRATCH/.queue`, refreshed
   4-hourly, `[lane:B]` on rows the ledger holds. A "thin" claim answers it.
@@ -97,4 +97,4 @@ closed taxonomy, and `needs-human` handling.
 - One bullet per user-visible change: ≤80 characters, product words, and a
   `category` from `RELEASE_NOTE_CATEGORIES` — `lib/release-notes.ts` validates
   both; the app groups each day by category, most visible first.
-- The digest prints the uncovered lag (`--check`); non-zero = the batch is due.
+- `release-notes-gather.mjs --check` prints the uncovered lag; non-zero = due.

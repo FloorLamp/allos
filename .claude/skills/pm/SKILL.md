@@ -74,6 +74,21 @@ Then judge three things, and send a corrective only when one fails:
 Subscribe to the landing candidate PR with `subscribe_pr_activity` so a
 CI-green event reaches you in minutes, not at the next watch.
 
+## The digest
+
+`bash scripts/work/pm-digest.sh` is the owner's catch-up (`--peek`,
+`--since ISO`, `--days N` leave its anchor). Run it before any "how are we
+doing" and at the end of a session-day. It prints data; the report is yours:
+
+1. **Shipped for people** — the largest user-facing features and epics:
+   group the release notes and the biggest product merges into three to
+   five named epics, each one sentence on what a person can now do.
+2. **Incidents and what changed because of them** — each red main, revert
+   or stall that led to a rule, and the rule it produced (process merges
+   and owner rulings are the candidates). A red that changed nothing is a line.
+3. **Progress** — the counts, what is in flight, what is blocked and on
+   whom, and the next rung of the Ladder.
+
 ## Relays and correctives
 
 - Deliver a message to a worker with `create_trigger` bound to its

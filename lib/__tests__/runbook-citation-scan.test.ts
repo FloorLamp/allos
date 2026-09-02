@@ -112,10 +112,7 @@ function anchorResolves(anchor: string, heading: string): boolean {
  */
 const DELIBERATE_REFS: Record<string, readonly string[]> = {
   // PROC_PATHS regex fragments: `\.sh` splits one, the other is a prefix.
-  "scripts/work/catchup-digest.sh": [
-    "scripts/work-checkin",
-    "docs/internals/e2e",
-  ],
+  "scripts/work/pm-digest.sh": ["scripts/work-checkin", "docs/internals/e2e"],
   // Doc-comment examples of the path detector's inputs — dead by design.
   "scripts/work/reconcile-tracker-core.ts": [
     "app/api/integrations/apple-health/ingest/route.ts",
