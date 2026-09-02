@@ -61,7 +61,14 @@ export default function TimeField({
   // What the field shows WHILE IT IS BEING TYPED INTO. The parent holds only
   // canonical "HH:MM", so "7:3" has nowhere to live there — and re-rendering the
   // half-typed text from a value that has not moved would fight the typist.
-  const [draft, setDraft] = useState<string | null>(null);
+  //
+  // THE DRAFT REMEMBERS WHICH VALUE IT WAS TYPED AGAINST, which is what makes it
+  // expire without an effect. When the parent's value moves for a reason that is
+  // not this typing — the control's one-tap "Now", a date re-anchor, a form reset
+  // — `from` no longer matches and the field falls back to rendering the value.
+  const [draft, setDraft] = useState<{ text: string; from: string } | null>(
+    null
+  );
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popRef = useRef<HTMLElement | null>(null);
@@ -70,15 +77,8 @@ export default function TimeField({
   // split, and the same reasons, as `DateField`.
   const compact = useCompactViewport();
 
-  const shown = draft ?? formatHhmm(value, timeFormat);
-
-  // The parent's value moved without this field being typed into — the control's
-  // one-tap "Now", a date re-anchor, a form reset. The draft is then stale, so it
-  // goes; a draft that still parses to exactly this value is the typist's own and
-  // stays.
-  useEffect(() => {
-    setDraft((d) => (d !== null && parseClockHhmm(d) === value ? d : null));
-  }, [value]);
+  const shown =
+    draft && draft.from === value ? draft.text : formatHhmm(value, timeFormat);
 
   // The native input rejected a malformed time; a text input does not, so the
   // Constraint Validation API carries it (`required` only covers empty).
@@ -136,16 +136,18 @@ export default function TimeField({
         autoComplete="off"
         onChange={(e) => {
           const text = e.target.value;
-          setDraft(text);
           const parsed = parseClockHhmm(text);
-          if (parsed) onChange(parsed);
-          else if (!text.trim()) onChange("");
+          const emitted = parsed ?? (text.trim() ? null : "");
+          // Pinned to the value this keystroke LEAVES the parent holding, so the
+          // draft survives its own emission and expires on anyone else's.
+          setDraft({ text, from: emitted ?? value });
+          if (emitted !== null) onChange(emitted);
         }}
         // A typed time that PARSED settles into the profile's own clock when the
         // field is left; one that did not stays on screen wearing its validity
         // message, because silently discarding what somebody typed is the defect
         // `DateField` avoids the same way.
-        onBlur={() => setDraft((d) => (d && parseClockHhmm(d) ? null : d))}
+        onBlur={() => setDraft((d) => (d && parseClockHhmm(d.text) ? null : d))}
         // `pr-9` matches the picker button's real reach — a 1rem glyph inset
         // 0.5rem — exactly as the date field's calendar button does.
         className={`input pr-9 ${inputClassName}`}

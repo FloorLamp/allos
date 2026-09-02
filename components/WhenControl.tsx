@@ -92,7 +92,9 @@ export interface WhenControlProps {
   timeLabel?: string;
   disabled?: boolean;
   // Prefix for stable ids/test ids: `{testId}-date`, `{testId}-time`,
-  // `{testId}-now`, `{testId}-not-stated`.
+  // `{testId}-now`, `{testId}-not-stated` — and, where the pair composes into one
+  // door (see the header), `{testId}-when` over `{testId}-when-panel` /
+  // `{testId}-when-sheet` with `{testId}-when-done`, INSTEAD of the split pair.
   testId: string;
 }
 
