@@ -15,7 +15,7 @@ import type { TimeFormat } from "@/lib/format-date";
 import Disclosure from "@/components/Disclosure";
 
 // PRN (as-needed) medication quick-log content (#797). The one-tap
-// retro-entry home: each active PRN med gets a "Taken now" button plus an "Earlier
+// retro-entry home: each active PRN med gets a one-tap dose control plus an "Earlier
 // dose" statement — an absolute time today via the shared WhenControl (#2236).
 // The per-day count + last time is computed here
 // (server, with the profile tz) and passed down so the client control stays a thin
