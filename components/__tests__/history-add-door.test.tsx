@@ -88,14 +88,20 @@ vi.mock("@/components/OfflineQueueProvider", () => ({
   useOfflineQueue: () => ({ enqueue: async () => "kept" }),
 }));
 vi.mock("@/components/useOptimisticLedger", () => ({
+  // `commit`/`optimistic` are OPTIONAL here because two shapes of tap reach this mock:
+  // the measurements one carries an optimistic slice, and the composed usual — which
+  // owns no local count, only a server write and its answer — carries none. `blocked`
+  // is the real hook's disable signal and the shared control reads it every render.
   useOptimisticLedger: () => ({
+    blocked: () => false,
     tap: async (spec: {
-      optimistic: number;
-      commit: (value: number) => void;
+      optimistic?: number;
+      commit?: (value: number) => void;
       write: () => Promise<unknown>;
       settle: (value: unknown) => unknown;
     }) => {
-      spec.commit(spec.optimistic);
+      if (spec.commit && spec.optimistic !== undefined)
+        spec.commit(spec.optimistic);
       spec.settle(await spec.write());
     },
   }),

@@ -3,14 +3,9 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import InlineError from "@/components/InlineError";
-import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { useToast } from "@/components/Toast";
-import { logUsualRoutine } from "@/app/(app)/actions";
-import {
-  usualRoutinePhrase,
-  usualRoutineWriteAnswer,
-} from "@/lib/usual-routine";
 import type { UsualRoutineDayOffer } from "@/lib/queries/usual-routine";
+import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import {
   doseOptionsFor,
@@ -139,13 +134,7 @@ export default function HistoryAddDoor({
   const router = useRouter();
   const formatPrefs = useFormatPrefs();
   const toast = useToast();
-  // WHICH SURFACE THIS WRITE CAME FROM (#3087). The record is a page and `page` is what
-  // this resolves to, but it is declared rather than left to the action's fallback:
-  // three of these four actions read the surface off the post, and an undeclared
-  // mounting answers `page` whether or not it is one.
-  const stampLoggedVia = useLoggedViaStamp();
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ── THE ONE-TAP USUAL, ON A PAST DAY (#4118) ───────────────────────────────
@@ -172,102 +161,41 @@ export default function HistoryAddDoor({
     setOpen(false);
     setError(null);
   }
-
-  // The composed bundle's submit path: post, report a refusal inline, and on success
-  // re-read the feed so the rows the reader just wrote are IN the record they are
-  // looking at. Every FORM here is now the domain's own (#4424 ruling 2) and owns its
-  // write; what is left is the one control that is not a form.
-  //
-  // `announce` EXISTS BECAUSE THIS CALLER CAN PARTLY SUCCEED (#4118): the bundle writes
-  // several rows and its typed outcome reports each dose separately, so it supplies its
-  // own sentence rather than being flattened into a confirm it did not earn (#232).
-  async function submit(
-    fd: FormData,
-    run: (fd: FormData) => Promise<string | null>,
-    announce?: () => string
-  ): Promise<void> {
-    setError(null);
-    setPending(true);
-    let failure: string | null;
-    try {
-      failure = await run(fd);
-    } catch {
-      failure = "Couldn't save that entry.";
-    }
-    setPending(false);
-    if (failure) {
-      setError(failure);
-      return;
-    }
-    toast(announce?.() ?? "Added to the record.");
-    close();
-    router.refresh();
-  }
-
-  // One composed tap for one window. Posts the SAME action the dashboard control and
-  // the Telegram button post, with the door's day — so the audit row, the provenance
-  // stamp and the reach bound are the write core's, not this control's.
+  // THE DOMAIN'S SHARED COMPOSED CONTROL, WITH THE RECORD DAY IN HAND (#4424 ruling 2).
+  // This door used to spell the bundle button a FOURTH time — its own markup, its own
+  // submit path, its own answer rounding — for the one reason that it knows a day. The
+  // shared control takes a `date` now, so the door renders which offers stand and owns
+  // nothing about the write: not the label, not the promise, not the sentence that
+  // answers it. Its `submit()` went with it; every other kind here is already the
+  // domain's own form, owning its own.
   function usualControls(): ReactNode {
     if (usual.length === 0) return null;
     return (
-      <div className="mb-3 grid gap-2" data-testid="history-add-usual">
-        {usual.map((offer) => {
-          const phrase = usualRoutinePhrase(
-            offer.food.map((f) => f.name),
-            offer.doses
-          );
-          return (
-            <button
-              key={offer.window}
-              type="button"
-              disabled={pending}
-              data-testid={`history-add-usual-${offer.window}`}
-              data-groups={offer.food.map((f) => f.slug).join(",")}
-              data-doses={offer.doses.map((d) => d.id).join(",")}
-              aria-label={`Your usual ${offer.window} on ${date}: ${phrase}`}
-              className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
-              onClick={() => {
-                // THE ANSWER NAMES WHAT WAS WRITTEN, NEVER WHAT WAS OFFERED. The core
-                // reports every dose separately and refuses to assume any of them away
-                // (lib/usual-routine-write.ts), and `ok: true` only means the bundle
-                // wrote SOMETHING — so a flat "Added to the record." here would tell a
-                // person their creatine was logged when the day was outside the dose
-                // half's own ±2 window and nothing was. That is the unconditional
-                // confirm #232 forbids, on the one surface that can reach those days:
-                // the dashboard has no date field and the Telegram tap is gated to ±2.
-                let answer: string | null = null;
-                void submit(
-                  stampLoggedVia(new FormData()),
-                  async (fd) => {
-                    fd.set("meal_slot", offer.window);
-                    fd.set("date", date);
-                    if (offer.proteinGrams != null)
-                      fd.set("protein_grams", String(offer.proteinGrams));
-                    // Both lists are UPPER BOUNDS the core intersects with what still
-                    // stands on that day — never an instruction to write outside it.
-                    fd.set("groups", offer.food.map((f) => f.slug).join(","));
-                    fd.set("dose_ids", offer.doses.map((d) => d.id).join(","));
-                    const outcome = await logUsualRoutine(fd);
-                    if (!outcome.ok) return outcome.error;
-                    // The SAME sentence the dashboard control, the nutrition bar and
-                    // the Telegram ack render, through the one helper that owns the
-                    // rounding (#4438 item 5).
-                    answer = usualRoutineWriteAnswer(offer.food, outcome);
-                    return null;
-                  },
-                  () => answer ?? "Added to the record."
-                );
-              }}
-            >
-              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {`Your usual ${offer.window} (${offer.food.length + offer.doses.length})`}
-              </span>
-              <span className="block text-xs text-slate-600 dark:text-slate-300">
-                {phrase}
-              </span>
-            </button>
-          );
-        })}
+      <div className="grid" data-testid="history-add-usual">
+        {usual.map((offer) => (
+          <UsualRoutineControl
+            key={offer.window}
+            window={offer.window}
+            food={offer.food}
+            proteinGrams={offer.proteinGrams}
+            doses={offer.doses.map((d) => ({
+              id: d.id,
+              name: d.name,
+              stack: d.stack,
+            }))}
+            subjectName={null}
+            date={date}
+            testIds={{
+              button: `history-add-usual-${offer.window}`,
+              names: `history-add-usual-${offer.window}-names`,
+            }}
+            // Resolved in place, exactly as the forms beside it are (#4045 §1).
+            onLogged={() => {
+              close();
+              router.refresh();
+            }}
+          />
+        ))}
       </div>
     );
   }
