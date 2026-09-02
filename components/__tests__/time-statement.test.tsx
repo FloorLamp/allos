@@ -262,7 +262,7 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
   const lastPost = () =>
     logMedicationAdministration.mock.calls.at(-1)?.[0] as FormData;
 
-  it("keeps a statement Taken now never consumed, and spends the one Save dose does", async () => {
+  it("keeps a statement the now-tap never consumed, and spends the one Save dose does", async () => {
     logMedicationAdministration.mockResolvedValue({
       ok: true,
       outcome: "logged",
@@ -278,7 +278,7 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
     await act(async () => {
       fireEvent.click(screen.getByTestId("prn-log-now"));
     });
-    // "Taken now" asserts an administration at the tap — no time on the post, so
+    // The now-tap asserts an administration at the tap — no time on the post, so
     // nothing was paid for and the statement stands, still on screen.
     expect(lastPost().get("offset")).toBe("now");
     expect(lastPost().get("time")).toBeNull();

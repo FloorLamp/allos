@@ -183,9 +183,12 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
 
     // Confirm the SHARED profile's dose from its own row (a cross-profile write:
     // acting profile stays the owner). The row drops off once taken.
+    // STILL "Mark taken", and deliberately: this row is `DoseConfirmButton`, whose
+    // form-to-button conversion is the one #4753 mount the owner has not released, so
+    // the dose family's copy migration stops at the row control (#4753 ruling 4).
     await settledClick(
       page,
-      sharedRow.getByRole("button", { name: "Mark taken" })
+      sharedRow.getByRole("button", { name: "Mark taken", exact: true })
     );
     await expect(
       page.getByText(MULTI_SHARED_DOSE, { exact: false })
