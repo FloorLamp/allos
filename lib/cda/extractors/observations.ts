@@ -428,7 +428,7 @@ function edValue(obs: any): any | null {
 // ImportedImagingStudy; this recovers the SAME study event from a CDA Results section
 // (previously dropped as a null-value lab), reusing the shared modality/laterality
 // normalizers. The radiologist's IMPRESSION is folded in from the study's report-prose
-// siblings (see impressionFromSiblings); the persist layer writes it exactly like the
+// siblings (see reportProseFromSiblings); the persist layer writes it exactly like the
 // FHIR path (imaging_studies is already in the import footprint).
 const RADIOLOGY_STUDY_LOINC = "18782-3";
 
@@ -494,6 +494,7 @@ function mapImagingStudy(obs: any): ImportedImagingStudy | null {
     study_date: date,
     dose_msv: null,
     impression: null,
+    report_narrative: null,
     indication: null,
     status: obs?.statusCode?.["@_code"] ?? null,
     external_id: idExt
@@ -508,12 +509,12 @@ function mapImagingStudy(obs: any): ImportedImagingStudy | null {
 // Epic.ResultText translation — IMP (impression), NAR (narrative), PXN (procedure
 // note), ADD (addendum) — with an ED value referencing the narrative table. The study
 // observation's own <value> is nullFlavor, so its impression is recovered from these
-// siblings, preferring the radiologist's IMPRESSION, then the fuller narrative. (Each
+// siblings: the IMPRESSION block is the study's impression, the rest its narrative. (Each
 // radiology organizer holds exactly one study + its prose, so the impression can't
 // cross-assign.) These siblings are NOT captured as `report` observations — they have no
 // real report LOINC — so this is their one home.
 const EPIC_RESULT_TEXT_OID = "1.2.840.114350.1.72.1.5220";
-const IMPRESSION_CODE_PRIORITY = ["IMP", "NAR", "PXN", "ADD"];
+const NARRATIVE_CODE_PRIORITY = ["NAR", "PXN", "ADD"];
 
 function epicResultTextCode(obs: any): string | null {
   for (const tr of asArray(obs?.code?.translation)) {
@@ -526,10 +527,14 @@ function epicResultTextCode(obs: any): string | null {
   return null;
 }
 
-function impressionFromSiblings(
+// Epic labels the prose blocks itself, so this is the one ingest path that knows
+// which text IS the impression: the IMP block, and only that one. NAR / PXN / ADD are
+// the fuller narrative and are stored as such (#3594) — the split this used to make
+// by preference order it now makes by destination.
+function reportProseFromSiblings(
   observations: any[],
   blocks: Record<string, string>
-): string | null {
+): { impression: string | null; report_narrative: string | null } {
   const byCode = new Map<string, string>();
   for (const o of observations) {
     const code = epicResultTextCode(o);
@@ -540,11 +545,14 @@ function impressionFromSiblings(
     const text = resolveNarrativeText(val, blocks);
     if (text && text.trim()) byCode.set(code, text.trim());
   }
-  for (const code of IMPRESSION_CODE_PRIORITY) {
-    const t = byCode.get(code);
-    if (t) return capNarrative(t);
-  }
-  return null;
+  const imp = byCode.get("IMP");
+  const narrative = NARRATIVE_CODE_PRIORITY.map((code) =>
+    byCode.get(code)
+  ).find((t): t is string => !!t);
+  return {
+    impression: imp ? capNarrative(imp) : null,
+    report_narrative: narrative ? capNarrative(narrative) : null,
+  };
 }
 
 // Deep-walk a Results section's entries for radiology-study observations (the SAME
@@ -561,10 +569,10 @@ function imagingStudiesFromEntries(
       .filter(Boolean);
     // The impression is resolved once per organizer, so it attaches to the organizer's
     // one study and never bleeds to a study in another entry.
-    const orgImpression = impressionFromSiblings(orgObs, blocks);
+    const orgProse = reportProseFromSiblings(orgObs, blocks);
     for (const o of orgObs) {
       const study = mapImagingStudy(o);
-      if (study) out.push({ ...study, impression: orgImpression });
+      if (study) out.push({ ...study, ...orgProse });
     }
     // A bare (organizer-less) study carries no sibling prose — impression stays null.
     for (const o of asArray(entry?.observation)) {
@@ -590,7 +598,7 @@ function imagingStudiesFromEntries(
 // Epic-proprietary Result.Text code (nullFlavor LOINC — the ADD/IMP/NAR/PXN radiology
 // report components) is left out here: those are the radiology narrative, whose event
 // is the imaging_studies row above and whose prose is folded into THAT study's
-// impression (impressionFromSiblings), not a standalone report.
+// impression + narrative (reportProseFromSiblings), not a standalone report.
 
 // A narrative report observation: an ED-valued result carrying a real LOINC (so it has
 // a report identity/name and isn't an Epic-proprietary radiology component). Exported

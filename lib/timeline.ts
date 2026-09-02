@@ -9,6 +9,7 @@ import { medicationCourseEvents } from "./medication-history";
 import {
   biomarkerPanelKey,
   ENCOUNTER_REPRESENTATIVE_IDS,
+  IMMUNIZATION_REPRESENTATIVE_IDS,
   getImmunizations,
 } from "./queries/medical";
 import {
@@ -46,6 +47,7 @@ import {
 import { fmtDistance, fmtTemp, fmtWeight } from "./units";
 import {
   studyDisplayLabel,
+  studyFindingText,
   modalityLabel,
   lateralityLabel,
 } from "./imaging-study";
@@ -756,15 +758,21 @@ function collectEvents(
     assessedImmunizations,
     assessSchedule(assessedImmunizations, null, null, today(profileId))
   );
+  // De-duplicated across documents (#4366) via IMMUNIZATION_REPRESENTATIVE_IDS, the
+  // same registry collapse getImmunizations already applies — three overlapping
+  // portal CCDAs each store their own physical row for one administration, and this
+  // read was the last one showing all three. Its profile_id bind comes right after
+  // the main WHERE's, before the date-bounds params.
   const immunizations = db
     .prepare(
       `SELECT id, date, vaccine, dose_label, notes
          FROM immunizations
-        WHERE profile_id = ?${immunizationBounds.clause}
+        WHERE profile_id = ?
+          AND id IN (${IMMUNIZATION_REPRESENTATIVE_IDS})${immunizationBounds.clause}
         ORDER BY date DESC, id DESC
         LIMIT ?`
     )
-    .all(profileId, ...immunizationBounds.params, perTableLimit) as {
+    .all(profileId, profileId, ...immunizationBounds.params, perTableLimit) as {
     id: number;
     date: string;
     vaccine: string;
@@ -954,7 +962,8 @@ function collectEvents(
 
   // Imaging studies (#702) — one first-class event per study on its study_date.
   // Study rows carry a document_id but are a distinct entity from the uploaded
-  // document event; the impression is the detail. Loose-bounded on study_date with a
+  // document event; the report's finding is the detail (#3594). Loose-bounded on
+  // study_date with a
   // created_at fallback so an undated study still lands somewhere sensible.
   // De-duplicated across documents via IMAGING_REPRESENTATIVE_IDS (#2919) — the same
   // collapse the imaging list and Search read, so three overlapping portal exports
@@ -965,7 +974,7 @@ function collectEvents(
   const imagingStudies = db
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, study_date,
-              impression, indication, created_at
+              impression, report_narrative, indication, created_at
          FROM imaging_studies
         WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
               ${imagingBounds.clause}
@@ -980,6 +989,7 @@ function collectEvents(
     contrast: number;
     study_date: string | null;
     impression: string | null;
+    report_narrative: string | null;
     indication: string | null;
     created_at: string;
   }[];
@@ -998,7 +1008,7 @@ function collectEvents(
         category: "imaging",
         title: studyDisplayLabel(s),
         subtitle: compactList(meta, 4),
-        detail: s.impression,
+        detail: studyFindingText(s),
         href: "/results/imaging",
         sortTime: timeFromCreatedAt(s.created_at, tz),
       },

@@ -1028,9 +1028,9 @@ function insertImportRows(
   const insImagingStudy = db.prepare(
     `INSERT OR IGNORE INTO imaging_studies
        (modality, body_region, laterality, contrast, contrast_agent, study_date,
-        dose_msv, impression, indication, status,
+        dose_msv, impression, report_narrative, indication, status,
         source, document_id, external_id, profile_id, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Optical prescriptions (#697). Same idempotency as the other clinical domains:
   // the per-document delete-set clears this document's prior rows, then INSERT OR
@@ -1433,6 +1433,7 @@ function insertImportRows(
       s.study_date,
       s.dose_msv,
       s.impression,
+      s.report_narrative,
       s.indication,
       s.status,
       docSource,
