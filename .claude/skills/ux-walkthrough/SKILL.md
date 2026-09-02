@@ -81,19 +81,14 @@ Journeys: `onboarding`, `invite`, `pages` (all-routes census, both widths),
   thing that may write it: `npm run gen:census-baseline`, commit the diff —
   the diff IS the annotation. Never hand-edit a number
   (`census-chrome-baseline.test.ts` checks canonical form).
-- **Which census question each half answers (#4661).** The committed baseline
-  answers CHROME changes and nothing else: every landmark in it was chosen for
-  being seed-independent, so a change confined to what `<main>` CONTAINS can
-  never move it. #3366 removed four dashboard write cards and #4396 removed the
-  Elsewhere door rows; both regenerations rewrote the file byte-identically, and
-  that was correct. So a byte-identical regeneration means "the shell did not
-  move" — it is not evidence that a content change was censused.
-- A CONTENT change is answered by the other half: a `DISCLOSURE_EXPANSIONS` (or
-  `HOVER_CAPTURES`) entry for the surface, plus a `pages` run, read as shots. A
-  criterion of the form "re-annotate the census baseline (#1510)" therefore needs
-  whichever half matches the change — running `npm run gen:census-baseline`,
-  seeing no diff and reporting green discharges a chrome criterion and discharges
-  nothing at all for a content one.
+- **Which question each half answers (#4661).** It answers CHROME changes only:
+  its landmarks are seed-independent, so a change confined to what `<main>`
+  CONTAINS can never move it — #3366's removed dashboard cards and #4396's
+  Elsewhere rows each regenerated it byte-identically, correctly.
+- So a byte-identical regeneration means the shell did not move. A CONTENT
+  change is answered by the other half: a `DISCLOSURE_EXPANSIONS` (or
+  `HOVER_CAPTURES`) entry plus a `pages` run. A "#1510 re-annotation" criterion
+  needs whichever half matches; `gen:census-baseline` alone discharges chrome.
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS`
   overrides. Playwright cache miss → set `UX_CHROMIUM` (in Claude Code
   remote: `/opt/pw-browsers/chromium`).
