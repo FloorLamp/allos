@@ -140,6 +140,23 @@ export function namesPhrase(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
+// THE BULK VERB READS BY COUNT (#4477, owner ruling 2026-08-31, amended the same day).
+//
+// "Take all 1" is a bulk verb over a set of one, which is the surface counting instead
+// of saying what the tap does; "Take all 2" spends a number where the set is already
+// whole. So the ladder: one NAMES its member, two reads "both", and a count appears
+// only from three, where it is the only thing that says how much is about to be
+// written. Beside `dosesPhrase` because the ruling is about ANY bulk control over a
+// dose set, not about the ledger's row — a second surface spelling this itself is how
+// two controls come to promise the same write in two voices.
+export function bulkTakeLabel(
+  doses: readonly Pick<UsualRoutineDose, "name">[]
+): string {
+  if (doses.length === 1) return `Take ${doses[0]!.name}`;
+  if (doses.length === 2) return "Take both";
+  return `Take all ${doses.length}`;
+}
+
 // The dose half of the label, as the phrase says it (#3098) — exported because the
 // recent-past catch-up sheet's per-bucket bulk row makes the SAME promise about the
 // same kind of set (#3936), and a second spelling of the compression would let one
