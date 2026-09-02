@@ -23,37 +23,26 @@ import {
   type FoodEventEditResult,
 } from "@/app/(app)/nutrition/actions";
 
-// THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by
-// `LOG_MANIFEST.food.pieces.form`. `row` absent posts `logFoodServing`; `row` present
-// seeds from that row and posts `updateFoodLogEvent` under that core's own bounds and
-// audit. ONE layout — the mode decides seed and action only, never which fields exist.
+// THE FOOD DOMAIN'S ONE FORM (#4424 ruling 1), named by `LOG_MANIFEST.food.pieces.form`.
+// `row` absent posts `logFoodServing`; `row` present seeds from that row and posts
+// `updateFoodLogEvent` under that core's own bounds. ONE layout — the mode decides seed
+// and action only, never which fields exist.
 //
 // IT REPLACES THREE SPELLINGS, and each had dropped something the others kept: the
-// `/history` add door stated a time but offered no meal-follows-the-hour; the record
-// row's correction had NO TIME FIELD AT ALL, so a serving filed with the wrong eating
-// time could only be re-timed from the nutrition page; the bar's modal had both and was
+// `/history` add door stated a time but had no meal-follows-the-hour; the record row's
+// correction had NO TIME FIELD AT ALL, so a serving filed at the wrong hour was
+// correctable on the nutrition page and nowhere else; the bar's modal had both and was
 // the only one that could clear a statement. All three now do all three.
-//
-// THE MEAL FOLLOWS THE STATED HOUR (#2227 decision 4) until the person touches Meal by
-// hand: each offered hour carries its derived window, and a minute-grain instant derives
-// through the same boundary function. That rule lived in the bar alone; it is the form's
-// now, so it holds wherever the form mounts.
 //
 // WHAT THE MODE CHANGES, and why neither is a field-membership flag: a CORRECTION picks
 // from the day's own offered hours and can choose "Not stated" to clear a statement
 // somebody made, which is a thing only an existing row has; an ADD states a minute and
 // has nothing to clear. Both draw the same three fields.
 //
-// THE (DAY, WALL-TIME) PAIR TRAVELS TOGETHER, so a day change re-anchors the statement
-// instead of stranding an instant off its own day, and an UNTOUCHED time is OMITTED
-// from a correction — the row's stored instant, seconds included, stays byte-identical.
-//
 // THE MOUNT ANNOUNCES, NOT THE FORM, and food is the domain where that matters. Its
-// siblings toast from inside because their surfaces have one notice channel; the
-// nutrition bar's is PROFILE-SCOPED (`profileToast`) because a correction resolving
-// after a profile switch must not surface a note about the previous subject's food. A
-// toast fired from in here could not know which scope it was in, so `onSaved` carries
-// the outcome out and each mount says its own sentence in its own channel.
+// siblings toast from inside; the nutrition bar's channel is PROFILE-SCOPED, because a
+// correction resolving after a profile switch must not surface a note about the previous
+// subject's food. A toast fired from in here could not know which scope it was in.
 //
 // THE SUBJECT IS OPTIONAL AND SPELLED ONCE (ruling 4): absent is the acting profile,
 // present posts `profile_id` and is re-gated server-side by `gateItemProfile`.

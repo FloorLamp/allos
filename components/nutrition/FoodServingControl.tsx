@@ -9,16 +9,15 @@ import RollingNumber from "@/components/RollingNumber";
 // one back. A full-statement edit is not here; that opens `FoodServingForm` in edit
 // mode, which is what the record row's and the day ledger's ⋯ both now do.
 //
-// IT WAS ALREADY ONE IMPLEMENTATION AND HAD NO IDENTITY, which is the shape stool's leg
-// met from the other side: the control was inline markup two thirds of the way down a
-// 2,300-line page component, so the manifest had nothing to name and no neighbour could
-// mount it without copying it. Its siblings — `DoseStatusControl`, `StoolTypeControl`,
-// `SubstanceUnitControl` — are all components, and this is the one that was not.
+// IT WAS ALREADY ONE IMPLEMENTATION AND HAD NO IDENTITY — inline markup two thirds of
+// the way down a 2,300-line page component, so the manifest had nothing to name and no
+// neighbour could mount it without copying it. Its siblings (`DoseStatusControl`,
+// `StoolTypeControl`, `SubstanceUnitControl`) are all components; this was the one that
+// was not.
 //
-// NO MINUS AT ZERO (#3987). A permanently disabled control is chrome that says nothing,
-// on the row people tap most; there is nothing to remove until something is logged. The
-// 32px box is kept for the ones that do render — `.tap-target` adds a fixed 12px, so the
-// 44px floor (#3486/#3514) is reached only from 32px up.
+// NO MINUS AT ZERO (#3987): a permanently disabled control is chrome that says nothing,
+// on the row people tap most. The 32px box is kept for the ones that do render —
+// `.tap-target` adds a fixed 12px, so the 44px floor (#3486/#3514) is reached from 32px.
 
 export default function FoodServingControl({
   slug,
