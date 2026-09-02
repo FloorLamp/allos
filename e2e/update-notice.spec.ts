@@ -609,11 +609,21 @@ test("a keystroke inside the autosave debounce is flushed, not crossed (#3371)",
   // `RoutinesSection` once, and its comment records that a second anchor would emit a
   // duplicate id), so two is a transition artifact, never a shipped duplicate.
   //
-  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated.
-  // It is asserted rather than worked around with `.first()`: a genuine duplicate id
-  // still reds here, which is exactly what `.first()` would have hidden.
-  await expect(page.getByTestId("routines-section")).toHaveCount(1);
-  await expect(page.getByTestId("routines-section")).toBeVisible();
+  // WAITING FOR THE COUNT TO SETTLE IS THE PRECONDITION THIS TEST ALWAYS HAD, unstated
+  // — but it has to be waited for on the RIGHT locator, and the first attempt at this
+  // (2026-09-02) got that wrong. `toHaveCount(1)` passed and the very next line still
+  // saw two, because the reload's two trees do not overlap in the direction that fix
+  // assumed: the count reaches one when the outgoing document is alone, and goes back
+  // to two as the incoming one mounts beside it. A settle assertion on the raw locator
+  // can therefore pass BEFORE the moment it was added to survive.
+  //
+  // So the wait is on the live tree instead: exactly one VISIBLE section. Both trees
+  // are `hidden` mid-transition (that is what the failure printed), so this cannot pass
+  // early, and it still reds on a genuine duplicate id — two visible sections is two,
+  // which is the claim `.first()` would have thrown away.
+  await expect(
+    page.getByTestId("routines-section").filter({ visible: true })
+  ).toHaveCount(1);
   await hydratedClick(page, page.getByTestId("routine-new"));
   const reopened = page.getByTestId("routine-builder");
   await expect(reopened).toBeVisible();
