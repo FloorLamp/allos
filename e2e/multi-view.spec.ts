@@ -570,7 +570,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     browser,
   }) => {
     test.slow();
-    const { ownerId, sharedId } = resetMultiTrainingLog();
+    const { sharedId } = resetMultiTrainingLog();
     const page = await loginAs(browser, {
       username: E2E_LOGIN_MULTI,
       password: E2E_MEMBER_PASSWORD,
@@ -600,45 +600,43 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
 
     // Multi view: the merged feed now carries the shared member's card WITH a subject
     // chip on ITS card; the acting (owner) cards never carry a chip.
+    //
+    // THE MERGE IS A DEEP-LINKED MODE, NOT A SWITCHER (#1463, and #4079's named
+    // retirement of the Log's private multi-view). The Log renders through the shared
+    // history substrate, whose household read is `?view=everyone` — so having a member
+    // in VIEW scope makes the mode available and the URL is what asks for it. A plain
+    // `?tab=log` stays the acting profile's own log, which is asserted below.
     await page.goto("/training?tab=log");
+    await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
+    await page.goto("/training?tab=log&view=everyone");
     const sharedCard = page
       .getByTestId("history-row")
       .filter({ hasText: MULTI_SHARED_ACTIVITY });
     await expect(sharedCard).toBeVisible();
-    const sharedChipSlot = sharedCard.getByTestId(
-      `subject-chip-${sharedId}-row`
+    // WHOSE ROW IT IS, in the substrate's own grammar (#4079). The Log's card carried
+    // the caller-owned `SubjectChip` slot; the shared row names its subject in one
+    // span beside the title, which is what every other family in `?view=everyone`
+    // already does. The row-level geometry of that span — painted width against every
+    // clipping ancestor, at the smallest phone — is owned by
+    // e2e/history-everyone.spec.ts over BOTH mounts, so it is not re-measured here.
+    await expect(sharedCard.getByTestId("history-row-subject")).toHaveText(
+      MULTI_SHARED_PROFILE
     );
-    const sharedChip = sharedChipSlot.getByTestId(`subject-chip-${sharedId}`);
-    await expect(sharedChipSlot).toBeVisible();
-    await expect(sharedChip).toContainText(MULTI_SHARED_PROFILE);
-    // The owner's own cards are still there, without a chip anywhere on the feed.
-    await expect(
-      page
-        .getByTestId("history-row")
-        .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
-    ).toBeVisible();
-    await expect(
-      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
-    ).toHaveCount(0);
+    // The owner's own rows are still there, and in a merged read EVERY row names its
+    // subject — including the acting profile's, which is the substrate's rule and the
+    // one e2e/history-everyone.spec.ts pins for the other families. What must never
+    // happen is two rows wearing the same name.
+    const ownerCard = page
+      .getByTestId("history-row")
+      .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
+    await expect(ownerCard).toBeVisible();
+    await expect(ownerCard.getByTestId("history-row-subject")).toHaveText(
+      MULTI_OWNER_PROFILE
+    );
 
-    // At phone width the caller-owned slot drops below the activity copy while the
-    // shared primitive remains contained in its row and the viewport.
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/training?tab=log");
-    await expect(sharedChipSlot).toBeVisible();
-    const [phoneRowBox, phoneContentBox, phoneSlotBox] = await settledBoxes([
-      sharedCard,
-      sharedCard.locator(":scope > div.min-w-0"),
-      sharedChipSlot,
-    ]);
-    expect(phoneSlotBox.x).toBeGreaterThanOrEqual(phoneRowBox.x - 1);
-    expect(phoneSlotBox.x + phoneSlotBox.width).toBeLessThanOrEqual(
-      phoneRowBox.x + phoneRowBox.width + 1
-    );
-    expect(
-      phoneSlotBox.y,
-      "phone subject slot follows activity copy"
-    ).toBeGreaterThanOrEqual(phoneContentBox.y + phoneContentBox.height - 1);
+    await page.goto("/training?tab=log&view=everyone");
+    await expect(sharedCard.getByTestId("history-row-subject")).toBeVisible();
     await expectNoClippedContent(page);
 
     // Cross-profile merge never pairs: the owner's Alpha record's merge picker
@@ -649,7 +647,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
       .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
     // The row is one line with a title LINK (#4079: the Log renders through the
     // shared history substrate); the record is behind that link, not the whole row.
-    await hydratedClick(page, ownerRow.getByRole("link").first()); // first-ok: the title link precedes any other link in the row
+    await hydratedClick(page, ownerRow.getByTestId("history-row-title"));
     await page
       .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })
@@ -686,7 +684,8 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     await openProfileSwitcher(page);
     await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
     await expectInView(page, 2);
-    await page.goto("/training?tab=log");
+    // The household read is the substrate's deep-linked mode (#1463/#4079).
+    await page.goto("/training?tab=log&view=everyone");
 
     const sharedCard = page
       .getByTestId("history-row")
@@ -696,7 +695,7 @@ test.describe("Multi-view Training Log (issue #1330)", () => {
     // "Duplicate activity" on the SHARED member's record opens a create prefill that
     // auto-saves a NEW session — on the ACTING (owner) profile, never the
     // shared subject. Open the canonical record for its menu.
-    await hydratedClick(page, sharedCard);
+    await hydratedClick(page, sharedCard.getByTestId("history-row-title"));
     await page
       .getByTestId("training-activity-page")
       .getByRole("button", { name: "Activity actions" })

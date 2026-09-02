@@ -87,6 +87,15 @@ export interface TimelineOptions {
   limit?: number;
   units?: UnitPrefs;
   includeTrainingEvents?: boolean;
+  /**
+   * NAME THE SUBJECT IN THE DESTINATION (#4079). An activity's record page resolves
+   * against the ACTING profile unless the URL says otherwise, so a row gathered for
+   * ANOTHER member and rendered in a merged read (`?view=everyone`) needs its own
+   * subject in the href or the destination 404s. The gather runs per member and the
+   * merge happens above it, so only the caller knows the read is a merged one —
+   * which is why this is asked here rather than derived.
+   */
+  subjectQualifiedHrefs?: boolean;
 }
 
 export interface TimelinePage {
@@ -411,7 +420,10 @@ function collectEvents(
           title: a.title,
           subtitle: compactList(meta, 4),
           detail: a.notes,
-          href: trainingActivityPageHref(a.id),
+          href: trainingActivityPageHref(
+            a.id,
+            options.subjectQualifiedHrefs ? profileId : undefined
+          ),
           sortTime: a.start_time,
           // The raw local window inputs for the intraday panel's block (#1068) —
           // resolved through the canonical activityWindow(), so an activity with no

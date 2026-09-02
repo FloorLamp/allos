@@ -43,7 +43,7 @@ async function startLiveSession(page: Page, title: string) {
 async function openRowForEdit(page: Page, row: Locator) {
   await followLink(
     page,
-    row.getByRole("link").first(), // first-ok: the canonical title link precedes any exercise links in the row
+    row.getByTestId("history-row-title"),
     /\/training\/activity\/\d+$/
   );
   await page
@@ -200,7 +200,12 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
   // Open any seeded activity for editing — a retro/edit surface.
   await openRowForEdit(
     page,
-    page.getByTestId("history-row").first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
+    // SCOPED TO AN ACTIVITY ROW. The Log renders the whole Training family through
+    // the shared substrate now, so an unscoped `.first()` can be a milestone or an
+    // endurance event — rows another surface owns, whose title correctly goes there.
+    page
+      .locator('[data-testid="history-row"][data-history-kind="activity"]')
+      .first() // first-ok: any seeded activity row (opening a retro/edit surface) — order-agnostic
   );
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // No live control strip, no finish button, no recap step on an edit.

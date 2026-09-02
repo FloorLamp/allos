@@ -102,6 +102,14 @@ export interface HistoryGatherOptions {
   day?: string;
   /** The read's bound. Rows beyond it are what "Load more" reveals. */
   limit: number;
+  /**
+   * The profile the reader is ACTING AS, when this gather is one member's half of a
+   * merged `?view=everyone` read (#4079). Rows gathered for anyone else then carry
+   * destinations that name their own subject, because a record page resolves against
+   * the acting profile unless the URL says otherwise. Omitted on a single-profile
+   * read, where every row's subject is already the acting one.
+   */
+  actingProfileId?: number;
 }
 
 export interface HistoryGather {
@@ -1050,6 +1058,8 @@ export function gatherHistoryLog(
       endDate: until,
       limit,
       units,
+      subjectQualifiedHrefs:
+        opts.actingProfileId != null && opts.actingProfileId !== profileId,
       // THE RECORD IS A PROFILE-OWNED DATA SURFACE, so training events are NOT
       // life-stage gated here — `/timeline` said exactly that in its own words
       // ("Training categories and every activity type remain visible at every life

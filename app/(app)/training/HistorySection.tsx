@@ -173,6 +173,7 @@ export default async function HistorySection({
       loginId,
       family: "training",
       limit: gatherLimit,
+      actingProfileId,
     });
     if (!filtered) return feed;
     // THE LAYERED FILTERS NARROW THE GATHERED ROWS, per member and by id. A training

@@ -60,14 +60,6 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
     .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the newest seeded Push day session — order-agnostic
-  await pushRow
-    .getByTestId("training-log-strength-row")
-    .filter({ hasText: "Barbell Bench Press" })
-    .getByRole("button", { name: "Chest", exact: true })
-    .click();
-  await expect(page.getByTestId("training-log-tag-filter")).toHaveText("Chest");
-  await expect(pushRow).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters" }).click();
   await followLink(
     page,
     pushRow.getByRole("link", { name: "Push day", exact: true }),
@@ -135,6 +127,18 @@ test("activity detail reuses muscle coverage scoped to that workout and omits un
       .getByTestId("training-log-strength-row")
       .filter({ hasText: "Overhead Press" })
   ).not.toHaveAttribute("data-highlighted", "true");
+
+  // THE MUSCLE BADGE IS THE LOG'S TAG FILTER'S DOOR (#4079). It used to be a button
+  // on a Training Log feed row that set client filter state; the Log's refinements
+  // live in the URL now, so the badge is a LINK and it renders where the muscles
+  // actually are — on the record. "Show me every session that worked this."
+  await benchRow.getByRole("link", { name: "Chest", exact: true }).click();
+  await page.waitForURL(/[?&]tag=muscle%3AChest/);
+  await expect(page.getByTestId("training-log-tag-filter")).toHaveText("Chest");
+  // A real narrowing that still admits the session it came from.
+  await expect(
+    page.getByTestId("history-row").filter({ hasText: "Push day" }).first() // first-ok: the Chest-tagged Push day this test opened — order-agnostic
+  ).toBeVisible();
 
   await page.goto("/training?tab=log");
   const customRow = page
