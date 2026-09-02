@@ -72,7 +72,13 @@ const LINE_SPECIALTY_SIGNALS: Record<
     // names are visit words ("dentist", "dental cleaning") that whole-word matching
     // never finds inside the specialty string "Dentistry".
     nucc: ["122300000X", "1223G0001X", "1223X0400X", "1223S0112X"],
-    terms: ["dentistry", "dental", "orthodontics", "endodontics", "periodontics"],
+    terms: [
+      "dentistry",
+      "dental",
+      "orthodontics",
+      "endodontics",
+      "periodontics",
+    ],
   },
   hearing: {
     nucc: ["231H00000X"], // Audiologist
@@ -89,7 +95,9 @@ const LINE_SPECIALTY_SIGNALS: Record<
 const LABEL_NEEDLES: { line: SpecialtyLine; needles: string[] }[] =
   SPECIALTY_LINES.map((line) => ({
     line,
-    needles: LINE_SPECIALTY_SIGNALS[line].terms.map((t) => normalizeMatchText(t)),
+    needles: LINE_SPECIALTY_SIGNALS[line].terms.map((t) =>
+      normalizeMatchText(t)
+    ),
   }));
 
 const LINE_BY_NUCC = new Map<string, SpecialtyLine>(
@@ -156,10 +164,9 @@ export function specialtyLineForVisit(
   // The shared matcher, asked the SAME question the preventive engine asks of an
   // encounter (`allow: ["visit"]`). Rules outside the four lines match plenty of
   // visits — an annual physical satisfies adult_physical — and are simply not lines.
-  for (const ruleKey of matchRuleKeys(
-    { code: visit.code, name: visit.text },
-    ["visit"]
-  )) {
+  for (const ruleKey of matchRuleKeys({ code: visit.code, name: visit.text }, [
+    "visit",
+  ])) {
     const line = RULE_KEY_LINE.get(ruleKey);
     if (line) return line;
   }

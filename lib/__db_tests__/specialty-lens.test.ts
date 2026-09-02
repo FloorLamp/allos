@@ -120,11 +120,15 @@ describe("Vision gate widens to lens content (#2921)", () => {
     // Not one optical_prescriptions row — the old gate's only question.
     expect(
       db
-        .prepare("SELECT COUNT(*) AS n FROM optical_prescriptions WHERE profile_id = ?")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM optical_prescriptions WHERE profile_id = ?"
+        )
         .get(child)
     ).toEqual({ n: 0 });
 
-    expect(getRecordsSpecialtyRelevanceForView(child, [child]).vision).toBe(true);
+    expect(getRecordsSpecialtyRelevanceForView(child, [child]).vision).toBe(
+      true
+    );
     const entries = getSpecialtyLensEntries(child, "vision");
     expect(entries.map((e) => e.kind).sort()).toEqual(["condition", "visit"]);
     expect(entries[0].href).toBe("/encounters/" + entries[0].id);
@@ -136,12 +140,18 @@ describe("Vision gate widens to lens content (#2921)", () => {
       name: "Eye Clinician",
       specialtyCode: "207W00000X",
     });
-    addVisit(child, { date: "2026-02-10", type: "Office Visit", providerId: eyeDoc });
+    addVisit(child, {
+      date: "2026-02-10",
+      type: "Office Visit",
+      providerId: eyeDoc,
+    });
     const before = getSpecialtyLensEntries(child, "vision");
 
     addRx(child);
 
-    expect(getRecordsSpecialtyRelevanceForView(child, [child]).vision).toBe(true);
+    expect(getRecordsSpecialtyRelevanceForView(child, [child]).vision).toBe(
+      true
+    );
     // The Rx is a structured row, not lens content: it belongs to the section on
     // top of the pane and never appears in the history strip.
     expect(getSpecialtyLensEntries(child, "vision")).toEqual(before);
@@ -157,8 +167,16 @@ describe("Vision gate widens to lens content (#2921)", () => {
       specialty: "Family Medicine",
       specialtyCode: "207Q00000X",
     });
-    addVisit(adult, { date: "2026-01-05", type: "Office Visit", providerId: gp });
-    addVisit(adult, { date: "2026-01-30", type: "Annual physical exam", providerId: gp });
+    addVisit(adult, {
+      date: "2026-01-05",
+      type: "Office Visit",
+      providerId: gp,
+    });
+    addVisit(adult, {
+      date: "2026-01-30",
+      type: "Annual physical exam",
+      providerId: gp,
+    });
     addCondition(adult, "Type 2 diabetes", "E11.9", "ICD-10-CM");
 
     const relevance = getRecordsSpecialtyRelevanceForView(adult, [adult]);
@@ -193,10 +211,14 @@ describe("Dental gate widens to lens content (#2921)", () => {
 
     expect(
       db
-        .prepare("SELECT COUNT(*) AS n FROM dental_procedures WHERE profile_id = ?")
+        .prepare(
+          "SELECT COUNT(*) AS n FROM dental_procedures WHERE profile_id = ?"
+        )
         .get(adult)
     ).toEqual({ n: 0 });
-    expect(getRecordsSpecialtyRelevanceForView(adult, [adult]).dental).toBe(true);
+    expect(getRecordsSpecialtyRelevanceForView(adult, [adult]).dental).toBe(
+      true
+    );
     expect(getSpecialtyLensEntries(adult, "dental")).toHaveLength(1);
   });
 });
@@ -204,17 +226,22 @@ describe("Dental gate widens to lens content (#2921)", () => {
 describe("The lens is derived at read, never stored (#2921)", () => {
   it("correcting the provider's specialty reflows the lens with no record write", () => {
     const adult = newProfile("Lens Reflow");
-    const provider = newProvider({ name: "Clinician", specialty: "Family Medicine" });
-    addVisit(adult, { date: "2026-02-01", type: "Office Visit", providerId: provider });
+    const provider = newProvider({
+      name: "Clinician",
+      specialty: "Family Medicine",
+    });
+    addVisit(adult, {
+      date: "2026-02-01",
+      type: "Office Visit",
+      providerId: provider,
+    });
 
     expect(hasSpecialtyLensContent(adult, "skin")).toBe(false);
 
     // The registry is corrected — nothing about the ENCOUNTER changes.
-    db.prepare("UPDATE providers SET specialty_code = ?, specialty = ? WHERE id = ?").run(
-      "207N00000X",
-      "Dermatology",
-      provider
-    );
+    db.prepare(
+      "UPDATE providers SET specialty_code = ?, specialty = ? WHERE id = ?"
+    ).run("207N00000X", "Dermatology", provider);
 
     expect(hasSpecialtyLensContent(adult, "skin")).toBe(true);
     expect(getSpecialtyLensEntries(adult, "skin")).toHaveLength(1);
@@ -229,11 +256,15 @@ describe("The widened gate follows the VIEW, not the actor (#2557 + #2921)", () 
       name: "Optometry Clinician",
       specialtyCode: "152W00000X",
     });
-    addVisit(child, { date: "2026-02-14", type: "Eye check", providerId: optometrist });
+    addVisit(child, {
+      date: "2026-02-14",
+      type: "Eye check",
+      providerId: optometrist,
+    });
 
-    expect(getRecordsSpecialtyRelevanceForView(caregiver, [caregiver]).vision).toBe(
-      false
-    );
+    expect(
+      getRecordsSpecialtyRelevanceForView(caregiver, [caregiver]).vision
+    ).toBe(false);
     expect(
       getRecordsSpecialtyRelevanceForView(caregiver, [caregiver, child]).vision
     ).toBe(true);

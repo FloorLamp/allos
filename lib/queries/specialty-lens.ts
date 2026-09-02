@@ -1,6 +1,10 @@
 import { hoistedStatement } from "../db";
 import { cache } from "../request-cache";
-import { encounterHref, RECORDS_CONDITIONS_HREF, type AppRoute } from "../hrefs";
+import {
+  encounterHref,
+  RECORDS_CONDITIONS_HREF,
+  type AppRoute,
+} from "../hrefs";
 import {
   specialtyLineForCondition,
   specialtyLineForVisit,
