@@ -255,18 +255,29 @@ export function ingestHealthConnectPayload(
     // by the heart rate the device recorded inside each claimed window, and this push's
     // minutes only reach the store in the chunks that just committed — planned any
     // earlier it would judge the corrected night against a store that cannot yet see it.
-    // Its own transaction, so the deletes and their tombstones land together; a failure
-    // in the chunks above leaves it unrun rather than half-run, and the store keeps both
-    // nights until a later push re-derives it.
-    samples = foldCounts([
-      samples,
-      {
-        ...emptyCounts(),
-        superseded: writeTx(() =>
-          collapseSleepSessionOverlaps(profileId, source, pushedAt)
-        ),
-      },
-    ]);
+    // Its own transaction, so the deletes and their tombstones land together.
+    //
+    // ISOLATED (#1285), like the post-commit work below: the samples and the heart rate
+    // are already durable, so a failure here must not report an otherwise-successful push
+    // as a full sync failure. What it costs is one push of convergence — the rule is
+    // re-derived from the store on every push — and the pair it did not collapse is
+    // listed in Data → Review meanwhile, so the miss is visible rather than silent.
+    try {
+      samples = foldCounts([
+        samples,
+        {
+          ...emptyCounts(),
+          superseded: writeTx(() =>
+            collapseSleepSessionOverlaps(profileId, source, pushedAt)
+          ),
+        },
+      ]);
+    } catch (err) {
+      log.error("sleep overlap collapse failed after Health Connect ingest", {
+        profileId,
+        err,
+      });
+    }
     commitChunks(
       parsed.activities,
       (slice, sink) => upsertActivities(profileId, slice, source, sink),
