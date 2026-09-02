@@ -45,7 +45,6 @@ export default function MedicationAddWorkspace({
   stackItems,
   pgxVariants,
   pediatric,
-  age,
   todayStr,
   conditions,
   initialSupply = null,
@@ -56,7 +55,6 @@ export default function MedicationAddWorkspace({
   stackItems: InteractionItem[];
   pgxVariants: PgxVariantInput[];
   pediatric?: PediatricFormContext;
-  age: number | null;
   todayStr: string;
   conditions: IntakeConditionOption[];
   // Arrived from the cabinet's "Add for another person" (#1705). One form carries the
@@ -126,7 +124,6 @@ export default function MedicationAddWorkspace({
               stackItems={stackItems}
               pgxVariants={pgxVariants}
               pediatric={pediatric}
-              age={age}
               todayStr={todayStr}
               conditions={conditions}
               initialSupply={initialSupply}
