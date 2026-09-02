@@ -1060,6 +1060,30 @@
   }
 }
 
+/* A THIRD ROLE, AND IT IS AN ACTION (#4753). The two roles above are a DESTINATION
+   and a SELECTION; `chip-base + chip-offer` is a chip whose tap WRITES what its label
+   says — `Aug 30 · 250 mg` with a `Log` nub. It picks its role by what it does,
+   exactly as the vocabulary above asks a new strip to.
+
+   IT PAINTS NO SELECTED STATE, deliberately, and that is the whole difference from
+   `chip-filter`. An offer chip is never "on": it performs its write and the surface
+   that hosted it re-renders into whatever now stands. So there is no `aria-pressed`
+   rule here — a control that cannot be selected must not be able to look selected.
+
+   The outline construction is `chip-nav`'s, because the border is part of the 34px
+   box (see the note above) and an action chip must measure the same as the nav chip
+   it may sit beside. The VERB NUB's fill is not here: it is the offer tone declared
+   in `components/OfferRow.tsx`, so the compact offer and the full-width one cannot
+   drift into two vocabularies. */
+@utility chip-offer {
+  @apply rounded-full text-slate-700 dark:text-slate-200;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  &:hover {
+    background-color: var(--ghost-hover);
+  }
+}
+
 /* ── THE STAT TILE (issue #3475) ────────────────────────────────────────────
 
    An uppercase label over a bold value, in a small box, repeated across a grid.

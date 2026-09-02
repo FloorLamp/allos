@@ -9,6 +9,7 @@ import {
   settledClick,
   pickComposedWhen,
 } from "./helpers";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import { shiftDateStr, zonedWallTimeToUtc } from "@/lib/date";
 import { pinnedTimezone } from "./pinned-timezone";
 import { frozenNow, workerDbPath } from "./worker-env";
@@ -55,9 +56,9 @@ test("dosage restructure keeps the taken history at its original amount", async 
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const ledgerRow = ledgerDoseRow(page, name).first(); // first-ok: this item's Morning dose — the Evening one is a separate row and either proves the confirm
-  await ledgerRow.getByRole("button", { name: "Mark taken" }).click();
+  await ledgerRow.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
-    ledgerRow.getByRole("button", { name: "Mark not taken" })
+    ledgerRow.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
 
   // The row that OWNS the item — edit, history — is the stack's, on the other tab.
@@ -140,9 +141,9 @@ test("a supplement's dose history offers the medication row actions, and an edit
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Mark taken" }).click();
+  await taken.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
-    taken.getByRole("button", { name: "Mark not taken" })
+    taken.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
@@ -162,7 +163,7 @@ test("a supplement's dose history offers the medication row actions, and an edit
   const entry = panel.getByTestId("dose-history-row");
   await expect(entry).toHaveCount(1);
   await expect(entry).toContainText("250 mg");
-  // #2876: Mark taken asserts an administration at the tap while recorded_at keeps
+  // #2876: the take asserts an administration at the tap while recorded_at keeps
   // the separate immutable storage instant. The history therefore shows the stated
   // administration clock, not the record-chain fallback label.
   // The clock is the row's TRAILING fact since #3671, so it no longer reprints the
@@ -258,9 +259,9 @@ test("the supplements tab reaches the cross-item record and logs a past dose fro
   await page.goto("/nutrition?tab=food");
   await expandLedgerDueGroups(page);
   const taken = ledgerDoseRow(page, name).first(); // first-ok: this item's only due dose
-  await taken.getByRole("button", { name: "Mark taken" }).click();
+  await taken.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
-    taken.getByRole("button", { name: "Mark not taken" })
+    taken.getByRole("button", { name: "Undo take", exact: true })
   ).toBeVisible();
   await page.goto("/nutrition?tab=supplements");
   const row = page
@@ -416,6 +417,39 @@ test("the backfill offers the missed days the strip already computed (#3674)", a
   const newest = offers.first(); // first-ok: the offer list of a supplement this spec created and backdated itself; newest-first by construction, so this is yesterday
   await expect(newest).toContainText("250 mg");
   await expect(newest).not.toContainText("Morning");
+
+  // ── ONE PILL, ONE TARGET (#4753) ───────────────────────────────────────────
+  // The labeled-verb chip's claim is geometric as well as textual, so it is
+  // MEASURED here rather than asserted from a class: the whole pill renders the
+  // control box, and the verb nub is contained by it instead of being a second
+  // target beside it. Measured against the pill's own rectangle, not the viewport
+  // — "the nub is inside" is a relationship and an absolute cannot see it.
+  const pill = await newest.evaluate((el) => {
+    const nub = el.lastElementChild as HTMLElement;
+    const box = el.getBoundingClientRect();
+    const inner = nub.getBoundingClientRect();
+    return {
+      height: box.height,
+      verb: nub.textContent,
+      nubTag: nub.tagName,
+      nubTabIndex: nub.getAttribute("tabindex"),
+      // Every pressable descendant, the nub included: a chip that grew a second
+      // button inside itself would still look right and would tab twice.
+      innerControls: el.querySelectorAll("a,button,input,select,[tabindex]")
+        .length,
+      contained:
+        inner.left >= box.left &&
+        inner.right <= box.right &&
+        inner.top >= box.top &&
+        inner.bottom <= box.bottom,
+    };
+  });
+  expect(pill.height).toBeCloseTo(CONTROL_BOX_PX, 0);
+  expect(pill.verb).toBe("Log");
+  expect(pill.nubTag).toBe("SPAN");
+  expect(pill.nubTabIndex).toBeNull();
+  expect(pill.innerControls).toBe(0);
+  expect(pill.contained).toBe(true);
   // ONE identity: the control does not become "Cancel" because it is open.
   await expect(control).toHaveText("Log past dose");
   await expect(control).toHaveAttribute("aria-expanded", "true");

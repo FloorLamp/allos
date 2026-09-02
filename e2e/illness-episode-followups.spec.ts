@@ -243,9 +243,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // longer in any className. The claim is unchanged.
     await expect(doseLink).toHaveClass(/text-link/);
     await expect(doseWorkingRow).toContainText(/\d+(?:\.\d+)?\s*(?:mg|mL)/i);
+    // The verb never says "now" (#4753): the name is the sentence the labeled-verb
+    // chip composes on the labeled surfaces, spoken here by the icon-only arm that
+    // keeps its shipped shape.
     await expect(
       doseWorkingRow.getByTestId("prn-log-now")
-    ).toHaveAccessibleName("Taken now");
+    ).toHaveAccessibleName(/^Take .+/);
     await expect(
       doseWorkingRow.getByTestId("prn-log-more")
     ).toHaveAccessibleName("Earlier dose");
