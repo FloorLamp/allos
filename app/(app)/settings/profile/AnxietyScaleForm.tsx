@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveAnxietyScaleOptIn } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -13,13 +12,18 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // inferable signal who nonetheless wants the daily rating. Off by default. Saves on
 // change (the #794 Settings autosave-on-change pattern).
 export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
-  const [on, setOn] = useState(enabled);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: on,
+    save: runSave,
+  } = useSaveStatus(enabled);
 
   function save(next: boolean) {
     const fd = new FormData();
     fd.set("anxiety_scale_enabled", next ? "1" : "0");
-    runSave(async () => {
+    runSave(next, async () => {
       await saveAnxietyScaleOptIn(fd);
     });
   }
@@ -38,10 +42,7 @@ export default function AnxietyScaleForm({ enabled }: { enabled: boolean }) {
           className="mt-1"
           checked={on}
           data-testid="anxiety-scale-enabled"
-          onChange={(e) => {
-            setOn(e.target.checked);
-            save(e.target.checked);
-          }}
+          onChange={(e) => save(e.target.checked)}
         />
         <span>
           Show the “Calm” (anxiety) rating in the daily check-in.

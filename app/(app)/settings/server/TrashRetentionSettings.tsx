@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   MIN_TRASH_RETENTION_DAYS,
   MAX_TRASH_RETENTION_DAYS,
@@ -18,13 +17,19 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // on the box for longer, and "how long trash keeps things" would hide that. The
 // value is clamped server-side to [MIN, MAX] days.
 export default function TrashRetentionSettings({ days }: { days: number }) {
-  const [value, setValue] = useState(String(days));
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value,
+    edit,
+    save: runSave,
+  } = useSaveStatus(String(days));
 
   function save() {
     const fd = new FormData();
     fd.set("trash_retention_days", value.trim());
-    runSave(async () => {
+    runSave(value, async () => {
       await saveTrashRetention(fd);
     });
   }
@@ -61,7 +66,7 @@ export default function TrashRetentionSettings({ days }: { days: number }) {
             max={MAX_TRASH_RETENTION_DAYS}
             step={1}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => edit(e.target.value)}
             className="input"
           />
         </div>

@@ -1,25 +1,31 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import type { AiPrefs } from "@/lib/settings";
 import { saveAiSettings } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 
 export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
-  const [autoSuggest, setAutoSuggest] = useState(
-    prefs.autoSupplementSuggestions
-  );
-  const [maxRuns, setMaxRuns] = useState(prefs.recommendationMaxRunsPerDay);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: ai,
+    edit,
+    save: runSave,
+  } = useSaveStatus(prefs);
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
-  function save(next: { autoSuggest: boolean; maxRuns: number }) {
+  function save(next: AiPrefs) {
     const fd = new FormData();
-    fd.set("auto_supplement_suggestions", next.autoSuggest ? "1" : "0");
-    fd.set("recommendation_max_runs_per_day", String(next.maxRuns));
-    runSave(async () => {
+    fd.set("auto_supplement_suggestions", next.autoSupplementSuggestions ? "1" : "0");
+    fd.set(
+      "recommendation_max_runs_per_day",
+      String(next.recommendationMaxRunsPerDay)
+    );
+    runSave(next, async () => {
       await saveAiSettings(fd);
     });
   }
@@ -42,12 +48,10 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
-            checked={autoSuggest}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setAutoSuggest(v);
-              save({ autoSuggest: v, maxRuns });
-            }}
+            checked={ai.autoSupplementSuggestions}
+            onChange={(e) =>
+              save({ ...ai, autoSupplementSuggestions: e.target.checked })
+            }
             className="h-4 w-4 accent-brand-600"
           />
           Auto-generate supplement suggestions
@@ -72,9 +76,11 @@ export default function AiSettings({ prefs }: { prefs: AiPrefs }) {
           type="number"
           min={1}
           max={24}
-          value={maxRuns}
-          onChange={(e) => setMaxRuns(Number(e.target.value))}
-          onBlur={() => save({ autoSuggest, maxRuns })}
+          value={ai.recommendationMaxRunsPerDay}
+          onChange={(e) =>
+            edit({ ...ai, recommendationMaxRunsPerDay: Number(e.target.value) })
+          }
+          onBlur={() => save(ai)}
           className="mt-1 w-24 rounded-md border border-(--field-bd) bg-field px-2 py-1 text-sm"
         />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

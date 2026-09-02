@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   RECOMMENDATION_CADENCES,
   CADENCE_LABELS,
@@ -20,13 +19,18 @@ export default function RecommendationCadenceForm({
   cadence: RecommendationCadence;
   isAdmin: boolean;
 }) {
-  const [value, setValue] = useState<RecommendationCadence>(cadence);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value,
+    save: runSave,
+  } = useSaveStatus<RecommendationCadence>(cadence);
 
   function save(next: RecommendationCadence) {
     const fd = new FormData();
     fd.set("recommendation_cadence", next);
-    runSave(async () => {
+    runSave(next, async () => {
       await saveRecommendationCadence(fd);
     });
   }
@@ -52,11 +56,7 @@ export default function RecommendationCadenceForm({
           className="input"
           value={value}
           disabled={!isAdmin}
-          onChange={(e) => {
-            const next = e.target.value as RecommendationCadence;
-            setValue(next);
-            save(next);
-          }}
+          onChange={(e) => save(e.target.value as RecommendationCadence)}
         >
           {RECOMMENDATION_CADENCES.map((c) => (
             <option key={c} value={c}>

@@ -13,8 +13,14 @@ export default function PublicUrlSettings({
 }: {
   publicUrl: string;
 }) {
-  const [url, setUrl] = useState(publicUrl);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: url,
+    edit: setUrl,
+    save: runSave,
+  } = useSaveStatus(publicUrl);
   // A server-side validation message (a rejected URL). Distinct from the hook's
   // boolean `error` (a thrown/transient save failure) — this carries the reason.
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -22,17 +28,19 @@ export default function PublicUrlSettings({
   function save() {
     const fd = new FormData();
     fd.set("public_url", url);
-    runSave(async () => {
+    runSave(url, async () => {
       const res = await savePublicUrl(fd);
       if (!res.ok) {
         setValidationError(res.error);
         // Throw so the hook records a failure (error icon, no "saved" chip)
-        // rather than treating the rejected value as a successful save.
+        // rather than treating the rejected value as a successful save — and so
+        // the rejected text is taken back off the field.
         throw new Error(res.error);
       }
-      // Reflect the normalization (added scheme, stripped trailing slash).
-      setUrl(res.url);
       setValidationError(null);
+      // Reflect the normalization (added scheme, stripped trailing slash): the hook
+      // commits what the server actually stored, not what was typed.
+      return res.url;
     });
   }
 

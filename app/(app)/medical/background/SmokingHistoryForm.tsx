@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { saveSmokingHistory } from "./actions";
 import CardFootnote from "@/components/CardFootnote";
 import SaveStatus from "@/components/SaveStatus";
@@ -17,27 +17,26 @@ export default function SmokingHistoryForm({
 }: {
   history: SmokingHistory;
 }) {
-  const [status, setStatus] = useState<SmokingStatusValue | "">(
-    history.status ?? ""
-  );
-  const [packYears, setPackYears] = useState(
-    history.packYears == null ? "" : String(history.packYears)
-  );
-  const [quitYear, setQuitYear] = useState(
-    history.quitYear == null ? "" : String(history.quitYear)
-  );
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: draft,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    status: (history.status ?? "") as SmokingStatusValue | "",
+    packYears: history.packYears == null ? "" : String(history.packYears),
+    quitYear: history.quitYear == null ? "" : String(history.quitYear),
+  });
+  const { status, packYears, quitYear } = draft;
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
   const everSmoker = status === "former" || status === "current";
   const isFormer = status === "former";
 
-  function save(next: {
-    status: SmokingStatusValue | "";
-    packYears: string;
-    quitYear: string;
-  }) {
+  function save(next: typeof draft) {
     const fd = new FormData();
     fd.set("smoking_status", next.status);
     // pack-years apply only to an ever-smoker; the quit year only to a former
@@ -49,7 +48,7 @@ export default function SmokingHistoryForm({
         : ""
     );
     fd.set("quit_year", next.status === "former" ? next.quitYear : "");
-    runSave(async () => {
+    runSave(next, async () => {
       await saveSmokingHistory(fd);
     });
   }
@@ -78,11 +77,12 @@ export default function SmokingHistoryForm({
           id="smoking-status"
           data-testid="smoking-status"
           value={status}
-          onChange={(e) => {
-            const v = e.target.value as SmokingStatusValue | "";
-            setStatus(v);
-            save({ status: v, packYears, quitYear });
-          }}
+          onChange={(e) =>
+            save({
+              ...draft,
+              status: e.target.value as SmokingStatusValue | "",
+            })
+          }
           className="input"
         >
           <option value="">Not recorded</option>
@@ -112,8 +112,8 @@ export default function SmokingHistoryForm({
               step="0.5"
               value={packYears}
               placeholder="e.g. 20"
-              onChange={(e) => setPackYears(e.target.value)}
-              onBlur={() => save({ status, packYears, quitYear })}
+              onChange={(e) => edit({ ...draft, packYears: e.target.value })}
+              onBlur={() => save(draft)}
               className="input"
             />
           </div>
@@ -130,8 +130,8 @@ export default function SmokingHistoryForm({
                 max={new Date().getFullYear()}
                 value={quitYear}
                 placeholder="e.g. 2015"
-                onChange={(e) => setQuitYear(e.target.value)}
-                onBlur={() => save({ status, packYears, quitYear })}
+                onChange={(e) => edit({ ...draft, quitYear: e.target.value })}
+                onBlur={() => save(draft)}
                 className="input"
               />
             </div>

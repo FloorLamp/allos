@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 import {
@@ -24,8 +23,13 @@ export default function OfflineSnapshotsSettings({
 }: {
   enabled: boolean;
 }) {
-  const [enabled, setEnabled] = useState(initialEnabled);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: enabled,
+    save: runSave,
+  } = useSaveStatus(initialEnabled);
 
   function save(next: boolean) {
     const fd = new FormData();
@@ -42,7 +46,7 @@ export default function OfflineSnapshotsSettings({
     // across a reload and across a second tab, and it is what makes #2908's "nothing
     // re-materializes until toggled back on" true rather than intended.
     void (next ? enableSnapshotWrites() : disableSnapshotWrites());
-    runSave(async () => {
+    runSave(next, async () => {
       try {
         await saveOfflineSnapshotsEnabled(fd);
       } finally {
@@ -80,10 +84,7 @@ export default function OfflineSnapshotsSettings({
           className="mt-1"
           checked={enabled}
           data-testid="offline-snapshots-toggle"
-          onChange={(e) => {
-            setEnabled(e.target.checked);
-            save(e.target.checked);
-          }}
+          onChange={(e) => save(e.target.checked)}
         />
         <span>
           Keep today&rsquo;s doses, your medication list, recent training, the

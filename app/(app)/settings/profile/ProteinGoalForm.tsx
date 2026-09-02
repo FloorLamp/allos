@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   PROTEIN_GOAL_LEVELS,
   PROTEIN_GOAL_OPTION_LABELS,
@@ -29,15 +28,19 @@ export default function ProteinGoalForm({
   // Modal consumers provide their own card shell and title.
   embedded?: boolean;
 }) {
-  const [level, setLevel] = useState<ProteinGoalLevel>(goal);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: level,
+    save: runSave,
+  } = useSaveStatus<ProteinGoalLevel>(goal);
   const band = proteinGoalBand(level);
 
   function persist(next: ProteinGoalLevel) {
-    setLevel(next);
     const fd = new FormData();
     fd.set("protein_goal", next);
-    runSave(async () => {
+    runSave(next, async () => {
       const res = await saveProteinGoal(fd);
       if (!res.ok) throw new Error(res.error);
     });

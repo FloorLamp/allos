@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
@@ -25,11 +25,19 @@ export default function EmergencyCardSettings({
   bloodType: string | null;
   contact: EmergencyContactSetting;
 }) {
-  const [enabled, setEnabled] = useState(initialEnabled);
-  const [bloodType, setBloodType] = useState(initialBloodType ?? "");
-  const [contact, setContact] =
-    useState<EmergencyContactSetting>(initialContact);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    pending,
+    savedAt,
+    error,
+    value: card,
+    edit,
+    save: runSave,
+  } = useSaveStatus({
+    enabled: initialEnabled,
+    bloodType: initialBloodType ?? "",
+    contact: initialContact,
+  });
+  const { enabled, bloodType, contact } = card;
   const formRef = useRef<HTMLDivElement>(null);
   useFlushOnHide(formRef);
 
@@ -40,11 +48,7 @@ export default function EmergencyCardSettings({
   const selectable = isSelectable ? bloodType : "";
   const partialGroup = !isSelectable && bloodType ? bloodType : null;
 
-  function save(next: {
-    enabled: boolean;
-    bloodType: string;
-    contact: EmergencyContactSetting;
-  }) {
+  function save(next: typeof card) {
     const fd = new FormData();
     fd.set("emergency_enabled", next.enabled ? "1" : "0");
     fd.set("blood_type", next.bloodType);
@@ -53,7 +57,7 @@ export default function EmergencyCardSettings({
     fd.set("emergency_contact_relation", next.contact.relation);
     // Turning the toggle off clears the offline copy on THIS device right away.
     if (!next.enabled) clearEmergencyPayload();
-    runSave(async () => {
+    runSave(next, async () => {
       await saveEmergencyCardSettings(fd);
     });
   }
@@ -86,11 +90,7 @@ export default function EmergencyCardSettings({
           type="checkbox"
           data-testid="emergency-toggle"
           checked={enabled}
-          onChange={(e) => {
-            const v = e.target.checked;
-            setEnabled(v);
-            save({ enabled: v, bloodType, contact });
-          }}
+          onChange={(e) => save({ ...card, enabled: e.target.checked })}
           className="mt-0.5 h-4 w-4 accent-brand-600"
         />
         <span>
@@ -108,11 +108,7 @@ export default function EmergencyCardSettings({
         <label className="label">Blood type</label>
         <select
           value={selectable}
-          onChange={(e) => {
-            const v = e.target.value;
-            setBloodType(v);
-            save({ enabled, bloodType: v, contact });
-          }}
+          onChange={(e) => save({ ...card, bloodType: e.target.value })}
           className="input sm:w-40"
         >
           <option value="">Unknown</option>
@@ -145,9 +141,9 @@ export default function EmergencyCardSettings({
             placeholder="Name"
             aria-label="Emergency contact name"
             onChange={(e) =>
-              setContact((c) => ({ ...c, name: e.target.value }))
+              edit({ ...card, contact: { ...contact, name: e.target.value } })
             }
-            onBlur={() => save({ enabled, bloodType, contact })}
+            onBlur={() => save(card)}
             className="input"
           />
           <input
@@ -156,9 +152,9 @@ export default function EmergencyCardSettings({
             aria-label="Emergency contact phone"
             inputMode="tel"
             onChange={(e) =>
-              setContact((c) => ({ ...c, phone: e.target.value }))
+              edit({ ...card, contact: { ...contact, phone: e.target.value } })
             }
-            onBlur={() => save({ enabled, bloodType, contact })}
+            onBlur={() => save(card)}
             className="input"
           />
           <input
@@ -166,9 +162,12 @@ export default function EmergencyCardSettings({
             placeholder="Relationship (e.g. Spouse)"
             aria-label="Emergency contact relationship"
             onChange={(e) =>
-              setContact((c) => ({ ...c, relation: e.target.value }))
+              edit({
+                ...card,
+                contact: { ...contact, relation: e.target.value },
+              })
             }
-            onBlur={() => save({ enabled, bloodType, contact })}
+            onBlur={() => save(card)}
             className="input sm:col-span-2"
           />
         </div>
