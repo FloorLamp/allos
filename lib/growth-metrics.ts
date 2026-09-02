@@ -75,6 +75,12 @@ export function showCompositionEntry(
 // #493's hiding still governs is the NO-DATA state: no empty chart slot, no
 // affordance offering a number this profile has never had and cannot type in. Its
 // export contract is untouched — the raw export keeps the column either way.
+//
+// THE NO-DATA HALF IS DELIBERATELY NOT APPLIED TO ADULTS (ruled 2026-09-02). Reading
+// "absence renders no affordance" as universal would hide an empty body-fat tile from
+// an adult too — and for an adult that tile is not empty of purpose, it is the door to
+// the metric they CAN type in. So the data question only ever removes an affordance
+// from a profile that has no way to fill it.
 export function showBodyFatDisplay(
   ageYears: number | null | undefined,
   hasData: boolean
