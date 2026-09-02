@@ -1,6 +1,53 @@
 {
   "days": [
     {
+      "date": "2026-09-02",
+      "entries": [
+        {
+          "pr": 4704,
+          "kind": "fix",
+          "category": "Training",
+          "title": "When coaching notes are trimmed to a few, you get the most relevant ones rather than the alphabetical first few",
+          "issues": [4069]
+        },
+        {
+          "pr": 4704,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Off-pace weight goals no longer crowd out every biomarker goal",
+          "issues": [4069]
+        },
+        {
+          "pr": 4706,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Logging a drink on a day you already logged one adds to it instead of refusing",
+          "issues": [4435]
+        },
+        {
+          "pr": 4706,
+          "kind": "fix",
+          "category": "Nutrition",
+          "title": "Correcting a drink count keeps what it removed in Trash, so it can be restored",
+          "issues": [4435]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "Bowel movements appear in History, where they can be corrected or deleted",
+          "issues": [4433]
+        },
+        {
+          "pr": 4708,
+          "kind": "feature",
+          "category": "History",
+          "title": "A movement can be logged for an earlier day, and a time that has not happened yet is refused",
+          "issues": [4433]
+        }
+      ]
+    },
+    {
       "date": "2026-09-01",
       "entries": [
         {
