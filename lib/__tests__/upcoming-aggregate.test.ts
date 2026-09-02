@@ -16,6 +16,7 @@ import {
   foldClassOf,
   goalAggregateLabel,
   isSafetyPinnedItem,
+  itemDetailText,
   medSafetyAggregateLabel,
   pageRowDetail,
   planBandRender,
@@ -666,5 +667,68 @@ describe("one-line weekly targets (#2579-E)", () => {
     const row = target("training", "Weekly training target");
     expect(pageRowDetail(row)).toBeNull();
     expect(row.detail).toBe("Weekly training target");
+  });
+});
+
+// THE RENDER BOUNDARY (#3526). The generator composes `detail` with the raw ISO day
+// because it has no login; a surface that has one re-composes the row's carried facts
+// through the viewer's DisplayFormatPrefs. Only the retest row moves.
+describe("itemDetailText", () => {
+  const TODAY = "2026-03-10";
+  const retestItem = {
+    detail:
+      "Last tested 2025-05-29 (9mo ago) · retest every 6mo",
+    retest: {
+      effectiveDate: "2025-05-29",
+      agoMonths: 9,
+      intervalMonths: 6,
+    },
+  };
+
+  it.each([
+    ["mdy", "Last tested May 29, 2025 (9mo ago) · retest every 6mo"],
+    ["dmy", "Last tested 29 May 2025 (9mo ago) · retest every 6mo"],
+    // A login that ASKS for ISO gets ISO — the machine shape is a choice here, not
+    // the absence of one, which is exactly what the census rule is about.
+    ["iso", "Last tested 2025-05-29 (9mo ago) · retest every 6mo"],
+  ] as const)("renders the last-tested day in the %s shape", (dateFormat, want) => {
+    expect(
+      itemDetailText(retestItem, TODAY, { dateFormat, timeFormat: "24h" })
+    ).toBe(want);
+  });
+
+  it("passes every other row's detail through untouched", () => {
+    // No `retest`, so nothing to re-compose — a producer that never heard of prefs
+    // keeps working, which is why the boundary reads the FACTS and not the domain.
+    expect(
+      itemDetailText({ detail: "400 mg · Mondays" }, TODAY, {
+        dateFormat: "dmy",
+        timeFormat: "24h",
+      })
+    ).toBe("400 mg · Mondays");
+    expect(
+      itemDetailText({ detail: null }, TODAY, {
+        dateFormat: "dmy",
+        timeFormat: "24h",
+      })
+    ).toBeNull();
+  });
+
+  // The auto-year is decided in the PROFILE's today, not the process clock (#2579-B):
+  // a draw inside the viewer's current year drops the year, one outside keeps it.
+  it("decides the year against the supplied today", () => {
+    const sameYear = {
+      detail: "x",
+      retest: { effectiveDate: "2026-01-04", agoMonths: 2, intervalMonths: 6 },
+    };
+    expect(
+      itemDetailText(sameYear, TODAY, { dateFormat: "mdy", timeFormat: "24h" })
+    ).toBe("Last tested Jan 4 (2mo ago) · retest every 6mo");
+    expect(
+      itemDetailText(sameYear, "2027-01-04", {
+        dateFormat: "mdy",
+        timeFormat: "24h",
+      })
+    ).toBe("Last tested Jan 4, 2026 (2mo ago) · retest every 6mo");
   });
 });

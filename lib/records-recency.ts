@@ -278,12 +278,19 @@ export function recordsRecencyFamily(source: string): string {
 //   IT NAMES THE ACTION A PERSON TAKES, like #1757's does, because the entire premise
 //   is that a machine cannot do this one and a person must.
 //
-// The frontier is quoted as its RAW ISO date, the way `biomarkerRetestDetail` quotes a
-// last-tested date on the same page. These strings are built by an Upcoming generator,
-// which renders both to a login (the page) and to a login-less channel (the digest), so
-// there are no DisplayFormatPrefs in scope to thread — and an unambiguous ISO date is
-// the honest answer rather than silently imposing one login's date shape on the other
-// channel (the #964/#1448 rule, and lib/__tests__/date-locale-guard.test.ts enforces it).
+// The frontier is quoted as its RAW ISO date, and since #3526 that claim is narrowed to
+// the LOGIN-LESS channels. These strings are built by an Upcoming generator, which has
+// no login and so no DisplayFormatPrefs in scope; for the digest and Telegram an
+// unambiguous ISO date is the honest answer rather than silently imposing one login's
+// date shape on a channel that has none (the #964/#1448 rule, and
+// lib/__tests__/date-locale-guard.test.ts enforces it).
+//
+// It is NOT a licence for the page. `biomarkerRetestDetail` used to be cited here as
+// the precedent and no longer is: its row now carries structured facts and each
+// channel composes its own sentence, so the surface with a login formats the day
+// (lib/upcoming-aggregate.itemDetailText). A recency line that reaches rendered copy
+// on a login surface owes the same move — nobody has confirmed this one does, which is
+// why it is recorded here rather than changed.
 
 /** "41 days" / "6 weeks" / "15 months" — a coarse, honest interval. */
 export function recencyIntervalPhrase(days: number): string {

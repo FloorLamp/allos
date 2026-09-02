@@ -749,9 +749,15 @@ test("a known date offender cannot suppress a collocated lab-unit hit", async ({
   page,
 }) => {
   test.slow();
-  const known = CENSUS_KNOWN_OFFENDERS[0];
-  if (!known)
-    throw new Error("the collision control needs one registered date offender");
+  // The ledger is EMPTY since #3526 fixed its last entry's surface, and this control
+  // needs a registered entry to forge a collision against. It is skipped rather than
+  // deleted because it comes back the day an entry does — deleting it would quietly
+  // remove the proof that a licensed date hit does not shade its neighbours.
+  test.skip(
+    CENSUS_KNOWN_OFFENDERS.length === 0,
+    "no registered date offender to collide with — the ledger is empty"
+  );
+  const known = CENSUS_KNOWN_OFFENDERS[0]!;
   await page.goto(known.route);
   await expect(page.getByRole("main")).toBeVisible();
 

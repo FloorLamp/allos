@@ -1431,7 +1431,8 @@ describe("extractionToPersistInput — imaging report body (#4732)", () => {
       ],
     });
   const shape = (impression: string | null) =>
-    extractionToPersistInput(study(impression), "2024-02-01").imagingStudies[0];
+    extractionToPersistInput(study(impression), "2024-02-01")
+      .imagingStudies![0]!;
 
   const LABELLED =
     "CT CHEST WITHOUT CONTRAST\nFINDINGS: No acute process.\n" +

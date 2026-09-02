@@ -271,6 +271,7 @@ import {
   type UpcomingItem,
 } from "@/lib/upcoming";
 import { isSuppressed } from "@/lib/upcoming-suppress";
+import { itemDetailText } from "@/lib/upcoming-aggregate";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
@@ -300,10 +301,15 @@ function attentionRowDetail(
   formatPrefs: DisplayFormatPrefs
 ) {
   const due = upcomingDueText(item, today, formatPrefs);
-  if (!item.detail) return due;
+  // THE DETAIL IS RENDERED, NOT READ (#3526). The biomarker retest row's sentence is
+  // composed by a login-less generator and carries the raw ISO day; this is a surface
+  // WITH a login, so it re-composes the row's carried facts through the same
+  // `formatPrefs` the due text already uses. Every other item's detail is unchanged.
+  const detail = itemDetailText(item, today, formatPrefs);
+  if (!detail) return due;
   return (
     <>
-      <span data-testid="attention-item-detail">{item.detail}</span>
+      <span data-testid="attention-item-detail">{detail}</span>
       {due ? ` · ${due}` : null}
     </>
   );
