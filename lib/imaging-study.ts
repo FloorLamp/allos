@@ -282,3 +282,46 @@ export function impressionDisplayText(
   // empty one.
   return stripped.length > 0 ? stripped : null;
 }
+
+// WHAT THE REPORT SAID (#3594). A study carries the parsed impression when the import
+// could isolate one, and the report narrative it was parsed out of. Rows imported
+// before the split — and every report whose impression could not be isolated — carry
+// only the narrative, so every surface that asks "what did this report say" reads the
+// impression first and falls back to the narrative rather than going silent.
+export function studyFindingText(study: {
+  impression: string | null;
+  report_narrative?: string | null;
+}): string | null {
+  return study.impression ?? study.report_narrative ?? null;
+}
+
+// THE IMPRESSION SECTION OF A RENDERED REPORT (#3594), or null.
+//
+// The rendered form of a radiology report is a whole document — banner, header,
+// technique, findings, impression, signature — and the decoders collapse it to a
+// single line, so there are no line breaks to split on. The only signal we trust is
+// the report's OWN section heading: text after an "IMPRESSION:" (or
+// "IMPRESSION/CONCLUSION:", "CONCLUSION:") label, up to the next ALL-CAPS heading.
+//
+// NO HEADING, NO PARSE. A wrong sentence stored as the finding is a worse medical
+// record than a verbose one — the ruling's instruction is to err toward storing less —
+// so a report that does not label its impression contributes nothing here and is read
+// through the narrative fallback above.
+const IMPRESSION_HEADING =
+  /(?:^|[\s.;])(?:overall\s+)?(?:impression|conclusion)(?:\s*\/\s*(?:conclusion|impression))?\s*[:\-\u2013\u2014]\s*/i;
+// The next section's heading: an ALL-CAPS run followed by a colon ("RECOMMENDATION:",
+// "ELECTRONICALLY SIGNED BY:"). Two characters minimum so an initial ("A:") does not
+// cut a sentence in half.
+const NEXT_SECTION_HEADING = /\s(?=[A-Z][A-Z0-9 /&'-]{2,}:)/;
+
+export function parseImpressionSection(
+  narrative: string | null | undefined
+): string | null {
+  if (!narrative) return null;
+  const match = IMPRESSION_HEADING.exec(narrative);
+  if (!match) return null;
+  const after = narrative.slice(match.index + match[0].length);
+  const cut = NEXT_SECTION_HEADING.exec(after);
+  const section = (cut ? after.slice(0, cut.index) : after).trim();
+  return section.length > 0 ? section : null;
+}

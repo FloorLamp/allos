@@ -700,12 +700,14 @@ function providerHits(profileId: number, like: string): SearchHit[] {
 function imagingHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, modality, body_region, laterality, study_date, impression, indication
+      `SELECT id, modality, body_region, laterality, study_date,
+              impression, report_narrative, indication
          FROM imaging_studies
         WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
           AND (modality LIKE ? ESCAPE '\\'
                OR body_region LIKE ? ESCAPE '\\'
                OR impression LIKE ? ESCAPE '\\'
+               OR report_narrative LIKE ? ESCAPE '\\'
                OR indication LIKE ? ESCAPE '\\'
                OR notes LIKE ? ESCAPE '\\')
         ORDER BY COALESCE(study_date, '') DESC, id DESC
@@ -714,6 +716,7 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
     .all(
       profileId,
       profileId,
+      like,
       like,
       like,
       like,
@@ -728,6 +731,7 @@ function imagingHits(profileId: number, like: string): SearchHit[] {
     | "laterality"
     | "study_date"
     | "impression"
+    | "report_narrative"
     | "indication"
   >[];
   return rows.map((r) => ({

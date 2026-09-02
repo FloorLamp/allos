@@ -231,7 +231,9 @@ describe("parseFhirBundle", () => {
       laterality: "left",
       study_date: "2024-05-02",
       indication: "Knee pain",
-      impression: "MRI Left Knee",
+      // The study's description is its narrative, not a labelled impression (#3594).
+      impression: null,
+      report_narrative: "MRI Left Knee",
       external_id: "fhir:imaging:study:study-1",
     });
   });
@@ -256,7 +258,7 @@ describe("parseFhirBundle", () => {
     ).toBe(true);
   });
 
-  it("captures an imaging DiagnosticReport's conclusion + conclusionCode + inline presentedForm as the impression (#708)", () => {
+  it("stores an imaging DiagnosticReport's conclusion as the impression and its whole narrative beside it (#708/#3594)", () => {
     const r = parseFhirBundle(
       bundle([
         {
@@ -290,9 +292,16 @@ describe("parseFhirBundle", () => {
     const study = r.imagingStudies![0];
     expect(study.modality).toBe("ct");
     expect(study.study_date).toBe("2024-03-15");
+    // conclusion + conclusionCode ARE the impression by FHIR's own definition; the
+    // rendered presentedForm is the report, and it is kept whole rather than folded
+    // into the finding.
     expect(study.impression).toContain("No acute cardiopulmonary process.");
     expect(study.impression).toContain("Normal chest CT");
-    expect(study.impression).toContain("Clear lungs");
+    expect(study.impression).not.toContain("Clear lungs");
+    expect(study.report_narrative).toContain(
+      "No acute cardiopulmonary process."
+    );
+    expect(study.report_narrative).toContain("Clear lungs");
     // The report's discrete Observations still flow to records — no imaging row here.
     expect(r.observations).toHaveLength(0);
   });
@@ -381,8 +390,10 @@ describe("parseFhirBundle", () => {
     const study = r.imagingStudies![0];
     expect(study.external_id).toBe("fhir:imaging:docref:docref-inline");
     expect(study.study_date).toBe("2024-06-10");
-    // HTML stripped to plain text.
-    expect(study.impression).toBe("IMPRESSION: Normal study.");
+    // HTML stripped to plain text: the whole rendered report is the narrative, and
+    // the impression is only the section the report labels as one (#3594).
+    expect(study.report_narrative).toBe("IMPRESSION: Normal study.");
+    expect(study.impression).toBe("Normal study.");
   });
 
   it("is idempotent — a duplicate ImagingStudy dedupes on external_id", () => {

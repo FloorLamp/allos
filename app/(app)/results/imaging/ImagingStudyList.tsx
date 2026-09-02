@@ -16,6 +16,7 @@ import {
   studyDisplayLabel,
   modalityLabel,
   impressionDisplayText,
+  studyFindingText,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
 import {
@@ -109,9 +110,9 @@ const baseColumns = (
             and the study form still edits it as imported), and a phone gets three
             lines. Desktop keeps its one-line subtitle: a table row there has a
             column grid to hold, and the full text is one tap away in the form. */}
-        {impressionDisplayText(s.impression) ? (
+        {impressionDisplayText(studyFindingText(s)) ? (
           <span className="ml-2 line-clamp-3 text-xs font-normal text-slate-400 sm:line-clamp-1">
-            {impressionDisplayText(s.impression)}
+            {impressionDisplayText(studyFindingText(s))}
           </span>
         ) : null}
         {encounters[s.id] ? (

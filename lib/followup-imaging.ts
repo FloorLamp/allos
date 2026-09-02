@@ -6,7 +6,11 @@
 // #698 (IOP), #705 (dental), #715 (skin) each ship a sibling adapter of this shape.
 
 import type { ImagingStudy } from "./types";
-import { modalityLabel, studyDisplayLabel } from "./imaging-study";
+import {
+  modalityLabel,
+  studyDisplayLabel,
+  studyFindingText,
+} from "./imaging-study";
 import type { FollowUpAdapter, FollowUpItemLike } from "./followup";
 
 // The imaging source kind stored in care_plan_items.source_kind.
@@ -19,12 +23,13 @@ function studyMonth(study: Pick<ImagingStudy, "study_date">): string {
 }
 
 // A short human label for the source imaging finding. Prefers the radiologist's
-// impression (that IS the finding — "6 mm RLL nodule"), collapsed to one line and
+// impression (that IS the finding — "6 mm RLL nodule"), falling back to the report
+// narrative for a study whose impression was never isolated (#3594), collapsed to one line and
 // capped so a paragraph-length impression stays a legible reason; falls back to the
 // study display label ("MRI Left Knee") when there's no impression. A YYYY-MM tail
 // pins WHICH study, so a serial view reads unambiguously across time.
 export function imagingSourceLabel(study: ImagingStudy): string {
-  const impression = study.impression?.replace(/\s+/g, " ").trim();
+  const impression = studyFindingText(study)?.replace(/\s+/g, " ").trim();
   const core =
     impression && impression.length > 0
       ? impression.length > 80

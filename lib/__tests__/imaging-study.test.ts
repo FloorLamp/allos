@@ -7,6 +7,8 @@ import {
   lateralityLabel,
   studyDisplayLabel,
   impressionDisplayText,
+  parseImpressionSection,
+  studyFindingText,
 } from "../imaging-study";
 
 // Pure coercion + label logic for structured imaging studies (#702). These map a
@@ -253,5 +255,59 @@ describe("impressionDisplayText — the finding, not its heading (#3498 item 3)"
     const stored = "OVERALL IMPRESSION: Findings suggestive of a lesion.";
     impressionDisplayText(stored);
     expect(stored).toBe("OVERALL IMPRESSION: Findings suggestive of a lesion.");
+  });
+});
+
+// #3594 — the import stored the WHOLE decoded report as the impression. The narrative
+// now keeps its own column and this parser fills the impression only when the report
+// labels its own impression section. The decoders collapse a rendered report to one
+// line, so these cases are single-line on purpose.
+describe("parseImpressionSection — no heading, no parse (#3594)", () => {
+  const REPORT =
+    "OBSTETRICS REPORT (Signed Final 10/10/2024) PATIENT: Fictional Patient " +
+    "TECHNIQUE: Transabdominal ultrasound. FINDINGS: Single intrauterine " +
+    "gestation. IMPRESSION: Normal interval growth at 20 weeks. " +
+    "RECOMMENDATION: Routine follow-up in four weeks.";
+
+  it.each([
+    // [what the report looks like, the impression we are willing to store]
+    [REPORT, "Normal interval growth at 20 weeks."],
+    ["IMPRESSION: No acute finding.", "No acute finding."],
+    ["Impression: No acute finding.", "No acute finding."],
+    ["IMPRESSION/CONCLUSION: No acute finding.", "No acute finding."],
+    ["CONCLUSION: No acute finding.", "No acute finding."],
+    [
+      "FINDINGS: Clear lungs. OVERALL IMPRESSION: No acute finding.",
+      "No acute finding.",
+    ],
+    // Sentence-cased trailing sections are not headings, so they stay with the
+    // impression rather than being guessed away.
+    [
+      "IMPRESSION: No acute finding. Compared with the prior study.",
+      "No acute finding. Compared with the prior study.",
+    ],
+    // Nothing labelled → nothing parsed. The narrative fallback carries these.
+    ["Single intrauterine gestation. Normal growth.", null],
+    ["CHEST X-RAY 2 VIEWS FINDINGS: Clear lungs.", null],
+    ["IMPRESSION:", null],
+    ["", null],
+    [null, null],
+  ])("%s → %s", (narrative, expected) => {
+    expect(parseImpressionSection(narrative)).toBe(expected);
+  });
+});
+
+describe("studyFindingText — impression first, narrative as the fallback (#3594)", () => {
+  it.each([
+    [
+      { impression: "No acute finding.", report_narrative: "FULL REPORT…" },
+      "No acute finding.",
+    ],
+    [{ impression: null, report_narrative: "FULL REPORT…" }, "FULL REPORT…"],
+    [{ impression: null, report_narrative: null }, null],
+    // A row read through a projection that never selected the narrative.
+    [{ impression: "No acute finding." }, "No acute finding."],
+  ])("%o → %s", (study, expected) => {
+    expect(studyFindingText(study)).toBe(expected);
   });
 });

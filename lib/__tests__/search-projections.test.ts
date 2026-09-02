@@ -138,12 +138,14 @@ describe("imagingHitText", () => {
     | "study_date"
     | "impression"
     | "indication"
+    | "report_narrative"
   > = {
     modality: "mri",
     body_region: "Knee",
     laterality: "left",
     study_date: "2026-02-11",
     impression: "No meniscal tear.",
+    report_narrative: null,
     indication: null,
   };
 

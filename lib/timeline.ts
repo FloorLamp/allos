@@ -47,6 +47,7 @@ import {
 import { fmtDistance, fmtTemp, fmtWeight } from "./units";
 import {
   studyDisplayLabel,
+  studyFindingText,
   modalityLabel,
   lateralityLabel,
 } from "./imaging-study";
@@ -961,7 +962,8 @@ function collectEvents(
 
   // Imaging studies (#702) — one first-class event per study on its study_date.
   // Study rows carry a document_id but are a distinct entity from the uploaded
-  // document event; the impression is the detail. Loose-bounded on study_date with a
+  // document event; the report's finding is the detail (#3594). Loose-bounded on
+  // study_date with a
   // created_at fallback so an undated study still lands somewhere sensible.
   // De-duplicated across documents via IMAGING_REPRESENTATIVE_IDS (#2919) — the same
   // collapse the imaging list and Search read, so three overlapping portal exports
@@ -972,7 +974,7 @@ function collectEvents(
   const imagingStudies = db
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, study_date,
-              impression, indication, created_at
+              impression, report_narrative, indication, created_at
          FROM imaging_studies
         WHERE profile_id = ? AND id IN (${IMAGING_REPRESENTATIVE_IDS})
               ${imagingBounds.clause}
@@ -987,6 +989,7 @@ function collectEvents(
     contrast: number;
     study_date: string | null;
     impression: string | null;
+    report_narrative: string | null;
     indication: string | null;
     created_at: string;
   }[];
@@ -1005,7 +1008,7 @@ function collectEvents(
         category: "imaging",
         title: studyDisplayLabel(s),
         subtitle: compactList(meta, 4),
-        detail: s.impression,
+        detail: studyFindingText(s),
         href: "/results/imaging",
         sortTime: timeFromCreatedAt(s.created_at, tz),
       },

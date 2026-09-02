@@ -49,7 +49,11 @@ import type {
   ImagingModality,
   OpticalKind,
 } from "../types";
-import { normalizeLaterality, normalizeModality } from "../imaging-study";
+import {
+  normalizeLaterality,
+  normalizeModality,
+  parseImpressionSection,
+} from "../imaging-study";
 import {
   parseDiopter,
   parseEyeRefraction,
@@ -1692,7 +1696,10 @@ export function mapImagingStudyResource(
     contrast_agent: null,
     study_date,
     dose_msv: null,
-    impression: impressionRaw ? capNarrative(impressionRaw) : null,
+    // The study's own description + notes: a narrative, not a labelled impression
+    // (#3594). parseImpressionSection fills the impression only if it says so.
+    impression: parseImpressionSection(impressionRaw),
+    report_narrative: impressionRaw ? capNarrative(impressionRaw) : null,
     indication: conceptListText(r?.reasonCode),
     status: typeof r?.status === "string" ? r.status : null,
     external_id: imagingExternalId(idPrefix, "study", r, [
@@ -1734,6 +1741,8 @@ export function mapDiagnosticReport(
       : null;
   const conclusionCodeText = conceptListText(r?.conclusionCode);
   const formText = attachmentsText(r?.presentedForm);
+  const conclusionImpression =
+    [conclusion, conclusionCodeText].filter(Boolean).join("\n\n") || null;
   const narrative =
     [conclusion, conclusionCodeText, formText].filter(Boolean).join("\n\n") ||
     null;
@@ -1761,7 +1770,15 @@ export function mapDiagnosticReport(
           contrast_agent: null,
           study_date: date,
           dose_msv: null,
-          impression: capNarrative(narrative),
+          // DiagnosticReport.conclusion IS the impression by definition ("concise
+          // clinically contextualized summary conclusion"), and conclusionCode is
+          // its coded form — so those two, and never the rendered presentedForm,
+          // are what may be stored as the finding (#3594). With no conclusion, the
+          // rendered report is parsed only if it labels its own impression section.
+          impression: conclusionImpression
+            ? capNarrative(conclusionImpression)
+            : parseImpressionSection(formText),
+          report_narrative: capNarrative(narrative),
           indication: null,
           status: typeof r?.status === "string" ? r.status : null,
           external_id: imagingExternalId(idPrefix, "report", r, [
@@ -1834,7 +1851,10 @@ export function mapDocumentReferenceImaging(
     contrast_agent: null,
     study_date,
     dose_msv: null,
-    impression: capNarrative(text),
+    // A whole rendered report and nothing else — the impression is only what the
+    // document labels as one (#3594).
+    impression: parseImpressionSection(text),
+    report_narrative: capNarrative(text),
     indication: null,
     status:
       typeof r?.docStatus === "string"
