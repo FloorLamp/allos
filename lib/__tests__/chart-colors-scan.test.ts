@@ -289,14 +289,23 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
 // the same palette decision in the shape the ramp rule deliberately does not match.
 //
 // It is NOT matched by shape here either, and that is the finding rather than a gap.
-// Run the shape over the same files this suite scans — an object literal of three or
-// more `"…bg-<hue>-<step>…"` values — and it returns 21 maps in 20 files, every one
-// ordinary badge, chip and status styling. It would ship as a 20-entry allowlist
-// policing nothing.
+// The shape — a brace-delimited object literal holding three or more
+// `"…bg-<hue>-<step>…"` values — matches 32 such maps in 30 files across the dirs
+// this suite walks, every one ordinary badge, notice, chip, status or scale styling
+// and not one of them a period strip. It would ship as a 30-entry allowlist policing
+// nothing.
 //
 // What constitutes membership is the IMPORT: a surface that paints state cells mounts
-// the shared primitive, and the primitive's tones come from the palette module. So the
-// rule is keyed on that, and it fails on the file the escape actually lived in.
+// the shared primitive, and the primitive's tones come from the palette module.
+//
+// A DELIBERATE CONVERSE GUARD, AND GREEN ON MAIN TOO — said out loud because a rule
+// that passes on both trees is otherwise indistinguishable from one that cannot fail.
+// Nothing mounted the primitive before this convergence, so this rule had nothing to
+// range over and could NOT have caught the escape in the tree that shipped it; it
+// faces FORWARD, at the next surface to mount StateCells. Shown to see rather than
+// assumed: a forged components/*.tsx mounting StateCells with a literal bg-class reds
+// this by name, and the same file taking its tone from `chartAdherenceState` leaves
+// it silent.
 describe("state-cell surfaces take their tones from the palette (issue #4543)", () => {
   it("every StateCells/StateLegend mount also imports @/lib/chart-colors", () => {
     const offenders = tsxFiles()
