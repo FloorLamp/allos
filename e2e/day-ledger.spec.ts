@@ -26,8 +26,13 @@ const SKIP_REASON = "felt queasy";
 // The minute the composed tap was filed in, and the bundle it stamped (#4328). The
 // BUNDLE is what makes two rows one write — the ledger keys the collapse on the
 // recorded composed action, never on the bucket and no longer on the shared minute.
+//
+// SIXTEEN HEX CHARACTERS, because that is what `newDoseBundle` mints and what the
+// collapse key's comment relies on being true of every bundle in production. Nothing in
+// the schema enforces the width, so a seed writing a wider value would be this file
+// quietly contradicting the invariant it exists to demonstrate. Low-entropy on purpose.
 const WRITE_HHMM = "07:07";
-const WRITE_BUNDLE = "ledger e2e bundle 1";
+const WRITE_BUNDLE = "0000000000004328";
 const STATED_HHMM = "09:30";
 
 function openDb(): Database.Database {
@@ -194,6 +199,26 @@ function statusCount(
   }
 }
 
+/** The routine label each dose's item carries, or null for an unstacked one (#3098). */
+function stacksOf(doseIds: readonly number[]): Map<number, string | null> {
+  const db = openDb();
+  try {
+    const read = db.prepare(
+      `SELECT s.stack AS stack FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE d.id = ?`
+    );
+    return new Map(
+      doseIds.map((id) => [
+        id,
+        (read.get(id) as { stack: string | null }).stack,
+      ])
+    );
+  } finally {
+    db.close();
+  }
+}
+
 /** The ledger's Morning group, whose rows every test here reads. */
 function morning(page: Page) {
   return page.getByTestId("ledger-group-morning");
@@ -287,7 +312,31 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // UPPER BOUND — the core re-derives the day's pending set and writes only the
     // intersection — so the write must land on the REST and must not double-log the
     // one that moved.
-    const stale = named[0];
+    //
+    // WHICH dose is forged is NOT free, because the reach assertion at the end of this
+    // test needs the Take-all to still compose a STACK: forging a stacked member out of
+    // the pending set could leave its routine with one member and nothing to collapse.
+    // So the stale dose is an UNSTACKED one, chosen off the fixture rather than by
+    // position, and the choice is asserted so a seed that stops offering one reds here
+    // instead of quietly weakening the claim below.
+    const routines = stacksOf(named);
+    const stale = named.find((doseId) => routines.get(doseId) == null);
+    expect(
+      stale,
+      "the due row names at least one unstacked dose"
+    ).toBeDefined();
+    // Type narrowing only. The assertion above has already thrown if the fixture stopped
+    // offering an unstacked dose, so this line never runs the test to a quiet pass.
+    if (stale === undefined) return;
+    const composed = [...new Set(named.map((d) => routines.get(d)))].find(
+      (label): label is string =>
+        label != null &&
+        named.filter((d) => d !== stale && routines.get(d) === label).length > 1
+    );
+    expect(
+      composed,
+      "the Take-all still writes two members of one routine"
+    ).toBeDefined();
     borrowedDoseIds.push(...named);
     const db = openDb();
     try {
@@ -326,8 +375,27 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // leaves this line green, which is what the reload assertions above are for.
     expect(statusCount(stale, day, "taken")).toBe(1);
     // And the rest of the named set did land.
-    for (const doseId of named.slice(1))
+    for (const doseId of named.filter((d) => d !== stale))
       expect(statusCount(doseId, day, "taken")).toBe(1);
+
+    // THE REACH (#4328). Every assertion above counts ROWS, and rows are what the write
+    // half of the bundle changes; none of them can see the surface the bundle exists
+    // for. One bulk tap is ONE composed action, so the routine it wrote comes back as a
+    // single collapsed row naming every member it took — which is exactly what a mint
+    // moved inside the per-dose loop would destroy while leaving every count above
+    // green, each dose carrying its own bundle and standing alone.
+    await page.reload();
+    const stackRow = morning(page).locator(
+      `[data-testid^="ledger-stack-"][data-stack="${composed}"]`
+    );
+    await expect(stackRow).toHaveCount(1);
+    const members = named.filter(
+      (d) => d !== stale && routines.get(d) === composed
+    );
+    await expect(stackRow).toHaveAttribute(
+      "data-label",
+      `${members.length} doses`
+    );
   });
 
   test("past-day dose interactivity flips at the write window, from both sides", async ({

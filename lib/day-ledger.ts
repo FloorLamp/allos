@@ -223,15 +223,19 @@ export function buildDayLedger(input: {
     // Joined by the unit separator, the `doseSortKey` idiom — it sorts below every
     // printable character, which is what keeps `stack:` ids ordering sanely.
     //
-    // WHAT ACTUALLY MAKES THE KEY UNFORGEABLE IS THE FIXED-WIDTH TAIL, not the separator.
-    // `stack` is free text a person types, so it CAN contain a separator; the separator
-    // alone therefore proves nothing. But the tuple is still recoverable from any string
-    // this builds, because everything around the free field is pinned: `bucket` is a
-    // closed enum in first position, and the three fields after `stack` are
-    // fixed-width — a 16-char bundle id, `stated` or `logged`, a 5-char `HH:MM`. Read
-    // from the right, those three come off unambiguously whatever the label contains, and
-    // what remains between the enum and them is the label. So no pair of distinct tuples
-    // can mint one key, and a label crafted to impersonate another routine's tail cannot.
+    // WHAT MAKES THE KEY RECOVERABLE IS THE TAIL'S WIDTH, not the separator. `stack` is
+    // free text a person types, so it CAN contain a separator; the separator alone
+    // therefore proves nothing. The tuple comes back off any string this builds because
+    // everything around the free field is pinned: `bucket` is a closed enum in first
+    // position, and the three fields after `stack` have known widths — the bundle id,
+    // `stated` or `logged`, a 5-char `HH:MM`. Read from the right, those three come off
+    // unambiguously whatever the label contains, and what remains is the label.
+    //
+    // AND THE BUNDLE'S WIDTH IS A FACT ABOUT ITS MINT, NOT ABOUT THE COLUMN. `bundle_id`
+    // is plain nullable TEXT with no CHECK; what holds the width to 16 characters is that
+    // `newDoseBundle` is the only door (lib/dose-bundle.ts) and the only thing production
+    // writes. So this argument rests on that mint, and a second way to spell a bundle
+    // would be what breaks it — not a long routine label, which is bounded either way.
     const key = [
       dose.bucket,
       dose.stack,
