@@ -169,8 +169,27 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
+    // THE PLOT COLUMN TAKES NO POINTER (#4760, restoring #3459). This row's whole
+    // anatomy is one door: `.standing-stretch::after` reaches `--standing-trail`
+    // (13rem at min-[45rem]) to the RIGHT of the facts cell, so the door's hit area
+    // already covers this entire column — that is what makes the desktop plot part
+    // of the link, asserted in e2e/dashboard.spec.ts. On main this column was
+    // unpositioned, so it painted in the block layer BENEATH that positioned
+    // pseudo-element and the door won every hit. The bands below need a containing
+    // block, so this wrapper is now `relative` — which lifts the column into the
+    // positioned layer, later in DOM than the `<dd>`, and it started taking the
+    // pointer the door was supposed to get.
+    //
+    // `pointer-events-none` puts the hit back exactly where main had it. The cost is
+    // the bands' HOVER readout on this one adopter, and it is not a real cost: the
+    // door already covered this column on main, so the SVG `<title>` tooltip that
+    // used to live here was unreachable too. What #4760 actually adds survives
+    // untouched — every band is still `tabIndex=0` with its value as the accessible
+    // name, `:focus::after` still paints the readout for the keyboard, and the
+    // sr-only summary below still carries the whole series for AT. Hit-testing is
+    // all this turns off; focus and painting are unaffected.
     <div
-      className={`relative hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
+      className={`pointer-events-none relative hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
       style={{ width: WIDTH }}
     >
       <svg
