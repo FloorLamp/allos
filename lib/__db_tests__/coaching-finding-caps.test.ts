@@ -14,10 +14,27 @@
 // So each row below over-supplies the family, states the survivors the ordering
 // ahead of the slice is supposed to choose, and asserts the whole ordered list.
 //
-// The fixtures are deliberately built in an order that is NOT the expected
-// survival order wherever the ordering is a real sort, so the identity half can
-// fail on its own. Proven able to fail, each measured against a mutant of the
-// production line it guards:
+// RELEVANCE, NOT ALPHABET (#4069). This file first landed pinning what shipped, and
+// what shipped for five of the families was an ordering with a DETERMINISM claim and
+// no relevance one: trainingPlateau by lift name, adherencePattern by item name,
+// demotionSuggestion by name, targetRightSize by label, medicationDuplication by
+// first-member row id. A profile plateaued on five lifts saw the three whose names
+// sort first and was never told the list was cut. The owner ruled (2026-09-01) that
+// relevance is the contract — most recent plateau, worst adherence, longest lapsed,
+// furthest from target, most recently added duplicate — with the old stable order
+// kept as the TIE-BREAK so determinism survives. These five cases now assert that
+// contract; the pin they replaced recorded what shipped, and was never a blessing.
+//
+// A fixture that only proves DETERMINISM is what let the wrong contract ship, so
+// each of the five is built with its relevance order the exact REVERSE of the
+// alphabetical/row-id order it used to cut on, and seeded in a third order again
+// (alphabetical insertion) so neither the alphabet nor the insertion order can
+// produce the expected answer. Measured against the pre-ruling production
+// orderings — the four detector sorts and the med-dup builder as `main` had them —
+// all five cases are RED.
+//
+// The other six rows keep the proofs they landed with, each measured against a
+// mutant of the production line it guards:
 //   • every `.slice(0, N)` here rewritten `.slice(-N)`: 9 of 11 red. The two that
 //     survive are the two that cannot see it — goalPacing bounds with a `break`
 //     rather than a slice, and endurancePlan's bound is unreachable (below).
@@ -54,6 +71,11 @@ import {
   buildTrainingObservationFindings,
   buildEndurancePlanFindings,
 } from "@/lib/rule-findings";
+import {
+  ADHERENCE_PATTERN_DAYS,
+  weekdayIndex,
+  weekdayName,
+} from "@/lib/adherence-patterns";
 import { cycleBleedingSignalKey } from "@/lib/cycle-observation";
 import { weightAnomalySignalKey } from "@/lib/weight-anomaly";
 import { PROLONGED_PERIOD_DAYS } from "@/lib/cycle";
@@ -72,10 +94,11 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 // ---- Seeds. Each returns the family's members in the order the production
 // ---- ordering AHEAD of the slice is documented to put them, longest first.
 
-// Four ingredient families of two active members each. medicationFamilies is
-// documented "family order follows first-member input order" over a `ORDER BY id`
-// read, so the surviving families are the three whose first member was created
-// first — an ordering with no relevance claim behind it (see the report on #3126).
+// Four ingredient families of two active members each, added alphabetically — so
+// each family's SECOND member (the one that made it a duplicate) is newer than the
+// last family's first. Most recently added duplicate first (#4069) is therefore the
+// exact reverse of medicationFamilies' first-member input order, which is what the
+// cap used to cut on.
 function seedMedicationFamilies(profileId: number): string[] {
   const insert = db.prepare(
     `INSERT INTO intake_items (profile_id, name, active, kind, condition, obligation)
@@ -86,7 +109,7 @@ function seedMedicationFamilies(profileId: number): string[] {
     insert.run(profileId, `${generic} 5 mg`);
     insert.run(profileId, `${generic} 10 mg`);
   }
-  return generics;
+  return [...generics].reverse();
 }
 
 // Four isolated day-over-day weight jumps, seeded OLDEST first so insertion order
@@ -130,9 +153,11 @@ function seedProlongedPeriods(profileId: number, anchor: string): string[] {
 
 // Four live weight goals over one rising series, so all four read "trending away".
 // getOutcomeGoals sorts live goals `created_at DESC`, so the three most recently
-// created survive — created_at is written explicitly because the column's default
-// would give all four the same second and leave the order undefined.
-function seedOffPaceGoals(profileId: number, anchor: string): string[] {
+// created survive. created_at is written explicitly here to make the case about the
+// bound rather than the tie-break; the same-second tie-break has its own case below.
+// A 13-week rising weight series: every live "cut to 84" goal over it reads
+// "trending away".
+function seedRisingWeights(profileId: number, anchor: string): void {
   const insertWeight = db.prepare(
     `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
   );
@@ -143,19 +168,31 @@ function seedOffPaceGoals(profileId: number, anchor: string): string[] {
       90 + (12 - week) * 0.2
     );
   }
-  const insertGoal = db.prepare(
+}
+
+function insertWeightGoal(
+  profileId: number,
+  anchor: string,
+  title: string,
+  createdAt: string
+): void {
+  db.prepare(
     `INSERT INTO goals
        (profile_id, title, category, status, archived, body_metric,
         target_value, target_date, baseline_value, created_at)
      VALUES (?, ?, 'body', 'active', 0, 'weight', 84, ?, 90, ?)`
-  );
+  ).run(profileId, title, shiftDateStr(anchor, 60), createdAt);
+}
+
+function seedOffPaceGoals(profileId: number, anchor: string): string[] {
+  seedRisingWeights(profileId, anchor);
   const titles: string[] = [];
   for (let age = 4; age >= 1; age--) {
     const title = `Cut to 84 (goal ${age})`;
-    insertGoal.run(
+    insertWeightGoal(
       profileId,
+      anchor,
       title,
-      shiftDateStr(anchor, 60),
       `${shiftDateStr(anchor, -age)} 08:00:00`
     );
     titles.push(title);
@@ -191,61 +228,110 @@ function seedDailyItem(
   return { itemId, doseId };
 }
 
-// Four abandoned should-tier supplements: due daily for four months, never logged.
-// detectDemotionCandidates is documented "deterministic (by name, then item id)",
-// so the survivors are the three alphabetically first — seeded in reverse.
+// Four should-tier supplements due daily for four months, each with ONE follow-through
+// inside the 30-day window and none since — so all four are candidates (a single take
+// is far under DEMOTION_MAX_TAKEN_RATE) and their lapses run 8, 14, 20 and the whole
+// window. Longest lapsed first (#4069) is the exact reverse of the alphabetical order
+// the cap used to cut on, and the items are inserted alphabetically so insertion order
+// cannot produce it either.
 function seedDemotionCandidates(profileId: number, anchor: string): string[] {
-  const names = ["Ashwagandha", "Berberine", "Creatine", "Dandelion"];
-  for (const name of [...names].reverse())
-    seedDailyItem(profileId, anchor, name);
-  return names.map((name) => `${name}: move it to May?`);
+  const logTaken = db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
+  );
+  // Days since the last follow-through. Dandelion never followed through at all, so
+  // its lapse is the whole window — the longest there is.
+  const lastTakenDaysAgo: [string, number | null][] = [
+    ["Ashwagandha", 8],
+    ["Berberine", 14],
+    ["Creatine", 20],
+    ["Dandelion", null],
+  ];
+  for (const [name, ago] of lastTakenDaysAgo) {
+    const { itemId, doseId } = seedDailyItem(profileId, anchor, name);
+    if (ago != null) logTaken.run(doseId, itemId, shiftDateStr(anchor, -ago));
+  }
+  return lastTakenDaysAgo.map(([name]) => `${name}: move it to May?`).reverse();
 }
 
-// Four practice floors nobody has ever met (no sessions at all).
-// detectRightSizeCandidates is documented "deterministic (by label, then target
-// id)", so the survivors are the three alphabetically first — seeded in reverse.
+// Four practice floors nobody has ever met (no sessions at all), at four different
+// weekly floors — so with a best week of zero each, the shortfall `floor - best` is
+// 4, 5, 6 and 7. Furthest from target first (#4069) is the exact reverse of the
+// alphabetical order the cap used to cut on, and the targets are inserted
+// alphabetically so insertion order cannot produce it either.
 function seedRightSizeTargets(profileId: number, anchor: string): string[] {
   const insert = db.prepare(
     `INSERT INTO frequency_targets
        (profile_id, scope_kind, scope_value, scope_identity, per_week, created_at)
-     VALUES (?, 'practice', ?, ?, 4, ?)`
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
-  const labels = ["Breathwork", "Cold plunge", "Journaling", "Stretching"];
-  for (const label of [...labels].reverse()) {
+  const floors: [string, number][] = [
+    ["Breathwork", 4],
+    ["Cold plunge", 5],
+    ["Journaling", 6],
+    ["Stretching", 7],
+  ];
+  for (const [label, perWeek] of floors) {
     insert.run(
       profileId,
+      "practice",
       label,
       practiceIdentity(label),
+      perWeek,
       `${shiftDateStr(anchor, -200)} 08:00:00`
     );
   }
-  return labels.map((label) => `${label}: right-size the weekly target?`);
+  return floors
+    .map(([label]) => `${label}: right-size the weekly target?`)
+    .reverse();
 }
 
-// Four evening supplements taken every day except Fridays for eight weeks.
-// detectAdherencePatterns is documented "deterministic (by item name, then dose
-// id)", so the survivors are the three alphabetically first — seeded in reverse.
+// Four evening supplements, each taken every day except on ONE shared weekday it
+// slips on — 5, 6, 7 and 8 of that weekday's eight occurrences missed, so the miss
+// rates are 0.625, 0.75, 0.875 and 1.0. Worst adherence first (#4069) is the exact
+// reverse of the alphabetical order the cap used to cut on, and the items are
+// inserted alphabetically so insertion order cannot produce it either.
+//
+// The slipping weekday is chosen three days off the ANCHOR's own weekday, which is
+// what makes the denominator independent of the calendar: the window is exactly
+// eight of each weekday, and the newest day is always a taken one, so
+// stripWithoutTrailingPending never drops it and every rate above is exact on any
+// day this suite runs.
 function seedWeekdayMisses(profileId: number, anchor: string): string[] {
-  const names = ["Alpha lipoic", "Biotin", "Choline", "D3"];
+  const slipWeekday = (weekdayIndex(anchor) + 3) % 7;
+  const misses: [string, number][] = [
+    ["Alpha lipoic", 5],
+    ["Biotin", 6],
+    ["Choline", 7],
+    ["D3", 8],
+  ];
   const logTaken = db.prepare(
     `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
   );
-  for (const name of [...names].reverse()) {
+  const day = weekdayName(slipWeekday);
+  for (const [name, slips] of misses) {
     const { itemId, doseId } = seedDailyItem(profileId, anchor, name);
-    for (let ago = 55; ago >= 0; ago--) {
+    let left = slips;
+    for (let ago = ADHERENCE_PATTERN_DAYS - 1; ago >= 0; ago--) {
       const date = shiftDateStr(anchor, -ago);
-      const isFriday =
-        new Date(Date.parse(`${date}T00:00:00Z`)).getUTCDay() === 5;
-      if (!isFriday) logTaken.run(doseId, itemId, date);
+      // The misses are taken from the OLDEST end, so the newest slipping day is a
+      // take for every item but the worst — one more reason the trailing day never
+      // reads as pending.
+      if (weekdayIndex(date) === slipWeekday && left > 0) {
+        left -= 1;
+        continue;
+      }
+      logTaken.run(doseId, itemId, date);
     }
   }
-  return names.map((name) => `${name}: Fridays slip`);
+  return misses.map(([name]) => `${name}: ${day}s slip`).reverse();
 }
 
-// Four lifts each flat at one load for six weeks. detectPlateaus is documented
-// "Alphabetical for deterministic ordering across surfaces" — an ordering with no
-// relevance claim behind it — so the survivors are the alphabetically first three.
-// Seeded in reverse so alphabetical order is not insertion order.
+// Four lifts each flat at one load for six weeks, staggered so each was last trained
+// two days before the next: Zercher 2 days ago, Pendlay 4, Landmine 6, Front Squat 8.
+// Every series keeps four points spanning 33 days inside the 42-day plateau window.
+// Most recent plateau first (#4069) is the exact reverse of the alphabetical order the
+// cap used to cut on, and the lifts are inserted alphabetically so insertion order
+// cannot produce it either.
 function seedPlateaus(profileId: number, anchor: string): string[] {
   const insertActivity = db.prepare(
     `INSERT INTO activities (profile_id, date, type, title, duration_min)
@@ -255,22 +341,24 @@ function seedPlateaus(profileId: number, anchor: string): string[] {
     `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
      VALUES (?, ?, 1, 60, 5)`
   );
-  const lifts = [
-    "Front Squat",
-    "Landmine Press",
-    "Pendlay Row",
-    "Zercher Squat",
+  const lifts: [string, number][] = [
+    ["Front Squat", 8],
+    ["Landmine Press", 6],
+    ["Pendlay Row", 4],
+    ["Zercher Squat", 2],
   ];
-  for (const lift of [...lifts].reverse()) {
-    for (const daysAgo of [35, 24, 13, 2]) {
+  for (const [lift, lastTrainedDaysAgo] of lifts) {
+    for (const step of [33, 22, 11, 0]) {
       const activityId = Number(
-        insertActivity.run(profileId, shiftDateStr(anchor, -daysAgo))
-          .lastInsertRowid
+        insertActivity.run(
+          profileId,
+          shiftDateStr(anchor, -(lastTrainedDaysAgo + step))
+        ).lastInsertRowid
       );
       insertSet.run(activityId, lift);
     }
   }
-  return lifts.map((lift) => `${lift} has plateaued`);
+  return lifts.map(([lift]) => `${lift} has plateaued`).reverse();
 }
 
 interface CapCase {
@@ -494,5 +582,119 @@ describe("#3126 — the prolonged-bleeding bound keeps the CURRENT bleed", () =>
     for (const older of keysNewestFirst.slice(1)) {
       expect(findings.map((f) => f.dedupeKey)).not.toContain(older);
     }
+  });
+});
+
+// The other half of the #4069 ruling: relevance decides the cut, and where two
+// members are EQUALLY relevant the pre-ruling stable order still decides, so
+// determinism survives the re-pointing. Four floors of the same size with the same
+// (zero) best week are exactly that state — inserted in reverse so the tie-break has
+// to reorder them rather than merely preserve the row order it was handed.
+describe("#4069 — equal relevance falls back to the old stable order", () => {
+  it("keeps the alphabetically first three when every shortfall is the same", () => {
+    const { profileId, anchor } = makeProfile("tiebreak-rightsize");
+    const insert = db.prepare(
+      `INSERT INTO frequency_targets
+         (profile_id, scope_kind, scope_value, scope_identity, per_week, created_at)
+       VALUES (?, 'practice', ?, ?, 4, ?)`
+    );
+    const labels = ["Breathwork", "Cold plunge", "Journaling", "Stretching"];
+    for (const label of [...labels].reverse()) {
+      insert.run(
+        profileId,
+        label,
+        practiceIdentity(label),
+        `${shiftDateStr(anchor, -200)} 08:00:00`
+      );
+    }
+
+    expect(
+      buildTargetRightSizeFindings(profileId, anchor).map((f) => f.title)
+    ).toEqual(
+      labels
+        .slice(0, COACHING_ENTITY_FINDING_LIMITS.targetRightSize)
+        .map((label) => `${label}: right-size the weekly target?`)
+    );
+  });
+});
+
+// The two mechanics defects #4069 recorded next to the ruling. Both are about the
+// goal-pacing family, and neither is a relevance judgment — they are a shared counter
+// and a missing tie-break.
+describe("#4069 — goal pacing's two halves are bounded separately", () => {
+  it("a full body-metric half does not silence the biomarker half", () => {
+    const { profileId, anchor } = makeProfile("goalpace-two-loops");
+    seedRisingWeights(profileId, anchor);
+    // Exactly the family's cap in off-pace WEIGHT goals: enough to fill one shared
+    // counter on its own.
+    const cap = COACHING_ENTITY_FINDING_LIMITS.goalPacing;
+    for (let age = cap; age >= 1; age--) {
+      insertWeightGoal(
+        profileId,
+        anchor,
+        `Cut to 84 (goal ${age})`,
+        `${shiftDateStr(anchor, -age)} 08:00:00`
+      );
+    }
+    // …and one lab goal whose every draw since has moved AWAY from the target.
+    const insertLab = db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, unit, canonical_name, value_num)
+       VALUES (?, ?, 'lab', 'LDL Cholesterol', ?, 'mg/dL', 'LDL Cholesterol', ?)`
+    );
+    for (const [ago, value] of [
+      [240, 150],
+      [150, 158],
+      [60, 166],
+      [20, 172],
+    ] as const) {
+      insertLab.run(
+        profileId,
+        shiftDateStr(anchor, -ago),
+        String(value),
+        value
+      );
+    }
+    db.prepare(
+      `INSERT INTO goals
+         (profile_id, title, category, status, archived, target_value, unit,
+          biomarker_name, target_direction, target_date, baseline_value, created_at)
+       VALUES (?, 'LDL under 100', 'biomarker', 'active', 0, 100, 'mg/dL',
+               'LDL Cholesterol', 'below', ?, 150, ?)`
+    ).run(
+      profileId,
+      shiftDateStr(anchor, 120),
+      `${shiftDateStr(anchor, -250)} 09:00:00`
+    );
+
+    const titles = buildGoalPacingFindings(profileId, anchor).map(
+      (f) => f.title
+    );
+    // The weight half still fills its own bound…
+    expect(titles.filter((t) => t.includes("Cut to 84"))).toHaveLength(cap);
+    // …and the lab goal is still told about. Under one shared counter it was not.
+    expect(titles).toContain("“LDL under 100” is off pace");
+  });
+
+  it("goals written in the same second survive newest-first, not row order", () => {
+    const { profileId, anchor } = makeProfile("goalpace-same-second");
+    seedRisingWeights(profileId, anchor);
+    // An import: four goals, one created_at, so `created_at DESC` alone leaves the
+    // survival order to whatever the read happens to return.
+    const stamp = `${shiftDateStr(anchor, -5)} 08:00:00`;
+    const titles = ["import 1", "import 2", "import 3", "import 4"].map(
+      (n) => `Cut to 84 (${n})`
+    );
+    for (const title of titles)
+      insertWeightGoal(profileId, anchor, title, stamp);
+
+    expect(
+      buildGoalPacingFindings(profileId, anchor).map((f) => f.title)
+    ).toEqual(
+      [...titles]
+        .reverse()
+        .slice(0, COACHING_ENTITY_FINDING_LIMITS.goalPacing)
+        .map((t) => `“${t}” is off pace`)
+    );
   });
 });
