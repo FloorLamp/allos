@@ -1,3 +1,4 @@
+/** @vitest-environment jsdom */
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -5,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   GEOMETRY_THRESHOLDS,
   geometryAuditSections,
+  geometryProbe,
 } from "../../scripts/ux-geometry-census.mjs";
 
 // Fast coverage for everything downstream of the census measurement: thresholds,
@@ -79,6 +81,19 @@ describe("geometryAuditSections", () => {
         },
       ],
       textBoxesExamined: 60,
+      // #3623's own reading on this route at 390px, fabricated like its neighbours:
+      // the chip was ruled to stay as it is, so this finding is what the census now
+      // SAYS about a page that is working as intended.
+      personNamesSeen: 3,
+      truncatedNamesTotal: 1,
+      truncatedNames: [
+        {
+          el: 'span "· Supply Parent (e2e)"',
+          name: "Supply Parent (e2e)",
+          lostPx: 82,
+          visiblePx: 56,
+        },
+      ],
       // FABRICATED like the row above it, and for the same reason: the renderer has
       // to be testable on a tree where nothing is broken. This is the shape #3716
       // would have had to produce to be believable — two rects, not one string.
@@ -116,6 +131,8 @@ describe("geometryAuditSections", () => {
     expect(md).toContain("shared-supply-add-for");
     // #3814: the collision table's evidence is the two RECTS. A row that named only
     // the concatenated text would be the finding this class was filed against.
+    expect(md).toContain("## Truncated person names");
+    expect(md).toContain("Supply Parent (e2e)");
     expect(md).toContain("## Colliding text");
     expect(md).toContain("16, 128, 374, 152");
     expect(md).toContain("358/18");
@@ -223,5 +240,115 @@ describe("the harness reads the shared rule rather than a second copy of it", ()
     expect(exemption).toContain("paintedRect(el)");
     expect(exemption).not.toContain("getBoundingClientRect");
     expect(exemption).not.toContain("overflowX");
+  });
+});
+
+// ── THE TRUNCATED-NAME CLASS, AND THE TWO OFFENDERS THAT HOLD ITS EDGES (#3623) ──
+//
+// The class reports a truncated PERSON'S NAME and nothing else, so the only thing
+// worth proving is that it can do BOTH — fire on the name, stay silent on the
+// ordinary label sitting in the same clip. A run over a complying tree says neither.
+//
+// GEOMETRY IS FORGED HERE, DELIBERATELY. jsdom has no layout, so every box is
+// stipulated through `data-rect` and read back by the two stubs below. That is the
+// right trade for THIS test: the geometry half (`paintedRect`, the ellipsis clip) is
+// shipped, exercised by the harness on real pages and already argued at its own site;
+// what is new and worth pinning is WHICH truncations the class admits, and that is a
+// decision about text, not about pixels. The numbers below are the ones #3623
+// measured on `/supplies` at 390px — chip label 74→324, clientWidth 250 of
+// scrollWidth 332 — rounded into whole boxes.
+describe("probe (d): a person's name cut short by an ellipsis", () => {
+  const rectOf = (el: Element) => {
+    const [left, top, right, bottom] = (
+      el.getAttribute("data-rect") ?? "0,0,0,0"
+    )
+      .split(",")
+      .map(Number);
+    return {
+      x: left,
+      y: top,
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+  Element.prototype.getBoundingClientRect = function () {
+    return rectOf(this);
+  };
+  Element.prototype.getClientRects = function () {
+    const r = rectOf(this);
+    return (r.width > 0 && r.height > 0 ? [r] : []) as unknown as DOMRectList;
+  };
+  Object.defineProperty(document.documentElement, "clientWidth", {
+    value: 390,
+  });
+
+  // The shell's switcher is the ROSTER — one row per accessible profile, the name in
+  // the only span without a testid (components/ProfileSwitcherPanel.tsx). It sits
+  // outside <main> on purpose, which is also where the real one sits.
+  const ROSTER = `<div><button data-testid="switch-to-4">
+      <span data-testid="avatar-initials">RP</span><span>River Poole</span>
+    </button></div>`;
+  // Both offenders are one truncating box holding two inline runs, which is the shape
+  // ProfileSwitcherChip renders. They differ in ONE thing: whose name the cut run is.
+  const PAGE = `<main data-rect="0,0,390,600">
+      <span data-rect="74,40,324,64" style="overflow-x:hidden;text-overflow:ellipsis">
+        <span data-rect="74,40,268,64">Item Nine Bottle</span
+        ><span id="cut-person" data-rect="268,40,406,64"> · River Poole</span>
+      </span>
+      <span data-rect="74,100,324,124" style="overflow-x:hidden;text-overflow:ellipsis">
+        <span id="cut-label" data-rect="74,100,406,124">Evening dose taken with food and water</span>
+      </span>
+    </main>`;
+
+  const run = (html: string) => {
+    document.body.innerHTML = html;
+    return geometryProbe(GEOMETRY_THRESHOLDS);
+  };
+
+  it("reports the name, stays quiet on the label beside it, and needs the roster", () => {
+    const found = run(ROSTER + PAGE);
+    expect(found.personNamesSeen).toBe(1);
+    expect(found.truncatedNamesTotal).toBe(1);
+    expect(found.truncatedNames[0]).toMatchObject({
+      name: "River Poole",
+      lostPx: 82,
+      visiblePx: 56,
+    });
+
+    // THE SILENT SIDE, and it is not an absence of geometry: the ordinary label is cut
+    // by MORE (406 → 324 of a wider run) inside an identical clip, and the item name
+    // shares the offender's own truncating box. Neither is reported.
+    const named = found.truncatedNames.map((t: { el: string }) => t.el);
+    expect(named.join(" ")).not.toContain("cut-label");
+    expect(named.join(" ")).not.toContain("Item Nine Bottle");
+
+    // AND THE HOLE #3623 NAMED IS STILL THERE UNDERNEATH: probe (a) exempts this
+    // exact element, correctly — nothing is off screen — so before this class the app
+    // had no reporter for it at all.
+    expect(found.clippedTotal).toBe(0);
+
+    // Same page, roster removed: the finding goes with it. This is what says the
+    // decision is being made by WHO the text names and not by the boxes, which are
+    // untouched between the two runs.
+    const rosterless = run(PAGE);
+    expect(rosterless.personNamesSeen).toBe(0);
+    expect(rosterless.truncatedNamesTotal).toBe(0);
+  });
+
+  it("says nothing about a name that fits", () => {
+    // The converse of the offender, forged by widening the clip past the name's own
+    // box rather than by changing the text — so a rule that reported every roster name
+    // it found, truncated or not, fails here.
+    const fits = run(
+      ROSTER +
+        PAGE.replace('data-rect="74,40,324,64"', 'data-rect="74,40,406,64"')
+    );
+    expect(fits.personNamesSeen).toBe(1);
+    expect(fits.truncatedNamesTotal).toBe(0);
   });
 });

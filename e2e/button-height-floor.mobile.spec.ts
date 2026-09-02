@@ -431,9 +431,10 @@ test.describe("the control box: one height, every kind, every viewport (#3938)",
           // frame is a region's own edge.
           //
           // THEY STAY SEPARATE — #3814 ruled it (2026-08-29), against its own AC's
-          // wording. Four sites read this family and they ask THREE questions: the
+          // wording. Five sites read this family and they ask FOUR questions: the
           // census's ancestor-inside-viewport, `overflowStory`'s is-this-a-culprit,
-          // and this one's is-the-region-itself-a-label. One predicate answering all
+          // this one's is-the-region-itself-a-label, and probe (d)'s does-this-clip-
+          // cut-a-person's-name (#3623). One predicate answering all
           // three needs a mode parameter, which is the variant axis this repo
           // forbids; and neither way of crossing the `page.evaluate` boundary is
           // better than the split — threading a predicate's source through
