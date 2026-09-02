@@ -425,13 +425,16 @@ describe("the quick sheet mounts the same control on both of its arms", () => {
   });
 });
 
-// THE "EARLIER DOSE" STATEMENT STATES ITS DAY (#4691). The shared PRN row handed the
-// WhenControl `minDate === maxDate === today`, which renders the day as fixed TEXT — so
-// the illness cockpit could show a Yesterday toggle above a row that could only ever
-// write today, and last night's dose had no path from the surface a parent was looking
-// at. The claim is the pair: the control OFFERS a real day range, and whatever day it
-// is left on is the day the write states.
-describe("the PRN row's earlier-dose statement reaches a past day (#4691)", () => {
+// THE "EARLIER DOSE" STATEMENT TAKES ITS DAY FROM THE SURFACE (#4691, converged by
+// #4426 under #4738's ruling 3). The row handed the WhenControl `minDate === maxDate
+// === today`, so the illness cockpit could show a Yesterday toggle above a row that
+// could only ever write today, and last night's dose had no path from the surface a
+// parent was looking at. #4691 fixed that with a day RANGE inside the statement,
+// because the card had no day of its own yet; the Today/Yesterday lift gave it one, and
+// the ruling put the day back where it belongs. So the claim is the SAME pair, reached
+// the other way round: the statement offers NO day field at all, and the day the write
+// states is the day the card is standing on.
+describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738)", () => {
   // The component reads its own "today" from the UTC zone it is handed, so the test
   // derives the pair the same way rather than pinning a literal that ages out.
   const TODAY_UTC = new Date().toISOString().slice(0, 10);
@@ -455,21 +458,38 @@ describe("the PRN row's earlier-dose statement reaches a past day (#4691)", () =
     await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
   }
 
-  it("offers a real day field, not the fixed-day text a single pinned day renders", async () => {
+  it("offers no day field — the surface's day is fixed text", async () => {
     row();
     await openStatement();
     // The WhenControl draws a <span> when minDate === maxDate and the editable
-    // DateField otherwise: which ELEMENT is here IS the claim.
-    expect(screen.getByTestId("prn-log-when-date").tagName).toBe("INPUT");
+    // DateField otherwise: which ELEMENT is here IS the claim. It reads "Today" here
+    // because this mount stands on today, which is the day the write below states.
+    const day = screen.getByTestId("prn-log-when-date");
+    expect(day.tagName).toBe("SPAN");
+    expect(day.textContent).toBe("Today");
+    expect(
+      screen.getByTestId("prn-log-options").querySelector('input[type="date"]')
+    ).toBeNull();
   });
 
-  it("posts the stated day beside the stated time", async () => {
-    row();
+  it("posts the CARD's day beside the stated time, past day included", async () => {
+    // The reach #4691 opened, kept — through the card rather than through a day field.
+    // The provider stands on a day that has ended, which is the overnight case the
+    // cockpit exists for; the statement still says only the minute.
+    render(
+      <CockpitDayProvider date={YESTERDAY_UTC}>
+        <QuickLogPrnControl
+          itemId={31}
+          name="Ibuprofen"
+          doseAmount="200 mg"
+          dayLabel="1 today · last 4:02pm"
+          tz="UTC"
+        />
+      </CockpitDayProvider>
+    );
     await openStatement();
-    await act(async () =>
-      fireEvent.change(screen.getByTestId("prn-log-when-date"), {
-        target: { value: YESTERDAY_UTC },
-      })
+    expect(screen.getByTestId("prn-log-when-date").textContent).toBe(
+      YESTERDAY_UTC
     );
     await act(async () =>
       fireEvent.change(screen.getByTestId("prn-log-when-time"), {

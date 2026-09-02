@@ -2,11 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
-import { useTimezone } from "@/components/TimezoneProvider";
 import { useWritePipeline } from "@/components/useWritePipeline";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimeStatement } from "@/components/TimeStatement";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
-import { statedHhmm } from "@/lib/stated-time";
 import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -52,7 +50,6 @@ export default function StoolTypeControl({
   // `TAP_REACH` files this as a `today` tap; a BACKFILL states its day on `StoolForm`.
   today: string;
 }) {
-  const tz = useTimezone();
   const pipeline = useWritePipeline("stool-form");
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
@@ -60,12 +57,18 @@ export default function StoolTypeControl({
   const [settlingType, setSettlingType] = useState<number | null>(null);
   const [settleRuns, setSettleRuns] = useState<Record<number, number>>({});
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // "Happened earlier?" (#3273): the collapsed statement of WHEN, the one the sheet's
-  // instant-event forms share. Closed and empty by default, so the fast path is
-  // untouched — no statement means no `at` field, and the write core reads the clock
-  // seam exactly as it did before this control existed.
-  const [whenOpen, setWhenOpen] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
+  // "Happened earlier?" (#3273), through the shared statement (#4426). A tap still
+  // writes the tap instant — the one-tap ledger is the point — and this is the escape
+  // hatch for the log that arrives late, the ordinary case for a bowel movement
+  // (#2785's grain argument). A day EARLIER than today is the record's door, not this
+  // tap's (`TAP_REACH`).
+  const statement = useTimeStatement({
+    day: today,
+    label: "Happened earlier?",
+    timeLabel: "Time it happened",
+    testId: "stool-when",
+    className: "mt-3",
+  });
   useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
@@ -89,28 +92,10 @@ export default function StoolTypeControl({
     setServerCount(todayCount);
     setCount(todayCount);
   }
-  // Follow `today` for the same reason the count does — the same follower
-  // LogPracticeButton spends on this same control. Mounting it is what created the
-  // need: the sheet's props are gathered when it opens, so one left across local
-  // midnight would offer yesterday as its fixed day while the action files under the
-  // server's today, landing a stated 23:50 at TODAY's 23:50 — in the future. A day
-  // change DROPS the statement rather than re-anchoring it: 23:50 said about
-  // yesterday is not a claim about today.
-  const [whenDay, setWhenDay] = useState(today);
-  if (whenDay !== today) {
-    setWhenDay(today);
-    setWhen({ date: today, statedAt: null });
-  }
-
   async function tap(type: number) {
     // The statement THIS tap consumes, read once — both as the wall time it posts and
     // as the value the spend below compares against.
-    const consumed = when.statedAt;
-    const stated = statedHhmm(consumed, tz) || null;
-    const spendStatement = () =>
-      setWhen((prev) =>
-        prev.statedAt === consumed ? { date: today, statedAt: null } : prev
-      );
+    const stated = statement.at;
     // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The pipeline settles the ledger and says
     // the sentence; the COUNT is this surface's state, committed here as
     // `DoseStatusControl` commits its own override.
@@ -132,21 +117,9 @@ export default function StoolTypeControl({
           };
         landed = res.dayCount;
         settle(type);
-        // A STATEMENT IS SPENT BY THE TAP IT ANSWERS. The key is the instant, so a
-        // second tap under a surviving statement would restate the same minute — and
-        // restating a minute CORRECTS that reading rather than adding one (the write
-        // core's own rule). The sheet stays open for a genuine second movement, and a
-        // second movement is a different time; leaving the field armed would silently
-        // overwrite the row the first tap just wrote.
-        //
-        // ONLY THE STATEMENT THIS TAP SPENT, and the guard is not defensive. This runs
-        // when the WRITE ANSWERS, which is arbitrarily later than the tap: a person who
-        // taps, then opens the affordance and states 07:05 while the request is still
-        // in flight, would have had that statement wiped by a settle belonging to the
-        // previous tap — and the next tap would then collide with the row that one
-        // wrote instead of adding a reading. A functional update comparing against what
-        // was consumed leaves anything newer alone.
-        spendStatement();
+        // Rule 4 of the shared statement: restating a minute CORRECTS the row the
+        // first tap wrote rather than adding one, so the sheet cannot stay armed.
+        statement.spend(stated);
         return {
           wrote: true,
           // WHAT LANDED, INCLUDING WHAT DID NOT (#4425). The stated time is judged at
@@ -183,7 +156,7 @@ export default function StoolTypeControl({
     // its +1 stands in until replay; nothing written rolls back.
     if (result === "wrote") setCount(landed ?? before + 1);
     else if (result === "nothing") setCount(before);
-    else spendStatement();
+    else statement.spend(stated);
   }
 
   return (
@@ -225,37 +198,7 @@ export default function StoolTypeControl({
           </button>
         ))}
       </div>
-      {/* The collapsed WHEN (#3273). A tap still writes the tap instant — the one-tap
-          ledger is the point — and this is the escape hatch for the log that arrives
-          late, the ordinary case for a bowel movement (#2785's grain argument).
-          Absolute local times only, via the shared control: no "-2h" chip that means
-          something different every minute the sheet sits open. A day EARLIER than today
-          is the record's door, not this tap's (`TAP_REACH`). */}
-      <div className="mt-3">
-        <button
-          type="button"
-          data-testid="stool-when-toggle"
-          aria-expanded={whenOpen}
-          onClick={() => setWhenOpen((open) => !open)}
-          className="btn-ghost btn-sm"
-        >
-          Happened earlier?
-        </button>
-        {whenOpen ? (
-          <div className="mt-2">
-            <WhenControl
-              mode="state"
-              grain="minute"
-              value={when}
-              onChange={setWhen}
-              minDate={today}
-              maxDate={today}
-              timeLabel="Time it happened"
-              testId="stool-when"
-            />
-          </div>
-        ) : null}
-      </div>
+      {statement.node}
       <p
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"

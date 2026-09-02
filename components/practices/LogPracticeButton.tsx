@@ -13,9 +13,7 @@ import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
-import { useTimezone } from "@/components/TimezoneProvider";
-import { statedHhmm } from "@/lib/stated-time";
+import { useTimeStatement } from "@/components/TimeStatement";
 import { practiceRelogMessage, shouldConfirmRelog } from "@/lib/one-tap";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import {
@@ -155,7 +153,6 @@ export default function LogPracticeButton({
       fd.set("profile_id", String(subjectProfileId));
     return fd;
   };
-  const tz = useTimezone();
   const toast = useToast();
   const confirm = useConfirm();
   const ledger = useOptimisticLedger("practice-session");
@@ -207,14 +204,19 @@ export default function LogPracticeButton({
   // action derives elapsed time from its two taps, so leaving this input beside End
   // would show a value that the action deliberately ignores.
   const stepperShown = inlineDuration && !currentLive;
-  const whenShown = inlineWhen && !currentLive;
-  const [whenOpen, setWhenOpen] = useState(false);
-  const [when, setWhen] = useState<WhenValue>({ date: today, statedAt: null });
-  const [whenDay, setWhenDay] = useState(today);
-  if (whenDay !== today) {
-    setWhenDay(today);
-    setWhen({ date: today, statedAt: null });
-  }
+  // The collapsed time statement, retained from #3273 and now the shared one (#4426).
+  // The same one-expression discipline the stepper keeps: `shown` is what both the
+  // render and the write read, so a running session — whose End action derives elapsed
+  // time from its two taps — can neither show the statement nor post one.
+  const statement = useTimeStatement({
+    shown: inlineWhen && !currentLive,
+    day: today,
+    label: "Happened earlier?",
+    timeLabel: `End time of this ${practice} session`,
+    testId: "practice-when",
+    disabled: pending || ledger.pending(),
+    className: "w-full",
+  });
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
   // non-numeric input reads as blank rather than NaN.
@@ -305,6 +307,9 @@ export default function LogPracticeButton({
       }))
     )
       return;
+    // The statement THIS tap consumes, read once — both as the wall time it posts and
+    // as the value the spend below compares against.
+    const stated = statement.at;
     await ledger.tap({
       write: () => {
         const fd = subject(new FormData());
@@ -318,16 +323,15 @@ export default function LogPracticeButton({
         // this boundary.
         const mins = stepperShown ? durationValue() : null;
         if (mins != null) fd.set("duration_min", String(mins));
-        const at = whenShown ? statedHhmm(when.statedAt, tz) : "";
-        if (at) fd.set("end_time", at);
         // Only where the control is rendered AND a time was stated. The field's
         // ABSENCE is what tells the write core to stamp the tap instant (#2204 part
         // 2), so an untouched surface posts exactly the body it posted before.
+        if (stated) fd.set("end_time", stated);
         return logPractice(fd);
       },
       settle: (outcome) => {
         report(outcome);
-        if (outcome.kind === "logged") setWhen({ date: today, statedAt: null });
+        if (outcome.kind === "logged") statement.spend(stated);
         // A refused log (a forged date, a stale target) wrote nothing, so the tap
         // stays immediately retryable instead of cooling down.
         return outcome.kind === "logged"
@@ -560,34 +564,7 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {whenShown ? (
-        <div className="w-full">
-          <button
-            type="button"
-            data-testid="practice-when-toggle"
-            aria-expanded={whenOpen}
-            onClick={() => setWhenOpen((open) => !open)}
-            className="btn-ghost btn-sm"
-          >
-            Happened earlier?
-          </button>
-          {whenOpen ? (
-            <div className="mt-2">
-              <WhenControl
-                mode="state"
-                grain="minute"
-                value={when}
-                onChange={setWhen}
-                minDate={today}
-                maxDate={today}
-                timeLabel={`End time of this ${practice} session`}
-                disabled={pending || ledger.pending()}
-                testId="practice-when"
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {statement.node}
       {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}

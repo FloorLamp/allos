@@ -618,6 +618,7 @@ export default function MedicationCard({
                   taken={takenDoseIds.has(dose.id)}
                   skipped={skippedDoseIds.has(dose.id)}
                   readOnly={!canWrite}
+                  tz={timezone}
                   takenTime={formatGivenAtClockWithRelativeAge(
                     timezone,
                     takenDoseTimes[dose.id],
