@@ -93,6 +93,55 @@
           "kind": "fix",
           "category": "Trends",
           "issues": [4069]
+        },
+        {
+          "pr": 4727,
+          "title": "Food uses one form and one row control everywhere",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "Correcting a food entry can set the time you ate",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "Your usual bundle can include your protein scoop",
+          "kind": "feature",
+          "category": "Nutrition",
+          "issues": [4379]
+        },
+        {
+          "pr": 4727,
+          "title": "A protein scoop in your usual is no longer silently skipped",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4379]
+        },
+        {
+          "pr": 4727,
+          "title": "Tapping your usual twice no longer logs it twice",
+          "kind": "fix",
+          "category": "Nutrition",
+          "issues": [4438]
+        },
+        {
+          "pr": 4727,
+          "title": "Logging your usual from History uses the same button as elsewhere",
+          "kind": "feature",
+          "category": "History",
+          "issues": [4424]
+        },
+        {
+          "pr": 4727,
+          "title": "A chat reply names the protein scoop it logged",
+          "kind": "fix",
+          "category": "Reminders",
+          "issues": [4379]
         }
       ]
     },
