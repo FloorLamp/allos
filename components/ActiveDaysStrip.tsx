@@ -1,7 +1,7 @@
 import { chartActivityRamp } from "@/lib/chart-colors";
 import { trainingLogDayHref } from "@/lib/hrefs";
 import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatmap";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesSummary } from "@/components/SeriesAccess";
 import { StateCells } from "@/components/StateCells";
 
 // The same blessed activity ramp the full heatmap uses (issue #1445) — the strip
@@ -57,8 +57,8 @@ export default function ActiveDaysStrip({
             : {}),
         }))}
       />
-      <VisualizationDetails
-        label="Daily details"
+      <SeriesSummary
+        label="Recent activity days"
         items={data.days.map(summary)}
       />
     </div>
