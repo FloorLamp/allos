@@ -209,20 +209,24 @@ test.describe("Settings IA (#1462) — Notifications group", () => {
     await expect(page.getByTestId("digest-tune-disclosure")).toBeVisible();
 
     // The schedule/kind cards autosave now, so their explicit Save buttons are gone.
-    // FOUR deliberate exceptions remain, and a spec clicking "Save" here must scope to
-    // its channel row: three channel configurations (Telegram validates a chat id; the
-    // email card commits a deliberate content-mode choice, #1855; Home Assistant
-    // validates a webhook URL), plus — for an ADMIN, which this shared session is —
-    // the per-profile notification scope (#2345), whose control is the Family grant
-    // editor and therefore carries #467's loaded-snapshot concurrency check rather
-    // than a per-tick autosave.
+    // FOUR deliberate exceptions remain: three channel configurations (Telegram
+    // validates a chat id; the email card commits a deliberate content-mode choice,
+    // #1855; Home Assistant validates a webhook URL), plus — for an ADMIN, which this
+    // shared session is — the per-profile notification scope (#2345), whose control is
+    // the Family grant editor and therefore carries #467's loaded-snapshot concurrency
+    // check rather than a per-tick autosave.
     //
-    // The count is 4 rather than 3 because #2565 renamed Home Assistant's "Apply Home
-    // Assistant settings" to plain "Save": that label existed only to keep unscoped
-    // role queries unambiguous, and the strip's rows now do that structurally. Note
-    // Playwright's name matching is case-insensitive SUBSTRING matching, so the notify
-    // scope editor's "Save notifications" is one of these four.
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(4);
+    // THREE OF THE FOUR ARE BEHIND THEIR CHANNEL ROW since #2565 A, so a role query on
+    // the closed page sees only the scope editor's. That is the assertion: exactly one
+    // save is reachable without opening anything, and each channel row owns exactly one
+    // — which is also why Home Assistant's could go back to plain "Save" (it was called
+    // "Apply Home Assistant settings" only to keep unscoped role queries unambiguous,
+    // and the rows do that structurally now). Playwright's name matching is
+    // case-insensitive SUBSTRING matching, so "Save notifications" is the one hit.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+    for (const id of ["login-telegram-save", "login-email-save", "ha-save"]) {
+      await expect(page.getByTestId(id)).toHaveCount(1);
+    }
     await expect(page.getByTestId("notify-scope-section")).toBeVisible();
   });
 
