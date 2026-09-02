@@ -8,7 +8,6 @@ import { regionsForMove } from "@/lib/mobility-coverage";
 import type { MuscleRegion } from "@/lib/lifts";
 import { useToast } from "@/components/Toast";
 import Chip from "@/components/Chip";
-import VisualizationDetails from "@/components/VisualizationDetails";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import {
@@ -201,12 +200,6 @@ export default function MobilityLogBar({
                 );
               })}
             </div>
-            <VisualizationDetails
-              label={`${region} move details`}
-              items={regionMoves.map(
-                (move) => `${move.name} — ${move.description}`
-              )}
-            />
           </div>
         ))}
       </div>
