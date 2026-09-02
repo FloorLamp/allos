@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
@@ -23,14 +22,18 @@ export default function CrisisResourcesEditor({
   description: string;
   testid?: string;
 }) {
-  const [text, setText] = useState(initialText);
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: text,
+    edit,
+    save: runSave,
+  } = useSaveStatus(initialText);
 
   function save(next: string) {
     if (next === initialText) return;
     const fd = new FormData();
     fd.set("crisis_resources", next);
-    runSave(async () => {
+    runSave(next, async () => {
       await action(fd);
     });
   }
@@ -41,7 +44,7 @@ export default function CrisisResourcesEditor({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           {title}
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {description}
@@ -49,12 +52,12 @@ export default function CrisisResourcesEditor({
       <textarea
         className="input font-mono text-sm"
         rows={4}
-        defaultValue={initialText}
+        value={text}
         data-testid="crisis-resources-input"
         placeholder={
           "e.g.\nLocal crisis line | 000-000-0000\nEmergency services | 112"
         }
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => edit(e.target.value)}
         onBlur={() => save(text)}
       />
       <p className="text-xs text-slate-500 dark:text-slate-400">

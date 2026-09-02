@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   MIN_AUDIT_RETENTION_MONTHS,
   MAX_AUDIT_RETENTION_MONTHS,
@@ -15,13 +14,12 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 // expectations can raise or lower it. The value is clamped server-side to
 // [MIN, MAX] months.
 export default function AuditRetentionSettings({ months }: { months: number }) {
-  const [value, setValue] = useState(String(months));
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const { status, value, edit, save: runSave } = useSaveStatus(String(months));
 
   function save() {
     const fd = new FormData();
     fd.set("audit_retention_months", value.trim());
-    runSave(async () => {
+    runSave(value, async () => {
       await saveAuditRetention(fd);
     });
   }
@@ -32,7 +30,7 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Audit-log retention
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -57,14 +55,14 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
             max={MAX_AUDIT_RETENTION_MONTHS}
             step={1}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => edit(e.target.value)}
             className="input"
           />
         </div>
         <button
           type="button"
           onClick={save}
-          disabled={pending}
+          disabled={status.pending}
           className="btn"
           data-testid="audit-retention-save"
         >

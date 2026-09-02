@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { saveOwnProfile } from "./actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -19,15 +18,16 @@ export default function OwnProfileForm({
   profiles: SessionProfile[];
   ownProfileId: number | null;
 }) {
-  const [value, setValue] = useState<string>(
-    ownProfileId != null ? String(ownProfileId) : "none"
-  );
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value,
+    save: runSave,
+  } = useSaveStatus(ownProfileId != null ? String(ownProfileId) : "none");
 
   function save(next: string) {
     const fd = new FormData();
     fd.set("own_profile_id", next);
-    runSave(async () => {
+    runSave(next, async () => {
       const res = await saveOwnProfile(fd);
       if (!res.ok) throw new Error(res.error ?? "Couldn't save.");
     });
@@ -39,7 +39,7 @@ export default function OwnProfileForm({
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Which profile is yours?
         </h2>
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Mark one profile as your own. When you log something for anyone else,
@@ -49,11 +49,7 @@ export default function OwnProfileForm({
       <select
         data-testid="own-profile-select"
         value={value}
-        onChange={(e) => {
-          const v = e.target.value;
-          setValue(v);
-          save(v);
-        }}
+        onChange={(e) => save(e.target.value)}
         className="input"
       >
         <option value="none">None — not one of these</option>

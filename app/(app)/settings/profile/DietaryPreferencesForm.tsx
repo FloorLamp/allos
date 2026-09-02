@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   DIETARY_PRESETS,
   DIETARY_PRESET_LABELS,
@@ -44,16 +43,18 @@ export default function DietaryPreferencesForm({
   // Modal consumers provide their own card shell and title.
   embedded?: boolean;
 }) {
-  const [set, setSet] = useState<Set<string>>(new Set(excluded));
-  const { pending, savedAt, error, save: runSave } = useSaveStatus();
+  const {
+    status,
+    value: set,
+    save: runSave,
+  } = useSaveStatus(new Set(excluded));
 
   const currentPreset = presetForExcluded([...set]);
 
   function persist(next: Set<string>) {
-    setSet(next);
     const fd = new FormData();
     for (const slug of next) fd.append("excluded", slug);
-    runSave(async () => {
+    runSave(next, async () => {
       await saveDietaryPreferences(fd);
     });
   }
@@ -84,7 +85,7 @@ export default function DietaryPreferencesForm({
             Dietary preferences
           </h2>
         )}
-        <SaveStatus pending={pending} savedAt={savedAt} error={error} />
+        <SaveStatus {...status} />
       </div>
 
       <div>
