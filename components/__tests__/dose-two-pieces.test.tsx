@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
   act,
   cleanup,
@@ -7,6 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stripComments } from "@/lib/__tests__/strip-comments";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import DoseHistoryPanel from "@/components/intake/DoseHistoryPanel";
 import DayLedger from "@/app/(app)/nutrition/DayLedger";
@@ -789,5 +792,49 @@ describe("the dose-history panel collects its subject's wall clock (#4693)", () 
       time: "18:00",
       profile_id: String(SUBJECT),
     });
+  });
+});
+
+// AND THE ONE MOUNT THAT SUPPLIES BOTH (#4693). Everything above renders the panel
+// DIRECTLY, handing it `subjectProfileId` and `tz` from the test — which is what makes
+// the claims readable, and also what makes them blind to the seam they exist to guard.
+// `MedicationCard` is the only mount that passes either prop, so deleting one of them
+// there left every tier in this repository green while re-opening the exact defect: the
+// panel simply receives `undefined` and falls back, silently, to the acting profile and
+// the caregiver's clock.
+//
+// A RENDER TEST CANNOT REACH IT WITHOUT A WHOLE CARD FIXTURE, which buys far more than
+// this seam needs, so the seam is read as SOURCE — the `code(…)` idiom of
+// lib/__tests__/logged-via-surface-wiring.test.ts, through the SHARED `stripComments`
+// (a hand-rolled stripper is a known defect class, registered in
+// lib/__tests__/strip-comments.test.ts). Scoped to the element and not to the file
+// because `tz={timezone}` appears three times in that card for three different
+// components; only this one is the panel's.
+describe("the medication card hands the panel both halves (#4693)", () => {
+  // `process.cwd()`, not `import.meta.url`: this tier runs in jsdom, where the module
+  // URL is not a file: URL — the idiom of the two component censuses beside it.
+  const REPO = process.cwd();
+  const mount = (): string => {
+    const src = stripComments(
+      fs.readFileSync(
+        path.join(REPO, "app/(app)/medications/MedicationCard.tsx"),
+        "utf8"
+      )
+    );
+    return /<DoseHistoryPanel\b[\s\S]*?\/>/.exec(src)?.[0] ?? "";
+  };
+
+  it("finds the mount it is guarding", () => {
+    // The canary. A renamed component or a reshaped element leaves the matcher below
+    // asserting about an empty string, which every `not.toMatch` would pass.
+    expect(mount()).toMatch(/^<DoseHistoryPanel\b/);
+  });
+
+  it("passes the subject's id and the subject's zone to it", () => {
+    // The PAIR, in one assertion, because half of it is the whole defect either way:
+    // an id with no zone shifts the stated time on a save with nothing edited, and a
+    // zone with no id files the caregiver.
+    expect(mount()).toMatch(/subjectProfileId=\{doseHistorySubjectProfileId\}/);
+    expect(mount()).toMatch(/\btz=\{timezone\}/);
   });
 });
