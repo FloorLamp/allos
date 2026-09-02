@@ -185,7 +185,8 @@ export function detectDemotionCandidate(
   // so the trailing index difference IS the day count; occurrences come off the due
   // days alone. The two differ exactly when the item is not due daily, which is the
   // pair the ruling is about.
-  const lapsedDays = input.strip.length - 1 - input.strip.findLastIndex(isTaken);
+  const lapsedDays =
+    input.strip.length - 1 - input.strip.findLastIndex(isTaken);
   const lapsedOccurrences =
     occurrences.length - 1 - occurrences.findLastIndex(isTaken);
 

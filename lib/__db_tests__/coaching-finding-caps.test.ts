@@ -236,17 +236,17 @@ function seedDailyItem(
 
 // Four should-tier supplements established for four months, each with ONE follow-through
 // inside the 30-day window and none since — so all four are candidates (a single take is
-// far under DEMOTION_MAX_TAKEN_RATE) and their lapses run 16, 18, 22 and 26 DAYS.
-// Longest lapsed first (#4069) is the exact reverse of the alphabetical order the cap
-// used to cut on, and the items are inserted alphabetically so insertion order cannot
-// produce it either.
+// far under DEMOTION_MAX_TAKEN_RATE) and their lapses run 15, 17, 21 and 25 DAYS to the
+// window's last settled day. Longest lapsed first (#4069) is the exact reverse of the
+// alphabetical order the cap used to cut on, and the items are inserted alphabetically
+// so insertion order cannot produce it either.
 //
 // Three of the four are due every OTHER day, which is what separates the two readings
-// of "longest lapsed" the ruling had to choose between (2026-09-02: days). Their lapses
-// in scheduled OCCURRENCES are 15, 9, 11 and 13 — a different order AND a different
-// surviving three (Ashwagandha in, Berberine out), so a build ranking on occurrences
-// cannot produce the expectation below. Every-other-day still clears
-// DEMOTION_MIN_OCCURRENCES: 14 due days in the window against the floor of 10.
+// of "longest lapsed" the ruling had to choose between (2026-09-02: days). Measured
+// through the detector, their lapses in scheduled OCCURRENCES are 15, 8, 10 and 12 — a
+// different order AND a different surviving three (Ashwagandha in, Berberine out), so a
+// build ranking on occurrences cannot produce the expectation below. Every-other-day
+// still clears DEMOTION_MIN_OCCURRENCES: 14 due days in the window against a floor of 10.
 function seedDemotionCandidates(profileId: number, anchor: string): string[] {
   const logTaken = db.prepare(
     `INSERT INTO intake_item_logs (dose_id, item_id, date, status) VALUES (?, ?, ?, 'taken')`
@@ -255,7 +255,11 @@ function seedDemotionCandidates(profileId: number, anchor: string): string[] {
   // occurrences those days hold. Every "days ago" is EVEN, which is an on-day for the
   // interval items: their anchor is 120 days back, so the parity of the window is the
   // parity of the offset.
-  const items: [name: string, lastTakenDaysAgo: number, everyOtherDay: boolean][] = [
+  const items: [
+    name: string,
+    lastTakenDaysAgo: number,
+    everyOtherDay: boolean,
+  ][] = [
     ["Ashwagandha", 16, false],
     ["Berberine", 18, true],
     ["Creatine", 22, true],
@@ -277,11 +281,10 @@ function seedDemotionCandidates(profileId: number, anchor: string): string[] {
 }
 
 // Four practice floors chronically under-met, each at a different size and each with a
-// different best week — so the RELATIVE shortfall (the share of the floor unmet) runs
-// 1/2, 4/9, 1/3 and 0/3 of the way met, i.e. 50%, 56%, 67% and 100% unmet. Furthest
-// from target first (#4069) is the exact reverse of the alphabetical order the cap used
-// to cut on, and the targets are inserted alphabetically so insertion order cannot
-// produce it either.
+// different best week — so the RELATIVE shortfall (the share of the floor left unmet)
+// is 0.500, 0.556, 0.667 and 1.000. Furthest from target first (#4069) is the exact
+// reverse of the alphabetical order the cap used to cut on, and the targets are
+// inserted alphabetically so insertion order cannot produce it either.
 //
 // The ABSOLUTE gap `floor - best` runs the other way — 6, 5, 4, 3 — which is exactly
 // alphabetical, so a build ranking on it produces the pre-ruling answer and is red
@@ -313,7 +316,12 @@ function seedRightSizeTargets(profileId: number, anchor: string): string[] {
     // through 7 back, in the rolling mode makeProfile sets). The three older completed
     // weeks stay empty, so this week is the maximum and `best` is exactly it.
     for (let i = 0; i < bestWeek; i++)
-      logPracticeSession(profileId, label, shiftDateStr(anchor, -(13 - i)), "page");
+      logPracticeSession(
+        profileId,
+        label,
+        shiftDateStr(anchor, -(13 - i)),
+        "page"
+      );
   }
   return floors
     .map(([label]) => `${label}: right-size the weekly target?`)
