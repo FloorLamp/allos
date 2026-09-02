@@ -1519,12 +1519,23 @@ async function handleUsualRoutineTap(
   const messageId = cq.message?.message_id;
   const notifyMessageId =
     messageId != null ? messagePointerIdAt(profileId, chatId, messageId) : null;
-  // WHEN THE BUNDLE WAS EATEN (#4438), on the same terms as the `food:` and protein
-  // buttons sitting on this very keyboard: a contemporaneous chat tap's declared
-  // contract IS "I'm having this now", so it stamps its own instant with source `tap`.
-  // On a day that has ended nothing is invented — a backfilled morning states no hour,
-  // exactly as the sibling buttons leave one unstated (#4118).
-  const tapAt = instantNow();
+  // THIS TAP STATES NO EATING TIME, AND #4438 ITEM 3 ASKED IT TO — LEFT UNDONE ON
+  // PURPOSE, because doing it moves the servings out of the window the button promised.
+  //
+  // The sibling `food:` and protein buttons on this keyboard do stamp
+  // `{ eatenAt: tapAt, source: "tap" }`, and item 3 asks for parity. But their label
+  // names a GROUP; this one names a WINDOW — "Your usual Morning" — and
+  // `logFoodServingCore`'s one chokepoint (#2269) stores no `meal_slot` beside a stated
+  // instant and derives the window FROM it. Measured on the DB tier, whose clock sits at
+  // 23:45: a Morning bundle tapped then wrote both servings into EVENING, the Morning
+  // offer still stood afterwards, and the label had promised something the ledger did
+  // not hold. In production that is hour-of-day dependent — right for a nudge tapped
+  // inside its own window, wrong for one tapped late.
+  //
+  // Which way that resolves is an owner question (does the bundle's window follow the
+  // tap, or does the bundle keep stating no hour?), not a lane's, so the WEB half of
+  // item 3 landed — the bar's sticky statement, where the person names the time and the
+  // surface says out loud which window it lands in — and this half waits for the ruling.
   const outcome = logUsualRoutineCore(
     profileId,
     offer.window,
@@ -1533,7 +1544,7 @@ async function handleUsualRoutineTap(
     offer.doseIds,
     NUDGE,
     notifyMessageId,
-    date === t ? { eatenAt: tapAt, source: "tap" } : undefined,
+    undefined,
     // The grams THIS MESSAGE promised (#4379) — the stored offer's, not the preset as it
     // stands now, so a scoop changed since the send does not move a promise already read.
     offer.proteinGrams ?? undefined

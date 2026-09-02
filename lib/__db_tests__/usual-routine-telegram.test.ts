@@ -246,16 +246,19 @@ describe("the composed one-tap's offer and write (#2460)", () => {
     const a = mintUsualRoutineAttachment(sp.profileId, "Morning", date)!;
     const offerId = parseOfferCallback(a.token, "usual")!.offerId;
     expect(
-      readOffer<{ window: string; groups: string[]; doseIds: number[] }>(
-        sp.profileId,
-        USUAL_OFFER_FAMILY,
-        offerId,
-        date
-      )
+      readOffer<{
+        window: string;
+        groups: string[];
+        doseIds: number[];
+        proteinGrams: number | null;
+      }>(sp.profileId, USUAL_OFFER_FAMILY, offerId, date)
     ).toEqual({
       window: "Morning",
       groups: expect.arrayContaining(["fermented", "berries"]),
       doseIds: [doseA, doseB],
+      // THE GRAMS ARE STORED, NOT RE-DERIVED (#4379) — a promise a reader saw may not
+      // move when the preset does. Null here: this profile has no protein habit.
+      proteinGrams: null,
     });
   });
 

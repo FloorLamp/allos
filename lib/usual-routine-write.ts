@@ -242,6 +242,18 @@ export function logUsualRoutineCore(
   // usual offer has ever named. `logUsualFoodCore` re-asks it for its own callers.
   if (!isUsualBackfillDateAccepted(t, date)) return { kind: "invalid-date" };
   const via = date === t ? loggedVia : USUAL_BACKFILL;
+  // WHETHER PROTEIN IS STILL A MEMBER, ASKED BEFORE THE FOOD HALF RUNS (#4379), and the
+  // order is NOT free — a comment here said it was, and the DB tier disproved it in one
+  // run. The offer bottoms out on FOOD_USUAL_MIN_GROUPS ("a single member is one tap
+  // either way"), so writing the two groups first leaves a one-member remainder and the
+  // re-derivation answers []. Asked afterwards, a bundle of fermented + berries + scoop
+  // wrote the scoop NEVER, silently, on exactly the profile the ruling was filed for.
+  //
+  // Re-derived rather than trusted either way: a forged or replayed
+  // `promisedProteinGrams` on a window with no protein habit standing lands nothing.
+  const writesProtein =
+    promisedProteinGrams != null &&
+    getUsualFoodOffer(profileId, window, date).some(isProteinNudgeKey);
   // Food first, in its own transaction, exactly as the Food tab runs it.
   const food =
     namedGroups.length > 0
@@ -307,18 +319,13 @@ export function logUsualRoutineCore(
   //
   // ITS OWN TRANSACTION, a sibling of the food half's and the dose half's, for the
   // reason the header already argues about doses: one member refusing must not unwind a
-  // breakfast that genuinely happened. The order is free — the food half writes catalog
-  // groups only, which cannot change whether protein is still offered.
+  // breakfast that genuinely happened. The DECISION was taken above, before the food
+  // half moved the state it is derived from; only the WRITE is here.
   //
-  // RE-DERIVED, NEVER TRUSTED: the offer is asked again here, so a forged or replayed
-  // `promisedProteinGrams` on a window whose protein habit no longer stands writes
-  // nothing at all. The GRAMS are the caller's, because the label promised a number and
-  // a promise a person has read may not move under them (#2460).
+  // The GRAMS are the caller's, because the label promised a number and a promise a
+  // person has read may not move under them (#2460).
   let protein: number | null = null;
-  if (
-    promisedProteinGrams != null &&
-    getUsualFoodOffer(profileId, window, date).some(isProteinNudgeKey)
-  ) {
+  if (writesProtein && promisedProteinGrams != null) {
     const outcome = addProteinGramsCore(
       profileId,
       date,
