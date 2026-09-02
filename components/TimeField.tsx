@@ -421,7 +421,22 @@ function WheelColumn({
             role="option"
             aria-selected={isValue}
             tabIndex={-1}
-            onClick={() => onSelect(option)}
+            onClick={() => {
+              // A TAP IS THE EXPLICIT CHOICE AND OUTRANKS A SCROLL IN FLIGHT.
+              // The parking effect above stands down while `flicking`, so a row
+              // tapped mid-momentum left the column resting where the flick put
+              // it — and the pending settle then committed THAT over the row the
+              // finger hit. Cancelling the settle, clearing the flag and parking
+              // the column here makes the tap authoritative. Parking explicitly
+              // rather than leaving it to the effect also covers tapping the row
+              // that is ALREADY the value, where the index never changes and the
+              // effect would never run.
+              if (settle.current) clearTimeout(settle.current);
+              flicking.current = false;
+              if (ref.current)
+                ref.current.scrollTop = options.indexOf(option) * CELL_PX;
+              onSelect(option);
+            }}
             style={{ height: CELL_PX }}
             className={`flex w-14 snap-center items-center justify-center text-base tabular-nums transition ${
               isValue

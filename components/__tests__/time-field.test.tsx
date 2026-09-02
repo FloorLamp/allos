@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import TimeField from "@/components/TimeField";
@@ -149,6 +149,30 @@ describe("TimeField — the wheel", () => {
       within(column("Minute")).getByRole("option", { name: "45" })
     );
     expect(emitted.at(-1)).toBe("07:45");
+  });
+
+  // A TAP OUTRANKS A SCROLL STILL IN FLIGHT. The column suppresses its own parking
+  // effect while a flick owns the offset, so a row tapped mid-momentum was overwritten
+  // ~120ms later by the settle reading the momentum's resting place instead: the finger
+  // hit 45 and the field committed 21. The tap is the explicit choice and has to win,
+  // or "tap a row selects it" is not true. Found by running dose-history.spec.ts at two
+  // workers, where the slower machine let the settle land after the tap.
+  //
+  // THE FIXTURE REACHES THE FORBIDDEN STATE ON PURPOSE: the scroll is fired FIRST, so a
+  // settle is genuinely pending and genuinely disagrees with the tap. Without the fix
+  // this reads "09:21" — the assertion can fail, which is the only reason to trust it
+  // passing.
+  it("a row tapped mid-scroll wins over the settle still pending against it", async () => {
+    const { emitted } = mount("24h", "09:15");
+    openWheel();
+    const minutes = column("Minute");
+    minutes.scrollTop = 21 * 44; // a flick resting two dozen rows from the tap
+    fireEvent.scroll(minutes);
+    fireEvent.click(within(minutes).getByRole("option", { name: "45" }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(emitted.at(-1)).toBe("09:45");
   });
 
   // THE MERIDIEM COLUMN IS THE PREFERENCE'S, not a third opinion about the value:
