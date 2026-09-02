@@ -7,12 +7,17 @@ import {
   type LedgerServing,
   type LedgerStack,
 } from "../day-ledger";
+import type { DoseBundleId } from "../dose-bundle";
 import type { PendingDayDose } from "../queries/usual-routine";
 import type { TimeBucket } from "../intake-schedule";
 
 // #3987 phase 1: the Day ledger's grouping, composed collapse and ordering, asserted
 // over hand-written rows. Every fixture is minimal — what the rule reads and nothing
 // else — so a rule change shows up as a failing assertion rather than as a fixture edit.
+
+// ONE COMPOSED ACTION'S IDENTITY (#4328). Only ever compared, never parsed, so these
+// are the shortest values that stay distinguishable in a failure message.
+const bundle = (n: number) => `bundle${n}` as DoseBundleId;
 
 function serving(
   id: number,
@@ -52,7 +57,9 @@ function dose(
     bucket,
     hhmm,
     clockKind: "logged",
-    writeMinute: "2026-08-30T10:07",
+    // The ordinary one-at-a-time tap composed nothing, so it carries no bundle — the
+    // default a fixture must OPT OUT of to be a member of a composed write.
+    bundleId: null,
     ...over,
   };
 }
@@ -196,12 +203,12 @@ describe("buildDayLedger — untimed rows sink (#3958 clock grammar)", () => {
 describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
   const morningStack = (extra: Partial<LedgerDose> = {}) => ({
     stack: "Morning stack",
-    writeMinute: "2026-08-30T10:07",
+    bundleId: bundle(1),
     hhmm: "10:07",
     ...extra,
   });
 
-  it("collapses doses sharing a routine and a minute into one row", () => {
+  it("collapses doses sharing a routine and one composed write into one row", () => {
     const groups = buildDayLedger({
       servings: [],
       doses: [
@@ -218,6 +225,28 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     expect(groups[0].doses).toBe(3);
   });
 
+  // #4328 — THE COMPOSED WRITE IS READ, NOT GUESSED. This key used to carry the write
+  // MINUTE, so two independent single taps of one routine that happened to land in one
+  // minute rendered as a composed row nobody had made. All three cases hold the routine,
+  // the bucket and the clock fixed and vary only the bundle, so the bundle is the only
+  // thing that can be producing the verdict — including the third, where two composed
+  // writes of one member each dissolve rather than merging into one row.
+  it.each([
+    ["one composed write collapses", bundle(1), bundle(1), ["stack"]],
+    ["two independent taps stay apart", null, null, ["dose", "dose"]],
+    ["two composed writes stay apart", bundle(1), bundle(2), ["dose", "dose"]],
+  ] as const)("%s", (_case, first, second, kinds) => {
+    const groups = buildDayLedger({
+      servings: [],
+      doses: [
+        dose(1, "Morning", "10:07", { ...morningStack(), bundleId: first }),
+        dose(2, "Morning", "10:07", { ...morningStack(), bundleId: second }),
+      ],
+      pending: [],
+    });
+    expect(groups[0].rows.map((r) => r.kind)).toEqual(kinds);
+  });
+
   // "Collapse groups by the composed write, never by bucket: two doses hours apart in
   // one bucket do not share a timestamp."
   it("does not collapse two doses of one routine written hours apart", () => {
@@ -228,13 +257,13 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           1,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           2,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(3, "Morning", "10:07", morningStack()),
         dose(4, "Morning", "10:07", morningStack()),
@@ -261,7 +290,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
   });
 
   // A skip is its own statement, carrying its own reason, so it never joins the
-  // collapse — EVEN when it shares the routine, the bucket and the write minute with
+  // collapse — EVEN when it shares the routine, the bucket and the composed write with
   // taken doses, which is the only arrangement where the rule can be observed at all.
   it("keeps a skip out of the collapse it otherwise shares a tap with", () => {
     const groups = buildDayLedger({
@@ -315,19 +344,19 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
   //
   // REACHABLE, not contrived: one composed tap at 08:07 where one member carries a stated
   // `occurred_at` that happens to land on the same minute the tap was filed, and the other
-  // carries none and falls back to the filing time. Same routine, same bucket, same write
-  // minute, same wall clock — and two DIFFERENT claims about what that clock means. #3958
+  // carries none and falls back to the filing time. Same routine, same bucket, same
+  // bundle, same wall clock — and two DIFFERENT claims about what that clock means. #3958
   // renders one as "08:07" and the other as "logged 8:07am"; a single collapsed row states
   // one grammar for every member, so joining them would put an administration time over a
   // dose nothing timed.
-  it("does not collapse a stated dose with a filed one that shares its minute", () => {
+  it("does not collapse a stated dose with a filed one that shares its clock", () => {
     const doses = [
       dose(
         1,
         "Morning",
         "08:07",
         morningStack({
-          writeMinute: "2026-08-30T08:07",
+          bundleId: bundle(3),
           hhmm: "08:07",
           clockKind: "stated",
         })
@@ -337,7 +366,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
         "Morning",
         "08:07",
         morningStack({
-          writeMinute: "2026-08-30T08:07",
+          bundleId: bundle(3),
           hhmm: "08:07",
           clockKind: "logged",
         })
@@ -349,7 +378,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     // than silently going green for the wrong reason.
     expect(doses[0].bucket).toBe(doses[1].bucket);
     expect(doses[0].stack).toBe(doses[1].stack);
-    expect(doses[0].writeMinute).toBe(doses[1].writeMinute);
+    expect(doses[0].bundleId).toBe(doses[1].bundleId);
     expect(doses[0].hhmm).toBe(doses[1].hhmm);
     expect(doses[0].clockKind).not.toBe(doses[1].clockKind);
 
@@ -367,8 +396,8 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     ]);
   });
 
-  // R1 (adversarial, #4323): the key that keeps WRITTEN doses apart was
-  // (bucket, stack, minute) while the key that assigned OPEN doses was (bucket, stack).
+  // R1 (adversarial, #4323): the key that keeps WRITTEN doses apart names the composed
+  // write, while the key that assigned OPEN doses was (bucket, stack).
   // Two taps of one routine in one bucket therefore made two rows that each claimed the
   // same pending doses: one dose on two rows, its Take control rendered twice, and the
   // labels summing past the routine's size. Reproduced at the DB tier too, from four
@@ -381,13 +410,13 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           1,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           2,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(3, "Morning", "10:07", morningStack()),
         dose(4, "Morning", "10:07", morningStack()),
@@ -414,12 +443,13 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
     expect(stacks.map(stackLabel)).toEqual(["2 doses", "2 doses"]);
   });
 
-  // R2 (adversarial, #4323): the collapse key was the WRITE minute and the rendered
-  // clock is the ADMINISTRATION instant. `updateHistoricalDose` moves `occurred_at` and
-  // deliberately never touches `recorded_at` (#2228/#2876), so a member corrected to
-  // three hours earlier kept its tap-mates' write minute and the row went on stating one
+  // R2 (adversarial, #4323): the collapse key names the WRITE and the rendered clock is
+  // the ADMINISTRATION instant. `updateHistoricalDose` moves `occurred_at` and
+  // deliberately never touches the write event (#2228/#2876), so a member corrected to
+  // three hours earlier is still a row that tap wrote, and the row went on stating one
   // timestamp for two doses the record says were hours apart — the ruling's exact
-  // prohibition, reached from the other side.
+  // prohibition, reached from the other side. It is also #4477's member split: a subset
+  // given its own instant leaves the row; a whole stack moved together stays one row.
   it("drops a member whose stated clock no longer matches its tap-mates", () => {
     const groups = buildDayLedger({
       servings: [],
@@ -433,7 +463,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           "Morning",
           "08:07",
           morningStack({
-            writeMinute: "2026-08-30T08:07",
+            bundleId: bundle(3),
             hhmm: "08:07",
             clockKind: "stated",
           })
@@ -443,7 +473,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           "Morning",
           "08:07",
           morningStack({
-            writeMinute: "2026-08-30T08:07",
+            bundleId: bundle(3),
             hhmm: "08:07",
             clockKind: "stated",
           })
@@ -454,7 +484,7 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           "Morning",
           "05:15",
           morningStack({
-            writeMinute: "2026-08-30T08:07",
+            bundleId: bundle(3),
             hhmm: "05:15",
             clockKind: "stated",
           })
@@ -493,20 +523,20 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           1,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           2,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         // A lone member of the SAME routine, written later: it dissolves to a loose row.
         dose(
           3,
           "Morning",
           "11:11",
-          morningStack({ writeMinute: "2026-08-30T11:11", hhmm: "11:11" })
+          morningStack({ bundleId: bundle(4), hhmm: "11:11" })
         ),
       ],
       pending: [pending(90, "Morning", "Morning stack")],
@@ -544,31 +574,31 @@ describe("buildDayLedger — the composed collapse (#2458 read back)", () => {
           1,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           2,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           3,
           "Morning",
           "07:07",
-          morningStack({ writeMinute: "2026-08-30T07:07", hhmm: "07:07" })
+          morningStack({ bundleId: bundle(2), hhmm: "07:07" })
         ),
         dose(
           4,
           "Morning",
           "11:11",
-          morningStack({ writeMinute: "2026-08-30T11:11", hhmm: "11:11" })
+          morningStack({ bundleId: bundle(4), hhmm: "11:11" })
         ),
         dose(
           5,
           "Morning",
           "12:12",
-          morningStack({ writeMinute: "2026-08-30T12:12", hhmm: "12:12" })
+          morningStack({ bundleId: bundle(5), hhmm: "12:12" })
         ),
       ],
       pending: [pending(90, "Morning", "Morning stack")],

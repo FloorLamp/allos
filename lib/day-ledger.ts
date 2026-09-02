@@ -16,6 +16,7 @@
 // schedule engine already answered.
 
 import { TIME_BUCKETS, type TimeBucket } from "./intake-schedule";
+import type { DoseBundleId } from "./dose-bundle";
 import type { PendingDayDose } from "./queries/usual-routine";
 
 // HOW MANY DAYS THE LEDGER IS ABOUT: today plus the previous six. The day picker offers
@@ -62,34 +63,45 @@ export interface LedgerDose extends LedgerRowBase {
   status: "taken" | "skipped";
   /** The stored reason a skip carries. A skip is a recorded event, never hidden. */
   skipReason: string | null;
-  /** The write instant truncated to the minute — the composed tap's identity. */
-  writeMinute: string;
+  /**
+   * The composed action that wrote this row (#4328), or null when one tap wrote one
+   * dose — and null for every row written before the column existed, which is why an
+   * old day states its doses one by one.
+   */
+  bundleId: DoseBundleId | null;
 }
 
 /**
  * ONE COMPOSED WRITE, collapsed (#2458's bundle, read back).
  *
- * Keyed on (bucket, stack, write minute, clock) — and NEVER on the bucket alone: two
- * doses of one stack taken hours apart did not share a tap and must not share a
- * timestamp (#3987's ruling, verbatim). A stack with unresolved members states "4 of 6";
- * a single check over a partial stack is a claim the day does not support.
+ * Keyed on (bucket, stack, bundle, clock) — and NEVER on the bucket alone: two doses of
+ * one stack taken hours apart did not share a tap and must not share a timestamp
+ * (#3987's ruling, verbatim). A stack with unresolved members states "4 of 6"; a single
+ * check over a partial stack is a claim the day does not support.
  *
- * WHY THE CLOCK IS IN THE KEY AND NOT JUST THE WRITE MINUTE. The write minute is the
- * TAP's identity; `hhmm` is what the row STATES. Those are the same field only until
- * somebody amends one member: `updateHistoricalDose` moves `occurred_at` and
- * deliberately never touches `recorded_at` (#2228/#2876), so a dose corrected to "I
- * actually took this at 5:15" keeps the 8:07 write minute. Keyed on the minute alone the
- * row would have gone on stating 8:07 for a dose the record says was three hours
- * earlier — the exact thing the ruling forbids, arrived at from the other direction. So
- * a member whose stated clock no longer matches its tap-mates steps OUT of the collapse
- * and states its own time. Every member of a stack row shares that row's clock by
- * construction, which is why the expanded members carry no clock of their own.
+ * WHY THE CLOCK IS IN THE KEY AND NOT JUST THE BUNDLE. The bundle is the TAP's identity;
+ * `hhmm` is what the row STATES. Those agree until somebody amends one member:
+ * `updateHistoricalDose` moves `occurred_at` and deliberately never touches the write
+ * event (#2228/#2876), so a dose corrected to "I actually took this at 5:15" is still a
+ * row that tap wrote. Keyed on the bundle alone the row would go on stating 8:07 for a
+ * dose the record says was three hours earlier — the exact thing the ruling forbids. So a
+ * member whose stated clock no longer matches its tap-mates steps OUT of the collapse and
+ * states its own time, and that is also the whole of #4477's member-split rendering: a
+ * subset given its own instant leaves the stack row, while a whole stack moved together
+ * stays one row, because they still agree. The bundle itself is never rewritten — it
+ * records what happened, and a correction is not a second tap. Every member of a stack
+ * row shares that row's clock by construction, which is why the expanded members carry no
+ * clock of their own.
  *
- * WHAT "COMPOSED" ACTUALLY MEANS HERE. Nothing records that a tap was composed: the
- * bundle is INFERRED from a shared write minute. Two independent single taps of the same
- * routine that happen to land in one minute therefore read as one composed row. That is
- * a deliberate limit of reading #2458's bundle back out of the log rather than a bug in
- * this module — closing it needs a write-side bundle id, which is not phase 1's to add.
+ * WHAT "COMPOSED" MEANS HERE, AND WHERE THE ANSWER COMES FROM (#4328). It is RECORDED,
+ * not inferred: every composed writer stamps one `bundleId` on the rows its single
+ * action writes, and this key reads that. It used to infer the bundle from a shared
+ * WRITE MINUTE, which was right almost always and wrong invisibly — two independent taps
+ * of one routine landing in the same minute read as one composed row, found with four
+ * ordinary one-at-a-time confirms at 07:07 and 10:07. A row with no bundle composed
+ * nothing and never joins a collapse, which is also the honest reading of every row
+ * written before the column existed: they are stated one by one rather than grouped by a
+ * guess the schema cannot support.
  */
 export interface LedgerStack {
   kind: "stack";
@@ -202,7 +214,9 @@ export function buildDayLedger(input: {
     // A dose with no stack was not part of a routine, so there is nothing to collapse
     // it into — and a SKIPPED dose is its own statement, with its own reason, which a
     // "6 doses" row could not carry.
-    if (!dose.stack || dose.status !== "taken") {
+    // …and a dose no composed action wrote has nothing to collapse WITH: the bundle is
+    // the event, so its absence is the answer, never an invitation to infer one.
+    if (!dose.stack || dose.status !== "taken" || !dose.bundleId) {
       loose.push(dose);
       continue;
     }
@@ -214,14 +228,14 @@ export function buildDayLedger(input: {
     // alone therefore proves nothing. But the tuple is still recoverable from any string
     // this builds, because everything around the free field is pinned: `bucket` is a
     // closed enum in first position, and the three fields after `stack` are
-    // fixed-width — a 16-char minute, `stated` or `logged`, a 5-char `HH:MM`. Read from
-    // the right, those three come off unambiguously whatever the label contains, and what
-    // remains between the enum and them is the label. So no pair of distinct tuples can
-    // mint one key, and a label crafted to impersonate another routine's tail cannot.
+    // fixed-width — a 16-char bundle id, `stated` or `logged`, a 5-char `HH:MM`. Read
+    // from the right, those three come off unambiguously whatever the label contains, and
+    // what remains between the enum and them is the label. So no pair of distinct tuples
+    // can mint one key, and a label crafted to impersonate another routine's tail cannot.
     const key = [
       dose.bucket,
       dose.stack,
-      dose.writeMinute,
+      dose.bundleId,
       dose.clockKind,
       dose.hhmm,
     ].join(KEY_SEP);

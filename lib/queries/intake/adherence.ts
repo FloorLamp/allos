@@ -8,6 +8,7 @@
 import { db, hoistedStatement, today, writeTx } from "../../db";
 import { readAllForUpdate } from "../../tx";
 import type { LoggedVia } from "../../logged-via";
+import type { DoseBundleId } from "../../dose-bundle";
 import { clampPage, pageCount, pageOffset } from "../../pagination";
 import {
   cadenceOn,
@@ -252,6 +253,12 @@ interface DoseResolveOptions {
   // else. Attribution for the dose-time correction ride-along only — the burst this
   // row joins renders on the message that produced it, never on a sibling.
   notifyMessageId?: number | null;
+  // WHICH COMPOSED ACTION WROTE THIS ROW (#4328), or absent for an ordinary one-at-a-
+  // time tap, which composed nothing. Stamped at CREATION only, like `logged_via` and
+  // for the same reason: it records the write EVENT, and an amendment months later is
+  // not a new event. The Day ledger's collapse reads it instead of guessing a bundle
+  // from a shared write minute.
+  bundleId?: DoseBundleId;
 }
 
 function applyDoseStatusCore(
@@ -374,8 +381,8 @@ function applyDoseStatusCore(
       db.prepare(
         `INSERT INTO intake_item_logs
            (dose_id, item_id, date, amount, status, recorded_at, occurred_at,
-            notify_message_id, logged_via)
-         VALUES (?,?,?,?,?,?,?,?,?)`
+            notify_message_id, logged_via, bundle_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
       ).run(
         doseId,
         owned.item_id,
@@ -387,7 +394,8 @@ function applyDoseStatusCore(
           ? utcInstant(stamp ?? capturedAt)
           : null,
         opts.notifyMessageId ?? null,
-        loggedVia
+        loggedVia,
+        opts.bundleId ?? null
       );
     } else {
       // The immutable record stamp stays put. The explicit target owns whether this row
@@ -453,7 +461,10 @@ export function markDoseTaken(
   takenAt?: Date | null,
   // Which message's tap this is (#2264) — Telegram reminder handlers only; see
   // DoseResolveOptions.notifyMessageId.
-  notifyMessageId?: number | null
+  notifyMessageId?: number | null,
+  // The composed action this confirm is one row of (#4328) — see the same field on
+  // DoseResolveOptions. Absent for every ordinary single tap.
+  bundleId?: DoseBundleId
 ): DoseTakenOutcome {
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "taken", loggedVia, {
@@ -461,6 +472,7 @@ export function markDoseTaken(
       itemId,
       takenAt,
       notifyMessageId,
+      bundleId,
     })
   );
 }
@@ -830,7 +842,11 @@ export function logHistoricalDose(
   occurredAt: Date,
   amountOverride: string | null,
   adjustSupply: boolean,
-  loggedVia: LoggedVia
+  loggedVia: LoggedVia,
+  // The composed action this backfill is one row of (#4328). The composed one-tap
+  // reaches this writer instead of `markDoseTaken` once the day is past the ±2 window
+  // (#4305), and one tap is one tap whichever writer it lands in.
+  bundleId?: DoseBundleId
 ): HistoricalDoseOutcome {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);
@@ -932,8 +948,8 @@ export function logHistoricalDose(
     db.prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, amount, recorded_at, occurred_at,
-          supply_adjusted, logged_via)
-       VALUES (?,?,?,?,?,?,?,?)`
+          supply_adjusted, logged_via, bundle_id)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     ).run(
       doseId,
       itemId,
@@ -942,7 +958,8 @@ export function logHistoricalDose(
       instantNow(),
       occurredAtStr,
       adjustSupply ? 1 : 0,
-      loggedVia
+      loggedVia,
+      bundleId ?? null
     );
     if (adjustSupply) decrementSupply(profileId, itemId);
     return { kind: "logged", date };
@@ -1513,6 +1530,13 @@ interface CapturedAdministration {
    * for a token captured by an older build — both of which are honestly unknown.
    */
   logged_via: string | null;
+  /**
+   * The composed action the row was written by (#4328), carried for the same reason
+   * `logged_via` is: a restore puts back the row that existed, so a member restored
+   * into its stack rejoins the stack rather than standing alone beside it. `null` for
+   * a row written one tap at a time, and for a token captured by an older build.
+   */
+  bundle_id: string | null;
 }
 
 // Delete one taken administration (an intake_item_logs row) with capture-for-undo, and
@@ -1545,7 +1569,8 @@ export function deleteAdministrationLog(
     const row = db
       .prepare(
         `SELECT l.id, l.dose_id, l.item_id, l.date, l.occurred_at, l.recorded_at,
-                l.amount, l.product, l.status, l.supply_adjusted, l.logged_via
+                l.amount, l.product, l.status, l.supply_adjusted, l.logged_via,
+                l.bundle_id
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
           WHERE l.id = ? AND s.profile_id = ?
@@ -1566,6 +1591,7 @@ export function deleteAdministrationLog(
       status: row.status,
       supply_adjusted: row.supply_adjusted,
       logged_via: row.logged_via,
+      bundle_id: row.bundle_id,
     };
     const info = db
       .prepare(
@@ -1642,8 +1668,8 @@ export function restoreAdministrationLog(
     db.prepare(
       `INSERT INTO intake_item_logs
          (dose_id, item_id, date, occurred_at, recorded_at, amount, product, status,
-          supply_adjusted, logged_via)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
+          supply_adjusted, logged_via, bundle_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
     ).run(
       captured.dose_id,
       captured.item_id,
@@ -1657,7 +1683,8 @@ export function restoreAdministrationLog(
       // RESTORED, not re-created: an undo puts back the row that was deleted, so it
       // carries the provenance it was born with. A pre-column token has `undefined`
       // here and restores NULL, which is the honest answer rather than a guess.
-      captured.logged_via ?? null
+      captured.logged_via ?? null,
+      captured.bundle_id ?? null
     );
     if (captured.status === "taken" && supplyAdjusted === 1) {
       decrementSupply(profileId, captured.item_id);

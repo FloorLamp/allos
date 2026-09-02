@@ -1,7 +1,8 @@
 // THE DAY LEDGER'S DOSE READER (#3987 phase 1), at the tier that can reach it.
 //
 // `lib/queries/day-ledger.ts` decides the bucket a past day's row files under, the
-// stated-vs-logged split, the composed tap's write minute and the medication exclusion —
+// stated-vs-logged split, the composed action a row belongs to and the medication
+// exclusion —
 // for every dose row on the page's new primary surface. Its questions are all about what
 // the DATABASE holds across a schedule edit, a retirement and an amendment, so none of
 // them can be asked over hand-written rows: this is the tier, and the pure suite in
@@ -16,6 +17,7 @@ import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { markDoseTaken, markDoseSkipped } from "@/lib/queries";
+import { newDoseBundle } from "@/lib/dose-bundle";
 import { pendingDayDoses } from "@/lib/queries/usual-routine";
 import { getDayDoseLedger } from "@/lib/queries/day-ledger";
 import * as scheduleQueries from "@/lib/queries/intake/schedule";
@@ -78,13 +80,36 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
       seedDose(profile.id, `Morning ${n}`, "Morning stack")
     );
 
-    // Fully organic: only the app's own clock seam moves between the taps.
+    // TWO COMPOSED TAPS, each stamping its own bundle (#4328) — which is what makes
+    // this fixture reach the state the assertion forbids at all. The same four writes
+    // WITHOUT bundles are the sibling case below, and they produce no stack row to put
+    // an open dose on twice.
+    const first = newDoseBundle();
+    const second = newDoseBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
-    markDoseTaken(profile.id, seeded[0].doseId, seeded[0].itemId, date, "page");
-    markDoseTaken(profile.id, seeded[1].doseId, seeded[1].itemId, date, "page");
+    for (const s of seeded.slice(0, 2))
+      markDoseTaken(
+        profile.id,
+        s.doseId,
+        s.itemId,
+        date,
+        "page",
+        undefined,
+        null,
+        first
+      );
     process.env.ALLOS_TEST_NOW = "2026-08-28T10:07:20Z";
-    markDoseTaken(profile.id, seeded[2].doseId, seeded[2].itemId, date, "page");
-    markDoseTaken(profile.id, seeded[3].doseId, seeded[3].itemId, date, "page");
+    for (const s of seeded.slice(2, 4))
+      markDoseTaken(
+        profile.id,
+        s.doseId,
+        s.itemId,
+        date,
+        "page",
+        undefined,
+        null,
+        second
+      );
 
     const pending = pendingDayDoses(profile.id, date);
     const groups = buildDayLedger({
@@ -105,17 +130,62 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
       "OPEN PER ROW:",
       stacks.map((s) => s.open.map((o) => o.doseId))
     );
+    // THE FIXTURE'S REACH, asserted before the claim: the rule is about two rows of ONE
+    // routine competing for an open dose, so two stack rows have to exist for the
+    // assertion below to be able to fail at all.
+    expect(stacks, "two composed taps, two stack rows").toHaveLength(2);
     const seen = new Map<number, number>();
     for (const s of stacks)
       for (const o of s.open) seen.set(o.doseId, (seen.get(o.doseId) ?? 0) + 1);
     for (const [doseId, n] of seen)
       expect(n, `dose ${doseId} is on ${n} ledger rows`).toBe(1);
   });
+
+  // #4328 — THE SAME FOUR WRITES, ONE AT A TIME. This is the shape the original
+  // adversarial review used: four ordinary `markDoseTaken` confirms, two landing in the
+  // 07:07 minute and two in the 10:07 minute, which the ledger presented as two composed
+  // writes because it inferred the bundle from the minute a row was filed in. Nothing
+  // composed these, so nothing may say they were composed.
+  it("does not compose four one-at-a-time confirms that share a minute", () => {
+    const login = createLogin();
+    const profile = createProfile("bundle-4328-solo", login.id);
+    actAs(login, profile);
+    setTimezone(profile.id, "UTC");
+    const date = today(profile.id);
+    const seeded = ["A", "B", "C", "D"].map((n) =>
+      seedDose(profile.id, `Solo ${n}`, "Morning stack")
+    );
+
+    process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
+    markDoseTaken(profile.id, seeded[0].doseId, seeded[0].itemId, date, "page");
+    markDoseTaken(profile.id, seeded[1].doseId, seeded[1].itemId, date, "page");
+    process.env.ALLOS_TEST_NOW = "2026-08-28T10:07:20Z";
+    markDoseTaken(profile.id, seeded[2].doseId, seeded[2].itemId, date, "page");
+    markDoseTaken(profile.id, seeded[3].doseId, seeded[3].itemId, date, "page");
+
+    const rows = getDayDoseLedger(profile.id, date);
+    // The fixture really does put two writes in each minute — otherwise the old
+    // inference had nothing to group and this would pass for the wrong reason.
+    expect(rows, "four rows written").toHaveLength(4);
+    expect(
+      rows.every((r) => r.bundleId === null),
+      "no bundle recorded"
+    ).toBe(true);
+
+    const groups = buildDayLedger({ servings: [], doses: rows, pending: [] });
+    const morning = groups.find((g) => g.bucket === "Morning")!;
+    expect(morning.rows.map((r) => r.kind)).toEqual([
+      "dose",
+      "dose",
+      "dose",
+      "dose",
+    ]);
+  });
 });
 
 // ── ATTACK #2: "two doses of one routine taken hours apart never share a timestamp" ──
-// The collapse key is the WRITE minute; the row's clock is the ADMINISTRATION instant.
-// An amendment (#2228) moves the second without moving the first.
+// The collapse key names the composed WRITE; the row's clock is the ADMINISTRATION
+// instant. An amendment (#2228) moves the second without moving the first.
 import { updateHistoricalDose } from "@/lib/queries/intake/adherence";
 
 describe("ATTACK #2 — one composed write, one member's time amended", () => {
@@ -128,10 +198,31 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     const a = seedDose(profile.id, "Creatine amend", "Morning stack");
     const b = seedDose(profile.id, "Collagen amend", "Morning stack");
 
-    // ONE composed tap at 08:07 — both members, same write minute.
+    // ONE composed tap at 08:07 — both members, one bundle (#4328). Stamped rather
+    // than left to a shared minute: two bare confirms are two taps now, and this case
+    // is about what an amendment does to a real composed write.
+    const tap = newDoseBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T08:07:00Z";
-    markDoseTaken(profile.id, a.doseId, a.itemId, date, "page");
-    markDoseTaken(profile.id, b.doseId, b.itemId, date, "page");
+    markDoseTaken(
+      profile.id,
+      a.doseId,
+      a.itemId,
+      date,
+      "page",
+      undefined,
+      null,
+      tap
+    );
+    markDoseTaken(
+      profile.id,
+      b.doseId,
+      b.itemId,
+      date,
+      "page",
+      undefined,
+      null,
+      tap
+    );
 
     // The user corrects ONE of them through the shipped dose-history amend: it was
     // actually taken at 05:15, three hours before the other.
@@ -151,7 +242,7 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     const rows = getDayDoseLedger(profile.id, date);
     console.log(
       "ROW CLOCKS:",
-      rows.map((r) => [r.name, r.hhmm, r.writeMinute])
+      rows.map((r) => [r.name, r.hhmm, r.bundleId])
     );
     const groups = buildDayLedger({ servings: [], doses: rows, pending: [] });
     const morning = groups.find((g) => g.bucket === "Morning")!;
@@ -166,6 +257,9 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
         s.written.map((d) => `${d.name}@${d.hhmm}`),
       ])
     );
+    // THE FIXTURE'S REACH: the amend has to leave a stack row behind for the loop below
+    // to be able to fail — a split that dissolved BOTH rows would pass vacuously.
+    expect(stacks, "the unamended member's row survives").toHaveLength(1);
     // The two doses now state 05:15 and 08:07. They must not read as one timestamped row.
     const clocks = new Set(rows.map((r) => r.hhmm));
     for (const s of stacks)
@@ -337,10 +431,9 @@ describe("the stated-vs-logged split", () => {
     const [row] = getDayDoseLedger(profile.id, date);
     expect(row.clockKind, "an occurred_at is a stated time").toBe("stated");
     expect(row.hhmm, "rendered in the profile's zone, not UTC").toBe("07:15");
-    // The tap is immutable and stays the collapse's identity even though the clock
-    // moved — and it is the STORED (UTC) minute, never the profile-local one: it is an
-    // identity two rows either share or do not, not a value anybody reads.
-    expect(row.writeMinute).toBe("2026-08-28T13:40");
+    // Nothing composed this confirm, so it records no bundle — and an absent bundle is
+    // the answer, never a licence to fall back on the minute it was filed in (#4328).
+    expect(row.bundleId).toBeNull();
   });
 
   it("falls back to the filing time and SAYS that is what it did", () => {
