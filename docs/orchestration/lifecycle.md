@@ -17,6 +17,12 @@
   awaiting owner. Its data half is the catch-up digest, which the check-in
   script runs itself when the digest's anchor is four hours stale — judgment
   on the digest stays yours.
+- The pulse OPENS with one census line in a fixed grammar, and the turn's
+  status detail carries the same line, so a PM reads saturation without
+  inference: `e2e 2/2 · ord 3/5 · slot #4764 green · banked 2 · blocked #4218`.
+- Read the Ladder issue (#4769, `parked` + `docs`) at every check-in: rung
+  order, your slice, prerequisites. It outranks your own ranking; a
+  disagreement goes to the PM, not into the queue.
 - Sweep open issues about every four hours for filings, labels, and comment
   rulings.
 - Run one adversarial audit over the previous day of merges per session-day.

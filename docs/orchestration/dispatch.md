@@ -11,6 +11,9 @@ closed taxonomy, and `needs-human` handling.
 - Cluster two to six related issues by domain and files. Avoid file overlap;
   sequence work when overlap cannot be fenced. `claims <path>` names the active
   lane holding a path; CANNOT TELL is NOT clear — answer before the lane edits.
+- Claim before dispatch: a `Dispatched:` note on each issue, and a fence
+  check against any other orchestrator's branches (`multi-orchestrator.md`).
+  The note outlives the container, so it applies with one orchestrator too.
 - A `design` issue is dispatchable only when its body records the owner
   decision (the #2701 shape) or a direction with stated falsifiers (#2641).
   One still carrying the design question is owner-gated; agents never explore.
@@ -19,13 +22,11 @@ closed taxonomy, and `needs-human` handling.
   lane on every path (new/resume/adopt) and warns past the machine cap.
   Ordinary concurrency is min(harness slots, machine cap) — five on the
   4-core container (#2964); a harness exposing fewer slots caps there (#3710).
-- Revert on a DISCRIMINATING signal: a misread red actually shipped, or the
-  ledger's median dispatch duration degrades. "Agents hit the ten-minute tool
-  cap" is not one — it fired at four agents and at five, so it cannot tell them
-  apart. Measured at five: median 90 min against a 86-min cap-four baseline.
-- That cap counts agents RUNNING — a machine limit. The queue that jams first
-  is PRs awaiting REVIEW, which is serial and cannot be parallelised. Hold
-  dispatch at roughly three unreviewed PRs however few agents are running.
+- Revert the cap on a DISCRIMINATING signal only: a misread red shipped, or
+  the ledger's median dispatch duration degrades. "Agents hit the tool cap"
+  fired at four and at five alike, so it is not one.
+- The cap counts agents RUNNING. The queue that jams first is PRs awaiting
+  REVIEW, which is serial: hold dispatch at about three unreviewed PRs.
 - With ready P1s, reserve two user/data lanes and select the highest-risk ready
   P2; cap presentation/guard at one. Recompute when issues arrive or lanes free.
 - **Self-filed work joins the BACK of its queue.** An issue you or a lane
@@ -35,12 +36,11 @@ closed taxonomy, and `needs-human` handling.
 - Lanes never file issues. Findings ride the return summary; the orchestrator
   decides what becomes an issue — a filed observation displaces real work.
 - An urgent P0/P1 displaces the candidate via `promote`; run only its matrix.
-- STAGGER starts: durations cluster tightly (85±5 min), so simultaneous starts
-  are simultaneous arrivals AND gates — five at once hit load 17.7. `new` warns
-  within 25 minutes and projects both arrivals; it never refuses, a P0 preempts.
+- STAGGER starts: durations cluster (85±5 min), so simultaneous starts are
+  simultaneous gates — five at once hit load 17.7. `new` warns within 25
+  minutes; it never refuses, a P0 preempts.
 - A red in code the diff did not touch is contention until proven otherwise —
   an ASSERTION failure included, not only a timeout (#3436).
-- A refuted PR re-enters the review queue; count rework when judging depth.
 - Every brief uses the generated template and the gate order from
   `scripts/orchestration/agent-gates.sh`.
 - Push meaningful checkpoints. A branch not next to land stays branch-only —

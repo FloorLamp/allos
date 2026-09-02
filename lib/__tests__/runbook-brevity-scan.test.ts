@@ -139,6 +139,7 @@ const FILE_BUDGETS = {
   "docs/orchestration/environment.md": { lines: 100, genre: "runbook" },
   "docs/orchestration/labels.md": { lines: 40, genre: "runbook" },
   "docs/orchestration/lifecycle.md": { lines: 80, genre: "runbook" },
+  "docs/orchestration/multi-orchestrator.md": { lines: 60, genre: "runbook" },
   "docs/orchestration/recovery.md": { lines: 50, genre: "runbook" },
   "docs/orchestration/review-merge.md": { lines: 100, genre: "runbook" },
 } as const satisfies Record<string, { lines: number; genre: Genre }>;
@@ -156,6 +157,7 @@ const SKILL_BUDGETS = {
   ".claude/skills/file-issue/SKILL.md": { lines: 225, genre: "prose" },
   ".claude/skills/needs-human/SKILL.md": { lines: 205, genre: "prose" },
   ".claude/skills/orchestrate/SKILL.md": { lines: 235, genre: "prose" },
+  ".claude/skills/pm/SKILL.md": { lines: 190, genre: "prose" },
   ".claude/skills/reconcile-tracker/SKILL.md": { lines: 250, genre: "prose" },
   ".claude/skills/ux-walkthrough/SKILL.md": { lines: 370, genre: "prose" },
   ".github/pull_request_template.md": { lines: 25, genre: "prose" },

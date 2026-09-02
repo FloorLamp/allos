@@ -24,5 +24,9 @@ Two axes are load-bearing; `reconcile-tracker` flags violations of both
   working elsewhere; never prompt the owner uninvited and never a blocking
   `AskUserQuestion` mid-session — the owner is usually absent. The
   needs-human skill drains the queue when they show up.
+- A `needs-human` comment is shaped for the fastest answer: the options, a
+  recommendation, each option's size, and what the answer unblocks. A wording
+  question proposes the wording. Ripeness test: does the answer change code
+  or a ruling? If not, it is a note, not a question.
 - Evaluations end with `recommend-adopt` or `recommend-hold`. A hold also gets
   `parked`; an adopt is merged by the orchestrator.

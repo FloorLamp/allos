@@ -35,9 +35,8 @@ prose is for the judgment the script cannot make.
 dispatching — DEFERS every effect that outlives it: no agents, worktrees,
 branches, GitHub writes, or scheduled wakes, triggers, and reminders.
 
-Name each deferred arming as a "first live action" instead of performing it.
-A LIVE session arms its durable wake at check-in (`lifecycle.md`); a dry one
-only says it would — a dry run once armed a real wake trigger.
+Name each deferred arming as a "first live action"; only a LIVE session arms
+its wake at check-in (`lifecycle.md`) — a dry run once armed a real one.
 
 ## 0. Check in — first action, every wake
 
@@ -53,9 +52,11 @@ After a restart, PRESERVE BEFORE DIAGNOSING: rescue in-flight work from the
 roster (remote branches are the durable checkpoints; agents push after every
 meaningful step) before investigating why the restart happened.
 
-Then arm the next check-in (the durable one-shot, `lifecycle.md`) and post a
-status pulse: in flight, merged, queued, parked/owner-gated. The script's
-persisted state outranks your own memory of the session.
+Then read the Ladder issue (#4769: rung order, your slice, prerequisites —
+it outranks your own ranking), arm the next check-in (`lifecycle.md`), and
+post a status pulse opening with the census line.
+
+The script's persisted state outranks your own memory of the session.
 
 ## 1. Triage
 
@@ -81,10 +82,8 @@ persisted state outranks your own memory of the session.
 - `needs-human`: label + assign the owner the same day, then WORK ELSEWHERE.
   Never prompt the owner uninvited; the needs-human skill drains the queue
   when they show up.
-- No `AskUserQuestion` — deliberately not granted: the owner is usually NOT
-  PRESENT, so a blocking question stalls the pipeline until they wander back.
-  Every question becomes a label + assignment or a status-pulse line, and the
-  session keeps moving on other work.
+- No `AskUserQuestion` — not granted; the owner is usually absent. A question
+  becomes a label + assignment or a pulse line, and the session keeps moving.
 - `design` issues split on one test: does the body RECORD the decision or
   still CONTAIN the question? A recorded decision (#2701's shape) or a
   direction with falsifiers (#2641) dispatches like any P2; an issue still
@@ -105,12 +104,9 @@ Caps are load limits, not preferences: at most TWO agents in the E2E lane,
 ordinary concurrency at min(harness slots, machine cap) — `dispatch.md`
 §Dispatch has the numbers. Only the orchestrator runs full E2E suites.
 
-The cap is a proxy for gate cost: every agent pays the same lint + typecheck
-
-- pure + DB bill, so raising it without scoping those tiers buys contention.
-
-Contention MISLEADS, not just slows — a starved tier fails in untouched code
-and reads as a regression.
+The cap is a proxy for gate cost — every agent pays the same gate bill, so
+raising it buys contention, and contention MISLEADS: a starved tier fails in
+untouched code and reads as a regression.
 
 ## 3. Dispatch
 
@@ -122,6 +118,9 @@ node scripts/orchestration/dispatch-brief.mjs new --branch <branch> \
 Every agent goes through this — Agent-tool runs included — and any live
 dispatch found unrecorded is ADOPTED immediately (the `adopt` subcommand):
 the roster is what makes a restart survivable.
+
+Claim first: a `Dispatched:` note on each issue, and a fence check against
+any other orchestrator's branches (`docs/orchestration/multi-orchestrator.md`).
 
 Every brief uses the generated template and `agent-gates.sh`'s gate order.
 Record the branch in the task list at dispatch time; require agents to merge
@@ -161,6 +160,9 @@ Squash merge only a GREEN EXACT HEAD, serially, through the transport this
 host grants (MCP where present, else REST — `review-merge.md` §Merge). After
 each merge, recheck every open PR's mergeability.
 
+A green exact head merges in the turn that finds it; only a red `main` or an
+occupied repo-wide slot holds it.
+
 Gate first, every time: `merge-gate.mjs <pr>` exit 0 — receipt on the current
 head, checks green, zero unresolved threads, verified read-only — is the
 merge precondition. A CLOSED gate lists exactly what to fix.
@@ -199,10 +201,9 @@ or dependency-bound" — reach it and say so, with the list.
 - Dependabot: merge minors on green current main; majors through
   `dependabot-eval-brief.mjs` within a day (verdicts land as
   `recommend-adopt` / `recommend-hold` + `parked`).
-- Institutionalize lessons THE SAME DAY: encode in tooling or the focused
-  runbook file — the only durable homes. A lesson that lives only in the
-  session transcript dies with the container; narrative that fits neither
-  home is cut, not archived.
+- Institutionalize lessons THE SAME DAY in tooling or the focused runbook
+  file — the only durable homes; a transcript dies with the container, and
+  narrative that fits neither home is cut, not archived.
 
 ## Wind-down
 

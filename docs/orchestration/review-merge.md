@@ -46,8 +46,6 @@
 - After two blocking rounds against one mechanism, stop patching examples.
   Re-open the premise around a shared substrate, restrictive invariant, or
   direct behavior evidence; record why the replacement closes the defect class.
-- #3011 is the worked example: three passes, and passes 2 and 3 each found a
-  real defect in what the previous fix had just built.
 
 ## What a lens looks for, and how verification lies
 
@@ -72,6 +70,9 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   the same breath as the merge call: GitHub merges the head it finds.
 - Serialize merges. After each merge, recheck every open PR's mergeability and
   refresh or reconcile affected branches.
+- A green exact head merges in the TURN that finds it green. An unrelated
+  `e2e-main` run on `main` is not a reason to hold it; a red `main` or an
+  occupied repo-wide slot (`multi-orchestrator.md`) is.
 - One landing candidate gets final rebase, PR opened or refreshed READY
   (never draft — environment.md §GitHub access), exact-head review, and full
   CI, in order. Local pre-review never replaces it; bank later branches.
@@ -93,8 +94,5 @@ instance that bought it. Read it before writing a guard or dispatching a lens.
   body aims the next lens at deleted code (failure modes).
 - Verify linked issues closed, then clean the worktree and local branch.
 
-## Merge queue
-
-- The checked-in ruleset is inactive under a personal account. Keep the
-  manual serialization and exact-head checks until organization transfer;
-  then apply it, validating the speculative merge commit first.
+- Merge queue: the checked-in ruleset is inactive under a personal account;
+  keep manual serialization until organization transfer, then validate it.
