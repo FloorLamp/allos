@@ -836,19 +836,14 @@ export function cockpitRecoveryHeadline(
 // identity attributes have to ride on an element; a single joined string has no
 // elements. The line is `cockpitSummaryLine` below, over these same parts, so the
 // prose and the marked-up rendering can never drift.
-export type CockpitSummaryPart =
-  | "recovery"
-  | "temperature"
-  | "medication";
+export type CockpitSummaryPart = "recovery" | "temperature" | "medication";
 
 export function cockpitSummaryParts(
   status: EpisodeCollapsedStatus,
   recovery: CockpitRecovery | null
 ): { key: CockpitSummaryPart; text: string }[] {
   return [
-    ...(recovery
-      ? [{ key: "recovery" as const, text: recovery.label }]
-      : []),
+    ...(recovery ? [{ key: "recovery" as const, text: recovery.label }] : []),
     {
       key: "temperature" as const,
       text: status.temperature
@@ -884,5 +879,8 @@ export function cockpitRecoveryFraction(
 ): number | null {
   if (!recovery || recovery.clearedForHours == null) return null;
   if (recovery.thresholdHours <= 0) return 1;
-  return Math.max(0, Math.min(1, recovery.clearedForHours / recovery.thresholdHours));
+  return Math.max(
+    0,
+    Math.min(1, recovery.clearedForHours / recovery.thresholdHours)
+  );
 }

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
 import { witnessedNowMotion } from "@/lib/dashboard-motion";
 import { microMotionPlan } from "@/lib/micro-motion";
@@ -187,14 +181,14 @@ export default function NowCards({
           <Fragment key={row.id}>
             {header}
             <DashboardFactRow
-            candidate={row.candidate}
-            presentation={row.presentation}
-            lane="now"
-            // The attribute, not the class, is what a spec reads — it mirrors the
-            // class exactly, so a reduced-motion viewer (who gets no class) also gets
-            // no attribute, and "nothing animated" is one assertion rather than a
-            // guess about computed styles. The row's own box is also the door's rail
-            // (`relative`), as it is in the tail.
+              candidate={row.candidate}
+              presentation={row.presentation}
+              lane="now"
+              // The attribute, not the class, is what a spec reads — it mirrors the
+              // class exactly, so a reduced-motion viewer (who gets no class) also gets
+              // no attribute, and "nothing animated" is one assertion rather than a
+              // guess about computed styles. The row's own box is also the door's rail
+              // (`relative`), as it is in the tail.
               data-motion={animating ? "promote" : undefined}
               className={rowClass}
             />

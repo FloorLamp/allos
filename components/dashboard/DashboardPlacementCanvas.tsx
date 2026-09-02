@@ -7,10 +7,7 @@ import {
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
-import NowStrip, {
-  type NowStripRow,
-  type NowSubjectLabel,
-} from "./NowStrip";
+import NowStrip, { type NowStripRow, type NowSubjectLabel } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";

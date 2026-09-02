@@ -567,30 +567,30 @@ export default function SymptomLogBar({
           </p>
         )}
         {card?.altDate && (
-            <div
-              data-testid="symptom-day-toggle"
-              className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          <div
+            data-testid="symptom-day-toggle"
+            className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          >
+            <button
+              type="button"
+              data-testid="symptom-day-primary"
+              aria-pressed={isPrimaryDay}
+              onClick={() => selectDay(card.date)}
+              className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
             >
-              <button
-                type="button"
-                data-testid="symptom-day-primary"
-                aria-pressed={isPrimaryDay}
-                onClick={() => selectDay(card.date)}
-                className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.dateLabel}
-              </button>
-              <button
-                type="button"
-                data-testid="symptom-day-alt"
-                aria-pressed={!isPrimaryDay}
-                onClick={() => selectDay(card.altDate!)}
-                className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.altDateLabel}
-              </button>
-            </div>
-          )}
+              {card.dateLabel}
+            </button>
+            <button
+              type="button"
+              data-testid="symptom-day-alt"
+              aria-pressed={!isPrimaryDay}
+              onClick={() => selectDay(card.altDate!)}
+              className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.altDateLabel}
+            </button>
+          </div>
+        )}
       </div>
 
       {pickerOpen && (

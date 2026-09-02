@@ -52,8 +52,10 @@ import { dateStrInTz } from "@/lib/date";
 // THE CLOCK DOOR IS A GLYPH AND ITS NAME IS A QUESTION (#4426's time-grammar ruling,
 // rendered by #4752 item 8). "Earlier dose" was the door's visible words AND its
 // accessible name; the ruling makes the clock the ONLY spelling of "happened
-// earlier", so the words go and the question becomes the name a screen reader and
-// the control's tooltip both get. One string, because they name one affordance.
+// earlier", so the words go and the question becomes the name. It is spelled as the
+// accessible name alone and NEVER as a `title=`: #2378/#3375 ruled hover-only text
+// out of this codebase because a touch or keyboard reader never receives it, and
+// lib/__tests__/raw-title-boundary.test.ts holds that line.
 const EARLIER_DOSE = "Happened earlier?";
 // ONE WORD, AND NEVER "now" (#4753's copy migration, owner-blessed on the issue).
 // "Taken now" carried the whole sentence because the button had no label to say it
@@ -209,7 +211,6 @@ export default function QuickLogPrnControl({
       className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
       aria-expanded={statement.open}
       aria-label={EARLIER_DOSE}
-      title={EARLIER_DOSE}
       data-testid="prn-log-more"
     >
       <IconClock className="h-4 w-4" stroke={2} />

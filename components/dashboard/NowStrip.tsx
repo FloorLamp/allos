@@ -1,7 +1,4 @@
-import NowCards, {
-  type NowStripRow,
-  type NowSubjectLabel,
-} from "./NowCards";
+import NowCards, { type NowStripRow, type NowSubjectLabel } from "./NowCards";
 
 export type { NowStripRow, NowSubjectLabel };
 
