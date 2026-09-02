@@ -1860,11 +1860,12 @@ export default function FoodLogBar({
         fd.set("dose_ids", doseIds.join(","));
         if (usualProteinGrams != null)
           fd.set("protein_grams", String(usualProteinGrams));
-        // THE STICKY STATEMENT RIDES THE BUNDLE (#4438), exactly as it rides the
-        // single-serving add twenty lines up. It used to be dropped here, so "8pm" plus
-        // "log my usual dinner" landed untimed rows on the one surface that had a time
-        // field at all.
-        if (statedTime) fd.set("occurred_at", statedTime);
+        // NO `occurred_at`, DELIBERATELY, and not the oversight #4438 item 2 read it as.
+        // The sticky statement is per-DAY and this button names a WINDOW: the note above
+        // the rows already says a serving stating 19:00 from the Morning tab lands in
+        // Evening, which for a BUNDLE means its servings leave the window it was derived
+        // and labelled for — so the offer never reduces and every repeat tap writes
+        // again. `logUsualRoutineCore`'s header carries the measurement.
         return logUsualRoutine(stampLoggedVia(fd));
       },
       settle: (result) => {

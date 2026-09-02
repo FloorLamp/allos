@@ -1760,20 +1760,29 @@ describe("FoodLogBar composed usual bundle", () => {
     ).toContain("1 dose taken");
   });
 
-  it("carries the sticky eating-time statement onto the bundle", async () => {
+  // THE STICKY STATEMENT DOES NOT RIDE THE BUNDLE, and this is the converse of the
+  // single-serving assertion above it rather than a gap. The statement is per-DAY and
+  // this button names a WINDOW, so carrying it would file the servings outside the
+  // window the offer was derived for — after which the offer never reduces and the tap
+  // double-logs without bound (proved at the action tier, `food-usual.actions.test.ts`).
+  it("does not carry the bar's day-wide stated time onto the bundle", async () => {
     mount([offer("Midday")]);
     await act(async () => {
       fireEvent.change(screen.getByTestId("food-when-time"), {
         target: { value: new Date(`${DATE}T20:00:00.000Z`).toISOString() },
       });
     });
+    // THE FIXTURE REACHES THE STATE THE ASSERTION FORBIDS: the statement really is set,
+    // so this is "the bundle declines to carry it" and not "nothing was there to carry".
+    expect(screen.getByTestId("food-when-set").textContent).toBe("20:00");
     await act(async () =>
       fireEvent.click(screen.getByTestId("food-usual-offer"))
     );
     const sent = appActions.logUsualRoutine.mock.calls[0][0] as FormData;
-    // The WALL CLOCK, not an instant — the action resolves it against the profile's
-    // zone (#2053), exactly as the single-serving add beside it posts it.
-    expect(sent.get("occurred_at")).toBe("20:00");
+    expect(sent.get("occurred_at")).toBeNull();
+    // And the single-serving add beside it is untouched — it still states the hour,
+    // because a serving is what an eating time is a statement about.
+    expect(sent.get("meal_slot")).toBe("Midday");
   });
 
   it("re-reads the dose half when the day picker moves, and drops a late answer for a day already left", async () => {

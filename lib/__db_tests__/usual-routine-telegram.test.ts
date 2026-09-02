@@ -1128,3 +1128,100 @@ describe("a tap sweeps the profile's other live messages (#3933)", () => {
     ).toBeGreaterThan(0);
   });
 });
+
+// ── THE ACK NAMES THE PROTEIN MEMBER TOO (#4379) ─────────────────────────────
+//
+// No Telegram fixture in this file had ever carried one — every `proteinGrams` above is
+// `null` — so the chat ack was the one host of this bundle whose answer had never been
+// exercised against a protein member, and it was building its sentence from
+// `outcome.groups` alone while the three web surfaces went through
+// `usualRoutineWriteAnswer`. Two spellings of one answer is the defect that helper
+// exists to prevent.
+describe("the composed one-tap's ack, with a protein member", () => {
+  // ONE PROFILE PER CASE. The reduction rule means a scoop already logged today drops
+  // the member, so two cases sharing a profile would silently make the second one
+  // vacuous — the shape this file's own `proteinGrams: null` fixtures had.
+  let seq = 0;
+  function seedProteinMorning(extraGroups: readonly string[] = []) {
+    const chat = `555437${seq++}`;
+    const p = makeProfile(`TG4379-${seq}`);
+    setTimezone(p.profileId, "UTC");
+    seedLoginTelegram(p.profileId, chat);
+    setProfileSetting(p.profileId, "food_telegram_enabled", "1");
+    seedHabitualMornings(p.profileId, ["fermented", "berries", ...extraGroups]);
+    // The scoop, on the same mornings: habitual by the same measure and the same share
+    // as the groups beside it (#4379). It rides `food_log_events` and never
+    // `food_daily_totals` — the reserved-key discipline (lib/protein-nudge.ts).
+    const anchor = today(p.profileId);
+    for (let d = 1; d <= 21; d++) {
+      const date = shiftDateStr(anchor, -d);
+      db.prepare(
+        `INSERT INTO food_log_events (profile_id, group_key, date, recorded_at)
+         VALUES (?, '__protein__', ?, ?)`
+      ).run(p.profileId, date, `${date}T08:10:00Z`);
+    }
+    return { profileId: p.profileId, chat, anchor };
+  }
+
+  function proteinGramsOn(profileId: number, date: string): number {
+    const row = db
+      .prepare(
+        `SELECT COALESCE(SUM(grams), 0) AS grams FROM protein_daily_totals
+          WHERE profile_id = ? AND date = ?`
+      )
+      .get(profileId, date) as { grams: number };
+    return row.grams;
+  }
+
+  it("names the scoop in the ack, in the same words the web answers with", async () => {
+    const { profileId, chat, anchor } = seedProteinMorning();
+    const a = mintUsualRoutineAttachment(profileId, "Morning", anchor)!;
+    // THE OFFER PROMISED IT: the line and the label are the label-is-a-promise rule, so
+    // an ack that did not name it would be answering for a write the button advertised.
+    expect(a.line).toContain("+30g protein");
+
+    await handleCallbackQuery(cq(a.token, chat));
+    expect(proteinGramsOn(profileId, anchor)).toBe(30);
+    expect(lastAnswerText()).toContain("+30g protein");
+  });
+
+  it("does not report 'Nothing left to log' over grams it just wrote", async () => {
+    // THE SHARP COMPOSITION — the one that produces `{ groups: [], protein: 30 }`, where
+    // an ack built from the food half alone reports a silence over a write, with
+    // `alert: false` so there is nothing to dismiss.
+    //
+    // Reaching it takes a REMOVAL, and that is why it had never been seen: the fresh
+    // offer must hold a group the STORED one does not, so that the minimum-members floor
+    // is still met (the scoop plus that group) while every group the message NAMED has
+    // fallen out. Ordinary use, in order: whole grains are logged this morning, so the nudge is
+    // minted without them; that serving is then removed (the bar's "−", the row's
+    // Remove); berries and fermented are logged by hand; and the old message is tapped.
+    const { profileId, chat, anchor } = seedProteinMorning(["whole_grains"]);
+    tap(profileId, "whole_grains", anchor, "06:00:00");
+    const a = mintUsualRoutineAttachment(profileId, "Morning", anchor)!;
+    expect(a.line).toContain("+30g protein");
+    expect(a.line).not.toContain("Whole grains");
+
+    // The removal, and then the two the message named, logged by hand.
+    db.prepare(
+      `DELETE FROM food_daily_totals WHERE profile_id = ? AND date = ? AND group_key = 'whole_grains'`
+    ).run(profileId, anchor);
+    db.prepare(
+      `DELETE FROM food_log_events WHERE profile_id = ? AND date = ? AND group_key = 'whole_grains'`
+    ).run(profileId, anchor);
+    tap(profileId, "berries", anchor, "07:00:00");
+    tap(profileId, "fermented", anchor, "07:01:00");
+
+    await handleCallbackQuery(cq(a.token, chat));
+
+    // THE FIXTURE REACHES THE STATE THE ASSERTION IS ABOUT: the food half wrote nothing
+    // (both named groups were already logged) and the protein half wrote 30g.
+    expect(servingsToday(profileId, "berries")).toBe(1);
+    expect(servingsToday(profileId, "fermented")).toBe(1);
+    expect(proteinGramsOn(profileId, anchor)).toBe(30);
+
+    const answer = lastAnswerText() ?? "";
+    expect(answer).not.toBe("Nothing left to log");
+    expect(answer).toContain("+30g protein");
+  });
+});

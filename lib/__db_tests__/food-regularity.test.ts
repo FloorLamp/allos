@@ -822,7 +822,6 @@ describe("the usual bundle's protein member (#4379)", () => {
       [],
       "page" as LoggedVia,
       undefined,
-      undefined,
       offer.proteinGrams ?? undefined
     );
     expect(wrote.kind).toBe("logged");
@@ -862,7 +861,6 @@ describe("the usual bundle's protein member (#4379)", () => {
       ["fermented", "berries", "__protein__"],
       [],
       "page" as LoggedVia,
-      undefined,
       undefined,
       30
     );
@@ -904,7 +902,6 @@ describe("the usual bundle's protein member (#4379)", () => {
       minted.food.map((f) => f.slug),
       [],
       "page" as LoggedVia,
-      undefined,
       undefined,
       minted.proteinGrams ?? undefined
     );

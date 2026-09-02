@@ -133,7 +133,11 @@ import {
   recordUsualBackfillAudit,
   usualRoutineDoseLogged,
 } from "../usual-routine-write";
-import { usualRoutineAnswerText } from "../usual-routine";
+import {
+  usualRoutineAnswerText,
+  usualRoutineFoodMembers,
+  usualRoutineWriteAnswer,
+} from "../usual-routine";
 import { foodGroupName } from "../food-groups";
 import { readOfferRow } from "./offer-store";
 import { isDoseDateAccepted } from "../dose-log-window";
@@ -1544,7 +1548,6 @@ async function handleUsualRoutineTap(
     offer.doseIds,
     NUDGE,
     notifyMessageId,
-    undefined,
     // The grams THIS MESSAGE promised (#4379) — the stored offer's, not the preset as it
     // stands now, so a scoop changed since the send does not move a promise already read.
     offer.proteinGrams ?? undefined
@@ -1561,14 +1564,25 @@ async function handleUsualRoutineTap(
     t
   );
   const wrote = outcome.kind === "logged";
-  const doses = wrote ? outcome.doses : [];
   await answerCallbackQuery(
     cq.id,
-    usualRoutineAnswerText(
-      wrote ? outcome.groups.map((g) => foodGroupName(g.groupKey)) : [],
-      doses.filter((d) => usualRoutineDoseLogged(d.outcome)).map((d) => d.name),
-      doses.filter((d) => !usualRoutineDoseLogged(d.outcome)).map((d) => d.name)
-    ),
+    // ONE ANSWER FOR EVERY HOST OF THIS BUNDLE (#4438 item 5, #4379). This ack used to
+    // build its own sentence from `outcome.groups` alone, which made it the one host
+    // that could not name the protein member — and in one reachable composition it said
+    // "Nothing left to log" over a write. The stored offer names the SAME members the
+    // line and the label promised, and the helper reports only what the core says landed.
+    wrote
+      ? usualRoutineWriteAnswer(
+          // `proteinGrams` is optional on the STORED shape — a row minted before #4379
+          // simply has no field — and absent means the same as null here: that send
+          // promised no scoop, so its ack may not name one.
+          usualRoutineFoodMembers(
+            { groups: offer.groups, proteinGrams: offer.proteinGrams ?? null },
+            foodGroupName
+          ),
+          outcome
+        )
+      : usualRoutineAnswerText([], [], []),
     // An outcome that contradicts the ✅ demands a dismissal; a partial does not —
     // it says what landed, and what landed is on the screen behind it.
     { alert: !wrote }

@@ -70,6 +70,33 @@
 // The second is a known, accepted cost until #3984 versions amounts — it is exactly what
 // the deep door does today, so it is not a new one.
 //
+// ── THE BUNDLE STATES NO EATING HOUR, ON ANY SURFACE (#4438, ruled 2026-09-02) ──
+//
+// #4438 item 2 asked the composed tap to carry the nutrition bar's sticky eating-time
+// statement, and item 3 asked the same of the Telegram tap. Neither does, and it is one
+// answer rather than two omissions: a stated eating time is a statement about A SERVING,
+// and a bundle is labelled by A WINDOW. Applying one to the other is a category error,
+// and it breaks this core's own headline contract two ways.
+//
+//   • `logFoodServingCore` drops a declared window when it is handed a time (#2269 —
+//     a stated hour wins and the window derives from the instant), so a bundle promising
+//     "your usual Morning" files its servings under Evening. `getUsualFoodOffer` is then
+//     re-derived FOR MORNING, still stands, and EVERY REPEAT TAP WRITES AGAIN, each
+//     answering `ok: true`. "A STALE TAP REFUSES; IT NEVER DOUBLE-LOGS" — broken by the
+//     writes that same tap performed.
+//   • and the two writers disagree about it: `addProteinGramsCore` stores `meal_slot`
+//     AND `occurred_at`, and `foodEventWindow` gives an explicit slot precedence, so one
+//     tap put its servings in Evening and its scoop in Morning. One event, two sections.
+//
+// Reachability was ordinary, not adversarial: the bar's statement is per-DAY, not
+// per-slot, and its own note says so — set 19:00 for dinner, switch to the Morning tab,
+// tap the bundle.
+//
+// So the parameter is gone rather than defaulted, on both paths. Whether a bundle SHOULD
+// carry an hour — and if so whether the window follows it or survives it — is an owner
+// question about what a label promises, and it is now ONE question with one answer for
+// the web and the chat rather than a ruling already pre-empted on one of them.
+//
 // ── AND IT CHANGES NOTHING ELSE ──────────────────────────────────────────────
 //
 // No obligation is written (obligation is declared only, forever — #2419). No
@@ -88,7 +115,6 @@ import { statedInstantOnDate } from "./stated-time";
 import { getTimezone } from "./settings";
 import { USUAL_BACKFILL, type LoggedVia } from "./logged-via";
 import { logUsualFoodCore, type UsualFoodLogged } from "./food-usual-write";
-import type { FoodEatingTime } from "./food-log-write";
 import { isUsualBackfillDateAccepted } from "./food-regularity";
 import { addProteinGramsCore } from "./protein-daily-totals-write";
 import { isProteinNudgeKey } from "./protein-nudge";
@@ -225,11 +251,6 @@ export function logUsualRoutineCore(
   // attributed exactly as the individual taps it replaces would have been. The
   // dashboard control passes nothing and both stores record NULL.
   notifyMessageId?: number | null,
-  // WHEN THE BUNDLE WAS EATEN (#4438) — the bar's sticky statement, or the chat tap's
-  // own instant. It reaches the FOOD half only: a dose's administration time is the
-  // dose half's own question, already answered by the writer this core picks below, and
-  // an eating time is not a claim about when a capsule went down.
-  time?: FoodEatingTime,
   // THE SCOOP THE BUTTON PROMISED (#4379). An UPPER BOUND like `namedGroups` and
   // `namedDoseIds`, never an instruction: the offer is re-derived below and the grams
   // are written only while it still names protein. Absent means the tap did not offer
@@ -264,7 +285,6 @@ export function logUsualRoutineCore(
           namedGroups,
           loggedVia,
           undefined,
-          time,
           { notifyMessageId }
         )
       : ({ kind: "nothing-to-log" } as const);
@@ -333,9 +353,8 @@ export function logUsualRoutineCore(
       via,
       undefined,
       // The window is a DECLARATION here exactly as it is for the servings beside it
-      // (#1704), and the stated eating time wins over it in the same one chokepoint.
-      window,
-      time
+      // (#1704), and no eating instant is invented to sit under it.
+      window
     );
     if (outcome.kind === "logged") protein = promisedProteinGrams;
   }

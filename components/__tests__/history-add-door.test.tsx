@@ -601,6 +601,21 @@ describe("the composed usual on the add door", () => {
     return screen.getByTestId("history-add-usual-Morning");
   }
 
+  // The two absences that survived the date-follow tests' move to the nutrition bar
+  // (#4424 ruling 2 retired the door's shared date field, so the sequenced re-read went
+  // where the day PICKER is). Both are still live invariants here: no habit standing on
+  // that day renders no control, and no kind but food has a breakfast to offer.
+  it.each([
+    ["no offer stands on the day", "food", [] as UsualOffer[]],
+    ["a kind with no bundle", "substance", [MORNING_OFFER]],
+  ] as [string, HistoryAddKind, UsualOffer[]][])(
+    "renders no composed control for %s",
+    (_why, kind, usual) => {
+      open(kind, usual);
+      expect(screen.queryByTestId("history-add-usual")).toBeNull();
+    }
+  );
+
   it("posts the composed bundle on the day the reader was looking at", async () => {
     open("food", [MORNING_OFFER]);
     // THE LABEL IS THE PROMISE: it names every serving and every dose the tap writes,
