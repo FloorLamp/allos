@@ -5,6 +5,7 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { LOGGED_VIA_FIELD, parseWebOrigin } from "@/lib/logged-via";
 import { revalidateRoute } from "@/lib/revalidate";
 import { today } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
 import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
@@ -394,11 +395,21 @@ export async function logTemperature(
   // 98.6 backfilled at 09:16 for last night read as measured at 09:16 and cleared a
   // child for school thirteen hours early. A past day with no stated time is stored
   // UNTIMED, which the readers already have an arm for.
+  //
+  // AND THE MINUTE COMES OFF THE SEAM, not off a raw `new Date()` (#4722). Every
+  // reader of this row — and `resolveStatedOccurredAt`, the gate that ACCEPTS the
+  // stated instant — asks the clock seam, so a writer reading real wall time is a
+  // predicate whose halves read two different clocks. Production is unchanged (the
+  // seam falls through to `new Date()` with ALLOS_TEST_NOW unset, so nobody can reach
+  // this), but under the e2e freeze the write stamped real time while the render
+  // compared against the frozen instant, and a just-logged reading rendered minutes IN
+  // THE FUTURE — "100 °F14:03 (in 3 mins)". The three sibling actions in this
+  // directory already spell it this way.
   const providedTime = String(formData.get("time") ?? "").trim();
   const time = /^\d{2}:\d{2}$/.test(providedTime)
     ? providedTime
     : date === today(profileId)
-      ? zonedDateParts(getTimezone(profileId), new Date()).hhmm
+      ? zonedDateParts(getTimezone(profileId), clockNow()).hhmm
       : null;
   const outcome = logTemperatureCore(
     profileId,
