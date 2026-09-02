@@ -1894,6 +1894,26 @@ convention is invented. Weeks still go through `resolveRecapWindow`, so #223's
 "this week matches the routine counters" and #1021's completed-week send are
 byte-for-byte unchanged.
 
+**Rate lines cover completed days only (#4228 A).** `windowAdherence` walks the
+window up to yesterday, never through today: a dose is countable once its day has
+ended, and walking through today counted every dose not taken YET as missed, so
+the card's in-progress calendar week read "Adherence 0% · 12 missed" every
+week-start morning. A window holding no completed day yields no adherence line at
+all. The count lines still cover the whole window (the #223 counter match), and the
+notification's completed window (#1021) already ended before today and is unchanged.
+
+**News before stats (#4228 D).** The notification body splits into two sections
+set apart by a blank line, news first. Every `RecapLine` declares its `section`
+where it is built: a line is NEWS when it states a change or a target shortfall
+(PRs, missed/resumed deltas, the targets verdict, a nutrient at 0 of N, Zone 2
+under its target, adherence when it carries misses, goals reached or missed, a
+fitness check, recovery days) and a STAT when it is a total or a coverage figure
+(workout count, food coverage, weight, sleep, regularity, mood). Within each
+section the declared line order is kept. This supersedes #3033's line-order clause
+for the notification body only — `Recap.lines`, the headline, the card's atoms and
+the retrospective are untouched, and so are the daily digest and the household
+card.
+
 **The inclusion test**, generalized from #1935's owner-decided coverage rule: a
 line appears at a scale only if its fact **becomes visible** at that scale, and
 **no scale re-totals the smaller periods**. "You did 47 workouts" is four weekly

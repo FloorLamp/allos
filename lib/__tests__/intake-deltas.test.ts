@@ -139,7 +139,7 @@ describe("intakeDeltaLine — the one formatter", () => {
       { itemId: 2, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
     ]);
     expect(intakeDeltaLine(deltas)).toBe(
-      "Missed: Magnesium (test) for 3 days · Resumed: Vitamin D (test) for 2 days"
+      "Missed: Magnesium (test) for 3 days · Resumed: Vitamin D (test) after 2 days missed"
     );
   });
 
@@ -150,18 +150,70 @@ describe("intakeDeltaLine — the one formatter", () => {
     expect(intakeDeltaLine(deltas)).toBe("Missed: Magnesium (test) for 1 day");
   });
 
-  it("collapses past the naming cap so the line stays a line", () => {
+  it("aggregates past the naming cap so the line stays a line (#4228 C)", () => {
     const many = Array.from({ length: INTAKE_DELTA_MAX_NAMED + 2 }, (_, i) => ({
       itemId: i + 1,
       name: `Item ${String.fromCharCode(65 + i)} (test)`,
       strip: strip([T, T, T, M]),
     }));
-    const line = intakeDeltaLine(classifyIntakeDeltas(many))!;
-    expect(line).toContain("+2 more");
-    // Every item here missed one day, so the run is stated ONCE (#3487 item 3) —
-    // this is the line the household glance rendered as "Missed: X for 1 day, Y for
-    // 1 day, Z for 1 day, +4 more".
-    expect(line.startsWith("Missed for 1 day: Item A (test)")).toBe(true);
+    // Five items past a cap of three: a count plus the one shared run, never "+2
+    // more" — which chose the named three alphabetically and reported one event
+    // five times.
+    expect(intakeDeltaLine(classifyIntakeDeltas(many))).toBe(
+      "Missed: 5 supplements for 1 day"
+    );
+  });
+});
+
+// ---- Past the name cap, a half aggregates (#4228 C) -------------------------
+//
+// At or below INTAKE_DELTA_MAX_NAMED the per-item form and the #3487 hoist are
+// byte-identical to before (pinned above); the boundary itself is pinned here.
+describe("intakeDeltaLine — a half with more than INTAKE_DELTA_MAX_NAMED items aggregates (#4228 C)", () => {
+  // `runs[i]` misses (or, for a resume, the lapse length) per item, names A, B, C…
+  const items = (runs: number[], resumed = false) =>
+    classifyIntakeDeltas(
+      runs.map((n, i) => ({
+        itemId: i + 1,
+        name: `Item ${String.fromCharCode(65 + i)} (test)`,
+        strip: strip(
+          resumed
+            ? [T, ...Array<AdherenceState>(n).fill(M), T]
+            : [T, T, T, ...Array<AdherenceState>(n).fill(M)]
+        ),
+      }))
+    );
+
+  it.each([
+    // [runs, resumed, expected]
+    [
+      [1, 2, 3],
+      false,
+      "Missed: Item A (test) for 1 day, Item B (test) for 2 days, Item C (test) for 3 days",
+    ],
+    [
+      [2, 2, 2],
+      false,
+      "Missed for 2 days: Item A (test), Item B (test), Item C (test)",
+    ],
+    [[1, 2, 3, 4], false, "Missed: 4 supplements for 1–4 days"],
+    [[3, 3, 3, 3, 3], false, "Missed: 5 supplements for 3 days"],
+    [
+      [4, 8, 7, 2, 5, 6, 3, 4, 8, 7, 5],
+      true,
+      "Resumed: 11 supplements after 2–8 days missed",
+    ],
+    [[2, 2, 2, 2], true, "Resumed: 4 supplements after 2 days missed"],
+  ] as const)("%j resumed=%s → %s", (runs, resumed, expected) => {
+    expect(intakeDeltaLine(items([...runs], resumed))).toBe(expected);
+  });
+
+  it("a uniform aggregate keeps the window's day name — the run, not the count, is what #3033 named", () => {
+    const week = { start: "1990-02-01", end: "1990-02-07" };
+    // Four items all missed 1990-02-04 (a Sunday) once.
+    expect(intakeDeltaLine(items([1, 1, 1, 1]), week)).toBe(
+      "Missed: 4 supplements on Sunday"
+    );
   });
 });
 
@@ -203,20 +255,19 @@ describe("intakeDeltaLine — a uniform run is hoisted into the label (#3487)", 
     );
   });
 
-  it("judges uniformity over ALL items, not the three it names", () => {
-    // Four items: three missed one day, the fourth missed two. The fourth is behind
-    // "+1 more", so hoisting off the named sample would state "for 1 day" over an
-    // item that missed two — a claim about rows the reader cannot check.
+  it("judges uniformity over ALL items, not a named sample", () => {
+    // Four items: three missed one day, the fourth missed two. Past the cap the half
+    // aggregates (#4228 C), and the range has to reach the fourth item — a hoisted
+    // "for 1 day" judged off three would state a duration the fourth contradicts.
     const items = [
       { itemId: 1, name: "Item A (test)", strip: strip([T, T, T, M]) },
       { itemId: 2, name: "Item B (test)", strip: strip([T, T, T, M]) },
       { itemId: 3, name: "Item C (test)", strip: strip([T, T, T, M]) },
       { itemId: 4, name: "Item D (test)", strip: strip([T, T, T, M, M]) },
     ];
-    const line = intakeDeltaLine(classifyIntakeDeltas(items))!;
-    expect(line.startsWith("Missed:")).toBe(true);
-    expect(line).toContain("Item A (test) for 1 day");
-    expect(line).toContain("+1 more");
+    expect(intakeDeltaLine(classifyIntakeDeltas(items))).toBe(
+      "Missed: 4 supplements for 1–2 days"
+    );
   });
 
   it("leaves a ONE-item half alone — nothing is repeated, and #1819's merge clause quotes it", () => {
@@ -233,7 +284,17 @@ describe("intakeDeltaLine — a uniform run is hoisted into the label (#3487)", 
       { itemId: 3, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
     ]);
     expect(intakeDeltaLine(both)).toBe(
-      "Missed for 1 day: Iron (test), Zinc (test) · Resumed: Vitamin D (test) for 2 days"
+      "Missed for 1 day: Iron (test), Zinc (test) · Resumed: Vitamin D (test) after 2 days missed"
+    );
+  });
+
+  it("hoists a shared lapse on the resumed half in the lapse direction too (#4228 B)", () => {
+    const both = classifyIntakeDeltas([
+      { itemId: 1, name: "Iron (test)", strip: strip([T, M, M, T]) },
+      { itemId: 2, name: "Zinc (test)", strip: strip([T, M, M, T]) },
+    ]);
+    expect(intakeDeltaLine(both)).toBe(
+      "Resumed after 2 days missed: Iron (test), Zinc (test)"
     );
   });
 
@@ -309,12 +370,28 @@ describe("intakeDeltaLine — the reporting window names a one-occurrence miss's
     );
   });
 
-  it("a resumed run keeps its lapse length — only a one-occurrence miss names a day", () => {
+  it("a resumed run states its lapse — only a one-occurrence miss names a day", () => {
     const deltas = classifyIntakeDeltas([
       { itemId: 2, name: "Vitamin D (test)", strip: strip([T, M, M, T]) },
     ]);
     expect(intakeDeltaLine(deltas, week)).toBe(
-      "Resumed: Vitamin D (test) for 2 days"
+      "Resumed: Vitamin D (test) after 2 days missed"
+    );
+  });
+
+  it("a lapse longer than the report window is coherent: it began before the window (#4228 B)", () => {
+    // Eight misses then a take, reported over a seven-day window. "for 8 days" fit
+    // neither reading of a week; "after 8 days missed" says which way the number
+    // points, and a lapse that outruns the window is then simply an older lapse.
+    const deltas = classifyIntakeDeltas([
+      {
+        itemId: 1,
+        name: "Beta-Glucan (test)",
+        strip: strip([T, ...Array<AdherenceState>(8).fill(M), T]),
+      },
+    ]);
+    expect(intakeDeltaLine(deltas, week)).toBe(
+      "Resumed: Beta-Glucan (test) after 8 days missed"
     );
   });
 });

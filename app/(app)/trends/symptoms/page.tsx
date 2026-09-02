@@ -11,7 +11,7 @@ import { severityLabelFor } from "@/lib/symptoms";
 import PageContainer from "@/components/PageContainer";
 import BackLink from "@/components/BackLink";
 import { EmptyState, PageHeader } from "@/components/ui";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesSummary } from "@/components/SeriesAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +25,8 @@ export const dynamic = "force-dynamic";
 // shaded by that day's severity). Two figures over the same twelve columns would have
 // made the reader align them by eye; one cannot disagree with itself. Color is never
 // the only encoding — every column prints its own count, every cell carries a dated
-// `aria-label` naming its severity in words, and the whole figure is restated as text
-// in a `VisualizationDetails` disclosure (no `title`: hover is not a reading, #794).
+// `aria-label` naming its severity in words, and the months are restated as a hidden
+// series summary (no `title`: hover is not a reading, #794).
 
 function monthTitle(monthStart: string): string {
   return `${MONTHS_LONG[Number(monthStart.slice(5, 7)) - 1]} ${monthStart.slice(0, 4)}`;
@@ -93,11 +93,10 @@ function SymptomTile({ entry }: { entry: SymptomAnalysisEntry }) {
           </li>
         ))}
       </ol>
-      {/* The figure in words — the shared disclosure every chart in the app carries,
-          so the counts are readable without hovering a 6px cell (#794's rule, and
-          the reason none of these cells owns a `title`). */}
-      <VisualizationDetails
-        label="Monthly details"
+      {/* The figure in words, for a reader who never sees it; every column already
+          PRINTS its count, so the months need no door of their own. */}
+      <SeriesSummary
+        label={`${entry.label} by month`}
         items={entry.months.map(
           (month) =>
             `${monthTitle(month.month)} — ${month.days} ${month.days === 1 ? "day" : "days"}`

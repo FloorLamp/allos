@@ -288,40 +288,48 @@ test("wellness practice: range target + one-tap logging (#1259)", async ({
   await expect(heatmap.locator('[data-outside="true"]')).not.toHaveCount(0);
   await expectNoClippedContent(page);
 
-  // The whole card remains the destination, while the shared daily disclosure is
-  // its DOM sibling and intercepts pointer/keyboard activation without navigating.
+  // THE WHOLE CARD IS THE DESTINATION, AND THE PICTURE NO LONGER STANDS IN ITS WAY.
+  // This section used to drive a daily-details disclosure that sat inside the card as
+  // the link's DOM sibling, opting back into the pointer so it could expand without
+  // navigating. #4760 retired that fold: the heatmap is a GLANCE surface — its
+  // `role="img"` sentence is the whole statement, per-day reading is the session
+  // ledger's job — so there is nothing inside the picture to intercept anything.
+  // What used to be true only of the fold's blank remainder is now true of the whole
+  // heatmap, which is why the click below lands at its CENTRE: that is the pixel the
+  // summary used to own, and the one a regression would take back first.
   const detailLink = row.getByRole("link");
-  const details = heatmap.locator("details");
-  const summary = details.locator("summary");
-  await expect(detailLink.locator("summary, button")).toHaveCount(0);
-  const listUrl = page.url();
-  await summary.click();
-  await expect(details).toHaveAttribute("open", "");
-  expect(page.url()).toBe(listUrl);
-  await summary.click();
-  await summary.focus();
-  await page.keyboard.press("Enter");
-  await expect(details).toHaveAttribute("open", "");
-  expect(page.url()).toBe(listUrl);
-  await details.getByText(/ — 1 session$/).click();
-  expect(page.url()).toBe(listUrl);
-  await summary.click();
-  await expect(details).not.toHaveAttribute("open", "");
-
-  // The closed disclosure only owns its summary footprint. Tapping the blank
-  // remainder of the details row still reaches the whole-card destination.
-  await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
-  await page.setViewportSize({ width: 768, height: 844 });
-  const [detailsBox, summaryBox] = await settledBoxes([details, summary]);
-  expect(detailsBox.x + detailsBox.width).toBeGreaterThan(
-    summaryBox.x + summaryBox.width + 8
+  await expect(heatmap.locator("details, summary")).toHaveCount(0);
+  await expect(heatmap.locator('[tabindex]:not([tabindex="-1"])')).toHaveCount(
+    0
   );
+  await expect(detailLink.locator("summary, button")).toHaveCount(0);
+  await expect(detailLink).toHaveAttribute("href", /\/protocols\/\d+/);
+
+  await page.setViewportSize({ width: 768, height: 844 });
+  // Both reads below are VIEWPORT coordinates, and this card sits ~1190px down a
+  // 844px viewport — so the box has to be brought on screen BEFORE it is measured,
+  // or `elementFromPoint` is handed a y outside the viewport and answers `null`,
+  // which reads exactly like a swallowed tap. Measured while writing this: box
+  // y=1159 against a 844 viewport.
+  await heatmap.scrollIntoViewIfNeeded();
+  const [heatmapBox] = await settledBoxes([heatmap]);
+  const centre = {
+    x: heatmapBox.x + heatmapBox.width / 2,
+    y: heatmapBox.y + heatmapBox.height / 2,
+  };
+  // The card's own link is what is under that pixel — read through the SAME locator
+  // the destination assertion above used, so a failure says WHICH element swallowed
+  // the tap rather than only that the URL never changed.
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest("a")?.getAttribute("href"),
+      centre
+    )
+  ).toBe(await detailLink.getAttribute("href"));
   await Promise.all([
     page.waitForURL(/\/protocols\/\d+/),
-    page.mouse.click(
-      detailsBox.x + detailsBox.width - 2,
-      summaryBox.y + summaryBox.height / 2
-    ),
+    page.mouse.click(centre.x, centre.y),
   ]);
 
   // Self-clean.

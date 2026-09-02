@@ -18,12 +18,14 @@ function recap(over: Partial<Recap> = {}): Recap {
     lines: [
       {
         key: "workouts",
+        section: "stats",
         label: "Workouts",
         value: "4",
         comparison: { kind: "prior", text: "3 last week" },
       },
       {
         key: "prs",
+        section: "news",
         label: "PRs",
         value: "2",
         comparison: { kind: "none" },
@@ -31,6 +33,7 @@ function recap(over: Partial<Recap> = {}): Recap {
       },
       {
         key: "adherence",
+        section: "news",
         label: "Adherence",
         value: "90%",
         comparison: { kind: "none" },

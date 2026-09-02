@@ -941,17 +941,24 @@ describe("actual atomic dashboard manifests", () => {
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 226,
-    "marathon-runner": 225,
+    // −3 each (#4228 A): the recap's adherence walk stops before today, so no
+    // persona makes today's three per-day reads any more — the day's activities,
+    // its taken set and its skipped set. `household` is unmoved because its acting
+    // profile has no active intake items, so `windowAdherence` returns before the
+    // walk and never made them; measured by instrumenting the walk and rendering
+    // all six personas, which reported five walking one day fewer and household
+    // short-circuiting.
+    bodybuilder: 223,
+    "marathon-runner": 222,
     household: 269,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    pregnant: 219,
+    "diabetic-cgm": 230,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 248,
+    biohacker: 245,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound
