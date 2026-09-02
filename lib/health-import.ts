@@ -318,7 +318,13 @@ export interface ImportedImagingStudy {
   contrast_agent: string | null;
   study_date: string | null; // YYYY-MM-DD
   dose_msv: number | null; // effective dose (mSv); null on the FHIR path (#703)
-  impression: string | null; // the radiologist's impression / rendered report narrative
+  // The impression ALONE, when the source labelled one (#3594) — never the whole
+  // report. Null when nothing could be isolated; the narrative below carries it then.
+  impression: string | null;
+  // The report as imported: a DiagnosticReport's conclusion + coded conclusions +
+  // decoded rendered form, a DocumentReference's rendered report, an ImagingStudy's
+  // description + notes. Kept whole so nothing a person could read is dropped.
+  report_narrative: string | null;
   indication: string | null; // reason the study was ordered
   status: string | null; // free-text passthrough (no enum)
   external_id: string; // stable dedup key ("fhir:imaging:…")

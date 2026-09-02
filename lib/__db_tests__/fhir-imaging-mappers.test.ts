@@ -30,6 +30,7 @@ import {
   getMedicalDocument,
 } from "@/lib/queries";
 import { db } from "@/lib/db";
+import { studyFindingText } from "@/lib/imaging-study";
 
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 
@@ -143,7 +144,9 @@ beforeAll(() => {
 });
 
 describe("FHIR imaging mappers land structured studies through the persist core", () => {
-  it("persists each FHIR imaging resource as an imaging_studies row with its impression", () => {
+  // #3594: the report and the impression parsed out of it land in DIFFERENT columns,
+  // and every source shape lands on its own side of that split.
+  it("persists each FHIR imaging resource with its report and its impression apart", () => {
     const rows = getDocumentImagingStudies(profile, doc);
     expect(rows).toHaveLength(3);
 
@@ -151,19 +154,28 @@ describe("FHIR imaging mappers land structured studies through the persist core"
     const mri = all.find((s) => s.modality === "mri")!;
     expect(mri.body_region).toBe("Knee");
     expect(mri.laterality).toBe("left");
-    expect(mri.impression).toBe("MRI Left Knee");
+    // An ImagingStudy's description is a narrative; no impression is claimed.
+    expect(mri.impression).toBeNull();
+    expect(mri.report_narrative).toBe("MRI Left Knee");
     expect(mri.indication).toBe("Knee pain");
 
     const ct = all.find((s) => s.modality === "ct")!;
+    // DiagnosticReport.conclusion is the impression; the rendered presentedForm
+    // ("Clear lungs") is the report it came from and stays out of the finding.
     expect(ct.impression).toContain("No acute cardiopulmonary process.");
-    expect(ct.impression).toContain("Clear lungs");
+    expect(ct.impression).not.toContain("Clear lungs");
+    expect(ct.report_narrative).toContain("Clear lungs");
     expect(ct.study_date).toBe("2024-03-15");
 
-    // The inline-text DocumentReference (HTML stripped to text).
+    // The inline-text DocumentReference (HTML stripped to text): the whole rendered
+    // report is the narrative, and its own IMPRESSION section is the impression.
     const docref = all.find(
-      (s) => s.impression === "IMPRESSION: Normal ultrasound."
+      (s) => s.report_narrative === "IMPRESSION: Normal ultrasound."
     )!;
     expect(docref).toBeTruthy();
+    expect(docref.impression).toBe("Normal ultrasound.");
+    // Nothing readable is lost: every study still shows a finding.
+    expect(all.map(studyFindingText).filter(Boolean)).toHaveLength(3);
 
     // Import provenance is stamped so the footprint can clear/move/count it.
     for (const s of all) {

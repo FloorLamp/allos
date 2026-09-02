@@ -375,7 +375,10 @@ export interface PersistImagingStudy {
   contrast_agent: string | null;
   study_date: string | null;
   dose_msv: number | null;
+  // The impression alone, and the report it came from (#3594). The AI path fills
+  // only the impression — it is prompted for the finding, not the document.
   impression: string | null;
+  report_narrative: string | null;
   indication: string | null;
   status: string | null;
   external_id: string | null;
@@ -1027,6 +1030,7 @@ export function extractionToPersistInput(
       study_date: s.study_date,
       dose_msv: parseDoseMsv(s.dose_msv),
       impression: s.impression,
+      report_narrative: null,
       indication: s.indication,
       status: s.status,
       external_id: null,
@@ -1486,6 +1490,7 @@ export function healthRecordToPersistInput(
       // path — the typical estimate fills in downstream (#703).
       dose_msv: s.dose_msv ?? null,
       impression: s.impression,
+      report_narrative: s.report_narrative,
       indication: s.indication,
       status: s.status,
       external_id: s.external_id,

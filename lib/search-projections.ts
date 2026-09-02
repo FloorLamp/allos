@@ -17,7 +17,11 @@
 // (specialty, then NPI or locality).
 
 import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
-import { modalityLabel, studyDisplayLabel } from "./imaging-study";
+import {
+  modalityLabel,
+  studyDisplayLabel,
+  studyFindingText,
+} from "./imaging-study";
 import {
   resultTypeLabel,
   significanceLabel,
@@ -162,13 +166,14 @@ export function imagingHitText(
     | "laterality"
     | "study_date"
     | "impression"
+    | "report_narrative"
     | "indication"
   >
 ): SearchHitText {
   return {
     title: studyDisplayLabel(row) || modalityLabel(row.modality),
     subtitle: subtitleOf([
-      snippet(row.impression) ?? snippet(row.indication),
+      snippet(studyFindingText(row)) ?? snippet(row.indication),
       isoDay(row.study_date),
     ]),
   };

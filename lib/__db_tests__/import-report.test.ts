@@ -338,6 +338,7 @@ function everyDomainInput(): PersistInput {
         study_date: ALL_DATE,
         dose_msv: null,
         impression: "Small joint effusion.",
+        report_narrative: null,
         indication: "Knee pain",
         status: "final",
         external_id: "imaging:knee",
