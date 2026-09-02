@@ -37,13 +37,17 @@ export function getOutcomeGoals(profileId: number): OutcomeGoal[] {
   // status is exactly ('active' | 'achieved') (OutcomeGoalStatus / migration 016 CHECK),
   // so the CASE covers the whole set — 'active' first, everything else (achieved)
   // after; there is no dead third arm.
+  // `id DESC` finishes the newest-first ordering (#4069): created_at has second
+  // granularity, so an import writing several goals in one second left their order
+  // undefined — and the goal-pacing cap truncates on this list.
   const rows = db
     .prepare(
       `SELECT * FROM goals
        WHERE profile_id = ?
        ORDER BY archived ASC,
                 CASE status WHEN 'active' THEN 0 ELSE 1 END,
-                created_at DESC`
+                created_at DESC,
+                id DESC`
     )
     .all(profileId) as StoredOutcomeGoal[];
   return rows.map(({ category, ...goal }) => {

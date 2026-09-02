@@ -52,3 +52,48 @@ export function getBristolPanel(
     getBristolReadings(profileId, dates[0], dates[dates.length - 1])
   );
 }
+
+/** One stored reading as the record addresses it: the row, its day, its wall clock. */
+export interface BristolRow extends BristolReading {
+  /** The `metric_samples` row id — the correction's and the delete's whole address. */
+  id: number;
+  /** The observation's profile-local "HH:MM", off `started_at`, which is stored local. */
+  hhmm: string;
+}
+
+const rowsStmt = hoistedStatement(
+  `SELECT id, date, value, substr(started_at, 12, 5) AS hhmm
+     FROM metric_samples
+    WHERE profile_id = ? AND metric = ? AND date >= ? AND date <= ?
+    ORDER BY date DESC, started_at DESC, id DESC
+    LIMIT ?`
+);
+
+/**
+ * The record's readings, newest first and bounded — the `/history` shape (#4433).
+ *
+ * Separate from `getBristolReadings` above rather than a widening of it: that one
+ * answers the PANEL's question (oldest first, whole window, no row identity) and the
+ * panel builder is deliberately unable to name a row. This one carries the address a
+ * correction and a delete need, which is the difference the two callers turn on.
+ */
+export function getBristolRows(
+  profileId: number,
+  from: string,
+  to: string,
+  limit: number
+): BristolRow[] {
+  const rows = rowsStmt.all(
+    profileId,
+    BRISTOL_STOOL_METRIC,
+    from,
+    to,
+    limit
+  ) as { id: number; date: string; value: number; hhmm: string }[];
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    type: r.value,
+    hhmm: r.hhmm,
+  }));
+}

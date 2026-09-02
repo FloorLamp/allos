@@ -30,6 +30,7 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
 import SubstanceForm from "@/components/substances/SubstanceForm";
 import SymptomForm from "@/components/illness/SymptomForm";
+import StoolForm from "@/components/stool/StoolForm";
 import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import { FOOD_SLOTS } from "@/lib/food-slot";
@@ -85,6 +86,7 @@ const KIND_LABEL = {
   substance: "Log a use",
   body: "Log a reading",
   symptom: "Log a symptom",
+  stool: "Log a movement",
 } as const;
 
 export type HistoryAddKind = keyof typeof KIND_LABEL;
@@ -487,6 +489,23 @@ export default function HistoryAddDoor({
           <SymptomForm
             symptoms={vocabulary.symptoms}
             date={date}
+            onSaved={() => {
+              close();
+              router.refresh();
+            }}
+            onCancel={close}
+          />
+        );
+      case "stool":
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2), and the door stool never
+        // had: the quick sheet's tap stamps today, so before this a movement remembered
+        // an hour later on the way home could be logged and a movement remembered the
+        // NEXT day could not be logged at all. The domain's form is that way, with the
+        // found day in hand.
+        return (
+          <StoolForm
+            date={date}
+            maxDate={maxDate}
             onSaved={() => {
               close();
               router.refresh();

@@ -112,6 +112,11 @@ export interface AdherencePattern {
   detail: string;
   // The dose the pattern is about — for the deep link + the re-key.
   doseId: number;
+  // How badly the flagged slice slips: the fraction of its applicable days that were
+  // missed (the worst weekday's rate, or the weekend's). Kept as DATA because the
+  // family's cap truncates on it (#4069 — worst adherence first), and because a rate
+  // is the one thing the two kinds can be compared on.
+  missRate: number;
 }
 
 // The per-dose slice the detectors read: a scheduled dose's identity, its bucket
@@ -266,6 +271,7 @@ export function detectWeekdayMissPattern(
       `— ${miss[bestWd]} of the last ${occ[bestWd]}. ` +
       `${moveSuggestion(input.bucket, input.suppressMoveSuggestion ?? false)}`,
     doseId: input.doseId,
+    missRate: bestRate,
   };
 }
 
@@ -320,6 +326,7 @@ export function detectWeekendAsymmetry(
       `— missed ${wePct}% of weekend days versus ${wdPct}% on weekdays. A ` +
       `weekend-specific reminder might help.`,
     doseId: input.doseId,
+    missRate: weRate,
   };
 }
 
@@ -338,9 +345,11 @@ export function detectDoseAdherencePatterns(
   return weekend ? [weekend] : [];
 }
 
-// Every adherence-pattern finding across a profile's scheduled doses, deterministic
-// (by item name, then dose id). The caller applies the shared findings-bus
-// suppression filter.
+// Every adherence-pattern finding across a profile's scheduled doses, WORST
+// ADHERENCE FIRST (#4069): the family's cap truncates on this order, and the dose
+// someone misses most is the one worth naming — item name was never a relevance
+// signal. Ties keep the pre-ruling stable order (item name, then dose id), so
+// determinism survives. The caller applies the shared findings-bus suppression filter.
 export function detectAdherencePatterns(
   inputs: readonly DoseAdherenceInput[]
 ): AdherencePattern[] {
@@ -349,6 +358,11 @@ export function detectAdherencePatterns(
     for (const pat of detectDoseAdherencePatterns(input))
       out.push({ pat, name: input.itemName, doseId: input.doseId });
   return out
-    .sort((a, b) => a.name.localeCompare(b.name) || a.doseId - b.doseId)
+    .sort(
+      (a, b) =>
+        b.pat.missRate - a.pat.missRate ||
+        a.name.localeCompare(b.name) ||
+        a.doseId - b.doseId
+    )
     .map((x) => x.pat);
 }

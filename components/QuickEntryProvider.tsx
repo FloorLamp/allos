@@ -47,7 +47,7 @@ const QuickCyclePanel = dynamic(() => import("./quick-entry/QuickCyclePanel"));
 const MoodForm = dynamic(() => import("./mood/MoodForm"));
 // Same rule, fifth body (#2785): the stool picker drags in the shared ledger hook,
 // the seven inline glyphs and the stool action's client reference; loaded on open.
-const QuickStoolForm = dynamic(() => import("./quick-entry/QuickStoolForm"));
+const StoolTypeControl = dynamic(() => import("./stool/StoolTypeControl"));
 // Same rule, sixth body (#3327): the substance list drags in the shared ledger hook
 // and the substance action's client reference; loaded on open.
 const QuickSubstanceList = dynamic(
@@ -375,7 +375,9 @@ function QuickEntryBody({
       // single "saved" moment — several movements a day is ordinary and a mis-tap is
       // corrected by tapping again. The tap revalidates behind the sheet, so "stay
       // where you were" still holds.
-      return <QuickStoolForm todayCount={data.todayCount} today={data.today} />;
+      return (
+        <StoolTypeControl todayCount={data.todayCount} today={data.today} />
+      );
     case "substance":
       // No `onSaved`: like the food bar and the practice list, substance logging has
       // no single "saved" moment — several uses in an evening is ordinary. The tap

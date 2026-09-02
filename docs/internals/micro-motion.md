@@ -167,7 +167,7 @@ smuggle the row's travel out of the band too, and the test fails that.
 - `components/RollingNumber.tsx` — renders authoritative digits immediately; its one
   `requestAnimationFrame` loop only retires the bounded scale-pulse receipt.
 - `app/(app)/nutrition/FoodLogBar.tsx` — serving-chip settle and serving-count pulse.
-- `components/quick-entry/QuickStoolForm.tsx` — type-chip settle and today's-count pulse.
+- `components/stool/StoolTypeControl.tsx` — type-chip settle and today's-count pulse.
 - `components/JumpRailScrubber.tsx` — the jump rail's bubble, beating once per
   month boundary a drag crosses.
 - `components/dashboard/NowCards.tsx` — a witnessed reading promoted into Now.

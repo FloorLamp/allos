@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import BristolStoolIcon from "@/components/BristolStoolIcon";
-import { useToast } from "@/components/Toast";
-import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
-import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import { useWritePipeline } from "@/components/useWritePipeline";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { BRISTOL_STOOL_TYPES } from "@/lib/bristol-stool";
 import { statedHhmm } from "@/lib/stated-time";
@@ -13,13 +11,13 @@ import { logStoolForm } from "@/app/(app)/stool-actions";
 import RollingNumber from "@/components/RollingNumber";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { microMotionPlan } from "@/lib/micro-motion";
-import {
-  OFFLINE_CAPTURE_REFUSED_MESSAGE,
-  shouldQueueOffline,
-} from "@/lib/offline/queue";
 
-// The quick-entry overlay's STOOL form (issue #2785): the Bristol Stool Form Scale as
-// seven one-tap buttons.
+// THE STOOL DOMAIN'S ROW CONTROL (#4424 ruling 7), named by
+// `LOG_MANIFEST.stool.pieces.rowControl`: the Bristol Stool Form Scale as seven one-tap
+// buttons over the day's running count. As `QuickStoolForm` it hand-rolled the commit
+// dance — ledger wiring, the offline decision, the enqueue, the refused-capture
+// sentence, the toast. `useWritePipeline` owns all of that now (#3276); what is left is
+// what this domain's tap MEANS.
 //
 // WHY SEVEN BUTTONS AND NOT A SLIDER OR A NUMBER FIELD. The scale is CATEGORICAL-
 // ORDINAL: the types are ordered, but the distance between them is not a quantity, and
@@ -28,10 +26,9 @@ import {
 // a self-reported type comparable week to week — nobody remembers what "type 5" means,
 // they recognize it.
 //
-// The picker is therefore the ONLY entry surface, and that is the guard against a 0 or
-// an 8 that matters most: the number is never typed. `parseBristolType` re-asks in the
-// action and again in the write core for a crafted post, so the vocabulary is checked
-// on all three paths and by the same question.
+// The number is therefore never TYPED here, which is the guard against a 0 or an 8 that
+// matters most; `parseBristolType` re-asks in the action and again in the write core
+// for a crafted post.
 //
 // EACH BUTTON CARRIES THE SCALE'S OWN DESCRIPTION as its accessible name, so a screen
 // reader hears "Type 3, like a sausage but with cracks on the surface" rather than the
@@ -43,7 +40,7 @@ import {
 // informed. NO VERDICT — the count is a count, and nothing here says a type is good or
 // bad (#2785 ships a recording surface; a finding is a later decision under the
 // findings doctrine).
-export default function QuickStoolForm({
+export default function StoolTypeControl({
   todayCount,
   today,
 }: {
@@ -52,12 +49,11 @@ export default function QuickStoolForm({
   // The acting profile's today (YYYY-MM-DD) — the day the count counts and the day
   // the action files a tap under, so the "happened earlier" statement is anchored on
   // the SERVER's day rather than on a browser that may have crossed midnight.
+  // `TAP_REACH` files this as a `today` tap; a BACKFILL states its day on `StoolForm`.
   today: string;
 }) {
-  const toast = useToast();
-  const { enqueue } = useOfflineQueue();
   const tz = useTimezone();
-  const ledger = useOptimisticLedger<number>("stool-form");
+  const pipeline = useWritePipeline("stool-form");
   const [count, setCount] = useState(todayCount);
   const reducedMotion = usePrefersReducedMotion();
   const settlePlan = microMotionPlan("settle", reducedMotion);
@@ -86,8 +82,8 @@ export default function QuickStoolForm({
       setSettlingType(null);
     }, settlePlan.ms);
   }
-  // Follow the server whenever it disagrees — a reading can be removed elsewhere, and
-  // a local count frozen at mount would keep claiming a day that no longer holds it.
+  // Follow the server whenever it disagrees — a reading can be removed elsewhere (the
+  // record's ⋯ now does), and a count frozen at mount would claim a day that moved.
   const [serverCount, setServerCount] = useState(todayCount);
   if (serverCount !== todayCount) {
     setServerCount(todayCount);
@@ -108,48 +104,34 @@ export default function QuickStoolForm({
 
   async function tap(type: number) {
     // The statement THIS tap consumes, read once — both as the wall time it posts and
-    // as the instant the settle below compares against.
+    // as the value the spend below compares against.
     const consumed = when.statedAt;
     const stated = statedHhmm(consumed, tz) || null;
     const spendStatement = () =>
       setWhen((prev) =>
         prev.statedAt === consumed ? { date: today, statedAt: null } : prev
       );
-    await ledger.tap({
+    // OPTIMISTIC, THEN THE SERVER'S OWN TOTAL. The pipeline settles the ledger and says
+    // the sentence; the COUNT is this surface's state, committed here as
+    // `DoseStatusControl` commits its own override.
+    const before = count;
+    let landed: number | null = null;
+    setCount(before + 1);
+    const result = await pipeline.run({
       key: String(type),
-      from: count,
-      optimistic: count + 1,
-      commit: setCount,
-      write: () => {
-        const fd = new FormData();
-        fd.set("type", String(type));
-        // ONLY when a time was actually stated. The field's ABSENCE is what tells
-        // the action to leave the instant to the clock seam, so an untouched sheet
-        // posts precisely the body it posted before (#3273's byte-identity rule).
-        if (stated) fd.set("at", stated);
-        return logStoolForm(fd);
-      },
+      // ONLY when a time was actually stated, and never a day: the ABSENCE of each
+      // field leaves the instant to the clock seam and the day to the action's `today`,
+      // so an untouched sheet posts precisely the body it always posted (#3273).
+      fields: { type: String(type), ...(stated ? { at: stated } : {}) },
+      action: logStoolForm,
       settle: (res) => {
-        if (!res.ok) {
-          toast(res.error, { tone: "error" });
-          return { kind: "rollback" };
-        }
+        if (!res.ok)
+          return {
+            wrote: false,
+            announce: { message: res.error, tone: "error", undo: null },
+          };
+        landed = res.dayCount;
         settle(type);
-        // WHAT LANDED, INCLUDING WHAT DID NOT (#4425). The stated time is judged at
-        // the write boundary now, and a time it refuses costs the statement rather
-        // than the observation — so the toast has to say the reading is filed at the
-        // moment of the tap instead of the minute typed. The sentence is this
-        // surface's own: the user TYPED the time here, so the shared
-        // "your device's clock is ahead" phrasing would diagnose the wrong machine.
-        toast(
-          res.statedTimeRefused === "future"
-            ? `Logged type ${res.type} now — ${stated} hasn't happened yet.`
-            : res.statedTimeRefused
-              ? `Logged type ${res.type} now — ${stated} isn't a time on this day.`
-              : stated
-                ? `Logged type ${res.type} at ${stated}`
-                : `Logged type ${res.type}`
-        );
         // A STATEMENT IS SPENT BY THE TAP IT ANSWERS. The key is the instant, so a
         // second tap under a surviving statement would restate the same minute — and
         // restating a minute CORRECTS that reading rather than adding one (the write
@@ -165,22 +147,43 @@ export default function QuickStoolForm({
         // wrote instead of adding a reading. A functional update comparing against what
         // was consumed leaves anything newer alone.
         spendStatement();
-        return { kind: "adopt", value: res.todayCount };
+        return {
+          wrote: true,
+          // WHAT LANDED, INCLUDING WHAT DID NOT (#4425). The stated time is judged at
+          // the write boundary, and a time it refuses costs the statement rather than
+          // the observation — so the sentence says the reading is filed at the moment
+          // of the tap instead of the minute typed. The phrasing is this surface's own:
+          // the user TYPED the time here, so the shared "your device's clock is ahead"
+          // note would diagnose the wrong machine (lib/stated-time.ts says so). NO UNDO,
+          // declared rather than forgotten: the record's ⋯ is where a movement is
+          // removed, and the count beside the buttons already moved.
+          announce: {
+            message:
+              res.statedTimeRefused === "future"
+                ? `Logged type ${res.type} now — ${stated} hasn't happened yet.`
+                : res.statedTimeRefused
+                  ? `Logged type ${res.type} now — ${stated} isn't a time on this day.`
+                  : stated
+                    ? `Logged type ${res.type} at ${stated}`
+                    : `Logged type ${res.type}`,
+            undo: null,
+          },
+        };
       },
-      onError: async (err) => {
-        if (!shouldQueueOffline(navigator.onLine, err)) return undefined;
-        const kept =
-          (await enqueue("stool", today, { type, at: stated })) === "kept";
-        if (!kept) {
-          toast(OFFLINE_CAPTURE_REFUSED_MESSAGE, { tone: "error" });
-          return undefined;
-        }
-        settle(type);
-        spendStatement();
-        toast("Saved offline — will sync when you reconnect.");
-        return { kind: "keep" };
-      },
+      failureMessage: "Couldn't log that. Try again.",
+      offline: () => ({
+        kind: "capture",
+        flow: "stool",
+        date: today,
+        payload: { type, at: stated },
+        keptMessage: "Saved offline — will sync when you reconnect.",
+      }),
     });
+    // The server's total is authoritative; a capture has no revalidate behind it, so
+    // its +1 stands in until replay; nothing written rolls back.
+    if (result === "wrote") setCount(landed ?? before + 1);
+    else if (result === "nothing") setCount(before);
+    else spendStatement();
   }
 
   return (
@@ -224,9 +227,10 @@ export default function QuickStoolForm({
       </div>
       {/* The collapsed WHEN (#3273). A tap still writes the tap instant — the one-tap
           ledger is the point — and this is the escape hatch for the log that arrives
-          late, which for a bowel movement is the ordinary case (#2785's grain
-          argument). Absolute local times only, via the shared control: no "-2h" chip
-          that means something different every minute the sheet sits open. */}
+          late, the ordinary case for a bowel movement (#2785's grain argument).
+          Absolute local times only, via the shared control: no "-2h" chip that means
+          something different every minute the sheet sits open. A day EARLIER than today
+          is the record's door, not this tap's (`TAP_REACH`). */}
       <div className="mt-3">
         <button
           type="button"
