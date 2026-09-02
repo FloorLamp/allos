@@ -194,6 +194,7 @@ export default function MedicationsTodayPanel({
             compactActions
             readOnly={!canWrite}
             profileId={profileId}
+            tz={timezone}
           />
         }
         variant="embedded"

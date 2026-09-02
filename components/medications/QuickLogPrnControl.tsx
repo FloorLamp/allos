@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
-import WhenControl, { type WhenValue } from "@/components/WhenControl";
+import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import {
@@ -19,8 +18,6 @@ import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
-import { doseLogDays } from "@/lib/dose-log-window";
-import { statedHhmm } from "@/lib/stated-time";
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
 // A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
@@ -33,20 +30,29 @@ import { statedHhmm } from "@/lib/stated-time";
 // (the ledger allows multiples/day), and the action's own revalidate brings back the
 // updated "N today · last …" subtitle with its response.
 //
-// THE STATEMENT STATES ITS DAY (#4691). It used to hand the WhenControl
-// `minDate === maxDate === today`, which renders the day as static text — so the
-// illness cockpit could show a Yesterday toggle above a row that could only ever
-// write today, and last night's dose had no path at all short of the med detail
-// page's backfill door. The statement now opens the day picker over `doseLogDays`,
-// the SHIPPED past half of the dose tap's declared reach, so the days it offers are
-// exactly the days `logAdministration`'s own guard accepts — a switcher can neither
-// offer a day the core refuses nor withhold one it would take.
+// THE DAY COMES FROM THE CARD, THE STATEMENT STATES THE TIME (#4691, converged by
+// #4426 under #4738's ruling 3). The row used to hand the WhenControl `minDate ===
+// maxDate === today`, which renders the day as static text — so the illness cockpit
+// could show a Yesterday toggle above a row that could only ever write today, and last
+// night's dose had no path at all short of the med detail page's backfill door. #4691
+// answered that with a day RANGE inside the statement, because the cockpit then had no
+// day of its own; the Today/Yesterday lift gave it one (`CockpitDayContext`), so the
+// day is the SURFACE's again and this is the shared statement like every other mount.
+//
+// WHAT NARROWED, SAID PLAINLY: the reach is the card's two days rather than
+// `doseLogDays`' ±2, and outside a card it is that surface's single day. The owner
+// accepted that narrowing — a third day is the med detail page's backfill door, which
+// is the deep door built for it.
 //
 // A PRN dose is ADDITIVE and declares no expected interval (#2007): several
 // administrations a day are legitimate and #798's redose line already advises without
 // blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
 // post-success cooldown, keyed per offset so "taken now" and a retro entry are separate
 // writes — which absorbs the queued second click on the same button.
+// The action button's words and its accessible name, and the statement's label — one
+// string, because they name the same affordance.
+const EARLIER_DOSE = "Earlier dose";
+
 export default function QuickLogPrnControl({
   itemId,
   name,
@@ -95,9 +101,7 @@ export default function QuickLogPrnControl({
   // page's card, on the dashboard's own 'Log a dose' card and inside the illness
   // cockpit — three regions, one action, and only the region knows which.
   const stampLoggedVia = useLoggedViaStamp();
-  const [open, setOpen] = useState(false);
   const todayStr = dateStrInTz(tz);
-  const days = doseLogDays(todayStr);
   // THE CARD'S DAY (#4691), when this row is inside one. The illness cockpit's toggle
   // is the day context for every control beneath it, so flipping to Yesterday opens
   // this statement on yesterday — the Meds row and the Symptoms section can no longer
@@ -106,25 +110,28 @@ export default function QuickLogPrnControl({
   // on today.
   const card = useCockpitDay();
   const cardDay = card?.activeDate ?? todayStr;
-  // The earlier-dose pair (#2236): the day starts on the day this row displays and
-  // the time starts UNSTATED — the control never defaults it to now.
-  const [when, setWhen] = useState<WhenValue>(() => ({
-    date: cardDay,
-    statedAt: null,
-  }));
-  // The card's day is server state; when it changes under an OPEN statement, the pair
-  // moves with it rather than leaving a time stated on the day the user just left.
-  const [seenCardDay, setSeenCardDay] = useState(cardDay);
-  if (seenCardDay !== cardDay) {
-    setSeenCardDay(cardDay);
-    setWhen({ date: cardDay, statedAt: null });
-  }
   const toast = useToast();
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
+  // The shared collapsed statement (#4426). Its four rules — no field until one is
+  // stated, only what was on screen, a day change DROPS the statement, and a statement
+  // is spent by the tap it answers — are stated once in `useTimeStatement` and were
+  // four private spellings before. This row draws the two halves in two places, so it
+  // renders `reveal` in its footer and opens it from the action button below.
+  const statement = useTimeStatement({
+    day: cardDay,
+    tz,
+    label: EARLIER_DOSE,
+    timeLabel: "Specific time",
+    testId: "prn-log-when",
+    disabled: busy,
+  });
 
   async function log(offset: string, customTime?: string) {
+    // What THIS tap spends, read once — the same one-expression discipline the shared
+    // statement's rule 2 keeps for what it posts.
+    const consumed = customTime ?? null;
     await ledger.tap({
       key: offset,
       write: () => {
@@ -133,7 +140,9 @@ export default function QuickLogPrnControl({
         fd.set("offset", offset);
         if (customTime) {
           fd.set("time", customTime);
-          fd.set("date", when.date);
+          // The card's day, not the statement's: the day is the surface's and the
+          // statement is the time half (#4738 ruling 1).
+          fd.set("date", cardDay);
         }
         if (profileId != null) fd.set("profileId", String(profileId));
         return logMedicationAdministration(fd);
@@ -151,8 +160,14 @@ export default function QuickLogPrnControl({
               : `${name} already has a dose logged at about that time.`
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
-        setOpen(false);
-        setWhen({ date: cardDay, statedAt: null });
+        // Rule 4, and `consumed` is why this is not the unconditional reset it used to
+        // be: a "Taken now" tap consumes NO statement, so one made beside it survives
+        // the tap that did not pay for it — and a statement made while this write was
+        // in flight survives its settle. The reveal closes on the SAME event, because a
+        // spent statement is the only reason there was to close it; leaving it open on
+        // a "Taken now" keeps a live statement on screen instead of hiding one.
+        if (consumed) statement.setOpen(false);
+        statement.spend(consumed);
         return { kind: "keep" };
       },
       onError: () => {
@@ -179,16 +194,16 @@ export default function QuickLogPrnControl({
       </button>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => statement.setOpen(!statement.open)}
         disabled={busy}
         className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
-        aria-expanded={open}
-        aria-label="Earlier dose"
+        aria-expanded={statement.open}
+        aria-label={EARLIER_DOSE}
         data-testid="prn-log-more"
       >
         <IconClock className="h-4 w-4" stroke={2} />
         <span className={compactActions ? "sr-only" : undefined}>
-          Earlier dose
+          {EARLIER_DOSE}
         </span>
       </button>
     </>
@@ -213,29 +228,17 @@ export default function QuickLogPrnControl({
     </div>
   );
 
-  // The saved value is the pair's local wall time, resolved back to an instant
+  // The saved value is the statement's local wall time, resolved back to an instant
   // SERVER-side against the day it was stated on (the same reason the food bar submits
   // a choice rather than a client timestamp).
-  const savedHhmm = statedHhmm(when.statedAt, tz);
-  const options = open ? (
+  const savedHhmm = statement.at;
+  const options = statement.open ? (
     <div data-testid="prn-log-options">
       <p className="mb-2 text-xs font-medium text-slate-600 dark:text-slate-300">
         When was it taken?
       </p>
       <div className="flex flex-wrap items-end gap-2">
-        <WhenControl
-          mode="state"
-          grain="minute"
-          value={when}
-          onChange={setWhen}
-          tz={tz}
-          timeRequired
-          minDate={days[days.length - 1]}
-          maxDate={todayStr}
-          timeLabel="Specific time"
-          disabled={busy}
-          testId="prn-log-when"
-        />
+        {statement.reveal}
         <button
           type="button"
           onClick={() => savedHhmm && log("custom", savedHhmm)}

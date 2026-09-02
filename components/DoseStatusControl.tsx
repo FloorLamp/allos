@@ -8,6 +8,7 @@ import {
   setDoseStatus,
   type DoseStatusResult,
 } from "@/app/(app)/nutrition/intake-actions";
+import { type TimeStatement } from "@/components/TimeStatement";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
 import { localDate } from "@/lib/offline/queue";
@@ -71,6 +72,7 @@ export default function DoseStatusControl({
   itemName,
   onSettled,
   rowLeaves = false,
+  statement,
 }: {
   doseId: number;
   taken: boolean;
@@ -104,6 +106,17 @@ export default function DoseStatusControl({
    * drops a resolved row, unmounting the receipt, so there the outcome is spoken.
    */
   rowLeaves?: boolean;
+  /**
+   * THE TIME THIS CONFIRM STATES (#4426). The scheduled dose was the one domain with
+   * no way to say "I took it at 07:00" at the tap — only the backfill form or a
+   * Telegram chip, whose restamp has no web caller at all — so a web-only profile
+   * could not correct a dose instant inside the freshness window.
+   *
+   * The HOST owns where the statement renders, because this control is a two-button
+   * row that several layouts measure; it owns only what the tap WRITES. Absent (every
+   * other mount) the post is byte-identical.
+   */
+  statement?: TimeStatement;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -168,6 +181,9 @@ export default function DoseStatusControl({
   }
 
   async function apply(target: "taken" | "skipped" | "clear") {
+    // The statement THIS tap consumes, read once. Only a `taken` asserts an
+    // administration, so a skip or a clear neither posts one nor spends one.
+    const stated = target === "taken" ? (statement?.at ?? null) : null;
     const result = await pipeline.run({
       // The double-tap gate is keyed by the TRANSITION, not by the button (see the
       // header note): the second tap of a fat-finger double re-sends `clear → taken`
@@ -183,6 +199,10 @@ export default function DoseStatusControl({
         // #858/#1373: target the row's own profile so a caregiver confirms a household
         // member's dose from its board; absent on the acting board (byte-identical).
         ...(profileId != null ? { profileId: String(profileId) } : {}),
+        // A WALL TIME, resolved against the row's day server-side (#4426). Absent
+        // unless one was stated on screen, so an untouched confirm posts what it
+        // always posted.
+        ...(stated ? { at: stated } : {}),
       },
       action: setDoseStatus,
       // "refused" is the write core answering honestly (#2039): the dose was retired by
@@ -245,8 +265,13 @@ export default function DoseStatusControl({
           // row becomes deliberately untimed.
           payload: {
             doseId,
+            // A stated administration outranks the tap instant here for the same
+            // reason it does online: replay validates it against the row's own day and
+            // falls back when it cannot (`resolveQueuedTakenAt`).
             ...(flow === "dose"
-              ? { clientTakenAt: tappedAt.toISOString() }
+              ? {
+                  clientTakenAt: statement?.instant ?? tappedAt.toISOString(),
+                }
               : {}),
           },
           keptMessage:
@@ -263,6 +288,9 @@ export default function DoseStatusControl({
     // A server write is authoritative, so the optimistic override is dropped and the
     // props take over; a capture has no revalidate behind it, so the override stands in
     // for the queued write until replay.
+    // Rule 4: the statement is spent by the tap it answered, whether that tap reached
+    // the server or was captured for replay — both wrote the administration it stated.
+    if (stated) statement?.spend(stated);
     setOptimistic(result === "wrote" ? null : (target as "taken" | "skipped"));
     // The one place that knows a tap both aimed at `taken` AND landed.
     if (target === "taken") settleConfirm();
