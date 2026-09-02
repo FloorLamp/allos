@@ -261,6 +261,12 @@ interface DoseResolveOptions {
   bundleId?: DoseBundleId;
 }
 
+// WHAT A CONFIRM LETS ITS CALLER STATE (#4742), derived from the one options type
+// above rather than restated beside it, so a field added there reaches this door too.
+// What the Omit takes away is what the door itself decides: `markDoseTaken` IS the
+// resolve-only intent, and it takes the item id as its own argument.
+type DoseConfirmOptions = Omit<DoseResolveOptions, "resolveOnly" | "itemId">;
+
 function applyDoseStatusCore(
   profileId: number,
   doseId: number,
@@ -455,24 +461,23 @@ export function markDoseTaken(
   itemId: number | null,
   date: string,
   // Which surface this tap came from (#3087). Required and positional, BEFORE the
-  // optional tail, so omitting it is a compile error rather than an undefined that
+  // named tail, so omitting it is a compile error rather than an undefined that
   // reads as "unknown surface".
   loggedVia: LoggedVia,
-  takenAt?: Date | null,
-  // Which message's tap this is (#2264) — Telegram reminder handlers only; see
-  // DoseResolveOptions.notifyMessageId.
-  notifyMessageId?: number | null,
-  // The composed action this confirm is one row of (#4328) — see the same field on
-  // DoseResolveOptions. Absent for every ordinary single tap.
-  bundleId?: DoseBundleId
+  // WHAT ELSE THIS CONFIRM STATES (#4742) — every field documented once, on
+  // `DoseResolveOptions`. These were three optional trailing positionals, and the only
+  // thing standing between a swap of the last two and a misfiled row was the BRANDED
+  // bundle type: a type doing a signature's job. A named field cannot land in the
+  // wrong slot, and the next addition is a field rather than a fourth position.
+  opts: DoseConfirmOptions = {}
 ): DoseTakenOutcome {
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "taken", loggedVia, {
+      ...opts,
+      // The intent and the id are this function's, not the caller's — which is why
+      // they are the two fields `DoseConfirmOptions` takes away.
       resolveOnly: true,
       itemId,
-      takenAt,
-      notifyMessageId,
-      bundleId,
     })
   );
 }

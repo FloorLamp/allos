@@ -1455,9 +1455,11 @@ export async function resolveDayDoses(
               dose.itemId,
               date,
               loggedVia,
-              date === localToday ? undefined : null,
-              null,
-              bundleId
+              {
+                takenAt: date === localToday ? undefined : null,
+                notifyMessageId: null,
+                bundleId,
+              }
             )
           : markDoseSkipped(
               profile.id,

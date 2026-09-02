@@ -27,6 +27,7 @@ import {
   markDoseSkipped,
   setDoseStatusCore,
 } from "@/lib/queries";
+import { newDoseBundle } from "@/lib/dose-bundle";
 
 let seq = 0;
 
@@ -318,5 +319,77 @@ describe("supply crossings read the ledger row's own supply_adjusted (#2039)", (
       "cleared"
     );
     expect(onHand(itemId)).toBeNull();
+  });
+});
+
+// THE NAMED TAIL (#4742). `markDoseTaken` carried three optional trailing positionals,
+// and the only thing that made a SWAP between the last two a compile error rather than
+// a misfiled row was the branded bundle type — a type doing a signature's job. The tail
+// is named now, and this pins the half a rename or a mis-spread would silently drop:
+// each field still reaching its own column, and an unstated one still leaving it empty.
+describe("the confirm's named tail reaches its own columns (#4742)", () => {
+  function tail(doseId: number, date: string) {
+    return db
+      .prepare(
+        `SELECT occurred_at, notify_message_id, bundle_id
+           FROM intake_item_logs WHERE dose_id = ? AND date = ?`
+      )
+      .get(doseId, date) as {
+      occurred_at: string | null;
+      notify_message_id: number | null;
+      bundle_id: string | null;
+    };
+  }
+
+  it("carries the instant, the message and the bundle, one field each", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
+    const date = today(profileId);
+    const messageId = Number(
+      db
+        .prepare(
+          `INSERT INTO notify_messages
+             (profile_id, chat_id, message_id, kind, date, keyboard, sent_at)
+           VALUES (?, '5551204', 7, 'dose', ?, '[]', datetime('now'))`
+        )
+        .run(profileId, date).lastInsertRowid
+    );
+    const bundle = newDoseBundle();
+    const bare = seedDose(itemId, "1 cap");
+    const untimed = seedDose(itemId, "1 cap");
+    const attributed = seedDose(itemId, "1 cap");
+    const composed = seedDose(itemId, "1 cap");
+
+    expect(markDoseTaken(profileId, bare, null, date, "page")).toBe("logged");
+    // `takenAt: null` is the discriminating case for the instant: a DROPPED field
+    // stamps the tap, so only a field that actually arrived can leave this empty.
+    markDoseTaken(profileId, untimed, null, date, "page", { takenAt: null });
+    markDoseTaken(profileId, attributed, null, date, "page", {
+      notifyMessageId: messageId,
+    });
+    markDoseTaken(profileId, composed, null, date, "page", {
+      bundleId: bundle,
+    });
+
+    expect(tail(bare, date)).toEqual({
+      occurred_at: expect.any(String),
+      notify_message_id: null,
+      bundle_id: null,
+    });
+    expect(tail(untimed, date)).toEqual({
+      occurred_at: null,
+      notify_message_id: null,
+      bundle_id: null,
+    });
+    expect(tail(attributed, date)).toEqual({
+      occurred_at: expect.any(String),
+      notify_message_id: messageId,
+      bundle_id: null,
+    });
+    expect(tail(composed, date)).toEqual({
+      occurred_at: expect.any(String),
+      notify_message_id: null,
+      bundle_id: bundle,
+    });
   });
 });
