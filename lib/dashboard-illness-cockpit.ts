@@ -9,13 +9,15 @@ import type { IntakeCatalogOptions } from "./queries/intake-options";
 import {
   getCustomSymptomNames,
   getIntakeCatalogOptions,
-  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getSymptomLogOrder,
   getEpisodeMedReconciliations,
 } from "./queries";
 import type { PrnMedForQuickLog } from "./queries/intake/adherence";
-import type { PediatricFormContext } from "./prn-dosing";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "./intake-form-context";
 import { schoolReturnStatusesFor } from "./school-return-data";
 import { schoolReturnCompactLabel } from "./school-return";
 import {
@@ -31,7 +33,9 @@ export interface DashboardIllnessControls {
   medReconciliation: EpisodeMedSuggestion[];
   prnMeds: PrnMedForQuickLog[];
   intakeOptions: IntakeCatalogOptions;
-  pediatric: PediatricFormContext;
+  // The whole subject context the cockpit's add-medication fold feeds its form
+  // (#4609) — this profile's, not the viewer's.
+  intakeForm: IntakeFormContext;
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
   initialNotes: Record<string, string>;
@@ -109,7 +113,7 @@ export function gatherDashboardIllnessCockpits(
     sharedControls = {
       prnMeds: getPrnMedicationsForQuickLog(profileId),
       intakeOptions: getIntakeCatalogOptions(profileId),
-      pediatric: getPediatricFormContext(profileId, options.weightUnit),
+      intakeForm: loadIntakeFormContext(profileId, options.weightUnit),
       customNames: getCustomSymptomNames(profileId),
       rankedKeys: getSymptomLogOrder(profileId),
     };

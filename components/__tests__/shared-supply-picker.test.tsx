@@ -161,7 +161,6 @@ async function saveBottle(kind: "medication" | "supplement", name: string) {
       <MedicationAddWorkspace
         {...common}
         subtitle=""
-        age={null}
         todayStr="2026-09-01"
         conditions={[]}
       />
