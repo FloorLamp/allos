@@ -5,6 +5,7 @@ import type {
   AdherenceCalendarState,
 } from "@/lib/adherence-calendar";
 import VisualizationDetails from "@/components/VisualizationDetails";
+import { StateLegend, stateCellClass } from "@/components/StateCells";
 
 // The month adherence calendar on a medication's detail page (issue #852 item 5): the
 // 14-day strip's own vocabulary (taken / partial / skipped / missed / not-due) at month
@@ -56,7 +57,7 @@ function Cell({ cell }: { cell: AdherenceCalendarCell }) {
     <div
       data-testid="adherence-cal-day"
       data-state={cell.state}
-      className={`flex aspect-square items-center justify-center rounded-sm text-xs font-medium ${STATE_STYLE[cell.state]}`}
+      className={stateCellClass("tile", STATE_STYLE[cell.state])}
     >
       {dayNumber(cell.date)}
     </div>
@@ -111,28 +112,22 @@ export default function AdherenceCalendar({
           )}
         />
       </div>
-      <ul
-        className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-500 lg:mt-5 lg:w-32 lg:flex-none lg:grid-cols-1 lg:border-l lg:border-black/5 lg:pl-3 dark:text-slate-400 dark:lg:border-white/5"
-        data-testid="adherence-calendar-legend"
-        aria-label="Adherence legend"
-      >
-        {legend.map((s) => (
-          <li key={s} className="flex items-center justify-between gap-4">
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                className={`inline-block h-3 w-3 rounded ${STATE_STYLE[s]} ${
-                  s === "na"
-                    ? "border border-black/15 dark:border-white/15"
-                    : ""
-                }`}
-                aria-hidden="true"
-              />
-              {STATE_LABEL[s]}
-            </span>
-            <span className="tabular-nums">{model.counts[s]}</span>
-          </li>
-        ))}
-      </ul>
+      <StateLegend
+        label="Adherence legend"
+        testId="adherence-calendar-legend"
+        className="lg:mt-5 lg:w-32 lg:flex-none lg:flex-col lg:border-l lg:border-black/5 lg:pl-3 dark:lg:border-white/5"
+        items={legend.map((s) => ({
+          key: s,
+          // `na` paints nothing, so in a key — away from the grid that gives it
+          // context — it needs an outline or there is no swatch to read.
+          tone:
+            s === "na"
+              ? `${STATE_STYLE[s]} border border-black/15 dark:border-white/15`
+              : STATE_STYLE[s],
+          label: STATE_LABEL[s],
+          count: model.counts[s],
+        }))}
+      />
     </div>
   );
 }

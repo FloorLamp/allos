@@ -280,3 +280,37 @@ describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
     ).toEqual([]);
   });
 });
+
+// ── the ramp rule's own blind spot: a KEYED state map (issue #4543) ──────────
+//
+// The ramp rule above matches an ARRAY of same-hue bg-classes. WeeklyHabits'
+// consistency strip painted its five week verdicts from a keyed `Record` of mixed
+// hues instead — met/short/empty/current/na as emerald/amber/slate/brand — which is
+// the same palette decision in the shape the ramp rule deliberately does not match.
+//
+// It is NOT matched by shape here either, and that is the finding rather than a gap:
+// a rule over "keyed object of bg-class strings" matches 23 shipped files of ordinary
+// badge, chip and status styling, so it would ship as a 23-entry allowlist policing
+// nothing. What DOES constitute membership is the import: a surface that paints state
+// cells mounts the shared primitive, and the primitive's tones come from the palette
+// module. So the rule is keyed on that, and it fails on the file that reaches for the
+// primitive while inventing its own colors.
+describe("state-cell surfaces take their tones from the palette (issue #4543)", () => {
+  it("every StateCells/StateLegend mount also imports @/lib/chart-colors", () => {
+    const offenders = tsxFiles()
+      .filter(
+        ({ rel, text }) =>
+          rel !== "components/StateCells.tsx" &&
+          /from "@\/components\/StateCells"/.test(text) &&
+          !/from "@\/lib\/chart-colors"/.test(text)
+      )
+      .map(({ rel }) => rel);
+    expect(
+      offenders,
+      `A state-painted cell or legend swatch takes its \`tone\` from ` +
+        `@/lib/chart-colors — the module that ships each state's class AND its hex, ` +
+        `so lib/__tests__/chart-palette.test.ts can validate what renders. These ` +
+        `files mount the shared primitive with colors from somewhere else:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+});
