@@ -44,6 +44,12 @@ The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 4. Stale triggers from the old account never fire here: re-arm the watch
    and every relay you were owed, from the Ladder's state, not from memory.
 
+Usage limits: a session's `rate_limit_info` says only allowed, warning or
+rejected, never a percentage. Wind down cleanly (`lifecycle.md` §Wind-down,
+both workers, hand-off comment on the Ladder) only when the owner says the
+weekly usage is near 90%. A rejection is not a wind-down: banked branches
+survive it, and the PM resumes both workers after `resetsAt`.
+
 ## The watch loop
 
 Arm a self check-in with `send_later` every 90–120 minutes, and never end a
