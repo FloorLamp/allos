@@ -663,7 +663,10 @@ describe("censusRouteScope", () => {
     // The defect, stated as a row: `/` as a prefix takes everything.
     { spec: "/", kept: ROUTES },
     { spec: "=/", kept: ["/"] },
-    { spec: "/trends", kept: ["/trends", "/trends/metric/weight", "/trendsetter"] },
+    {
+      spec: "/trends",
+      kept: ["/trends", "/trends/metric/weight", "/trendsetter"],
+    },
     { spec: "=/trends", kept: ["/trends"] },
     // Exact and prefix entries compose in one spec.
     { spec: "=/,/trends/metric", kept: ["/", "/trends/metric/weight"] },
