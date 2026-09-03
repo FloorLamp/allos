@@ -25,6 +25,7 @@ import {
   chartGridProps,
   chartLineDot,
   chartMarkMotion,
+  chartOtherSourceDot,
   chartSparklineAxisProps,
   chartSparklineMargin,
   chartSparseDot,
@@ -60,6 +61,8 @@ import {
   loneReading,
   overLimitHoles,
   seriesGapForSeriesKey,
+  sourceSpreadCaption,
+  sourceSpreadCompanions,
   sparseSeriesCaption,
   sparseSeriesVerdict,
   trailingOutageCaption,
@@ -67,6 +70,7 @@ import {
   type DayFillSpec,
   type SeriesHole,
 } from "@/lib/trend-sparkline";
+import type { DaySourceSpread } from "@/lib/metric-sources";
 import { EmptyState } from "@/components/ui";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
@@ -107,7 +111,12 @@ export default function LineChartCard({
   gapFill,
   singleReadingAsChart = false,
 }: {
-  data: { date: string; value: number | null }[];
+  // A day-grain point may carry `sources` (#2653 state 6): which source the `value`
+  // is, and what the OTHER sources that reported the same profile-local day said —
+  // already in this chart's display unit and already NAMED (lib/metric-sources'
+  // `displaySourcePoints`), because a document's name lives in a table this
+  // component cannot read. A caller with no multi-source read omits the field.
+  data: { date: string; value: number | null; sources?: DaySourceSpread }[];
   dataKey?: string;
   label: string;
   color?: string;
@@ -385,6 +394,29 @@ export default function LineChartCard({
   if (data.length === 0) {
     return <EmptyState message="No data yet" />;
   }
+  // The value formatter the tooltip shares between the mean line, the companion
+  // marks and (aggregated charts only) the band's low–high pair — one number shape
+  // per chart.
+  const fmtValue = (n: number) =>
+    groupYTicks ? groupChartValue(n, decimals) : roundChartValue(n, decimals);
+  // TWO SOURCES, ONE DAY (#2653 state 6). The read elected one source per day and
+  // says which it beat; a companion mark is drawn beside the day's own where the
+  // other source would print a different number at THIS chart's precision (the
+  // decision is lib/trend-sparkline's). Gated like every other honesty state — a
+  // dated day-grain series plotted on `value` — and excluded from an AGGREGATED plot
+  // (a bucket mean is not a reading) and from a SPARKLINE (a tile has no room for the
+  // caption that names the grey mark, and an unexplained one is worse than none).
+  const spreads =
+    isoDates && key === "value" && !longRange && !sparkline
+      ? sourceSpreadCompanions(data, fmtValue)
+      : new Map<string, DaySourceSpread>();
+  // One companion COLUMN per simultaneous other source: recharts needs a dataKey per
+  // mark, and a day answered by three devices must not lose the third.
+  const spreadColumns = Math.max(
+    0,
+    ...[...spreads.values()].map((spread) => spread.others.length)
+  );
+  const spreadCaption = spreads.size > 0 ? sourceSpreadCaption(spreads) : null;
   // ONE READING IS A MARKER, NOT A PLOT (#2653 state 1).
   //
   // The Overview tiles have degraded a one-reading series to a dot-on-a-rule
@@ -425,15 +457,23 @@ export default function LineChartCard({
       </div>
     );
   }
-  // The value formatter the tooltip shares between the mean line and (aggregated
-  // charts only) the band's low–high pair — one number shape per chart.
-  const fmtValue = (n: number) =>
-    groupYTicks ? groupChartValue(n, decimals) : roundChartValue(n, decimals);
+  const chartRows =
+    spreadColumns === 0
+      ? runData
+      : runData.map((row) => {
+          const out: Record<string, unknown> = { ...row };
+          const others = spreads.get(String(row.date))?.others ?? [];
+          for (let i = 0; i < spreadColumns; i++) {
+            out[`other${i}`] = others[i]?.value ?? null;
+            out[`other${i}Source`] = others[i]?.source ?? null;
+          }
+          return out;
+        });
   const chart = (
     <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-          data={runData}
+          data={chartRows}
           syncId={syncId}
           syncMethod={syncMethod}
           onMouseMove={(state: MouseHandlerDataParam) =>
@@ -469,7 +509,20 @@ export default function LineChartCard({
             // outage is a thing a reader will do, and the honest answer is a
             // named absence.
             filterNull={false}
-            formatter={(v, name) => {
+            formatter={(v, name, item) => {
+              // A COMPANION MARK (#2653 state 6) carries the OTHER source's number
+              // for this day, labelled with that source's name — "show it exactly
+              // at the conflict". Every other day has no companion, and a null one
+              // is dropped so a plot does not grow a "No data" row per quiet day.
+              if (typeof name === "string" && /^other\d+$/.test(name)) {
+                if (v == null || !Number.isFinite(Number(v))) return null;
+                const row = (item as { payload?: Record<string, unknown> })
+                  .payload;
+                return [
+                  `${fmtValue(Number(v))}${unit}`,
+                  String(row?.[`${name}Source`] ?? ""),
+                ];
+              }
               // The band's [lo, hi] pair renders as one "Range" row; a lone value
               // is the series itself — labelled as an average when aggregated,
               // because a bucket mean is not a reading.
@@ -644,6 +697,24 @@ export default function LineChartCard({
                 connectNulls
               />
             ))}
+          {/* THE SECOND ACCOUNT OF A DAY (#2653 state 6). One strokeless line per
+              companion column, so a day two devices answered shows both numbers
+              instead of the one the election kept. Drawn BEFORE the series' own
+              line so the reading being plotted is never painted over by the one
+              that was not. Static, like every other mark this issue added. */}
+          {Array.from({ length: spreadColumns }, (_, column) => (
+            <Line
+              key={`other-${column}`}
+              type="monotone"
+              dataKey={`other${column}`}
+              stroke="none"
+              dot={chartOtherSourceDot(c)}
+              activeDot={false}
+              legendType="none"
+              {...chartMarkMotion(motion)}
+              connectNulls={false}
+            />
+          ))}
           <Line
             type="monotone"
             dataKey={key}
@@ -692,10 +763,23 @@ export default function LineChartCard({
   // Every caption here is an honesty note ABOUT THE MARK, and a sparkline takes
   // none of them: a tile has no room for a sentence, and its numbers are the
   // caller's.
-  if (sparkline || (!longRange && !sparse && !trailingHole)) return chart;
+  if (sparkline || (!longRange && !sparse && !trailingHole && !spreadCaption))
+    return chart;
   return (
     <div className="min-w-0 max-w-full">
       {chart}
+      {/* WHOSE READINGS THESE ARE (#2653 state 6). The grey marks are the one thing
+          on the plot a reader has no other way to name, so the caption names them —
+          which source is plotted, how many days another also covered, and who — and
+          takes no side: which number is right is not something the chart knows. */}
+      {spreadCaption && (
+        <p
+          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="chart-source-spread-note"
+        >
+          {spreadCaption}
+        </p>
+      )}
       {/* The aggregated chart's honesty caption (#1938): each point is a summary,
           and the plot must say so on the surface, not only in the tooltip. */}
       {longRange && (
