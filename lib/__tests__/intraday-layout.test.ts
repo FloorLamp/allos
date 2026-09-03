@@ -64,6 +64,7 @@ function workout(over: Partial<IntradayModel["blocks"][number]> = {}) {
   return {
     key: "a:1",
     eventId: "a:1",
+    source: "activity" as const,
     anchorId: "timeline-entry-a-1",
     startMinute: 480,
     endMinute: 525,
@@ -76,6 +77,20 @@ function workout(over: Partial<IntradayModel["blocks"][number]> = {}) {
     clippedEnd: false,
     ...over,
   };
+}
+
+/** A practice session's block — same shape, its own row since #4852. */
+function practice(over: Partial<IntradayModel["blocks"][number]> = {}) {
+  return workout({
+    key: "practice:1",
+    eventId: "practice:1",
+    source: "practice",
+    anchorId: "timeline-entry-practice-1",
+    startMinute: 1140,
+    endMinute: 1170,
+    title: "Sauna",
+    ...over,
+  });
 }
 
 const hhmm = (minute: number) =>

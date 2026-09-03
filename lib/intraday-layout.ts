@@ -136,12 +136,18 @@ export interface IntradayGeometry extends IntradayVariantSpec {
   hasHr: boolean;
   hasSleep: boolean;
   hasWorkouts: boolean;
+  /** Whether any practice session drew a block — its own row since #4852. */
+  hasPractice: boolean;
   hasTicks: boolean;
   hrTop: number;
   /** Baseline for the bed/wake time labels, above the sleep band (#1512 A). */
   sleepLabelY: number;
   sleepTop: number;
+  /** The Train row: ACTIVITY blocks only since #4852. */
   workTop: number;
+  /** The Practice row, directly under Train. Both rows are `workH` tall — the
+   *  shape and the colour are the same; only the line differs. */
+  practiceTop: number;
   tickTop: number;
   axisY: number;
   /** The HR value axis, padded so the line never touches the frame. */
@@ -166,7 +172,8 @@ export function intradayGeometry(
   const base = INTRADAY_VARIANTS[variant];
   const hasHr = model.hr != null;
   const hasSleep = model.sleep.length > 0;
-  const hasWorkouts = model.blocks.length > 0;
+  const hasWorkouts = model.blocks.some((b) => b.source === "activity");
+  const hasPractice = model.blocks.some((b) => b.source === "practice");
   const hasTicks = model.ticks.length > 0;
   // The bed/wake labels get their own strip above the band: painting them inside
   // it would sit them on the stage sub-bands, and painting them below would cross
@@ -181,6 +188,8 @@ export function intradayGeometry(
   if (hasSleep) cursor += sleepLabelH + base.sleepH + base.rowGap;
   const workTop = cursor;
   if (hasWorkouts) cursor += base.workH + base.rowGap;
+  const practiceTop = cursor;
+  if (hasPractice) cursor += base.workH + base.rowGap;
   const tickTop = cursor;
   if (hasTicks) cursor += base.tickH + base.rowGap;
   const axisY = cursor;
@@ -207,11 +216,13 @@ export function intradayGeometry(
     hasHr,
     hasSleep,
     hasWorkouts,
+    hasPractice,
     hasTicks,
     hrTop,
     sleepLabelY,
     sleepTop,
     workTop,
+    practiceTop,
     tickTop,
     axisY,
     hrLo,
@@ -241,6 +252,79 @@ export function projectBpm(geo: IntradayGeometry, bpm: number): number {
   const span = geo.hrHi - geo.hrLo || 1;
   const clamped = Math.max(geo.hrLo, Math.min(geo.hrHi, bpm));
   return geo.hrTop + (1 - (clamped - geo.hrLo) / span) * geo.hrH;
+}
+
+/**
+ * The top of the row a block draws in: Train for an activity, Practice for a
+ * session (#4852). One function so the chart and the pure suite agree on the
+ * split without either of them spelling the branch out again.
+ */
+export function blockRowTop(
+  geo: IntradayGeometry,
+  block: IntradayBlock
+): number {
+  return block.source === "practice" ? geo.practiceTop : geo.workTop;
+}
+
+// ── Wheel and pinch (issue #4852) ────────────────────────────────────────────
+
+/**
+ * The window a zoom by `factor` about `atMinute` produces, or NULL when the
+ * gesture changes nothing.
+ *
+ * `factor` is a SPAN multiplier: < 1 zooms in, > 1 zooms out, so a pinch passes
+ * the ratio of its two finger distances directly and a wheel passes a curve of
+ * its own `deltaY`. `atMinute` keeps its position in the plot, which is what makes
+ * both gestures feel anchored under the pointer rather than under the middle.
+ *
+ * NULL IS THE WHOLE POINT OF THE RETURN TYPE, and it is a scroll decision, not an
+ * error: the caller must let the page have the event. Two cases reach it — the
+ * view is already the whole day and the gesture would only widen it (without this,
+ * a chart in the middle of a long day view is a scroll TRAP: the wheel is
+ * swallowed and the page never moves), and the span is already at a clamp so the
+ * window would not move at all.
+ */
+export function zoomViewAt(
+  view: IntradayView,
+  atMinute: number,
+  factor: number
+): IntradayView | null {
+  const span = view.to - view.from;
+  if (!(span > 0) || !(factor > 0) || !Number.isFinite(factor)) return null;
+  if (view.from <= 0 && view.to >= MINUTES_IN_DAY && factor >= 1) return null;
+  const next = Math.min(
+    MINUTES_IN_DAY,
+    Math.max(MIN_ZOOM_MINUTES, span * factor)
+  );
+  if (next === span) return null;
+  const at = Math.max(view.from, Math.min(view.to, atMinute));
+  const ratio = (at - view.from) / span;
+  const from = Math.max(
+    0,
+    Math.min(MINUTES_IN_DAY - next, at - ratio * next)
+  );
+  return { from, to: from + next };
+}
+
+/**
+ * The window shifted by `deltaMinutes`, clamped to the day — the horizontal-wheel
+ * pan. Null (page keeps the event) when the day is fully visible, so there is
+ * nothing to pan, or when the view is already against the edge it is being pushed
+ * toward. The SPAN never changes: panning is not a zoom.
+ */
+export function panView(
+  view: IntradayView,
+  deltaMinutes: number
+): IntradayView | null {
+  const span = view.to - view.from;
+  if (span >= MINUTES_IN_DAY || !Number.isFinite(deltaMinutes)) return null;
+  // Rounded, so a STREAM of wheel events slides the window instead of widening it:
+  // the caller's floor/ceil on a fractional edge would add a minute per event.
+  const from = Math.round(
+    Math.max(0, Math.min(MINUTES_IN_DAY - span, view.from + deltaMinutes))
+  );
+  if (from === view.from) return null;
+  return { from, to: from + span };
 }
 
 /** Whether a minute is inside the visible window (a zoomed chart draws nothing
