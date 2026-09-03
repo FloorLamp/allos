@@ -7,7 +7,7 @@ import {
   type DashboardEverythingGroup,
   type DashboardPlacement,
 } from "@/lib/dashboard-relevance";
-import NowStrip, { type NowStripRow } from "./NowStrip";
+import NowStrip, { type NowStripRow, type NowSubjectLabel } from "./NowStrip";
 import AppBadge from "@/components/AppBadge";
 import RememberedDetails from "@/components/RememberedDetails";
 import DashboardAhead, { type DashboardAheadBucket } from "./DashboardAhead";
@@ -38,6 +38,12 @@ export interface DashboardPlacementCanvasProps {
   aheadPresentations: ReadonlyMap<string, DashboardStandingPresentation>;
   attentionBadgeCount: number;
   illnessGroupNode?: ReactNode;
+  /**
+   * WHO EACH NOW SUBJECT IS (#4752 item 6), keyed by the ranker's subject key. Only
+   * consulted when the ranker actually grouped, so a single-subject dashboard can
+   * pass whatever it likes and still render no labels.
+   */
+  nowSubjects?: ReadonlyMap<string, NowSubjectLabel>;
 }
 
 const EVERYTHING_LABELS: Record<DashboardEverythingGroup, string> = {
@@ -164,6 +170,7 @@ export default function DashboardPlacementCanvas({
   aheadPresentations,
   attentionBadgeCount,
   illnessGroupNode,
+  nowSubjects,
 }: DashboardPlacementCanvasProps) {
   const rowFor = (placement: DashboardPlacement) =>
     (placement.lane === "ahead" ? aheadPresentations : presentations).get(
@@ -210,7 +217,21 @@ export default function DashboardPlacementCanvas({
   // The illness group stands where its FIRST episode placed, and every other episode
   // placement leaves the strip (their facts are inside the cockpit).
   const firstIllnessId = illnessPlacements[0]?.candidate.candidateId;
+  // WHOSE NAME MAY STAND OVER THE ILLNESS GROUP (#4752 item 6). The group is ONE
+  // container holding every ill profile's cockpit, so a subject label above it is
+  // true only while a single subject is ill; with two, the first one's name would
+  // sit over another patient's controls, which is exactly the mis-attribution
+  // #531/#534 made the per-cockpit name a safety feature to prevent. Two ill
+  // profiles therefore draw NO label here and are named where they always were —
+  // on each cockpit's own header, inside the group.
+  const oneIllSubject =
+    new Set(illnessPlacements.map((placement) => placement.nowSubject)).size ===
+    1;
   const now = nowPlacements.flatMap((placement): NowStripRow[] => {
+    const subject =
+      placement.nowSubject == null
+        ? undefined
+        : nowSubjects?.get(placement.nowSubject);
     const grouped =
       placement.nowLayer === "illness" &&
       placement.candidate.episodeGroup != null;
@@ -218,12 +239,19 @@ export default function DashboardPlacementCanvas({
       return [
         {
           id: placement.candidate.candidateId,
+          subject,
           candidate: placement.candidate,
           presentation: presentations.get(placement.candidate.candidateId)!,
         },
       ];
     return placement.candidate.candidateId === firstIllnessId
-      ? [{ id: "illness-group", node: illnessGroupNode }]
+      ? [
+          {
+            id: "illness-group",
+            subject: oneIllSubject ? subject : undefined,
+            node: illnessGroupNode,
+          },
+        ]
       : [];
   });
   const standing = placementsInLane(placements, "standing");

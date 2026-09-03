@@ -498,47 +498,24 @@ export default function SymptomLogBar({
 
   return (
     <div data-testid="symptom-log-bar">
-      {(showTitle || hasToggle) && (
+      {showTitle && (
         <div className="mb-2 flex items-center justify-between gap-2">
-          {showTitle && (
-            <p className="section-label">
-              Daily symptoms
-              <span
-                data-testid="symptom-logged-count"
-                className="ml-2 font-normal normal-case tracking-normal"
-              >
-                {loggedCount} logged
-              </span>
-            </p>
-          )}
-          {card?.altDate && (
-            <div
-              data-testid="symptom-day-toggle"
-              className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          <p className="section-label">
+            Daily symptoms
+            <span
+              data-testid="symptom-logged-count"
+              className="ml-2 font-normal normal-case tracking-normal"
             >
-              <button
-                type="button"
-                data-testid="symptom-day-primary"
-                aria-pressed={isPrimaryDay}
-                onClick={() => selectDay(card.date)}
-                className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.dateLabel}
-              </button>
-              <button
-                type="button"
-                data-testid="symptom-day-alt"
-                aria-pressed={!isPrimaryDay}
-                onClick={() => selectDay(card.altDate!)}
-                className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
-              >
-                {card.altDateLabel}
-              </button>
-            </div>
-          )}
+              {loggedCount} logged
+            </span>
+          </p>
         </div>
       )}
 
+      {/* ONE ROW (#4752 item 5). The day toggle, both add buttons and the empty
+          state used to occupy three stacked rows above an empty list — three lines
+          of chrome before a single symptom. They are one row now, and the empty
+          state is the sentence at its end rather than a paragraph of its own. */}
       <div
         data-testid="symptom-log-actions"
         className="mb-3 flex flex-wrap items-center gap-2"
@@ -580,6 +557,39 @@ export default function SymptomLogBar({
             <IconChartBar className="h-3.5 w-3.5" />
             Symptom trends
           </Link>
+        )}
+        {loggedCount === 0 && (
+          <p
+            data-testid="symptom-none-logged"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          >
+            No symptoms logged{hasToggle ? " for this day" : ""}.
+          </p>
+        )}
+        {card?.altDate && (
+          <div
+            data-testid="symptom-day-toggle"
+            className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
+          >
+            <button
+              type="button"
+              data-testid="symptom-day-primary"
+              aria-pressed={isPrimaryDay}
+              onClick={() => selectDay(card.date)}
+              className={`px-2 py-1 ${isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.dateLabel}
+            </button>
+            <button
+              type="button"
+              data-testid="symptom-day-alt"
+              aria-pressed={!isPrimaryDay}
+              onClick={() => selectDay(card.altDate!)}
+              className={`px-2 py-1 ${!isPrimaryDay ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+            >
+              {card.altDateLabel}
+            </button>
+          </div>
         )}
       </div>
 
@@ -873,14 +883,7 @@ export default function SymptomLogBar({
         </p>
       )}
 
-      {loggedCount === 0 ? (
-        <p
-          data-testid="symptom-none-logged"
-          className="mb-3 text-xs text-slate-500 dark:text-slate-400"
-        >
-          No symptoms logged{hasToggle ? " for this day" : ""}.
-        </p>
-      ) : (
+      {loggedCount > 0 && (
         <ul className="space-y-2" data-testid="symptom-logged-list">
           {loggedKeys.map((key) => {
             const r = rowMap.get(key);
