@@ -226,6 +226,10 @@ describe("the reach boundary — quiet-stream never escalates (constraint 4)", (
     expect(isEscalatingIntegration(quiet)).toBe(false);
     expect(isEscalatingIntegration(stale)).toBe(true);
     expect(isEscalatingIntegration({ ...stale, kind: "failing" })).toBe(true);
+    // A live source dropping a record type (#4956) escalates for the same reason a
+    // quiet STOP does — the person is losing data they believe they are collecting —
+    // and for the reason a quiet STREAM does not: it was sent and we discarded it.
+    expect(isEscalatingIntegration({ ...stale, kind: "dropping" })).toBe(true);
     // An undeclared kind is the legacy `failing` shape and still escalates.
     expect(isEscalatingIntegration({ ...stale, kind: undefined })).toBe(true);
   });
