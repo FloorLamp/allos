@@ -396,8 +396,8 @@ export interface ParsedPayload {
   activities: NormActivity[];
   vitals: NormVital[];
   // Continuous-sensor glucose, routed here instead of onto `vitals` (#3182). Empty
-  // for every payload whose glucose is a discrete observation, which is every
-  // payload until a `specimen_source` says otherwise or the connection's switch is on.
+  // for every payload whose glucose is a discrete observation — which is every payload
+  // from a connection the person has not declared a continuous sensor.
   glucoseTrace: NormGlucoseTrace[];
   skipped: number;
   details: HealthConnectSyncDetails;
@@ -1166,8 +1166,8 @@ export function parseHealthConnectPayload(
   }
   // Glucose mmol/L → mg/dL. ONE record type, TWO destinations (#3182): a reading the
   // routing calls a trace goes to `glucose_trace` and never becomes a `Glucose`
-  // observation; everything else — which is everything, until a specimen source says
-  // otherwise or the connection's switch is on — takes the path it always took.
+  // observation; everything else — which is everything, until the connection is
+  // declared a continuous sensor — takes the path it always took.
   // Glucose is a lab (#1076), not a vital sign — category 'lab' so it stays on the
   // lab list once the biomarker surfaces scope to `lab` only.
   const toMgdl = (r: Record<string, unknown>) => {
