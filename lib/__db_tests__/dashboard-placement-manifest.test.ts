@@ -37,6 +37,10 @@ import {
 } from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
+import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
+import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
+import { isNotableFlag } from "@/lib/reference-range";
+import type { MedicalFlag } from "@/lib/types";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -860,6 +864,64 @@ describe("actual atomic dashboard manifests", () => {
       expect(reach.get(key) ?? 0, `${key} was never produced`).toBeGreaterThan(
         0
       );
+  });
+
+  // WHERE THE ACKNOWLEDGMENT IS OFFERED (#3225). It spends a CLAIM, so the control
+  // belongs on the rows that still hold one — fresh, or notable — and nowhere a
+  // second control would post the same signal, which is a row whose
+  // `biomarker-flag:` key already carries an attention fact.
+  //
+  // "chronic notable" is this issue's own population and the state that moved. A
+  // notable result too old to be fresh is also too old to carry an attention item:
+  // the flagged window bounds the COLLECTION date at 14 days, inside the 30-day
+  // freshness window — so #4232's freshness-only rule left the owner's 37 June
+  // notables with no acknowledge control on the dashboard at all, only on the detail
+  // page each row links to. Reach is counted per state because a table over real
+  // personas says nothing about a state no persona reaches.
+  it("offers the acknowledgment on every unspent claim and nowhere twice", () => {
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const presentations = rowPresentations.get(persona)!;
+      const placed = new Set(
+        placements.map(({ candidate }) => candidate.candidateId)
+      );
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const name = placement.candidate.candidateId.slice(
+          "labs.latest:".length
+        );
+        const presentation = presentations.get(placement.candidate.candidateId)!;
+        // The flag the ROW ITSELF prints, read off its `MedicalValue`, so notability
+        // here is the word the person sees and not a second read of the record.
+        const flag = (
+          presentation.value as ReactElement<{ flag: MedicalFlag | null }>
+        ).props.flag;
+        const state = placed.has(
+          dashboardAttentionCandidateId(biomarkerFlagDismissalKey(name))
+        )
+          ? "hosted on its attention row"
+          : placement.candidate.rankReasons.owed
+            ? "fresh"
+            : isNotableFlag(flag)
+              ? "chronic notable"
+              : "quiet and ordinary";
+        reach.set(state, (reach.get(state) ?? 0) + 1);
+        expect(presentation.control != null, `${persona}:${name} (${state})`).toBe(
+          state === "fresh" || state === "chronic notable"
+        );
+      }
+    }
+    for (const state of [
+      "fresh",
+      "hosted on its attention row",
+      "chronic notable",
+      "quiet and ordinary",
+    ])
+      expect(
+        reach.get(state) ?? 0,
+        `${state} was never produced`
+      ).toBeGreaterThan(0);
   });
 
   // NOW GATHERS BY SUBJECT ON A REAL HOUSEHOLD MANIFEST (#4752 item 6). The layers
