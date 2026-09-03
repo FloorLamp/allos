@@ -157,6 +157,12 @@ export default function SymptomLogBar({
   // reducers by the caller (`antipyreticPrnMeds`, lib/prn-defaults.ts) — this bar
   // stays free of that judgment. Reuses IllnessMedicationLogger (#4834) rather than
   // a second dose control; absent or empty, the block still offers the episode.
+  // NO PRODUCTION CALLER FEEDS THIS as of #4712's duplicate-chip fix — the one
+  // mount with PRN data (IllnessCockpitBody) already shows every antipyretic as a
+  // persistent Meds chip, so passing it here would duplicate that chip rather than
+  // add a dose offer. The owner rules the fold-vs-persistent-row conflict on #4712
+  // (`needs-human`); until then the only feeders are this file's own component
+  // tests, which exist to keep the contract above correct and ready.
   antipyreticMeds?: PrnMedForQuickLog[];
   // Required alongside antipyreticMeds to mount IllnessMedicationLogger (its own
   // required prop) — absent, the dose offer is skipped rather than mounted half-fed.

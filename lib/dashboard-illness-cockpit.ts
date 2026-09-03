@@ -35,10 +35,15 @@ export interface DashboardIllnessControls {
   staleNudge: StaleEpisodeNudge | null;
   medReconciliation: EpisodeMedSuggestion[];
   prnMeds: PrnMedForQuickLog[];
-  // The fever-reducing subset of prnMeds (#4712 judgement 1) — the temperature fold's
-  // inline dose offer reuses IllnessMedicationLogger over just this narrower list,
-  // rather than the whole PRN cabinet, so a fever reading never offers to log an
-  // antihistamine.
+  // The fever-reducing subset of prnMeds (#4712 judgement 1). Derived and carried on
+  // every gather so the ruled dose offer ("Log <antipyretic> <dose>" in the
+  // temperature fold, reusing IllnessMedicationLogger) can be fed by ONE prop pass
+  // once a mount exists that would not already show the same chip elsewhere — NOT
+  // read by any production caller as of this PR: the one mount that reads
+  // `controls` (IllnessCockpitBody) already renders every one of these as a
+  // persistent Meds chip, and feeding them again would duplicate it. That
+  // fold-vs-persistent-row conflict is the owner's to rule (#4712, `needs-human`);
+  // until then this field's only readers are the component tests.
   antipyreticPrnMeds: PrnMedForQuickLog[];
   intakeOptions: IntakeCatalogOptions;
   // The whole subject context the cockpit's add-medication fold feeds its form
