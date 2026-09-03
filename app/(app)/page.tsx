@@ -30,6 +30,7 @@ import {
   getMetricDailyTotals,
   getVitalsLatestModel,
   getCycleTrackingRelevance,
+  getPracticeDayCount,
 } from "@/lib/queries";
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
@@ -192,6 +193,7 @@ import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import FindingDismissButton from "@/components/FindingDismissButton";
 import PreventiveReviewControls from "@/components/PreventiveReviewControls";
 import { preventiveReviewQuestion } from "@/lib/preventive-review";
+import LogPracticeButton from "@/components/practices/LogPracticeButton";
 import {
   confirmPreventiveRecord,
   dismissPreventiveRecord,
@@ -1942,6 +1944,15 @@ async function renderDashboard(
       nowMinutes
     );
     const behind = progress.pace === "behind";
+    // THE PRACTICE-TARGET ROW LOGS IN PLACE (owner ruling, #4076 from the #4384
+    // thread). A behind-pace practice target's row carries the shared
+    // `LogPracticeButton` (compact) in its trailing control slot instead of the
+    // `targetLog` door row below — the dashboard is the owner's primary
+    // practice-logging surface, and a door there cost three taps where the row
+    // costs one. Scoped to `scope_kind === "practice"`: the dose precedent
+    // (#4083) and every other habit domain (training, food) keep the door.
+    const logsInPlace =
+      canWrite && behind && progress.target.scope_kind === "practice";
     add(
       progressCandidates.targetProgress(
         { subject: profileSubject, sourceOrder: sourceOrder + index * 2 },
@@ -1983,42 +1994,55 @@ async function renderDashboard(
         ),
         href: habitHref,
         presence: "current",
+        control: logsInPlace ? (
+          <LogPracticeButton
+            practice={progress.target.scope_value}
+            todayCount={getPracticeDayCount(
+              profile.id,
+              progress.target.scope_value,
+              on
+            )}
+            today={on}
+            compact
+          />
+        ) : undefined,
       }
     );
-    add(
-      progressCandidates.targetLog(
-        {
-          subject: profileSubject,
-          applicable: canWrite && !progress.met,
-          sourceOrder: sourceOrder + index * 2 + 1,
-        },
-        id,
-        on,
-        // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
-        // put a never-touched 2x/week target back in Now from day 4 of every
-        // week, filling the cap with cards nobody could act on. The standing fact
-        // is told by the pace word on the reading above; the card earns a Now slot
-        // only while this is a moment the person would normally do it.
-        behind && momentOpen,
-        momentOpen
-      ),
-      {
-        // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841 item 2).
-        // The label used to be `Log ${scope_value}` beside an action that also read
-        // "Log", so the row printed the verb twice and named its subject by the
-        // STORED KEY — "Log Lower · 0 of 2 this week · Log". `cadenceScopeNoun` is
-        // the app's existing answer to "what is this target called" (the recap and
-        // the practice nudge already ask it), so the noun comes from there rather
-        // than from a second casing rule here.
-        label: cadenceScopeNoun(
-          progress.target.scope_kind,
-          progress.target.scope_value
+    // The door retires with `logsInPlace` (see above): the row's own control is
+    // the log offer now, so a second "Log <target>" row saying the same thing
+    // would be the three-tap door the ruling exists to remove.
+    if (!logsInPlace)
+      add(
+        progressCandidates.targetLog(
+          {
+            subject: profileSubject,
+            applicable: canWrite && !progress.met,
+            sourceOrder: sourceOrder + index * 2 + 1,
+          },
+          id,
+          on,
+          // Owner ruling #3245: `owed` COMPOSES WITH THE MOMENT. Behind pace alone
+          // put a never-touched 2x/week target back in Now from day 4 of every
+          // week, filling the cap with cards nobody could act on. The standing fact
+          // is told by the pace word on the reading above; the card earns a Now slot
+          // only while this is a moment the person would normally do it.
+          behind && momentOpen,
+          momentOpen
         ),
-        detail: `${progress.count} of ${progress.per_week} this week`,
-        href: habitHref,
-        actionLabel: "Log",
-      }
-    );
+        {
+          // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841
+          // item 2). `cadenceScopeNoun` is the app's existing answer to "what is
+          // this target called" (the recap and the practice nudge already ask
+          // it), so the noun comes from there rather than a second casing rule.
+          label: cadenceScopeNoun(
+            progress.target.scope_kind,
+            progress.target.scope_value
+          ),
+          detail: `${progress.count} of ${progress.per_week} this week`,
+          href: habitHref,
+          actionLabel: "Log",
+        }
+      );
   });
   sourceOrder += orderedFreqTargets.length * 2;
 
