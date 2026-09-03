@@ -6,8 +6,22 @@ import { workerDbPath } from "./worker-env";
 // The feed is slim rows since #2897, and since #4079 they are the shared history
 // substrate's own rows — a history-row carrying the title is an activity's
 // presence signal (full cards render only in the reading pane).
+//
+// SCOPED TO THE LIVE PAGE, because a global `getByTestId` also reaches React's
+// STREAMING STAGING CONTAINER. The Log's search is a GET form now, so submitting it
+// is a real document navigation and the page arrives by SSR streaming: each Suspense
+// boundary's content lands in a `<div hidden>` appended to `<body>` and an inline
+// script relocates it into the document. In that window every `history-row` exists
+// TWICE — once staged, once placed — with identical `id` and `data-history-row-id`,
+// and an unscoped locator resolves to 2 elements and throws strict mode rather than
+// retrying to one. Under CI load the window outlives the 5s retry. The staged copy
+// has no `training-page` ancestor, so scoping here excludes exactly it and nothing
+// else.
 const feedRow = (page: Page, title: string) =>
-  page.getByTestId("history-row").filter({ hasText: title });
+  page
+    .getByTestId("training-page")
+    .getByTestId("history-row")
+    .filter({ hasText: title });
 
 // Training Log search reaches the WHOLE ledger, not the loaded window (#1634).
 //

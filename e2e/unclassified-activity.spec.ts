@@ -102,7 +102,15 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
   await page.waitForURL(new RegExp(`[?&]q=${OWN_TITLE.replace(/ /g, "\\+")}`));
 
   // The feed renders slim rows (#2897); the row itself carries the type glyph.
-  const row = page.getByTestId("history-row").filter({ hasText: OWN_TITLE });
+  // Scoped to the live page: the GET-form navigation above arrives by SSR streaming,
+  // and until the inline script relocates each Suspense boundary out of its
+  // `<div hidden>` staging container under `<body>`, every row exists twice with the
+  // same id. An unscoped locator sees both and throws strict mode. The staged copy
+  // has no `training-page` ancestor.
+  const row = page
+    .getByTestId("training-page")
+    .getByTestId("history-row")
+    .filter({ hasText: OWN_TITLE });
   await expect(row).toBeVisible({ timeout: 20_000 });
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
