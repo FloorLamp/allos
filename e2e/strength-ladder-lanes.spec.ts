@@ -93,16 +93,15 @@ test("a free-weight PR keeps its prior dot and earns the '· PR' suffix", async 
     await expect(pr.getByTestId("strength-ladder-prior")).toHaveCount(1);
     await expect(pr).toContainText("· PR");
 
-    // The shared disclosure carries the number the prior dot was placed FROM — the free-weight
+    // The prior dot NAMES the number it was placed FROM (#4760) — the free-weight
     // e1RM of 50 kg × 5 (58.3 kg), never the machine's 120 kg × 5 (140 kg). Asserting
     // the number rather than the dot's presence is what makes this a LANE assertion:
     // the unfiltered series renders a dot here too, just the wrong one.
-    const detailsSummary = pr.locator("summary");
-    await expect(detailsSummary).toHaveText(`${LADDER_PR_LIFT} ladder details`);
-    await detailsSummary.click();
-    await expect(
-      pr.locator("details li").filter({ hasText: "About 90 days ago: 58.3 kg" })
-    ).toHaveCount(1);
+    await expect(pr.getByTestId("strength-ladder-prior")).toHaveAttribute(
+      "aria-label",
+      "About 90 days ago: 58.3 kg"
+    );
+    await expect(pr.locator("details, summary")).toHaveCount(0);
 
     // …and the control that gives "· PR" its meaning: a lift with a real free-weight
     // prior that did not move renders its prior dot and NO suffix. Without this, a

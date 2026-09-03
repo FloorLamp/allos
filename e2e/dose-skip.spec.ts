@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
+import { hydratedClick } from "./helpers";
 // The web dose check-off is a TAKEN / SKIPPED / CLEAR tri-state (#232): a
 // deliberate skip is a first-class decision, distinct from a silent miss, with
 // its own control beside the ✅ take. This drives the whole cycle in the real app
@@ -35,7 +36,13 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   // is allowed to move.
   await page.goto("/nutrition?tab=food");
   const morning = page.getByTestId("ledger-group-morning");
-  await morning.locator('[data-testid^="ledger-due-group-"]').click();
+  // hydratedClick, not click: the due row's disclosure is a controlled React button
+  // and this is the first interaction after the goto, so a lost tap would surface as
+  // the dose row below being absent rather than as a tap that never landed (#4835).
+  await hydratedClick(
+    page,
+    morning.locator('[data-testid^="ledger-due-group-"]')
+  );
   const row = page
     .getByTestId("day-ledger")
     .locator(
@@ -44,7 +51,7 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
     .filter({ hasText: NAME });
   await expect(row).toHaveCount(1);
 
-  const take = row.getByRole("button", { name: "Mark taken" });
+  const take = row.getByRole("button", { name: "Take", exact: true });
   const skip = row.getByRole("button", { name: "Skip this dose" });
   await expect(take).toBeVisible();
   await expect(skip).toBeVisible();
@@ -55,25 +62,23 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   await expect(skipOn).toBeVisible();
   await expect(skipOn).toHaveAttribute("aria-pressed", "true");
   // The dose is NOT counted as taken.
-  await expect(row.getByRole("button", { name: "Mark taken" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Undo the skip → back to clear ───────────────────────────────────────────
   await skipOn.click();
   await expect(
     row.getByRole("button", { name: "Skip this dose" })
   ).toHaveAttribute("aria-pressed", "false");
-  await expect(row.getByRole("button", { name: "Mark taken" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Take it, then flip taken → skipped (an explicit toggle) ──────────────────
-  await row.getByRole("button", { name: "Mark taken" }).click();
+  await row.getByRole("button", { name: "Take", exact: true }).click();
   await expect(
-    row.getByRole("button", { name: "Mark not taken" })
+    row.getByRole("button", { name: "Undo take", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
 
   await row.getByRole("button", { name: "Skip this dose" }).click();
@@ -82,10 +87,9 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
     "aria-pressed",
     "true"
   );
-  await expect(row.getByRole("button", { name: "Mark taken" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(
+    row.getByRole("button", { name: "Take", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
 
   // ── Clean up: delete the supplement so the fixture is left as found ──────────
   // Deleting an ITEM is a management act, on the tab that manages the stack.

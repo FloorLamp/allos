@@ -7,8 +7,25 @@
 import { describe, it, expect } from "vitest";
 import {
   dedupeRecipientsByChat,
+  groupRecipientsByChat,
   isLastUnmutedManagingLogin,
 } from "@/lib/notifications/fan-out";
+
+describe("groupRecipientsByChat (#2565)", () => {
+  it("keeps EVERY login behind a shared chat, first login first, so one send's outcome reaches all of them", () => {
+    expect(
+      groupRecipientsByChat([
+        { loginId: 5, chatId: "chat-a" },
+        { loginId: 6, chatId: "chat-b" },
+        { loginId: 7, chatId: " chat-a " },
+        { loginId: 8, chatId: "" },
+      ])
+    ).toEqual([
+      { chatId: "chat-a", loginIds: [5, 7] },
+      { chatId: "chat-b", loginIds: [6] },
+    ]);
+  });
+});
 
 describe("dedupeRecipientsByChat (#1072)", () => {
   it("collapses several logins on ONE chat to a single recipient (shared family group)", () => {

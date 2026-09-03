@@ -474,6 +474,31 @@ describe("the day the bar shows is the day it writes (#4691)", () => {
     );
   }
 
+  // ── ONE ROW (#4752 item 5) ────────────────────────────────────────────────
+  //
+  // The day toggle sat on a header row of its own, both add buttons on a second, and
+  // the empty state on a third — three lines of chrome above a list with nothing in
+  // it. They are one row now, and the empty state is the sentence at its end. The
+  // claim is CONTAINMENT rather than a count of rendered elements: an assertion that
+  // four controls exist passes just as well on the three-row arrangement.
+  it("seats the toggle, both add buttons and the empty state on ONE row", () => {
+    toggledBar();
+    const row = screen.getByTestId("symptom-log-actions");
+    for (const id of [
+      "symptom-add-picker-toggle",
+      "temp-quick-toggle",
+      "symptom-day-toggle",
+      "symptom-none-logged",
+    ]) {
+      expect(row.contains(screen.getByTestId(id)), id).toBe(true);
+    }
+    // And nothing above it: with no title, the row is the bar's first child.
+    expect(screen.getByTestId("symptom-log-bar").firstElementChild).toBe(row);
+    expect(screen.getByTestId("symptom-none-logged").textContent).toBe(
+      "No symptoms logged for this day."
+    );
+  });
+
   // A PAST DAY HAS NO "NOW" (#4685). The action stores an untimed reading honestly
   // rather than stamping the current clock onto a day that has ended, and an untimed
   // reading is anchored at noon — which cannot say whether it came before or after an

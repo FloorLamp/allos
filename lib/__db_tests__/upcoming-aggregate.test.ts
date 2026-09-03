@@ -21,6 +21,7 @@ import {
 } from "@/lib/queries";
 import {
   attentionAheadDetail,
+  attentionDoseChipLabel,
   attentionCandidates,
 } from "@/lib/dashboard-candidates";
 import { rankDashboardCandidates } from "@/lib/dashboard-relevance";
@@ -29,7 +30,7 @@ import { DEFAULT_FORMAT_PREFS } from "@/lib/format-date";
 import { doseItems } from "@/lib/queries/upcoming/intake-safety";
 import { goalItems } from "@/lib/queries/upcoming/plans";
 import { collectUpcoming } from "@/lib/queries";
-import { groupUpcoming } from "@/lib/upcoming";
+import { groupUpcoming, upcomingDueText } from "@/lib/upcoming";
 import {
   aggregateLabel,
   aggregateNearestDueDate,
@@ -280,6 +281,31 @@ describe("collectDueDosesNow (#2744)", () => {
     expect(
       attentionAheadDetail(item("Scheduled Midday"), day, DEFAULT_FORMAT_PREFS)
     ).toBe("Midday · from 11:00");
+
+    // AND WHAT THE **NOW** ROW'S CHIP SAYS IS THE SLOT ALONE (#4752 item 7). The two
+    // labels are deliberately different strings over the same item: Ahead states why
+    // a row is not now, and "from 11:00" is that reason; a Now row is already here,
+    // so its chip says only the payload its tap writes. The chip does not shrink, so
+    // the shorter form is also what leaves the row's own identity line intact on a
+    // phone — asserted as a rendered geometry claim in dashboard-now.mobile.spec.ts.
+    expect(
+      attentionDoseChipLabel(
+        item("Scheduled Midday"),
+        day,
+        DEFAULT_FORMAT_PREFS
+      )
+    ).toBe("Midday");
+    // A dose whose slot cannot be read falls back to the due text — the same fact at
+    // the only other resolution available, and still short.
+    expect(
+      attentionDoseChipLabel(
+        { ...item("Scheduled Midday"), sortHint: undefined },
+        day,
+        DEFAULT_FORMAT_PREFS
+      )
+    ).toBe(
+      upcomingDueText(item("Scheduled Midday"), day, DEFAULT_FORMAT_PREFS)
+    );
 
     // THE COMPOSITION THE PAGE ACTUALLY RENDERS (#4468 × #4319), pinned here because
     // NEITHER issue's own tests can see it. #4468 asserts the line above — the slot

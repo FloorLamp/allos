@@ -2,7 +2,7 @@ import type { UpcomingItem } from "../upcoming";
 import { bandForItem, upcomingDueText } from "../upcoming";
 import { itemSuppressionPolicy } from "../upcoming-suppress";
 import { doseBucketFromSortHint } from "../dose-order";
-import { TIME_BUCKET_OPENS_AT } from "../intake-schedule";
+import { TIME_BUCKET_LABELS, TIME_BUCKET_OPENS_AT } from "../intake-schedule";
 import { formatClockMinutes, type DisplayFormatPrefs } from "../format-date";
 import { preventiveReviewFactKey } from "../preventive-review";
 import { actionCandidate, statementCandidate } from "./candidate";
@@ -33,6 +33,28 @@ export function attentionAheadDetail(
   return opensAt == null
     ? detail
     : `${detail} · from ${formatClockMinutes(prefs.timeFormat, opensAt)}`;
+}
+
+// THE DOSE CHIP'S LABEL (#4752 item 7): `Midday · [Take]`. The labeled-verb chip's
+// one promise is that the label shows the PAYLOAD the tap carries, and for a
+// scheduled dose that payload is the SLOT it belongs to — which is also the shortest
+// true thing to say, and the row needs it short: the chip does not shrink, so a long
+// label costs the row's own identity line its one-line form on a phone.
+//
+// IT IS NOT `attentionAheadDetail`. That is Ahead's sentence — "Due today · from
+// 11:00" — and Ahead is where a row states why it is not now; a Now row is already
+// here. A dose with no slot to name (nothing in its sortHint) falls back to the due
+// text, which is the same fact at the only other resolution available.
+export function attentionDoseChipLabel(
+  item: UpcomingItem,
+  today: string,
+  prefs: DisplayFormatPrefs
+): string {
+  const bucket =
+    item.domain === "dose" ? doseBucketFromSortHint(item.sortHint) : null;
+  return bucket == null
+    ? upcomingDueText(item, today, prefs)
+    : TIME_BUCKET_LABELS[bucket];
 }
 
 function attentionObligation(

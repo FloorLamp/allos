@@ -79,3 +79,13 @@ export const NOTIFY_LOG_QUIET_PROFILE = "Notify Log Quiet (e2e)";
 export const E2E_LOGIN_NOTIFY_SCOPE = "e2e_notify_scope";
 export const NOTIFY_SCOPE_OWN_PROFILE = "Notify Scope Own (e2e)";
 export const NOTIFY_SCOPE_WARD_PROFILE = "Notify Scope Ward (e2e)";
+
+// A member with a dedicated adult profile for the CHANNEL STATUS STRIP (#2565 A). It
+// owns the one channel whose whole lifecycle a spec can drive alone: Home Assistant is
+// PROFILE-scoped, so its setup, its failed send and its lifecycle row all belong to this
+// fixture, while Telegram/Push/Email liveness rides instance-wide config neighbouring
+// specs configure and reset. Same #1025 hazard as the other HA fixtures — the webhook it
+// persists points at an unreachable host and lives on a profile no spec logs
+// temperatures for, so nothing can dispatch to it behind the spec's back.
+export const E2E_LOGIN_CHANNEL_STRIP = "e2e_channel_strip";
+export const CHANNEL_STRIP_PROFILE = "Channel Strip (e2e)";

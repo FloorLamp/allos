@@ -466,3 +466,42 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     nowMinute,
   };
 }
+
+// ── The lag sentence (#4767 item 5) ─────────────────────────────────────────
+
+// A worn series ENDS WHERE THE SYNC ENDED, not where the body stopped. Drawn to the
+// right edge of a day axis that keeps running, a three-hour sync gap looks exactly
+// like three hours of measured flat — which is the one reading this chart must never
+// invite. So every mount states the distance between the last sample and now, in
+// words, beside the drawing.
+//
+// TODAY ONLY. `nowMinute` is non-null only on the profile's own today (the gather
+// sets it there and nowhere else), and a past day has no lag to state: "synced 6h
+// ago" about last Tuesday would be a sentence about nothing.
+//
+// The workout case is called out separately because it is the one this issue's use
+// case turns on — "I just finished, what did it do to me?" — and "synced 3h ago"
+// answers a different question than "your watch has told us nothing since the
+// session you just finished".
+export function intradayFreshness(model: IntradayModel): string | null {
+  const nowMinute = model.nowMinute;
+  if (nowMinute == null) return null;
+  const segments = model.hr?.segments ?? [];
+  const lastSegment = segments[segments.length - 1];
+  const lastPoint = lastSegment?.[lastSegment.length - 1];
+  if (!lastPoint) return "No heart rate synced today yet";
+  const lagMin = Math.max(0, Math.round(nowMinute - lastPoint.minute));
+  // The latest window that CLOSED after the last sample landed. `endMinute` is
+  // clipped to the day by the model, so this cannot name tomorrow's session.
+  const uncovered = model.blocks
+    .filter((block) => block.endMinute > lastPoint.minute)
+    .sort((a, b) => b.endMinute - a.endMinute)[0];
+  if (uncovered) return `No data since ${uncovered.title} yet`;
+  if (lagMin < 1) return "Synced just now";
+  if (lagMin < 60) return `Synced ${lagMin} min ago`;
+  const hours = Math.floor(lagMin / 60);
+  const minutes = lagMin % 60;
+  return minutes === 0
+    ? `Synced ${hours}h ago`
+    : `Synced ${hours}h ${minutes}m ago`;
+}

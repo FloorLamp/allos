@@ -4,13 +4,13 @@ import { IconClock, IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
+import { LabeledVerbChip } from "@/components/Chip";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useCockpitDay } from "@/components/illness/CockpitDayContext";
 import {
   DOSE_ACTION_BRAND,
   DOSE_ACTION_ICON,
-  DOSE_ACTION_LABEL,
   DOSE_ACTION_NEUTRAL,
 } from "@/components/medications/dose-action-styles";
 import { medicationHref } from "@/lib/hrefs";
@@ -20,7 +20,7 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
-// A primary "Taken now" button records an administration NOW; "Earlier dose" reveals
+// A primary one-tap records an administration NOW; "Earlier dose" reveals
 // the shared WhenControl (#2236) — a DATED absolute time, empty until stated, with
 // a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
 // old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
@@ -47,11 +47,25 @@ import { dateStrInTz } from "@/lib/date";
 // A PRN dose is ADDITIVE and declares no expected interval (#2007): several
 // administrations a day are legitimate and #798's redose line already advises without
 // blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
-// post-success cooldown, keyed per offset so "taken now" and a retro entry are separate
+// post-success cooldown, keyed per offset so the now-tap and a retro entry are separate
 // writes — which absorbs the queued second click on the same button.
-// The action button's words and its accessible name, and the statement's label — one
-// string, because they name the same affordance.
-const EARLIER_DOSE = "Earlier dose";
+// THE CLOCK DOOR IS A GLYPH AND ITS NAME IS A QUESTION (#4426's time-grammar ruling,
+// rendered by #4752 item 8). "Earlier dose" was the door's visible words AND its
+// accessible name; the ruling makes the clock the ONLY spelling of "happened
+// earlier", so the words go and the question becomes the name. It is spelled as the
+// accessible name alone and NEVER as a `title=`: #2378/#3375 ruled hover-only text
+// out of this codebase because a touch or keyboard reader never receives it, and
+// lib/__tests__/raw-title-boundary.test.ts holds that line.
+const EARLIER_DOSE = "Happened earlier?";
+// ONE WORD, AND NEVER "now" (#4753's copy migration, owner-blessed on the issue).
+// "Taken now" carried the whole sentence because the button had no label to say it
+// with; the chip's label states the dose, so the verb is only the verb.
+//
+// GIVE OR TAKE IS NOT A VARIANT — IT IS THE SENTENCE BEING TRUE (#4752 item 4). This
+// row carries a `profileId` only when a caregiver is logging for somebody ELSE, which
+// is exactly the case where "Take" would be addressed to the wrong person. Nothing
+// else about the control changes with it, and no caller chooses it.
+const doseVerb = (crossProfile: boolean) => (crossProfile ? "Give" : "Take");
 
 export default function QuickLogPrnControl({
   itemId,
@@ -114,6 +128,14 @@ export default function QuickLogPrnControl({
   const ledger = useOptimisticLedger("prn-dose");
   const busy = ledger.pending("now") || ledger.pending("custom");
   const doseDetail = formatMedicationDoseProduct(doseAmount, product);
+  // WHAT THE TAP WRITES, as the reader should see it: this administration's DOSE.
+  // A med with no recorded amount has nothing quantitative to promise, so the label
+  // falls back to the medication itself — #4753's own `Ibuprofen · [Give]` shape.
+  const doseLabel = doseDetail || name;
+  const verb = doseVerb(profileId != null);
+  // The whole sentence for a reader, where the visible pill abbreviates it. Both arms
+  // read this one string.
+  const takeName = `${verb} ${name}${doseDetail ? ` · ${doseDetail}` : ""}`;
   // The shared collapsed statement (#4426). Its four rules — no field until one is
   // stated, only what was on screen, a day change DROPS the statement, and a statement
   // is spent by the tap it answers — are stated once in `useTimeStatement` and were
@@ -161,11 +183,11 @@ export default function QuickLogPrnControl({
             : `Logged ${name}${doseDetail ? ` · ${doseDetail}` : ""}.`
         );
         // Rule 4, and `consumed` is why this is not the unconditional reset it used to
-        // be: a "Taken now" tap consumes NO statement, so one made beside it survives
-        // the tap that did not pay for it — and a statement made while this write was
-        // in flight survives its settle. The reveal closes on the SAME event, because a
-        // spent statement is the only reason there was to close it; leaving it open on
-        // a "Taken now" keeps a live statement on screen instead of hiding one.
+        // be: the now-tap consumes NO statement, so one made beside it survives the tap
+        // that did not pay for it — and a statement made while this write was in flight
+        // survives its settle. The reveal closes on the SAME event, because a spent
+        // statement is the only reason there was to close it; leaving it open on a
+        // now-tap keeps a live statement on screen instead of hiding one.
         if (consumed) statement.setOpen(false);
         statement.spend(consumed);
         return { kind: "keep" };
@@ -177,36 +199,63 @@ export default function QuickLogPrnControl({
     });
   }
 
-  const control = (
+  // THE CLOCK DOOR, drawn once and seated by whichever arm renders below. It is
+  // #4426's toggle — the reveal opens in this row's FOOTER, which is why this mount
+  // takes the statement in two pieces — so the pill's seat holds the door itself
+  // rather than a second copy of the statement.
+  const clockDoor = (
+    <button
+      type="button"
+      onClick={() => statement.setOpen(!statement.open)}
+      disabled={busy}
+      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
+      aria-expanded={statement.open}
+      aria-label={EARLIER_DOSE}
+      data-testid="prn-log-more"
+    >
+      <IconClock className="h-4 w-4" stroke={2} />
+      <span className="sr-only">{EARLIER_DOSE}</span>
+    </button>
+  );
+
+  const control = compactActions ? (
+    // THE ICON-ONLY ARM KEEPS THE SHAPE IT SHIPPED WITH, deliberately (#4753, open
+    // question 3). A chip with no visible label would contradict the primitive's one
+    // claim — the label shows the payload — so this arm is NOT the chip, and whether
+    // it should become a compact rendering of one is the owner's to say. What the
+    // adoption does reach here is the COPY, which the issue settles outright: the
+    // verb never says "now". The name is the same sentence the pill composes, so the
+    // two arms cannot drift into two ways of saying one tap.
     <>
       <button
         type="button"
         onClick={() => log("now")}
         disabled={busy}
-        className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
-        aria-label="Taken now"
+        className={`${DOSE_ACTION_ICON} ${redosePrimary ? DOSE_ACTION_BRAND : DOSE_ACTION_NEUTRAL}`}
+        aria-label={takeName}
         data-testid="prn-log-now"
       >
         <IconCheck className="h-3.5 w-3.5" stroke={2.5} />
-        <span className={compactActions ? "sr-only" : undefined}>
-          Taken now
-        </span>
+        <span className="sr-only">{takeName}</span>
       </button>
-      <button
-        type="button"
-        onClick={() => statement.setOpen(!statement.open)}
-        disabled={busy}
-        className={`${compactActions ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${DOSE_ACTION_NEUTRAL}`}
-        aria-expanded={statement.open}
-        aria-label={EARLIER_DOSE}
-        data-testid="prn-log-more"
-      >
-        <IconClock className="h-4 w-4" stroke={2} />
-        <span className={compactActions ? "sr-only" : undefined}>
-          {EARLIER_DOSE}
-        </span>
-      </button>
+      {clockDoor}
     </>
+  ) : (
+    // THE LABELED ARM IS THE CHIP (#4753). "Taken now" said WHEN because nothing else
+    // on the button did; the label says the DOSE this tap writes, so the verb is one
+    // word and the row's identity line no longer has to be read to know what a tap
+    // costs. `redosePrimary` — #798's window state — is the tone it always was, and
+    // it lands on the verb nub rather than filling the pill (#4548's ruling).
+    <LabeledVerbChip
+      label={doseLabel}
+      verb={verb}
+      tone={redosePrimary ? "brand" : "neutral"}
+      onAct={() => log("now")}
+      disabled={busy}
+      ariaLabel={takeName}
+      testId="prn-log-now"
+      clockDoor={clockDoor}
+    />
   );
 
   const sublines = (

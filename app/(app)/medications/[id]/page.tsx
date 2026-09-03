@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getAccessibleProfiles, requireSession } from "@/lib/auth";
+import {
+  accessForProfile,
+  getAccessibleProfiles,
+  requireSession,
+} from "@/lib/auth";
 import {
   getRankedPickerProviders,
   getIntakeCatalogOptions,
@@ -76,6 +80,17 @@ export default async function MedicationDetailPage(props: {
   const subject = accessible.find((profile) => profile.id === profileId)!;
   const crossProfile = profileId !== activeProfile.id;
   const canWrite = !crossProfile && activeAccess === "write";
+  // THIS PAGE IS A SUBJECT-SCOPED CONTAINER (#4693): it names one profile in the
+  // identity banner above, so the dose history it shows is unambiguously that
+  // profile's — and an add there follows the surface instead of asking the reader to
+  // switch. Everything else on the card stays switcher-bound (`canWrite`), which is
+  // why this is a separate fact and not a wider `canWrite`. Write access is asked of
+  // the SUBJECT, not of the acting profile, and the actions re-gate the posted id.
+  const doseHistorySubjectProfileId =
+    crossProfile &&
+    accessForProfile(login.id, login.role, profileId) === "write"
+      ? profileId
+      : undefined;
   const requestedAction = Array.isArray(searchParams.action)
     ? searchParams.action[0]
     : searchParams.action;
@@ -234,8 +249,19 @@ export default async function MedicationDetailPage(props: {
                 className="mb-4 text-sm text-slate-500 dark:text-slate-400"
                 data-testid="medication-cross-profile-note"
               >
-                Viewing {subject.name}&apos;s medication. Act as {subject.name}{" "}
-                to make changes or view their full medication list.
+                {doseHistorySubjectProfileId != null ? (
+                  <>
+                    Viewing {subject.name}&apos;s medication. Doses you log here
+                    are {subject.name}&apos;s. Act as {subject.name} to change
+                    the medication itself.
+                  </>
+                ) : (
+                  <>
+                    Viewing {subject.name}&apos;s medication. Act as{" "}
+                    {subject.name} to make changes or view their full medication
+                    list.
+                  </>
+                )}
               </p>
             ) : null}
             {prescribedAt ? (
@@ -307,6 +333,7 @@ export default async function MedicationDetailPage(props: {
               historyMaxDate={historyMaxDate}
               defaultHistoryTime={data.nowHhmm}
               canWrite={canWrite}
+              doseHistorySubjectProfileId={doseHistorySubjectProfileId}
               initialAction={initialAction}
               conditions={medConditions}
               ingredients={m.ingredients}

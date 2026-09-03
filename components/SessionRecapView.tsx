@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { IconTrophy, IconCheck, IconAlertTriangle } from "@tabler/icons-react";
+import { historyDayIntradayHref } from "@/lib/hrefs";
 import type { Recap } from "@/lib/session-recap";
 import { fmtRecapVolume } from "@/lib/session-recap";
 import { fmtRpe } from "@/lib/rpe";
@@ -12,9 +14,18 @@ import type { WeightUnit } from "@/lib/settings";
 export default function SessionRecapView({
   recap,
   unit,
+  date,
 }: {
   recap: Recap;
   unit: WeightUnit;
+  /**
+   * THE PHYSIOLOGY DOOR (#4767 item 4). The receipt says what you LIFTED; the day
+   * view's intraday panel is the only surface that says what it DID to you, and
+   * until this it was reachable from no completion surface at all. The date is the
+   * session's own, not today: a receipt reviewed after midnight still belongs to
+   * the day it happened on. Absent where the caller has no date to state.
+   */
+  date?: string;
 }) {
   const summary: string[] = [];
   if (recap.durationMin != null && recap.durationMin > 0)
@@ -56,6 +67,16 @@ export default function SessionRecapView({
           </span>
         )}
       </div>
+
+      {date && (
+        <Link
+          href={historyDayIntradayHref(date)}
+          className="inline-block text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
+          data-testid="recap-day-door"
+        >
+          See this on your day
+        </Link>
+      )}
 
       {recap.exercises.length > 0 && (
         <ul className="divide-y divide-black/5 dark:divide-white/5">

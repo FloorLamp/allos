@@ -78,8 +78,8 @@ closed taxonomy, and `needs-human` handling.
 - `agent-gates.sh`: lint, typecheck, unit, DB, E2E hygiene, PHI scan, format.
   DB and E2E-hygiene run only when the diff touches them; a format rewrite
   re-verifies the directive-reading gates. 60 s per-test ceiling here; CI 15 s.
-- `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled, 3
-  conflict-blocked.
+- `ci-watch.mjs`: wait for settled CI; exit 0 green, 1 red, 2 unsettled (a
+  `cancelled` run is no verdict — re-run it, not red), 3 conflict-blocked.
 - `catchup-digest.sh`: the since-last-looked digest; the check-in runs it once
   its anchor is 4h stale, so it needs no remembering; `--peek` any time.
 - `dependabot-eval-brief.mjs`: evaluate major dependency updates.

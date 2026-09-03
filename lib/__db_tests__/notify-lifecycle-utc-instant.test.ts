@@ -7,8 +7,9 @@
 //      already-canonical values, the empty string 061's legacy copy could have
 //      stored, and NULL are untouched, and the rewrite replays as a no-op;
 //   2. the LIVE writer stores the canonical shape end-to-end: a failed dispatch
-//      recorded through recordDeliveryOutcome lands second-resolution + Z, so the
-//      third serialization the migration removed cannot come back.
+//      recorded through recordDeliveryOutcome (now one row per delivery owner,
+//      #2565) lands second-resolution + Z, so the third serialization the
+//      migration removed cannot come back.
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts (already fully
 // migrated at import — so we drive the migration's up() directly against seeded rows,
@@ -18,6 +19,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import { up as migrate167 } from "@/lib/migrations/versions/167-notify-lifecycle-utc-instant";
 import { dispatch, getNotifyError } from "@/lib/notifications";
+import { deliveryKey } from "@/lib/notifications/delivery-marker";
 import { setProfileHomeAssistant } from "@/lib/settings";
 
 const CANONICAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -97,7 +99,10 @@ describe("migration 167 — notify_lifecycle.at states one convention (#2233)", 
       const marker = getNotifyError();
       expect(marker).not.toBeNull();
       expect(marker!.at).toMatch(CANONICAL_RE);
-      expect(atOf("delivery-health")).toMatch(CANONICAL_RE);
+      // The scoped owner row (#2565): the profile's Home Assistant attempt.
+      expect(atOf(deliveryKey("home-assistant", profileId))).toMatch(
+        CANONICAL_RE
+      );
     } finally {
       vi.unstubAllGlobals();
     }

@@ -218,6 +218,117 @@ test.describe("the day view's intraday panel (#1068)", () => {
     }
   });
 
+  // #4767 item 2 — the dashboard mount. The chart is the SAME component and the
+  // SAME day model; what this pins is that it is present on `/`, that it carries
+  // the day's own causes (the shaded ride window), that the row states the lag in
+  // the same words the panel does, and that tapping it lands on the panel.
+  test("the dashboard's Today band draws today's chart and doors to the panel", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/");
+      const family = member.locator('[data-standing-family="intraday-today"]');
+      await expect(family).toBeVisible();
+      // It is in TODAY and nowhere else — the band the issue names.
+      await expect(
+        member
+          .locator('[data-standing-section="today"]')
+          .locator('[data-standing-family="intraday-today"]')
+      ).toHaveCount(1);
+
+      // The figure, in the compact geometry the day view's phone variant uses —
+      // one implementation, selected by the prop that file already had.
+      const figure = family.getByTestId("dashboard-row-figure");
+      const chart = figure.locator('[data-variant="compact"]');
+      await expect(chart).toBeVisible();
+      // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
+      // rather than an axis, and it is the layer the presence gate is about.
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+      // The seeded ride's window, shaded on the axis — the AC's "shaded window".
+      await expect(chart.getByTestId("intraday-block")).toHaveCount(1);
+
+      // The lag sentence, on the row's own facts. Compared against the PANEL's
+      // rather than against a literal: both mounts read one `intradayFreshness`
+      // over one model, so a drift between them is the only failure worth
+      // catching here — and the run's frozen clock moves the minute, not the
+      // sentence's construction.
+      const rowValue = family.getByTestId("standing-value");
+      await expect(rowValue).toHaveText(/^Synced .+ ago$/);
+      const dashboardLag = (await rowValue.textContent())!.trim();
+
+      // THE WHOLE ROW IS ONE DOOR, THE CHART INCLUDED — a decision, so it is
+      // MEASURED. The row's link carries `standing-stretch`, whose `::after` insets
+      // to the family's facts cell, and the figure renders inside that cell: a
+      // pointer anywhere on the drawing lands on the door. That is what this mount
+      // is for ("tap → today's day view"), and it is why the figure is `inert` —
+      // the chart's own tick anchors name `#timeline-entry-…` fragments that exist
+      // on the day view and NOT here, so without it the keyboard would reach a link
+      // that scrolls nowhere while the pointer could not.
+      //
+      // NOT asserted with a click: Playwright refuses to click an element that
+      // another element intercepts, so `click(chart)` fails whether the figure is
+      // correctly covered by the door or simply broken. This asks the question the
+      // behaviour is actually about.
+      const doorReach = await family.evaluate((el) => {
+        const plot = el.querySelector(
+          '[data-variant="compact"]'
+        ) as HTMLElement | null;
+        const door = el.querySelector(
+          'a[href*="day-at-a-glance"]'
+        ) as HTMLElement | null;
+        if (!plot || !door)
+          return { hitInsideDoor: false, ticks: 0, focusable: true };
+        const box = plot.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2
+        );
+        // Through the FIGURE's own anchors — the ones this chart actually renders,
+        // not a fresh query written to check the work.
+        const ticks = Array.from(
+          el.querySelectorAll<HTMLElement>(
+            '[data-testid="dashboard-row-figure"] a[href^="#"]'
+          )
+        );
+        const focusable = ticks.some((tick) => {
+          tick.focus();
+          return document.activeElement === tick;
+        });
+        return {
+          hitInsideDoor: door.contains(hit),
+          ticks: ticks.length,
+          focusable,
+        };
+      });
+      // The control that keeps the focus claim from being vacuous: the figure really
+      // does render tick anchors, so "none is focusable" is about something.
+      expect(doorReach.ticks).toBeGreaterThan(0);
+      expect(doorReach.hitInsideDoor).toBe(true);
+      expect(doorReach.focusable).toBe(false);
+
+      await followLink(
+        member,
+        // Keyed on the DESTINATION, not on position.
+        family.locator('a[href*="day-at-a-glance"]'),
+        /\/history\?day=\d{4}-\d{2}-\d{2}#day-at-a-glance/
+      );
+      const panel = member.getByTestId("intraday-panel");
+      await expect(panel).toBeVisible();
+      await expect(panel).toBeInViewport();
+      await expect(panel.getByTestId("intraday-freshness")).toHaveText(
+        dashboardLag
+      );
+    } finally {
+      await member.context().close();
+    }
+  });
+
   test("is absent on a day with no intraday data", async ({ browser }) => {
     test.slow();
 

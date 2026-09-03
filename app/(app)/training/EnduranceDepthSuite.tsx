@@ -6,7 +6,7 @@ import { formatPercentile } from "@/lib/fitness-norms";
 import { fmtDistance } from "@/lib/units";
 import { formatMinutes } from "@/lib/duration";
 import type { DistanceUnit } from "@/lib/settings";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 function changeText(value: number | null): string {
   if (value == null) return "no prior block";
@@ -54,11 +54,12 @@ export default function EnduranceDepthSuite({
             <p className="section-label">Zone coverage this week</p>
             {zones ? (
               <>
-                <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
+                <div className="mt-2 flex h-3 rounded-full bg-slate-100 dark:bg-ink-800">
                   {zones.minutes.map((minutes, index) => (
-                    <span
+                    <SeriesPoint
                       key={index}
-                      className={
+                      label={`Zone ${index + 1}: ${minutes} min`}
+                      className={`relative first:rounded-l-full last:rounded-r-full ${
                         [
                           "bg-slate-400",
                           "bg-emerald-500",
@@ -66,15 +67,15 @@ export default function EnduranceDepthSuite({
                           "bg-orange-500",
                           "bg-rose-600",
                         ][index]
-                      }
+                      }`}
                       style={{
                         width: `${zones.totalMinutes > 0 ? (minutes / zones.totalMinutes) * 100 : 0}%`,
                       }}
                     />
                   ))}
                 </div>
-                <VisualizationDetails
-                  label="Zone details"
+                <SeriesSummary
+                  label="Zone coverage this week"
                   items={zones.minutes.map(
                     (minutes, index) => `Zone ${index + 1}: ${minutes} min`
                   )}

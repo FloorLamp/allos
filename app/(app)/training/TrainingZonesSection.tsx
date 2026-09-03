@@ -9,7 +9,7 @@ import ZoneMinutesCard, {
 import ChartCard from "@/components/ChartCard";
 import { getProfileAge } from "@/lib/settings";
 import { isLongevityRelevant } from "@/lib/life-stage";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // The bpm range label for a zone id (1..5): "[lower]–[nextLower−1] bpm", open at
 // the top for Zone 5.
@@ -99,22 +99,26 @@ export default async function TrainingZonesSection({
                       {data.split.easyPct}% easy · {data.split.hardPct}% hard
                     </span>
                   </div>
-                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
-                    <div
+                  <div className="flex h-3 w-full rounded-full bg-slate-100 dark:bg-ink-800">
+                    <SeriesPoint
+                      label={`Easy (Z1–Z2): ${data.split.easyMin} min`}
+                      className="relative rounded-l-full"
                       style={{
                         width: `${data.split.easyPct}%`,
                         backgroundColor: ZONE_COLORS[1],
                       }}
                     />
-                    <div
+                    <SeriesPoint
+                      label={`Hard (Z3–Z5): ${data.split.hardMin} min`}
+                      className="relative rounded-r-full"
                       style={{
                         width: `${data.split.hardPct}%`,
                         backgroundColor: ZONE_COLORS[3],
                       }}
                     />
                   </div>
-                  <VisualizationDetails
-                    label="Split details"
+                  <SeriesSummary
+                    label="Easy / hard split"
                     items={[
                       `Easy (Z1–Z2): ${data.split.easyMin} min`,
                       `Hard (Z3–Z5): ${data.split.hardMin} min`,
