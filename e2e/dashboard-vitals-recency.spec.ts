@@ -7,10 +7,9 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { shiftDateStr } from "@/lib/date";
-import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
-import { openDashboardAll, settledClick } from "./helpers";
+import { hydratedClick, openDashboardAll, settledClick } from "./helpers";
 import { dormantRecordSince } from "@/lib/domain-dormancy";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
@@ -60,14 +59,10 @@ const TZ = pinnedTimezone(frozenNow().toISOString()).zone;
 const TODAY = frozenNow().toISOString().slice(0, 10);
 const day = (back: number) => shiftDateStr(TODAY, -back);
 
-// What a CURRENT reading's provenance line reads: the day in the login's own date
-// format, never the stored one (#3492). The seeded logins set no `date_format`
-// override, so the resolved prefs are the defaults. Derived from the formatter
-// rather than hand-spelled because the auto-year rule means the string differs
-// inside and outside the current calendar year — but every assertion below pairs it
-// with `not.toHaveText(MACHINE_DATE)`, which cannot move with the formatter and is
-// the half that would catch the ISO fallback coming back.
-const shownDay = (iso: string) => formatLongDate(iso, DEFAULT_FORMAT_PREFS);
+// A CURRENT reading's provenance line never prints the stored day (#3492). The fresh
+// readings below are all seeded today or yesterday, so since #4757 they read as a word;
+// each is still paired with `not.toHaveText(MACHINE_DATE)`, the half that would catch
+// the ISO fallback coming back.
 const MACHINE_DATE = /\d{4}-\d{2}-\d{2}/;
 
 // Past the blood-pressure presentation floor (180 days) and comfortably INSIDE the year
@@ -262,11 +257,12 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     // is the boundary #3226 was careful not to move (#2303 stands).
     await expect(bpCandidate).toHaveAttribute("data-presence", "current");
 
-    // The fresh row is unaffected: plain date, no tint, and its arrow intact.
+    // The fresh row is unaffected: no tint, its arrow intact, and — seeded yesterday —
+    // its day said in a word rather than a calendar date (#4757).
     const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hr).toContainText("61");
     const hrAge = hrCandidate.getByTestId("vitals-latest-resting-hr-age");
-    await expect(hrAge).toHaveText(shownDay(day(1)));
+    await expect(hrAge).toHaveText("yesterday");
     await expect(hrAge).not.toHaveText(MACHINE_DATE);
     await expect(hrAge).not.toHaveAttribute("data-stale", "true");
     await expect(hr).toContainText("up versus previous resting heart rate");
@@ -382,7 +378,7 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     const hr = hrCandidate.getByTestId("vitals-latest-resting-hr");
     await expect(hr).toContainText("61");
     const hrAgeToken = hrCandidate.getByTestId("vitals-latest-resting-hr-age");
-    await expect(hrAgeToken).toHaveText(shownDay(day(1)));
+    await expect(hrAgeToken).toHaveText("yesterday");
     await expect(hrAgeToken).not.toHaveText(MACHINE_DATE);
     await expect(hr).toContainText("up versus previous resting heart rate");
 
@@ -427,12 +423,85 @@ test("a blood pressure past the year floor states its gap instead of a number, t
       "117/74"
     );
     await expect(bpCandidate).not.toContainText(statement!);
-    // Today's reading is inside the floor, so it carries a plain date rather than an
+    // Today's reading is inside the floor, so it says so in a word rather than an
     // amber age — the row is all the way back, not merely un-collapsed.
     const bpAge = bpCandidate.getByTestId("vitals-latest-bp-age");
-    await expect(bpAge).toHaveText(shownDay(TODAY));
+    await expect(bpAge).toHaveText("today");
     await expect(bpAge).not.toHaveText(MACHINE_DATE);
     await expect(bpAge).not.toHaveAttribute("data-stale", "true");
+  } finally {
+    await page.context().close();
+    destroyVitalsFixture(fixture);
+  }
+});
+// #4841 item 3 — THE DORMANT LINE IS AN ACT, AND ITS DOOR IS THE MEASUREMENT.
+//
+// "No blood pressure recorded since Mar 2022" is a prompt to take a reading. It sat
+// under READ, filed as a report, and the only thing it opened was the history of the
+// reading it says is missing — a door that cannot end the state the line describes.
+//
+// At 390px because the door is the whole of what a phone reader gets: the row has no
+// hover, so what it opens is what it is.
+test("the dormant blood-pressure line acts, and its control opens the vitals form", async ({
+  browser,
+}, testInfo) => {
+  const fixture = createVitalsFixture(testInfo, {
+    bpDaysAgo: BP_DORMANT_DAYS,
+    tag: "dormant-act",
+  });
+  const page = await loginAs(
+    browser,
+    { username: fixture.username, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const bpCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.blood-pressure:"
+    );
+    // Still the dormant line #3226 wrote — the presence and the sentence are what
+    // this issue leaves alone.
+    await expect(bpCandidate).toHaveAttribute("data-presence", "dormant");
+
+    // WHERE IT SITS. Both directions, because the group is a partition: naming Act
+    // alone would pass on a tree that drew the row in both.
+    await expect(
+      page
+        .getByTestId("dashboard-everything-act")
+        .locator('[data-candidate-id="vitals.blood-pressure:dormant"]')
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId("dashboard-everything-read")
+        .locator('[data-candidate-id="vitals.blood-pressure:dormant"]')
+    ).toHaveCount(0);
+
+    // The family's door is unchanged — the history is still one tap away, as the
+    // row's own words rather than as its only affordance.
+    await expect(
+      bpCandidate.getByRole("link", { name: "Vitals history" })
+    ).toHaveAttribute("href", "/trends#body");
+
+    // AND THE DOOR THAT CAN END THE DORMANCY. The row's control opens the app's one
+    // quick-write surface on the vitals group — the same form, disclosed at first
+    // render, that the palette route in the previous test opens.
+    //
+    // `hydratedClick`, not `settledClick`: opening the overlay is a pure client
+    // toggle and posts nothing, so the Server-Action wait would time out on a
+    // working control.
+    await hydratedClick(
+      page,
+      bpCandidate.getByTestId("dashboard-quick-entry-action")
+    );
+    const body = page.getByTestId("quick-entry-body");
+    await expect(body).toHaveAttribute("data-form", "measurements");
+    await expect(
+      body
+        .getByTestId("measurements-quick-add")
+        .locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
   } finally {
     await page.context().close();
     destroyVitalsFixture(fixture);

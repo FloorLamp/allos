@@ -58,6 +58,8 @@ import {
   normalizeZygosity,
 } from "./genomic-variant";
 import {
+  capImagingImpression,
+  capImagingNarrative,
   normalizeModality,
   normalizeLaterality,
   normalizeContrast,
@@ -375,8 +377,12 @@ export interface PersistImagingStudy {
   contrast_agent: string | null;
   study_date: string | null;
   dose_msv: number | null;
-  // The impression alone, and the report it came from (#3594). The AI path fills
-  // only the impression — it is prompted for the finding, not the document.
+  // The impression alone, and the report it came from (#3594). EVERY route fills
+  // both: the AI path is prompted for the report BODY verbatim
+  // (medical-extract/prompt.ts's `impression` field), so what it returns is a
+  // document — it goes to the narrative, and only a section the report labels as
+  // its impression is parsed into `impression` (#4732). One column, one meaning,
+  // whichever route filled it.
   impression: string | null;
   report_narrative: string | null;
   indication: string | null;
@@ -1029,8 +1035,15 @@ export function extractionToPersistInput(
       contrast_agent: s.contrast_agent,
       study_date: s.study_date,
       dose_msv: parseDoseMsv(s.dose_msv),
-      impression: s.impression,
-      report_narrative: null,
+      // The extracted body is a DOCUMENT (the prompt asks for it verbatim), so it
+      // is stored as the narrative and only a labelled impression section is
+      // parsed out of it — the same two calls, and the same 8000-char bound, the
+      // FHIR routes use (#4732). Neither field is ever written raw: this path
+      // previously wrote the whole decoded report into `impression` uncapped.
+      impression: capImagingImpression(s.impression),
+      report_narrative: s.impression?.trim()
+        ? capImagingNarrative(s.impression)
+        : null,
       indication: s.indication,
       status: s.status,
       external_id: null,

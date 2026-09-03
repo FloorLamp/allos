@@ -3,19 +3,13 @@ import QuickLogPrnControl from "@/components/medications/QuickLogPrnControl";
 import type { PrnMedForQuickLog } from "@/lib/queries";
 import type { ReactNode } from "react";
 import type { AppRoute } from "@/lib/hrefs";
-import {
-  administrationDayLabel,
-  administrationLastDoseLabel,
-  formatGivenAtClockWithRelativeAge,
-} from "@/lib/administration-format";
-import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
-import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
+import { prnRowStatus } from "@/lib/redose-format";
 import type { TimeFormat } from "@/lib/format-date";
 import Disclosure from "@/components/Disclosure";
 
 // PRN (as-needed) medication quick-log content (#797). The one-tap
-// retro-entry home: each active PRN med gets a "Taken now" button plus an "Earlier
+// retro-entry home: each active PRN med gets a one-tap dose control plus an "Earlier
 // dose" statement — an absolute time today via the shared WhenControl (#2236).
 // The per-day count + last time is computed here
 // (server, with the profile tz) and passed down so the client control stays a thin
@@ -33,7 +27,6 @@ export default function QuickLogPrnContent({
   intro,
   emptyMessage,
   titleHref,
-  showPageLink = true,
   timeFormat,
   nowIso,
 }: {
@@ -51,7 +44,6 @@ export default function QuickLogPrnContent({
   intro?: ReactNode;
   emptyMessage?: string;
   titleHref?: AppRoute;
-  showPageLink?: boolean;
   timeFormat?: TimeFormat;
   // The redose-window "now", as an ISO instant from the nearest SERVER boundary.
   // REQUIRED whenever this content is mounted under a "use client" parent (the
@@ -75,19 +67,10 @@ export default function QuickLogPrnContent({
   // The window math is the shared prnQuickLogRedoseStatus (#221): this content, the
   // medications list and the Telegram `/dose` list all read one gate, so "the
   // interval alone answers when the next dose is OK" can't drift between them.
-  const redoseStatusFor = (m: PrnMedForQuickLog) =>
-    prnQuickLogRedoseStatus(m, now);
   const visibleMeds = compact ? meds.slice(0, 3) : meds;
   const remainingMeds = compact ? meds.slice(3) : [];
   const medControl = (m: PrnMedForQuickLog) => {
-    const lastClock = formatGivenAtClockWithRelativeAge(
-      tz,
-      m.lastGivenAt,
-      timeFormat,
-      now
-    );
-    const redoseStatus = redoseStatusFor(m);
-    const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
+    const row = prnRowStatus(m, tz, now, timeFormat);
     return (
       <QuickLogPrnControl
         key={m.id}
@@ -95,13 +78,9 @@ export default function QuickLogPrnContent({
         name={m.displayName ?? m.name}
         doseAmount={m.amount}
         product={m.product}
-        dayLabel={
-          redoseLine
-            ? administrationLastDoseLabel(m.count, lastClock)
-            : administrationDayLabel(m.count, lastClock)
-        }
-        redoseLine={redoseLine}
-        redosePrimary={redoseActionIsPrimary(redoseStatus)}
+        dayLabel={row.dayLabel}
+        redoseLine={row.redoseLine}
+        redosePrimary={row.redosePrimary}
         linkToDetail={m.kind === "medication"}
         profileId={profileId}
         rowVariant={rowVariant}
@@ -118,10 +97,10 @@ export default function QuickLogPrnContent({
           title={title}
           href="/medications"
           variant={headingVariant}
-          action={headerAction}
           titleHref={titleHref}
-          showPageLink={showPageLink}
-        />
+        >
+          {headerAction}
+        </CardSectionHeader>
       )}
       {intro}
       {meds.length === 0 && emptyMessage ? (

@@ -32,10 +32,15 @@ export function isFlaggedForRetest(
   return isOutOfRange(flag) || isNonOptimal(flag);
 }
 
-// The detail line for a retest item. Always states the last-tested date and the
-// cadence; when the reading was flagged it LEADS with the status ("Below optimal
-// at last test · …") so a flagged analyte's row explains itself.
-export function biomarkerRetestDetail(o: {
+// THE RETEST FACTS, CARRIED RATHER THAN COMPOSED (#3526). The item holds these and
+// each channel writes its own sentence, because the only part that differs between
+// channels is HOW THE DAY IS SPELLED: the generator that builds them is a login-less
+// query layer, so it cannot resolve a DisplayFormatPrefs, and threading one into it
+// would hand the digest and Telegram one login's date shape. Every other fact here
+// renders identically everywhere.
+export interface BiomarkerRetestFacts {
+  // The last draw, as a profile-local YYYY-MM-DD. RAW on purpose: the channel that
+  // has a login formats it, the ones that do not keep the unambiguous ISO day.
   effectiveDate: string;
   agoMonths: number;
   intervalMonths: number;
@@ -43,8 +48,20 @@ export function biomarkerRetestDetail(o: {
   // Calm risk-priority reasons (issue #517) appended so a modulated cadence /
   // ranked item explains WHY ("Family history of heart disease"). Empty = routine.
   reasons?: string[];
-}): string {
-  const base = `Last tested ${o.effectiveDate} (${o.agoMonths}mo ago) · retest every ${o.intervalMonths}mo`;
+}
+
+// The detail line for a retest item. Always states the last-tested date and the
+// cadence; when the reading was flagged it LEADS with the status ("Below optimal
+// at last test · …") so a flagged analyte's row explains itself.
+//
+// `dayText` is REQUIRED and is the whole point of the split: a caller must say which
+// spelling of the last-tested day it is rendering — the login's date shape on a page,
+// the ISO day on a login-less channel — rather than inheriting one by accident.
+export function biomarkerRetestDetail(
+  o: BiomarkerRetestFacts,
+  dayText: string
+): string {
+  const base = `Last tested ${dayText} (${o.agoMonths}mo ago) · retest every ${o.intervalMonths}mo`;
   const withStatus = isFlaggedForRetest(o.flag)
     ? `${flagLabel(o.flag)} at last test · ${base}`
     : base;

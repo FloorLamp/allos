@@ -86,7 +86,7 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   // Open the saved session's own page, where the record — and the offer — live.
   await page.goto("/training?tab=log");
   const row = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: title })
     .first(); // first-ok: the probe session is uniquely titled for this run
   await followLink(
@@ -134,6 +134,6 @@ test("a workout note naming a sore knee offers a one-tap niggle confirm (#2948)"
   );
   await page.goto("/training?tab=log");
   await expect(
-    page.getByTestId("training-log-row").filter({ hasText: title })
+    page.getByTestId("history-row").filter({ hasText: title })
   ).toHaveCount(0);
 });

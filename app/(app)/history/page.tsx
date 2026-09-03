@@ -14,7 +14,7 @@ import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
-import HistoryAddDoor from "./HistoryAddDoor";
+import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
@@ -22,7 +22,6 @@ import {
   getHomeLocation,
   getProfileAge,
   getTimezone,
-  getUnitPrefs,
 } from "@/lib/settings";
 import {
   getCustomSymptomNames,
@@ -31,8 +30,6 @@ import {
   getIntakeItems,
   getMoodOnDate,
   getSymptomLogOrder,
-  getSymptomNotesOnDate,
-  getSymptomSeveritiesOnDate,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
@@ -48,8 +45,6 @@ import DaylightChip from "@/components/DaylightChip";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
-import SymptomEntryCard from "./SymptomEntryCard";
-import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
@@ -59,9 +54,7 @@ import {
 } from "@/lib/queries/weather-situations";
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
-import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { isTaskConfigured } from "@/lib/ai-resolve";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
@@ -294,6 +287,7 @@ export default async function HistoryPage(props: {
       media,
       day,
       limit: show,
+      actingProfileId,
     })
   );
   const presentKinds = HISTORY_KINDS.filter((candidate) =>
@@ -502,11 +496,6 @@ export default async function HistoryPage(props: {
   // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
   // life records are created on their domain surfaces, and sleep arrives from an
   // integration and is corrected at its source.
-  //
-  // SYMPTOM ONLY WHERE THE BAR IS NOT (#4424 ruling 2). A symptom is quick-logged and
-  // the day view mounts the bar that does it — but a reader filtered to `?kind=symptom`
-  // is standing on no day, so that argument covered a view the bar never reaches: the
-  // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
     kind === "dose" ||
@@ -514,11 +503,10 @@ export default async function HistoryPage(props: {
     kind === "mood" ||
     kind === "substance" ||
     kind === "body" ||
+    kind === "symptom" ||
     kind === "stool"
       ? kind
-      : kind === "symptom" && day == null
-        ? kind
-        : null;
+      : null;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
@@ -576,14 +564,6 @@ export default async function HistoryPage(props: {
           // The acting profile's meal-bucket boundaries, so the food form's Meal
           // follows a stated hour here exactly as it does in the nutrition bar.
           foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
-          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here, and this
-          // is the only day the door's control can be about (#4424 ruling 2 deleted the
-          // shared date input it used to chase). Empty for every other kind — a
-          // `Log a use` door has no breakfast to offer.
-          usual:
-            addKind === "food"
-              ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
-              : [],
         }
       : null;
   // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
@@ -601,6 +581,14 @@ export default async function HistoryPage(props: {
             ? addVocabulary.symptoms.length > 0
             : true
     : false;
+  // THE DAY'S STANDING COMPOSED OFFERS (#4118), read for the day being looked at rather
+  // than for a kind (#4310 ruling): the usual is an offer over foods and stacks, never a
+  // food, so it leads the add door above the per-kind row instead of sitting inside
+  // `Log food`. `usualRoutineDayOffers` gates on the bundle's reach and then on the food
+  // half, so a day with no habit standing returns before it touches intake at all.
+  const usualOffers = canWrite
+    ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
+    : [];
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -610,9 +598,9 @@ export default async function HistoryPage(props: {
 
   // ── THE DAY VIEW'S INHERITANCE (#3958 phase 2; #1068/#1425/#799) ─────────
   //
-  // `/history?day=` is the app's one "that day" anchor now, so the four things
+  // `/history?day=` is the app's one "that day" anchor now, so the three things
   // `/timeline`'s single-day view carried come with it: the intraday panel, the day
-  // context chips, the prev/next nav with its swipe, and the SymptomLogBar mount.
+  // context chips, and the prev/next nav with its swipe.
   //
   // SINGLE-SUBJECT ONLY, which is the timeline's own rule and not a simplification:
   // daylight, UV, weather and cycle phase are ONE body's context, and a merged
@@ -676,20 +664,6 @@ export default async function HistoryPage(props: {
         feeds[0]?.gather.dayEvents ?? []
       )
     : null;
-
-  // RETRO SYMPTOM ENTRY (#799/#1517 C). The bar writes to the ACTING profile, so it
-  // mounts only on the acting profile's own day — never a mixed-subject write. It
-  // opens on arrival when logging IS the point of the visit: the day already carries
-  // symptom entries, or an illness-type situation is active.
-  const daySymptomSeverities = dayContext
-    ? getSymptomSeveritiesOnDate(actingProfileId, dayContext)
-    : {};
-  const daySymptomNotes = dayContext
-    ? getSymptomNotesOnDate(actingProfileId, dayContext)
-    : {};
-  const dayIllnessActive = dayContext
-    ? hasActiveIllnessSituation(actingProfileId)
-    : false;
 
   // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
   //
@@ -956,7 +930,7 @@ export default async function HistoryPage(props: {
               ? formatMonthDay(shiftDateStr(day, 1), prefs)
               : formatMonthDay(day, prefs)
           }
-          targetSelector='[data-testid="app-content-container"]'
+          targetSelector="main"
         />
       ) : null}
 
@@ -1008,6 +982,9 @@ export default async function HistoryPage(props: {
           bounded by today. */}
       {canWrite ? (
         <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
+          {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+              and silent on a day with no standing offer. */}
+          <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
           {!hasAddDoor ? (
             /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It
@@ -1056,38 +1033,6 @@ export default async function HistoryPage(props: {
             formatPrefs={prefs}
             profileId={actingProfileId}
           />
-        </div>
-      ) : null}
-
-      {/* THE SYMPTOM BAR'S CONVENIENCE MOUNT (#799), which is the whole reason a
-          symptom is not an Add-door kind: symptoms are quick-logged against a day,
-          not declared as an entry. Acting profile only — the card renders only on
-          `dayContext`, which is already the acting profile's own day. */}
-      {dayContext && canWrite ? (
-        <div className={`mb-3 ${railGutter}`}>
-          <SymptomEntryCard
-            dateLabel={formatLongDate(dayContext, prefs)}
-            defaultOpen={
-              Object.keys(daySymptomSeverities).length > 0 ||
-              Object.keys(daySymptomNotes).length > 0 ||
-              dayIllnessActive
-            }
-          >
-            <SymptomLogBar
-              date={dayContext}
-              initial={daySymptomSeverities}
-              initialNotes={daySymptomNotes}
-              symptoms={PICKER_SYMPTOMS}
-              customNames={getCustomSymptomNames(actingProfileId)}
-              rankedKeys={getSymptomLogOrder(actingProfileId)}
-              suggestActivateIllness={!dayIllnessActive}
-              temperatureUnit={getUnitPrefs(loginId).temperatureUnit}
-              textIntakeEnabled={isTaskConfigured("symptom-map")}
-              // Unconditional: the card above renders only on the acting profile's
-              // own day, so this link can never name someone else's analysis.
-              analysisHref="/trends/symptoms"
-            />
-          </SymptomEntryCard>
         </div>
       ) : null}
 

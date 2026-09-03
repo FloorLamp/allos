@@ -8,7 +8,8 @@ import {
   bristolStoolType,
   type BristolPanel as PanelModel,
 } from "@/lib/bristol-stool";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
+import CardSectionHeader from "@/components/CardSectionHeader";
 
 // The Bristol stool-form panel (issue #2785): a DISTRIBUTION and a per-day dot strip,
 // never an averaged line.
@@ -30,8 +31,8 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 // ships a recording surface, and any observation about what a run of types means is a
 // later decision under the findings doctrine.
 //
-// A pure formatter, server-rendered with no client JS: the shared visualization
-// disclosure and each mark's accessible name carry the exact values.
+// A pure formatter, server-rendered with no client JS: each mark names its exact
+// value and is the door to it (#4760).
 
 // Where a type's dot sits in the strip's track: type 1 at the top, type 7 at the
 // bottom, which is the scale's own direction (hard → liquid) and the direction its
@@ -76,28 +77,23 @@ export default function BristolStoolPanel({
       data-testid="bristol-panel"
       className="border-t border-black/5 pt-5 dark:border-white/5"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="section-label">Stool form</h3>
+      <CardSectionHeader title="Stool form" variant="label">
         <span className="text-xs text-slate-500 dark:text-slate-400">
           Last 4 weeks
         </span>
-      </div>
+      </CardSectionHeader>
 
       {/* The distribution: how often each type, over the window. */}
-      <div
-        className="mt-3 flex items-end gap-1"
-        data-testid="bristol-distribution"
-      >
+      <div className="flex items-end gap-1" data-testid="bristol-distribution">
         {panel.distribution.map((d) => {
           const label = distributionTitle(d, panel.total);
           return (
-            <div
+            <SeriesPoint
               key={d.type}
               data-testid={`bristol-bar-${d.type}`}
               data-count={d.count}
-              role="img"
-              aria-label={label}
-              className="flex min-w-0 flex-1 flex-col items-center gap-1"
+              label={label}
+              className="relative flex min-w-0 flex-1 flex-col items-center gap-1"
             >
               <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                 {d.count || ""}
@@ -116,7 +112,7 @@ export default function BristolStoolPanel({
               <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
                 {d.type}
               </span>
-            </div>
+            </SeriesPoint>
           );
         })}
       </div>
@@ -129,13 +125,12 @@ export default function BristolStoolPanel({
         {panel.days.map((day) => {
           const label = dayTitle(day, formatPrefs);
           return (
-            <div
+            <SeriesPoint
               key={day.date}
               data-testid={`bristol-day-${day.date}`}
               data-types={day.types.join(",") || undefined}
-              role="img"
-              aria-label={label}
-              className="relative min-w-0 flex-1"
+              label={label}
+              className="relative block min-w-0 flex-1"
               style={{ height: "3rem" }}
             >
               {day.types.length === 0 ? (
@@ -150,13 +145,13 @@ export default function BristolStoolPanel({
                   />
                 ))
               )}
-            </div>
+            </SeriesPoint>
           );
         })}
       </div>
 
-      <VisualizationDetails
-        label="Stool-form chart details"
+      <SeriesSummary
+        label="Stool form by type and by day"
         items={[
           ...panel.distribution.map((entry) =>
             distributionTitle(entry, panel.total)

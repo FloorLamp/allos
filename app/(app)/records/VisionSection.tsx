@@ -13,6 +13,8 @@ import OpticalPrescriptionForm from "@/app/(app)/records/specialty/vision/Optica
 import OpticalPrescriptionList from "@/app/(app)/records/specialty/vision/OpticalPrescriptionList";
 import OpticalProgression from "@/app/(app)/records/specialty/vision/OpticalProgression";
 import { addOpticalPrescription } from "@/app/(app)/records/specialty/vision/actions";
+import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
+import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 
 // Vision / eye care (former /vision index, #1042 final tail): the profile's
 // structured optical (eyeglass/contact) prescriptions — per-eye
@@ -30,6 +32,10 @@ import { addOpticalPrescription } from "@/app/(app)/records/specialty/vision/act
 // and plotting two members' spheres on one axis would answer a question nobody asked.
 // The add form and the create-a-visit offer stay acting-only for the same reason the
 // Dental pane's do: they write, and the actor is their target.
+//
+// EYE CARE HISTORY (#2921): below the structured Rx table, the specialty lens's
+// visits and eye-coded conditions for the same view set the list reads — the pane's
+// answer to "show me this person's eye care" when the only record of it is visits.
 export default function VisionSection({ scope }: { scope: ProfileScope }) {
   const multi = scope.viewIds.length > 1;
   const prescriptions = stampSubjects(
@@ -37,6 +43,12 @@ export default function VisionSection({ scope }: { scope: ProfileScope }) {
     readForProfiles(scope.viewIds, (pid) => getOpticalPrescriptions(pid))
   );
   const actingPrescriptions = getOpticalPrescriptions(scope.actingProfileId);
+  const eyeCare = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) =>
+      getSpecialtyLensEntries(pid, "vision")
+    )
+  );
   // "Create a visit from this record?" (#1099): Rx dated D with no encounter that day.
   const createVisitOffersList = createVisitOffers(
     scope.actingProfileId,
@@ -48,6 +60,7 @@ export default function VisionSection({ scope }: { scope: ProfileScope }) {
   const todayByProfile = Object.fromEntries(
     scope.viewIds.map((pid) => [pid, today(pid)])
   );
+  const formatPrefs = getDisplayFormatPrefs(scope.loginId);
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -66,7 +79,7 @@ export default function VisionSection({ scope }: { scope: ProfileScope }) {
         />
         <OpticalProgression
           items={actingPrescriptions}
-          formatPrefs={getDisplayFormatPrefs(scope.loginId)}
+          formatPrefs={formatPrefs}
         />
         <OpticalPrescriptionList
           items={prescriptions}
@@ -78,6 +91,12 @@ export default function VisionSection({ scope }: { scope: ProfileScope }) {
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
           OD = right eye, OS = left eye.
         </p>
+        <SpecialtyHistoryStrip
+          line="vision"
+          entries={eyeCare}
+          formatPrefs={formatPrefs}
+          actingProfileId={multi ? scope.actingProfileId : undefined}
+        />
       </div>
     </ProviderOptionsProvider>
   );

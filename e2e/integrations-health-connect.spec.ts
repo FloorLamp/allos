@@ -113,6 +113,44 @@ test.describe("Health Connect integration (#391)", () => {
     }
   });
 
+  // Issue #3182: the ONE glucose switch. Off by default and nothing asks at setup —
+  // a fingerstick meter and a CGM push the same Health Connect record type, so the
+  // safe answer for someone who has not thought about it keeps a discrete reading a
+  // discrete reading. Flipping it persists across a reload.
+  test("the continuous-sensor glucose switch is off by default and persists", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_HC,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/health-connect");
+      const generate = member.getByTestId("health-connect-generate");
+      if (await generate.count()) await generate.click();
+      await expect(member.getByTestId("health-connect-status")).toBeVisible();
+
+      const toggle = member.getByTestId("hc-cgm-glucose-toggle");
+      await expect(toggle).not.toBeChecked();
+      await toggle.check();
+      await expect(toggle).toBeChecked();
+
+      await member.reload();
+      await expect(member.getByTestId("hc-cgm-glucose-toggle")).toBeChecked();
+
+      // Leave the fixture profile as it was found — this spec shares its member with
+      // the token test above, and a latched switch is state the next run inherits.
+      await member.getByTestId("hc-cgm-glucose-toggle").uncheck();
+      await member.reload();
+      await expect(
+        member.getByTestId("hc-cgm-glucose-toggle")
+      ).not.toBeChecked();
+    } finally {
+      await member.context().close();
+    }
+  });
+
   // Issue #1065: the setup card renders the per-type "Recommended settings" matrix
   // (SOURCE_FIDELITY), so the user knows which granularity to pick in the exporter app.
   test("renders the recommended per-type granularity settings block", async ({

@@ -1,8 +1,9 @@
 import { test, expect } from "./fixtures";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { shiftDateStr } from "@/lib/date";
 import {
   expectAtomicCardPairs,
+  expectNoClippedContent,
   expectNoEscapingOverflow,
   hydratedClick,
   overflowStory,
@@ -501,6 +502,117 @@ test.describe("mobile clipping batch (#2614)", () => {
         "cannot fit are unreachable rather than swipeable"
     ).toBeGreaterThan(0);
   });
+});
+
+// THE CLIPPED-CONTENT GUARD'S OWN PROOF (#4534).
+//
+// `expectNoClippedContent` used to ask whether a box cleared the viewport, and
+// "fits the viewport" is not "is visible" — an `overflow: hidden` ancestor cuts
+// its children without moving their boxes, which is the #4394 shape and the
+// reason #4677 could delete a sweep from this file as blind. It now asks what is
+// PAINTED. Both halves of that need proving in the same place: it must fail on a
+// cut inside a fitting box, and it must stay quiet on the deliberate hiding that
+// is everywhere in the tree, or its first run drowns 64 call sites at once.
+//
+// FORGED THROUGH THE GUARD'S OWN OBJECT. Each shape is built into a real page and
+// `expectNoClippedContent` is the thing that runs; a control written with its own
+// fresh query would only ever prove that SOME query can see a cut. And every
+// excused shape below is THE CUT CASE with ONE property changed on the host, so
+// each silence is attributable to that property rather than to a forgery that
+// never reached the state at all.
+const FORGED_TESTID = "forged-cut-content";
+
+// The cut: a 200px child inside a 40px clipping host, both far inside the
+// viewport, so the pre-#4534 rule reports the page clean.
+const CUT_HOST = "left:8px;width:40px;overflow-x:hidden";
+const FORGED_CHILD_WIDTH_PX = 200;
+
+async function forgeCut(page: Page, host: string): Promise<void> {
+  await page.evaluate(
+    ({ host, testid, childWidth }) => {
+      const el = document.createElement("div");
+      el.id = "forged-cut-host";
+      el.style.cssText = `position:fixed;top:8px;height:20px;z-index:9999;${host}`;
+      const child = document.createElement("span");
+      child.setAttribute("data-testid", testid);
+      child.style.cssText = `display:block;height:20px;width:${childWidth}px`;
+      child.textContent = "forged";
+      el.appendChild(child);
+      document.body.appendChild(el);
+    },
+    { host, testid: FORGED_TESTID, childWidth: FORGED_CHILD_WIDTH_PX }
+  );
+}
+
+async function removeForgery(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    document.getElementById("forged-cut-host")?.remove()
+  );
+}
+
+// One property changed on the host, and the sentence that property stands for.
+const EXCUSED: readonly { why: string; host: string }[] = [
+  {
+    why: "a working scroller the reader can move",
+    host: "left:8px;width:40px;overflow-x:auto",
+  },
+  {
+    why: "a cell starved to zero width by its own shrink negotiation",
+    host: "left:8px;width:0px;overflow-x:hidden",
+  },
+  {
+    why: "the sr-only idiom: a 1px box with overflow hidden",
+    host: "left:8px;width:1px;overflow-x:hidden",
+  },
+  {
+    why: "a drawer parked off-canvas to the right",
+    host: "left:100%;width:200px;overflow-x:hidden",
+  },
+  {
+    why: "a drawer parked off-canvas to the left",
+    host: "left:-200px;width:200px;overflow-x:hidden",
+  },
+];
+
+test.describe("expectNoClippedContent sees paint, not boxes (#4534)", () => {
+  test("it fails on a cut inside a box that fits, and only while the cut is there", async ({
+    page,
+  }) => {
+    await page.goto("/trends");
+    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+    await expectNoClippedContent(page);
+
+    await forgeCut(page, CUT_HOST);
+    // The forgery is INSIDE the viewport — this is the state the old rule could
+    // not fail on, asserted rather than described.
+    const box = await page.getByTestId(FORGED_TESTID).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        right: r.right,
+        width: r.width,
+        vw: document.documentElement.clientWidth,
+      };
+    });
+    expect(box.width).toBe(FORGED_CHILD_WIDTH_PX);
+    expect(box.right).toBeLessThan(box.vw);
+
+    await expect(expectNoClippedContent(page)).rejects.toThrow(
+      new RegExp(`${FORGED_TESTID}[^\\n]*paints 40px of its 200px box`)
+    );
+
+    await removeForgery(page);
+    await expectNoClippedContent(page);
+  });
+
+  for (const { why, host } of EXCUSED) {
+    test(`it stays quiet on ${why}`, async ({ page }) => {
+      await page.goto("/trends");
+      await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
+      await forgeCut(page, host);
+      await expectNoClippedContent(page);
+      await removeForgery(page);
+    });
+  }
 });
 
 // A DIALOG BODY IS NOT A SIDEWAYS SCROLLER (#3360).

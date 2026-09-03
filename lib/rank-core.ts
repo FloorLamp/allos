@@ -206,3 +206,41 @@ export function mergeStoredOrder<Id extends string>(
   }
   return out;
 }
+
+// ── GROUPING A RANKED LIST BY SUBJECT (#4752 item 6) ────────────────────────
+//
+// The mechanics half of the Now section's changed sort contract: GROUP BY SUBJECT,
+// RANK WITHIN GROUP, and only when more than one subject is present. It lives here
+// beside `rankItems` because it is the same kind of claim — a deterministic,
+// DB-free, clock-free reordering — and because the ordering it produces is a
+// property a caller has to be able to test without rendering anything.
+//
+// TWO RULES, AND BOTH ARE THE POINT:
+//
+//   1. RANK SURVIVES INSIDE A GROUP. Members keep the order they arrived in, so
+//      whatever ranked them still decides who leads their own cluster.
+//   2. A GROUP'S SEAT IS ITS BEST MEMBER'S. Groups come out in the order their
+//      first member appeared, so grouping can never promote a subject above one
+//      that outranked it — it only gathers.
+//
+// A SINGLE GROUP IS NOT A GROUPING, and the null says so structurally rather than
+// leaving every caller to compare `length` against 1: one subject's Now renders no
+// labels, so there is nothing for a host to draw and no shape to draw it with.
+export function groupRankedBySubject<T>(
+  ordered: readonly T[],
+  subjectOf: (item: T) => string
+): { subject: string; members: T[] }[] | null {
+  const groups: { subject: string; members: T[] }[] = [];
+  const bySubject = new Map<string, T[]>();
+  for (const item of ordered) {
+    const subject = subjectOf(item);
+    let members = bySubject.get(subject);
+    if (!members) {
+      members = [];
+      bySubject.set(subject, members);
+      groups.push({ subject, members });
+    }
+    members.push(item);
+  }
+  return groups.length > 1 ? groups : null;
+}

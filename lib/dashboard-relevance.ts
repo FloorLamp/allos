@@ -16,6 +16,7 @@ import { groupUpcoming, type UpcomingItem } from "./upcoming";
 import { dashboardAttentionCandidateId } from "./dashboard-attention-identity";
 import type { AppRoute } from "./hrefs";
 import { nowReasonScore } from "./dashboard-rank-precedence";
+import { groupRankedBySubject } from "./rank-core";
 
 export type DashboardSubject =
   | { scope: "profile"; profileId: number }
@@ -156,6 +157,12 @@ export type DashboardPlacement =
   | (DashboardPlacementBase & {
       lane: "now";
       nowLayer: DashboardNowLayer;
+      /**
+       * WHOSE CLUSTER THIS ROW SITS IN (#4752 item 6), or null when Now holds one
+       * subject and therefore renders no labels. The grouping is placement only: it
+       * gathers rows that already ranked, and a group's seat is its best member's.
+       */
+      nowSubject: string | null;
     })
   | (DashboardPlacementBase & {
       lane: "standing";
@@ -284,6 +291,19 @@ function nowScore(candidate: DashboardCandidate): number | null {
   return nowReasonScore(candidate);
 }
 
+// WHOSE ROW THIS IS, for Now's subject grouping (#4752 item 6). A household- or
+// login-scoped row is the VIEWER's — no other name above it would be true — so it
+// clusters with the active profile's own rows, and only a genuinely cross-profile
+// candidate can open a second group.
+function nowSubjectKey(
+  candidate: DashboardCandidate,
+  activeProfileId: number
+): string {
+  return candidate.subject.scope === "profile"
+    ? String(candidate.subject.profileId)
+    : String(activeProfileId);
+}
+
 function compareSource(a: DashboardCandidate, b: DashboardCandidate): number {
   return (
     a.sourceOrder - b.sourceOrder ||
@@ -408,12 +428,18 @@ function everythingGroup(
       candidate.relevance.presence === "never")
   )
     return "setup";
+  // AN ACT IS AN ACT AT ANY PRESENCE (#4841 item 3). Dormancy describes the DATA —
+  // the quantity has gone quiet — and a dormant reading is a report, so it reads.
+  // A dormant candidate that carries a WRITE is not: "No blood pressure recorded
+  // since Mar 2022" is a prompt to take one, and grouping it under Read filed the
+  // prompt as a report whose only door was the history of the missing thing. The
+  // kind decides, and the presence still decides everything else it decided before.
+  if (candidate.kind === "action") return "act";
   if (
     candidate.relevance.kind === "profile-data" &&
     candidate.relevance.presence === "dormant"
   )
     return "read";
-  if (candidate.kind === "action") return "act";
   if (candidate.kind === "reading") return "read";
   if (candidate.kind === "statement") return "understand";
   return "active-states";
@@ -636,8 +662,20 @@ export function rankDashboardCandidates(
     selectedNow.map((entry) => entry.candidate.candidateId)
   );
   const nowFacts = new Set(selectedNow.map((entry) => entry.candidate.factKey));
+  // THE SUBJECT GROUPING (#4752 item 6). Now's layers already decided WHO leads;
+  // this gathers each subject's rows together without letting a subject overtake
+  // one that outranked it, so a caregiver's own Omega-3 stops reading as debris
+  // under a child's illness cockpit. One subject → no groups and no labels.
+  const nowGroups = groupRankedBySubject(selectedNow, (entry) =>
+    nowSubjectKey(entry.candidate, signals.activeProfileId)
+  );
+  const groupedNow = nowGroups
+    ? nowGroups.flatMap((group) =>
+        group.members.map((entry) => ({ ...entry, nowSubject: group.subject }))
+      )
+    : selectedNow.map((entry) => ({ ...entry, nowSubject: null }));
   const nowOrder = new Map(
-    selectedNow.map((entry, index) => [entry.candidate.candidateId, index])
+    groupedNow.map((entry, index) => [entry.candidate.candidateId, index])
   );
 
   const remainingAfterNow = live.filter(
@@ -772,13 +810,16 @@ export function rankDashboardCandidates(
   );
 
   return [
-    ...selectedNow.map(({ candidate, timingDisposition, nowLayer }) => ({
-      candidate,
-      lane: "now" as const,
-      laneOrder: nowOrder.get(candidate.candidateId)!,
-      timingDisposition,
-      nowLayer,
-    })),
+    ...groupedNow.map(
+      ({ candidate, timingDisposition, nowLayer, nowSubject }) => ({
+        candidate,
+        lane: "now" as const,
+        laneOrder: nowOrder.get(candidate.candidateId)!,
+        timingDisposition,
+        nowLayer,
+        nowSubject,
+      })
+    ),
     ...standing.members.map(({ candidate, family, band }, laneOrder) => ({
       candidate,
       lane: "standing" as const,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AppRoute } from "@/lib/hrefs";
+import { SeriesPoint } from "@/components/SeriesAccess";
 
 // ONE PERIOD STRIP, ONE KEY (#4543). "N consecutive periods painted by state, with a
 // key" had five renderers and four hand-rolled legends between them — four cell
@@ -8,7 +9,8 @@ import type { AppRoute } from "@/lib/hrefs";
 // from there and from nowhere else — the half lib/__tests__/chart-colors-scan.test.ts
 // guards. A strip is a labelled group: it carries the summary, and any cell with its
 // own name keeps it, so a strip whose cells name themselves and one named only as a
-// whole read the same way.
+// whole read the same way. A named cell is also its own door to that name (#4760):
+// focusable, and showing it while focused or hovered, so the strip needs no fold.
 
 export type StateCellSize = "dot" | "cell" | "tile";
 
@@ -60,15 +62,22 @@ export function StateCells({
         const shared = {
           "data-testid": cell.testId,
           "data-state": cell.state,
-          "aria-label": cell.label,
           className: `${stateCellClass("cell", cell.tone)} ${cell.className ?? ""}`,
         };
         return cell.href ? (
           <Link
             key={cell.key}
             {...shared}
+            aria-label={cell.label}
             href={cell.href}
             className={`${shared.className} ring-brand-400 hover:ring-2 focus:outline-hidden focus:ring-2`}
+          />
+        ) : cell.label ? (
+          <SeriesPoint
+            key={cell.key}
+            {...shared}
+            label={cell.label}
+            className={`relative ${shared.className}`}
           />
         ) : (
           <span key={cell.key} {...shared} />

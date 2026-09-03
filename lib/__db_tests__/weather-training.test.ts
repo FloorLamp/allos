@@ -27,7 +27,7 @@ import {
 } from "@/lib/queries/weather-training";
 import { contextNotes } from "@/lib/coaching/engine";
 import { recommendCoaching } from "@/lib/coaching";
-import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
+import { getActivityDetailData } from "@/lib/training-activity-detail";
 import type { UnitPrefs } from "@/lib/settings";
 
 // A login reading in Celsius, so the stamp assertions name the canonical figure.
@@ -379,16 +379,26 @@ describe("the parked figure reads in the reason's own unit (#1967)", () => {
   });
 });
 
-describe("conditions stamps on the training log feed (#1728)", () => {
+// THE CARD HAS ONE HOST NOW (#4079): the Log tab renders through the shared history
+// substrate, so `buildTrainingLogCards` is reached only through the activity record
+// page. Same derivation, same assertions — the reader moved, the stamp did not.
+function firstCard(profileId: number, units: UnitPrefs) {
+  const id = (
+    db
+      .prepare("SELECT id FROM activities WHERE profile_id = ? ORDER BY id")
+      .get(profileId) as { id: number }
+  ).id;
+  return getActivityDetailData(profileId, id, units)!.card;
+}
+
+describe("conditions stamps on an activity's card (#1728)", () => {
   it("stamps an outdoor session with the weather of its day, writing nothing", () => {
     const p = newProfile("wt-stamp");
     const anchor = today(p);
     logSession(p, anchor, "Cycling", 31);
     cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
 
-    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
-    const card = feed.groups[0].cards[0];
-    expect(card.metrics[0]).toBe("31°C · clear");
+    expect(firstCard(p, CELSIUS_UNITS).metrics[0]).toBe("31°C · clear");
 
     // Read-time only: the activity row gained nothing.
     const row = db
@@ -403,10 +413,9 @@ describe("conditions stamps on the training log feed (#1728)", () => {
     logSession(p, anchor, "Treadmill", 31);
     cacheDay(p, anchor, { tempMaxC: 31, weatherCode: 0 });
 
-    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
     // No stamp anywhere in the metrics row — the outdoor flag decides, not the data.
-    const metrics = feed.groups[0].cards[0].metrics;
-    expect(metrics.some((m) => m.includes("·"))).toBe(false);
+    const metrics = firstCard(p, CELSIUS_UNITS).metrics;
+    expect(metrics.some((m: string) => m.includes("·"))).toBe(false);
   });
 
   it("renders no stamp when the cache never covered that day", () => {
@@ -417,8 +426,7 @@ describe("conditions stamps on the training log feed (#1728)", () => {
        VALUES (?, ?, 'cardio', 'Cycling', 60)`
     ).run(p, anchor);
 
-    const feed = buildTrainingLogFeedPage(p, null, CELSIUS_UNITS);
-    const metrics = feed.groups[0].cards[0].metrics;
-    expect(metrics.some((m) => m.includes("·"))).toBe(false);
+    const metrics = firstCard(p, CELSIUS_UNITS).metrics;
+    expect(metrics.some((m: string) => m.includes("·"))).toBe(false);
   });
 });

@@ -1,8 +1,14 @@
 "use client";
 
+import { useRef, useState } from "react";
+import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import DateField from "@/components/DateField";
+import MonthCalendar from "@/components/MonthCalendar";
+import TimeField, { TimeWheel } from "@/components/TimeField";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz, zonedDateParts } from "@/lib/date";
+import { formatClock, formatWeekdayDate } from "@/lib/format-date";
 import {
   reanchorStatedAt,
   statedHhmm,
@@ -39,9 +45,21 @@ export type { WhenValue } from "@/lib/stated-time";
 // ── what stays the DOMAIN's, via props ──────────────────────────────────────
 //
 // Bounds (a course window, a bounded recent-days list, max-today), grain,
-// whether a time is required in `state` mode, and the labels. The raw
-// <input type="time"> lives HERE and nowhere else — a scan
-// (lib/__tests__/time-input-scan.test.ts) fails any new one outside this file.
+// whether a time is required in `state` mode, and the labels.
+//
+// THERE IS NO RAW <input type="time"> LEFT (#4218). The minute grain renders
+// components/TimeField.tsx — the styled sibling `DateField` already was for
+// dates — so this file is no longer the scan's exempt home either; the ratchet
+// in lib/__tests__/time-input-scan.test.ts kept its exemption for exactly as
+// long as the control needed one.
+//
+// AND WHEN A TIME IS THE POINT OF THE SUBMISSION, THE PAIR IS ONE DOOR. A
+// `state` mount that REQUIRES a time on a day the user may still change is
+// stating one value (invariant 1) through two fields and two dismissals; those
+// mounts render one composed field over one panel holding the same calendar and
+// the same wheel. Optional-time and `correct` mounts keep the split fields
+// deliberately: an empty time field at rest is the honest "no time stated", and
+// "Not stated" plus one-half edits are what a correction surface is for.
 export interface WhenControlProps {
   // `state` — an assertion (a backfill, a create): "Not stated" is not offered,
   //   and the domain decides via `timeRequired` whether naming a time is the
@@ -74,7 +92,9 @@ export interface WhenControlProps {
   timeLabel?: string;
   disabled?: boolean;
   // Prefix for stable ids/test ids: `{testId}-date`, `{testId}-time`,
-  // `{testId}-now`, `{testId}-not-stated`.
+  // `{testId}-now`, `{testId}-not-stated` — and, where the pair composes into one
+  // door (see the header), `{testId}-when` over `{testId}-when-panel` /
+  // `{testId}-when-sheet` with `{testId}-when-done`, INSTEAD of the split pair.
   testId: string;
 }
 
@@ -150,73 +170,99 @@ export default function WhenControl({
       ? { hhmm, iso: value.statedAt }
       : null;
 
+  // ONE DOOR when the pair is one required value — see the header. A FIXED day is
+  // excluded because there is no day to pick: the control renders it as text, so
+  // a composed field would be a picker for half of itself.
+  const combined =
+    grain === "minute" && mode === "state" && timeRequired && !fixedDay;
+
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid={testId}>
-      {fixedDay ? (
-        <span
-          className="text-sm text-slate-600 dark:text-slate-300"
-          data-testid={`${testId}-date`}
-        >
-          {value.date === today ? "Today" : value.date}
-        </span>
-      ) : (
-        <label className="block">
-          <span className="sr-only">{dateLabel}</span>
-          <DateField
-            value={value.date}
-            onChange={setDate}
-            min={minDate}
-            max={maxDate}
-            required
-            id={`${testId}-date`}
-            inputClassName="h-8 w-36 text-sm"
-            data-testid={`${testId}-date`}
-          />
-        </label>
-      )}
-      {grain === "minute" ? (
-        <input
-          type="time"
-          value={hhmm}
-          onChange={(e) => setHhmm(e.target.value)}
-          required={mode === "state" && timeRequired}
+      {combined ? (
+        <WhenDoor
+          date={value.date}
+          hhmm={hhmm}
+          onDate={setDate}
+          onHhmm={setHhmm}
+          min={minDate}
+          max={maxDate}
           disabled={disabled}
-          className="input w-28 text-sm"
-          id={`${testId}-time`}
-          aria-label={timeLabel}
-          data-testid={`${testId}-time`}
+          label={`${dateLabel} and ${timeLabel.toLowerCase()}`}
+          testId={testId}
         />
       ) : (
-        <select
-          value={value.statedAt ?? ""}
-          onChange={(e) => {
-            const iso = e.target.value;
-            onChange({ date: value.date, statedAt: iso === "" ? null : iso });
-          }}
-          required={mode === "state" && timeRequired}
-          disabled={disabled}
-          className="input w-32 text-sm"
-          id={`${testId}-time`}
-          aria-label={timeLabel}
-          data-testid={`${testId}-time`}
-        >
-          {mode === "correct" ? (
-            // The honest default stays reachable: choosing it emits null.
-            <option value="">Not stated</option>
-          ) : timeRequired ? (
-            <option value="" disabled>
-              Select time
-            </option>
+        <>
+          {fixedDay ? (
+            <span
+              className="text-sm text-slate-600 dark:text-slate-300"
+              data-testid={`${testId}-date`}
+            >
+              {value.date === today ? "Today" : value.date}
+            </span>
           ) : (
-            <option value="">No time</option>
+            <label className="block">
+              <span className="sr-only">{dateLabel}</span>
+              <DateField
+                value={value.date}
+                onChange={setDate}
+                min={minDate}
+                max={maxDate}
+                required
+                id={`${testId}-date`}
+                inputClassName="h-8 w-36 text-sm"
+                data-testid={`${testId}-date`}
+              />
+            </label>
           )}
-          {pinned ? <option value={pinned.iso}>{pinned.hhmm}</option> : null}
-          {hourOptions.map((o) => (
-            <option key={o.iso} value={o.iso}>
-              {o.hhmm}
-            </option>
-          ))}
-        </select>
+          {grain === "minute" ? (
+            <TimeField
+              value={hhmm}
+              onChange={setHhmm}
+              required={mode === "state" && timeRequired}
+              disabled={disabled}
+              inputClassName="w-32 text-sm"
+              id={`${testId}-time`}
+              label={timeLabel}
+              data-testid={`${testId}-time`}
+            />
+          ) : (
+            <select
+              value={value.statedAt ?? ""}
+              onChange={(e) => {
+                const iso = e.target.value;
+                onChange({
+                  date: value.date,
+                  statedAt: iso === "" ? null : iso,
+                });
+              }}
+              required={mode === "state" && timeRequired}
+              disabled={disabled}
+              className="input w-32 text-sm"
+              id={`${testId}-time`}
+              aria-label={timeLabel}
+              data-testid={`${testId}-time`}
+            >
+              {mode === "correct" ? (
+                // The honest default stays reachable: choosing it emits null.
+                <option value="">Not stated</option>
+              ) : timeRequired ? (
+                <option value="" disabled>
+                  Select time
+                </option>
+              ) : (
+                <option value="">No time</option>
+              )}
+              {pinned ? (
+                <option value={pinned.iso}>{pinned.hhmm}</option>
+              ) : null}
+              {hourOptions.map((o) => (
+                <option key={o.iso} value={o.iso}>
+                  {o.hhmm}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
       )}
       {value.date === today ? (
         <button
@@ -240,6 +286,137 @@ export default function WhenControl({
           Not stated
         </button>
       ) : null}
+    </div>
+  );
+}
+
+// The composed field the combined door renders, and its one panel. Nothing here
+// is a new primitive: the calendar is `MonthCalendar` — the same grid the date
+// field opens — and the wheel is `TimeField`'s, imported rather than re-drawn.
+// What this adds is the composition, which is `WhenControl`'s to make because
+// the pair is `WhenControl`'s to own.
+//
+// PICKING A DAY DOES NOT CLOSE IT, unlike the date field's own calendar: the
+// panel exists to state BOTH halves, so closing on the first would put the user
+// back through the door for the second. It closes on Done, on Escape, on the
+// scrim, and — below `md` — on the sheet's own flick.
+//
+// KNOWN COST, ACCEPTED (#4218): the phone sheet is tall, calendar above wheel,
+// and it ships as one scrollable sheet rather than a two-step.
+//
+// FROM `md` UP THE TWO SIT SIDE BY SIDE, which is not a second authoring of
+// anything — it is one content tree with a `md:flex-row` on it (#2305 forbids a
+// hidden twin, not a responsive layout). It is the shape a mouse and a wide
+// window want: both halves of the value visible at once, with Done under them.
+// It began as a WORKAROUND — a stacked calendar-over-wheel popover opened from a
+// control low on the page ran off the bottom of the viewport with its Done
+// button on the other side of the edge, because `AnchoredPanel` did not cap its
+// height. #4776 fixed that where it belonged, so the layout now stands on its
+// own. Stacked is right on a phone, where the sheet scrolls and the width is the
+// screen's.
+/** The popover's width: a 16rem calendar beside the wheel, with the gap and padding. */
+const PANEL_WIDTH = 480;
+
+function WhenDoor({
+  date,
+  hhmm,
+  onDate,
+  onHhmm,
+  min,
+  max,
+  disabled,
+  label,
+  testId,
+}: {
+  date: string;
+  hhmm: string;
+  onDate: (next: string) => void;
+  onHhmm: (next: string) => void;
+  min?: string;
+  max?: string;
+  disabled: boolean;
+  label: string;
+  testId: string;
+}) {
+  const prefs = useFormatPrefs();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        aria-label={label}
+        aria-haspopup="dialog"
+        id={`${testId}-when`}
+        data-testid={`${testId}-when`}
+        className="input w-full text-left text-sm sm:w-64"
+      >
+        {formatWeekdayDate(date, prefs)}
+        {hhmm ? (
+          <>
+            {" \u00b7 "}
+            {formatClock(
+              prefs.timeFormat,
+              Number(hhmm.slice(0, 2)),
+              Number(hhmm.slice(3))
+            )}
+          </>
+        ) : (
+          // The time is REQUIRED here, so an empty one is not "not stated" — it
+          // is the half of the value still owed.
+          <span className="text-slate-500 dark:text-slate-400">
+            {" \u00b7 add a time"}
+          </span>
+        )}
+      </button>
+      <AnchoredPanel
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={ref}
+        title="Choose a date and time"
+        role="dialog"
+        testId={`${testId}-when-panel`}
+        sheetTestId={`${testId}-when-sheet`}
+        fallbackWidth={PANEL_WIDTH}
+        panelClassName="w-120 p-3"
+        popoverZIndexClass="z-70"
+        sheetZIndexClass="z-70"
+        escapeLayer
+      >
+        {() => (
+          <>
+            <div className="md:flex md:items-start md:gap-3">
+              <div className="md:w-64 md:shrink-0">
+                <MonthCalendar
+                  binding={{
+                    kind: "selectable",
+                    value: date,
+                    min,
+                    max,
+                    onSelect: onDate,
+                  }}
+                />
+              </div>
+              <div className="mt-2 border-t border-black/10 pt-2 md:mt-0 md:grow md:border-t-0 md:border-l md:pt-0 md:pl-3 dark:border-white/10">
+                <TimeWheel value={hhmm} onChange={onHhmm} />
+              </div>
+            </div>
+            <div className="mt-2 flex justify-end border-t border-black/10 pt-2 text-sm dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                data-testid={`${testId}-when-done`}
+                className="py-3 font-medium text-brand-600 hover:text-brand-700 md:py-0 dark:text-brand-400 dark:hover:text-brand-300"
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </AnchoredPanel>
     </div>
   );
 }

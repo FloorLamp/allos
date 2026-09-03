@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  cockpitRecoveryFraction,
+  cockpitRecoveryHeadline,
+  cockpitSummaryLine,
   doseLaneRoster,
   episodeDayNumber,
   feverTrend,
@@ -704,5 +707,95 @@ describe("doseLaneRoster (#2612)", () => {
   it("skips a medication with no administrations, and answers empty for none at all", () => {
     expect(doseLaneRoster([med("Ibuprofen", 0)])).toBe("");
     expect(doseLaneRoster([])).toBe("");
+  });
+});
+
+// ── THE RECOVERY-LED HEADER'S THREE STRINGS (#4752 item 1) ──────────────────
+//
+// The header IS the status, so what it says is decided here rather than in JSX.
+// The cases that matter are the ones where the clock does NOT exist: with nothing
+// measured there is no ring to draw and no sentence about the person that the data
+// has earned, and a ring at zero would look exactly like a ring that does not apply.
+describe("the cockpit recovery header (#4752 item 1)", () => {
+  const recovery = (clearedForHours: number | null, met = false) => ({
+    clearedForHours,
+    thresholdHours: 24,
+    met,
+    label: "Fever-free 22h of 24",
+  });
+
+  it.each([
+    ["no clock at all is the name and nothing more", null, "Dune"],
+    ["nothing measured is the name and nothing more", recovery(null), "Dune"],
+    ["past halfway is nearly there", recovery(12), "Dune is nearly there"],
+    ["short of halfway is on the mend", recovery(11), "Dune is on the mend"],
+    [
+      "a met convention says so outright",
+      recovery(24, true),
+      "Dune is fever-free",
+    ],
+  ] as const)("headline: %s", (_name, input, expected) => {
+    expect(cockpitRecoveryHeadline("Dune", input)).toBe(expected);
+  });
+
+  it.each([
+    ["no clock is undrawable, not zero", null, null],
+    ["nothing measured is undrawable", recovery(null), null],
+    ["a partial clock is its fraction", recovery(12), 0.5],
+    ["a clock past its threshold clamps at full", recovery(30), 1],
+    [
+      "a zero-hour convention is already met",
+      { ...recovery(0), thresholdHours: 0 },
+      1,
+    ],
+  ] as const)("ring: %s", (_name, input, expected) => {
+    expect(cockpitRecoveryFraction(input)).toBe(expected);
+  });
+
+  // ONE LINE, THREE CLAUSES, and an absent fact says so in the same breath rather
+  // than printing "Not logged" under a heading of its own.
+  const status = (
+    over: Partial<ReturnType<typeof baseStatus>> = {}
+  ): ReturnType<typeof baseStatus> => ({ ...baseStatus(), ...over });
+  function baseStatus() {
+    return {
+      dayLabel: "Illness · Day 3",
+      dayOnlyLabel: "Day 3",
+      temperature: {
+        id: 1,
+        value: "97.5 °F",
+        when: "13h ago",
+        high: false,
+      } as {
+        id: number;
+        value: string;
+        when: string | null;
+        high: boolean;
+      } | null,
+      lastMeds: {
+        id: 2,
+        name: "Ibuprofen",
+        dose: "160 mg",
+        when: "yesterday 11:30 PM",
+      } as {
+        id: number;
+        name: string;
+        dose: string | null;
+        when: string | null;
+      } | null,
+      worsening: false,
+    };
+  }
+
+  it("folds the recovery clause, the last reading and the last dose into one line", () => {
+    expect(cockpitSummaryLine(status(), recovery(22))).toBe(
+      "Fever-free 22h of 24 · last reading 97.5 °F 13h ago · last med Ibuprofen yesterday 11:30 PM"
+    );
+  });
+
+  it("names what is missing instead of dropping the clause", () => {
+    expect(
+      cockpitSummaryLine(status({ temperature: null, lastMeds: null }), null)
+    ).toBe("no temperature logged · no meds logged");
   });
 });

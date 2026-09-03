@@ -1152,12 +1152,11 @@ export function getRecentFoodTaps(
   }));
 }
 
-// `getFoodCorrectionBursts` — the unfiltered taps-to-bursts pairing — lived here until
-// #3330. Every one of its production callers was a CHAT surface, and every one of them
-// now takes `consentedFoodTaps` (lib/notifications/food.ts) so the substance opt-in is
-// asked in the gather rather than at each site. Keeping the neutral wrapper would have
-// advertised a consumer that no longer exists, and left the ungated pairing one import
-// away from the surface it leaked through (#2227's rule, applied to itself).
+// `getFoodCorrectionBursts` — the taps-to-bursts pairing — lived here until #3330 moved
+// its chat callers onto a consent-filtered wrapper. That wrapper is gone again: alcohol
+// rides the food nudge under the food-buttons consent like any other group (owner
+// ruling 2026-09-02), so every chat surface pairs bursts from `getRecentFoodTaps`
+// directly and there is nothing left to filter between the ledger and the message.
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
 

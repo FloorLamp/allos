@@ -348,28 +348,32 @@ when the app has no public URL, a `getUpdates` long-poll loop
 (`npm run notify -- poll`, run by the Docker sidecar); both delegate to
 `lib/notifications/telegram-callbacks.ts`. The mode is a setting
 (`telegram_mode`), and the shared public URL lives in `getPublicUrl()`
-(`lib/settings.ts`). **Delivery-health marker (#131 → lifecycle state #942):**
-`dispatch()` (`lib/notifications/index.ts`) folds every send fan-out into a
-global delivery-health marker — set on any failed channel, cleared on the next
-all-OK send — so a revoked bot token / wrong chat id surfaces on **Settings →
-Notifications** (the admin Server section) instead of only as the tick's exit
-code; the login-scoped **Send test** button (#1072) is the remediation path (a
-successful test clears it). As of #942 the marker is a first-class **lifecycle
-row** (`notify_lifecycle`, migration 061, keyed `'delivery-health'`) rather than
-three ad-hoc `notify_last_error*` settings keys: presence of a `state='failing'`
-row = a live failure, a healthy dispatch DELETEs it, and `getNotifyError()`
-returns the identical shape it always did (the row I/O is
-`lib/notifications/delivery-marker.ts`; migration 061 copies any live legacy
-marker into the row on upgrade and retires the old keys). The pure decision half
-is `lib/notifications/delivery-status.ts`
-(`pickDispatchError`/`isDeliveryHealthy`/`decideMarker`, unit-tested), whose
-`decideMarker` now speaks the shared **set/clear/freeze**
-`MarkerLifecycleAction` vocabulary (`lib/lifecycle.ts`) — "freeze" (formerly
-"keep") is the third state, the marker left exactly as it stood. **Clearing is
-channel-aware (#192):** the marker records _which_ channel failed, and a healthy
-dispatch only clears it when it actually attempted that channel (`decideMarker`)
-— so in a tick's per-profile fan-out, a Telegram-only profile can't clear a
-still-broken push recorded by a both-channels profile earlier in the same tick.
+(`lib/settings.ts`). **Scoped delivery lifecycle (#131 → #942 → #2565):** each
+channel adapter records the outcome of every send it makes against the
+DELIVERY OWNER it addressed — `(telegram, login_id)`, `(push, login_id)`,
+`(email, login_id)`, `(home-assistant, profile_id)` — as one `notify_lifecycle`
+row per owner (`delivery-<channel>-<owner>`; migration
+`20260902-notify-lifecycle-owner` adds `owner_id` to the #942 table). The row
+holds the LATEST attempt under the current configuration: `delivering` or
+`failing`, the transport's error sentence, and the instant. A shared Telegram
+chat applies its one send to every login mapped to it; Web Push is Delivering
+for a login when any of its browsers took the push and Erroring when every
+live attempt failed; Email records each resolved login; Home Assistant records
+the profile. A configuration write for an owner (chat id, address, browser
+subscription, webhook; the bot token or SMTP relay for every owner of that
+channel) DELETES its rows, so a row's existence means "about the configuration
+that stands now" — there is no generation counter. The strip on **Settings →
+Notifications** reads the owner rows (`channelRowState`,
+`lib/notifications/delivery-status.ts`): **Not set up** (the matrix's
+configuration liveness, dominating and hiding stale outcomes) / **Ready**
+(configured, no completed attempt — never called Delivering) / **Delivering** /
+**Erroring** (row forced open). `getNotifyError()` on **Settings → Server** is
+now a deterministic FOLD over the scoped failures (latest attempt, ties by
+channel order) with the pre-#2565 instance-wide row as its fallback until the
+first scoped attempt on that channel retires it — so one login's success never
+clears another login's error, which is what the #192 channel-aware clear was
+approximating. A whole-dispatch timeout (#3057) is recorded by `dispatch()`
+against the owners the adapter names (`NotificationChannel.owners`).
 **Two suppression contracts (#227):** tick nudges split into **bus-gated
 nudges** and **safety reminders**. A _bus-gated_ nudge (the **refill**,
 **preventive**, **workout**, and **illness-care** pushes, plus the retest lines
@@ -1762,6 +1766,101 @@ get the same note — the defect was never unique to this kind.
 placement a few minutes before a late bedtime is missed. #2121's finer ticks and
 a `typicalBedTime` anchor tighten it later; neither is a dependency.
 
+## Physiology in the sends (#4775)
+
+**One computation, four surfaces.** `lib/event-physiology.ts` (pure) plus
+`lib/queries/event-physiology.ts` (gather) answer one question over one
+`ActivityWindow`: what did this event do to the heart rate. In-window minutes, mean,
+peak, low and zone split; the mean over the 15 minutes before the start; minutes from
+the end until bpm sat back inside the resting range, bounded at 120; and **coverage**.
+The activity page's HR block was where this assembly lived, inline, and it is now a
+consumer of it (#221) — the sends format the same result rather than each growing a
+copy.
+
+**THE COVERAGE RULE, and it governs every line below.** The Health Connect pipeline
+runs 30–61 min behind the wrist (`docs/internals/integrations-sync.md`, #2560), so at
+the moment a finish tap lands the session's own minutes are usually not in yet. A
+clause computed then is not an exception and not an empty state: it is a confident
+sentence about a flat line that is only flat because the data has not arrived, and it
+reads exactly like a measurement. So `covered` is false until the profile's newest HR
+minute is **at or after the window's END**, and no formatter states physiology while it
+is. At-or-after and not merely "reaches the last in-window minute": the window is
+half-open, so a frontier at `end − 1` looks identical whether the stream covered the
+session exactly or simply stopped inside it, and only a minute past the end tells the
+two apart.
+
+**Verdicts are the person's own usual, never a cutoff.** Every comparison is the same
+quantity over that profile's own prior events of the same kind — the last 10, with a
+floor of 3 before "usual" is a word that may be used. Below the floor the fact renders
+alone. There is no published band for what a red-light session should do to a heart
+rate, and inventing one would be the clinical language AGENTS.md forbids.
+
+### The three compositions
+
+**1. The post-workout finish message** (`sessionPhysiologyClause`,
+`workout-recap-format.ts`). With coverage, the recap line gains
+`· Z2 24 min · Z3 11 min · peak 168` — and a MANUAL strength session, which carried no
+heart rate in this message at all, finally has one. Without coverage the import's own
+`avg HR / max HR` stands, which is a figure the SOURCE published rather than one this
+app derived from half a window. With coverage the import's summary steps aside, because
+two renderings of one quantity from two instruments invite the reader to reconcile
+them. **The clause rides a line and never makes one**: a row with nothing to recap and
+no due doses sends exactly what it sent before, covered or not.
+
+**2. Recovery rides the next send** (owner-ruled — there is no delayed post-workout
+message). Recovery is unknowable at the finish tap; by the morning digest the stream
+has long since covered the session, so the Yesterday activity line carries
+`· back to resting in 28 min (usual 35)`. An uncovered window, a wear gap and "still
+elevated two hours later" all arrive as the same absence, and none of them is a number.
+
+**3. The practice finish note** — kind `practice-recap`, marker
+`notify_last_practice_recap_<practiceLogId>` (id-keyed, one-shot). **The one send in
+this app that waits for its own evidence.** "🧘 Sauna done" is the tap read back to the
+person who made it; what makes it worth a message is the number, and the number is not
+there yet. So: NO PHYSIOLOGY, NO SEND — not a degraded message, nothing, and no marker
+burned. It fires on the first tick where the window is covered, bounded at two hours
+after the end (the pipeline's p99 frontier-advance interval is 81 minutes, so two hours
+is its slowest realistic push and then some). The copy states the in-window mean as a
+signed rise over the profile's own resting baseline —
+`HR 95 avg, +35 over resting (usual +24)` — never over the 15 minutes before the start,
+because a session logged straight out of bed carries the get-up spike inside that band
+and read −1 bpm on a session running 24 bpm above resting (#4775 comment 2026-09-02).
+Direction is stated, never scored: a sauna's rise and a meditation's fall are both what
+it did.
+
+**There is no armed-state column.** A row carrying a start and a duration IS the armed
+state, and the tick asks which rows ended inside the bound and have no marker — nothing
+written at the tap, nothing to sweep on a delete, and no way for a flag and its row to
+disagree after an edit. What made that possible is the **Start-now duration ruling**
+(owner, 2026-09-02): `startLivePracticeSession` stamps the practice's own usual duration
+onto the row and marks it `derived_window = 1`, so a live row the six-hour sweep closes
+still has a window instead of being a windowless tick. Its copy says "about 20 min"; the
+End tap overwrites it with the observed length; a practice with no recorded duration
+writes none and stays a tick. #4384 Fix 7 is untouched — this writes a DURATION, never
+an `end_time`.
+
+Telegram's own Done tap (`pdone:`) is deliberately outside this: it writes an observed
+end and no duration, because the chat shows no duration and a hidden usual must never
+fabricate a start. A tap through that path therefore never arms a practice note.
+
+### The digest's two new lines
+
+**The Sleep section's overnight HR** — `Overnight HR low 49 · avg 56 — resting 55
+(usual 53)`, with `— elevated` appended when the device's daily resting figure clears
+the SAME threshold `rest-rhr` uses (`restingHrJumpThreshold`: 7 bpm, or twice the
+profile's own spread). It is scoped to the main sleep SESSION's own window, never to
+clock hours: a 02:00 bedtime and a 22:00 one are the same night, and a fixed
+midnight-to-06:00 read would report a different night's floor for the person who went to
+bed late. Absent when the stream did not cover the session — the overnight LOW is what
+this line is most about and the number a partial night gets most wrong. The rest
+recommendation itself is unchanged by this line existing.
+
+**One drink-log observation** — the recorded exception to #2177's "never a send",
+behind `substance_telegram_enabled` (off by default). See
+`docs/internals/findings.md` §Paired observations and
+`docs/internals/substances.md` §Reach, both of which record it; the gather is
+`gatherSubstanceObservationLine`, which asks the flag before it computes anything.
+
 ## Send markers and nudge cadence (#2036)
 
 **The `notify_last_*` discipline is a registry now, not a convention.**
@@ -1893,6 +1992,26 @@ always calendar** — `week_mode` defines only weeks, and no rolling-month
 convention is invented. Weeks still go through `resolveRecapWindow`, so #223's
 "this week matches the routine counters" and #1021's completed-week send are
 byte-for-byte unchanged.
+
+**Rate lines cover completed days only (#4228 A).** `windowAdherence` walks the
+window up to yesterday, never through today: a dose is countable once its day has
+ended, and walking through today counted every dose not taken YET as missed, so
+the card's in-progress calendar week read "Adherence 0% · 12 missed" every
+week-start morning. A window holding no completed day yields no adherence line at
+all. The count lines still cover the whole window (the #223 counter match), and the
+notification's completed window (#1021) already ended before today and is unchanged.
+
+**News before stats (#4228 D).** The notification body splits into two sections
+set apart by a blank line, news first. Every `RecapLine` declares its `section`
+where it is built: a line is NEWS when it states a change or a target shortfall
+(PRs, missed/resumed deltas, the targets verdict, a nutrient at 0 of N, Zone 2
+under its target, adherence when it carries misses, goals reached or missed, a
+fitness check, recovery days) and a STAT when it is a total or a coverage figure
+(workout count, food coverage, weight, sleep, regularity, mood). Within each
+section the declared line order is kept. This supersedes #3033's line-order clause
+for the notification body only — `Recap.lines`, the headline, the card's atoms and
+the retrospective are untouched, and so are the daily digest and the household
+card.
 
 **The inclusion test**, generalized from #1935's owner-decided coverage rule: a
 line appears at a scale only if its fact **becomes visible** at that scale, and

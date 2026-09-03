@@ -28,6 +28,7 @@ import {
 } from "./ingest-timezone-reconcile";
 import { collapseSleepSessionOverlaps } from "./sleep-overlap-db";
 import { observeStreamFrontiers } from "@/lib/stream-frontier-db";
+import { recordGlucoseTrace } from "@/lib/glucose-trace-db";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 
@@ -95,6 +96,8 @@ export function ingestHealthConnectPayload(
   let hrMinutes = emptyCounts();
   let activities = emptyCounts();
   let vitals = emptyCounts();
+  let glucoseTrace = emptyCounts();
+  let glucoseTracePoints = 0;
   // Day buckets left double counting once this push has FINISHED. Read from the store
   // in the last chunk's transaction, by the same query that decides the deletes, so it
   // reports what HAPPENED rather than a forecast. See where it is set below.
@@ -114,8 +117,16 @@ export function ingestHealthConnectPayload(
       hrMinutes: total(hrMinutes),
       activities: total(activities),
       vitals: total(vitals),
+      glucoseTrace: glucoseTracePoints,
     },
-    split: foldCounts([bodyMetrics, samples, hrMinutes, activities, vitals]),
+    split: foldCounts([
+      bodyMetrics,
+      samples,
+      hrMinutes,
+      activities,
+      vitals,
+      glucoseTrace,
+    ]),
     vitalIds,
     provenance,
   });
@@ -331,6 +342,58 @@ export function ingestHealthConnectPayload(
     throw new HealthConnectWriteError(err, snapshot());
   }
 
+  // ── THE CONTINUOUS-GLUCOSE TRACE (#3182) ──
+  //
+  // Routed here by the parser, never by this function: the trace/observation decision
+  // is the payload's plus the connection's switch, and it was made once, upstream.
+  //
+  // ONE `recordGlucoseTrace` CALL PER SOURCE, because a Health Connect connection is
+  // an AGGREGATOR — one `blood_glucose` array carries every writing app on the phone,
+  // and `glucose_trace`'s primary key carries `source` from birth precisely so two
+  // sensors on one phone stay two traces. The source is the writing app's package
+  // qualified by the integration (`health-connect:<data_origin>`), or the bare
+  // integration id when the exporter emitted no metadata for that record.
+  //
+  // AND EVERY QUALIFIED SOURCE ABSORBS THE BARE ONE (the owner's addendum). Metadata
+  // is optional on the wire, so the same sensor's readings arrive bare first and
+  // qualified later; without this they would be two traces for one sensor. See
+  // `GlucoseTraceOptions.absorbSource`.
+  //
+  // ISOLATED, like the post-commit work below (#1285): every other record type is
+  // already durable, so a failure here must not report an otherwise-successful push as
+  // a full sync failure. The exporter's rolling window re-carries the points.
+  if (parsed.glucoseTrace.length) {
+    const bySource = new Map<string, { ts: string; mgdl: number }[]>();
+    for (const g of parsed.glucoseTrace) {
+      const src = g.origin ? `${source}:${g.origin}` : source;
+      const bucket = bySource.get(src);
+      if (bucket) bucket.push({ ts: g.ts, mgdl: g.mgdl });
+      else bySource.set(src, [{ ts: g.ts, mgdl: g.mgdl }]);
+    }
+    // WHEN THE ABSORPTION APPLIES, AND WHEN IT DECLINES TO GUESS. It is for the
+    // sensor whose metadata arrived LATE — so it fires only when this push resolves
+    // to exactly ONE source and that source is qualified. A push that still carries
+    // bare records is evidence the bare source is live and distinct in this very
+    // push, and a push carrying two qualified origins gives no answer to which of
+    // them the bare backlog belonged to. Both decline rather than pick.
+    const absorbSource =
+      bySource.size === 1 && !bySource.has(source) ? source : undefined;
+    for (const [src, points] of bySource) {
+      try {
+        const write = recordGlucoseTrace(profileId, points, src, {
+          absorbSource,
+        });
+        glucoseTrace = foldCounts([glucoseTrace, write.trace, write.derived]);
+        glucoseTracePoints += points.length;
+      } catch (err) {
+        log.error("glucose trace write failed after Health Connect ingest", {
+          profileId,
+          err,
+        });
+      }
+    }
+  }
+
   // THE FRONTIER OBSERVATION (#2341). Every declared continuous stream is asked, on
   // every SUCCESSFUL push, whether this push moved it — and the answer is stored.
   //
@@ -375,8 +438,16 @@ export function ingestHealthConnectPayload(
       hrMinutes: total(hrMinutes),
       activities: total(activities),
       vitals: total(vitals),
+      glucoseTrace: glucoseTracePoints,
     },
-    split: foldCounts([bodyMetrics, samples, hrMinutes, activities, vitals]),
+    split: foldCounts([
+      bodyMetrics,
+      samples,
+      hrMinutes,
+      activities,
+      vitals,
+      glucoseTrace,
+    ]),
     vitalIds,
     provenance,
   };

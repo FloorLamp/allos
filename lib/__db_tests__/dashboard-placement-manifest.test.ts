@@ -37,6 +37,10 @@ import {
 } from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
+import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
+import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
+import { isNotableFlag } from "@/lib/reference-range";
+import type { MedicalFlag } from "@/lib/types";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -862,7 +866,74 @@ describe("actual atomic dashboard manifests", () => {
       );
   });
 
-  it("orders real safety, three illness groups, then the live workout", () => {
+  // WHERE THE ACKNOWLEDGMENT IS OFFERED (#3225). It spends a CLAIM, so the control
+  // belongs on the rows that still hold one — fresh, or notable — and nowhere a
+  // second control would post the same signal, which is a row whose
+  // `biomarker-flag:` key already carries an attention fact.
+  //
+  // "chronic notable" is this issue's own population and the state that moved. A
+  // notable result too old to be fresh is also too old to carry an attention item:
+  // the flagged window bounds the COLLECTION date at 14 days, inside the 30-day
+  // freshness window — so #4232's freshness-only rule left the owner's 37 June
+  // notables with no acknowledge control on the dashboard at all, only on the detail
+  // page each row links to. Reach is counted per state because a table over real
+  // personas says nothing about a state no persona reaches.
+  it("offers the acknowledgment on every unspent claim and nowhere twice", () => {
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const presentations = rowPresentations.get(persona)!;
+      const placed = new Set(
+        placements.map(({ candidate }) => candidate.candidateId)
+      );
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const name = placement.candidate.candidateId.slice(
+          "labs.latest:".length
+        );
+        const presentation = presentations.get(
+          placement.candidate.candidateId
+        )!;
+        // The flag the ROW ITSELF prints, read off its `MedicalValue`, so notability
+        // here is the word the person sees and not a second read of the record.
+        const flag = (
+          presentation.value as ReactElement<{ flag: MedicalFlag | null }>
+        ).props.flag;
+        const state = placed.has(
+          dashboardAttentionCandidateId(biomarkerFlagDismissalKey(name))
+        )
+          ? "hosted on its attention row"
+          : placement.candidate.rankReasons.owed
+            ? "fresh"
+            : isNotableFlag(flag)
+              ? "chronic notable"
+              : "quiet and ordinary";
+        reach.set(state, (reach.get(state) ?? 0) + 1);
+        expect(
+          presentation.control != null,
+          `${persona}:${name} (${state})`
+        ).toBe(state === "fresh" || state === "chronic notable");
+      }
+    }
+    for (const state of [
+      "fresh",
+      "hosted on its attention row",
+      "chronic notable",
+      "quiet and ordinary",
+    ])
+      expect(
+        reach.get(state) ?? 0,
+        `${state} was never produced`
+      ).toBeGreaterThan(0);
+  });
+
+  // NOW GATHERS BY SUBJECT ON A REAL HOUSEHOLD MANIFEST (#4752 item 6). The layers
+  // are unchanged — safety is uncapped and still leads — but a cross-profile Now
+  // clusters each subject's rows before drawing them, so the viewer's own live
+  // workout sits under the viewer's own illness instead of trailing two other
+  // people's. This is the manifest that says it over the real personas rather than
+  // over a hand-built candidate list.
+  it("orders real safety, then whole subject clusters, on the household manifest", () => {
     const placements = manifests
       .get("household")!
       .filter((placement) => placement.lane === "now");
@@ -878,7 +949,40 @@ describe("actual atomic dashboard manifests", () => {
       Math.min(...illnesses.map((id) => now.indexOf(id)))
     );
     expect(workoutIndex).toBeGreaterThan(-1);
-    expect(Math.max(...illnesses.map((id) => now.indexOf(id)))).toBeLessThan(
+
+    // THE GROUPING IS REAL HERE, and the assertions below would be vacuous if it
+    // were not: more than one subject, and every subject labelled.
+    const subjects = placements.map((placement) =>
+      placement.lane === "now" ? placement.nowSubject : null
+    );
+    expect(subjects.filter((subject) => subject == null)).toEqual([]);
+    expect(new Set(subjects).size).toBeGreaterThan(1);
+    // EACH CLUSTER IS CONTIGUOUS — that IS "group by subject". A subject whose rows
+    // were interleaved with another's would open twice here.
+    const opens = subjects.filter(
+      (subject, index) => subject !== subjects[index - 1]
+    );
+    expect(opens).toEqual([...new Set(subjects)]);
+
+    // The viewer's own illness leads the viewer's own workout, INSIDE one cluster:
+    // rank survives the gathering.
+    const viewer = String(personaProfileIds.get("household"));
+    expect(subjects[workoutIndex]).toBe(viewer);
+    const viewerIllness = now.findIndex(
+      (id, index) =>
+        id.startsWith("illness.state:") && subjects[index] === viewer
+    );
+    expect(viewerIllness).toBeGreaterThanOrEqual(0);
+    expect(viewerIllness).toBeLessThan(workoutIndex);
+    // And the other two households' illnesses follow that whole cluster rather than
+    // being overtaken by it — gathering promotes nobody.
+    const otherIllnesses = now
+      .map((id, index) => ({ id, index, subject: subjects[index] }))
+      .filter(
+        (row) => row.id.startsWith("illness.state:") && row.subject !== viewer
+      );
+    expect(otherIllnesses).toHaveLength(2);
+    expect(Math.min(...otherIllnesses.map((row) => row.index))).toBeGreaterThan(
       workoutIndex
     );
   });
@@ -940,18 +1044,64 @@ describe("actual atomic dashboard manifests", () => {
   // retired the `getPrnIntakeItemsForQuickLog` read that gathered them. Household is
   // unchanged because that read was already skipped there — it is gated on a WELL day
   // and the household fixture carries an open illness.
+  // +4 on household ONLY (#4609): the illness cockpit gather asked for the profile's
+  // pediatric figures and nothing else, so the "Add medication" fold it renders mounted
+  // the intake form with no stack, variants, conditions or local day — an unknown-age
+  // alcohol note over a child's weight-band dosing. It now loads the whole
+  // intake-form context per cockpit. This fixture renders three cockpits; measured by
+  // stubbing the loader out of the gather alone, that is +7 for the context and −3 for
+  // the per-cockpit pediatric read it subsumes. Every other persona is flat because
+  // none carries an open illness, and /medications is unmoved: med-data now reads the
+  // same rows through the one loader instead of assembling its own copy.
   const QUERY_BASELINE: Record<string, number> = {
-    bodybuilder: 226,
-    "marathon-runner": 225,
-    household: 269,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
+    // as well as their own table, so a profile whose only eye care is VISITS stops
+    // having its pane hidden. That is one representative-id encounters read plus
+    // the shared conditions list, once per render under the request memo.
+    // `household` spends +1 rather than +2 because `hasSpecialtyLensContent`
+    // short-circuits: it reads conditions only when the visits read found nothing,
+    // and on that persona one of the two lines stops at the visits read.
+    // The two bits gate the Records › Specialty panes and nothing else (no nav leaf
+    // carries them), so this is a cost the dashboard pays for a question asked on
+    // another page — recorded here rather than absorbed, and the cheapest way to
+    // remove it later is to drop the two vestigial bits from NavRelevance.
+    // −3 each (#4228 A): the recap's adherence walk stops before today, so no
+    // persona makes today's three per-day reads any more — the day's activities,
+    // its taken set and its skipped set. `household` is unmoved because its acting
+    // profile has no active intake items, so `windowAdherence` returns before the
+    // walk and never made them; measured by instrumenting the walk and rendering
+    // all six personas, which reported five walking one day fewer and household
+    // short-circuiting.
+    // +1 on EVERY persona (#4767 item 2), MEASURED ON THE MERGED TREE each time and
+    // never added to main's numbers by hand: the Today band's intraday chart asks
+    // for the profile's latest worn HR day before anything else, and none of these
+    // six has one on today, so all six pay exactly that one indexed read and stop.
+    // The gate doing its job — a profile that DOES have today's minutes pays the day
+    // gather too, which is the cost of DRAWING the chart rather than of asking.
+    //
+    // Re-measured against three different mains while this branch waited to land
+    // (#4228 A's −3 on five personas, then household's +4 above), and the +1 came
+    // back unchanged every time, on every persona. So it composes with all of them
+    // rather than interacting with any — which is a measurement, not an assumption
+    // about independence.
+    bodybuilder: 225,
+    "marathon-runner": 224,
+    household: 274,
+    pregnant: 221,
+    "diabetic-cgm": 232,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 248,
+    biohacker: 247,
+    // −1 each (#4775): the paired-observation registry gained a third alcohol entry
+    // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
+    // other two already read — and the factor read happens before each entry's
+    // short-circuit, so it was being paid once per entry. `factorDaysReader` memoizes
+    // it per gather the way `outcomeSeriesReader` already memoized the outcome side,
+    // so three entries now cost one read where two cost two. The new entry's own
+    // outcome series is lazy and is not reached on these personas.
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

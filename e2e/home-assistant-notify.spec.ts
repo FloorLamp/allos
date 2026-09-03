@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledCheck, settledFill } from "./helpers";
+import { openChannelRow, settledCheck, settledFill } from "./helpers";
 import { E2E_LOGIN_HA_NOTIFY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Home Assistant notification channel config UI (#248). A real webhook POST can't
@@ -37,11 +37,12 @@ test.describe("Home Assistant notification settings", () => {
     try {
       await member.goto("/settings/notifications");
 
-      const card = member.getByTestId("ha-settings");
-      await expect(card).toBeVisible();
-      await expect(
-        card.getByRole("button", { name: "Apply Home Assistant settings" })
-      ).toBeVisible();
+      // Since #2565 A the channel's configuration lives behind its strip row, and its
+      // save button is spelled "Save" like every other save on the page — the row is
+      // what disambiguates it now, not a distinct verb.
+      const card = await openChannelRow(member, "home-assistant");
+      await expect(member.getByTestId("ha-settings")).toBeVisible();
+      await expect(card.getByRole("button", { name: "Save" })).toBeVisible();
 
       // Enable reveals the URL + secret fields. settledCheck/settledFill wait for
       // React to hydrate the controlled inputs before toggling/filling (a
@@ -83,6 +84,7 @@ test.describe("Home Assistant notification settings", () => {
       // The stored config survives a reload (enable stays checked, URL persisted) —
       // and so does the routing the card never touched.
       await member.reload();
+      await openChannelRow(member, "home-assistant");
       await expect(member.getByTestId("ha-enable")).toBeChecked();
       await expect(member.getByTestId("ha-webhook-url")).toHaveValue(
         "http://127.0.0.1:9/api/webhook/allos-e2e"

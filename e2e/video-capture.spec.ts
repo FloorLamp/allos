@@ -149,7 +149,7 @@ test("upload → poster grid → open player → Range serve → location warnin
     // the slim feed deliberately omits it.
     const row = page
       .getByRole("main")
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: "Squat session (e2e)" })
       .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
     await followLink(

@@ -747,14 +747,36 @@ pin is the general form of the rule and is derived from the live catalog — no 
 be registered under ANY name `frameUnstatedNames` returns (today `Glucose`, `Insulin`,
 `Cortisol`), so a fourth frame pair is covered with no edit.
 
-Not built, and each is its own decision rather than remaining work: the INGEST — note
-that the Health Connect ingest already accepts `blood_glucose` and lands every reading
-as a `medical_records` row under the band-less `Glucose`, so a CGM syncing through it
-today produces the lab shape at trace volume; rerouting it is an ingest-policy call
-because a fingerstick meter pushes the same record type. The SURFACES — a trace chart,
-an AGP day overlay, a time-in-range card — need a `TrendMetricSlug` and therefore an
-answer to `METRIC_DOCUMENT_REACH`. And the CURATION question ruling 3 names: which
-curated entry, if any, a CGM reading maps to.
+**The ingest was the next decision, and #3182 made it.** It used to accept
+`blood_glucose` and land EVERY reading as a `medical_records` row under the band-less
+`Glucose`, so a CGM syncing through Health Connect produced the lab shape at trace
+volume. It could not simply key on the record type, because a fingerstick meter pushes
+the same one. The owner's ruling (2026-09-02) routes on `specimen_source`:
+**interstitial fluid** goes to the trace store; capillary, whole blood, every other
+value and — the safety default — an **UNSET** field stay a `medical_records` Glucose
+observation, so nothing silently becomes a trace. One switch on the connection screen,
+"Treat glucose from this connection as a continuous sensor", overrides the field for
+every glucose record from that connection; it is OFF by default and setup never raises
+it. What the field's allowed values are is the platform's business; what Dexcom or any
+meter app actually WRITES into it is not verified, and prod holds no CGM data — the
+default is a safety choice, not a measurement, and the switch is what the first person
+whose sensor leaves the field blank flips once.
+
+The trace's `source` is `health-connect:<data_origin>`, the writing app qualifying the
+integration, because one Health Connect connection aggregates every app on the phone
+and `source` is in the trace's primary key so two sensors stay two traces. Record
+metadata is OPTIONAL on the wire, so a bare `health-connect` is the fallback — and a
+later qualified push ABSORBS that bare trace (its rows are re-keyed and the days they
+covered are recomputed) rather than opening a second one, which is what keeps one trace
+per sensor when metadata arrives late. Absorption fires only when a push resolves to
+exactly one source and that source is qualified: a push still carrying bare records, or
+carrying two origins, has no answer to which sensor the backlog belonged to and
+declines to guess.
+
+Still not built, and each its own decision rather than remaining work: the SURFACES — a
+trace chart, an AGP day overlay, a time-in-range card — need a `TrendMetricSlug` and
+therefore an answer to `METRIC_DOCUMENT_REACH`. And the CURATION question ruling 3
+names: which curated entry, if any, a CGM reading maps to.
 
 The `SEED_PERSONA=diabetic-cgm` walkthrough now seeds BOTH shapes — a real per-5-minute
 trace for the same fortnight as its 4 timed `medical_records` vitals a day — so the

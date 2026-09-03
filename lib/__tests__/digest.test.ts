@@ -348,7 +348,7 @@ describe("buildDigest — the intake delta and the adherence fraction", () => {
         adherence: { taken: 8, skipped: 0, due: 9 },
       })
     ).toEqual([
-      "🔁 Resumed: Vitamin D (test) for 2 days",
+      "🔁 Resumed: Vitamin D (test) after 2 days missed",
       "💊 Supplements: 8/9 taken",
     ]);
   });

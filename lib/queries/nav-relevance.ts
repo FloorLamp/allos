@@ -21,6 +21,7 @@ import {
 import { isMentalHealthScreeningRelevant, isMinor } from "../life-stage";
 import { hasProgressPhotos } from "./progress-photos";
 import { hasSleepData } from "./sleep";
+import { hasSpecialtyLensContent } from "./specialty-lens";
 
 // The two Specialty DATA probes. Hoisted because #2557 made them a per-profile read
 // on a cross-profile surface: the Records shell asks them once for every profile in
@@ -35,14 +36,33 @@ const CYCLE_ROWS = hoistedStatement(
   `SELECT 1 FROM cycles WHERE profile_id = ? LIMIT 1`
 );
 
-/** Whether a profile has any optical prescription — the Vision pane's data gate. */
-function hasVisionRows(profileId: number): boolean {
-  return VISION_ROWS.get(profileId) != null;
+// The Vision/Dental data gates, WIDENED to lens content (#2921). The structured
+// probe above answers "is there a row on this pane's own table"; the lens answers
+// "is there eye/dental CARE on this profile's record at all" — classified visits and
+// coded conditions, derived at read (lib/queries/specialty-lens.ts). A child with
+// years of ophthalmology follow-ups and no refraction yet had a pane the app hid,
+// while the visits it would have listed sat on the Visits pane; the structured probe
+// stays FIRST because it is a single indexed EXISTS and answers most profiles.
+//
+// Cost: the lens read is one representative-id encounters query plus the shared
+// (snapshot-cached) conditions list, per profile, request-cached. That is the same
+// order as the reads the /records panes already make for the view set — see the
+// hoisting note above, which is why this is a probe and not a full page read.
+
+/** Whether a profile has any eye care — an optical Rx, or vision-lens content. */
+function hasVisionContent(profileId: number): boolean {
+  return (
+    VISION_ROWS.get(profileId) != null ||
+    hasSpecialtyLensContent(profileId, "vision")
+  );
 }
 
-/** Whether a profile has any dental record — the Dental pane's data gate. */
-function hasDentalRows(profileId: number): boolean {
-  return DENTAL_ROWS.get(profileId) != null;
+/** Whether a profile has any dental care — a dental record, or dental-lens content. */
+function hasDentalContent(profileId: number): boolean {
+  return (
+    DENTAL_ROWS.get(profileId) != null ||
+    hasSpecialtyLensContent(profileId, "dental")
+  );
 }
 
 // The relevance bitset for the active profile. Key policy (documented on
@@ -68,8 +88,8 @@ export function getNavRelevance(profileId: number): NavRelevance {
       .get(profileId) != null;
   return {
     cycle: getCycleTrackingRelevance(profileId),
-    vision: hasVisionRows(profileId),
-    dental: hasDentalRows(profileId),
+    vision: hasVisionContent(profileId),
+    dental: hasDentalContent(profileId),
     // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
     sleep: hasSleepData(profileId),
     // Data presence only (any progress photo) — the #1119 Progress-photos gate.
@@ -132,8 +152,8 @@ export function getRecordsSpecialtyRelevanceForView(
     // The two DATA probes only — never the whole bitset, which would re-run the
     // cycle/sleep/practice reads once per member for two booleans nobody asked for.
     inView: viewIds.map((id) => ({
-      vision: hasVisionRows(id),
-      dental: hasDentalRows(id),
+      vision: hasVisionContent(id),
+      dental: hasDentalContent(id),
     })),
   });
 }

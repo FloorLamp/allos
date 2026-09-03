@@ -1,15 +1,14 @@
 import type { AppointmentKind } from "./types";
-import type { RecentChangeCategory } from "./recent-changes";
 
-// WHAT A SHARED SURFACE MAY SHOW (issue #997, widened by #1463). PURE — no DB/network,
-// client-safe, unit-tested in lib/__tests__/appointment-sensitivity.test.ts.
+// WHAT A SHARED SURFACE MAY SHOW (issue #997). PURE — no DB/network, client-safe,
+// unit-tested in lib/__tests__/appointment-sensitivity.test.ts.
 //
-// Two rules live here, and they live TOGETHER on purpose: "this surface is shared"
-// must mean ONE thing wherever it is declared, decided once, or the next consumer to
-// pass the flag inherits nothing and reproduces the disclosure one surface later.
-//
-//   1. APPOINTMENT DETAIL — a behavioral-health visit is stated minimally (below).
-//   2. WITHHELD CATEGORIES — a mood check-in is not shown at all (bottom of file).
+// ONE rule, and "this surface is shared" means exactly it: a behavioral-health visit
+// is stated minimally. #1463 briefly added a second — whole categories a shared
+// surface drops outright, holding "mood" — and the owner REVERSED that on 2026-09-03
+// (#4702/#4807): shared surfaces show mood check-ins. The mechanism went with the
+// rule rather than staying on as an always-false predicate; a category that needs
+// withholding later gets built for the category that actually needs it.
 //
 // Most appointment kinds show whatever detail the shared surface is set to — the
 // household rollups and the .ics family calendar feed already carry a minimal/full
@@ -57,34 +56,4 @@ export function sharedSurfaceDetail(
     return "minimal";
   }
   return requested;
-}
-
-// ── Rule 2: categories a shared surface withholds ENTIRELY (#1463, owner ruling
-// 2026-09-01) ────────────────────────────────────────────────────────────────────
-//
-// A MINIMAL RESTATEMENT IS THE WRONG TOOL FOR A MOOD SCORE. Rule 1 works for a visit
-// because "Medical appointment" is still a true, useful thing to say — the caregiver
-// learns there is an appointment and learns nothing about why. A daily check-in has no
-// such residue: "mood 2/5" masked down to "a check-in happened" reports nothing worth a
-// line, and reporting the score reports the whole of it. So the answer is absence.
-//
-// AND IT IS A DIFFERENT KIND OF FACT. The other categories a shared digest carries —
-// flagged labs, out-of-range vitals, symptom days — are what a caregiver is granted
-// access in order to ACT on, and withholding them would leave nothing worth rendering.
-// A mood check-in is a subjective daily self-report: access granted to help with
-// somebody's medications is not access to their mood feed.
-//
-// The profile's OWN surfaces never consult this (its digest passes `shared: false`), so
-// a check-in is never hidden from the person who wrote it.
-const SHARED_SURFACE_WITHHELD_CATEGORIES = new Set<RecentChangeCategory>([
-  "mood",
-]);
-
-// Whether a shared surface withholds this whole category. Consulted ONCE, over the
-// collected set, by `collectRecentChanges` — never per-category at a call site, so a
-// category added tomorrow is judged by this rule rather than by whoever adds it.
-export function sharedSurfaceWithholdsCategory(
-  category: RecentChangeCategory
-): boolean {
-  return SHARED_SURFACE_WITHHELD_CATEGORIES.has(category);
 }

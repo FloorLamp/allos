@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { NotifySchedule } from "@/lib/settings";
 import {
   formatNotifyTime,
@@ -398,6 +397,7 @@ export default function NotificationPrefs({
   readiness,
   isAdmin,
   profileName,
+  householdRound,
 }: {
   schedule: NotifySchedule;
   workoutSummary: string;
@@ -459,6 +459,11 @@ export default function NotificationPrefs({
   // The data subject's name, for the profile-tier sentence. The login-tier sentence
   // says "your login": the two are deliberately worded so they cannot be confused.
   profileName: string;
+  // The Household round card (#2565 A′), rendered BETWEEN the kinds and the schedule.
+  // It is a send, not a channel — it rides the kinds' Telegram routing — so it sits
+  // under the matrix; and it is a server component with its own props and store, so
+  // it arrives as a slot rather than as a fifth card this component would re-plumb.
+  householdRound?: React.ReactNode;
 }) {
   // ONE bag of form-field values keyed by the saveNotificationPrefs field name, so a
   // registry row renders and writes generically — adding a kind is a registry entry,
@@ -498,15 +503,20 @@ export default function NotificationPrefs({
     waking_end_hour: String(schedule.wakingEndHour),
   });
 
-  const [disabled, setDisabled] = useState<
-    Record<ChannelId, Set<NotificationKind>>
-  >(() => ({
+  // The routing columns ride the same owned-value substrate as the schedule bag
+  // (#4736). This used to be a bare `useState` painted before the write, so a refused
+  // column write left the cell flipped and the rejection escaped the onChange handler
+  // with no catch and no indicator; `save` now takes the cell back and raises the icon
+  // in the matrix header below. A second hook rather than a second field on the first:
+  // the two write through different actions to different tiers, and one status cannot
+  // honestly say "saved" for both.
+  const routing = useSaveStatus<Record<ChannelId, Set<NotificationKind>>>({
     telegram: new Set(telegramDisabled),
     push: new Set(pushDisabled),
     ha: new Set(haDisabled),
     email: new Set(emailDisabled),
-  }));
-  const [routing, setRouting] = useState(false);
+  });
+  const disabled = routing.value;
 
   const autoLabel =
     wakeMinute == null
@@ -606,33 +616,29 @@ export default function NotificationPrefs({
     return !disabled[channel].has(kind);
   }
 
-  async function writeColumn(channel: ChannelId, next: Set<NotificationKind>) {
-    setDisabled({ ...disabled, [channel]: next });
-    setRouting(true);
-    try {
+  function writeColumn(channel: ChannelId, next: Set<NotificationKind>) {
+    routing.save({ ...disabled, [channel]: next }, async () => {
       const fd = new FormData();
       fd.set("disabled_kinds", serializeDisabledKinds([...next]));
       await saver[channel](fd);
-    } finally {
-      setRouting(false);
-    }
+    });
   }
 
-  async function toggleRoute(channel: ChannelId, kind: NotificationKind) {
+  function toggleRoute(channel: ChannelId, kind: NotificationKind) {
     const next = new Set(disabled[channel]);
     if (next.has(kind)) next.delete(kind);
     else next.add(kind);
-    await writeColumn(channel, next);
+    writeColumn(channel, next);
   }
 
   // The column select-all: one write of the FULL disabled set for this column through
   // the same tier-correct action a single cell uses. Safety kinds are not in
   // `columnSweep`, so they survive the sweep untouched.
-  async function sweepColumn(channel: ChannelId) {
+  function sweepColumn(channel: ChannelId) {
     const sweep = columnSweep(channel);
     const on = nextColumnBulkTarget(columnBulkState(sweep, disabled[channel]));
     const next = applyColumnBulk([...disabled[channel]], sweep, on);
-    await writeColumn(channel, new Set(next));
+    writeColumn(channel, new Set(next));
   }
 
   // Whether a safety kind will reach NO configured channel — the warn-never-block
@@ -683,112 +689,6 @@ export default function NotificationPrefs({
 
   return (
     <div className="space-y-6">
-      {/* ---- Schedule: the slot times + quiet hours, nothing else. ---- */}
-      <div className="card space-y-5" data-testid="notify-schedule">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-            Schedule
-          </h3>
-          <SaveStatus {...status} />
-        </div>
-        <div>
-          <label className="label">Reminder slots</label>
-          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Reminders go out at these times, in this profile&rsquo;s timezone.
-          </p>
-          {/* Sub-hourly honesty (#2121/#2216): the scheduler reports its
-              observed cadence; a time it cannot land on exactly is named rather
-              than delivered late silently — and only named, never refused. */}
-          {subHourlyAtRisk && (
-            <p
-              className="mb-2 text-xs text-amber-700 dark:text-amber-400"
-              data-testid="sub-hourly-tick-warning"
-            >
-              This server&rsquo;s notification scheduler runs about every{" "}
-              {subHourlyAtRisk.intervalMin} minutes, so{" "}
-              {subHourlyAtRisk.times.join(", ")} may be delivered late (or, in
-              the last hour of the day, not at all).{" "}
-              {gridMinutes === 60
-                ? "Use on-the-hour times"
-                : `Use times in ${gridMinutes}-minute steps`}
-              , or run the scheduler more often.
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            {SLOTS.map((w) => {
-              const field = SLOT_FIELD[w];
-              return (
-                <div key={w}>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {w}
-                  </span>
-                  <div className="mt-1">
-                    <TimeControl
-                      value={values[field]}
-                      onChange={(v) => set(field, v)}
-                      /* The Morning slot can follow the profile's wake time (#1117). */
-                      autoOption={w === "Morning" ? autoLabel : null}
-                      seed={SLOT_SEED[field]}
-                      stepMinutes={gridMinutes}
-                      label={`${w} reminder`}
-                      testId={
-                        w === "Morning" ? "intake-morning-hour" : undefined
-                      }
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Quiet hours (#450) — the waking window for non-urgent nudges on EVERY
-            channel. Urgent medication reminders are never held by it. */}
-        <div
-          className="border-t border-black/5 pt-5 dark:border-white/5"
-          data-testid="quiet-hours"
-        >
-          <label className="label">Quiet hours</label>
-          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Non-urgent nudges are only sent between these hours; urgent
-            medication reminders are never held.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={values.waking_start_hour}
-              onChange={(e) => set("waking_start_hour", e.target.value)}
-              className="input sm:w-32"
-              aria-label="Quiet hours start (nudges begin)"
-              data-testid="waking-start-hour"
-            >
-              {HOURS.map((i) => (
-                <option key={i} value={i}>
-                  {formatClockMinutes(timeFormat, i * 60)}
-                </option>
-              ))}
-            </select>
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              to
-            </span>
-            <select
-              value={values.waking_end_hour}
-              onChange={(e) => set("waking_end_hour", e.target.value)}
-              className="input sm:w-32"
-              aria-label="Quiet hours end (nudges stop)"
-              data-testid="waking-end-hour"
-            >
-              {HOURS.map((i) => (
-                <option key={i} value={i}>
-                  {/* The inclusive :59 end stays — the window ends when that
-                      minute does, and rounding it to the next hour would widen it. */}
-                  {formatClockMinutes(timeFormat, i * 60 + 59)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
       {/* ---- Message kinds: ONE row per kind — enable, config, routing. ---- */}
       <div
         className="card notification-kind-matrix space-y-4"
@@ -851,8 +751,16 @@ export default function NotificationPrefs({
           className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 border-b border-black/10 pb-2 text-xs font-medium text-slate-500 dark:border-white/10 dark:text-slate-400"
           data-matrix-head
         >
-          <span data-matrix-head-label>Kind</span>
-          {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
+          {/* The lead cell: "Kind" at desktop, the sweep label below the boundary
+              (each hidden where the other shows — app/globals.css), and the routing
+              columns' OWN save status beside whichever is showing (#4736). It is here
+              and not in the card header because the card header's icon belongs to
+              the schedule bag, and one icon cannot say "saved" for two actions —
+              while a refused column write must show up in the grid the person is
+              tapping in, above the column they tapped. */}
+          <span className="flex items-center gap-2" data-matrix-head-lead>
+            <span data-matrix-head-label>Kind</span>
+            {/* THE SWEEP ROW NAMES ITS OWN REACH — below the card-mode boundary only.
               #3550's review: cutting the intro to one sentence and hiding "Kind"
               were each right and together left four 16px boxes with the same left
               edge, size, font and colour as the routing chips 133px below, and
@@ -874,12 +782,16 @@ export default function NotificationPrefs({
               The label stays true — a kind with no control is not a kind the sweep
               skips — but a reader comparing two columns will count different boxes,
               so the difference is stated here rather than left to be discovered. */}
-          <span
-            className="hidden"
-            data-matrix-sweep-label
-            data-testid="matrix-sweep-label"
-          >
-            All kinds at once &mdash; except safety reminders
+            <span
+              className="hidden"
+              data-matrix-sweep-label
+              data-testid="matrix-sweep-label"
+            >
+              All kinds at once &mdash; except safety reminders
+            </span>
+            <span data-testid="matrix-routing-status">
+              <SaveStatus {...routing.status} />
+            </span>
           </span>
           <span
             className="grid grid-cols-4 gap-1 text-center sm:w-52"
@@ -939,7 +851,7 @@ export default function NotificationPrefs({
                       label={label}
                       checked={state === "all"}
                       indeterminate={state === "mixed"}
-                      disabled={routing || sweep.length === 0}
+                      disabled={routing.status.pending || sweep.length === 0}
                       onChange={() => sweepColumn(c.id)}
                       data-testid={`matrix-column-all-${c.id}`}
                     />
@@ -1219,7 +1131,7 @@ export default function NotificationPrefs({
                           type="checkbox"
                           className={`mx-auto h-4 w-4 ${INK_CLASS[ink]}`}
                           checked={routes(c.id, e.kind)}
-                          disabled={routing}
+                          disabled={routing.status.pending}
                           onChange={() => toggleRoute(c.id, e.kind)}
                           data-testid={`matrix-cell-${c.id}-${e.kind}`}
                           data-ink={ink}
@@ -1266,6 +1178,113 @@ export default function NotificationPrefs({
             );
           })}
         </ul>
+      </div>
+      {householdRound}
+
+      {/* ---- Schedule: the slot times + quiet hours, nothing else. ---- */}
+      <div className="card space-y-5" data-testid="notify-schedule">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+            Schedule
+          </h3>
+          <SaveStatus {...status} />
+        </div>
+        <div>
+          <label className="label">Reminder slots</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            Reminders go out at these times, in this profile&rsquo;s timezone.
+          </p>
+          {/* Sub-hourly honesty (#2121/#2216): the scheduler reports its
+              observed cadence; a time it cannot land on exactly is named rather
+              than delivered late silently — and only named, never refused. */}
+          {subHourlyAtRisk && (
+            <p
+              className="mb-2 text-xs text-amber-700 dark:text-amber-400"
+              data-testid="sub-hourly-tick-warning"
+            >
+              This server&rsquo;s notification scheduler runs about every{" "}
+              {subHourlyAtRisk.intervalMin} minutes, so{" "}
+              {subHourlyAtRisk.times.join(", ")} may be delivered late (or, in
+              the last hour of the day, not at all).{" "}
+              {gridMinutes === 60
+                ? "Use on-the-hour times"
+                : `Use times in ${gridMinutes}-minute steps`}
+              , or run the scheduler more often.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            {SLOTS.map((w) => {
+              const field = SLOT_FIELD[w];
+              return (
+                <div key={w}>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {w}
+                  </span>
+                  <div className="mt-1">
+                    <TimeControl
+                      value={values[field]}
+                      onChange={(v) => set(field, v)}
+                      /* The Morning slot can follow the profile's wake time (#1117). */
+                      autoOption={w === "Morning" ? autoLabel : null}
+                      seed={SLOT_SEED[field]}
+                      stepMinutes={gridMinutes}
+                      label={`${w} reminder`}
+                      testId={
+                        w === "Morning" ? "intake-morning-hour" : undefined
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Quiet hours (#450) — the waking window for non-urgent nudges on EVERY
+            channel. Urgent medication reminders are never held by it. */}
+        <div
+          className="border-t border-black/5 pt-5 dark:border-white/5"
+          data-testid="quiet-hours"
+        >
+          <label className="label">Quiet hours</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            Non-urgent nudges are only sent between these hours; urgent
+            medication reminders are never held.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={values.waking_start_hour}
+              onChange={(e) => set("waking_start_hour", e.target.value)}
+              className="input sm:w-32"
+              aria-label="Quiet hours start (nudges begin)"
+              data-testid="waking-start-hour"
+            >
+              {HOURS.map((i) => (
+                <option key={i} value={i}>
+                  {formatClockMinutes(timeFormat, i * 60)}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              to
+            </span>
+            <select
+              value={values.waking_end_hour}
+              onChange={(e) => set("waking_end_hour", e.target.value)}
+              className="input sm:w-32"
+              aria-label="Quiet hours end (nudges stop)"
+              data-testid="waking-end-hour"
+            >
+              {HOURS.map((i) => (
+                <option key={i} value={i}>
+                  {/* The inclusive :59 end stays — the window ends when that
+                      minute does, and rounding it to the next hour would widen it. */}
+                  {formatClockMinutes(timeFormat, i * 60 + 59)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
     </div>
   );

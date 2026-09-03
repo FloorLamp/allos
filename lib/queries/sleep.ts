@@ -43,6 +43,7 @@ import {
 } from "../settings";
 import { doseWindowSince, indexTakenByDose } from "../intake-adherence";
 import { profileDayZone } from "../travel-excusal";
+import { zoneOf } from "../travel-timezone";
 import { doseBucketOn, doseDueOn } from "../intake-schedule";
 import { situationHistoryResolver } from "../trend-annotations";
 import {
@@ -97,7 +98,7 @@ export function getMainSleepNightlyMinutes(
 ): { date: string; value: number }[] {
   const nights = mainSleepNights(
     getSleepSessions(profileId),
-    getTimezone(profileId)
+    profileDayZone(profileId)
   );
   return nights
     .slice(-limitDays)
@@ -134,7 +135,7 @@ export function typicalWakeTime(
 ): number | null {
   return computeTypicalWakeTime(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     opts
   );
 }
@@ -150,7 +151,7 @@ export function typicalBedTime(
 ): number | null {
   return computeTypicalBedTime(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     opts
   );
 }
@@ -198,7 +199,7 @@ export function getLastNightSummary(
   const sessions = getSleepSessions(profileId);
   const windowSummary = lastNightSummary(
     sessions,
-    getTimezone(profileId),
+    profileDayZone(profileId),
     stagesByDay
   );
   const durationTrend = getSleepDurationTrend(profileId, 180);
@@ -241,7 +242,7 @@ export function getSleepSummaryInRange(
 ): LastNightSummary | null {
   const inRange = (date: string) =>
     (!range.from || date >= range.from) && (!range.to || date <= range.to);
-  const timezone = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const sessions = getSleepSessionsInRange(
     profileId,
     range.from,
@@ -258,9 +259,9 @@ export function getSleepSummaryInRange(
       awake: row.awake,
     });
   }
-  const sessionSummary = lastNightSummary(sessions, timezone, stagesByDay);
+  const sessionSummary = lastNightSummary(sessions, dayZone, stagesByDay);
 
-  const mainDurations = mainSleepNights(sessions, timezone).map((night) => ({
+  const mainDurations = mainSleepNights(sessions, dayZone).map((night) => ({
     date: night.wakeDay,
     value: night.durationMin,
   }));
@@ -295,12 +296,12 @@ export function getSleepConsistency(
   profileId: number,
   limitDays = 42
 ): ConsistencyNight[] {
-  const tz = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const sessions = getSleepSessions(profileId);
-  const nights = mainSleepNights(sessions, tz).slice(-limitDays);
-  return consistencyNights(nights, tz, {
-    typicalBedMinute: computeTypicalBedTime(sessions, tz),
-    typicalWakeMinute: computeTypicalWakeTime(sessions, tz),
+  const nights = mainSleepNights(sessions, dayZone).slice(-limitDays);
+  return consistencyNights(nights, dayZone, {
+    typicalBedMinute: computeTypicalBedTime(sessions, dayZone),
+    typicalWakeMinute: computeTypicalWakeTime(sessions, dayZone),
   });
 }
 
@@ -354,19 +355,23 @@ export function getNapHistory(
   const boundedDays = Math.max(1, Math.floor(windowDays));
   const end = today(profileId);
   const since = shiftDateStr(end, -(boundedDays - 1));
-  const timezone = getTimezone(profileId);
+  const dayZone = profileDayZone(profileId);
   const history = napSessions(
     getDailySleepSessionsSince(profileId, since),
-    timezone
+    dayZone
   )
     .filter((nap) => nap.wakeDay >= since && nap.wakeDay <= end)
     .map((nap) => ({
       date: nap.wakeDay,
       startMinutes: hhmmToMinutes(
-        zonedDateParts(timezone, new Date(nap.start)).hhmm
+        zonedDateParts(
+          zoneOf(dayZone, new Date(nap.start)),
+          new Date(nap.start)
+        ).hhmm
       ),
       endMinutes: hhmmToMinutes(
-        zonedDateParts(timezone, new Date(nap.end)).hhmm
+        zonedDateParts(zoneOf(dayZone, new Date(nap.end)), new Date(nap.end))
+          .hhmm
       ),
       durationMin: nap.durationMin,
       source: nap.session.source ?? null,
@@ -399,19 +404,21 @@ function bedtimeSupplementsByWakeDay(
   const wanted = new Set(wakeDays);
   if (wanted.size === 0) return new Map();
 
-  const timezone = getTimezone(profileId);
   const dayZone = profileDayZone(profileId);
   const earliestWakeDay = [...wanted].sort()[0];
   const sleepDateByWakeDay = new Map(
     mainSleepNights(
       getSleepSessionsSince(profileId, shiftDateStr(earliestWakeDay, -1)),
-      timezone
+      dayZone
     )
       .filter((night) => wanted.has(night.wakeDay))
-      .map((night) => [
-        night.wakeDay,
-        zonedDateParts(timezone, new Date(night.start)).date,
-      ])
+      .map((night) => {
+        const start = new Date(night.start);
+        return [
+          night.wakeDay,
+          zonedDateParts(zoneOf(dayZone, start), start).date,
+        ];
+      })
   );
   if (sleepDateByWakeDay.size === 0) return new Map();
 
@@ -599,7 +606,7 @@ export function getSleepRegularity(
 ): SleepRegularity | null {
   return computeSleepRegularity(
     getSleepSessions(profileId),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     // Resolve the profile's free-day set for the social-jetlag split (#1241) — an
     // explicit opts.freeDays (tests) wins; otherwise the stored setting (Sat/Sun
     // default) drives it. The pure core stays auth-blind: the setting is data.
@@ -624,7 +631,7 @@ export function getSleepRegularityThrough(
       const end = new Date(session.end).getTime();
       return Number.isFinite(end) && end <= through;
     }),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     { freeDays: getFreeDays(profileId), ...opts }
   );
 }
@@ -641,7 +648,7 @@ export function getSleepRegularityInRange(
   const windowDays = span == null ? 28 : Math.max(1, span + 1);
   return computeSleepRegularity(
     getSleepSessionsInRange(profileId, start, end),
-    getTimezone(profileId),
+    profileDayZone(profileId),
     {
       asOf: end,
       windowDays,
@@ -655,7 +662,7 @@ export function getSleepRegularityTrend(
   profileId: number,
   opts?: SleepRegularityOptions
 ): { date: string; sri: number }[] {
-  return sriTrend(getSleepSessions(profileId), getTimezone(profileId), {
+  return sriTrend(getSleepSessions(profileId), profileDayZone(profileId), {
     freeDays: getFreeDays(profileId),
     ...opts,
   });

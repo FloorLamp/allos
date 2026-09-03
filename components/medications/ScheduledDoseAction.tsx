@@ -61,10 +61,8 @@ export default function ScheduledDoseAction({
     shown: !readOnly && !taken && !skipped,
     day: dateStrInTz(tz),
     tz,
-    label: "Taken earlier?",
     timeLabel: `Time ${doseLabel || "this dose"} was taken`,
     testId: "scheduled-dose-when",
-    className: "w-full",
   });
   return (
     <div
@@ -111,18 +109,30 @@ export default function ScheduledDoseAction({
               : "Not logged"}
         </span>
       ) : (
-        <DoseStatusControl
-          doseId={doseId}
-          taken={taken}
-          skipped={skipped}
-          variant="pill"
-          label={taken ? "Taken" : "Mark taken"}
-          compact={compactActions}
-          profileId={profileId}
-          statement={statement}
-        />
+        // The pair and #4426's door share one group so the row's `justify-between`
+        // cannot push the door away from the action it modifies.
+        <div className="flex shrink-0 items-center gap-2">
+          <DoseStatusControl
+            doseId={doseId}
+            taken={taken}
+            skipped={skipped}
+            variant="pill"
+            // THE VERB NAMES THE ACT (#4753 ruling 2), and this row is deliberately
+            // NOT the chip: ruling 1 says a control with nothing non-redundant left to
+            // show is a plain verb button, and the row's own link already prints the
+            // amount and the slot this tap would put in a label ("1 tablet", "Morning").
+            // So the copy migrates and the shape does not.
+            label={taken ? "Taken" : "Take"}
+            compact={compactActions}
+            profileId={profileId}
+            statement={statement}
+          />
+          {statement.door}
+        </div>
       )}
-      {statement.node}
+      {statement.reveal ? (
+        <div className="w-full">{statement.reveal}</div>
+      ) : null}
     </div>
   );
 }

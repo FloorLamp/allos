@@ -82,8 +82,9 @@ test("an overlapping same-day session announces itself, and opens the merge pick
     await followLink(
       member,
       member
-        .getByTestId("training-log-row")
-        .filter({ hasText: OVERLAP_KEEPER_TITLE }),
+        .getByTestId("history-row")
+        .filter({ hasText: OVERLAP_KEEPER_TITLE })
+        .getByTestId("history-row-title"),
       /\/training\/activity\/\d+$/
     );
 
@@ -115,10 +116,17 @@ test("a worn NON-CYCLING session draws its heart rate — the block #2870 exists
   // boundary, because the chart is shared with the ride page and demanded that
   // page's chart-link provider (see SessionChartLink's UNLINKED).
   await page.goto("/training?tab=log");
+  // THE ROW IS NOT ITSELF A LINK (#4079). The shared substrate's row is one line
+  // with a title link and a trailing affordance; clicking the row's own box does
+  // nothing, so the destination is followed through the title.
   const walkRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: ZONE_WALK_TITLE });
-  await followLink(page, walkRow, /\/training\/activity\/\d+$/);
+  await followLink(
+    page,
+    walkRow.getByTestId("history-row-title"),
+    /\/training\/activity\/\d+$/
+  );
 
   const record = page.getByTestId("training-activity-page");
   await expect(record).toBeVisible();
@@ -158,7 +166,10 @@ test("a summary-only import says so, instead of leaving a silent short page", as
   await page.goto("/training?tab=log");
   await followLink(
     page,
-    page.getByTestId("training-log-row").filter({ hasText: TOTALS_ONLY_TITLE }),
+    page
+      .getByTestId("history-row")
+      .filter({ hasText: TOTALS_ONLY_TITLE })
+      .getByTestId("history-row-title"),
     /\/training\/activity\/\d+$/
   );
 
@@ -290,9 +301,10 @@ test("a session is measured against its own like-for-like peers (#3009)", async 
     await followLink(
       member,
       member
-        .getByTestId("training-log-row")
+        .getByTestId("history-row")
         .filter({ hasText: SESSION_PEERS_TITLE })
-        .first(), // first-ok: the newest of four same-titled fixture sessions — the subject
+        .first() // first-ok: the newest of four same-titled fixture sessions — the subject
+        .getByTestId("history-row-title"),
       /\/training\/activity\/\d+$/
     );
 

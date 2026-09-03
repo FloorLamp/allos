@@ -1,11 +1,19 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledBoxes, settledClick } from "./helpers";
+import {
+  hydratedClick,
+  openFoodAdd,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import { workerDbPath, frozenNow } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
 import { utcSqlString, zonedWallTimeToUtc, shiftDateStr } from "@/lib/date";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
+import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import { bulkTakeLabel } from "@/lib/usual-routine";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 // THE DAY LEDGER (#3987 phase 1), on its own seeded stack.
 //
@@ -199,6 +207,64 @@ function statusCount(
   }
 }
 
+/** The item name a dose is written under — what a control naming one dose must say. */
+function nameOf(doseId: number): string {
+  const db = openDb();
+  try {
+    return (
+      db
+        .prepare(
+          `SELECT s.name AS name FROM intake_item_doses d
+             JOIN intake_items s ON s.id = d.item_id
+            WHERE d.id = ?`
+        )
+        .get(doseId) as { name: string }
+    ).name;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Answer doses out of band, exactly as a phone tap or another tab would — the only way
+ * to reach a day that owes two, and then one. `unforge` takes the same ids back off.
+ */
+function forgeTaken(doseIds: readonly number[]): void {
+  if (doseIds.length === 0) return;
+  const db = openDb();
+  try {
+    const day = todayLocal();
+    const at = utcSqlString(frozenNow());
+    const read = db.prepare(
+      "SELECT item_id FROM intake_item_doses WHERE id = ?"
+    );
+    const write = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status, recorded_at)
+       VALUES (?, ?, ?, 'taken', ?)`
+    );
+    for (const doseId of doseIds) {
+      const { item_id } = read.get(doseId) as { item_id: number };
+      write.run(doseId, item_id, day, at);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function unforge(doseIds: readonly number[]): void {
+  if (doseIds.length === 0) return;
+  const db = openDb();
+  try {
+    const marks = doseIds.map(() => "?").join(", ");
+    db.prepare(
+      `DELETE FROM intake_item_logs
+        WHERE date = ? AND status = 'taken' AND dose_id IN (${marks})`
+    ).run(todayLocal(), ...doseIds);
+  } finally {
+    db.close();
+  }
+}
+
 /** The routine label each dose's item carries, or null for an unstacked one (#3098). */
 function stacksOf(doseIds: readonly number[]): Map<number, string | null> {
   const db = openDb();
@@ -293,6 +359,317 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     ).toContainText(/logged \d{1,2}:\d{2}/);
   });
 
+  test("the due row takes the ledger's one accent and names its bucket once (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const dueRow = morning(page).locator('[data-testid^="ledger-due-row-"]');
+    await expect(dueRow).toBeVisible();
+    // WAIT FOR THE RECORD, not just for the group: the comparison below is between the
+    // due row and the ground the RECORD rows are printed on, and a group that has
+    // rendered its due row but not yet its logged ones would be measured against a
+    // ground nobody is standing on.
+    await expect(
+      morning(page).locator('li[data-testid^="ledger-dose-"]').first() // first-ok: any recorded dose row proves the record half rendered — order-agnostic
+    ).toBeVisible();
+
+    // THE RELATIONSHIP, NOT AN ABSOLUTE. The record rows carry no fill of their own —
+    // they are printed on the list's surface — so what a person sees is the due row
+    // against THAT ground, and a hex value asserted against a constant would go on
+    // passing if the whole ledger changed colour together.
+    //
+    // AND SETTLE THE READ, because this subtree gets REPLACED rather than updated
+    // (#4815) — a re-render of the food log bar can detach the node between the
+    // visibility wait above and the `evaluate` below. `getComputedStyle` on a
+    // detached node returns EMPTY STRINGS for every property, so an unsettled read
+    // reports "" !== "" as false and this test failed as `Expected: not ""` — a node
+    // that stopped existing, wearing the costume of an accent that stopped differing
+    // (#4835). Two consecutive agreeing NON-EMPTY reads, each through a freshly
+    // resolved locator, so the pair compared belongs to one node still on the page.
+    // Same budget settledBoxes spends on the same question, in the same 50ms steps.
+    // Same budget settledBoxes spends on the same question. Expressed as a retrying
+    // expect rather than a hand-rolled loop: the e2e hygiene guard bans a new
+    // waitForTimeout and a new wall-clock read in a spec, and it is right to — the
+    // suite's own settling primitives live in e2e/helpers.ts, and this one is
+    // Playwright's.
+    const TONE_SETTLE_MS = 10_000;
+    type Tone = { due: string; ground: string };
+    const tones = async (): Promise<Tone> => {
+      let previous: Tone | null = null;
+      let settled: Tone | null = null;
+      await expect
+        .poll(
+          async () => {
+            const read = await dueRow.evaluate((el) => {
+              // An empty ground rather than a `!` that throws: when the row is
+              // detached from a still-attached list, `closest` finds nothing, and
+              // "no reading" is what that is.
+              const ground = el.closest('[data-testid="ledger-rows"]');
+              return {
+                due: getComputedStyle(el).backgroundColor,
+                ground: ground ? getComputedStyle(ground).backgroundColor : "",
+              };
+            });
+            const before = previous;
+            previous = read;
+            const agreed =
+              read.due !== "" &&
+              read.ground !== "" &&
+              before !== null &&
+              before.due === read.due &&
+              before.ground === read.ground;
+            settled = agreed ? read : null;
+            return agreed;
+          },
+          {
+            timeout: TONE_SETTLE_MS,
+            message:
+              "the due row was still being replaced under the read, so no colour " +
+              "was ever measured. An EMPTY computed style is a detached node " +
+              "(#4815), never a colour — this is NOT the due row and its ground " +
+              "agreeing",
+          }
+        )
+        .toBe(true);
+      return settled!;
+    };
+
+    const light = await tones();
+    expect(
+      light.due,
+      "the due row must not be printed in the ledger's own ground colour"
+    ).not.toBe(light.ground);
+
+    // DARK BY THE APP'S OWN RULE, not by holding a class on against it. Forcing
+    // `classList.add("dark")` reads correct and is a race: components/ThemeReassert.tsx
+    // re-applies `isDarkTheme` on every route effect and its toggle CLEARS a class the
+    // stored choice disowns, so the second reading landed on the light surface in one
+    // configuration and the dark one in another. Storing the choice removes the race
+    // instead of sampling it — the boot script and the re-assert then agree with the
+    // assertion.
+    await page.evaluate(
+      (key) => localStorage.setItem(key, "dark"),
+      THEME_STORAGE_KEY
+    );
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
+    const dark = await tones();
+    expect(
+      dark.due,
+      "the due row must not be printed in the ledger's own ground colour (dark)"
+    ).not.toBe(dark.ground);
+    // …and the theme really switched, so the second reading is not the first one under
+    // another name.
+    expect(dark.ground).not.toBe(light.ground);
+    await page.evaluate(
+      (key) => localStorage.removeItem(key),
+      THEME_STORAGE_KEY
+    );
+    await page.reload();
+    await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+    await expect(dueRow).toBeVisible();
+
+    // THE CONTROL, THROUGH THE SAME OBJECT the assertion reads through: paint the due
+    // row with the ground's own colour and the comparison must agree, then restore and
+    // it must part again. A control that re-queried would only prove that SOME read
+    // can see a difference.
+    //
+    // AND WITH A GROUND READ IN THE SAME BREATH (#4903). This forged with `light.ground`
+    // — captured at the top of the test, before a theme flip and two reloads — so it
+    // also asserted that a colour measured three navigations ago is still the current
+    // one. That is not what this control is controlling for, and it is what failed
+    // under load: the two grounds differed by a real amount, not a rounding step. The
+    // control's own claim is untouched, because both halves of the comparison below
+    // still come from the same object through the same reader.
+    const beforeForge = await tones();
+    await dueRow.evaluate((el, bg) => {
+      (el as HTMLElement).style.backgroundColor = bg;
+    }, beforeForge.ground);
+    const forged = await tones();
+    expect(
+      forged.due,
+      "the forged ground colour must reach the same object the assertion reads through"
+    ).toBe(forged.ground);
+    await dueRow.evaluate((el) => {
+      (el as HTMLElement).style.backgroundColor = "";
+    });
+    const restored = await tones();
+    expect(restored.due).not.toBe(restored.ground);
+
+    // THE BUCKET IS NAMED ONCE, AND NOW IT IS NAMED IN THE GUTTER (#4477's one-stream
+    // ledger). The heading over a frame of its own is gone; the bucket rides the first
+    // row of its run, and the actionable row states only what that bucket still owes.
+    // The positive half is asserted first so the absence below is read off a row that
+    // really rendered — `not.toContainText` is happiest of all against an element that
+    // is not there.
+    await expect(
+      morning(page).getByTestId(
+        `ledger-gutter-${TIME_BUCKET_LABELS.Morning.toLowerCase()}`
+      )
+    ).toHaveText(TIME_BUCKET_LABELS.Morning);
+    // The heading is gone, not moved: #4548 had put it on `CardSectionHeader` and this
+    // read it by ROLE for that reason. A bucket in the gutter is not a heading at all,
+    // so the absence is asserted by role too — the same question, one shape later.
+    await expect(morning(page).getByRole("heading")).toHaveCount(0);
+    const summary = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(summary).toContainText(/\d+ doses? due/);
+    await expect(summary).not.toContainText(TIME_BUCKET_LABELS.Morning);
+  });
+
+  test("record, plan and input read as three layers, on rendered styles (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    // Each layer, as its own real element. The comparison below is between these three
+    // and never against a constant: a hex asserted against a literal goes on passing
+    // when the whole page changes colour together, which is the defect this criterion
+    // is about.
+    const record = morning(page)
+      .locator('li[data-testid^="ledger-dose-"]')
+      .first(); // first-ok: any recorded row stands for the record layer — order-agnostic
+    const due = morning(page).locator('[data-testid^="ledger-due-row-"]');
+    const door = page.getByTestId("food-add-door");
+    for (const layer of [record, due, door]) await expect(layer).toBeVisible();
+    // THE DOOR TRANSITIONS ITS OWN BACKGROUND (it lifts on hover), so a colour written
+    // onto it ARRIVES OVER TIME: the control below forged the plan's fill and read back
+    // the same rgb at alpha 0.694 and 0.92 on two of six repeats. Stopping the
+    // transition removes the race rather than sampling it — every read here is then of
+    // a settled value, and the assertions are about which colour the box wears, never
+    // about how it got there.
+    await door.evaluate((el) => {
+      (el as HTMLElement).style.transitionProperty = "none";
+    });
+
+    type Dress = { fill: string; edge: string };
+    const dressOf = (layer: typeof record) =>
+      layer.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return {
+          fill: style.backgroundColor,
+          // The row layers are hairline-divided; the door is an outline. Read the top
+          // edge on both, so the two readings are the same property of the same box.
+          edge: style.borderTopStyle,
+        };
+      });
+    const read = async (): Promise<Record<string, Dress>> => ({
+      record: await dressOf(record),
+      due: await dressOf(due),
+      door: await dressOf(door),
+    });
+
+    const dress = await read();
+    // THE PLAN AGAINST THE RECORD: the accent, and only there.
+    expect(
+      dress.due.fill,
+      "the plan layer takes a fill the record layer does not"
+    ).not.toBe(dress.record.fill);
+    // THE INPUT AGAINST BOTH: no fill of its own — the accent belongs to the one row
+    // that can still be acted on — and an outline where the record has a hairline.
+    expect(
+      dress.door.fill,
+      "the input layer does not wear the plan layer's accent"
+    ).not.toBe(dress.due.fill);
+    expect(
+      dress.door.edge,
+      "the input layer is drawn as an outline, the record as a hairline"
+    ).not.toBe(dress.record.edge);
+    expect(dress.door.edge).toBe("dashed");
+
+    // THE CONTROL, THROUGH THE SAME OBJECTS the assertions read through: give the door
+    // the record's edge and the plan's fill and both comparisons must collapse, then
+    // restore and both must part again. A control that re-queried would only prove
+    // that SOME read can tell them apart.
+    await door.evaluate(
+      (el, dressed) => {
+        (el as HTMLElement).style.borderTopStyle = dressed.edge;
+        (el as HTMLElement).style.backgroundColor = dressed.fill;
+      },
+      { edge: dress.record.edge, fill: dress.due.fill }
+    );
+    const forged = await read();
+    expect(forged.door.edge).toBe(forged.record.edge);
+    expect(forged.door.fill).toBe(forged.due.fill);
+    await door.evaluate((el) => {
+      (el as HTMLElement).style.borderTopStyle = "";
+      (el as HTMLElement).style.backgroundColor = "";
+    });
+    const restored = await read();
+    expect(restored.door.edge).not.toBe(restored.record.edge);
+    expect(restored.door.fill).not.toBe(restored.due.fill);
+  });
+
+  // CHROME-TO-FIRST-FACT, ASSERTED AS A RELATIONSHIP (#4477's acceptance criterion).
+  // The number that matters is not "how many pixels down the page is the first row" —
+  // that moves with every neighbour above the ledger — but how much of the LEDGER'S OWN
+  // height is spent before it states anything. One stream means the day opens on a fact:
+  // no per-bucket heading, no per-bucket count, no second frame between the section
+  // label and the first row.
+  test("the ledger's first fact sits within one row of its own top (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const ledger = page.getByTestId("day-ledger");
+    const firstRow = page.getByTestId("ledger-rows").locator("li").first(); // first-ok: the first fact IS the first row — the measurement's subject
+    await expect(firstRow).toBeVisible();
+    const [ledgerBox, rowBox] = await settledBoxes([ledger, firstRow]);
+    // The ledger's chrome is its "Ledger" label line and the census beside it: one line
+    // of type plus its gap. A per-bucket heading and count under it was a second line
+    // with its own margin, which is the height this ruling removed. 64px is one label
+    // line (16px type, ~20px box) plus the section's own 16px gap, with room for the
+    // census wrapping under the label on a narrow column — and it is BELOW what the
+    // two-line arrangement could fit in, which is what makes the bound able to fail.
+    const CHROME_CEILING_PX = 64;
+    expect(rowBox.y - ledgerBox.y).toBeLessThanOrEqual(CHROME_CEILING_PX);
+    expect(rowBox.y - ledgerBox.y).toBeGreaterThan(0);
+  });
+
+  test("the bulk verb reads by count — all N, then both, then the member (#4477)", async ({
+    page,
+  }) => {
+    await page.goto("/nutrition");
+    const due = morning(page).locator('[data-testid^="ledger-due-group-"]');
+    await expect(due).toBeVisible();
+    const named = ((await due.getAttribute("data-doses")) ?? "")
+      .split(",")
+      .filter(Boolean)
+      .map(Number);
+    // THE LADDER HAS THREE RUNGS AND THE FIXTURE MUST START ABOVE THE TOP ONE, or the
+    // two lower rungs below are never reached and this test passes without having
+    // rendered either of the strings the ruling is about.
+    expect(
+      named.length,
+      "the morning due row starts with three or more doses"
+    ).toBeGreaterThanOrEqual(3);
+    const takeAll = morning(page).locator('[data-testid^="ledger-takeall-"]');
+    await expect(takeAll).toHaveText(`Take all ${named.length}`);
+
+    // FORGED OUT OF BAND, and put back before this test ends — the lower rungs are
+    // states of the DAY, unreachable by any navigation while it still owes three. The
+    // ids also ride `borrowedDoseIds`, so a failure between here and the restore still
+    // leaves the file's own afterAll a clean day.
+    borrowedDoseIds.push(...named);
+    const downToTwo = named.slice(0, -2);
+    const downToOne = named[named.length - 2]!;
+    const lastOwed = named[named.length - 1]!;
+    try {
+      forgeTaken(downToTwo);
+      await page.reload();
+      // Two is the whole set, so the count adds nothing the word does not already say.
+      await expect(takeAll).toHaveText("Take both");
+
+      forgeTaken([downToOne]);
+      await page.reload();
+      // One is not a bulk. The control names the member it will write, and its
+      // accessible name does not then say that name a second time.
+      const only = `Take ${nameOf(lastOwed)}`;
+      await expect(takeAll).toHaveText(only);
+      await expect(takeAll).toHaveAttribute("aria-label", only);
+    } finally {
+      unforge([...downToTwo, downToOne]);
+    }
+  });
+
   test("the bulk Take-all writes only what the day still owes (#3936)", async ({
     page,
   }) => {
@@ -305,7 +682,13 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .map(Number);
     expect(named.length).toBeGreaterThan(0);
     const takeAll = morning(page).locator('[data-testid^="ledger-takeall-"]');
-    await expect(takeAll).toHaveText(`Take all ${named.length}`);
+    // THE LABEL IS THE ROW'S PROMISE, and its wording is the ruled ladder (#4477) —
+    // read through the shared helper rather than re-spelled here, so this test keeps
+    // asserting WHICH doses the control promises while the ladder's own rungs are
+    // pinned against literals in the copy test above.
+    const promise = (ids: readonly number[]) =>
+      bulkTakeLabel(ids.map((id) => ({ name: nameOf(id) })));
+    await expect(takeAll).toHaveText(promise(named));
 
     // THE STALE TAP, forged deliberately: one of the doses this row NAMES is resolved
     // out of band, exactly as a phone tap or another tab would. The row's list is an
@@ -364,7 +747,7 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
       .map(Number);
     expect(namedAfter).not.toContain(stale);
     expect(namedAfter).toHaveLength(named.length - 1);
-    await expect(takeAll).toHaveText(`Take all ${named.length - 1}`);
+    await expect(takeAll).toHaveText(promise(namedAfter));
 
     await settledClick(page, takeAll);
     // ONE taken row for the stale dose, still — no second administration for a dose
@@ -540,6 +923,7 @@ test.describe("the day is stated once", () => {
 
   test("no serving or dose is rendered twice", async ({ page }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     const ledger = page.getByTestId("day-ledger");
     await expect(ledger).toBeVisible();
 
@@ -610,6 +994,9 @@ async function pickDose(page: Page, logId: number): Promise<void> {
  * would pass or fail on its neighbours' history.
  */
 async function revealFoodGroup(page: Page, slug: string): Promise<void> {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await page.getByTestId("food-more-groups-summary").click();
@@ -713,6 +1100,7 @@ test.describe("a forged POST cannot date a serving into the future", () => {
     });
 
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
     await revealFoodGroup(page, SLUG);
 
@@ -777,6 +1165,7 @@ test.describe("the Day ledger's selection edit", () => {
     // A serving of our own to select, written through the page's own add control.
     const before = servingRows(day, "berries").length;
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await revealFoodGroup(page, "berries");
     await hydratedClick(page, page.getByTestId("log-berries"));
     await expect

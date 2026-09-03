@@ -19,6 +19,7 @@ import {
   recoveryOverrideLine,
 } from "../workout-recommendation";
 import { parkedDisclosureLines } from "../weather-training";
+import { niggleHeadsUpLine, nigglesTouchingSession } from "../niggle-model";
 import { exerciseSessionCount } from "../exercise-familiarity";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
@@ -179,6 +180,20 @@ export function recommendWorkout(
   // notification path has no login whose temperature preference it could read.
   const parkedNotes = parkedDisclosureLines(nw.parked);
 
+  // The pre-workout niggle heads-up (#3211 part 4). Same shape as the parking notes
+  // directly above and for the same reason: the in-app surfaces already disclose the
+  // niggle tier through `contextNotes`, and this channel disclosed nothing.
+  //
+  // Filtered to the niggles TODAY'S session touches — `nw.niggleTempers` is the whole
+  // live set, which is right for a card showing context and wrong for a push. The focus
+  // and exercise list are the ones already picked above, so nothing is re-derived and
+  // the line can never name a region the message does not.
+  const niggleNotes = nigglesTouchingSession(
+    nw.niggleTempers,
+    nw.focus,
+    nw.exercises
+  ).map((t) => niggleHeadsUpLine(t, input.today));
+
   // How well the reader already knows the lead lift (#2223), so the formatter can bound
   // the "📖 How to" button to a lift they have NOT done. No new read: these are the very
   // rows the core just frequency-ranked the exercise list from — the same bounded scan
@@ -225,6 +240,7 @@ export function recommendWorkout(
     exercises: nw.exercises,
     cardio,
     parkedNotes,
+    niggleNotes,
     behind,
     rest,
     onTrack,

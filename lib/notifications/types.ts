@@ -27,6 +27,7 @@ export type NotificationKind =
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "mood" // opt-in daily wellbeing check-in (#992; auto-pauses when ignored)
   | "practice" // pace-aware wellness-practice check-in (#1259)
+  | "practice-recap" // what a finished practice did to the heart rate (#4775)
   | "digest" // morning digest
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary
@@ -119,6 +120,17 @@ export interface NotificationChannel {
   id: ChannelId;
   // Enabled and credentials present for the given profile, under this send's routing.
   isConfigured(profileId: number, opts?: DispatchOptions): boolean;
+  // The delivery OWNERS this send would reach (#2565): login ids for the login-scoped
+  // channels, the profile id for Home Assistant — the same audience `send` resolves,
+  // gated the same way. `send` records each owner's outcome itself at the moment it
+  // has it; this is for the one outcome `send` never sees, the whole-dispatch timeout
+  // (#3057), which dispatch() records against the owners the adapter was addressing.
+  // An explicit chat override names no login and so no owner.
+  owners(
+    profileId: number,
+    msg: NotificationMessage,
+    opts?: DispatchOptions
+  ): number[];
   send(
     profileId: number,
     msg: NotificationMessage,
@@ -144,12 +156,4 @@ export function bodyFor(
   channel: ChannelId
 ): MessageBody {
   return msg.bodyByChannel?.[channel] ?? msg.body;
-}
-
-export function prefixMessage(
-  msg: NotificationMessage,
-  prefix: string
-): NotificationMessage {
-  if (!prefix) return msg;
-  return { ...msg, title: `${prefix}${msg.title}` };
 }

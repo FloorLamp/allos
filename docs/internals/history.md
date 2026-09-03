@@ -188,8 +188,9 @@ the query. Open on #3958.
 server-selects the day presentation rather than routing anywhere. Rows are flat — a day
 view lists everything, so no rollups. It carries what `/timeline`'s single-day view
 carried: the **intraday panel** (#1068), the day **context chips** (daylight, UV,
-weather, cycle phase), **prev/next nav** with its swipe (#1425), and the
-**`SymptomLogBar`** mount (#799) — which is why a symptom is not an Add-door kind.
+weather, cycle phase), and **prev/next nav** with its swipe (#1425). It carries no
+symptom bar: #4851 retired that card, so symptom is an add-door kind everywhere and
+the day's Add past row offers it beside its siblings.
 
 Two rules decide what it draws. Context is **single-subject**: daylight, UV, weather
 and cycle phase are one body's, so `?view=everyone&day=` lists the rows and draws no

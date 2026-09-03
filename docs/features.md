@@ -160,8 +160,9 @@ Its intraday panel projects the day's timed data onto a midnight-to-midnight
 clock: minute-level heart rate, sleep blocks and stages, workout spans, and
 clock-timed entries. Tapping a mark jumps to the corresponding record below.
 Layers render only when that day has relevant data; the scrolling multi-day feed
-never pays the cost of an intraday chart. The selected day also offers one-tap
-symptom backfill without requiring an illness episode.
+never pays the cost of an intraday chart. The selected day also offers symptom
+backfill without requiring an illness episode: **Symptoms** sits in its Add past
+row like every other log kind, and the form opens on the day you are reading.
 
 ## Symptom log
 
@@ -1325,13 +1326,18 @@ Morning / Midday / Evening groups — one physical morning, one list, where the 
 used to draw the same facts as meal cards, a logged-today list, and a separate
 schedule on the Manage tab. Doses written by one composed tap collapse to a
 single expandable row; a partly-answered routine says "4 of 6" rather than a bare
-tick. A bucket's still-due doses are one row with a bulk **Take all**, which names
-every dose it will write and writes only the ones the day still owes. That due
+tick. A bucket's still-due doses are one row, which names
+every dose it will write and writes only the ones the day still owes. Its bulk verb
+reads by count (#4477): one dose names itself (**Take Glycine**), two read **Take
+both**, and a number appears only from three (**Take all 4**). That due
 row **leads** its group (#4315): the ledger is opened to act, so the one
 actionable row reads first and the record keeps its stated order unchanged
 below it — the rule for any surface rendering due-and-done together, and a
 surface with no single aggregated due row is outside it (the Medications Today
-panel's slots stay in dose-day order, #2652). A **skip**
+panel's slots stay in dose-day order, #2652). It also carries the ledger's one
+accent fill and states only what is owed ("3 doses due"), because the group's
+heading has already named the bucket and the record beneath is the surface's
+quiet ground (#4477). A **skip**
 shows with the reason you gave it. A row with no stated time says which clock it is
 showing ("logged 8:06pm") and sits below the timed rows. Each serving carries ⋯ row
 actions to **correct** it — the food group, the day, or the meal it belongs to — or
@@ -1524,7 +1530,8 @@ old `/coverage` route is likewise gone;) the six specialty surfaces — Vision /
 Hearing / Dental / Skin / Mental health / Substance use — are the Specialty group's
 sub-tabs; the old `/vision`, `/dental`, `/skin`, and `/medical/instruments`
 routes were removed too (as was `/medical/substance-use`, ahead of #1635), with Vision/Dental
-data-gated on data presence (a hidden sub-tab's route re-gates server-side),
+data-gated on data presence — their own rows, or **specialty-lens** care in that
+line (#2921) — (a hidden sub-tab's route re-gates server-side),
 Substance use life-stage-gated to adults + unknown-age profiles (hidden for a
 known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
@@ -1670,7 +1677,11 @@ preventive rule, not duplicated here. Degrades without an AI key: the document
 is stored and the record entered manually via the same form. The **Vision
 section is data-gated** (#1042): it appears on Health record once a prescription
 is on file — Data → Import creates rows too, so the empty section never strands
-creation. The FHIR `VisionPrescription` structured-import mapper is a separate
+creation — or once the **specialty lens** finds eye care (#2921): a child with
+years of ophthalmology follow-ups and no refraction yet gets the tab from the
+visits alone. Below the prescriptions, an **Eye care history** strip lists that
+lens — the classified visits and eye-coded conditions, each linking to the
+record it already lives on. The FHIR `VisionPrescription` structured-import mapper is a separate
 follow-up (#708); this table is its destination.
 
 ### Dental
@@ -1684,7 +1695,8 @@ reuse the biomarker store and trend/flag alongside labs; extracted from an
 uploaded dental exam/treatment record via AI (dental has no FHIR feed) or added
 manually. Dental X-rays are imaging studies, not modeled here. Like Vision, the
 **Dental section is data-gated** (#1042) — it appears on Health record once a
-record is on file. When an **invasive** dental procedure is _planned_
+record is on file, or once the specialty lens finds dental care (#2921) — and it
+carries the same **Dental care history** strip. When an **invasive** dental procedure is _planned_
 (extraction / implant / oral or periodontal surgery), a **safety cross-check**
 surfaces a calm, cited pre-procedure note against your record — an
 antiresorptive (bisphosphonate/denosumab) → MRONJ caution, a high-risk cardiac
@@ -1716,6 +1728,17 @@ biopsy from the same appointment already had.
 **Scope boundary, by design:** this is a self-monitoring record for you and your
 dermatologist — it tracks and compares, it never assesses malignancy or scores
 the ABCDE observations into a verdict.
+
+**The specialty lens (#2921).** All four anatomical panes — Vision, Dental,
+Hearing, Skin — carry a **care-history strip** below their own table: the visits
+and coded diagnoses that belong to that area of care, each linking to the record
+it already lives on. A visit is placed by its clinician's specialty first, then
+its facility's, then the same curated visit vocabulary the preventive engine
+matches on (#515); a diagnosis by its ICD-10 block. Nothing is stored — the
+grouping is derived each time the pane is read, so correcting a provider's
+specialty reflows it — and a visit that identifies no line simply appears in no
+strip rather than being guessed into one. Mental health and Substance use keep
+their life-stage gates and carry no strip.
 
 ### Hearing
 
@@ -2477,13 +2500,13 @@ does not push crisis content to a possibly-shared or locked device. A
 mental-health **appointment** additionally defaults to **minimal detail**
 ("Medical appointment") on shared/exported surfaces — household rollups, the
 Household card's digest and the `.ics` family calendar feed — overridable per
-profile. **Mood check-ins never appear on a shared surface at all**: a daily
-self-report has no useful minimal form, and access granted to help with someone's
-medications is not access to their mood feed. Both rules live in
-`lib/appointment-sensitivity.ts` as the ONE decision every shared surface
-consults, so a surface added later inherits them rather than restating them; the
-profile's OWN surfaces always show everything. Informational,
-a screening instrument, **never a diagnosis**.
+profile. That visit rule lives in `lib/appointment-sensitivity.ts` as the ONE
+decision every shared surface consults, so a surface added later inherits it
+rather than restating it. It is the only thing a shared surface changes:
+**mood check-ins are shown** there as on the profile's own surfaces — a
+household is a family, and the morning digest already reaches the same
+caregivers with the same check-in. Informational, a screening instrument,
+**never a diagnosis**.
 
 ## Crisis support
 
@@ -2739,7 +2762,7 @@ until you tap it, taking the supplement again makes it go away on its own, and t
 app never suggests moving anything _up_.
 
 Your daily digest and weekly recap lead with **what changed** rather than a bare
-fraction — "Missed: magnesium (3 days) · Resumed: vitamin D (2 days)" — covering
+fraction — "Missed: magnesium for 3 days · Resumed: vitamin D after 2 days missed" — covering
 only the things you have actually committed to. A quiet week says nothing at all;
 the taken/due count stays alongside as supporting detail.
 

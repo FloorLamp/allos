@@ -86,11 +86,6 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
-    file: "app/(app)/training/activity-actions.ts",
-    fn: "loadTrainingLogPage",
-    why: "read-only: fetches an older window of the active profile's Training Log feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
-  },
-  {
     file: "app/(app)/integrations/sync-actions.ts",
     fn: "loadSyncHistoryPage",
     why: "read-only: fetches an older page of the active profile's provider-scoped sync ledger; the cursor selects a profile-local day and the action writes nothing, so requireSession() is the right gate",
@@ -378,6 +373,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/nutrition/intake-actions.ts",
     fn: "deleteAdministration",
     why: "record correction (#4009): deletes the ROW's dose log via gateItemProfile() → requireProfileWriteAccess(rowProfileId); the audit entry is stamped with the same gated profile",
+    gate: "gateItemProfile",
+  },
+  {
+    file: "app/(app)/nutrition/intake-actions.ts",
+    fn: "logHistoricalDose",
+    why: "adds follow the surface on a subject-scoped container (#4693, amending #4424 ruling 4): /medications/[id] names one subject, so its backfill ADD posts that subject's `profile_id` and takes the same gateItemProfile() \u2192 requireProfileWriteAccess(subjectProfileId) the amend beside it takes. Every single-subject mount posts none and falls back to the acting-profile gate. The dose's wall time re-anchors in the GATED profile's zone, and the audit row is stamped with it",
     gate: "gateItemProfile",
   },
   {

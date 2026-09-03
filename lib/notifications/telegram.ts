@@ -39,10 +39,11 @@ import type {
   NotificationChannel,
   NotificationMessage,
 } from "./types";
-import { prefixMessage } from "./types";
+import { composeForSend, composeMessage } from "./compose";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
-import { resolveTelegramRecipients } from "./fan-out";
+import { resolveTelegramChats, resolveTelegramRecipients } from "./fan-out";
+import { recordedSend } from "./delivery-marker";
 import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
 import { householdRoundPointerFromMessage } from "./household-round-pointer";
 import {
@@ -72,7 +73,6 @@ import {
 } from "./message-pointers";
 import { isReissuableKind, proseReconcilerFor } from "./reconcile-registry";
 import {
-  attachUsualRoutine,
   attachmentOnKeyboard,
   type UsualRoutineAttachment,
 } from "./usual-routine-attach";
@@ -120,6 +120,16 @@ export const telegramChannel: NotificationChannel = {
     if (opts?.telegramChatIds?.length) return true;
     return resolveTelegramRecipients(profileId).length > 0;
   },
+  owners(profileId: number, msg: NotificationMessage, opts?: DispatchOptions) {
+    // The chats `send` below would post to, gated exactly as it gates them — every
+    // login on each chat. An override chat names no login and so no owner.
+    if (opts?.telegramChatIds?.length) return [];
+    return resolveTelegramChats(profileId)
+      .filter((c) =>
+        isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(c.loginIds[0]))
+      )
+      .flatMap((c) => c.loginIds);
+  },
   async send(
     profileId: number,
     msg: NotificationMessage,
@@ -152,11 +162,14 @@ export const telegramChannel: NotificationChannel = {
       }
       return;
     }
-    const recipients = resolveTelegramRecipients(profileId);
-    for (const { loginId, chatId } of recipients) {
-      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))
+    // One send per chat; the outcome is recorded for EVERY login mapped to that chat
+    // (#2565), since the message that reached the family group reached all of them.
+    for (const { chatId, loginIds } of resolveTelegramChats(profileId)) {
+      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginIds[0])))
         continue;
-      const messageId = await sendMessageRaw(chatId, msg);
+      const messageId = await recordedSend("telegram", loginIds, () =>
+        sendMessageRaw(chatId, msg)
+      );
       // The HOUSEHOLD ROUND needs the identical rotation (#1719) and never had it:
       // its confirm tokens carry each member's SEND-TIME date, so a surviving round
       // keyboard from an earlier day logs a dose to YESTERDAY — for someone else's
@@ -620,8 +633,23 @@ export async function sendTelegramMessage(
   msg: NotificationMessage,
   subject: TelegramSendSubject
 ): Promise<void> {
-  const messageId = await sendMessageRaw(chatId, msg);
-  await trackDelivered(resolveSubject(chatId, subject), chatId, messageId, msg);
+  // COMPOSED HERE, NOT BY THE CALLER (#4538). Every send through this function is a
+  // reply to something the reader just did, so `telegram-command` is a property of the
+  // send path rather than of each mint site. Attribution follows the DECLARED SUBJECT
+  // (#1995): a CHAT_WIDE message covers the chat and names nobody, and labelling it
+  // with the chat's representative would hand a family's list to one member.
+  const composed = composeMessage(
+    msg,
+    typeof subject === "number" ? prefixForProfile(subject) : "",
+    "telegram-command"
+  );
+  const messageId = await sendMessageRaw(chatId, composed);
+  await trackDelivered(
+    resolveSubject(chatId, subject),
+    chatId,
+    messageId,
+    composed
+  );
 }
 
 // Resolve a declared subject to the profile the pointer is scoped by. A CHAT_WIDE send
@@ -660,8 +688,7 @@ function liveUsualAttachment(
 // and keyboard the initial send used. This is what closes the #377 class at the
 // boundary: a callback handler hands over the raw rebuilt message + its profileId
 // and CANNOT re-render without the "[Name] " label, because the chokepoint owns
-// applying it. Byte-identical to the former hand-rolled
-// editMessageText(renderMessageHtml(prefixMessage(msg, prefixForProfile(id))), …).
+// applying it.
 export async function rebuildMessage(
   profileId: number,
   chatId: number | string,
@@ -678,9 +705,16 @@ export async function rebuildMessage(
   // It can only ever REDUCE. `standingUsualAttachment` intersects the STORED offer with
   // what currently stands, so a half already logged falls out of the named line and the
   // whole button disappears once nothing stands.
-  const attributed = prefixMessage(
-    attachUsualRoutine(msg, liveUsualAttachment(profileId, chatId, messageId)),
-    prefixForProfile(profileId)
+  //
+  // THE SAME COMPOSITION A SEND RUNS (#4538), so a rebuilt keyboard can differ from the
+  // delivered one only by what the stored offer no longer stands for. No origin: a
+  // rebuild PRESERVES what the live keyboard declares, which its callers already read
+  // off the tapped token or the pointer and applied.
+  const attributed = composeForSend(
+    profileId,
+    msg,
+    null,
+    liveUsualAttachment(profileId, chatId, messageId)
   );
   await editMessageTextRaw(chatId, messageId, renderMessageHtml(attributed), {
     keyboard: messageKeyboard(attributed),

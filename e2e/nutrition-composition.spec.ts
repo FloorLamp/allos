@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { settledBoxes } from "./helpers";
+import { openFoodAdd, settledBoxes } from "./helpers";
 import { E2E_LOGIN_NUTRITION, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 
@@ -28,6 +28,7 @@ test("mobile nutrition leads with quick logging and a compact snapshot before th
     // the mobile order act (log bar) → today's feedback → weekly reflection.
     await page.setViewportSize({ width: 390, height: 900 });
     await page.goto("/nutrition?tab=food");
+    await openFoodAdd(page);
     await expect(page.getByTestId("nutrition-page-title")).toBeHidden();
     const shell = page.getByTestId("shell-chrome");
     const shellTabs = shell.getByTestId("shell-tab-strip");

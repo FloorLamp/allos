@@ -7,6 +7,7 @@ import { revalidateRoute } from "@/lib/revalidate";
 import {
   generateHealthConnectToken,
   disconnectHealthConnect,
+  setHealthConnectCgmGlucose,
 } from "@/lib/integrations/connections";
 import { isValidExpiryChoice } from "@/lib/token-lifecycle";
 
@@ -53,5 +54,15 @@ export async function disconnect(): Promise<{ ok: true }> {
   revalidateRoute("/integrations/health-connect");
   // The connect-card grid (status) now lives on the Data hub's Import tab.
   revalidateRoute("/data");
+  return { ok: true };
+}
+
+// Flip "Treat glucose from this connection as a continuous sensor" (#3182). Ingest
+// policy, not a credential: it changes where the NEXT push's glucose lands, and
+// nothing already stored moves.
+export async function setCgmGlucose(on: boolean): Promise<{ ok: true }> {
+  const { profile } = await requireWriteAccess();
+  setHealthConnectCgmGlucose(profile.id, on);
+  revalidateRoute("/integrations/health-connect");
   return { ok: true };
 }

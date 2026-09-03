@@ -10,6 +10,8 @@ import { insertObservationRevision } from "@/lib/queries/medical/revisions";
 import {
   hasBodyMetric,
   mergeBodyMetricPartialAware,
+  mergeMeasureInstants,
+  type BodyMetricInstants,
   type BodyMetricValues,
 } from "@/lib/body-metric-extract";
 import { collapseBodyMetricsByDate } from "./body-metric-collapse";
@@ -63,8 +65,8 @@ export interface NormBodyMetric {
   // Connect) omit it; Withings/Oura set it so their unsorted per-reading rows fold
   // in chronological order. Never persisted.
   measured_at?: string;
-  // THE INSTANT EACH MEASURE WAS TAKEN, per measure, ISO (#3524). NEVER PERSISTED and
-  // deliberately not one field: `body_metrics` is one WIDE row per day carrying up to
+  // THE INSTANT EACH MEASURE WAS TAKEN, per measure, ISO (#3524). Deliberately not one
+  // field: `body_metrics` is one WIDE row per day carrying up to
   // three measures, and one column cannot hold three instants — that is exactly the
   // mistake that made an earlier draft of the ingest reconcile destroy a weigh-in while
   // re-keying a resting-HR reading. The ingest reconcile
@@ -72,8 +74,11 @@ export interface NormBodyMetric {
   // measure at a time and clears ONE column, so it needs the instant that measure
   // actually carries. Health Connect sets these; nothing else needs to, because a
   // profile-timezone change does not re-key a source that attributes readings in the
-  // DEVICE's zone. Persisting a per-measure instant is a schema question and belongs to
-  // #3428's resolver, not here.
+  // DEVICE's zone.
+  //
+  // NOW PERSISTED, per the owner's 2026-08-29 ruling on #3950: `body_metrics` gained
+  // `weight_at` / `body_fat_at` / `resting_hr_at`, nullable, day-grain key untouched. A
+  // source that states no per-measure instant honestly stores NULL.
   weight_at?: string;
   body_fat_at?: string;
   resting_hr_at?: string;
@@ -362,6 +367,10 @@ export interface IngestCounts {
   hrMinutes: number;
   activities: number;
   vitals: number;
+  // Continuous-sensor glucose points (#3182). Its own line rather than folded into
+  // `samples`: a trace point is not a `metric_samples` row, and a push whose glucose
+  // stopped becoming `vitals` has to say where it went instead (#419).
+  glucoseTrace: number;
 }
 
 // Upsert one imported body-metrics row per day, keyed by date + source. Only ever
@@ -383,18 +392,25 @@ export function upsertBodyMetrics(
   // the user-edit lock: a source-owned row the user has hand-edited (via the Review
   // resolver) is left alone on re-ingest so the rolling window never clobbers it.
   const find = db.prepare(
-    "SELECT id, edited, weight_kg, body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ? ORDER BY id LIMIT 1"
+    `SELECT id, edited, weight_kg, body_fat_pct, resting_hr,
+            weight_at, body_fat_at, resting_hr_at
+       FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS ?
+      ORDER BY id LIMIT 1`
   );
   // Atomic upsert on the unique key: the bound values are the RESOLVED post-image
   // (incoming for a fresh row, mergeBodyMetric(mine, incoming) for an existing one),
   // so `excluded.*` already carries the merged triple and DO UPDATE writes it.
   const upsert = db.prepare(
-    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr, source, logged_via)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, body_fat_pct, resting_hr,
+       weight_at, body_fat_at, resting_hr_at, source, logged_via)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(profile_id, date, source) DO UPDATE SET
        weight_kg = excluded.weight_kg,
        body_fat_pct = excluded.body_fat_pct,
-       resting_hr = excluded.resting_hr`
+       resting_hr = excluded.resting_hr,
+       weight_at = excluded.weight_at,
+       body_fat_at = excluded.body_fat_at,
+       resting_hr_at = excluded.resting_hr_at`
   );
 
   // Re-import tombstones for body_metrics: a source-owned row the user merged away or
@@ -407,14 +423,22 @@ export function upsertBodyMetrics(
   // and a multi-weigh-in day no longer flip-flops on every re-scan.
   const collapsed = collapseBodyMetricsByDate(rows);
   for (const r of collapsed) {
-    const incoming: BodyMetricValues = {
+    // The three measures and the three instants travel together from here on: an
+    // instant that got decided apart from its own measure would describe the reading
+    // that LOST the merge (#3950). `mergeMeasureInstants` applies the same rule.
+    const incoming: BodyMetricValues & BodyMetricInstants = {
       weight_kg: r.weight_kg ?? null,
       body_fat_pct: r.body_fat_pct ?? null,
       resting_hr: r.resting_hr ?? null,
+      weight_at: r.weight_at ?? null,
+      body_fat_at: r.body_fat_at ?? null,
+      resting_hr_at: r.resting_hr_at ?? null,
     };
     if (!hasBodyMetric(incoming)) continue; // nothing to store
     const mine = find.get(profileId, r.date, source) as
-      (BodyMetricValues & { id: number; edited: number | null }) | undefined;
+      | (BodyMetricValues &
+          BodyMetricInstants & { id: number; edited: number | null })
+      | undefined;
     // No live row AND a tombstone for this (date, source): the user removed it — skip
     // the re-insert and count it suppressed (a live row wins; the tombstone is stale).
     if (!mine && tombstoned.has(bodyMetricTombstoneKey(r.date, source))) {
@@ -437,12 +461,15 @@ export function upsertBodyMetrics(
     const post = mine
       ? mergeBodyMetricPartialAware(mine, incoming, !!r.partial_day)
       : incoming;
+    const postAt: BodyMetricInstants = mine
+      ? mergeMeasureInstants(mine, incoming, !!r.partial_day)
+      : incoming;
     const equal =
       !!mine &&
       rowsEqual(
         BODY_METRIC_COMPARE_COLS,
         mine as unknown as Record<string, unknown>,
-        post as unknown as Record<string, unknown>
+        { ...post, ...postAt } as unknown as Record<string, unknown>
       );
     const disposition = classifyUpsert(!!mine, equal);
     if (disposition === "unchanged") {
@@ -457,6 +484,9 @@ export function upsertBodyMetrics(
       post.weight_kg,
       post.body_fat_pct,
       post.resting_hr,
+      postAt.weight_at,
+      postAt.body_fat_at,
+      postAt.resting_hr_at,
       source,
       IMPORTED
     );
@@ -472,10 +502,22 @@ export function upsertBodyMetrics(
   return counts;
 }
 
+// What makes a re-send a NO-OP — and the instants ARE part of it, which is not
+// obvious. A row stored before #3950 carries the right weight and a NULL `weight_at`;
+// the exporter's rolling window then re-sends that same weight WITH its instant. On
+// the three measures alone that reads as `unchanged`, the write is skipped, and the
+// instant the source has just handed us is dropped on the floor — the ordinary
+// re-send is exactly how already-stored days acquire their instants, so leaving these
+// out would silently disable it. The cost is one Review line per re-sent day the first
+// time the window covers it after this lands, and that line is honest: the row gained
+// a fact it did not have.
 const BODY_METRIC_COMPARE_COLS: string[] = [
   "weight_kg",
   "body_fat_pct",
   "resting_hr",
+  "weight_at",
+  "body_fat_at",
+  "resting_hr_at",
 ];
 
 // Body-metric measures that live in body_metrics (body_fat_pct/resting_hr), NOT in

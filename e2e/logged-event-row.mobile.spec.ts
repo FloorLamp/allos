@@ -400,7 +400,14 @@ test.describe("the compact logged-event row at 430px (#3671)", () => {
         async () => {
           listChrome = await logRow.evaluate((el) => {
             const row = getComputedStyle(el);
-            const list = getComputedStyle(el.parentElement!);
+            // THE FRAME BY NAME, NOT BY PARENTAGE (#4477). The day is one stream now,
+            // so the frame is the ledger's one element and the `ul` between it and the
+            // row is a bucket's run — a `parentElement` read answered 0px for a border
+            // that had simply moved one level up, which is the frame still being there
+            // and this measurement no longer finding it.
+            const list = getComputedStyle(
+              el.closest('[data-testid="ledger-rows"]')!
+            );
             return {
               rowRadius: row.borderTopLeftRadius,
               rowBackground: row.backgroundColor,

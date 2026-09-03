@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { workerDbPath, frozenNow } from "./worker-env";
-import { historyDayHref } from "../lib/hrefs";
 
 // The symptom analysis surface (#1852): "how many migraine days last month, and is it
 // getting worse?". `/trends/symptoms` answers it in counts; the chronological record is
@@ -124,18 +123,26 @@ test.describe("symptom trends (#1852)", () => {
     }
   });
 
-  test("the day bar links to the analysis", async ({ page }) => {
+  // THE BAR THIS DRIVES MOVED (#4851). It used to be the record day view's own
+  // symptom card; that card retired when the day view's symptom entry became the Add
+  // past row's door, and the bar now reaches this page from the surfaces that still
+  // mount it. The dashboard's illness cockpit is the nearest of those — it is the
+  // sick-day surface the ruling names — and the assertion below is unchanged. The
+  // cockpit draws here because the shared seed gives profile 1 an OPEN illness episode
+  // (e2e/seed/illness.ts): if that ever stops being true this test loses its bar, so
+  // the dependency is named rather than left to be rediscovered from a bare timeout.
+  test("the bar links to the analysis", async ({ page }) => {
     const db = openDb();
     try {
       const tz = profileTimezone(db);
       const day = localDay(tz, 0);
-      // The bar's day card opens on its own when the day already carries a symptom.
+      // TODAY's row, because the cockpit's bar is today's ledger.
       db.prepare(
         `INSERT INTO symptom_logs (profile_id, date, symptom, severity)
          VALUES (?, ?, ?, 2)`
       ).run(PROFILE, day, RECURRING);
 
-      await page.goto(historyDayHref(day));
+      await page.goto("/");
       const link = page
         .getByTestId("symptom-log-bar")
         .first() // first-ok: the acting profile's own symptom bar — order-agnostic

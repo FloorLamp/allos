@@ -49,6 +49,20 @@ export interface DashboardStandingPresentation {
    * to stay in cards until now.
    */
   control?: ReactNode;
+  /**
+   * A DRAWING THE ROW *IS*, as opposed to the trend column beside it (#4767 item 2).
+   * `series` is a 176×32 desktop-only glance at where a number has been; this is the
+   * row's whole subject — today's clock-axis chart, with the day's own windows and
+   * marks on it — so it renders full width, on every viewport, under the facts.
+   *
+   * It sits OUTSIDE the row's link for the same reason `control` does: the figure is
+   * interactive (its ticks are anchors, its drag is a zoom), and nesting that in an
+   * `<a>` is invalid markup browsers reparent. The row's own href stays on the facts.
+   *
+   * One row declares one. There is no second renderer here and no flag: a caller
+   * either hands over a node or does not.
+   */
+  figure?: ReactNode;
 }
 
 // The door's label: the DESTINATION's own name, taken from the one list that already
@@ -97,12 +111,17 @@ export function DashboardFactRow({
   // WHERE THE DOOR GOES WHEN THE ROW CANNOT BE ONE (see the link-wrap suppression
   // below). EXACTLY ONE element carries the href: the row's own CTA words if it has
   // any — "Fix it", "Log", "Continue" — because those name the destination better
-  // than anything else on the row; otherwise the label, which is its identity. Two
-  // links to one page on one row is a second tab stop saying the same thing.
+  // than anything else on the row; otherwise its identity — the label, or on a row
+  // with no label of its own (a `single` family's one member, named by the family)
+  // the value, since a stale vital that earns a door (#4757) must not lose its history
+  // with it. Two links to one page on one row is a second tab stop saying the same
+  // thing.
   const unwrapped = presentation.control != null && presentation.href != null;
-  const labelLink =
+  const identityLink =
     unwrapped && !presentation.actionLabel ? presentation.href : undefined;
   const actionLink = unwrapped && presentation.actionLabel;
+  const identityLinkClass =
+    "hover:text-brand-700 hover:underline dark:hover:text-brand-400";
   const content = (
     <>
       {presentation.label && (
@@ -118,11 +137,8 @@ export function DashboardFactRow({
               : "text-xs text-slate-500 dark:text-slate-400"
           }
         >
-          {labelLink ? (
-            <Link
-              href={labelLink}
-              className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
-            >
+          {identityLink ? (
+            <Link href={identityLink} className={identityLinkClass}>
               {presentation.label}
             </Link>
           ) : (
@@ -135,7 +151,13 @@ export function DashboardFactRow({
           data-testid="standing-value"
           className="font-semibold tabular-nums text-slate-900 dark:text-slate-100"
         >
-          {presentation.value}
+          {identityLink && !presentation.label ? (
+            <Link href={identityLink} className={identityLinkClass}>
+              {presentation.value}
+            </Link>
+          ) : (
+            presentation.value
+          )}
         </span>
       )}
       {presentation.detail != null && (
@@ -207,7 +229,13 @@ export function DashboardFactRow({
   );
   return (
     <li
-      className={className}
+      // A figure is the row's whole subject, so its row takes the family's full
+      // facts cell rather than shrinking to its text in the flex-row members list.
+      className={
+        [presentation.figure != null ? "w-full" : null, className]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
       data-testid="dashboard-candidate"
       data-candidate-id={candidate.candidateId}
       data-fact-key={candidate.factKey}
@@ -230,6 +258,22 @@ export function DashboardFactRow({
           >
             {control}
           </div>
+        </div>
+      )}
+      {presentation.figure != null && (
+        // `inert`, and it is the whole design of this slot rather than a caveat.
+        // The row's link carries `standing-stretch`, whose `::after` insets to the
+        // family's facts cell — measured, not assumed: `elementFromPoint` at the
+        // chart's centre resolves inside the door — so a POINTER already lands on
+        // the door wherever it falls on the figure, which is what "tap → the day
+        // view" means. Without this the KEYBOARD disagreed: the drawing's own
+        // interior anchors (a tick naming `#timeline-entry-…`) stayed in the tab
+        // order, and those fragments name feed rows that exist on the day view and
+        // NOT here, so tabbing into them activated a link that scrolls nowhere.
+        // `inert` makes the two agree — on this surface the figure is a picture and
+        // the row is the door; the exploring happens on the day view, one tap away.
+        <div className="mt-2" data-testid="dashboard-row-figure" inert>
+          {presentation.figure}
         </div>
       )}
     </li>

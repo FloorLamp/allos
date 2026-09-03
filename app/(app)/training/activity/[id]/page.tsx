@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import PageContainer from "@/components/PageContainer";
 import ActivityIcon from "@/components/ActivityIcon";
@@ -51,7 +52,11 @@ import {
   activityComponentsHaveCompositeIconIdentity,
 } from "@/lib/activity-icon";
 import { cyclingActivityName } from "@/lib/cycling-activity";
-import { CYCLING_OVERVIEW_HREF, cyclingOverviewHref } from "@/lib/hrefs";
+import {
+  CYCLING_OVERVIEW_HREF,
+  cyclingOverviewHref,
+  historyDayIntradayHref,
+} from "@/lib/hrefs";
 import {
   coverageContributions,
   coverageFromSets,
@@ -528,8 +533,23 @@ export default async function TrainingActivityPage(props: {
                             </h3>
                             <InfoTooltipIcon label="Shows one-minute heart-rate readings from this session. Gaps mean no reading was recorded." />
                           </div>
-                          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                            {data.heartRate.minutes.length} recorded min
+                          <span className="flex items-baseline gap-3">
+                            {/* THE DAY DOOR (#4767 item 4). This chart is the
+                                session's own minutes on an elapsed axis; the day
+                                view's intraday panel puts the same beats on the
+                                clock beside everything else that happened, which
+                                is the only place "what did that do to me" is
+                                answerable. */}
+                            <Link
+                              href={historyDayIntradayHref(data.row.date)}
+                              className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                              data-testid="activity-hr-day-door"
+                            >
+                              See the whole day
+                            </Link>
+                            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                              {data.heartRate.minutes.length} recorded min
+                            </span>
                           </span>
                         </div>
                         <div className="mt-4">

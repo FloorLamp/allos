@@ -37,7 +37,13 @@ import {
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
-import { getMedicationFamilyStates, redoseWindowState } from "./prn-family";
+import {
+  CEILING_WINDOW_SQL,
+  ceilingWindowBounds,
+  getMedicationFamilyStates,
+  redoseWindowState,
+} from "./prn-family";
+import { ceilingWindowEndMinute } from "../../prn-redose";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
@@ -261,6 +267,15 @@ interface DoseResolveOptions {
   bundleId?: DoseBundleId;
 }
 
+// WHAT EACH DOOR LETS ITS CALLER STATE (#4742, #4745), derived from the one options
+// type above rather than restated beside it — so a field added there reaches every
+// door, and no door can answer "which composed action wrote this" with silence. What
+// each Omit takes away is what the door itself decides: `markDoseTaken` IS the
+// resolve-only intent and takes the item id as its own argument, and the explicit web
+// set is a tri-state tap — it carries no Telegram message and reads no callback token.
+type DoseConfirmOptions = Omit<DoseResolveOptions, "resolveOnly" | "itemId">;
+type DoseSetOptions = Omit<DoseResolveOptions, "itemId" | "notifyMessageId">;
+
 function applyDoseStatusCore(
   profileId: number,
   doseId: number,
@@ -455,24 +470,23 @@ export function markDoseTaken(
   itemId: number | null,
   date: string,
   // Which surface this tap came from (#3087). Required and positional, BEFORE the
-  // optional tail, so omitting it is a compile error rather than an undefined that
+  // named tail, so omitting it is a compile error rather than an undefined that
   // reads as "unknown surface".
   loggedVia: LoggedVia,
-  takenAt?: Date | null,
-  // Which message's tap this is (#2264) — Telegram reminder handlers only; see
-  // DoseResolveOptions.notifyMessageId.
-  notifyMessageId?: number | null,
-  // The composed action this confirm is one row of (#4328) — see the same field on
-  // DoseResolveOptions. Absent for every ordinary single tap.
-  bundleId?: DoseBundleId
+  // WHAT ELSE THIS CONFIRM STATES (#4742) — every field documented once, on
+  // `DoseResolveOptions`. These were three optional trailing positionals, and the only
+  // thing standing between a swap of the last two and a misfiled row was the BRANDED
+  // bundle type: a type doing a signature's job. A named field cannot land in the
+  // wrong slot, and the next addition is a field rather than a fourth position.
+  opts: DoseConfirmOptions = {}
 ): DoseTakenOutcome {
   return resolvedOutcome(
     applyDoseStatusCore(profileId, doseId, date, "taken", loggedVia, {
+      ...opts,
+      // The intent and the id are this function's, not the caller's — which is why
+      // they are the two fields `DoseConfirmOptions` takes away.
       resolveOnly: true,
       itemId,
-      takenAt,
-      notifyMessageId,
-      bundleId,
     })
   );
 }
@@ -506,29 +520,34 @@ export const markDoseSkippedDeclares = DOSE_RESOLUTION;
 // write (#232), auth-blind and profileId-first like every other lib write core. The
 // Server Action (setDoseStatus) is the authorization + validation boundary over it and
 // renders the outcome; it owns no SQL of its own.
+//
+// IT CAN CARRY A BUNDLE (#4745), and until now it was the one resolution core that
+// could not. Nothing composed reaches it today — every composed writer goes through
+// `markDoseTaken` — so this fixed no defect; what it removes is the door a future
+// composed writer would have walked through to produce rows with a NULL `bundle_id`,
+// indistinguishable from a pre-migration row and from a genuine one-at-a-time tap, and
+// wrong in the one way nothing errors on. Making that unreachable BY TYPE was the
+// preferred shape and TypeScript cannot express it — a call site's composedness is not
+// a thing the checker can see — so the answer is the other end of the same rule: there
+// is no longer a core that cannot carry one, so there is nothing to reach.
 export function setDoseStatusCore(
   profileId: number,
   doseId: number,
   date: string,
   target: DoseStatusTarget,
   loggedVia: LoggedVia,
-  // RESOLVE-ONLY, when the control was showing a CLEAR dose (#280, #4424). The
-  // tri-state's licence to overwrite comes from the person LOOKING at the state, so it
-  // does not extend to a clear the surface only believed in: a list of what a day owes
-  // renders every stale row clear, and a ✅ there would flip a skip made elsewhere. A
-  // flip or a clear off a state the person could see is unaffected.
-  resolveOnly = false,
-  // THE ADMINISTRATION THE TAP STATES (#4426) — the same stamp seam the offline replay
-  // and the Telegram correction already use, reached at last from the web. UNDEFINED
-  // (every existing caller) means "the tap instant", so a confirm that states nothing
-  // writes the row it always wrote; the core still judges the instant against the day
-  // and falls back rather than refusing the dose.
-  takenAt?: Date
+  // WHAT THIS TAP STATES, every field documented once on `DoseResolveOptions`. Named
+  // rather than positional for #4742's reason and in the same shape: a fourth trailing
+  // optional on this core is exactly how the drift on its sibling started.
+  //
+  // `resolveOnly` is the one a web caller must think about: the tri-state's licence to
+  // overwrite comes from the person LOOKING at the state, so it does not extend to a
+  // clear the surface only believed in — a list of what a day owes renders every stale
+  // row clear, and a ✅ there would flip a skip made elsewhere. A flip or a clear off a
+  // state the person could see is unaffected.
+  opts: DoseSetOptions = {}
 ): DoseStatusOutcome {
-  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, {
-    resolveOnly,
-    takenAt,
-  });
+  return applyDoseStatusCore(profileId, doseId, date, target, loggedVia, opts);
 }
 export const setDoseStatusCoreDeclares = DOSE_RESOLUTION;
 
@@ -950,7 +969,22 @@ export function logHistoricalDose(
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
       // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      //
+      // THE OUTCOME IS THE REFUSAL, NOT A LOG (#4909). The CAS carries one predicate
+      // the read above does not — `kind = 'medication'` — and this core is
+      // kind-neutral (#1933), so an item that HAS courses but is no longer a
+      // medication misses and writes nothing. Discarding that committed half the
+      // intent, under a form that had just said "start date will move back to
+      // match". `outside-course` is the honest kind rather than a new one: the
+      // extension was the only thing that would have put this day inside a course.
+      // And returning is a whole abort — a miss wrote nothing, and this is
+      // deliberately the transaction's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     db.prepare(
       `INSERT INTO intake_item_logs
@@ -1142,8 +1176,15 @@ export function updateHistoricalDose(
 
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
-      // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      // transaction (Tx token), the DML lives with the invariant's owner. The
+      // outcome is the refusal (#4909) for the reason logHistoricalDose gives, and
+      // this is likewise the amendment's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     const amount = amountOverride?.trim() || row.dose_amount;
     db.prepare(
@@ -1741,18 +1782,20 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
 
 // The arming state for one PRN item's redose one-shot: the latest administration's id
 // + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
-// discipline) and today's administration count (drives the "N of M" + max
-// suppression). Profile-scoped via the parent item. `date` is the profile-local day.
+// discipline) and the TRAILING-24h administration count (drives the "N of M" + max
+// suppression, #4686). Profile-scoped via the parent item. `nowMinute` is the instant
+// the ceiling window ends, and the count reads the same one predicate the family gather
+// does — the two must never disagree about what is inside the window.
 export interface RedoseArmingState {
   latestId: number | null;
   latestGivenAt: string | null;
-  countToday: number;
+  countInWindow: number;
 }
 
 export function getRedoseArmingState(
   profileId: number,
   itemId: number,
-  date: string
+  nowMinute: number
 ): RedoseArmingState {
   // The most-recent administration (by intake time, id as tiebreak) that arms the
   // one-shot. Scoped through the parent item so a forged itemId can't read across
@@ -1774,21 +1817,23 @@ export function getRedoseArmingState(
       `SELECT COUNT(*) AS n
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
-          AND l.status = 'taken'`
+        WHERE s.profile_id = ? AND l.item_id = ?
+          AND l.status = 'taken' AND ${CEILING_WINDOW_SQL}`
     )
-    .get(profileId, itemId, date) as { n: number };
+    .get(profileId, itemId, ...ceilingWindowBounds(profileId, nowMinute)) as {
+    n: number;
+  };
   return {
     latestId: latest?.id ?? null,
     latestGivenAt: latest?.administeredAt ?? null,
-    countToday: count.n,
+    countInWindow: count.n,
   };
 }
 
-// A PRN med (or ingredient FAMILY, #1027) whose today's administration count has
-// EXCEEDED the confirmed daily max (#798) — the input to the over-max care finding
-// (the #148 UL-warning shape applied per-day). "Over" is strictly greater than the
-// max (you've logged MORE than the label allows today).
+// A PRN med (or ingredient FAMILY, #1027) whose TRAILING-24h administration count has
+// EXCEEDED the confirmed max (#798, window corrected in #4686) — the input to the
+// over-max care finding (the #148 UL-warning shape). "Over" is strictly greater than
+// the max (you've logged MORE than the label allows in 24 hours).
 //
 // FAMILY-AWARE (#1027 ask 2): the exposure is the ingredient family's COMBINED
 // taken administrations (OTC ibuprofen + Rx ibuprofen 800 together), compared
@@ -1823,11 +1868,11 @@ export interface PrnOverMaxItem {
 
 export function getPrnOverMaxItems(
   profileId: number,
-  date: string
+  nowMinute: number
 ): PrnOverMaxItem[] {
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
-  const states = getMedicationFamilyStates(profileId, date);
+  const states = getMedicationFamilyStates(profileId, nowMinute);
   // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
   // the active PRN-configured meds once (profile-scoped). Either ceiling form
   // (count or mg/day, #1854) makes an item "configured".
@@ -1896,15 +1941,19 @@ export interface PrnMedForQuickLog {
   displayName?: string;
   product: string | null;
   amount: string | null;
+  // The item's OWN administrations on the profile-local day — the "2 today · last
+  // 4:02pm" label, which genuinely renders a DAY and is untouched by #4686.
   count: number;
   lastGivenAt: string | null;
   minIntervalHours: number | null;
   maxDailyCount: number | null;
+  // The ingredient family's administrations inside the trailing 24 hours (#4686) —
+  // the ceiling's basis.
   familyCount: number;
   familyLastGivenAt: string | null;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
-  // The family's amount-aware day exposure (#1854) from the ONE family gather —
+  // The family's amount-aware window exposure (#1854) from the ONE family gather —
   // null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
   // quick-log/card/Telegram "N of M" line reads milligrams when they're known.
   familyExposure: PrnDayExposure | null;
@@ -1951,12 +2000,15 @@ function getPrnQuickLogItems(
     | "familyExposure"
     | "familyMemberCount"
   >[];
-  const families = getMedicationFamilyStates(profileId, date);
+  const families = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(clockNow())
+  );
   return rows.map((r) => {
     const fam = families.get(r.id);
     return {
       ...r,
-      familyCount: fam?.countToday ?? r.count,
+      familyCount: fam?.countInWindow ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
       familyExposure: fam?.exposure ?? null,

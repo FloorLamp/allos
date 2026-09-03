@@ -43,6 +43,12 @@ export interface WorkoutRecommendation {
   // quietly became a stationary bike with no explanation on the one surface whose own
   // comments promised the disclosure. Empty/absent on any ordinary day.
   parkedNotes?: string[];
+  // The pre-workout niggle heads-up (#3211 part 4) — one line per LIVE niggle today's
+  // session actually touches, already rendered by `niggleHeadsUpLine`. Part 3 tempered
+  // the target and disclosed it in-app; this channel said nothing, so the push that
+  // reaches somebody before they train was the one surface that never mentioned the knee.
+  // Empty/absent on every ordinary day, which leaves the message byte-for-byte what it was.
+  niggleNotes?: string[];
   // The behind weekly targets, ALREADY ordered and marked by the pure core (#1709):
   // the target that drove today's suggestion leads, the rest follow by deficit. Kept
   // structured to here so the formatter can relate the list to the recommendation —
@@ -193,6 +199,10 @@ export function formatWorkoutReminder(
   // Placed with the suggestion because that is what it explains: the ride is missing
   // from today's pick, and this says why and what took its slot.
   for (const note of rec.parkedNotes ?? []) lines.push(note);
+  // The niggle heads-up (#3211 part 4), placed with the suggestion for the same reason
+  // the parking notes are: it is about the session named two lines up. AFTER the parking
+  // lines because parking explains what the pick IS, while this explains how to take it.
+  for (const note of rec.niggleNotes ?? []) lines.push(note);
   if (rec.onTrack) lines.push(rec.onTrack.detail);
   // The acknowledgment headline, when it fired, has already stated one behind target
   // AND its pace in words. Repeating it in the list two lines down is the same fact

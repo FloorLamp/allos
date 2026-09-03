@@ -337,8 +337,16 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   // `activityWindow` can bound — it has a start AND an end, stated or derived from a
   // duration — is a BLOCK; a window carrying only a start is a TICK at that minute,
   // which is the honest render for a session whose length nobody said. Inferring a
-  // length from typical durations would be fabrication, so a start-only session gets
-  // the same shape every other clock-timed event with no span gets.
+  // length from typical durations would be fabrication AT THIS TIER, so a start-only
+  // session gets the same shape every other clock-timed event with no span gets.
+  //
+  // NARROWED (#4775, owner ruling 2026-09-02): a Start-now practice no longer arrives
+  // here start-only. `startLivePracticeSession` stamps the practice's OWN usual
+  // duration onto the row and marks it `derived_window = 1`, which is a claim the row
+  // makes about itself and carries into its own copy ("about 15 min") — not an
+  // inference this renderer makes on the row's behalf, which is what the sentence
+  // above forbids and still forbids. A practice with no recorded duration writes none,
+  // so a start-only row still reaches this branch and still draws as a tick.
   //
   // The start-only tick is why this loop places ticks at all rather than leaving them
   // to the rail below: `sortTime` for a practice session is `bestKnownInstant`, which
@@ -465,4 +473,43 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     ticks,
     nowMinute,
   };
+}
+
+// ── The lag sentence (#4767 item 5) ─────────────────────────────────────────
+
+// A worn series ENDS WHERE THE SYNC ENDED, not where the body stopped. Drawn to the
+// right edge of a day axis that keeps running, a three-hour sync gap looks exactly
+// like three hours of measured flat — which is the one reading this chart must never
+// invite. So every mount states the distance between the last sample and now, in
+// words, beside the drawing.
+//
+// TODAY ONLY. `nowMinute` is non-null only on the profile's own today (the gather
+// sets it there and nowhere else), and a past day has no lag to state: "synced 6h
+// ago" about last Tuesday would be a sentence about nothing.
+//
+// The workout case is called out separately because it is the one this issue's use
+// case turns on — "I just finished, what did it do to me?" — and "synced 3h ago"
+// answers a different question than "your watch has told us nothing since the
+// session you just finished".
+export function intradayFreshness(model: IntradayModel): string | null {
+  const nowMinute = model.nowMinute;
+  if (nowMinute == null) return null;
+  const segments = model.hr?.segments ?? [];
+  const lastSegment = segments[segments.length - 1];
+  const lastPoint = lastSegment?.[lastSegment.length - 1];
+  if (!lastPoint) return "No heart rate synced today yet";
+  const lagMin = Math.max(0, Math.round(nowMinute - lastPoint.minute));
+  // The latest window that CLOSED after the last sample landed. `endMinute` is
+  // clipped to the day by the model, so this cannot name tomorrow's session.
+  const uncovered = model.blocks
+    .filter((block) => block.endMinute > lastPoint.minute)
+    .sort((a, b) => b.endMinute - a.endMinute)[0];
+  if (uncovered) return `No data since ${uncovered.title} yet`;
+  if (lagMin < 1) return "Synced just now";
+  if (lagMin < 60) return `Synced ${lagMin} min ago`;
+  const hours = Math.floor(lagMin / 60);
+  const minutes = lagMin % 60;
+  return minutes === 0
+    ? `Synced ${hours}h ago`
+    : `Synced ${hours}h ${minutes}m ago`;
 }

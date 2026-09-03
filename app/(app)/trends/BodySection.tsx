@@ -7,7 +7,7 @@ import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
 import BristolStoolPanel from "@/components/BristolStoolPanel";
 import { getBristolPanel } from "@/lib/queries/bristol-stool";
-import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sleepRecordPresentation } from "@/lib/sleep-summary";
 import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
@@ -16,7 +16,6 @@ import {
   getProfileBirthdate,
   getProfileAge,
   getHomeLocation,
-  getTimezone,
 } from "@/lib/settings";
 import {
   ageInMonthsFromBirthdate,
@@ -42,14 +41,14 @@ import {
   getSleepRegularityInRange,
   getSleepSummaryInRange,
   getHrDailySummary,
-  getLatestHrDay,
-  getHrMinutes,
   getOutcomeGoals,
   getMoodLogs,
   buildTrendsSubjectContext,
   getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
+import { displaySourcePoints } from "@/lib/metric-sources";
+import { metricSourceLabel } from "@/lib/metric-source-priority";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
@@ -87,11 +86,6 @@ import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
-import {
-  hrSlotSeries,
-  intradayVitalPoints,
-  toIntradaySlotSeries,
-} from "@/lib/vitals-day";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import {
   formatLongDate,
@@ -101,12 +95,11 @@ import {
 import PaginationControls from "@/components/PaginationControls";
 import { HISTORY_PAGE_SIZE, pageCount } from "@/lib/pagination";
 import { isGoalLive } from "@/lib/outcome-goals";
-import { isIntradayRange, type DateRange } from "@/lib/timeline-format";
+import type { DateRange } from "@/lib/timeline-format";
 import {
   GROWTH_TRENDS_HREF,
   growthTrendsHref,
   metricDetailHref,
-  historyDayHref,
   type AppRoute,
 } from "@/lib/hrefs";
 import type {
@@ -116,7 +109,7 @@ import type {
 } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
-import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
+import ChartCard from "@/components/ChartCard";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
@@ -186,19 +179,6 @@ function vitalPoints(rows: ClinicalObservation[], decimals = 0): Point[] {
 // Fahrenheit fever threshold (100.4 °F / 38 °C) — the reference line on the acute
 // temperature view, matching the illness/fever surface (#859).
 const FEVER_F = 100.4;
-// The intraday charts are the tab's densest content and the only place a phone gets
-// a full-viewport plot, so they run taller than the standard windowed cards from `sm`
-// up. Below `sm` every chart card is the #1488 square, so these carry only the
-// DESKTOP height — written as whole literal class strings (never `sm:${x}`), which is
-// the only form Tailwind's source scanner can see.
-const INTRADAY_PLOT_HEIGHT = "sm:h-80";
-const INTRADAY_POINT_PLOT_HEIGHT = "sm:h-56";
-// Full-bleed on a phone: cancel the shell's 1rem gutter, drop the card's horizontal
-// padding, rounding and side borders, and neutralize `.card`'s own `max-w-full` —
-// which would otherwise clamp the widened box back to the container width and merely
-// SHIFT the card instead of widening it. From `sm` up it is an ordinary card again.
-const FULL_BLEED_CARD =
-  "card -mx-4 max-w-none rounded-none border-x-0 px-0 sm:mx-0 sm:max-w-full sm:rounded-xl sm:border-x sm:px-5";
 
 export default async function BodySection({
   range,
@@ -224,11 +204,7 @@ export default async function BodySection({
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const todayStr = today(profile.id);
-  const tz = getTimezone(profile.id);
   const wu = units.weightUnit;
-  // The 1D pill's window (from == to == today). Only the landing surface offers
-  // that pill, because only this census has intraday content to swap in.
-  const intraday = isIntradayRange(range, todayStr);
 
   // ── Reads ───────────────────────────────────────────────────────────────────
   // Read the whole series (ALL_ROWS overrides the default 365-row cap) so an older
@@ -253,28 +229,31 @@ export default async function BodySection({
 
   // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles and
   // charts apply the shared range to the SAME arrays — one gather feeds both (#221).
-  const weightAll = weightSeries.map((w) => ({
-    date: w.date,
-    value: dispWeight(w.value, wu),
-  }));
+  //
+  // `displaySourcePoints` rather than a `.map` over `value` (#2653 state 6): a day two
+  // scales reported carries their readings too, and the companion mark drawn from
+  // them must convert through the SAME function as the number it sits beside.
+  const weightAll = displaySourcePoints(
+    weightSeries,
+    (kg) => dispWeight(kg, wu),
+    metricSourceLabel
+  );
   const weightChart = filterSeriesByRange(weightAll, range);
-  const bodyFatAll = getBodyMetricDailySeries(
-    profile.id,
-    "body_fat",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: round(w.value, 1) }));
+  const bodyFatAll = displaySourcePoints(
+    getBodyMetricDailySeries(profile.id, "body_fat", ALL_ROWS),
+    (v) => round(v, 1),
+    metricSourceLabel
+  );
   const bodyFatChart = filterSeriesByRange(bodyFatAll, range);
-  const restingHrAll = getBodyMetricDailySeries(
-    profile.id,
-    "resting_hr",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
+  const restingHrAll = displaySourcePoints(
+    getBodyMetricDailySeries(profile.id, "resting_hr", ALL_ROWS),
+    Math.round,
+    metricSourceLabel
+  );
   const restingHrChart = filterSeriesByRange(restingHrAll, range);
 
   // The vitals' RAW, unwindowed reading rows (absorbed from the retired Vitals
-  // section). The charts window them below; the intraday charts
-  // read today out of these same arrays, so a past custom window never hides today's
-  // answer — and no extra query is issued either way.
+  // section), windowed by the charts below.
   const systolicRows = getBiomarkerSeries(
     profile.id,
     "Blood Pressure Systolic"
@@ -481,31 +460,10 @@ export default async function BodySection({
     };
   };
 
-  // The 1D swap. Built ONLY at 1D, so an ordinary window never pays for the day's
-  // minute scan. HR comes from the SAME getHrMinutes read + downsampleHr model the
-  // #1068 intraday panel draws — one computation, two formatters.
-  const intradayHr = intraday
-    ? hrSlotSeries(todayStr, getHrMinutes(profile.id, todayStr))
-    : [];
-  const intradaySystolic = intraday
-    ? intradayVitalPoints(systolicRows, todayStr, tz)
-    : [];
-  const intradayDiastolic = intraday
-    ? intradayVitalPoints(diastolicRows, todayStr, tz)
-    : [];
-  const intradaySpo2 = intraday
-    ? intradayVitalPoints(spo2Rows, todayStr, tz)
-    : [];
-  const hasIntradayBp =
-    intradaySystolic.length > 0 || intradayDiastolic.length > 0;
-  const hasIntraday =
-    intradayHr.length > 0 || hasIntradayBp || intradaySpo2.length > 0;
-
   // Sun / outdoor time (#1171): a trend over the SAME getDaylightOutdoorMinutes
   // computation the DaylightChip and the coaching average read (#221 — the chart is
-  // a formatter, no second engine). Data-gated on a home location. Skipped at 1D: a
-  // single day is not a trend.
-  const home = intraday ? null : getHomeLocation(profile.id);
+  // a formatter, no second engine). Data-gated on a home location.
+  const home = getHomeLocation(profile.id);
   let sun: Point[] = [];
   if (home) {
     const to = range.to ?? todayStr;
@@ -652,123 +610,6 @@ export default async function BodySection({
   // MEMBERSHIP only: each vitals card above is present-gated on its own series.
   // ORDER is the flat stack's job (#1674) — one ranking pass over every member,
   // rather than a per-run sort inside a box that the boxes then re-ordered.
-
-  const intradayBlock = intraday ? (
-    !hasIntraday ? (
-      <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
-    ) : (
-      <div className="space-y-6">
-        {/* The intraday cards tap through to the DAILY detail page for the same
-            metric (#1488): today's clock view is the zoom, the metric page is the
-            full depth (its own range control, annotations, and readings table). */}
-        {intradayHr.length > 0 && (
-          <ChartCard
-            title={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`}
-            headingLevel="h3"
-            detailHref={metricDetailHref("hr")}
-            detailTitle="heart rate"
-            surfaceClass={FULL_BLEED_CARD}
-            headerClassName="px-4 sm:px-0"
-            headerBleedClassName="mx-0 mt-0 sm:-mx-5 sm:-mt-5"
-            testid="vitals-intraday-hr"
-            description="Per-minute heart rate across the clock, from the same day series the timeline's day view draws. A break in the line is a gap in wear, not a flat heart rate."
-            plotHeightClass={INTRADAY_PLOT_HEIGHT}
-          >
-            {/* The plot spans the viewport on a phone — charts are the one content
-                class that earns full-bleed; forms and text stay at the shell's
-                normal width. */}
-            <div
-              data-testid="vitals-intraday-hr-plot"
-              className="h-full w-full"
-            >
-              <LineChartCard
-                // gap-exempt: an intraday clock axis (HH:MM slots), not calendar
-                // days — lib/intraday.ts already slots and breaks its own gaps.
-                data={intradayHr}
-                label={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`}
-                unit=" bpm"
-                color={chartSeries.rose}
-                showDots={false}
-                connectNulls={false}
-                heightClass={CHART_PLOT_FILL}
-              />
-            </div>
-          </ChartCard>
-        )}
-
-        {hasIntradayBp && (
-          <div className="grid gap-6 sm:grid-cols-2">
-            <ChartCard
-              title={`${TREND_METRIC_META.systolic.title} Today`}
-              headingLevel="h3"
-              detailHref={metricDetailHref("systolic")}
-              detailTitle="systolic blood pressure"
-              testid="vitals-intraday-bp"
-              plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
-            >
-              <LineChartCard
-                // gap-exempt: intraday HH:MM slot grid, already null-slotted.
-                data={toIntradaySlotSeries(intradaySystolic)}
-                label={`${TREND_METRIC_META.systolic.title} Today`}
-                unit=" mmHg"
-                color={chartSeries.rose}
-                connectNulls={false}
-              />
-            </ChartCard>
-            <ChartCard
-              title={`${TREND_METRIC_META.diastolic.title} Today`}
-              headingLevel="h3"
-              detailHref={metricDetailHref("diastolic")}
-              detailTitle="diastolic blood pressure"
-              testid="vitals-intraday-bp-diastolic"
-              plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
-            >
-              <LineChartCard
-                // gap-exempt: intraday HH:MM slot grid, already null-slotted.
-                data={toIntradaySlotSeries(intradayDiastolic)}
-                label={`${TREND_METRIC_META.diastolic.title} Today`}
-                unit=" mmHg"
-                color={chartSeries.violet}
-                connectNulls={false}
-              />
-            </ChartCard>
-          </div>
-        )}
-
-        {intradaySpo2.length > 0 && (
-          <ChartCard
-            title={`${TREND_METRIC_META.spo2.title} Today`}
-            headingLevel="h3"
-            detailHref={metricDetailHref("spo2")}
-            detailTitle="oxygen saturation"
-            testid="vitals-intraday-spo2"
-            plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
-          >
-            <LineChartCard
-              // gap-exempt: intraday HH:MM slot grid, already null-slotted.
-              data={toIntradaySlotSeries(intradaySpo2)}
-              label={`${TREND_METRIC_META.spo2.title} Today`}
-              unit="%"
-              color={chartSeries.sky}
-              connectNulls={false}
-            />
-          </ChartCard>
-        )}
-
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          A reading logged without a clock time stays off this clock axis. It
-          remains available on today&rsquo;s{" "}
-          <Link
-            href={historyDayHref(todayStr)}
-            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            History
-          </Link>
-          .
-        </p>
-      </div>
-    )
-  ) : null;
 
   // ── 3. Composition section ──────────────────────────────────────────────────
   // The age-aware plan minus resting HR, which the vitals section above now owns.
@@ -980,344 +821,183 @@ export default async function BodySection({
     value: Math.round(r.avg),
   }));
   const hrChart = filterSeriesByRange(hrAll, range);
-  const latestHrDay = getLatestHrDay(profile.id);
-  // The clock zoom belongs to the selected window just like every neighboring
-  // chart. Do not surface an old "latest day" while the user is inspecting a
-  // different range.
-  const latestHrDayInRange =
-    latestHrDay != null &&
-    filterSeriesByRange([{ date: latestHrDay, value: 0 }], range).length > 0;
-  const hrIntraday =
-    latestHrDay && latestHrDayInRange
-      ? getHrMinutes(profile.id, latestHrDay).map((m) => ({
-          date: m.ts.slice(11), // HH:MM
-          value: round(m.bpm, 0),
-        }))
-      : [];
-  // #1067 Phase 1 (re-based on #1490): the synced daily charts render from ONE
-  // visible list that also feeds the chart menu, so it can never point at
-  // an absent chart. Membership is each entry's `present` gate; the SEQUENCE is the
-  // tab's shared card order. The old per-entry `latestDate`/`order` pair is gone with
-  // `orderBodyCharts` — a raw most-recently-synced sort resequenced this page every
-  // time a watch uploaded, which is exactly the jitter a stable default forbids.
 
   // Every day-grain chart on this page densifies to the CALENDAR (#2258): the
   // series names itself, the shared range supplies the window, and the per-series
-  // gap registry decides whether a missing day is a hole or a real zero. One
-  // helper so a card and its tile can never be windowed differently.
+  // gap registry decides whether a missing day is a hole or a real zero. The check-in
+  // cards below spell it through this helper; the metric specs let TrendMetricCharts
+  // derive the same key from their slug, so a card and its tile can never be
+  // windowed differently.
   const bodyGapFill = (slug: TrendMetricSlug): DayFillSpec => ({
     seriesKey: metricSeriesKey(savedMetricIdForTrendSlug(slug)),
     ...dayFillWindow(range),
   });
-  // Sleep duration is plotted here and on /sleep; it is a per-night READING, so it
-  // declares its policy under the shared render-only key rather than by hand.
+  // Sleep duration is a per-night READING plotted here and on /sleep, so it declares
+  // its policy under the shared render-only key rather than by hand.
   const sleepGapFill: DayFillSpec = {
     seriesKey: SLEEP_DURATION_SERIES_KEY,
     ...dayFillWindow(range),
   };
 
-  const syncedEntries: (ChartChip & {
-    present: boolean;
-    node: React.ReactNode;
-  })[] = [
-    {
-      id: "steps",
-      label: TREND_METRIC_META.steps.title,
-      present: stepsAll.length > 0,
-      node: (
-        <ChartCard
-          key="steps"
-          anchorId="steps"
-          title={TREND_METRIC_META.steps.title}
-          detailHref={metricDetailHref("steps")}
-          detailTitle="steps"
-        >
-          {/* Count metric: zero-floored axis + grouped ticks, from the ONE
-              registry the detail page reads (#1541). */}
-          <LineChartCard
-            data={stepsChart}
-            label={TREND_METRIC_META.steps.title}
-            color={chartSeries.sky}
-            gapFill={bodyGapFill("steps")}
-            {...trendMetricChartScale(TREND_METRIC_META.steps)}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "active-calories",
-      label: TREND_METRIC_META["active-calories"].title,
-      present: activeCaloriesAll.length > 0,
-      node: (
-        <ChartCard
-          key="active-calories"
-          anchorId="active-calories"
-          title={TREND_METRIC_META["active-calories"].title}
-          detailHref={metricDetailHref("active-calories")}
-        >
-          <LineChartCard
-            data={activeCaloriesChart}
-            label={TREND_METRIC_META["active-calories"].title}
-            color={chartSeries.rose}
-            gapFill={bodyGapFill("active-calories")}
-            unit=" kcal"
-            {...trendMetricChartScale(TREND_METRIC_META["active-calories"])}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "sleep",
-      label: "Sleep",
-      present: hasSleep,
-      node: (
-        <ChartCard
-          key="sleep"
-          anchorId="sleep"
-          title="Sleep"
-          headline={
-            visibleLastNight
-              ? formatHm(visibleLastNight.durationMin)
-              : sleepDurationChart.length > 0
-                ? `${sleepDurationChart.at(-1)?.value} h`
-                : undefined
-          }
-          description="Nightly Sleep Duration"
-          detailHref="/sleep"
-          detailTitle="Sleep"
-          testid="sleep-summary-tile"
-          footer={
-            visibleLastNight || sleepReg != null ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                {visibleLastNight && sleepDateLabel && (
-                  <span>
-                    {sleepDateLabel}
-                    {visibleLastNight.bedMinutes != null &&
-                      visibleLastNight.wakeMinutes != null && (
-                        <>
-                          {" · "}
-                          {formatClockMinutes(
-                            formatPrefs.timeFormat,
-                            visibleLastNight.bedMinutes
-                          )}
-                          –
-                          {formatClockMinutes(
-                            formatPrefs.timeFormat,
-                            visibleLastNight.wakeMinutes
-                          )}
-                        </>
-                      )}
-                  </span>
-                )}
-                {sleepReg != null && (
-                  <span data-testid="sleep-regularity">
-                    Regularity ·{" "}
-                    <span data-testid="sri-value">
-                      {sriPresentation(sleepReg.sri).text}
-                    </span>
-                  </span>
-                )}
-              </div>
-            ) : undefined
-          }
-        >
-          <LineChartCard
-            data={sleepDurationChart}
-            label="Sleep"
-            unit=" h"
-            color={chartSeries.violet}
-            decimals={1}
-            gapFill={sleepGapFill}
-            // Sleep is a chart at every range, including a one-night one — the
-            // same declaration its Body tile has always carried. #2653's
-            // single-reading mark is right for a metric card that would
-            // otherwise draw one dot in an empty band, and wrong here.
-            singleReadingAsChart
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "hr",
-      label: TREND_METRIC_META.hr.title,
-      present: hrAll.length > 0,
-      node: (
-        <ChartCard
-          key="hr"
-          anchorId="hr"
-          title={TREND_METRIC_META.hr.title}
-          detailHref={metricDetailHref("hr")}
-          detailTitle="heart rate"
-        >
-          <LineChartCard
-            data={hrChart}
-            label={TREND_METRIC_META.hr.title}
-            color={chartSeries.rose}
-            unit=" bpm"
-            gapFill={bodyGapFill("hr")}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "hr-day",
-      label: `${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} (Intraday)`,
-      // A single worn-HR sample cannot form an intraday trend. With dots hidden it
-      // painted as a large blank chart, so keep the useful daily summary and omit
-      // this zoom until there is an actual line to read.
-      present: hrIntraday.length > 1,
-      node: (
-        <ChartCard
-          key="hr-day"
-          anchorId="hr-day"
-          className="lg:col-span-2"
-          title={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Over the Day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
-          // The title carries a DATE, which reads badly in "Open … detail"; the
-          // accessible name names the metric instead.
-          detailTitle="heart rate"
-          detailHref={metricDetailHref("hr")}
-        >
-          <LineChartCard
-            // gap-exempt: the per-minute intraday zoom, an HH:MM axis.
-            data={hrIntraday}
-            label={`${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Over the Day${
-              latestHrDay ? ` — ${latestHrDay}` : ""
-            }`}
-            color={chartSeries.rose}
-            unit=" bpm"
-            showDots={false}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "bmi",
-      label: TREND_METRIC_META.bmi.title,
-      present: bmiAll.length > 0,
-      node: (
-        <ChartCard
-          key="bmi"
-          anchorId="bmi"
-          title={TREND_METRIC_META.bmi.title}
-          detailHref={metricDetailHref("bmi")}
-        >
-          <LineChartCard
-            data={bmiChart}
-            label={TREND_METRIC_META.bmi.title}
-            color={chartSeries.sky}
-            gapFill={bodyGapFill("bmi")}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "lean-mass",
-      label: TREND_METRIC_META["lean-mass"].title,
-      present: leanMassAll.length > 0,
-      node: (
-        <ChartCard
-          key="lean-mass"
-          anchorId="lean-mass"
-          title={TREND_METRIC_META["lean-mass"].title}
-          detailHref={metricDetailHref("lean-mass")}
-        >
-          <LineChartCard
-            data={leanMassChart}
-            label={TREND_METRIC_META["lean-mass"].title}
-            color={chartSeries.sky}
-            unit=" kg"
-            gapFill={bodyGapFill("lean-mass")}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "bone-mass",
-      label: TREND_METRIC_META["bone-mass"].title,
-      present: boneMassAll.length > 0,
-      node: (
-        <ChartCard
-          key="bone-mass"
-          anchorId="bone-mass"
-          title={TREND_METRIC_META["bone-mass"].title}
-          detailHref={metricDetailHref("bone-mass")}
-        >
-          <LineChartCard
-            data={boneMassChart}
-            label={TREND_METRIC_META["bone-mass"].title}
-            color={chartSeries.violet}
-            unit=" kg"
-            gapFill={bodyGapFill("bone-mass")}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "bmr",
-      label: TREND_METRIC_META.bmr.title,
-      present: bmrAll.length > 0,
-      node: (
-        <ChartCard
-          key="bmr"
-          anchorId="bmr"
-          title={TREND_METRIC_META.bmr.title}
-          detailHref={metricDetailHref("bmr")}
-        >
-          <LineChartCard
-            data={bmrChart}
-            label={TREND_METRIC_META.bmr.title}
-            color={chartSeries.rose}
-            unit=" kcal"
-            gapFill={bodyGapFill("bmr")}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "hydration",
-      label: TREND_METRIC_META.hydration.title,
-      present: hydrationAll.length > 0,
-      node: (
-        <ChartCard
-          key="hydration"
-          anchorId="hydration"
-          title={TREND_METRIC_META.hydration.title}
-          detailHref={metricDetailHref("hydration")}
-        >
-          <LineChartCard
-            data={hydrationChart}
-            label={TREND_METRIC_META.hydration.title}
-            color={chartSeries.sky}
-            unit=" L"
-            gapFill={bodyGapFill("hydration")}
-            {...trendMetricChartScale(TREND_METRIC_META.hydration)}
-          />
-        </ChartCard>
-      ),
-    },
-    {
-      id: "calories",
-      label: TREND_METRIC_META.calories.title,
-      present: caloriesAll.length > 0,
-      node: (
-        <ChartCard
-          key="calories"
-          anchorId="calories"
-          title={TREND_METRIC_META.calories.title}
-          detailHref={metricDetailHref("calories")}
-        >
-          <LineChartCard
-            data={caloriesChart}
-            label={TREND_METRIC_META.calories.title}
-            color={chartSeries.amber}
-            unit=" kcal"
-            gapFill={bodyGapFill("calories")}
-            {...trendMetricChartScale(TREND_METRIC_META.calories)}
-          />
-        </ChartCard>
-      ),
-    },
-  ];
+  // The sleep card's footer: the night it is about, its window, and the regularity
+  // index — the /sleep facts a one-number headline cannot carry.
+  const sleepFooter =
+    visibleLastNight || sleepReg != null ? (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        {visibleLastNight && sleepDateLabel && (
+          <span>
+            {sleepDateLabel}
+            {visibleLastNight.bedMinutes != null &&
+              visibleLastNight.wakeMinutes != null && (
+                <>
+                  {" · "}
+                  {formatClockMinutes(
+                    formatPrefs.timeFormat,
+                    visibleLastNight.bedMinutes
+                  )}
+                  –
+                  {formatClockMinutes(
+                    formatPrefs.timeFormat,
+                    visibleLastNight.wakeMinutes
+                  )}
+                </>
+              )}
+          </span>
+        )}
+        {sleepReg != null && (
+          <span data-testid="sleep-regularity">
+            Regularity ·{" "}
+            <span data-testid="sri-value">
+              {sriPresentation(sleepReg.sri).text}
+            </span>
+          </span>
+        )}
+      </div>
+    ) : undefined;
+
+  // The synced daily cards are ORDINARY chart specs (#4763). They used to be hand-built
+  // ChartCard nodes outside TrendMetricCharts' header contract, so exactly these cards
+  // printed no current value — the number lived only in the last point's hover
+  // tooltip (#3375's information class). As specs they inherit the one `headlineFor`
+  // path (the latest value, the #2615 as-of stamp past each metric's declared floor,
+  // the lone-reading degrade) with the same anchors, colours and count-metric scale
+  // they always declared. Membership is each card's presence over its FULL series, as
+  // for every vitals card above. The `hr-day` intraday zoom retired with #4767: the
+  // /history day view is the one intraday surface.
+  const syncedCharts: TrendChartSpec[] = [];
+  if (stepsAll.length > 0) {
+    syncedCharts.push({
+      key: "steps",
+      detailHref: metricDetailHref("steps"),
+      title: TREND_METRIC_META.steps.title,
+      data: stepsChart,
+      unit: TREND_METRIC_META.steps.unit,
+      color: chartSeries.sky,
+      ...trendMetricChartScale(TREND_METRIC_META.steps),
+    });
+  }
+  if (activeCaloriesAll.length > 0) {
+    syncedCharts.push({
+      key: "active-calories",
+      detailHref: metricDetailHref("active-calories"),
+      title: TREND_METRIC_META["active-calories"].title,
+      data: activeCaloriesChart,
+      unit: TREND_METRIC_META["active-calories"].unit,
+      color: chartSeries.rose,
+      ...trendMetricChartScale(TREND_METRIC_META["active-calories"]),
+    });
+  }
+  if (hasSleep) {
+    // Sleep keeps its /sleep detail door and its per-night gap policy as declared
+    // fields of the one spec shape — not a card of its own. It is a chart at every
+    // range, including a one-night one, the same declaration its Body tile carries.
+    syncedCharts.push({
+      key: "sleep",
+      testid: "sleep-summary-tile",
+      detailHref: "/sleep",
+      title: "Sleep",
+      description: "Nightly Sleep Duration",
+      data: sleepDurationChart,
+      unit: " h",
+      decimals: 1,
+      color: chartSeries.violet,
+      gapSeriesKey: SLEEP_DURATION_SERIES_KEY,
+      singleReadingAsChart: true,
+      footer: sleepFooter,
+    });
+  }
+  if (hrAll.length > 0) {
+    syncedCharts.push({
+      key: "hr",
+      detailHref: metricDetailHref("hr"),
+      title: TREND_METRIC_META.hr.title,
+      data: hrChart,
+      unit: TREND_METRIC_META.hr.unit,
+      color: chartSeries.rose,
+    });
+  }
+  if (bmiAll.length > 0) {
+    syncedCharts.push({
+      key: "bmi",
+      detailHref: metricDetailHref("bmi"),
+      title: TREND_METRIC_META.bmi.title,
+      data: bmiChart,
+      unit: TREND_METRIC_META.bmi.unit,
+      color: chartSeries.sky,
+    });
+  }
+  if (leanMassAll.length > 0) {
+    syncedCharts.push({
+      key: "lean-mass",
+      detailHref: metricDetailHref("lean-mass"),
+      title: TREND_METRIC_META["lean-mass"].title,
+      data: leanMassChart,
+      unit: " kg",
+      color: chartSeries.sky,
+    });
+  }
+  if (boneMassAll.length > 0) {
+    syncedCharts.push({
+      key: "bone-mass",
+      detailHref: metricDetailHref("bone-mass"),
+      title: TREND_METRIC_META["bone-mass"].title,
+      data: boneMassChart,
+      unit: " kg",
+      color: chartSeries.violet,
+    });
+  }
+  if (bmrAll.length > 0) {
+    syncedCharts.push({
+      key: "bmr",
+      detailHref: metricDetailHref("bmr"),
+      title: TREND_METRIC_META.bmr.title,
+      data: bmrChart,
+      unit: " kcal",
+      color: chartSeries.rose,
+    });
+  }
+  if (hydrationAll.length > 0) {
+    syncedCharts.push({
+      key: "hydration",
+      detailHref: metricDetailHref("hydration"),
+      title: TREND_METRIC_META.hydration.title,
+      data: hydrationChart,
+      unit: " L",
+      color: chartSeries.sky,
+      ...trendMetricChartScale(TREND_METRIC_META.hydration),
+    });
+  }
+  if (caloriesAll.length > 0) {
+    syncedCharts.push({
+      key: "calories",
+      detailHref: metricDetailHref("calories"),
+      title: TREND_METRIC_META.calories.title,
+      data: caloriesChart,
+      unit: " kcal",
+      color: chartSeries.amber,
+      ...trendMetricChartScale(TREND_METRIC_META.calories),
+    });
+  }
   // ONE presence boolean per block, shared by its menu item and its render.
   const hasMood = moodAll.length > 0;
   const hasEnergy = energyAll.length > 0;
@@ -1344,8 +1024,7 @@ export default async function BodySection({
   // saved order, then the everyday-first ranked remainder (#1659). Promotion
   // visibility is native: a promoted card is simply first. `orderCardSections` and
   // `growthCardLeads` retired with the boxes; the growth card is an ordinary member
-  // whose lead is the life-stage boost's job, and the 1D intraday swap is an
-  // ordinary member at `hr-day`.
+  // whose lead is the life-stage boost's job.
   //
   // The source comparison + history table stay at the foot — skeleton, not cards.
   //
@@ -1381,35 +1060,17 @@ export default async function BodySection({
   // present-gated exactly where it was — and every chart carries its own anchor now
   // that no section box provides one.
   type StackMember = TrendStackItem & { label: string; empty?: boolean };
+  // One member per chart spec, whatever run it came from: its key is its rank id and
+  // its anchor, and an in-window-empty chart sinks to the end of the stack.
+  const chartMember = (chart: TrendChartSpec): StackMember => ({
+    id: chart.key,
+    label: chart.title,
+    chart: { ...chart, anchorId: chart.anchorId ?? chart.key },
+    empty: chart.data.every((point) => point.value == null),
+  });
   const stackMembers: StackMember[] = [
-    // At 1D the vitals charts swap for the intraday block, which takes `hr-day`'s
-    // rank: one placement rule for every block, so a one-day window re-shapes the
-    // stack without re-ordering it by hand.
-    ...(intraday
-      ? hasIntraday
-        ? [
-            {
-              id: "hr-day",
-              label: `${TREND_METRIC_META.hr.summaryTitle ?? TREND_METRIC_META.hr.title} Today`,
-              node: intradayBlock,
-              wide: true,
-            },
-          ]
-        : []
-      : vitalsCharts.map((chart) => ({
-          id: chart.key,
-          label: chart.title,
-          chart: { ...chart, anchorId: chart.anchorId ?? chart.key },
-          empty: chart.data.every((point) => point.value == null),
-        }))),
-    ...(intraday
-      ? []
-      : compositionCharts.map((chart) => ({
-          id: chart.key,
-          label: chart.title,
-          chart: { ...chart, anchorId: chart.anchorId ?? chart.key },
-          empty: chart.data.every((point) => point.value == null),
-        }))),
+    ...vitalsCharts.map(chartMember),
+    ...compositionCharts.map(chartMember),
     ...(growthCard
       ? [
           {
@@ -1448,18 +1109,7 @@ export default async function BodySection({
           },
         ]
       : []),
-    ...(intraday
-      ? []
-      : syncedEntries
-          .filter((e) => e.present)
-          .map((e) => ({
-            id: e.id,
-            label: e.label,
-            node: e.node,
-            // The intraday zoom is the one synced card that has always spanned both
-            // columns; it keeps that whatever rank it lands at.
-            wide: e.id === "hr-day",
-          }))),
+    ...syncedCharts.map(chartMember),
   ];
 
   // The order the stack renders in, with in-window-empty charts sinking to the end
@@ -1647,11 +1297,10 @@ export default async function BodySection({
 
   return (
     <div className="space-y-6" data-testid="trends-body">
-      {/* The retired Today card's real navigation stays at the section head, now
-          shared with the progress-photos door. `flex-wrap` because the phone width
-          cannot always hold both: wrapping costs a line, clipping costs the door. */}
-      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-        {photoDoor !== "hidden" && (
+      {/* The day-view door that used to share this row moved up to the range-chip
+          row, where the retired 1D pill sat (#4767). */}
+      {photoDoor !== "hidden" && (
+        <div className="flex justify-end">
           <DestinationLink
             href="/progress"
             data-testid="body-progress-photos-link"
@@ -1661,15 +1310,8 @@ export default async function BodySection({
               ? "Add a progress photo"
               : "Progress photos"}
           </DestinationLink>
-        )}
-        <DestinationLink
-          href={historyDayHref(todayStr)}
-          data-testid="body-timeline-link"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-        >
-          View today on History
-        </DestinationLink>
-      </div>
+        </div>
+      )}
 
       {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
           day-over-day weight jumps — a safety-ish signal, so shown above the toggle
@@ -1704,34 +1346,6 @@ export default async function BodySection({
         }
       />
 
-      {/* Tailwind 4's `space-y-6` puts its 24px margin on the PREVIOUS sibling,
-          so a positive margin on these children can no longer replace it. The
-          -16px offset preserves the intentionally compact 8px content seam. */}
-      {/* #2152: Overview is spark tiles only on phones at EVERY range. Even 1D's
-          clock-axis chart stays in the desktop stack; opening a tile remains the
-          one-tap route to a full chart on a phone. `?view=all` never overrides the
-          viewport rule. */}
-      {intraday && (
-        <div
-          className={`${stackContainerClass(view)} -mt-4`}
-          data-testid="body-intraday-view"
-        >
-          {bodyStack.length > 0 ? (
-            <TrendMetricCharts
-              items={bodyStack}
-              annotations={annotations}
-              windows={protocolWindows}
-              gapWindow={dayFillWindow(range)}
-              // The profile-local day each card's headline is aged against
-              // (#2615 item 3), never the server's.
-              today={todayStr}
-            />
-          ) : (
-            <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
-          )}
-        </div>
-      )}
-
       {/* The same census component renders both presentations. CSS selects the
           viewport-safe one; there is no forked mobile census. */}
       <div
@@ -1758,177 +1372,169 @@ export default async function BodySection({
         </p>
       </div>
 
-      {!intraday && (
-        <>
-          {/* The classic full-chart stack — desktop only. Carries the per-chart
+      {/* The classic full-chart stack — desktop only. Carries the per-chart
               `#id` anchors used by the chart dropdown (#1067 Phase 1). */}
-          <div
-            className={`${stackContainerClass(view)} -mt-4 space-y-6`}
-            data-testid="body-charts-all"
-          >
-            {/* ONE flat ranked stack (#1674): the ★ run first in saved order, then
+      <div
+        className={`${stackContainerClass(view)} -mt-4 space-y-6`}
+        data-testid="body-charts-all"
+      >
+        {/* ONE flat ranked stack (#1674): the ★ run first in saved order, then
                 the everyday-first ranked remainder. No titled boxes, so nothing can
                 ride above its rank inside one — the growth card, the mood chart and
                 the synced daily charts are ordinary members placed by the same
                 order, and the annotation toggle bar above drives all of them. */}
-            {bodyStack.length > 0 ? (
-              <TrendMetricCharts
-                items={bodyStack}
-                annotations={annotations}
-                windows={protocolWindows}
-                gapWindow={dayFillWindow(range)}
-                // The profile-local day each card's headline is aged against
-                // (#2615 item 3), never the server's.
-                today={todayStr}
-              />
-            ) : (
-              <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />
-            )}
+        {bodyStack.length > 0 ? (
+          <TrendMetricCharts
+            items={bodyStack}
+            annotations={annotations}
+            windows={protocolWindows}
+            gapWindow={dayFillWindow(range)}
+            // The profile-local day each card's headline is aged against
+            // (#2615 item 3), never the server's.
+            today={todayStr}
+          />
+        ) : (
+          <EmptyState message="No body metrics yet. Add a reading with “+ Log” above to see the trend." />
+        )}
 
-            <div className="card">
-              <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                History
-              </h2>
-              {history.total === 0 ? (
-                <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
-              ) : (
-                <>
-                  <ScrollFade>
-                    <table className="w-full" data-testid="body-history-table">
-                      <thead>
-                        <tr className="border-b border-black/5 dark:border-white/10">
-                          <th className="th">Date</th>
-                          {/* Numeric columns are right-aligned tabular figures, the
+        <div className="card">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            History
+          </h2>
+          {history.total === 0 ? (
+            <EmptyState message="No body metrics yet. Log one with “+ Log” above to see the trend." />
+          ) : (
+            <>
+              <ScrollFade>
+                <table className="w-full" data-testid="body-history-table">
+                  <thead>
+                    <tr className="border-b border-black/5 dark:border-white/10">
+                      <th className="th">Date</th>
+                      {/* Numeric columns are right-aligned tabular figures, the
                         convention every other numeric table in the app follows —
                         the digits lining up down the column IS the column. */}
-                          <th className="th text-right">Weight</th>
-                          {/* Same DISPLAY rule as the chart (#4147): present when
+                      <th className="th text-right">Weight</th>
+                      {/* Same DISPLAY rule as the chart (#4147): present when
                         this profile has a reading, or can enter one. */}
-                          {bodyFatShown && (
-                            <th className="th text-right">Body fat</th>
-                          )}
-                          {/* The resting-HR COLUMN stays (#1486): this table is the
+                      {bodyFatShown && (
+                        <th className="th text-right">Body fat</th>
+                      )}
+                      {/* The resting-HR COLUMN stays (#1486): this table is the
                         record EDITOR, not a second chart of the metric. */}
-                          <th className="th text-right">Resting HR</th>
-                          <th className="th">Source</th>
-                          <th className="th">Notes</th>
-                          <th className="th text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {history.rows.map((w) => (
-                          <tr
-                            key={w.id}
-                            data-testid="body-history-row"
-                            className="border-b border-black/5 dark:border-white/10"
-                          >
-                            {/* The short date shape the rest of Trends uses: the
+                      <th className="th text-right">Resting HR</th>
+                      <th className="th">Source</th>
+                      <th className="th">Notes</th>
+                      <th className="th text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.rows.map((w) => (
+                      <tr
+                        key={w.id}
+                        data-testid="body-history-row"
+                        className="border-b border-black/5 dark:border-white/10"
+                      >
+                        {/* The short date shape the rest of Trends uses: the
                           weekday is noise in a weigh-in ledger, and it was spending
                           the widest column in the table. */}
-                            <td
-                              className="td whitespace-nowrap"
-                              data-testid="body-history-date"
-                            >
-                              {formatMonthDay(w.date, formatPrefs)}
-                            </td>
-                            <td
-                              className="td text-right font-medium tabular-nums"
-                              data-testid="body-weight-cell"
-                            >
-                              {fmtWeight(w.weight_kg, wu)}
-                            </td>
-                            {bodyFatShown && (
-                              <td className="td text-right tabular-nums">
-                                {/* One decimal, the precision the day's vitals strip
+                        <td
+                          className="td whitespace-nowrap"
+                          data-testid="body-history-date"
+                        >
+                          {formatMonthDay(w.date, formatPrefs)}
+                        </td>
+                        <td
+                          className="td text-right font-medium tabular-nums"
+                          data-testid="body-weight-cell"
+                        >
+                          {fmtWeight(w.weight_kg, wu)}
+                        </td>
+                        {bodyFatShown && (
+                          <td className="td text-right tabular-nums">
+                            {/* One decimal, the precision the day's vitals strip
                               declares for this metric — the raw stored number put
                               "17%" and "17.2%" in one column. */}
-                                {w.body_fat_pct != null
-                                  ? `${round(w.body_fat_pct, 1)}%`
-                                  : "—"}
-                              </td>
-                            )}
-                            {/* Resting HR carries its unit, as every other heart-rate
+                            {w.body_fat_pct != null
+                              ? `${round(w.body_fat_pct, 1)}%`
+                              : "—"}
+                          </td>
+                        )}
+                        {/* Resting HR carries its unit, as every other heart-rate
                           reading in the app does. */}
-                            <td className="td text-right tabular-nums">
-                              {w.resting_hr != null
-                                ? `${w.resting_hr} bpm`
-                                : "—"}
-                            </td>
-                            <td className="td whitespace-nowrap">
-                              {w.document_id != null ? (
-                                <Link
-                                  href={`/import/${w.document_id}`}
-                                  className="text-brand-700 hover:underline dark:text-brand-400"
-                                >
-                                  {w.source_label}
-                                </Link>
-                              ) : (
-                                <span className="text-slate-500 dark:text-slate-400">
-                                  {w.source_label}
-                                </span>
-                              )}
-                              {/* Edit-lock badge + resume affordance for a hand-edited
+                        <td className="td text-right tabular-nums">
+                          {w.resting_hr != null ? `${w.resting_hr} bpm` : "—"}
+                        </td>
+                        <td className="td whitespace-nowrap">
+                          {w.document_id != null ? (
+                            <Link
+                              href={`/import/${w.document_id}`}
+                              className="text-brand-700 hover:underline dark:text-brand-400"
+                            >
+                              {w.source_label}
+                            </Link>
+                          ) : (
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {w.source_label}
+                            </span>
+                          )}
+                          {/* Edit-lock badge + resume affordance for a hand-edited
                             integration row (#659): only integration-owned rows carry
                             the lock (manual/document rows can't be re-synced). */}
-                              {!!w.edited &&
-                                w.document_id == null &&
-                                !!w.source &&
-                                w.source !== "manual" && (
-                                  <EditLockNotice
-                                    table="body_metrics"
-                                    id={w.id}
-                                    className="mt-1"
-                                  />
-                                )}
-                            </td>
-                            <td className="td text-slate-500 dark:text-slate-400">
-                              <NotesText notes={w.notes} />
-                            </td>
-                            <td className="td text-right">
-                              {/* Edit (per measure) + delete on the shared ⋯ menu
+                          {!!w.edited &&
+                            w.document_id == null &&
+                            !!w.source &&
+                            w.source !== "manual" && (
+                              <EditLockNotice
+                                table="body_metrics"
+                                id={w.id}
+                                className="mt-1"
+                              />
+                            )}
+                        </td>
+                        <td className="td text-slate-500 dark:text-slate-400">
+                          <NotesText notes={w.notes} />
+                        </td>
+                        <td className="td text-right">
+                          {/* Edit (per measure) + delete on the shared ⋯ menu
                             (#2556). The row is WIDE — up to three readings — so
                             each Edit names its own measure and writes it through
                             the existing per-reading contract; the delete is
                             unchanged and still removes the day's whole entry. */}
-                              <BodyMetricRowMenu
-                                id={w.id}
-                                label={formatMonthDay(w.date, formatPrefs)}
-                                measures={bodyMetricMeasures(w, wu)}
-                                weightUnit={wu}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </ScrollFade>
-                  {/* The pager is the table's bound, and it is a LINK pager: the page
+                          <BodyMetricRowMenu
+                            id={w.id}
+                            label={formatMonthDay(w.date, formatPrefs)}
+                            measures={bodyMetricMeasures(w, wu)}
+                            weightUnit={wu}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ScrollFade>
+              {/* The pager is the table's bound, and it is a LINK pager: the page
                     rides the URL, so the read below it is one page's worth of rows
                     rather than the whole ledger (#2530). */}
-                  <PaginationControls
-                    page={history.page}
-                    pageCount={historyPages}
-                    pageSize={HISTORY_PAGE_SIZE}
-                    total={history.total}
-                    visibleCount={history.rows.length}
-                    prevHref={
-                      history.page > 1
-                        ? historyPageHref(history.page - 1)
-                        : null
-                    }
-                    nextHref={
-                      history.page < historyPages
-                        ? historyPageHref(history.page + 1)
-                        : null
-                    }
-                    testId="body-history-pagination"
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </>
-      )}
+              <PaginationControls
+                page={history.page}
+                pageCount={historyPages}
+                pageSize={HISTORY_PAGE_SIZE}
+                total={history.total}
+                visibleCount={history.rows.length}
+                prevHref={
+                  history.page > 1 ? historyPageHref(history.page - 1) : null
+                }
+                nextHref={
+                  history.page < historyPages
+                    ? historyPageHref(history.page + 1)
+                    : null
+                }
+                testId="body-history-pagination"
+              />
+            </>
+          )}
+        </div>
+      </div>
       {/* Bristol stool form (#2785) — a distribution and a dot strip, not a chart in
           the census's line-chart sense, so it renders after the census rather than as
           a card inside it. It returns NULL for a profile with nothing logged in the

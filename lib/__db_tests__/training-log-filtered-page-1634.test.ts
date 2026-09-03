@@ -1,55 +1,71 @@
-// DB INTEGRATION TIER — server-side FILTERED Training Log paging (issue #1634).
+// DB INTEGRATION TIER — the Log's layered filters over the WHOLE ledger (#1634,
+// re-based on #4079's shared-substrate mount).
 //
-// #451 made the feed page by whole days server-side; its filters stayed in the
-// client, over the LOADED pages only. A search for a session older than the fetched
-// window therefore reported "no matches" while the row sat in `activities`. This
-// pins the fix end to end:
-//   • DEEP MATCHES SURFACE — a match many windows below the first page comes back on
-//     page ONE of the filtered feed, with no cursor walking.
-//   • THE CURSOR PAGES OVER MATCHES — nextBefore is computed over the filtered day
-//     set, so walking it visits every matching day and stops.
-//   • DERIVED FILTERS ARE FINITE PREIMAGES — the muscle/region tag (regionForExercise
-//     is not SQL) and the fault filter (storedActivityFault is not SQL) resolve to
-//     IN-lists over the profile's OWN data, so a free-text exercise name still maps.
-//   • THE SUPERSET CONTRACT HOLDS — every day the pure predicate would accept a card
-//     on is a day the SQL scan returns.
-//   • PROFILE SCOPING — another profile's matching rows never enter a page.
+// #1634's defect was that the Log's filters ran in the client over the loaded pages
+// only, so a match older than the fetched window reported "no matches" while the row
+// sat in `activities`. Its fix was two halves held in sync by a written superset
+// contract: SQL picked the DAYS, a pure predicate picked the CARDS.
+//
+// #4079 retired the private feed for the shared history substrate, which owns the
+// window. What is left is ONE question — which of this profile's activities do the
+// layered filters admit — so there is one SQL answer, no second predicate, and no
+// contract to keep. These pin the answer:
+//   • DEPTH IS IRRELEVANT — a match forty days down is admitted like any other; the
+//     bound belongs to the substrate, not to the filter.
+//   • FREE TEXT REACHES THREE PLACES — title, exercise-set names, component names.
+//   • DERIVED FILTERS ARE FINITE PREIMAGES — the muscle/region tag
+//     (regionForExercise) and the fault filter (storedActivityFault) are pure
+//     TypeScript, so they resolve to IN-lists over the profile's OWN data.
+//   • AN EMPTY PREIMAGE ADMITS NOTHING, never everything — the two are different
+//     shapes, not a predicate over one shape.
+//   • NO FILTER IS `null`, NOT AN EMPTY SET — "unfiltered" and "nothing matches" are
+//     rendered differently and must be distinguishable at the source.
+//   • PROFILE SCOPING — another profile's matching rows never enter the answer.
 //
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
-  getTrainingLogPage,
+  getTrainingLogMatchingActivityIds,
   resolveTrainingLogFilterSpec,
   getActivityFaults,
   getTrainingLogSourceKeys,
   getTrainingLogTagExercises,
 } from "@/lib/queries";
 import {
-  buildTrainingLogFeedPage,
-  buildMultiViewTrainingLogGroups,
-} from "@/lib/training-log-feed";
-import {
-  EMPTY_TRAINING_LOG_FILTERS,
-  filterTrainingLogGroups,
-  trainingLogCardMatches,
-  type TrainingLogFilters,
-} from "@/lib/training-log-filters";
-import { TRAINING_LOG_PAGE_DAYS } from "@/lib/training-log-feed";
-import type { UnitPrefs } from "@/lib/settings";
+  NO_TRAINING_LOG_QUERY,
+  type TrainingLogQuery,
+} from "@/lib/training-log-format";
 import { shiftDateStr } from "@/lib/date";
 import { db } from "@/lib/db";
 
-const UNITS: UnitPrefs = {
-  weightUnit: "kg",
-  distanceUnit: "km",
-  temperatureUnit: "F",
-};
-
-const filters = (over: Partial<TrainingLogFilters>): TrainingLogFilters => ({
-  ...EMPTY_TRAINING_LOG_FILTERS,
+const query = (over: Partial<TrainingLogQuery>): TrainingLogQuery => ({
+  ...NO_TRAINING_LOG_QUERY,
   ...over,
 });
+
+// The admitted ids for a query, as titles — the assertion reads as the thing a
+// reader would see rather than as a set of row numbers.
+function admittedTitles(
+  profile: number,
+  over: Partial<TrainingLogQuery>
+): string[] {
+  const ids = getTrainingLogMatchingActivityIds(
+    profile,
+    resolveTrainingLogFilterSpec(profile, query(over))
+  );
+  if (ids == null) return ["<no filter>"];
+  return [...ids]
+    .map(
+      (id) =>
+        (
+          db.prepare("SELECT title FROM activities WHERE id = ?").get(id) as {
+            title: string;
+          }
+        ).title
+    )
+    .sort();
+}
 
 function newProfile(name: string): number {
   return Number(
@@ -187,189 +203,73 @@ beforeAll(() => {
   });
 });
 
-describe("getTrainingLogPage — filtered day selection (#1634)", () => {
-  it("returns a match many windows deep on PAGE ONE, with no cursor walking", () => {
-    // The unfiltered first page cannot reach it — that is the bug being fixed.
-    const unfiltered = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS
-    );
-    expect(unfiltered.days).not.toContain(DEEP_DATE);
-
-    const spec = resolveTrainingLogFilterSpec(
-      profileId,
-      filters({ query: "kayak" })
-    );
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      spec
-    );
-    expect(page.days).toEqual([DEEP_DATE]);
-    expect(page.activities.map((a) => a.id)).toContain(deepActivityId);
-    // One matching day in the whole ledger, so nothing older to page to.
-    expect(page.nextBefore).toBeNull();
+describe("the layered filters, over the whole ledger (#1634/#4079)", () => {
+  // ONE TABLE, because these cases differ only in the query and the titles it must
+  // admit. Depth is not a column: EVERY row below sits 30–45 days back, past two of
+  // the retired pager's windows, which is exactly what #1634's defect could not reach.
+  it.each([
+    // Free text: title only, component name only, exercise-set name only.
+    [{ q: "kayak" }, ["Kayaking on Reserved Lake"]],
+    [{ q: "kayaking" }, ["Kayaking on Reserved Lake"]],
+    [{ q: "back squat" }, ["Leg day", "Legacy import"]],
+    // A LIKE wildcard is a literal character, not a pattern.
+    [{ q: "%" }, []],
+    // Type, across the whole ledger.
+    [{ type: "sport" as const }, ["Kayaking on Reserved Lake"]],
+    // Provenance: two rows on ONE day, told apart by source.
+    [{ source: "strava" }, ["Tempo effort"]],
+    // Every document-extracted row collapses into ONE option's selection.
+    [{ source: "document" }, ["Clinic treadmill test"]],
+    // A finite preimage over the names this profile actually logged.
+    [
+      { tag: { kind: "region" as const, value: "Legs" } },
+      ["Leg day", "Legacy import"],
+    ],
+    // An empty preimage admits NOTHING — not everything.
+    [{ tag: { kind: "muscle" as const, value: "Gills" } }, []],
+    // The fault preimage: ids, because storedActivityFault is not SQL.
+    [{ fault: true }, ["Legacy import"]],
+    // Filters AND: a type that excludes the text match yields nothing.
+    [{ q: "kayak", type: "strength" as const }, []],
+  ])("admits exactly the right rows for %o", (over, expected) => {
+    expect(admittedTitles(profileId, over)).toEqual(expected);
   });
 
-  it("matches the free text against titles, set names, and component names", () => {
-    // Component name only ("Kayaking" is not in the title's words as typed).
-    const byComponent = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ query: "kayaking" }))
-    );
-    expect(byComponent.days).toEqual([DEEP_DATE]);
-
-    // Exercise-set name only — "Back Squat" appears in no title.
-    const bySet = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ query: "back squat" }))
-    );
-    expect(bySet.days).toEqual([
-      shiftDateStr(TODAY, -35),
-      shiftDateStr(TODAY, -45),
-    ]);
-  });
-
-  it("treats LIKE wildcards in the query as literal characters", () => {
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ query: "%" }))
-    );
-    expect(page.days).toEqual([]);
-  });
-
-  it("never leaks another profile's matching rows", () => {
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ query: "kayak" }))
-    );
-    for (const a of page.activities) {
-      expect((a as unknown as { profile_id: number }).profile_id).toBe(
-        profileId
-      );
-    }
-  });
-
-  it("pages the CURSOR over matching days, not over raw days", () => {
-    // Every filler day matches "Filler", so a 2-day window has to walk them in
-    // date order and stop exactly once the matching set is exhausted.
-    const spec = resolveTrainingLogFilterSpec(
-      profileId,
-      filters({ query: "Filler" })
-    );
-    const seen: string[] = [];
-    let cursor: string | null = null;
-    for (let guard = 0; guard < 100; guard++) {
-      const page: ReturnType<typeof getTrainingLogPage> = getTrainingLogPage(
+  it("returns null — not an empty set — when nothing is filtered", () => {
+    // The two shapes are what the mount renders as "your whole log" versus "nothing
+    // matches these filters", so they must be distinguishable at the source.
+    expect(
+      getTrainingLogMatchingActivityIds(
         profileId,
-        cursor,
-        2,
-        spec
-      );
-      seen.push(...page.days);
-      cursor = page.nextBefore;
-      if (cursor == null) break;
-    }
-    expect(cursor).toBeNull();
-    expect(seen).toHaveLength(60);
-    expect(seen[0]).toBe(TODAY);
-    expect(seen[seen.length - 1]).toBe(shiftDateStr(TODAY, -59));
-    // Strictly descending, no repeats — the #503 cursor-desync guard in filtered form.
-    expect([...seen].sort().reverse()).toEqual(seen);
-    expect(new Set(seen).size).toBe(seen.length);
+        resolveTrainingLogFilterSpec(profileId, NO_TRAINING_LOG_QUERY)
+      )
+    ).toBeNull();
   });
 
-  it("filters by activity type across the whole ledger", () => {
-    const page = getTrainingLogPage(
+  it("never admits another profile's matching row", () => {
+    // The other profile owns a row with the SAME title on the SAME day.
+    const mine = getTrainingLogMatchingActivityIds(
       profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ type: "sport" }))
-    );
-    expect(page.days).toEqual([DEEP_DATE]);
+      resolveTrainingLogFilterSpec(profileId, query({ q: "kayak" }))
+    )!;
+    expect(mine.size).toBe(1);
+    expect(mine.has(deepActivityId)).toBe(true);
+    const theirs = getTrainingLogMatchingActivityIds(
+      otherProfile,
+      resolveTrainingLogFilterSpec(otherProfile, query({ q: "kayak" }))
+    )!;
+    expect([...theirs]).not.toContain(deepActivityId);
   });
 
-  it("resolves the region tag as a finite IN-list preimage", () => {
-    // The preimage is computed over the names this profile actually logged, not
-    // over the catalog — regionForExercise cannot run in SQL.
+  it("resolves the region preimage from logged names, not from the catalog", () => {
+    // regionForExercise has a contains-fallback over free text, so the preimage is
+    // evaluated in JS over the names the profile ACTUALLY logged.
     const names = getTrainingLogTagExercises(profileId, {
       kind: "region",
       value: "Legs",
     });
     expect(names).toContain("back squat");
     expect(names).not.toContain("walking");
-
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(
-        profileId,
-        filters({ tag: { kind: "region", value: "Legs" } })
-      )
-    );
-    expect(page.days).toEqual([
-      shiftDateStr(TODAY, -35),
-      shiftDateStr(TODAY, -45),
-    ]);
-  });
-
-  it("returns nothing (not everything) when a preimage is empty", () => {
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(
-        profileId,
-        filters({ tag: { kind: "muscle", value: "Gills" } })
-      )
-    );
-    expect(page.days).toEqual([]);
-    expect(page.nextBefore).toBeNull();
-  });
-
-  it("filters by provenance, telling a manual row from an imported one on the SAME day", () => {
-    const mixedDay = shiftDateStr(TODAY, -30);
-    const strava = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ source: "strava" }))
-    );
-    expect(strava.days).toEqual([mixedDay]);
-    // The DAY is the unit of selection, so both same-day rows come back; the pure
-    // predicate is what separates them (asserted below through the built feed).
-    const titles = strava.activities.map((a) => a.title);
-    expect(titles).toContain("Tempo effort");
-    expect(titles).toContain("Tempo cooldown");
-
-    const manual = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ source: "manual" }))
-    );
-    // Manual rows are everywhere, but the imported day is reachable too.
-    expect(manual.days).toContain(TODAY);
-
-    // Every document-sourced row collapses into ONE option's selection.
-    const doc = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ source: "document" }))
-    );
-    expect(doc.days).toEqual([shiftDateStr(TODAY, -31)]);
   });
 
   it("offers exactly one source option per provider", () => {
@@ -380,196 +280,7 @@ describe("getTrainingLogPage — filtered day selection (#1634)", () => {
     ]);
   });
 
-  it("filters to rows the editor can't re-save, from a preimage of ids", () => {
-    const faults = getActivityFaults(profileId);
-    expect(faults.count).toBe(1);
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, filters({ faultOnly: true }))
-    );
-    expect(page.days).toEqual([shiftDateStr(TODAY, -45)]);
-  });
-
-  it("ANDs filters — a type that excludes the text match yields nothing", () => {
-    const page = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(
-        profileId,
-        filters({ query: "kayak", type: "strength" })
-      )
-    );
-    expect(page.days).toEqual([]);
-  });
-
-  it("leaves the UNFILTERED page byte-identical to the pre-#1634 query", () => {
-    const withNoSpec = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS
-    );
-    const withEmptyFilters = getTrainingLogPage(
-      profileId,
-      null,
-      TRAINING_LOG_PAGE_DAYS,
-      resolveTrainingLogFilterSpec(profileId, EMPTY_TRAINING_LOG_FILTERS)
-    );
-    expect(withEmptyFilters.days).toEqual(withNoSpec.days);
-    expect(withEmptyFilters.activities.map((a) => a.id)).toEqual(
-      withNoSpec.activities.map((a) => a.id)
-    );
-    expect(withEmptyFilters.nextBefore).toBe(withNoSpec.nextBefore);
-  });
-});
-
-describe("buildTrainingLogFeedPage — built cards under a filter (#1634)", () => {
-  it("builds the deep match's card on page one and the client predicate keeps it", () => {
-    const page = buildTrainingLogFeedPage(
-      profileId,
-      null,
-      UNITS,
-      undefined,
-      TRAINING_LOG_PAGE_DAYS,
-      filters({ query: "kayak" })
-    );
-    const shown = filterTrainingLogGroups(
-      page.groups,
-      filters({ query: "kayak" })
-    );
-    expect(shown.map((g) => g.date)).toEqual([DEEP_DATE]);
-    expect(shown[0].cards.map((c) => c.activity.id)).toEqual([deepActivityId]);
-  });
-
-  it("ships a matching day's OTHER rows too, so the merge picker keeps them", () => {
-    const f = filters({ source: "strava" });
-    const page = buildTrainingLogFeedPage(
-      profileId,
-      null,
-      UNITS,
-      undefined,
-      TRAINING_LOG_PAGE_DAYS,
-      f
-    );
-    // The raw page carries EVERY row of the matching day — the Strava effort, its
-    // manual cooldown, and that day's filler session…
-    expect(page.groups[0].cards.map((c) => c.activity.title).sort()).toEqual([
-      "Filler session 30",
-      "Tempo cooldown",
-      "Tempo effort",
-    ]);
-    // …and the pure predicate is what narrows the DISPLAY to the imported one.
-    const shown = filterTrainingLogGroups(page.groups, f);
-    expect(shown[0].cards.map((c) => c.activity.title)).toEqual([
-      "Tempo effort",
-    ]);
-  });
-
-  it("SUPERSET CONTRACT: every card the predicate accepts is on a returned day", () => {
-    // Walk the WHOLE filtered feed and the WHOLE unfiltered feed for the same
-    // filters; the set of accepted card ids must be identical. This is the property
-    // the fix rests on — SQL narrowing days must never drop a card the predicate
-    // would have kept.
-    for (const f of [
-      filters({ query: "squat" }),
-      filters({ type: "sport" }),
-      filters({ source: "manual" }),
-      filters({ faultOnly: true }),
-      filters({ tag: { kind: "region", value: "Legs" } }),
-    ]) {
-      const filteredIds = new Set<number>();
-      let cursor: string | null = null;
-      for (let guard = 0; guard < 100; guard++) {
-        const page = buildTrainingLogFeedPage(
-          profileId,
-          cursor,
-          UNITS,
-          undefined,
-          TRAINING_LOG_PAGE_DAYS,
-          f
-        );
-        for (const g of filterTrainingLogGroups(page.groups, f))
-          for (const c of g.cards) filteredIds.add(c.activity.id);
-        cursor = page.nextBefore;
-        if (cursor == null) break;
-      }
-
-      const allIds = new Set<number>();
-      let plain: string | null = null;
-      for (let guard = 0; guard < 100; guard++) {
-        const page = buildTrainingLogFeedPage(profileId, plain, UNITS);
-        for (const g of page.groups)
-          for (const c of g.cards)
-            if (trainingLogCardMatches(c, f)) allIds.add(c.activity.id);
-        plain = page.nextBefore;
-        if (plain == null) break;
-      }
-
-      expect([...filteredIds].sort((a, b) => a - b)).toEqual(
-        [...allIds].sort((a, b) => a - b)
-      );
-    }
-  });
-});
-
-describe("buildMultiViewTrainingLogGroups — filters compose with per-member cursors (#1634)", () => {
-  let memberA: number;
-  let memberB: number;
-
-  beforeAll(() => {
-    memberA = newProfile("mv-filter-a");
-    memberB = newProfile("mv-filter-b");
-    // Each member's own filler history, so neither's match is on its own first page.
-    for (const pid of [memberA, memberB]) {
-      for (let d = 0; d < 30; d++) {
-        addActivity(pid, {
-          date: shiftDateStr(TODAY, -d),
-          title: `Member filler ${d}`,
-        });
-      }
-    }
-    // Interleaving matches: A's is older than B's, so the merge has to order them.
-    addActivity(memberA, {
-      date: shiftDateStr(TODAY, -50),
-      title: "Paddling upstream",
-      type: "sport",
-    });
-    addActivity(memberB, {
-      date: shiftDateStr(TODAY, -45),
-      title: "Paddling downstream",
-      type: "sport",
-    });
-  });
-
-  it("surfaces EACH member's deep match, merged newest day first", () => {
-    const f = filters({ query: "paddling" });
-    const groups = buildMultiViewTrainingLogGroups(
-      [memberA, memberB],
-      memberA,
-      UNITS,
-      undefined,
-      f
-    );
-    const shown = filterTrainingLogGroups(groups, f);
-    expect(shown.map((g) => g.date)).toEqual([
-      shiftDateStr(TODAY, -45),
-      shiftDateStr(TODAY, -50),
-    ]);
-    expect(shown[0].cards[0].activity.title).toBe("Paddling downstream");
-    expect(shown[0].cards[0].activity.subjectProfileId).toBe(memberB);
-    expect(shown[1].cards[0].activity.subjectProfileId).toBe(memberA);
-  });
-
-  it("keeps the unfiltered merged window unchanged", () => {
-    const groups = buildMultiViewTrainingLogGroups(
-      [memberA, memberB],
-      memberA,
-      UNITS
-    );
-    // Newest window only, both members present, deep matches NOT pulled forward.
-    expect(groups[0].date).toBe(TODAY);
-    expect(groups.map((g) => g.date)).not.toContain(shiftDateStr(TODAY, -50));
+  it("counts exactly one row the editor cannot re-save", () => {
+    expect(getActivityFaults(profileId).count).toBe(1);
   });
 });

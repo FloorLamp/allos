@@ -527,10 +527,18 @@ describe("bedtimeWearCorrectedBody (#3027)", () => {
     expect(body).not.toMatch(/won't be recorded/i);
     // It states rather than apologises — the reader needs the fact, not a confession.
     expect(body).not.toMatch(/\bsorry\b|\bapolog/i);
-    expect(body).toMatch(/being recorded/);
     // And it is a different sentence from the original, or the reconciler would edit a
     // message into itself.
     expect(body).not.toBe(bedtimeWearBody("19:53"));
+  });
+
+  it("states only what happened — no claim about the night ahead (#3060 §1)", () => {
+    expect(bedtimeWearCorrectedBody("19:53")).toBe(
+      "Your watch picked up again after 19:53."
+    );
+    expect(bedtimeWearCorrectedBody("19:53")).not.toMatch(
+      /tonight|being recorded|will\b/
+    );
   });
 
   it("names NO moving value, so the correction happens once", () => {

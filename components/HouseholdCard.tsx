@@ -12,6 +12,7 @@ import DestinationIndicator from "@/components/DestinationIndicator";
 import DestinationLink from "@/components/DestinationLink";
 import Avatar from "@/components/Avatar";
 import IconButton from "@/components/IconButton";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import {
   PILLAR_TONE_CLASS,
@@ -322,8 +323,7 @@ function Setup({
       data-testid="household-setup"
       data-tone={setup.tone}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="section-label">Setup</div>
+      <CardSectionHeader title="Setup" variant="label">
         {/* Dismiss is EPISODE-scoped (the failing-check set is the key) and is not
         offered at all while the profile is unroutable — a standing "this profile is
         unroutable" dismissal would recreate the silence this exists to remove. The
@@ -341,7 +341,7 @@ function Setup({
             </IconButton>
           </form>
         )}
-      </div>
+      </CardSectionHeader>
       <div className="space-y-2.5">
         {setup.checks.map((check) => (
           <SetupCheckRow key={check.id} check={check} profileId={profile.id} />

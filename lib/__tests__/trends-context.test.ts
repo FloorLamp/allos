@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { activeRangeLabel } from "../trends-context";
-import {
-  defaultTrendsRange,
-  intradayQuickRange,
-  quickRanges,
-} from "../timeline-format";
+import { defaultTrendsRange, quickRanges } from "../timeline-format";
 
 // The Trends phone chrome's fixed range label: it names the window the charts
 // are drawn over and never disagrees with the pill the expanded control lights.
@@ -30,16 +26,8 @@ describe("activeRangeLabel", () => {
     expect(activeRangeLabel({}, TODAY)).toBe("All time");
   });
 
-  it("names a surface-injected extra range (the body census 1D — #1466)", () => {
-    const oneDay = intradayQuickRange(TODAY);
-    // Only when the surface offers it: without the extra, the same window has no
-    // pill naming it and falls through to the custom summary.
-    expect(
-      activeRangeLabel({ from: oneDay.from, to: oneDay.to }, TODAY, [oneDay])
-    ).toBe("1D");
-    expect(activeRangeLabel({ from: oneDay.from, to: oneDay.to }, TODAY)).toBe(
-      TODAY
-    );
+  it("names a single day by its date, like any window no pill names", () => {
+    expect(activeRangeLabel({ from: TODAY, to: TODAY }, TODAY)).toBe(TODAY);
   });
 
   it("falls back to the shared summary for a custom window", () => {

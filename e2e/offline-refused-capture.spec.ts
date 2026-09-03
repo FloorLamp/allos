@@ -7,6 +7,7 @@ import {
   expandLedgerDueGroups,
   hydratedClick,
   ledgerDoseRow,
+  openFoodAdd,
   settledClick,
   settledFill,
 } from "./helpers";
@@ -252,6 +253,7 @@ test("a refused food-serving tap says so and rolls its counts back", async ({
 }) => {
   await breakIndexedDB(page);
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   const row = page.getByTestId("food-group-nuts_seeds");
   if (!(await row.isVisible())) {
@@ -276,6 +278,7 @@ test("refused protein grams say so and roll the total back", async ({
 }) => {
   await breakIndexedDB(page);
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   const quickAdd = page.getByTestId("protein-quickadd");
   await expect(quickAdd).toBeVisible();
   const total = page.getByTestId("protein-quickadd-total");

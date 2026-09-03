@@ -3,6 +3,7 @@ import {
   clinicalResultDetailHref,
   clinicalResultAddHref,
   historyDayHref,
+  historyDayIntradayHref,
   trainingLogDayHref,
   dayHistoryAddHref,
   dataSectionHref,
@@ -114,10 +115,23 @@ describe("historyDayHref", () => {
   });
 });
 
+describe("historyDayIntradayHref", () => {
+  // The panel is a POSITION ON the page `?day=` already selects — the thing
+  // `/data#integrations` is — not the feed fragment `/timeline` retired with its route.
+  it("lands the receipt doors on the day view's intraday panel", () => {
+    expect(historyDayIntradayHref("2026-07-12")).toBe(
+      "/history?day=2026-07-12#day-at-a-glance"
+    );
+  });
+});
+
 describe("trainingLogDayHref", () => {
-  it("anchors the Training Log to the workout day", () => {
+  // The day is a READ BOUND, not a fragment. The retired `#day-` anchor resolved only
+  // while the day happened to fall inside whatever window the Log had drawn; `?day=`
+  // is a question the page answers.
+  it("bounds the Training Log to the workout day", () => {
     expect(trainingLogDayHref("2026-07-12")).toBe(
-      "/training?tab=log#day-2026-07-12"
+      "/training?tab=log&day=2026-07-12"
     );
   });
 });

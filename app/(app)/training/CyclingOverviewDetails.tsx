@@ -2,7 +2,7 @@ import Link from "next/link";
 import CardFootnote from "@/components/CardFootnote";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import LineChartCard from "@/components/LineChartCard";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StatBox } from "@/components/StatBox";
 import { chartSeries } from "@/lib/chart-colors";
 import {
@@ -287,12 +287,11 @@ export default function CyclingOverviewDetails({
                           8,
                           (month.sessionsPerObservedMonth / maxRate) * 100
                         );
-                const description = monthDetails[index];
                 return (
-                  <div
+                  <SeriesPoint
                     key={month.month}
-                    className="flex h-full min-w-0 flex-col items-center justify-end gap-1"
-                    aria-label={description}
+                    className="relative flex h-full min-w-0 flex-col items-center justify-end gap-1"
+                    label={monthDetails[index]}
                   >
                     <span className="text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400">
                       {month.observedMonths > 0 ? month.sessions : ""}
@@ -318,12 +317,12 @@ export default function CyclingOverviewDetails({
                     <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
                       {month.shortLabel}
                     </span>
-                  </div>
+                  </SeriesPoint>
                 );
               })}
             </div>
-            <VisualizationDetails
-              label={`${data.activityName} calendar-month details`}
+            <SeriesSummary
+              label={`${data.activityName} by calendar month`}
               items={monthDetails}
             />
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
