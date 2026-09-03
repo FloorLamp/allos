@@ -424,7 +424,9 @@ describe("logHistoricalDose", () => {
     const startedOn = () =>
       (
         db
-          .prepare("SELECT started_on FROM medication_courses WHERE item_id = ?")
+          .prepare(
+            "SELECT started_on FROM medication_courses WHERE item_id = ?"
+          )
           .get(itemId) as { started_on: string | null }
       ).started_on;
     const soleLogId = () =>
