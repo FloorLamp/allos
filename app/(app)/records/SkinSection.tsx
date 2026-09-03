@@ -12,6 +12,9 @@ import { EncounterOptionsProvider } from "@/components/EncounterOptionsContext";
 import SkinLesionForm from "@/app/(app)/records/specialty/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/records/specialty/skin/SkinLesionList";
 import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
+import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
+import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 
 // Skin (former /skin index, #1042 final tail): the profile's tracked moles / spots —
 // a body-map location, size, and ABCDE observations, with serial dated PHOTOS per
@@ -22,7 +25,17 @@ import { addSkinLesion } from "@/app/(app)/records/specialty/skin/actions";
 // The skin lesion form here is the ONLY creation path for this domain, so the section
 // renders unconditionally (its former nav leaf was ungated). Server Actions + client
 // components stayed in app/(app)/records/specialty/skin/; the page body moved here.
-export default function SkinSection({ profileId }: { profileId: number }) {
+// SKIN CARE HISTORY (#2921): the specialty lens's dermatology visits and
+// skin-coded conditions, below the lesion list. ACTING-PROFILE only, like every
+// other read on this pane — a strip listing a whole household beneath a
+// single-profile lesion list would answer a question the pane is not asking.
+export default function SkinSection({
+  profileId,
+  formatPrefs,
+}: {
+  profileId: number;
+  formatPrefs?: DisplayFormatPrefs;
+}) {
   const records = getSkinLesions(profileId);
   const followUps = getSkinLesionFollowUps(profileId);
   const photos = getLesionPhotos(profileId);
@@ -58,6 +71,14 @@ export default function SkinSection({ profileId }: { profileId: number }) {
             This is a self-monitoring record for you and your dermatologist — it
             tracks and compares lesions, it does not assess them.
           </p>
+          <SpecialtyHistoryStrip
+            line="skin"
+            entries={getSpecialtyLensEntries(profileId, "skin").map((e) => ({
+              ...e,
+              profileId,
+            }))}
+            formatPrefs={formatPrefs}
+          />
         </div>
       </EncounterOptionsProvider>
     </ProviderOptionsProvider>
