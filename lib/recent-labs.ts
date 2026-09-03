@@ -67,6 +67,33 @@ export function clinicalResultClaimsFreshness(
   );
 }
 
+// WHERE A RESULT HOSTS ITS OWN ACKNOWLEDGE CONTROL (#3225, generalising #4232).
+//
+// An acknowledgment SPENDS A CLAIM, so the control goes on a row that has one to
+// spend — freshness, or the notable-first precedence this issue's reorder takes away
+// — and nowhere a second control would post the same signal, which is a key already
+// carrying an attention item.
+//
+// #4232 wrote the first half as freshness ALONE, and its reasoning ("its only mount
+// is the attention row's menu — which a non-flagged result never has") holds only
+// inside FLAGGED_ATTENTION_WINDOW_DAYS: that window bounds the reading's COLLECTION
+// date, so a months-old notable has no attention item either. That left this issue's
+// own population — 37 chronic notables from one June panel — with no acknowledge
+// control on the dashboard at all, only on the detail page each row links to.
+export function clinicalResultHostsAcknowledge(args: {
+  collectedOn: string | null | undefined;
+  today: string;
+  flag: MedicalFlag | null;
+  acknowledged: boolean;
+  hasAttentionItem: boolean;
+}): boolean {
+  if (args.acknowledged || args.hasAttentionItem) return false;
+  return (
+    clinicalResultClaimsFreshness(args.collectedOn, args.today, false) ||
+    isNotableFlag(args.flag)
+  );
+}
+
 // One latest lab reading, flattened for display by a surface.
 export interface RecentLabRow {
   name: string;

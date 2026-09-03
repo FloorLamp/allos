@@ -110,6 +110,7 @@ import {
 } from "@/lib/format-date";
 import {
   clinicalResultClaimsFreshness,
+  clinicalResultHostsAcknowledge,
   RECENT_LAB_STALE_LABEL,
   recentLabHighlights,
 } from "@/lib/recent-labs";
@@ -926,21 +927,25 @@ async function renderDashboard(
       // acknowledge lifecycle #3225 already runs, read through the same suppression
       // bus above. The date is the COLLECTION date the record carries, so a
       // backfilled import of old results claims nothing.
+      const acknowledged = labAcknowledged(name);
       const fresh = clinicalResultClaimsFreshness(
         observation.date,
         on,
-        labAcknowledged(name)
+        acknowledged
       );
       labPromotions.set(name, {
         changed,
         fresh,
-        // GROWING THE ACKNOWLEDGE MOUNT, AND ONLY WHERE IT IS MISSING (#4232). The
-        // acknowledgment is the flag dismissal (#3225), and its only mount is the
-        // attention row's snooze/dismiss menu — which a non-flagged result never
-        // has. So a fresh result whose key carries no attention item hosts the menu
-        // on its own row; one whose key DOES already renders it there, and a second
-        // menu posting the same signal would be two controls for one state.
-        ...(fresh && !activeAttentionKeys.has(findingKey)
+        // Which rows host their own acknowledge control, and why — see
+        // `clinicalResultHostsAcknowledge`, which owns the rule so this surface and
+        // the result detail page's "Seen it" cannot drift apart.
+        ...(clinicalResultHostsAcknowledge({
+          collectedOn: observation.date,
+          today: on,
+          flag: observation.flag,
+          acknowledged,
+          hasAttentionItem: activeAttentionKeys.has(findingKey),
+        })
           ? { acknowledgeKey: findingKey }
           : {}),
         ...(changed
