@@ -8,6 +8,7 @@ import {
 } from "@playwright/test";
 import { AUTO_RELOAD_KEY } from "@/lib/sw-update";
 import { MONTHS_LONG } from "@/lib/date";
+import type { DashboardEverythingGroup } from "@/lib/dashboard-relevance";
 import {
   CONTROL_BOX_PX,
   TAP_FLOOR_FLOAT_EPSILON_PX,
@@ -950,14 +951,49 @@ export async function openFoodAdd(page: Page): Promise<void> {
   );
 }
 
+// The OUTER "Show everything" control, addressed by its own testid rather than by
+// walking down from `dashboard-all` to "the first summary inside" (#4065). Each
+// capped Everything band (`EverythingBand`, DashboardPlacementCanvas.tsx) nests its
+// own `<Disclosure>` inside `dashboard-all` once it has more than three blocks, so
+// `page.getByTestId("dashboard-all").locator("summary")` resolves to one summary on
+// a fresh profile and to two or more once any band is capped — a strict-mode
+// violation that is really "this locator no longer names the control it used to
+// name uniquely". `dashboard-all-summary` is the outer `<details>`'s own testid, so
+// it stays unique regardless of how many bands nest a fold beneath it.
+export function dashboardAllSummary(page: Page): Locator {
+  return page.getByTestId("dashboard-all-summary");
+}
+
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
 export async function openDashboardAll(page: Page): Promise<void> {
   const details = page.getByTestId("dashboard-all");
   await expect(details).toHaveCount(1);
   if ((await details.getAttribute("open")) == null) {
-    await hydratedClick(page, details.locator("summary"));
+    await hydratedClick(page, dashboardAllSummary(page));
   }
   await expect(details).toHaveAttribute("open", "");
+}
+
+// Opens one capped Everything band's own fold (#4065 "fold with a cap"): Understand
+// and Setup admit every block but keep only the front three open, the rest behind a
+// per-band `<Disclosure>` nested inside `dashboard-all` — so a spec whose target row
+// isn't among a capped band's three newest blocks must open THIS fold, not just the
+// outer one, before the row is anywhere but the DOM. Call after openDashboardAll.
+// Stateless and always closed on arrival by design (the component comment on
+// `EverythingBand` explains why), so every caller opens it fresh; a no-op when the
+// band didn't cap on this render (three or fewer blocks) or the fold is already open.
+export async function openEverythingFold(
+  page: Page,
+  group: Extract<DashboardEverythingGroup, "understand" | "setup">
+): Promise<void> {
+  const fold = page.getByTestId(`dashboard-everything-${group}-fold`);
+  if ((await fold.count()) === 0) return;
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await hydratedClick(
+    page,
+    page.getByTestId(`dashboard-everything-${group}-fold-summary`)
+  );
+  await expect(fold).toHaveAttribute("open", "");
 }
 
 // Playwright surfaces a click on a link that a prior iteration already navigated
