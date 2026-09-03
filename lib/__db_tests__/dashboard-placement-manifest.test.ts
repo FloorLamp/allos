@@ -1084,17 +1084,17 @@ describe("actual atomic dashboard manifests", () => {
     // back unchanged every time, on every persona. So it composes with all of them
     // rather than interacting with any — which is a measurement, not an assumption
     // about independence.
-    bodybuilder: 225,
-    "marathon-runner": 224,
-    household: 274,
-    pregnant: 221,
-    "diabetic-cgm": 232,
+    bodybuilder: 226,
+    "marathon-runner": 225,
+    household: 275,
+    pregnant: 222,
+    "diabetic-cgm": 233,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 247,
+    biohacker: 248,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
