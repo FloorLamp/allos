@@ -398,7 +398,24 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   });
   // SETTLED: and now it is the panel's top edge exactly.
   const [settled] = await settledBoxes([panel]);
-  expect(await claimedOffset(page)).toBeCloseTo(viewport - settled.y, 0);
+  // SAY WHAT THE TWO NUMBERS ARE MADE OF WHEN THEY DISAGREE. The claim is published as
+  // `window.innerHeight - restingTop` (components/overlay/useBottomEdgeClaim.ts) and
+  // this compares it against `viewportSize().height - settled.y` — two different
+  // heights and two different tops, equal on this box and not necessarily on another.
+  // A bare "expected 571, received 582" cannot say WHICH of the four moved, and that
+  // is the whole diagnosis.
+  const witness = await panel.evaluate((el) => ({
+    innerHeight: window.innerHeight,
+    rectTop: el.getBoundingClientRect().top,
+    height: el.getBoundingClientRect().height,
+    transform: getComputedStyle(el).transform,
+  }));
+  expect(
+    await claimedOffset(page),
+    `claim vs panel: viewportSize=${viewport} innerHeight=${witness.innerHeight} ` +
+      `settled.y=${settled.y} rectTop=${witness.rectTop} ` +
+      `panelHeight=${witness.height} transform=${witness.transform}`
+  ).toBeCloseTo(viewport - settled.y, 0);
   // The reading above really was taken mid-flight — a running keyframe, and the
   // panel still BELOW where it comes to rest. Both halves of that, because a
   // keyframe can be running with the panel already there.
