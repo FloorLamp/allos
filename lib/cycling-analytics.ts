@@ -584,21 +584,37 @@ export const SPLIT_INTERVALS_M: Record<DistanceUnit, number> = {
   mi: 5 * 1609.344,
 };
 
-// The splits of a ride that are COMPARABLE across rides: those that actually
-// covered the interval. `distanceSplits` appends a final short split whenever the
-// ride's tail reaches 30% of the interval, and a 1.7 km run-out is not a candidate
-// for "fastest 5 km". Only the last split can be short, so this is exact rather
-// than a tolerance.
+// The splits of a ride that are COMPARABLE across rides: those the ride had
+// actually covered the interval to reach. `distanceSplits` appends a final short
+// split whenever the ride's tail reaches 30% of the interval, and a 1.7 km run-out
+// is not a candidate for "fastest 5 km".
 //
-// A split may OVERSHOOT the interval by up to one sample of travel, because the
-// cursor stops at the first sample past the boundary. That biases a split's time
-// upward — against claiming a record — which is the safe direction, so it is left
-// uncorrected rather than scaled.
+// CUMULATIVE, NOT PER-SPLIT, and that is the whole subtlety. A split's own
+// `distanceM` is measured between two SAMPLES, so a split that overshot its
+// boundary hands the next one a start line past it and leaves it a few metres
+// short of the interval — `distanceM >= intervalM` then drops a split the ride
+// plainly rode. Measured on synthetic constant-speed rides at 1s sampling: of 12
+// full 5 km splits in a 60 km ride, the per-split test kept 5. The cumulative
+// question ("had the ride covered k intervals by the end of split k?") is the one
+// the boundaries were built from, so it answers exactly.
+//
+// The slack is `distanceM`'s own rounding: each split is rounded to a whole metre,
+// so k splits drift at most k/2 metres from the distance actually ridden. It is
+// three orders of magnitude below the 30% shortfall that defines a tail split, so
+// no run-out can slip through it.
+//
+// A split may still OVERSHOOT the interval by up to one sample of travel. That
+// biases its time upward — against claiming a record — which is the safe
+// direction, so it is left uncorrected rather than scaled.
 export function comparableSplits(
   splits: SessionDistanceSplit[],
   intervalM: number
 ): SessionDistanceSplit[] {
-  return splits.filter((split) => split.distanceM >= intervalM);
+  let coveredM = 0;
+  return splits.filter((split, index) => {
+    coveredM += split.distanceM;
+    return coveredM >= (index + 1) * (intervalM - 0.5);
+  });
 }
 
 export function powerCurveLabel(seconds: number): string | null {

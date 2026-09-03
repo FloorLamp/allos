@@ -35,7 +35,14 @@
 // order, ride id) are arbitrary — a rule whose expected answer is also what
 // ordering alone produces is a rule no test can really check.
 
-import type { SessionDistanceSplit } from "./cycling-analytics";
+// The ride's own rows, as narrow as the ranking needs them. `SessionDistanceSplit`
+// is structurally assignable, so the detail page passes its rendered splits
+// straight in; the dashboard, which has only cached summary numbers and never a
+// stream, can build the same shape from those. One rule, both readers.
+export interface RideEfforts {
+  powerCurve: readonly { seconds: number; watts: number }[];
+  splits: readonly { index: number; timeSec: number }[];
+}
 
 // How deep the markers go. Strava shows three; past third place a row is just a
 // row, and a table of medals says nothing.
@@ -100,10 +107,7 @@ const faster = (a: number, b: number) => a < b;
  * forget — an estimated-power ride summarises to an empty curve and cannot enter.
  */
 export function rideBests(
-  ride: {
-    powerCurve: readonly { seconds: number; watts: number }[];
-    splits: readonly SessionDistanceSplit[];
-  },
+  ride: RideEfforts,
   priors: readonly PriorRide[]
 ): RideBests {
   // The population of each kind is the rides that could actually have competed in
@@ -193,4 +197,79 @@ export function comparedWindowText(
   return `Compared with ${comparedRides - 1} earlier ride${
     comparedRides - 1 === 1 ? "" : "s"
   } with ${subject}.`;
+}
+
+// ── THE POST-RIDE CELEBRATION (#3195 parts 3 and 4) ────────────────────────────
+//
+// One statement per qualifying ride, assembled from the ranks above by the same
+// fixed-template rule: it names the best and then the population it was best of,
+// in the same sentence, so the claim can never be read as a lifetime one the data
+// cannot support (#2385).
+
+// Which single row a ride's celebration names. THE LONGEST POWER DURATION IT WON,
+// because that is the effort a rider recognises — a five-second best is a sprint
+// out of a junction, a forty-five-minute best is the ride. A ride that won no
+// power duration falls back to its fastest split; one that won nothing, or that is
+// the FIRST ride of its kind (`comparedRides === 1`, where "best" would only mean
+// "only"), earns no statement at all.
+export interface RideBestHeadline {
+  kind: "power" | "splits";
+  // Power-curve duration in seconds, or the winning split's own `index`.
+  key: number;
+  comparedRides: number;
+}
+
+export function rideBestHeadline(bests: RideBests): RideBestHeadline | null {
+  const power = bests.power
+    .filter((entry) => entry.rank === 1)
+    .sort((a, b) => b.seconds - a.seconds)[0];
+  if (power && bests.comparedPowerRides > 1) {
+    return {
+      kind: "power",
+      key: power.seconds,
+      comparedRides: bests.comparedPowerRides,
+    };
+  }
+  const split = bests.splits.find((entry) => entry.rank === 1);
+  if (split && bests.comparedSplitRides > 1) {
+    return {
+      kind: "splits",
+      key: split.index,
+      comparedRides: bests.comparedSplitRides,
+    };
+  }
+  return null;
+}
+
+/**
+ * The celebration's sentence. `subject` is what was won, already worded and
+ * unit-formatted by the caller that knows the reader's units ("45 min power",
+ * "5 km split"); everything after it is this module's, so the population is
+ * stated the same way here as under the tables.
+ */
+export function rideBestStatementDetail(
+  subject: string,
+  headline: RideBestHeadline
+): string {
+  const noun = headline.kind === "power" ? "recorded power" : "recorded splits";
+  return `Best ${subject} of ${headline.comparedRides} rides with ${noun}`;
+}
+
+/**
+ * The segment line (#3195 part 4). `names` are the ride's `pr_rank = 1` efforts.
+ *
+ * NO POPULATION PHRASE HERE, and that is deliberate rather than an oversight: a
+ * segment PR is the PROVIDER's own rank over the provider's own effort history,
+ * not a comparison this module made, so it carries no claim about what Allos has
+ * seen and must not borrow the sentence that does.
+ */
+export function segmentPrStatement(
+  names: readonly string[]
+): { value: string; detail: string } | null {
+  if (names.length === 0) return null;
+  if (names.length === 1) return { value: names[0]!, detail: "Segment PR" };
+  return {
+    value: `${names.length} segments`,
+    detail: `Segment PRs: ${names.join(", ")}`,
+  };
 }

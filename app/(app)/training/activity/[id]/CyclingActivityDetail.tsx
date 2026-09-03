@@ -418,6 +418,28 @@ export default async function CyclingActivityDetail(props: {
     }
     return trace;
   });
+  // THE MEDALS AND THE WINDOW THEY MEAN (#3195). `data.bests` ranked this ride's
+  // rows against the rides BEFORE it, so these markers are what the ride earned on
+  // the day and do not rewrite themselves when a later ride beats it. Lookups
+  // rather than a per-row scan, because both tables render every row.
+  const powerRankBySeconds = new Map(
+    data.bests.power.map((entry) => [entry.seconds, entry.rank])
+  );
+  const splitRankByIndex = new Map(
+    data.bests.splits.map((entry) => [entry.index, entry.rank])
+  );
+  // The honesty line under each table. It is NOT conditional on a marker being
+  // earned: "Compared with 3 earlier rides with recorded power" is exactly the
+  // sentence a rider needs when nothing placed, and the first ride with power says
+  // so instead of printing a wall of firsts (#2385).
+  const powerWindowText = comparedWindowText(
+    data.bests.comparedPowerRides,
+    "power"
+  );
+  const splitWindowText = comparedWindowText(
+    data.bests.comparedSplitRides,
+    "splits"
+  );
   const hasPowerProfile =
     data.powerCurve.length > 0 ||
     !!data.cyclingLoad ||
@@ -1046,6 +1068,11 @@ export default async function CyclingActivityDetail(props: {
                     </tbody>
                   </ResponsiveTable>
                 </div>
+                {splitWindowText ? (
+                  <CardFootnote data-testid="ride-splits-window">
+                    {splitWindowText}
+                  </CardFootnote>
+                ) : null}
               </CardGroup>
             ) : null}
 
