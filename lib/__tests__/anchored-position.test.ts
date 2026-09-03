@@ -238,6 +238,28 @@ describe("anchoredPosition — horizontal placement", () => {
     ).toBe(pinned.top - ANCHOR_GAP - 40);
   });
 
+  // THE EXEMPTION (#4917). `capHeight: false` is the tooltip's only way to opt
+  // out of the #4776 bound, and it must show up in what comes back rather than
+  // in a value the caller happens not to read.
+  it("reports maxHeight: null when asked for capHeight: false, and still places the panel", () => {
+    const anchor = field(700); // little room below, forcing the same flip logic
+    const bounded = anchoredPosition({
+      anchor,
+      panel: { height: 224, width: 200 },
+      viewport: VIEWPORT,
+    });
+    const unbounded = anchoredPosition({
+      anchor,
+      panel: { height: 224, width: 200 },
+      viewport: VIEWPORT,
+      capHeight: false,
+    });
+    expect(unbounded.maxHeight).toBeNull();
+    // Placement — the part a height cap has nothing to do with — is unaffected.
+    expect(unbounded.top).toBe(bounded.top);
+    expect(unbounded.left).toBe(bounded.left);
+  });
+
   it("takes the anchor's width only when asked, and reports it", () => {
     const anchor = field(100, 20, 240);
     expect(

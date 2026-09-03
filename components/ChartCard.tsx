@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { IconArrowsMaximize } from "@tabler/icons-react";
 import type { AppRoute } from "@/lib/hrefs";
+import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 
 // THE full-size chart card (issue #1488).
 //
@@ -75,6 +76,7 @@ export default function ChartCard({
   hideTitle = false,
   headline,
   description,
+  about,
   note,
   detailHref,
   detailTitle,
@@ -106,7 +108,15 @@ export default function ChartCard({
   headline?: ReactNode;
   // A one-line explanation under the title, inside the tap target.
   description?: ReactNode;
-  // An honesty caption ABOVE the plot, OUTSIDE the tap target (it is often long).
+  // A constant explainer about what this card IS — the same sentence on every
+  // visit. Rendered as the title's own info glyph (InfoTooltipIcon), never as
+  // running prose under the header (#4927). A fact about the data belongs in
+  // `note` instead.
+  about?: string;
+  // A FACT ABOVE the plot, OUTSIDE the tap target — it is about the data in
+  // front of the reader and changes with it (the practice-consistency
+  // sentence). A constant explainer about what the card IS belongs in `about`,
+  // not here (#4927).
   note?: ReactNode;
   // Where the card taps through to. `null` is legal ONLY with a same-line
   // `detail-none: <why>` comment at the call site — see the guard scan.
@@ -143,15 +153,18 @@ export default function ChartCard({
   const heading = (
     <>
       <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-        <Heading
-          className={
-            hideTitle
-              ? "sr-only"
-              : "truncate font-semibold text-slate-800 transition-colors group-hover:text-brand-800 group-hover:underline dark:text-slate-100 dark:group-hover:text-brand-300"
-          }
-        >
-          {title}
-        </Heading>
+        <span className="flex min-w-0 items-baseline gap-1">
+          <Heading
+            className={
+              hideTitle
+                ? "sr-only"
+                : "truncate font-semibold text-slate-800 transition-colors group-hover:text-brand-800 group-hover:underline dark:text-slate-100 dark:group-hover:text-brand-300"
+            }
+          >
+            {title}
+          </Heading>
+          {about != null && <InfoTooltipIcon label={about} />}
+        </span>
         {headline != null && (
           <span
             className="shrink-0 text-lg font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100"

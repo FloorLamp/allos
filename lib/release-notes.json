@@ -107,6 +107,230 @@
           "category": "Interface",
           "title": "Setting an exact time shows a labelled box instead of a blank one",
           "issues": [4384]
+        },
+        {
+          "pr": 4803,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "Drinks show up in the food message under the food-buttons setting",
+          "issues": []
+        },
+        {
+          "pr": 4803,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The substance setting names its own caps: nicotine, cannabis, yours",
+          "issues": []
+        },
+        {
+          "pr": 4820,
+          "kind": "fix",
+          "category": "Sleep",
+          "title": "Sleep times use the zone you were in that night, not the one you are in now",
+          "issues": []
+        },
+        {
+          "pr": 4821,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A glyph button's tooltip says the same name a screen reader reads",
+          "issues": []
+        },
+        {
+          "pr": 4822,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "Records group visits and diagnoses by the kind of care they belong to",
+          "issues": []
+        },
+        {
+          "pr": 4826,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "A stale vitals or weight reading offers a door to log a new one",
+          "issues": []
+        },
+        {
+          "pr": 4826,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Standing readings say which app they came from, Manual included",
+          "issues": []
+        },
+        {
+          "pr": 4829,
+          "kind": "fix",
+          "category": "Documents",
+          "title": "A pasted imaging report is stored whole, not just its impression",
+          "issues": []
+        },
+        {
+          "pr": 4829,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Retest lines write their dates the way you have chosen to see dates",
+          "issues": []
+        },
+        {
+          "pr": 4830,
+          "kind": "fix",
+          "category": "Connected apps",
+          "title": "A synced weigh-in keeps the time the scale measured it",
+          "issues": []
+        },
+        {
+          "pr": 4832,
+          "kind": "fix",
+          "category": "History",
+          "title": "Your usual offers lead History's add door, above the per-kind row",
+          "issues": []
+        },
+        {
+          "pr": 4833,
+          "kind": "feature",
+          "category": "Training",
+          "title": "The Training Log moves onto the same rows the rest of History uses",
+          "issues": []
+        },
+        {
+          "pr": 4868,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The fever chart's last date label stays inside the card",
+          "issues": []
+        },
+        {
+          "pr": 4871,
+          "kind": "fix",
+          "category": "History",
+          "title": "Symptoms joins the day's Add row, and its standalone card retires",
+          "issues": []
+        },
+        {
+          "pr": 4873,
+          "kind": "feature",
+          "category": "Training",
+          "title": "The workout message flags a niggle in what today's session will touch",
+          "issues": []
+        },
+        {
+          "pr": 4880,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "A months-old flagged lab can be acknowledged where you see it",
+          "issues": []
+        },
+        {
+          "pr": 4881,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The clock button is the only way the time question is spelled",
+          "issues": []
+        },
+        {
+          "pr": 4883,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A panel that opens near an edge is bounded by its room, and scrolls",
+          "issues": []
+        },
+        {
+          "pr": 4886,
+          "kind": "fix",
+          "category": "General",
+          "title": "The dashboard's act row names what it logs",
+          "issues": []
+        },
+        {
+          "pr": 4886,
+          "kind": "feature",
+          "category": "General",
+          "title": "A dormant vitals line offers a reading",
+          "issues": []
+        },
+        {
+          "pr": 4889,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "PRN ceilings judge the last 24 hours, not the calendar day",
+          "issues": []
+        },
+        {
+          "pr": 4896,
+          "kind": "feature",
+          "category": "History",
+          "title": "The day is one stream, and the add layer folds behind + Add",
+          "issues": []
+        },
+        {
+          "pr": 4897,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "A finished practice gets a note once your watch's data catches up",
+          "issues": [4775]
+        },
+        {
+          "pr": 4897,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "Drink evenings sit beside the night's lowest heart rate",
+          "issues": [4775]
+        },
+        {
+          "pr": 4904,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "The PRN detail block's write side wears the same Today header",
+          "issues": []
+        },
+        {
+          "pr": 4910,
+          "kind": "feature",
+          "category": "General",
+          "title": "Setup suggestions say what each one gets you",
+          "issues": []
+        },
+        {
+          "pr": 4913,
+          "kind": "feature",
+          "category": "Connected apps",
+          "title": "A connection can be told to treat its glucose as a continuous sensor",
+          "issues": [3182]
+        },
+        {
+          "pr": 4921,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "A course-start correction that cannot apply refuses the dose",
+          "issues": [4909]
+        },
+        {
+          "pr": 4922,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "A fever reading opens the episode for whoever it belongs to",
+          "issues": [4712]
+        },
+        {
+          "pr": 4922,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "The first fever of the night reaches the other caregiver's phone",
+          "issues": [4712]
+        },
+        {
+          "pr": 4923,
+          "kind": "fix",
+          "category": "History",
+          "title": "The day bar names the day, even when nothing is on it",
+          "issues": [4918]
+        },
+        {
+          "pr": 4923,
+          "kind": "fix",
+          "category": "History",
+          "title": "Today's day view no longer shows an arrow back to today",
+          "issues": [4918]
         }
       ]
     },

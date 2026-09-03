@@ -4,7 +4,14 @@ import ts from "typescript-api";
 import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const IMPLEMENTATION = "components/Chip.tsx";
+// `components/Chip.tsx` owns the nav/filter roles; `components/OfferRow.tsx` owns the
+// offer substrate's compact half, `LabeledVerbChip` (issue #4753) — both mint raw
+// `chip-*` classNames as the primitive's own paint, so both are exempt from the
+// residual scan below.
+const IMPLEMENTATION = new Set([
+  "components/Chip.tsx",
+  "components/OfferRow.tsx",
+]);
 const TOKENS = new Set(["chip-base", "chip-nav", "chip-filter", "chip-offer"]);
 
 function sourceFiles(dir: string): string[] {
@@ -23,7 +30,7 @@ function tokens(text: string): string[] {
 }
 
 function rawChipTokens(file: string, text?: string): string[] {
-  if (file === IMPLEMENTATION) return [];
+  if (IMPLEMENTATION.has(file)) return [];
   const source = ts.createSourceFile(
     file,
     text ?? fs.readFileSync(path.join(ROOT, file), "utf8"),

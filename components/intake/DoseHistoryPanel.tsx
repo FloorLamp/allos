@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
-import OfferRow from "@/components/OfferRow";
+import OfferRow, { LabeledVerbChip } from "@/components/OfferRow";
 import CardSectionHeader from "@/components/CardSectionHeader";
-import { LabeledVerbChip } from "@/components/Chip";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";

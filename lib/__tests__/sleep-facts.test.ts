@@ -26,6 +26,7 @@ function night(
     sleepEditHours: null,
     sleepSampleId: null,
     moodLogId: null,
+    sleepSuspect: false,
     ...overrides,
   };
 }
