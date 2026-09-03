@@ -979,6 +979,12 @@ test.describe("the hit-area mechanism reaches the floor it claims (#3486)", () =
   }) => {
     await page.goto("/nutrition");
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
+    // EVERY `.tap-target` ON THIS PAGE IS IN THE ADD LAYER, and the add layer folds
+    // behind one door (#4477). Left closed, this sweep measures ZERO controls — which
+    // the visibleCount guard below correctly reds on, and which is the sweep asking
+    // its question of a page that is not showing its controls rather than of the
+    // controls themselves.
+    await openFoodAdd(page);
 
     // Measure visibility and geometry from the SAME rendered snapshot. A locator
     // `:visible` filter and a later `evaluateAll` can straddle a responsive/details
