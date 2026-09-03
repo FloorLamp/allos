@@ -203,8 +203,15 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // recharts' connectNulls is all-or-nothing, and the declared policy is
     // neither. The runs are what express it.
     expect(/const strokeRuns/.test(funnel)).toBe(true);
-    const runs = funnel.slice(funnel.indexOf("strokeRuns.length > 1 &&"));
-    expect(runs.slice(0, 900)).toContain("connectNulls");
+    // Bounded by the block that FOLLOWS the runs, not by a character count: the
+    // count was an arbitrary 900 and #4924 pushed `connectNulls` past it with a
+    // comment. The companion-mark lines below also carry a `connectNulls`, so the
+    // window still has to end before them or a neighbour could satisfy this.
+    const runs = funnel.slice(
+      funnel.indexOf("strokeRuns.length > 1 &&"),
+      funnel.indexOf("THE SECOND ACCOUNT OF A DAY")
+    );
+    expect(runs).toContain("connectNulls");
   });
 
   it("the runs carry stroke only — one tooltip and one set of marks survive", () => {
