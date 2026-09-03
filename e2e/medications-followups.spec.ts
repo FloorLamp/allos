@@ -127,6 +127,65 @@ function seedOwnPrnMed(): string {
   }
 }
 
+// ─────────────────── TEMPORARY CI PROBE (#4862) — NEVER MERGE ───────────────
+// This branch is an INSTRUMENT, not a fix, and is thrown away after one CI job.
+// #4908 could not reproduce `medications-followups.spec.ts` :317's red in five
+// local configurations, so the only box that reaches it is the CI runner. The
+// two live candidates need different fixes and a rendering assertion alone
+// cannot separate them, because `dose-history` is optimistic:
+//   1. the course-start correction never applied (a silent `setCourseStartDate`
+//      compare-and-set miss, or `courseToExtend` coming back empty), or
+//   2. it applied and the field rendered an older value.
+// So print BOTH sides — the database's own answer and what the field actually
+// rendered — at each stage of the write, on one greppable line per stage.
+// Fixture values only: this goes into a public job log. Everything is wrapped so
+// a probe fault can never change whether the test passes.
+const PROBE_4862 = "ALLOS-PROBE-4862";
+
+function probe4862(stage: string, extra: Record<string, unknown> = {}): void {
+  let payload: Record<string, unknown>;
+  try {
+    const db = openWorkerDb();
+    try {
+      const item = db
+        .prepare(
+          "SELECT id FROM intake_items WHERE profile_id = 1 AND name = ?"
+        )
+        .get(OWN_PRN_MED) as { id: number } | undefined;
+      payload = {
+        stage,
+        worker: process.env.TEST_WORKER_INDEX ?? null,
+        db: workerDbPath(),
+        frozenNow: frozenNow().toISOString(),
+        zone: ownedZone(),
+        itemId: item?.id ?? null,
+        courses: item
+          ? db
+              .prepare(
+                `SELECT id, started_on, stopped_on FROM medication_courses
+                  WHERE item_id = ? ORDER BY id`
+              )
+              .all(item.id)
+          : [],
+        logs: item
+          ? db
+              .prepare(
+                `SELECT id, date, status, occurred_at FROM intake_item_logs
+                  WHERE item_id = ? ORDER BY id`
+              )
+              .all(item.id)
+          : [],
+        ...extra,
+      };
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    payload = { stage, probeError: String(err), ...extra };
+  }
+  console.log(`${PROBE_4862} ${JSON.stringify(payload)}`);
+}
+
 function removeOwnedSideEffect(effect: string) {
   const db = new Database(workerDbPath());
   try {
@@ -418,6 +477,7 @@ test("logs, edits, and deletes a historical medication dose", async ({
   const updatedAmount = `${250 + testInfo.repeatEachIndex} mg`;
   const seededStart = seedOwnPrnMed();
   try {
+    probe4862("A-seeded", { seededStart });
     await page.goto("/medications");
     // Row→detail href nav owned by the shared med-card driver (#868 class-2).
     await openMedDetailViaHref(page, OWN_PRN_MED);
@@ -474,6 +534,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     await expect(
       page.getByText(`Logged past dose of ${OWN_PRN_MED}.`)
     ).toBeVisible();
+    // The write the assertion at the end of this test is about has just landed.
+    // If `started_on` is not already `beforeStart` here, candidate 1 is the answer
+    // and nothing later in the test matters.
+    probe4862("B-after-log", { beforeStart, seededStart, maxDate });
     await expect(history).toContainText(loggedAmount);
     await expect(history).toContainText(/(?:3:17am|03:17)/);
     await page.setViewportSize(desktopViewport!);
@@ -540,6 +604,10 @@ test("logs, edits, and deletes a historical medication dose", async ({
     // the same quadrant (#2861).
     await dismissToast(page, "Dose deleted.");
 
+    // Between B and C the test deleted the dose, undid the delete, and deleted it
+    // again. A `started_on` that was right at B and wrong at C was reverted by that
+    // cycle rather than never written.
+    probe4862("C-after-deletes", { beforeStart, seededStart });
     // The administration and course correction are one write: editing immediately
     // afterward must show the selected dose date as the new PRN start. The course dates
     // are behind the stop-date fact now, so the assertion opens it.
@@ -549,6 +617,37 @@ test("logs, edits, and deletes a historical medication dose", async ({
     // The field renders the profile's own date format, so assert the DAY it holds
     // rather than the spelling of it.
     const shown = await dates.getByLabel("Using since").inputValue();
+    // BOTH SIDES AT THE MOMENT OF THE ASSERTION. `shown` is already captured, so
+    // everything below is read-only and cannot move the verdict. The field list is
+    // what the fact actually rendered, so a locator that resolved to the wrong input
+    // is visible here too rather than inferred.
+    probe4862("D-at-assert", {
+      shown,
+      shownDay: (() => {
+        try {
+          return new Date(`${shown} UTC`).toISOString().slice(0, 10);
+        } catch (err) {
+          return `unparseable: ${String(err)}`;
+        }
+      })(),
+      beforeStart,
+      seededStart,
+      maxDate,
+      fields: await dates.locator("input").evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const input = node as HTMLInputElement;
+          return {
+            name: input.name,
+            type: input.type,
+            ariaLabel: input.getAttribute("aria-label"),
+            labels: Array.from(input.labels ?? []).map((label) =>
+              (label.textContent ?? "").trim()
+            ),
+            value: input.value,
+          };
+        })
+      ),
+    });
     expect(new Date(`${shown} UTC`).toISOString().slice(0, 10)).toBe(
       beforeStart
     );
