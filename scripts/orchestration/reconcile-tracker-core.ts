@@ -93,6 +93,8 @@
 // the TESTABLE-TO-CITED RATIO, not the totals: 46 of 103 today, and a run
 // approaching zero is a detector that has lost its grip, not a tidy tracker.
 
+import { TITLE_MAX_CHARACTERS, titleLength } from "./title-rule.mjs";
+
 /**
  * How the run was configured, derived from the environment and the command
  * line as ARGUMENTS rather than read from the globals — the same discipline
@@ -643,7 +645,8 @@ export type FindingKind =
   | "moved-line"
   | "closed-dependency"
   | "absent-premise-symbol"
-  | "open-umbrella-claim";
+  | "open-umbrella-claim"
+  | "long-title";
 
 export type FindingBucket = "changed" | "unverifiable";
 
@@ -1351,6 +1354,39 @@ export function gatherEvidence(
   const open = new Set(
     snapshot.issues.filter((i) => i.state === "open").map((i) => i.number)
   );
+
+  // The title rule (#4983), and this module's standing posture applies to it
+  // exactly: FLAG, never fix. Deciding which 72 characters carry an issue's
+  // truth is a human read, and nothing here proposes one — the finding carries
+  // no `correction`, so no patch is proposable from it, and the applier's only
+  // write is the issue BODY in any case.
+  //
+  // OPEN ISSUES ONLY. A closed issue's title is a record somebody has finished
+  // reading, and the ruling leaves closed issues alone.
+  //
+  // Gathered HERE, after the per-issue loop, so a long title does not evict an
+  // issue from `verifiedClean` — that list answers "did this issue's claims
+  // about main hold", and 96% of open titles are over the rule today, so
+  // folding the two in would empty the list and cost the report its clean
+  // half until the backlog pass lands.
+  //
+  // LENGTH ONLY, which is what the ruling's reconcile half asks for. The
+  // clause and tail halves are the merge gate's, on PR titles; flagging every
+  // colon in the tracker would list 162 of 315 issues and train the reader to
+  // skim the section.
+  for (const issue of snapshot.issues) {
+    if (issue.state !== "open") continue;
+    const length = titleLength(issue.title);
+    if (length <= TITLE_MAX_CHARACTERS) continue;
+    findings.push({
+      kind: "long-title",
+      bucket: "unverifiable",
+      issue: issue.number,
+      anchor: issue.title,
+      detail: `the title is ${length} characters — the rule is ${TITLE_MAX_CHARACTERS} max, one clause, no colon or dash tail (#4983); retitling is a human read, and this tool never writes a title`,
+    });
+  }
+
   for (const pr of snapshot.mergedPrs) {
     for (const claim of parsePrClaims(pr)) {
       if (claim.form !== "part-of") continue;
@@ -1413,6 +1449,7 @@ const KIND_HEADINGS: Record<FindingKind, string> = {
   "closed-dependency": "Dependencies on closed issues",
   "absent-premise-symbol": "Bug premises naming absent symbols",
   "open-umbrella-claim": "Umbrella claims to verify and tick",
+  "long-title": "Titles over the 72-character rule",
 };
 
 /**

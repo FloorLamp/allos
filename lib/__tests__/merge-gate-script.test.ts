@@ -11,6 +11,11 @@ import {
   readinessVerdict,
   receiptVerdict,
 } from "../../scripts/orchestration/merge-gate-core.mjs";
+import {
+  TITLE_MAX_CHARACTERS,
+  titleLength,
+  titleRuleRefusal,
+} from "../../scripts/orchestration/title-rule.mjs";
 
 // THE MERGE GATE. Verdict branches run against the pure core; the smaller
 // stub-curl set drives the real CLI where process, auth and transport matter.
@@ -108,6 +113,10 @@ function fixture(overrides: Fixture) {
       draft: false,
       head: { sha: HEAD },
       user: { login: "author-agent" },
+      // A REAL title, not an absent one: the gate checks it (#4983), so a
+      // fixture with none would run every case below past a check that never
+      // fired and read as if it had.
+      title: "Rank a ride against the rides that came before it",
       ...overrides.pr,
     },
     reviews: overrides.reviews ?? [
@@ -446,6 +455,98 @@ describe("merge-gate.mjs", () => {
   it("still treats a non-403 GraphQL failure as transient (exit 2)", () => {
     const run = runGate({ graphqlStatus: 502 });
     expect(run.status).toBe(2);
+  });
+
+  // THE TITLE RULE (#4983). A squash merge takes this title as the commit
+  // subject, so a title nobody refused is one `git log` carries forever. Both
+  // directions are pinned: a gate that refused a time, a range or a
+  // mid-clause parenthetical would be routed around within a day, and the
+  // three shapes it must not refuse are all live in this repo's own tracker.
+  it.each([
+    ["a compliant clause", "Rank a ride against the rides that came before it"],
+    ["exactly 72 characters", "R".repeat(TITLE_MAX_CHARACTERS)],
+    // A colon inside a token is not a clause boundary: a time, a line
+    // citation and a CSS pseudo-element, all three taken from open issues.
+    ["a time", "The 9:30 sync drops HRV"],
+    ["a line citation", "auth.test.ts:326 reads the frozen clock"],
+    ["a pseudo-element", "The sweep is blind to ::after readouts"],
+    // A PAIR of spaced dashes encloses a parenthetical — still one clause.
+    ["a mid-clause dash pair", "The walk exists twice — in A and in B — and it drifts"],
+    // Ranges and compounds are not separators, and U+2212 is arithmetic.
+    ["an unspaced dash", "The 10:00Z–12:00Z band guesses the zone"],
+    ["a minus sign", "Top − m42 assumes a pure translate"],
+    ["a trailing reference", "The temperature fold offers the dose (#4712 judgement 1)"],
+    // Curly apostrophes are already in this repo's titles; this pair is one
+    // real title either side of the bound, at 71 and (below) 73.
+    [
+      "a curly apostrophe under the bound",
+      "A lane commit’s Fixes keyword closes an issue whose body marked it Refs",
+    ],
+  ])("accepts %s", (_case, title) => {
+    expect(titleRuleRefusal("PR", title)).toBeNull();
+  });
+
+  it.each([
+    ["one character over", "R".repeat(TITLE_MAX_CHARACTERS + 1), "is 73 characters"],
+    [
+      "a curly apostrophe over the bound",
+      "A lane commit’s Fixes keyword closes an issue the PR body had marked Refs",
+      "is 73 characters",
+    ],
+    ["a colon tail", "Fix the reader: it dropped three types", "carries a colon tail"],
+    ["a colon tail nine characters in", "Main red: the notice count is #4370 wording", "carries a colon tail"],
+    ["an em-dash tail", "Fix the reader — it dropped three types", "carries a dash tail"],
+    ["a hyphen tail", "Fix the reader - it dropped three types", "carries a dash tail"],
+    ["a dash pair AND a tail", "The walk exists twice — in A and in B — and it drifts — badly", "carries a dash tail"],
+    // The exception is about the TAIL, so a trailing reference is still
+    // counted in the length: the squash subject carries it.
+    ["a trailing reference over the bound", `${"R".repeat(60)} (#4712 judgement 1)`, "is 80 characters"],
+    ["both halves at once", `Fix the reader: ${"R".repeat(70)}`, "is 86 characters and carries a colon tail"],
+  ])("refuses %s", (_case, title, clause) => {
+    const refusal = titleRuleRefusal("PR", title);
+    expect(refusal).toContain(`PR title ${clause}`);
+    // The rule is QUOTED, so the reader rewriting the title need not look it up.
+    expect(refusal).toContain(
+      "the rule is 72 characters max, one clause, no colon or dash tail (#4983)"
+    );
+  });
+
+  // 72 characters OF WHAT: grapheme clusters, because the rule exists so a
+  // title survives a truncating list and a grapheme is what a reader sees
+  // there. The three counts agree on every title in the live tracker, so the
+  // choice can only bite on an emoji or a combining mark — and there the
+  // reader's count is the one that should decide.
+  it("counts what a reader counts, not UTF-16 code units", () => {
+    const flag = "🇬🇧";
+    expect(flag.length).toBe(4);
+    expect([...flag].length).toBe(2);
+    expect(titleLength(flag)).toBe(1);
+    const title = `${flag.repeat(72)}`;
+    expect(titleLength(title)).toBe(72);
+    expect(titleRuleRefusal("PR", title)).toBeNull();
+    expect(titleRuleRefusal("PR", `${flag.repeat(73)}`)).toContain(
+      "is 73 characters"
+    );
+  });
+
+  it("refuses through the CLI in the shape every other refusal prints", () => {
+    const run = runGate({
+      pr: { title: "Fix the reader: it dropped three types" },
+    });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain("FAIL: PR title carries a colon tail");
+    expect(run.stdout).toContain("GATE CLOSED — 1 failure(s)");
+    // The published status is the evaluator's own clause, inside GitHub's limit.
+    const status = run.stdout
+      .split("\n")
+      .find((line) => line.startsWith("STATUS: "))!;
+    expect(status.length - "STATUS: ".length).toBeLessThanOrEqual(140);
+    expect(status).toContain("gate CLOSED — PR title carries a colon tail");
+  });
+
+  it("names the length it measured when the title passes", () => {
+    const run = runGate({});
+    expect(run.stdout).toContain("PASS: PR title is one clause of 49 characters");
   });
 
   it("closes on a draft PR — PRs open READY", () => {
