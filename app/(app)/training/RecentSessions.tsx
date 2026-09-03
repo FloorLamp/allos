@@ -1,4 +1,5 @@
 import DestinationLink from "@/components/DestinationLink";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import OverlayDestination from "@/components/OverlayDestination";
 import { ActivityTypeIcon } from "@/components/ui";
 import ActivityPartRows from "@/components/activity/ActivityPartRows";
@@ -26,10 +27,10 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
       data-testid="recent-sessions"
       data-scope={view.scope}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <h4 className="section-label">
-          {view.scope === "week" ? "What you did" : "Last session"}
-        </h4>
+      <CardSectionHeader
+        title={view.scope === "week" ? "What you did" : "Last session"}
+        variant="label"
+      >
         <DestinationLink
           href="/training?tab=log"
           data-testid="recent-sessions-log-link"
@@ -37,7 +38,7 @@ export default function RecentSessions({ view }: { view: RecentSessionsView }) {
         >
           {view.more > 0 ? `${view.more} more in Log` : "Open log"}
         </DestinationLink>
-      </div>
+      </CardSectionHeader>
 
       <ul className="mt-3 space-y-4">
         {view.rows.map((row) => (
