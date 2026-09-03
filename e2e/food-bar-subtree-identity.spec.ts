@@ -47,24 +47,27 @@ interface Reading {
   foldIsTheSameNode: boolean;
   barIsTheSameNode: boolean;
   contentVisibility: string;
-  open: boolean | null;
+  heldOpen: boolean | null;
+  liveOpen: boolean | null;
 }
 
-async function readThroughHeld(
-  page: Page,
-  held: JSHandle
-): Promise<Reading> {
+async function readThroughHeld(page: Page, held: JSHandle): Promise<Reading> {
   return page.evaluate(
     ([handles, more, bar]) => {
       const h = handles as { more: Element | null; bar: Element | null };
       const fold = h.more as HTMLDetailsElement | null;
+      const live = document.querySelector<HTMLDetailsElement>(more as string);
       return {
-        foldIsTheSameNode: document.querySelector(more as string) === fold,
+        foldIsTheSameNode: live === fold,
         barIsTheSameNode: document.querySelector(bar as string) === h.bar,
         contentVisibility: fold
           ? getComputedStyle(fold, "::details-content").contentVisibility
           : "",
-        open: fold?.open ?? null,
+        heldOpen: fold?.open ?? null,
+        // The user-facing half, and it is a DIFFERENT question: a replaced fold leaves
+        // the detached node open and puts a CLOSED one on the screen, so reading only
+        // the held node would report the state nobody can see.
+        liveOpen: live?.open ?? null,
       };
     },
     [held, MORE, BAR] as const
@@ -86,8 +89,10 @@ async function expectStillTheSameFold(
   expect(reading.foldIsTheSameNode, story).toBe(true);
   expect(reading.barIsTheSameNode, story).toBe(true);
   // And the user's own state came through the update, which is the whole reason the
-  // identity matters: a replaced uncontrolled `<details>` comes back closed.
-  expect(reading.open, story).toBe(true);
+  // identity matters: a replaced uncontrolled `<details>` comes back closed, so this is
+  // read off the fold that is ON THE SCREEN, not off the one this test is holding.
+  expect(reading.liveOpen, story).toBe(true);
+  expect(reading.heldOpen, story).toBe(true);
 }
 
 test("the food log bar updates its overflow fold instead of replacing it (#4815)", async ({
@@ -118,7 +123,10 @@ test("the food log bar updates its overflow fold instead of replacing it (#4815)
   // 2. THE SIBLING FOLD. A controlled `<details>` two slots above this one in the same
   //    section; its state change re-renders the whole bar.
   await page.getByTestId("food-when-summary").click();
-  await expect(page.getByTestId("food-eating-time")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("food-eating-time")).toHaveAttribute(
+    "open",
+    ""
+  );
   await expectStillTheSameFold(page, held, "toggling the eating-time fold");
 
   // 3. A SERVING TAP. A Server Action whose response revalidates `/nutrition`, so the
@@ -134,7 +142,11 @@ test("the food log bar updates its overflow fold instead of replacing it (#4815)
   const before = Number((await count.innerText()).trim());
   await settledClick(page, page.getByTestId(`log-${slug}`));
   await expect(count).toHaveText(String(before + 1));
-  await expectStillTheSameFold(page, held, "a serving tap and its revalidation");
+  await expectStillTheSameFold(
+    page,
+    held,
+    "a serving tap and its revalidation"
+  );
 
   // 4. THE DAY. Moving off the seeded day is what arms the async `fetched` read
   //    (#4815's first named candidate): a Server Action reply that lands a second
