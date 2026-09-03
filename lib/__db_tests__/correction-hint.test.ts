@@ -17,7 +17,8 @@ import { beforeEach, afterEach, describe, expect, it } from "vitest";
 
 import { db, today } from "@/lib/db";
 import { setTimezone } from "@/lib/settings";
-import { buildFoodNudge, consentedFoodTaps } from "@/lib/notifications/food";
+import { buildFoodNudge } from "@/lib/notifications/food";
+import { getRecentFoodTaps } from "@/lib/queries/nutrition";
 import { withDoseCorrections } from "@/lib/notifications/intake";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { now as clockNow } from "@/lib/clock";
@@ -409,7 +410,7 @@ function foodBurstOf(profileId: number) {
   // The food burst as the nudge's own gather derives it (#3330's consented read, then
   // `correctionBursts`), so the picker opens on exactly the burst the keyboard offers.
   const bursts = correctionBursts(
-    consentedFoodTaps(profileId, clockNow()),
+    getRecentFoodTaps(profileId, clockNow()),
     clockNow()
   );
   return bursts[0];

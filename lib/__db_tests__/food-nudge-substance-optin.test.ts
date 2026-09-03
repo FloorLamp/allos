@@ -1,24 +1,22 @@
-// DB INTEGRATION TIER — the per-profile SUBSTANCE-content gate on Telegram (#3330,
-// #3279 ruling 4), driven through the real senders.
+// DB INTEGRATION TIER — alcohol rides the Telegram food nudge under the FOOD-buttons
+// consent, whatever the substance flag says (owner ruling 2026-09-02, narrowing #3330).
 //
-// THE DEFECT. Alcohol is the one substance whose `food_daily_totals` counter IS the
-// substance ledger, so it reaches the Telegram food nudge through the ordinary ranking —
-// a "🍷 Alcohol" button, an "🍷 Alcohol ×2" tally line, a "🕐 Alcohol 07:40 · −30m"
+// THE HISTORY. Alcohol is the one substance whose `food_daily_totals` counter IS the
+// substance ledger, so it reaches the food nudge through the ordinary ranking — a
+// "🍷 Alcohol" button, an "🍷 Alcohol ×2" tally line, a "🕐 Alcohol 07:40 · −30m"
 // eating-time correction row, and a "🕐 Recorded: Alcohol 18:20 (corrected)" statement in
-// the prose — off-device, in a chat one login may share with a household, with no
-// per-profile choice anywhere.
+// the prose. #3330 put every one of those behind `substance_telegram_enabled`, which read
+// "off" for every existing profile: the 🍷 button vanished from the nudge that logs most
+// drinks and the drinks went unlogged. The owner ruled alcohol a food group for reach —
+// the profile-scoped food-buttons consent is the choice — and the substance flag now
+// governs only the substance-log ledger, on the recap (recap-substance-optin.test.ts).
 //
-// WHY THE PREDICATE IS THE WHOLE TRANSPORT. The first version of this spec checked
-// `msg.body` and the buttons' callback data, and a review found three surfaces it could
-// not see: the correction row lives in a button's LABEL, the corrected statement is
-// written by the reconcile SWEEP into an already-delivered message, and the eating-time
-// picker is an `editMessageText` resolved outside the nudge's gather entirely. So
-// `chatText()` below reads every string the transport was asked to put in front of a
-// reader — sent bodies, sent and edited button labels, edited text, and callback toasts —
-// and every row asserts over all of it. A component-by-component check is exactly the
-// shape that missed.
-//
-// Ported to origin/main with the opt-in removed, the opted-out rows below fail.
+// WHY THE PREDICATE IS THE WHOLE TRANSPORT. `chatText()` below reads every string the
+// transport was asked to put in front of a reader — sent bodies, sent and edited button
+// labels, edited text, and callback toasts — and every row asserts over all of it, so a
+// gate reintroduced on ANY of the five surfaces (a rebuild, the reconcile sweep editing an
+// already-delivered message, the eating-time picker resolved outside the nudge builder)
+// fails here rather than silently dropping the drink from one of them.
 
 import {
   afterEach,
@@ -90,8 +88,8 @@ function tap(
 // A profile that drinks: three weeks of alcohol beside one ordinary staple, so alcohol
 // ranks INSIDE the compact six buttons, and two servings logged ON THE WEB in the last
 // half hour, so it also earns a tally entry and a fresh eating-time correction burst.
-// Telegram is fully wired and food logging is on — the consent this issue is about is the
-// one that is NOT yet given. A metronidazole course rides along; see the safety row.
+// Telegram is fully wired and food logging is on — the food-buttons consent is the one
+// that governs the drink. A metronidazole course rides along; see the safety row.
 function seedDrinker(tag: string, chatId: string): number {
   const { profileId } = seedProfile(tag);
   setTimezone(profileId, "UTC");
@@ -189,7 +187,7 @@ function chatText(): string[] {
   return out;
 }
 
-describe("substance content reaches Telegram only after this profile opts in (#3330)", () => {
+describe("alcohol rides the food nudge under the food-buttons consent, whatever the substance flag says", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(NOW));
@@ -201,31 +199,20 @@ describe("substance content reaches Telegram only after this profile opts in (#3
   // spec that runs after it.
   afterEach(() => vi.useRealTimers());
 
-  // THE TABLE: every Telegram surface that can name the substance ledger × the two states
-  // of the opt-in. Five different senders, and they agree because they share one gather —
+  // THE TABLE: every Telegram surface that can name the drink × both states of the
+  // substance flag. Five different senders, and they agree because they share one gather —
   // the unbidden tick, the user-typed `/food`, a fully expanded keyboard (a rebuild asks
-  // for more buttons than the compact six, so a gate that trimmed only the visible head
-  // would leak here), the reconcile sweep editing an already-delivered message, and the
-  // eating-time picker, whose subject is resolved in `telegram-time-correction.ts` and
-  // never passed through the nudge builder at all.
-  //
-  // `whenOff` is each surface's own contract when consent is absent, and they genuinely
-  // differ: three of them still SEND, having simply nothing to say about the drink; the
-  // sweep has nothing left to edit, so the honest outcome is that it edits nothing at
-  // all; and the picker's token no longer resolves to a burst, so it takes the refusal
-  // the code already has for a burst that aged out. Collapsing those into one expectation
-  // would have let a silenced nudge pass as a gated one.
+  // for more buttons than the compact six), the reconcile sweep editing an
+  // already-delivered message, and the eating-time picker, whose subject is resolved in
+  // `telegram-time-correction.ts` and never passed through the nudge builder at all.
   const SURFACES = [
-    { name: "proactive tick send", whenOff: "sends without the drink" },
-    { name: "/food command reply", whenOff: "sends without the drink" },
-    { name: "fully expanded keyboard", whenOff: "sends without the drink" },
-    {
-      name: "reconcile sweep after a web correction",
-      whenOff: "edits nothing",
-    },
-    { name: "eating-time picker on the drink", whenOff: "refuses the tap" },
+    "proactive tick send",
+    "/food command reply",
+    "fully expanded keyboard",
+    "reconcile sweep after a web correction",
+    "eating-time picker on the drink",
   ] as const;
-  type Surface = (typeof SURFACES)[number]["name"];
+  type Surface = (typeof SURFACES)[number];
 
   async function act(
     surface: Surface,
@@ -281,8 +268,7 @@ describe("substance content reaches Telegram only after this profile opts in (#3
         const msg = sendMock.mock.calls[at]?.[1] as NotificationMessage;
         // The id the transport actually handed back for THAT send. An unattributed burst
         // rides only the newest live food message in the chat (#2264), so a made-up id
-        // would be refused by the binding rather than by the consent gate — and the row
-        // would pass for the wrong reason.
+        // would be refused by the binding rather than by anything under test.
         const messageId = (await sendMock.mock.results[at]?.value) as number;
         const open = correctionAtToken(
           FOOD_TIME_PREFIXES.at,
@@ -293,9 +279,6 @@ describe("substance content reaches Telegram only after this profile opts in (#3
         sendMock.mockClear();
         editMock.mockClear();
         answerMock.mockClear();
-        // The keyboard a message delivered before the opt-out still carries: the nudge's
-        // own buttons plus the 🕐 row. Firing the token is what a person tapping that
-        // stale row does.
         await handleCallbackQuery({
           id: "cbq-3330-picker",
           data: open,
@@ -318,56 +301,31 @@ describe("substance content reaches Telegram only after this profile opts in (#3
   }
 
   it.each(
-    SURFACES.flatMap((row, i) =>
-      [false, true].map((optIn, o) => ({
-        surface: row.name,
-        whenOff: row.whenOff,
-        optIn,
+    SURFACES.flatMap((surface, i) =>
+      [false, true].map((substanceFlag, o) => ({
+        surface,
+        substanceFlag,
         chatId: `55933${i}${o}`,
       }))
     )
   )(
-    "$surface names the drink in the chat: $optIn",
-    async ({ surface, whenOff, optIn, chatId }) => {
-      const profileId = seedDrinker(`SUB3330-${tag(surface)}-${optIn}`, chatId);
-      setProfileSubstanceTelegram(profileId, optIn);
+    "$surface names the drink with the substance flag $substanceFlag",
+    async ({ surface, substanceFlag, chatId }) => {
+      const profileId = seedDrinker(
+        `SUB3330-${tag(surface)}-${substanceFlag}`,
+        chatId
+      );
+      setProfileSubstanceTelegram(profileId, substanceFlag);
 
       await act(surface, profileId, chatId);
 
       const shown = chatText();
-      // The whole claim, over everything the reader can see: no button label, no body
-      // line, no edited text and no toast names the drink unless this profile said yes.
-      expect(shown.some((t) => t.includes("Alcohol"))).toBe(optIn);
-      if (optIn) {
-        expect(shown.length, "the surface said nothing at all").toBeGreaterThan(
-          0
-        );
-        return;
-      }
-      // NOT A SUPPRESSION — each surface's own contract, stated above.
-      switch (whenOff) {
-        case "sends without the drink":
-          expect(
-            shown.some((t) => t.includes("Greens")),
-            "the opt-out silenced the whole message"
-          ).toBe(true);
-          break;
-        case "edits nothing":
-          expect(
-            editMock,
-            "the sweep edited a message it had nothing to say about"
-          ).not.toHaveBeenCalled();
-          break;
-        case "refuses the tap":
-          expect(answerMock.mock.calls.at(-1)?.[1]).toContain(
-            "Couldn't find those entries"
-          );
-          expect(
-            editMock,
-            "the refusal still edited the chat"
-          ).not.toHaveBeenCalled();
-          break;
-      }
+      // The whole claim, over everything the reader can see: the drink is named on this
+      // surface under the food consent alone.
+      expect(shown.length, "the surface said nothing at all").toBeGreaterThan(
+        0
+      );
+      expect(shown.some((t) => t.includes("Alcohol"))).toBe(true);
     }
   );
 
@@ -376,20 +334,20 @@ describe("substance content reaches Telegram only after this profile opts in (#3
     return surface.replace(/[^a-z]+/gi, "-");
   }
 
-  it("is per PROFILE, not per chat: one login's two subjects answer separately", async () => {
+  // The consent that governs is the FOOD one, and it is per profile: a subject with food
+  // buttons off contributes nothing to the shared chat, drink or otherwise.
+  it("the food-buttons consent is the gate, per profile", async () => {
     const chatId = "5593390";
-    const optedIn = seedDrinker("SUB3330-house-A", chatId);
-    const optedOut = seedDrinker("SUB3330-house-B", chatId);
-    setProfileSubstanceTelegram(optedIn, true);
-    // optedOut is left at the default, which is the state that matters.
+    const drinking = seedDrinker("SUB3330-house-A", chatId);
+    const foodOff = seedDrinker("SUB3330-house-B", chatId);
+    setProfileSetting(foodOff, "food_telegram_enabled", "0");
 
-    await tickProfile(optedIn, "house-A", 5, Date.now());
+    await tickProfile(drinking, "house-A", 5, Date.now());
     const afterFirst = chatText().filter((t) => t.includes("Alcohol")).length;
-    await tickProfile(optedOut, "house-B", 5, Date.now());
+    await tickProfile(foodOff, "house-B", 5, Date.now());
     const afterSecond = chatText().filter((t) => t.includes("Alcohol")).length;
 
     expect(afterFirst).toBeGreaterThan(0);
-    // The second profile's send into the SAME chat adds nothing naming the drink.
     expect(afterSecond).toBe(afterFirst);
   });
 
