@@ -1084,17 +1084,29 @@ describe("actual atomic dashboard manifests", () => {
     // back unchanged every time, on every persona. So it composes with all of them
     // rather than interacting with any — which is a measurement, not an assumption
     // about independence.
-    bodybuilder: 226,
-    "marathon-runner": 225,
-    household: 275,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    // +1 on EVERY persona and +4 on biohacker (#4299): the sleep clock-skew check asks
+    // whether any synced sleep session's stored instants disagree with the heart rate
+    // recorded across them. A persona with no synced sleep pays the candidate read and
+    // stops — that is the +1 — while biohacker, which has synced nights AND a heart-rate
+    // trace, pays the candidate read, ONE batched read of the minutes across the judged
+    // span, its travel log, and the narrow last-night repeat of the same question the
+    // bed/wake row asks.
+    //
+    // MEASURED AT +33 BEFORE THE GATHER WAS BATCHED, on this same test: the first
+    // version issued one heart-rate SELECT per night, so its cost grew with the
+    // profile's sleep history rather than with the question. That is what this baseline
+    // is for, and it is the reason the number below is 252 and not 281.
+    bodybuilder: 227,
+    "marathon-runner": 226,
+    household: 276,
+    pregnant: 223,
+    "diabetic-cgm": 234,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 248,
+    biohacker: 252,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

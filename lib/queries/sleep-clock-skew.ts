@@ -69,6 +69,31 @@ interface SyncedSessionRow {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * The samples of a `ts`-sorted trace inside `[from, to)`, by binary search.
+ *
+ * Both bounds are canonical instants, and so is every stored `ts`, so the ordering the
+ * search relies on is the SAME lexicographic order the SQL `ORDER BY ts` produced —
+ * this is not a second sort convention, it is the one the query already used.
+ */
+function sliceByTs(
+  samples: readonly HrMinuteSample[],
+  from: string,
+  to: string
+): readonly HrMinuteSample[] {
+  const lowerBound = (bound: string) => {
+    let lo = 0;
+    let hi = samples.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (samples[mid].ts < bound) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  return samples.slice(lowerBound(from), lowerBound(to));
+}
+
 function suspectSleepSessionsUncached(
   profileId: number,
   since: string
@@ -86,30 +111,57 @@ function suspectSleepSessionsUncached(
     .all(profileId, since) as SyncedSessionRow[];
   if (sessions.length === 0) return [];
 
-  const hrInWindow = db.prepare(
-    `SELECT ts, bpm FROM hr_minutes
-      WHERE profile_id = ? AND ts >= ? AND ts < ?
-      ORDER BY ts`
+  // ONE HR read for the whole judged span, not one per night.
+  //
+  // The per-session read this replaced cost a statement PER NIGHT, and a profile with a
+  // synced night every day pays that on every dashboard render: the query-budget
+  // baseline in lib/__db_tests__/dashboard-placement-manifest.test.ts measured the
+  // biohacker persona at +33 statements before this change and +2 after. The union of
+  // the per-session context windows is contiguous once nights are consecutive, so
+  // fetching them separately was buying nothing but round trips.
+  //
+  // The SLICE still has to be per session — `detectSleepClockSkew` steps a
+  // session-width window across its own ±12h and would otherwise walk the whole span
+  // for every step. `sliceByTs` does that with two binary searches on the sorted `ts`,
+  // so each night is handed exactly the minutes it can reach.
+  const context = HR_CONTEXT_HOURS * 60 * 60 * 1000;
+  const spans = sessions.map((row) => ({
+    start: Date.parse(row.started_at),
+    end: Date.parse(row.ended_at),
+  }));
+  const usable = spans.filter(
+    (s) => Number.isFinite(s.start) && Number.isFinite(s.end)
   );
+  if (usable.length === 0) return [];
+  // Bound in the CANONICAL instant shape, not a bare toISOString(): `hr_minutes.ts`
+  // stores `YYYY-MM-DDTHH:MM:SSZ`, the comparison is a string comparison, and a
+  // millisecond-bearing bound sorts either side of the same instant depending on which
+  // end of the range it is.
+  const hr = db
+    .prepare(
+      `SELECT ts, bpm FROM hr_minutes
+        WHERE profile_id = ? AND ts >= ? AND ts < ?
+        ORDER BY ts`
+    )
+    .all(
+      profileId,
+      utcInstant(new Date(Math.min(...usable.map((s) => s.start)) - context)),
+      utcInstant(new Date(Math.max(...usable.map((s) => s.end)) + context))
+    ) as HrMinuteSample[];
+  if (hr.length === 0) return [];
   const switches = getTravelSwitches(profileId);
 
   return sessions.flatMap((row) => {
     const start = Date.parse(row.started_at);
     const end = Date.parse(row.ended_at);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
-    const context = HR_CONTEXT_HOURS * 60 * 60 * 1000;
-    // Bound in the CANONICAL instant shape, not a bare toISOString(): `hr_minutes.ts`
-    // stores `YYYY-MM-DDTHH:MM:SSZ`, the comparison is a string comparison, and a
-    // millisecond-bearing bound sorts either side of the same instant depending on
-    // which end of the range it is.
-    const hr = hrInWindow.all(
-      profileId,
-      utcInstant(new Date(start - context)),
-      utcInstant(new Date(end + context))
-    ) as HrMinuteSample[];
     const evidence = detectSleepClockSkew(
       { start: row.started_at, end: row.ended_at },
-      hr
+      sliceByTs(
+        hr,
+        utcInstant(new Date(start - context)),
+        utcInstant(new Date(end + context))
+      )
     );
     if (!evidence) return [];
     return [
