@@ -51,6 +51,18 @@ export interface IntradayVariantSpec {
   maxWidthPx: number;
   /** Every label in the panel, in user units. Computed, never typed in. */
   labelSize: number;
+  /**
+   * THE GUTTER, and it is sized by the LONGEST ROW NAME, not by taste.
+   *
+   * `rowLabel` elides a name that will not fit, so a gutter chosen for "Sleep"
+   * and "Train" turned "Practice" (#4852) into `Prac…` — a row name nobody wants
+   * and the one thing the ruling forbade. The budget a name gets is
+   * `padLeft - labelSize × 0.2`, so the gutter has to hold
+   * `INTRADAY_ROW_NAMES`' widest at this variant's own label size. Widening it
+   * costs plot width (about 5% compact, 2% wide) and MOVES every x-projection and
+   * axis-tick choice on the chart, which is why the number is derived below and
+   * guarded in the pure suite rather than nudged by eye.
+   */
   padLeft: number;
   padRight: number;
   padTop: number;
@@ -82,6 +94,22 @@ function spec(
   };
 }
 
+/**
+ * EVERY NAME THE GUTTER HAS TO HOLD, in one list because `padLeft` is sized by
+ * the widest of them.
+ *
+ * Kept here rather than inline in the chart so the geometry and the drawing
+ * cannot disagree: a fourth row added at the call site alone would be measured
+ * by nothing, and the first anybody heard of it would be `Prac…` in the gutter
+ * (#4852). The pure suite asserts this list renders whole at both variants, so
+ * adding a name here is what makes the gutter's cost visible.
+ */
+export const INTRADAY_ROW_NAMES = {
+  sleep: "Sleep",
+  train: "Train",
+  practice: "Practice",
+} as const;
+
 export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
   // Below `sm`. The narrowest container is MEASURED, not assumed: the Timeline
   // day column at a 390px viewport is ~308px once the shell padding, the day's
@@ -89,8 +117,12 @@ export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
   // the labels at 8.98px — under the floor, and the browser test said so). 300
   // keeps a little headroom. 360 units into a 300–420px container puts the label
   // size at 11 units ≈ 9.2–12.8 real px.
+  //
+  // padLeft 55: "Practice" is 52.80 units at labelSize 11, and the gutter's own
+  // 2.20 of inset makes 55 the narrowest that holds it whole (#4852). 40 held
+  // 37.80 and elided it.
   compact: spec("compact", 360, 300, 420, {
-    padLeft: 40,
+    padLeft: 55,
     padRight: 10,
     padTop: 6,
     hrH: 92,
@@ -101,8 +133,10 @@ export const INTRADAY_VARIANTS: Record<IntradayVariant, IntradayVariantSpec> = {
     axisH: 20,
   }),
   // `sm` and up. 720 units into a 520–760 px container: 12.5 units ≈ 9.0–13.2 px.
+  // padLeft 62.5 by the same arithmetic: "Practice" is 60.00 units at 12.5, plus
+  // 2.50 of inset. 46 held 43.50 and elided it.
   wide: spec("wide", 720, 520, 760, {
-    padLeft: 46,
+    padLeft: 62.5,
     padRight: 14,
     padTop: 6,
     hrH: 96,
@@ -136,12 +170,18 @@ export interface IntradayGeometry extends IntradayVariantSpec {
   hasHr: boolean;
   hasSleep: boolean;
   hasWorkouts: boolean;
+  /** Whether any practice session drew a block — its own row since #4852. */
+  hasPractice: boolean;
   hasTicks: boolean;
   hrTop: number;
   /** Baseline for the bed/wake time labels, above the sleep band (#1512 A). */
   sleepLabelY: number;
   sleepTop: number;
+  /** The Train row: ACTIVITY blocks only since #4852. */
   workTop: number;
+  /** The Practice row, directly under Train. Both rows are `workH` tall — the
+   *  shape and the colour are the same; only the line differs. */
+  practiceTop: number;
   tickTop: number;
   axisY: number;
   /** The HR value axis, padded so the line never touches the frame. */
@@ -166,7 +206,8 @@ export function intradayGeometry(
   const base = INTRADAY_VARIANTS[variant];
   const hasHr = model.hr != null;
   const hasSleep = model.sleep.length > 0;
-  const hasWorkouts = model.blocks.length > 0;
+  const hasWorkouts = model.blocks.some((b) => b.source === "activity");
+  const hasPractice = model.blocks.some((b) => b.source === "practice");
   const hasTicks = model.ticks.length > 0;
   // The bed/wake labels get their own strip above the band: painting them inside
   // it would sit them on the stage sub-bands, and painting them below would cross
@@ -181,6 +222,8 @@ export function intradayGeometry(
   if (hasSleep) cursor += sleepLabelH + base.sleepH + base.rowGap;
   const workTop = cursor;
   if (hasWorkouts) cursor += base.workH + base.rowGap;
+  const practiceTop = cursor;
+  if (hasPractice) cursor += base.workH + base.rowGap;
   const tickTop = cursor;
   if (hasTicks) cursor += base.tickH + base.rowGap;
   const axisY = cursor;
@@ -207,11 +250,13 @@ export function intradayGeometry(
     hasHr,
     hasSleep,
     hasWorkouts,
+    hasPractice,
     hasTicks,
     hrTop,
     sleepLabelY,
     sleepTop,
     workTop,
+    practiceTop,
     tickTop,
     axisY,
     hrLo,
@@ -241,6 +286,76 @@ export function projectBpm(geo: IntradayGeometry, bpm: number): number {
   const span = geo.hrHi - geo.hrLo || 1;
   const clamped = Math.max(geo.hrLo, Math.min(geo.hrHi, bpm));
   return geo.hrTop + (1 - (clamped - geo.hrLo) / span) * geo.hrH;
+}
+
+/**
+ * The top of the row a block draws in: Train for an activity, Practice for a
+ * session (#4852). One function so the chart and the pure suite agree on the
+ * split without either of them spelling the branch out again.
+ */
+export function blockRowTop(
+  geo: IntradayGeometry,
+  block: IntradayBlock
+): number {
+  return block.source === "practice" ? geo.practiceTop : geo.workTop;
+}
+
+// ── Wheel and pinch (issue #4852) ────────────────────────────────────────────
+
+/**
+ * The window a zoom by `factor` about `atMinute` produces, or NULL when the
+ * gesture changes nothing.
+ *
+ * `factor` is a SPAN multiplier: < 1 zooms in, > 1 zooms out, so a pinch passes
+ * the ratio of its two finger distances directly and a wheel passes a curve of
+ * its own `deltaY`. `atMinute` keeps its position in the plot, which is what makes
+ * both gestures feel anchored under the pointer rather than under the middle.
+ *
+ * NULL IS THE WHOLE POINT OF THE RETURN TYPE, and it is a scroll decision, not an
+ * error: the caller must let the page have the event, because a chart that
+ * swallows a wheel it has no use for is a scroll TRAP in the middle of a long day
+ * view. ONE test carries it — the clamped span is unchanged — and the case that
+ * matters most falls out of it rather than needing a rule of its own: at the full
+ * day the span already IS the day, so widening it clamps straight back and the
+ * page keeps the wheel. Zooming IN there still narrows, and is still captured.
+ */
+export function zoomViewAt(
+  view: IntradayView,
+  atMinute: number,
+  factor: number
+): IntradayView | null {
+  const span = view.to - view.from;
+  if (!(span > 0) || !(factor > 0) || !Number.isFinite(factor)) return null;
+  const next = Math.min(
+    MINUTES_IN_DAY,
+    Math.max(MIN_ZOOM_MINUTES, span * factor)
+  );
+  if (next === span) return null;
+  const at = Math.max(view.from, Math.min(view.to, atMinute));
+  const ratio = (at - view.from) / span;
+  const from = Math.max(0, Math.min(MINUTES_IN_DAY - next, at - ratio * next));
+  return { from, to: from + next };
+}
+
+/**
+ * The window shifted by `deltaMinutes`, clamped to the day — the horizontal-wheel
+ * pan. Null (page keeps the event) when the day is fully visible, so there is
+ * nothing to pan, or when the view is already against the edge it is being pushed
+ * toward. The SPAN never changes: panning is not a zoom.
+ */
+export function panView(
+  view: IntradayView,
+  deltaMinutes: number
+): IntradayView | null {
+  const span = view.to - view.from;
+  if (span >= MINUTES_IN_DAY || !Number.isFinite(deltaMinutes)) return null;
+  // Rounded, so a STREAM of wheel events slides the window instead of widening it:
+  // the caller's floor/ceil on a fractional edge would add a minute per event.
+  const from = Math.round(
+    Math.max(0, Math.min(MINUTES_IN_DAY - span, view.from + deltaMinutes))
+  );
+  if (from === view.from) return null;
+  return { from, to: from + span };
 }
 
 /** Whether a minute is inside the visible window (a zoomed chart draws nothing
@@ -539,8 +654,13 @@ export function hrAxisLabels(
 }
 
 /**
- * A row's name in the left gutter ("Sleep", "Train", "Meds"), elided to the
- * gutter rather than painting back over the plot's left edge.
+ * A row's name in the left gutter, elided to the gutter rather than painting
+ * back over the plot's left edge.
+ *
+ * The elision is the FALLBACK, not the plan: `padLeft` is sized to hold every
+ * `INTRADAY_ROW_NAMES` entry whole at this variant's label size (#4852), and the
+ * pure suite fails if one of them comes back shortened. What survives here is the
+ * guarantee that nothing paints back over the plot, whatever it is handed.
  */
 export function rowLabel(
   geo: IntradayGeometry,
