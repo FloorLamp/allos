@@ -519,50 +519,94 @@ export async function openAllSyncDays(scope: Page | Locator): Promise<void> {
   }
 }
 
-// Mobile clipped-content guard (issue #1063). The app shell deliberately clips
-// horizontal overflow (`<main className="… overflow-x-clip">` in
+// Mobile clipped-content guard (issues #1063, #4534). The app shell deliberately
+// clips horizontal overflow (`<main className="… overflow-x-clip">` in
 // app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
 // render as INVISIBLE, unreachable content (copy/token buttons pushed off-screen).
 // That also defeats the naive `document.scrollWidth > clientWidth` check: it
-// reads 0 overflow on every page. So this asserts ELEMENT-level containment:
-// every rendered element's right edge must sit inside the viewport (+2px
-// tolerance), unless it lives inside a functioning `overflow-x: auto|scroll`
-// container that itself fits — the AGENTS.md "wide content scrolls inside its
-// own container" rule, made mechanical. Call it AFTER the page's content is
-// visible (assert a page-specific element first), with the viewport already at
-// phone width. Offenders are reported with tag/testid/class + widths so a
-// failure names the guilty element directly.
+// reads 0 overflow on every page.
+//
+// WHAT IS PAINTED, NOT WHERE A BOX ENDS (#4534). The first cut of this asked only
+// whether an element's right edge cleared the viewport, and "fits the viewport" is
+// not "is visible": every `truncate` cluster in the tree is an `overflow: hidden`
+// ancestor that cuts its children without moving their boxes, so a child sitting
+// entirely inside the viewport can be painted at a third of its width while the
+// box arithmetic looks fine. That is the #4394 shape — a silent cut inside a
+// fitting box — and the guard covering it could not fail on it. So each element's
+// box is intersected with every horizontally CLIPPING ancestor and with the
+// viewport, and a failure reports PAINTED against BOX, naming the element that did
+// the cutting: `right=563 vs viewport=320` is the right input for a box guard and
+// reads as "243px is off-screen" on a page where the cluster had already cut it
+// far shorter, which is how #4394's merge argument got inverted.
+//
+// WHAT IS EXCUSED, three different sentences:
+//   * A WORKING SCROLLER that itself fits — the AGENTS.md "wide content scrolls
+//     inside its own container" rule, made mechanical. The reader can move it, so
+//     nothing is lost. A scroller that overflows only moves the problem up a level
+//     and is reported in its own right.
+//   * A SUBTREE THE LAYOUT GAVE NO ROOM. `width === 0` is a flex item starved to
+//     nothing by its own shrink negotiation (`shrink-[999]` cells do this on
+//     purpose); `<= 1` is the `sr-only` idiom, a 1px box with `overflow: hidden`.
+//     Both are the existing "not rendered" skip read one level up — the layout
+//     withheld the space, rather than a paint going wrong inside space it had.
+//   * OFF-CANVAS BY DESIGN on either side — drawers and toasts parked outside the
+//     viewport entirely, which is why the box is there at all.
+//
+// Call it AFTER the page's content is visible (assert a page-specific element
+// first), with the viewport already at phone width. e2e/mobile-clipping.mobile.spec.ts
+// forges each shape above and proves this can still see the cut and stay quiet on
+// the rest.
 export async function expectNoClippedContent(page: Page): Promise<void> {
   const offenders = await page.evaluate(() => {
     const vw = document.documentElement.clientWidth;
     const TOL = 2;
     const bad: string[] = [];
-    const insideWorkingScroller = (el: Element): boolean => {
-      for (let a = el.parentElement; a; a = a.parentElement) {
-        const o = getComputedStyle(a).overflowX;
-        if (o === "auto" || o === "scroll") {
-          const r = a.getBoundingClientRect();
-          // The scroll container must itself fit the viewport — a scroller that
-          // overflows just moves the problem up a level.
-          if (r.right <= vw + TOL) return true;
-        }
-      }
-      return false;
+    const name = (el: Element): string => {
+      const id = el.getAttribute("data-testid");
+      const cls = typeof el.className === "string" ? el.className : "";
+      return (
+        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
+        `${cls ? ` class="${cls.slice(0, 80)}"` : ""}>`
+      );
     };
     for (const el of Array.from(document.body.querySelectorAll("*"))) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue; // not rendered
-      if (r.right <= vw + TOL) continue; // fits
-      if (r.left >= vw) continue; // fully off-canvas by design (drawers, toasts)
+      if (r.left >= vw || r.right <= 0) continue; // fully off-canvas by design
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.opacity === "0") continue;
-      if (insideWorkingScroller(el)) continue;
-      const id = el.getAttribute("data-testid");
-      const cls = typeof el.className === "string" ? el.className : "";
+      // ONE ancestor walk: it both excuses the element and narrows what is left of
+      // it. `lo`/`hi` are the surviving painted span, `cutBy` the nearest ancestor
+      // that took part of it away — the thing a failure has to name.
+      let lo = r.left;
+      let hi = r.right;
+      let cutBy: Element | null = null;
+      let excused = false;
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const ar = a.getBoundingClientRect();
+        if (ar.width <= 1) {
+          excused = true;
+          break;
+        }
+        const o = getComputedStyle(a).overflowX;
+        if ((o === "auto" || o === "scroll") && ar.right <= vw + TOL) {
+          excused = true;
+          break;
+        }
+        if (o === "hidden" || o === "clip") {
+          if (!cutBy && (ar.left > lo + TOL || ar.right < hi - TOL)) cutBy = a;
+          lo = Math.max(lo, ar.left);
+          hi = Math.min(hi, ar.right);
+        }
+      }
+      if (excused) continue;
+      const painted = Math.max(0, Math.min(hi, vw) - Math.max(lo, 0));
+      if (painted >= r.width - TOL) continue;
       bad.push(
-        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
-          `${cls ? ` class="${cls.slice(0, 80)}"` : ""}> ` +
-          `right=${Math.round(r.right)} vs viewport=${vw}`
+        `${name(el)} paints ${Math.round(painted)}px of its ` +
+          `${Math.round(r.width)}px box (${Math.round(r.left)}→${Math.round(
+            r.right
+          )}), cut by ${cutBy ? name(cutBy) : `the viewport (${vw}px)`}`
       );
     }
     // Belt-and-braces: the PR #1249 document-level check too, for surfaces
@@ -918,6 +962,30 @@ export async function openCareOverviewSection(
     await expect(section).toHaveJSProperty("open", true, { timeout: 1000 });
   }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose hash-reveal effect races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open section is never clicked shut
   return section;
+}
+
+// Open one channel row of Settings → Notifications' status strip (#2565 A) and return
+// it. The four channel configurations moved behind their rows' disclosures, so a spec
+// that wants a control inside one has to open it first.
+//
+// Same shape as openCareOverviewSection above, and for the same reason: the row is a
+// native `<details>` with a SECOND writer on its open state — RememberedDetails restores
+// this device's remembered state, from a pre-paint script and then from the hydrated
+// store — so a read-then-click races that restore and a bare click can toggle SHUT what
+// the restore just opened. Guarded on the element's own `open`, so an already-open row
+// (an erroring one is forced open every render) is never clicked closed.
+export async function openChannelRow(
+  page: Page,
+  channel: "telegram" | "push" | "email" | "home-assistant"
+): Promise<Locator> {
+  const row = page.getByTestId(`notify-channel-${channel}`);
+  await expect(row).toBeVisible();
+  await expect(async () => {
+    const open = await row.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!open) await row.locator("summary").click();
+    await expect(row).toHaveJSProperty("open", true, { timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-toggle a <details> whose per-device open memory restores asynchronously and races the click — a native disclosure with no POST and no navigation to settle on; guarded on `open`, so an already-open row is never clicked shut
+  return row;
 }
 
 // Tap a control whose handler calls `useConfirm()`, and return the confirm dialog

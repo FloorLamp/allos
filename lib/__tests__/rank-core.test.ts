@@ -4,6 +4,7 @@ import {
   RankTableError,
   defineRankTable,
   itemsFromLayout,
+  groupRankedBySubject,
   mergeStoredOrder,
   rankItems,
   rankedIds,
@@ -174,6 +175,72 @@ describe("mergeStoredOrder", () => {
     expect(mergeStoredOrder(["a", "b"], ["gone", "b", "b", "a"])).toEqual([
       "b",
       "a",
+    ]);
+  });
+});
+
+// ── NOW'S CHANGED SORT CONTRACT (#4752 item 6) ──────────────────────────────
+//
+// Group by subject, rank within group, and only when more than one subject is
+// present. Asserted here rather than through a render, because the ordering IS the
+// contract: a host that draws labels from it is downstream of this.
+describe("groupRankedBySubject", () => {
+  const row = (id: string, subject: string) => ({ id, subject });
+  const shape = (
+    groups: { subject: string; members: { id: string }[] }[] | null
+  ) =>
+    groups?.map((group) => [
+      group.subject,
+      group.members.map((member) => member.id).join(","),
+    ]) ?? null;
+
+  it.each([
+    // [name, ordered rows, expected [subject, members] pairs or null]
+    ["one subject is not a grouping", [row("a", "7"), row("b", "7")], null],
+    ["an empty list has nothing to group", [], null],
+    [
+      "gathers a subject's rows without promoting it",
+      [row("a", "7"), row("b", "2"), row("c", "7"), row("d", "11")],
+      [
+        ["7", "a,c"],
+        ["2", "b"],
+        ["11", "d"],
+      ],
+    ],
+    [
+      // A group's seat is its BEST member's: 2 leads because its first row
+      // outranked every row of 7, and gathering 7's tail cannot change that.
+      "seats a group where its first member ranked",
+      [row("a", "2"), row("b", "7"), row("c", "2"), row("d", "7")],
+      [
+        ["2", "a,c"],
+        ["7", "b,d"],
+      ],
+    ],
+  ] as const)("%s", (_name, ordered, expected) => {
+    expect(
+      shape(groupRankedBySubject(ordered, (item) => item.subject))
+    ).toEqual(expected);
+  });
+
+  it("keeps the incoming rank inside a group", () => {
+    // The rank arrives as the array order and nothing here re-sorts it: reversing
+    // the input reverses each group's members, so this could fail.
+    const ordered = [
+      row("a", "7"),
+      row("b", "2"),
+      row("c", "7"),
+      row("d", "7"),
+    ];
+    expect(shape(groupRankedBySubject(ordered, (i) => i.subject))).toEqual([
+      ["7", "a,c,d"],
+      ["2", "b"],
+    ]);
+    expect(
+      shape(groupRankedBySubject([...ordered].reverse(), (i) => i.subject))
+    ).toEqual([
+      ["7", "d,c,a"],
+      ["2", "b"],
     ]);
   });
 });

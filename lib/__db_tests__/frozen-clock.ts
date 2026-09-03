@@ -48,11 +48,64 @@
 // tests, mostly token and session expiries seeded in JS and judged against SQL's clock,
 // while the same magnitude of POSITIVE gap reds none of them. A midday constant would
 // sit in the middle of the harmful half.
+//
+// AND THE NEGATIVE HALF IS NOW ONE MINUTE, NOT A QUARTER-HOUR (#4837). Everything
+// above stands; this amends its one unchecked step. The paragraph measures the
+// negative gap at "at worst 15 minutes" and stops, because it was weighing the gap's
+// SIGN against its MAGNITUDE. Nothing had asked whether 15 minutes was small enough
+// for the tolerances written down: `auth.test.ts:346` allows 1000 ms, so the tier was
+// red from 23:45:01 to 23:59:59 UTC every day — four open PRs at once, one assertion,
+// no relevant diff between them.
+//
+// THE WALL TIME IS PINNED BETWEEN TWO ASSERTIONS, AND THEY ARE THE SAME QUANTITY.
+// Write W for the wall time as ms after midnight and r for the real time of day, so
+// the freeze leads SQLite's clock by L = W - r.
+//
+//   UPPER  `auth.test.ts:326` allows 29 of a 30-day TTL while reading `Date.now()`
+//          off this clock, so L must stay under 86_400_000 ms. L is largest at a run
+//          starting at midnight, where it is W. Headroom H = 86_400_000 - W.
+//   LOWER  `auth.test.ts:346` needs L positive. L goes negative once r passes W, so
+//          the day's last 86_400_000 - W ms are red. Residual R = 86_400_000 - W.
+//
+// H AND R ARE THE SAME NUMBER. Every millisecond of headroom bought at the top is a
+// millisecond of nightly red at the bottom; there is no setting that widens both, and
+// picking an endpoint just moves which end is thin. 23:45 spent 900_000 ms on each.
+// 23:59:59.999 would cut the residual to 1 ms and leave the cap cleared by 1 ms, which
+// no later edit could survive.
+//
+// AND THE RESIDUAL HAS A FLOOR THAT IS NOT ABOUT CLOCKS AT ALL, which is what stops
+// this being pushed to the end of the day. `STATED_FUTURE_SKEW_MS` is 5 minutes, and a
+// spec that exercises a REFUSED future statement has to name a time that is later than
+// the frozen now, past that skew, and STILL ON THE FROZEN DAY —
+// bristol-stool-write.test.ts does exactly this. So 86_400_000 - W must exceed the skew
+// with room to express it, or that verdict becomes unreachable and the fixture quietly
+// tests something else. That floor is 5 minutes before any clock argument is made.
+//
+// 600_000 ms is the choice: 2x the skew, so a future statement has 5 minutes of room to
+// live in; 20x SQLite's one-second truncation at the cap; and a third off the nightly
+// window, which is the honest size of this fix rather than the fifteenfold it looks
+// like it should be.
+//
+// WHAT IS TRADED, PLAINLY: the tier is still wrong for the last ten minutes of each UTC
+// day, plus however long a run takes to reach a SQL-judged assertion after it starts.
+// That residual is irreducible while the freeze is a fixed instant and SQLite's clock
+// is not — shrinking it further thins the cap by the same amount AND walks into the
+// skew floor above.
+//
+// AND ROLLING TO THE NEXT DAY IS NOT THE ANSWER, though it looks like it. It makes L
+// positive everywhere, and it decouples the frozen DATE from SQL's for the same 15
+// minutes: measured on the full tier with the frozen day one ahead, it moved the red
+// rather than removing it — history-gather.test.ts and dose-lifecycle.test.ts read a
+// day off the real clock at MODULE scope, before these hooks run, and
+// attention-flagged-window.test.ts seeds `datetime('now', ?)` against a
+// `today(profileId)` query. Keeping the date equal to the real one is why this moves
+// the wall time instead.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 
-// The frozen wall time, on whatever the current UTC day is.
-export const FROZEN_WALL_TIME_UTC = "23:45:00.000Z";
+// The frozen wall time, on whatever the current UTC day is. Its distance from
+// midnight is the whole design — see the interval arithmetic above.
+export const FROZEN_WALL_TIME_UTC = "23:50:00.000Z";
 
 /** The default frozen instant for a UTC day. Exported for ./frozen-clock.test.ts. */
 export function frozenInstantForDay(day: string): Date {

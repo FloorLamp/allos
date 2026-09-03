@@ -377,6 +377,52 @@ describe("the chart carries its own data access (#4760)", () => {
     }
   );
 
+  // THE BAND IS INSIDE THE PLOT AND STILL COVERS ITS READING (#4534).
+  //
+  // A reading's band is centred on it, and the first and last readings sit ON the
+  // plot's edges — so each end band half-hangs unless it is clamped. Only the lower
+  // clamp existed, and the missing upper one put 38px of the NEWEST reading's band
+  // outside the 176px plot, where the standing card's `overflow: hidden` took its
+  // paint, its focus ring and its readout.
+  //
+  // TWO DIRECTIONS, because a clamp has an obvious wrong answer. "Inside the plot"
+  // alone is satisfied by a band pinned anywhere, including off its own reading —
+  // so the endpoint the sparkline already draws is the second assertion's subject:
+  // the last band must still contain the mark a reader is aiming at. The e2e guard
+  // can only ever see the first half; a band that stopped covering its reading
+  // would be silently green there.
+  it("every reading's band lies inside the plot and still covers its mark", () => {
+    const { container } = render(standing(72, 73));
+    const plot = container.querySelector<HTMLElement>(
+      '[data-testid="standing-sparkline"]'
+    )!;
+    const width = Number(plot.getAttribute("width"));
+    const bands = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        '[data-testid="standing-sparkline-point"]'
+      )
+    ).map((el) => ({
+      left: parseFloat(el.style.left),
+      right: parseFloat(el.style.left) + parseFloat(el.style.width),
+    }));
+
+    expect(bands.length).toBe(2);
+    expect(
+      bands.filter((b) => b.left < 0 || b.right > width),
+      `bands outside the ${width}px plot`
+    ).toEqual([]);
+
+    const endpoint = container.querySelector<SVGCircleElement>(
+      '[data-testid="standing-sparkline-endpoint"]'
+    )!;
+    const cx = Number(endpoint.getAttribute("cx"));
+    const last = bands.at(-1)!;
+    expect(
+      { covers: last.left <= cx && cx <= last.right, cx, last },
+      "the newest reading's band no longer covers the mark it names"
+    ).toMatchObject({ covers: true });
+  });
+
   // #4384's two practice mounts, absorbed: a pure deletion. The heatmap is a glance
   // surface (its `role="img"` sentence is its whole statement, per-day reading is the
   // ledger's job — no per-cell door), and the week cells already name themselves.

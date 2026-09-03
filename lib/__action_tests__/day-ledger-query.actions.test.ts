@@ -88,28 +88,14 @@ describe("ATTACK #1 — two taps of one routine in one bucket, minutes apart", (
     const second = newDoseBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T07:07:10Z";
     for (const s of seeded.slice(0, 2))
-      markDoseTaken(
-        profile.id,
-        s.doseId,
-        s.itemId,
-        date,
-        "page",
-        undefined,
-        null,
-        first
-      );
+      markDoseTaken(profile.id, s.doseId, s.itemId, date, "page", {
+        bundleId: first,
+      });
     process.env.ALLOS_TEST_NOW = "2026-08-28T10:07:20Z";
     for (const s of seeded.slice(2, 4))
-      markDoseTaken(
-        profile.id,
-        s.doseId,
-        s.itemId,
-        date,
-        "page",
-        undefined,
-        null,
-        second
-      );
+      markDoseTaken(profile.id, s.doseId, s.itemId, date, "page", {
+        bundleId: second,
+      });
 
     const pending = pendingDayDoses(profile.id, date);
     const groups = buildDayLedger({
@@ -209,16 +195,9 @@ describe("ATTACK #2 — one composed write, one member's time amended", () => {
     const tap = newDoseBundle();
     process.env.ALLOS_TEST_NOW = "2026-08-28T08:07:00Z";
     for (const member of [a, b, c])
-      markDoseTaken(
-        profile.id,
-        member.doseId,
-        member.itemId,
-        date,
-        "page",
-        undefined,
-        null,
-        tap
-      );
+      markDoseTaken(profile.id, member.doseId, member.itemId, date, "page", {
+        bundleId: tap,
+      });
 
     // The user corrects ONE of them through the shipped dose-history amend: it was
     // actually taken at 05:15, three hours before the other.
