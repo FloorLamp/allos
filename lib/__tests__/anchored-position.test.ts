@@ -90,23 +90,23 @@ describe("anchoredPosition — containment", () => {
     { what: "a panel that declared a cap", height: 224, preferred: 224 },
     { what: "a panel that declared none", height: 224, preferred: undefined },
     { what: "one taller than the viewport", height: 900, preferred: undefined },
-  ])("keeps $what on screen from every anchor position", ({
-    height,
-    preferred,
-  }) => {
-    // Every position where the FIELD itself is on screen. (An anchor scrolled out
-    // of view is the next case, and it is deliberately different.)
-    for (let top = 0; top <= VIEWPORT.height - 40; top += 20) {
-      const pos = anchoredPosition({
-        anchor: field(top),
-        panel: { height, width: 200 },
-        viewport: VIEWPORT,
-        ...(preferred == null ? {} : { preferredMaxHeight: preferred }),
-      });
-      expect(pos.top).toBeGreaterThanOrEqual(0);
-      expect(bottomOf(pos, height)).toBeLessThanOrEqual(VIEWPORT.height);
+  ])(
+    "keeps $what on screen from every anchor position",
+    ({ height, preferred }) => {
+      // Every position where the FIELD itself is on screen. (An anchor scrolled out
+      // of view is the next case, and it is deliberately different.)
+      for (let top = 0; top <= VIEWPORT.height - 40; top += 20) {
+        const pos = anchoredPosition({
+          anchor: field(top),
+          panel: { height, width: 200 },
+          viewport: VIEWPORT,
+          ...(preferred == null ? {} : { preferredMaxHeight: preferred }),
+        });
+        expect(pos.top).toBeGreaterThanOrEqual(0);
+        expect(bottomOf(pos, height)).toBeLessThanOrEqual(VIEWPORT.height);
+      }
     }
-  });
+  );
 
   it("shrinks rather than overflowing when the room is smaller than the panel", () => {
     // A short viewport — a landscape phone, or a small window. 300 tall, field

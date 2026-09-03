@@ -457,7 +457,9 @@ test.describe("from md up the popover is capped to the room on screen", () => {
     await expect(panel).toHaveAttribute("data-anchored-panel", "popover");
     // Wait for the CONTENT before measuring the container: an empty grid fits any
     // height, and "it fits" is the answer this test must not be handed for free.
-    await expect(panel.getByRole("button", { name: "Previous month" })).toBeVisible();
+    await expect(
+      panel.getByRole("button", { name: "Previous month" })
+    ).toBeVisible();
 
     const viewportHeight = page.viewportSize()!.height;
     const geometry = await panel.evaluate((el) => ({
@@ -477,7 +479,10 @@ test.describe("from md up the popover is capped to the room on screen", () => {
     // below rests on. Without it a calendar that happened to fit would satisfy
     // all of them on the broken tree too.
     const roomBelow =
-      viewportHeight - (triggerBox.y + triggerBox.height) - ANCHOR_GAP - ANCHOR_MARGIN;
+      viewportHeight -
+      (triggerBox.y + triggerBox.height) -
+      ANCHOR_GAP -
+      ANCHOR_MARGIN;
     const roomAbove = triggerBox.y - ANCHOR_GAP - ANCHOR_MARGIN;
     expect(
       geometry.natural,
@@ -507,7 +512,10 @@ test.describe("from md up the popover is capped to the room on screen", () => {
     // below is green on a grid that never rendered — which is how the first draft
     // of this test passed while addressing nothing.
     const dayCount = await days.count();
-    expect(dayCount, "a month grid renders at least 28 day cells").toBeGreaterThanOrEqual(28);
+    expect(
+      dayCount,
+      "a month grid renders at least 28 day cells"
+    ).toBeGreaterThanOrEqual(28);
     const last = days.nth(dayCount - 1);
     await expect(last).not.toBeInViewport();
     expect(geometry.overflowY).toBe("auto");
