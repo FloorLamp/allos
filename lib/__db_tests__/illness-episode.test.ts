@@ -171,11 +171,12 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(cough.points[0].date).toBe("2026-06-01"); // oldest-first
     expect(cough.maxSeverity).toBe(3);
 
-    // THE DERIVED FEVER ROW SITS BESIDE THE STATED ONE, deliberately. This fixture
-    // holds both a tapped `fever` symptom and fever-range readings, and the model
-    // reports both: what a SURFACE should draw on such a day is unruled, and the
-    // assembly is not the place to decide it (#4712). The derived arm carries the
-    // day's peak reading and its id, never a severity.
+    // THE DERIVED FEVER ROW YIELDS TO THE STATED ONE, PER DAY (owner-ruled
+    // 2026-09-03, #4712 judgement 3). This fixture holds a tapped `fever` symptom on
+    // 06-01 and 06-02, and fever-range readings on 06-01 through 06-04 — so the
+    // derived arm covers only 06-03 and 06-04, the two days with a reading and NO
+    // stated row; 06-01 and 06-02 are the stated row's alone. The derived arm carries
+    // the day's peak reading and its id, never a severity.
     const derived = a.symptoms.filter((s) => s.source === "derived");
     expect(derived).toHaveLength(1);
     expect(derived[0].symptom).toBe("fever");
@@ -185,8 +186,6 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
         ? derived[0].days.map((d) => [d.date, d.peakDegF, d.time])
         : null
     ).toEqual([
-      ["2026-06-01", 99.6, "09:00"],
-      ["2026-06-02", 102.4, "08:00"],
       ["2026-06-03", 100.6, "09:00"],
       ["2026-06-04", 99.8, "20:00"],
     ]);
@@ -239,6 +238,47 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(episodeHeadline(a)).toBe(
       "Illness · day 5 · fever trending down · 3 symptoms · ibuprofen 3×"
     );
+  });
+
+  it("a stated fever row makes the derived row yield for THAT DAY, and the stated row wins — not per-episode (#4712 judgement 3)", () => {
+    const p = newProfile("fever-yields");
+    const episode: IllnessEpisode = {
+      situation: "Illness",
+      start: "2026-07-01",
+      end: "2026-07-02",
+    };
+    // Day 1: a stated fever row AND a fever-range reading — the derived row yields.
+    logSymptomCore(p, "fever", 3, "2026-07-01", "page");
+    logTemp(p, "2026-07-01", "08:00", 103.4);
+    // Day 2: a reading only, no stated row — still derives.
+    logTemp(p, "2026-07-02", "08:00", 101.2);
+
+    const a = assembleIllnessEpisode(p, episode);
+
+    // Exactly one fever ROW for day 1, and it is the STATED one at its own severity
+    // — not a second, derived entry for the same date from the same reading.
+    const logged = a.symptoms.filter(isLoggedSymptomSeries);
+    const statedFever = logged.find((s) => s.symptom === "fever")!;
+    expect(statedFever.points.map((pt) => pt.date)).toEqual(["2026-07-01"]);
+    expect(statedFever.points[0].severity).toBe(3);
+
+    // The derived arm exists for day 2 (reading-only) but is silent on day 1 — this
+    // fails both if suppression never fires (day 1 would appear here too, so BOTH
+    // rows render) and if it fires backwards (the stated row above would be the one
+    // missing instead).
+    const derivedFever = a.symptoms.find((s) => s.source === "derived");
+    expect(
+      derivedFever?.source === "derived"
+        ? derivedFever.days.map((d) => d.date)
+        : null
+    ).toEqual(["2026-07-02"]);
+
+    // The readings survive the suppression untouched — day 1's still renders in the
+    // temperature fold even though no symptom row states it any more.
+    expect(a.temperatures.map((t) => [t.date, t.degF, t.flag])).toEqual([
+      ["2026-07-01", 103.4, "high"],
+      ["2026-07-02", 101.2, "high"],
+    ]);
   });
 
   it("excludes SCHEDULED (non-PRN) doses from the medication story", () => {

@@ -71,10 +71,10 @@ import {
   HISTORY_FAMILY_LABELS,
   HISTORY_KIND_LABELS,
   HISTORY_KINDS,
-  HISTORY_LOG_KINDS,
   HISTORY_MAX_SHOW,
   HISTORY_SHOW_STEP,
   clampHistoryDay,
+  historyAddKinds,
   historyKindFamily,
   layoutHistoryDay,
   parseHistoryExpand,
@@ -1079,12 +1079,10 @@ export default async function HistoryPage(props: {
               <span className="shrink-0 text-slate-500 dark:text-slate-400">
                 Add
               </span>
-              {HISTORY_LOG_KINDS.filter(
-                (candidate) =>
-                  candidate !== "sleep" &&
-                  (presentKinds.length === 0 ||
-                    presentKinds.includes(candidate))
-              ).map((candidate) => (
+              {/* SYMPTOM IS EXEMPT FROM THE PRESENCE GATE (#4851 owner ruling) —
+                  `historyAddKinds` is the one computation that knows it, so the
+                  exemption cannot drift out of step with the rest of the gate. */}
+              {historyAddKinds(presentKinds).map((candidate) => (
                 <Link
                   key={candidate}
                   className="btn-ghost btn-sm shrink-0"
