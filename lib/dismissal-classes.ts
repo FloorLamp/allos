@@ -459,6 +459,14 @@ export const DISMISSAL_KEY_REGISTRY: readonly DismissalKeyEntry[] = [
     // next audit doesn't have to re-derive it. No fix proposed.
   },
   {
+    prefix: "sleep-clock-skew:",
+    keyClass: "anchored",
+    shape: "`<oldestSuspectWakeDay>` (#4299)",
+    // The day the run of mis-stamped nights starts. A stale key can only re-attach to a
+    // LATER episode that begins on the same calendar day, and the finding is calm and
+    // coaching-tier — the same narrow, recorded edge cycle-bleeding: carries above.
+  },
+  {
     prefix: "outdoor-plan:",
     keyClass: "anchored",
     shape: "`<activityHistoryKey>:<weekStartDate>`",
