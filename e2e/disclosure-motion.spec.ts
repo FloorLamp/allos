@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import { E2E_LOGIN_DASHBOARD_ALL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { test, expect } from "./fixtures";
-import { awaitHydrated, hydratedClick } from "./helpers";
+import { awaitHydrated, hydratedClick, openFoodAdd } from "./helpers";
 import { loginAs } from "./nav";
 import { workerDbPath } from "./worker-env";
 import {
@@ -140,6 +140,7 @@ test("a disclosure animates without delaying its content or controls", async ({
   // and the snap was a full-height jump with the reader's finger still on the summary.
   await page.setViewportSize({ width: 430, height: 900 });
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   const more = page.locator(MORE_GROUPS);
   await awaitHydrated(more);
   await expect(more).not.toHaveAttribute("open", "");
@@ -243,6 +244,7 @@ test("reduced motion opens the panel instantly, and schedules no keyframe", asyn
   try {
     await page.setViewportSize({ width: 430, height: 900 });
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await awaitHydrated(page.locator(MORE_GROUPS));
 
     const reading = await heightsWhileOpening(

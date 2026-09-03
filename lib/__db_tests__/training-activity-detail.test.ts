@@ -15,7 +15,6 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
-import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
 import type { UnitPrefs } from "@/lib/settings";
 import { db } from "@/lib/db";
 
@@ -80,17 +79,12 @@ beforeAll(() => {
 });
 
 describe("getActivityDetailData (#2870)", () => {
-  it("assembles the SAME card the training log feed builds", () => {
-    const detail = getActivityDetailData(profileId, mondayLegs, UNITS);
-    expect(detail).not.toBeNull();
-    const feed = buildTrainingLogFeedPage(profileId, null, UNITS);
-    const feedCard = feed.groups
-      .flatMap((g) => g.cards)
-      .find((c) => c.activity.id === mondayLegs);
-    expect(feedCard).toBeDefined();
-    expect(detail!.card).toEqual(feedCard);
-  });
-
+  // THE CARD NOW HAS ONE HOST (#4079). This pin compared the record's card to the
+  // Training Log feed's, because the two built it from one derivation in two places.
+  // The Log renders through the shared history substrate now, so the feed — and the
+  // second host — is gone, and there is nothing left for a byte-comparison to compare
+  // to. What that pin protected (the derivation itself) is covered by the card
+  // builder's own tests; what it can no longer be is a claim about two hosts.
   it("ships the day's OTHER activities as merge siblings, log-shaped", () => {
     const detail = getActivityDetailData(profileId, mondayLegs, UNITS)!;
     expect(detail.siblings.map((s) => s.id)).toEqual([mondayWalk]);

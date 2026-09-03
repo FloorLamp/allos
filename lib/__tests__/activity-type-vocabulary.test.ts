@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { ACTIVITY_TYPES, type ActivityType } from "@/lib/types";
 import { pickActivityIconKey } from "@/lib/activity-icon";
-import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
+import { parseTrainingLogQuery } from "@/lib/training-log-format";
 import { equipmentKindsForActivityType } from "@/lib/activity-equipment";
 import { metsForActivity } from "@/lib/calorie-estimate";
 import { effortClass } from "@/lib/effort-class";
@@ -93,11 +93,11 @@ describe("every per-type map answers for every type", () => {
 describe("the training log filter vocabulary is the declared tuple", () => {
   it("accepts every declared type, so no type is silently unfilterable", () => {
     for (const t of ACTIVITY_TYPES)
-      expect(normalizeTrainingLogFilters({ type: t }).type).toBe(t);
+      expect(parseTrainingLogQuery({ type: t }).type).toBe(t);
   });
 
   it("still refuses a type that is not in the vocabulary", () => {
-    expect(normalizeTrainingLogFilters({ type: "sleeping" }).type).toBeNull();
+    expect(parseTrainingLogQuery({ type: "sleeping" }).type).toBeNull();
   });
 });
 

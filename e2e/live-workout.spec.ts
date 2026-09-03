@@ -149,8 +149,13 @@ test("editing another activity resumes an empty live workout without stranding i
   await page.goBack();
   await page.waitForURL(/\/training\?tab=log$/);
 
-  const olderActivity = page.getByTestId("training-log-row").first(); // first-ok: live drafts are excluded from the log, so every visible row is an older stored activity
-  await hydratedClick(page, olderActivity.getByRole("link").first()); // first-ok: the activity title is the row's first link
+  // SCOPED TO AN ACTIVITY ROW, and followed through its TITLE (#4079). The Log
+  // renders the whole Training family through the shared substrate, so an unscoped
+  // row can be a milestone or an endurance event, and the row itself is not a link.
+  const olderActivity = page
+    .locator('[data-testid="history-row"][data-history-kind="activity"]')
+    .first(); // first-ok: live drafts are excluded from the log, so every visible activity row is an older stored one
+  await hydratedClick(page, olderActivity.getByTestId("history-row-title"));
   await page.waitForURL(/\/training\/activity\/\d+$/);
   await hydratedClick(page, page.getByTestId("activity-page-edit"));
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();

@@ -209,11 +209,56 @@ test("a new profile completes the six-step onboarding journey", async ({
 
     await expect(page).toHaveURL(/\/$/);
     await openDashboardAll(page);
-    // The checklist is a ROW since #4076 — its suggestions in the facts column, its
-    // "Hide" on the row — so it is found by the candidate it always was.
+    // THE CHECKLIST IS A MOMENT BLOCK (#4362 ruling 3). #4076 made it ONE row whose
+    // facts column joined the remaining labels with "·" — one door for the whole set,
+    // and none of the sentences saying why a step is worth doing. The owner ruled a
+    // first-run reader is exactly who deserves per-step doors, so what is asserted
+    // here is the SHAPE the ruling names: one header, a row per remaining step with
+    // its own door and its own benefit sentence, and the phone-only advice last.
+    const checklist = page.locator('[data-moment-key="onboarding.checklist"]');
     await expect(
-      page.locator('[data-fact-key="onboarding.checklist-progress"]')
-    ).toBeVisible();
+      checklist.getByRole("heading", { name: "A few useful next steps" })
+    ).toHaveCount(1);
+
+    const steps = checklist.locator(
+      '[data-candidate-id^="onboarding.checklist:"]'
+    );
+    const offered = await steps.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        id: node.getAttribute("data-candidate-id"),
+        text: (node.textContent ?? "").replace(/\s+/g, " ").trim(),
+        doors: [...node.querySelectorAll("a[href]")].map((a) =>
+          a.getAttribute("href")
+        ),
+      }))
+    );
+    // A DOOR EACH, AND THEY ARE DIFFERENT DOORS. "Every row has a link" is satisfied
+    // by four rows pointing at one destination, which is the state this ruling
+    // replaced; the set of destinations has to be as big as the set of rows.
+    expect(offered.length).toBeGreaterThan(1);
+    expect(offered.map((step) => step.doors.length)).toEqual(
+      offered.map(() => 1)
+    );
+    expect(new Set(offered.flatMap((step) => step.doors)).size).toBe(
+      offered.length
+    );
+    // The benefit sentence, on the step this journey's focus asked for.
+    expect(
+      offered.find((step) => step.id === "onboarding.checklist:metrics-labs")
+        ?.text
+    ).toContain("See results, ranges, and trends alongside");
+    // MOBILE-ONLY ADVICE LAST. "Add emergency details" is the one suggestion a
+    // desktop reader cannot act on, and it led the list before the sort came back.
+    expect(offered.at(-1)?.id).toBe("onboarding.checklist:explore");
+
+    // …and the block's own reassurance and dismiss, on the row that carries them.
+    const summary = checklist.locator(
+      '[data-candidate-id="onboarding.progress"]'
+    );
+    await expect(summary).toContainText(
+      "Pick what helps now and leave the rest for later."
+    );
+    await expect(summary.getByRole("button", { name: "Hide" })).toBeVisible();
   } finally {
     await page.context().close();
   }

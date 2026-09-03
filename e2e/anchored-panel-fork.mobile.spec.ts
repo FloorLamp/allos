@@ -4,6 +4,7 @@ import {
   expectControlBoxHeight,
   expectPhoneTapTargets,
   hydratedClick,
+  openFoodAdd,
   settledBoxes,
   settledClick,
   settledFill,
@@ -101,6 +102,7 @@ test.describe("below md the ⋯ menu is a bottom action sheet", () => {
   }) => {
     test.slow();
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     const group = page.getByTestId("food-group-nuts_seeds");
     if (!(await group.isVisible())) {
       await page.getByTestId("food-more-groups-summary").click();

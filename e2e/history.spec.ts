@@ -197,11 +197,17 @@ test.describe("the record (#3958)", () => {
 
   // #4452 §3. THE ROW'S HEIGHT CANNOT ANSWER THE ONE-LINE QUESTION, and the ceiling
   // below used to be the only thing asked. Measured at 390px on this fixture: the
-  // rows that carry an ⋯ menu are 52-53px tall because `OverflowMenu`'s control is
-  // 40px, and a row whose TITLE has wrapped to two 20px lines is *also* 53px. The
-  // two states are the same number, so no constant — 64px, or any tightening of it —
-  // can separate them, and `2 × lineHeight + 24` in particular is exactly a two-line
-  // text budget. #4452 asked whether the ceiling should be tightened; it cannot be.
+  // rows that carry an ⋯ menu are 46-47px tall and the rows without one are 44, so
+  // the height reports the row's CHROME and not whether its text wrapped. #4452 asked
+  // whether the ceiling should be tightened; the constant `2 × lineHeight + 24` is
+  // exactly a two-line text budget, so tightening it is asking the wrong box.
+  //
+  // THOSE NUMBERS MOVED UNDER THIS COMMENT, and the old ones are worth keeping
+  // because the argument was first made on them: the ⋯ rows measured 52-53 when
+  // `OverflowMenu`'s control rendered 40px, which is where the reading "a menu row and
+  // a two-line row are the same 53px" came from. #4362's fifth ruling put that control
+  // on the 34px box, so the coincidence the argument was drawn on is gone — the
+  // conclusion is not re-derived here, because #4452's ruling is #4452's.
   //
   // So the two claims are now measured on the two different boxes that actually
   // carry them: the row's height still bounds the row's CHROME (padding, a control
@@ -238,8 +244,8 @@ test.describe("the record (#3958)", () => {
           // hand: the identity half the shared row primitive owns (icon, title,
           // subject, detail — `components/LoggedEventRow.tsx`) and the trailing
           // clock, which sits outside it. Deliberately NOT the row content wrapper:
-          // that holds the 40px menu control and so is 40px tall on a perfectly
-          // one-line row.
+          // that holds the ⋯ menu control and so is as tall as the control box on a
+          // perfectly one-line row.
           cells: [
             ...el.querySelectorAll<HTMLElement>(
               '[data-logged-event-row], [data-testid="history-row-clock"]'

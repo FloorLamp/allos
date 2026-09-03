@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
 import { expectNoClippedContent, openDashboardAll } from "./helpers";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_LOGIN_ROUTINEUSUAL,
   E2E_LOGIN_WELLSYM,
@@ -98,12 +99,20 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
   // the coaching row carries two forms' worth. Hidden payload is not an affordance.
   // So the filter is part of the claim, not a convenience.
   //
-  // The HEIGHT half of the invariant is deliberately not asserted here: the
-  // snooze/dismiss overflow trigger is `h-10` (40px) with `.tap-target` reaching the
-  // 44 effective floor, a shared primitive with 34 call sites that predates this
-  // ruling and sat beside a 34px control in the card too. Encoding an exception for
-  // it would be the allowlist this repo bans; it is reported instead.
-  test("no row hosts more than two operable controls", async ({ page }) => {
+  // THE HEIGHT HALF IS NOW ASSERTED TOO (#4362 ruling 5). It was not, and the reason
+  // is worth keeping: the snooze/dismiss overflow trigger rendered `h-10` (40px) on
+  // 48 rows, a shared primitive with 34 call sites that predates the ruling and sat
+  // beside a 34px "Mark taken" in the old card as well. Writing an exception for it
+  // into this guard would have been the allowlist this repo bans, so it was reported
+  // instead — and the owner shrank the trigger rather than minting the exception.
+  // With no deviation left, the invariant's two claims are one measurement.
+  //
+  // MEASURED, NEVER A CLASS STRING. `h-(--control-box)` in a class list is a
+  // DECLARATION; #3514's cascade bug read correctly in the stylesheet and did not
+  // arrive at the element. So the number below comes from a rendered box.
+  test("no row hosts more than two operable controls, and each is the control box", async ({
+    page,
+  }) => {
     await page.goto("/");
     await openDashboardAll(page);
 
@@ -129,6 +138,12 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
             {
               id: node.getAttribute("data-candidate-id"),
               controls: operable.length,
+              // The rendered box of each one, rounded to the pixel the ruling names.
+              // A `<form>` wrapper around a submit button contributes no box of its
+              // own, so this measures the operable elements themselves.
+              heights: operable.map((control) =>
+                Math.round(control.getBoundingClientRect().height)
+              ),
             },
           ];
         })
@@ -140,6 +155,20 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
     expect(rows.filter((row) => row.controls > 2)).toEqual([]);
     // …and the cap is actually approached, or it is bounding nothing that exists.
     expect(rows.some((row) => row.controls === 2)).toBe(true);
+
+    // THE ONE HEIGHT. Reported as the offending rows and their measured boxes, not as
+    // a count: "Expected 34, Received 40" names no row to open.
+    expect(
+      rows.flatMap((row) =>
+        row.heights
+          .filter((height) => height !== CONTROL_BOX_PX)
+          .map((height) => `${row.id}: ${height}px`)
+      )
+    ).toEqual([]);
+    // The control for THAT claim: a box was actually measured at the ruled height.
+    // The filter above returns an empty list on a row set that hosts no control at
+    // all, which is the same green as one where every control is 34.
+    expect(rows.flatMap((row) => row.heights)).toContain(CONTROL_BOX_PX);
   });
 
   // #3365's third amendment: "No empty-state prose in the tail — absence is not
