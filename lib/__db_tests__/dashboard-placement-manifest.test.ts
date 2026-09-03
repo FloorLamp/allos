@@ -1,6 +1,7 @@
 // Real-schema candidate census and query budget for the dashboard cutover (#3096).
 
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
@@ -702,6 +703,109 @@ describe("actual atomic dashboard manifests", () => {
         lane.length - dropped.length
       );
     }
+  });
+
+  // THE COMPLETENESS CONTRACT EXTENDED TO THE BAND CAP (owner ruling 2026-09-03,
+  // #4065). "Keeps drawing the tail it did not drop" above is a claim about the
+  // MANIFEST — the placement the ranker hands the canvas. Since #4065 the Understand
+  // and Setup bands can fold most of what they draw behind a count, so completeness
+  // now also has to survive RENDERING: a candidate the manifest admits must still be
+  // ON THE PAGE once the cap and its fold are applied, open or closed. Real persona
+  // data is what actually exercises a folded family (the unit-tier fixtures in
+  // lib/__tests__/dashboard-placement-canvas.test.ts prove the mechanism in
+  // isolation; this proves it against the same seeded populations #3366's baseline
+  // measured — 74 Understand rows, 65+ Setup rows across six personas).
+  it("keeps every folded Understand/Setup candidate on the page, and the fold is exercised", () => {
+    // THE CAP UNIT, reproduced from DashboardPlacementCanvas.tsx's own `momentBlocks`
+    // grouping key (`candidate.groupKey ?? <unique>`) rather than re-imported, since
+    // that function is private to the component. This is the POSITIVE half of the
+    // measurement below (which bands actually trigger the fold), not the guard
+    // itself — the guard is the presence assertion inside the loop, which reuses
+    // nothing from this count.
+    const blockCount = (
+      group: DashboardEverythingGroup,
+      placements: DashboardPlacementCanvasProps["placements"]
+    ) => {
+      const members = placements.filter(
+        (placement) =>
+          placement.lane === "everything" &&
+          placement.everythingGroup === group &&
+          placement.admitted
+      );
+      return new Set(
+        members.map(
+          (placement) =>
+            placement.candidate.groupKey ?? placement.candidate.candidateId
+        )
+      ).size;
+    };
+
+    // STRIP THE LIVE CONTROLS, KEEP THE STRUCTURE. A real persona's presentations
+    // carry write controls (`DoseConfirmButton`, snooze/dismiss menus) that reach
+    // into app-shell context (toast, quick-entry, offline queue, …) this isolated
+    // render does not have — and does not need, since candidacy and fold placement
+    // never depend on what a control renders. `data-candidate-id` sits on the row
+    // itself, so dropping `value`/`detail`/`control` proves the same completeness
+    // claim without reconstructing the shell.
+    const structuralOnly = (
+      presentations: DashboardPlacementCanvasProps["presentations"]
+    ): DashboardPlacementCanvasProps["presentations"] =>
+      new Map(
+        [...presentations].map(([id, presentation]) => [
+          id,
+          {
+            label: presentation.label,
+            href: presentation.href,
+            actionLabel: presentation.actionLabel,
+            moment: presentation.moment,
+          },
+        ])
+      );
+
+    let cappedBandsExercised = 0;
+    for (const [persona, placements] of manifests) {
+      const presentations = structuralOnly(rowPresentations.get(persona)!);
+      const html = renderToStaticMarkup(
+        createElement(DashboardPlacementCanvas, {
+          dateLabel: "September 3, 2026",
+          placements,
+          presentations,
+          aheadPresentations: structuralOnly(aheadPresentations.get(persona)!),
+          attentionBadgeCount: 0,
+          // A placeholder — some personas carry an open illness episode and the
+          // canvas requires this whenever they do; its content is irrelevant to
+          // the Understand/Setup bands under test.
+          illnessGroupNode: createElement("div"),
+        })
+      );
+      for (const group of ["understand", "setup"] as const) {
+        const admitted = placements.filter(
+          (placement) =>
+            placement.lane === "everything" &&
+            placement.everythingGroup === group &&
+            placement.admitted
+        );
+        // THE POSITIVE CONTROL, per band: nothing in this loop can mean anything on
+        // an empty band.
+        if (admitted.length === 0) continue;
+        for (const placement of admitted)
+          expect(
+            html,
+            `${persona}/${group}: ${placement.candidate.candidateId} missing from the rendered page`
+          ).toContain(`data-candidate-id="${placement.candidate.candidateId}"`);
+        if (blockCount(group, placements) > 3) {
+          cappedBandsExercised += 1;
+          expect(
+            html,
+            `${persona}/${group}: has >3 blocks but rendered no fold`
+          ).toContain(`data-testid="dashboard-everything-${group}-fold"`);
+        }
+      }
+    }
+    // The loop above is satisfiable by a population that never exceeds the cap
+    // anywhere — the seeded personas are what makes the fold assertion above mean
+    // something rather than never firing.
+    expect(cappedBandsExercised).toBeGreaterThan(0);
   });
 
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
