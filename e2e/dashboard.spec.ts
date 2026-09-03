@@ -5,6 +5,7 @@ import { loginAs } from "./nav";
 import {
   E2E_LOGIN_DAILY,
   E2E_LOGIN_DASHBOARD_ALL,
+  E2E_LOGIN_FLABS,
   E2E_LOGIN_SICK_SELF,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
@@ -393,6 +394,84 @@ test("multiple naps produce one Standing total and keep individuals outside Stan
 // the readings it no longer names are still whole one tap away. Both halves matter
 // — a test that only watched the dashboard shrink would pass if the data had been
 // deleted instead of moved.
+// The flagged-lab fixture's acknowledgment, cleared either side of the test below so
+// --repeat-each and a neighbouring spec sharing this worker's DB both start clean. The
+// profile carries ONE lab, so the namespace sweep names exactly its A1c.
+function clearFlaggedLabAcknowledgment(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `DELETE FROM upcoming_dismissals
+        WHERE signal_key LIKE 'biomarker-flag:%'
+          AND profile_id IN (
+            SELECT lp.profile_id
+              FROM login_profiles lp
+              JOIN logins l ON l.id = lp.login_id
+             WHERE l.username = ?)`
+    ).run(E2E_LOGIN_FLABS);
+  } finally {
+    db.close();
+  }
+}
+
+// SAYING "SEEN IT" TO A CHRONIC NOTABLE, IN THE BROWSER (#3225). The owner's 37
+// notables came from one June panel: flagged, months old, and therefore past the
+// 14-day collection window that gives a flagged result an attention row to host the
+// control. This fixture is that shape in one reading — an A1c flagged high, drawn 120
+// days ago — and it is the only seeded profile that reaches it, which is why the test
+// signs in rather than reading the shared dashboard.
+//
+// The assertion after the dismissal is deliberately NOT that the row disappears.
+// Acknowledging spends a precedence; it does not delete a reading, and the row is
+// still the profile's latest A1c reading afterwards, still saying 8.2 and still High.
+test("a months-old flagged result offers its acknowledgment on the dashboard", async ({
+  browser,
+}) => {
+  clearFlaggedLabAcknowledgment();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FLABS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const row = page
+      .locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"]'
+      )
+      .filter({ hasText: "Hemoglobin A1c" });
+    // Quiet by construction: a result too old to be fresh and too old to carry an
+    // attention item holds no claim, so it sits in the one fold rather than in
+    // Standing. That is also what makes it the row with nowhere else to be
+    // acknowledged.
+    await expect(row).toHaveAttribute("data-lane", "everything");
+    await expect(row).toContainText("8.2");
+
+    await row
+      .getByRole("button", { name: "Actions for Hemoglobin A1c" })
+      .click();
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Dismiss" })
+      .click();
+    // The menu closing is the action having run; the control going is the server
+    // having revalidated with the acknowledgment in hand.
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    await openDashboardAll(page);
+    await expect(row.getByTestId("dashboard-row-controls")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    // …and the reading itself is untouched — still there, still 8.2, still High.
+    await expect(row).toContainText("8.2");
+    await expect(row).toContainText("High");
+  } finally {
+    clearFlaggedLabAcknowledgment();
+    await page.close();
+  }
+});
+
 test("the clinical family renders its cap and /results keeps the census", async ({
   page,
 }) => {
