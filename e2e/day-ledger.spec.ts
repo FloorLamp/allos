@@ -519,6 +519,15 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     const due = morning(page).locator('[data-testid^="ledger-due-row-"]');
     const door = page.getByTestId("food-add-door");
     for (const layer of [record, due, door]) await expect(layer).toBeVisible();
+    // THE DOOR TRANSITIONS ITS OWN BACKGROUND (it lifts on hover), so a colour written
+    // onto it ARRIVES OVER TIME: the control below forged the plan's fill and read back
+    // the same rgb at alpha 0.694 and 0.92 on two of six repeats. Stopping the
+    // transition removes the race rather than sampling it — every read here is then of
+    // a settled value, and the assertions are about which colour the box wears, never
+    // about how it got there.
+    await door.evaluate((el) => {
+      (el as HTMLElement).style.transitionProperty = "none";
+    });
 
     type Dress = { fill: string; edge: string };
     const dressOf = (layer: typeof record) =>
