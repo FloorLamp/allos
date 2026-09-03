@@ -9,6 +9,7 @@ import {
   settledFill,
 } from "./helpers";
 import { TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
+import { ANCHOR_GAP, ANCHOR_MARGIN } from "@/lib/anchored-position";
 
 // THE ANCHORED PANEL FORKS AT `md` (issues #3374, #3376).
 //
@@ -416,5 +417,103 @@ test.describe("from md up the anchored popover is what opens", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("time-field-wheel")).toHaveCount(0);
     await expect(field).toHaveValue("10:15");
+  });
+});
+
+// ── THE POPOVER STOPS AT THE VIEWPORT EDGE (#4776) ───────────────────────────
+//
+// The positioner always knew how much room sat between the anchor and the edge;
+// until #4776 `AnchoredPanel` never applied it, so a panel taller than the room
+// simply drew past the bottom of the screen — taking whatever lives at its
+// bottom (a Done button, the last week of a month) with it.
+//
+// This is a GEOMETRY claim and it is asserted as a RELATIONSHIP: the panel's own
+// bottom edge against the viewport's, not against a constant. And the cap is only
+// half the contract — a panel that clipped its content instead of overflowing it
+// would satisfy every containment assertion here and still hide the same button —
+// so the second half, that the hidden part is reachable by scrolling the panel,
+// is asserted through the SAME element the containment is read from.
+test.describe("from md up the popover is capped to the room on screen", () => {
+  // Desktop WIDTH, so the fork opens the popover — the sheet has never had this
+  // defect. Short on purpose: a window this size is a half-screen split or a
+  // laptop with a docked devtools pane, and it is the shape where a month grid
+  // cannot fit on either side of the control that opened it. The test asserts
+  // that rather than assuming it (see NATURALLY TALLER below), so a viewport that
+  // stopped being short enough fails loudly instead of passing vacuously.
+  test.use({ viewport: { width: 1280, height: 320 } });
+
+  test("a calendar taller than either side of its trigger is capped, contained and still scrollable to its last row", async ({
+    page,
+  }) => {
+    await page.goto("/history");
+    const trigger = page.getByTestId("history-calendar");
+    await expect(trigger).toBeVisible();
+    await hydratedClick(page, trigger);
+
+    // THE GUARD'S OWN OBJECT, and the element the cap is applied to: the popover
+    // host itself. Every reading below — natural height, box, scroll — goes
+    // through this one locator.
+    const panel = page.getByTestId("history-calendar-panel");
+    await expect(panel).toHaveAttribute("data-anchored-panel", "popover");
+    // Wait for the CONTENT before measuring the container: an empty grid fits any
+    // height, and "it fits" is the answer this test must not be handed for free.
+    await expect(panel.getByRole("button", { name: "Previous month" })).toBeVisible();
+
+    const viewportHeight = page.viewportSize()!.height;
+    const geometry = await panel.evaluate((el) => ({
+      // What the panel WANTS: its content's height, which `max-height` does not
+      // change. Bigger than the box is exactly the state being forbidden.
+      natural: el.scrollHeight,
+      box: el.clientHeight,
+      bottom: el.getBoundingClientRect().bottom,
+      top: el.getBoundingClientRect().top,
+      overflowY: getComputedStyle(el).overflowY,
+    }));
+    const triggerBox = (await trigger.boundingBox())!;
+
+    // NATURALLY TALLER THAN THE ROOM ON EITHER SIDE OF THE TRIGGER — measured
+    // from the trigger actually on screen, not from a viewport constant, because
+    // "the panel could not have fitted anywhere" is the premise every assertion
+    // below rests on. Without it a calendar that happened to fit would satisfy
+    // all of them on the broken tree too.
+    const roomBelow =
+      viewportHeight - (triggerBox.y + triggerBox.height) - ANCHOR_GAP - ANCHOR_MARGIN;
+    const roomAbove = triggerBox.y - ANCHOR_GAP - ANCHOR_MARGIN;
+    expect(
+      geometry.natural,
+      "the calendar must fit on neither side, or nothing below is being tested"
+    ).toBeGreaterThan(Math.max(roomAbove, roomBelow));
+
+    // CONTAINED — the whole claim, as the relationship it is about: the panel's
+    // own bottom edge against the viewport's, not against a constant.
+    expect(geometry.top).toBeGreaterThanOrEqual(ANCHOR_MARGIN);
+    expect(
+      geometry.bottom,
+      "the panel's bottom edge must stay inside the viewport"
+    ).toBeLessThanOrEqual(viewportHeight - ANCHOR_MARGIN);
+
+    // AND IT GOT THERE BY CAPPING, NOT BY SHRINKING ITS CONTENT.
+    expect(geometry.box).toBeLessThan(geometry.natural);
+
+    // AND THE HIDDEN PART IS REACHABLE, which is what makes the cap a fix rather
+    // than a different way to lose the same content. The month grid's LAST day is
+    // below the fold of a capped panel; scrolling the panel brings it into view.
+    // By the cell's own markup rather than by a role: a LINKED grid renders a
+    // `Link` for a marked day and a plain `div` for every other, so no single
+    // role reaches the last cell whichever day the fixture lit.
+    const days = panel.locator("[data-calendar-day]");
+    // COUNT BEFORE THE ABSENCE. `not.toBeInViewport()` is satisfied just as well
+    // by an element that is not in the DOM at all, so without this the assertion
+    // below is green on a grid that never rendered — which is how the first draft
+    // of this test passed while addressing nothing.
+    const dayCount = await days.count();
+    expect(dayCount, "a month grid renders at least 28 day cells").toBeGreaterThanOrEqual(28);
+    const last = days.nth(dayCount - 1);
+    await expect(last).not.toBeInViewport();
+    expect(geometry.overflowY).toBe("auto");
+    await panel.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(last).toBeInViewport();
   });
 });
