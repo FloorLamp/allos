@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import CgmGlucoseToggle from "@/app/(app)/integrations/health-connect/CgmGlucoseToggle";
 
@@ -22,7 +28,8 @@ function held() {
 }
 
 const card = () => screen.getByTestId("hc-cgm-glucose");
-const box = () => screen.getByTestId("hc-cgm-glucose-toggle") as HTMLInputElement;
+const box = () =>
+  screen.getByTestId("hc-cgm-glucose-toggle") as HTMLInputElement;
 
 // #4972. The switch used to hold its value in its own `useState` and flip it
 // synchronously, with the write inside a bare `useTransition` and nothing rendered
@@ -37,26 +44,29 @@ describe("the CGM glucose switch cannot hide an unsettled write (#4972)", () => 
   it.each([
     { direction: "off→on", initial: false },
     { direction: "on→off", initial: true }, // the half that failed in CI
-  ])("$direction: says the write is open until it lands", async ({ initial }) => {
-    const write = held();
-    setCgmGlucose.mockImplementation(() => write.promise);
-    render(<CgmGlucoseToggle initial={initial} />);
-    expect(box().checked).toBe(initial);
+  ])(
+    "$direction: says the write is open until it lands",
+    async ({ initial }) => {
+      const write = held();
+      setCgmGlucose.mockImplementation(() => write.promise);
+      render(<CgmGlucoseToggle initial={initial} />);
+      expect(box().checked).toBe(initial);
 
-    fireEvent.click(box());
-    // The tap still paints in the same frame (#2641) — the fix must not be bought by
-    // making the control wait for the round trip.
-    await waitFor(() => expect(box().checked).toBe(!initial));
-    // …and the card announces the open write, scoped to the card, which is exactly
-    // what `awaitAutosaveSettled` reads before a spec is allowed to reload.
-    expect(within(card()).getByLabelText("Saving")).toBeTruthy();
+      fireEvent.click(box());
+      // The tap still paints in the same frame (#2641) — the fix must not be bought by
+      // making the control wait for the round trip.
+      await waitFor(() => expect(box().checked).toBe(!initial));
+      // …and the card announces the open write, scoped to the card, which is exactly
+      // what `awaitAutosaveSettled` reads before a spec is allowed to reload.
+      expect(within(card()).getByLabelText("Saving")).toBeTruthy();
 
-    write.settle();
-    await waitFor(() =>
-      expect(within(card()).queryByLabelText("Saving")).toBeNull()
-    );
-    expect(box().checked).toBe(!initial);
-  });
+      write.settle();
+      await waitFor(() =>
+        expect(within(card()).queryByLabelText("Saving")).toBeNull()
+      );
+      expect(box().checked).toBe(!initial);
+    }
+  );
 
   it("puts the switch back when the write throws, and still says so", async () => {
     const write = held();
