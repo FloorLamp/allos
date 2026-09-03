@@ -612,6 +612,15 @@ interface StatementSurface {
   drawsDoor: boolean;
   /** Retired spellings, as `file:line spelling`. */
   retired: string[];
+  /**
+   * A SECOND `IconClock` the surface draws itself, as `file:line`. The door's own
+   * glyph lives in `components/TimeStatement.tsx` and never appears as a literal
+   * tag in a host file — a host only ever writes `{s.door}` — so any `<IconClock`
+   * this scan finds here is the host drawing its OWN clock beside the one the
+   * control already drew (#4882 owner ruling: "the clock is reserved for the time
+   * statement… nothing else on the row spells with a clock").
+   */
+  clock: string[];
 }
 
 export function scanStatementSurface(
@@ -629,6 +638,7 @@ export function scanStatementSurface(
     adopts: false,
     drawsDoor: false,
     retired: [],
+    clock: [],
   };
   function visit(node: ts.Node) {
     if (
@@ -649,6 +659,16 @@ export function scanStatementSurface(
           } ${spelled}`
         );
     }
+    const tagName =
+      ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)
+        ? node.tagName.getText(source)
+        : null;
+    if (tagName === "IconClock")
+      out.clock.push(
+        `${file}:${
+          source.getLineAndCharacterOfPosition(node.getStart()).line + 1
+        }`
+      );
     ts.forEachChild(node, visit);
   }
   visit(source);
@@ -704,6 +724,17 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
         `${rel} spells the statement a second way. The clock door is the only spelling ` +
           `(owner ruling, 2026-09-02): delete the text affordance rather than seating it ` +
           `beside the glyph.`
+      ).toEqual([]);
+      // #4882 owner ruling (2026-09-03): the clock glyph is reserved for the time
+      // statement, and nothing else on an adopted surface's row spells with a clock.
+      // The door's own `IconClock` lives in TimeStatement.tsx, so a `<IconClock` this
+      // scan finds HERE is a second clock the host drew itself — the two-clock practice
+      // row the issue reported, generalized to every surface that could grow one.
+      expect(
+        scan.clock,
+        `${rel} draws its own IconClock beside the statement's door. The clock is ` +
+          `reserved for the time statement (owner ruling, 2026-09-03): give this ` +
+          `affordance a different glyph.`
       ).toEqual([]);
     }
   );
@@ -770,6 +801,38 @@ describe("the clock door is the only spelling of the statement (#4426)", () => {
     expect(
       scanStatementSurface("components/Plant.tsx", source).retired,
       `${label} should report ${count} retired spelling(s)`
+    ).toHaveLength(count);
+  });
+
+  // THE `clock` FIELD, on the same "guard can see" terms: fire on a forged second
+  // IconClock beside the door, and stay quiet on the benign neighbours a real surface
+  // draws all the time — the door itself (as `{s.door}`, never a literal tag) and an
+  // unrelated icon that merely shares the "Icon" prefix.
+  it.each([
+    [
+      "a second IconClock beside the door",
+      `${MOUNT}<><button><IconClock />Details</button>{s.door}</>`,
+      1,
+    ],
+    [
+      "a second IconClock, self-closing with props",
+      `${MOUNT}<><IconClock className="h-4 w-4" stroke={2} aria-hidden />{s.door}</>`,
+      1,
+    ],
+    [
+      "the door alone — {s.door} is a property access, never a literal tag",
+      `${MOUNT}<>{s.door}</>`,
+      0,
+    ],
+    [
+      "an unrelated icon beside the door",
+      `${MOUNT}<><IconListDetails />{s.door}</>`,
+      0,
+    ],
+  ])("%s", (label, source, count) => {
+    expect(
+      scanStatementSurface("components/Plant.tsx", source).clock,
+      `${label} should report ${count} host-drawn IconClock(s)`
     ).toHaveLength(count);
   });
 
