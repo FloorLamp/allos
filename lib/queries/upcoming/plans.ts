@@ -367,19 +367,15 @@ export function enduranceEventItems(
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
     .map((p) => {
-      const disc =
-        p.discipline === "run"
-          ? "Run"
-          : p.discipline === "ride"
-            ? "Ride"
-            : "Swim";
-      const dist = fmtDistance(p.targetDistanceKm, distanceUnit);
-      const name = p.eventName?.trim() || `${dist} ${disc}`;
+      // The viewer's distance unit (#1019) threads into BOTH naming rules: an
+      // unnamed event's TITLE carries a distance too, so formatting only the detail
+      // leaves "Event: 10 km Run · Run · 6.21 mi" on a miles login.
+      const fmt = (km: number) => fmtDistance(km, distanceUnit);
       return {
         key: `endurance-event:${p.id}`,
         domain: "training" as const,
-        title: `Event: ${name}`,
-        detail: `${disc} · ${dist}`,
+        title: `Event: ${eventTitle(p, fmt)}`,
+        detail: eventDetail(p, fmt),
         href: "/training" as const,
         dueDate: p.eventDate,
         suppressible: false,
@@ -443,6 +439,7 @@ export function markCarePlanItemDone(
     return { kind: "completed" };
   });
 }
+import { eventDetail, eventTitle } from "../../endurance-plan";
 import {
   carePlanUpcomingItems,
   isCarePlanItemOpen,

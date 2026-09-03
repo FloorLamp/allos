@@ -6,7 +6,8 @@
 
 import { db, writeTx } from "./db";
 import {
-  disciplineLabel,
+  DEFAULT_EVENT_KIND,
+  eventTitle,
   isEnduranceDiscipline,
   type EndurancePlan,
   type EndurancePlanDiscipline,
@@ -22,10 +23,11 @@ function planMilestoneKey(id: number): string {
 
 interface PlanRow {
   id: number;
+  kind: string;
   event_name: string | null;
-  discipline: EndurancePlanDiscipline;
+  discipline: EndurancePlanDiscipline | null;
   event_date: string;
-  target_distance_km: number;
+  target_distance_km: number | null;
   target_time_sec: number | null;
   status: EndurancePlanStatus;
   notes: string | null;
@@ -35,6 +37,7 @@ interface PlanRow {
 function rowToPlan(r: PlanRow): EndurancePlan {
   return {
     id: r.id,
+    kind: r.kind,
     eventName: r.event_name,
     discipline: r.discipline,
     eventDate: r.event_date,
@@ -46,7 +49,7 @@ function rowToPlan(r: PlanRow): EndurancePlan {
   };
 }
 
-const SELECT_COLS = `id, event_name, discipline, event_date, target_distance_km,
+const SELECT_COLS = `id, kind, event_name, discipline, event_date, target_distance_km,
   target_time_sec, status, notes, completed_on`;
 
 // Every plan for the profile: active first, then by event date (soonest first).
@@ -93,10 +96,16 @@ export function getEndurancePlan(
 // optional field means EMPTY — a new row states everything about itself.
 // `EndurancePlanPatch` below is the edit shape, where omitted means unchanged.
 export interface EndurancePlanInput {
+  // The open event kind (#3285). Absent means 'race' — what every row was before
+  // the store generalized, and the only kind the pre-#3285 form could produce.
+  kind?: string | null;
   eventName?: string | null;
-  discipline: EndurancePlanDiscipline;
+  // The cardio pair, both optional since #3285: a lifting meet has neither. They
+  // are validated TOGETHER below — one without the other is refused rather than
+  // half-stored, so `coachedPlan` never has to decide what a half-pair meant.
+  discipline?: EndurancePlanDiscipline | null;
   eventDate: string;
-  targetDistanceKm: number;
+  targetDistanceKm?: number | null;
   targetTimeSec?: number | null;
   notes?: string | null;
 }
@@ -121,25 +130,47 @@ export type EndurancePlanWriteOutcome =
   { kind: "ok"; id: number } | { kind: "invalid" } | { kind: "duplicate" };
 
 function sanitize(input: EndurancePlanInput): {
+  kind: string;
   eventName: string | null;
-  discipline: EndurancePlanDiscipline;
+  discipline: EndurancePlanDiscipline | null;
   eventDate: string;
-  targetDistanceKm: number;
+  targetDistanceKm: number | null;
   targetTimeSec: number | null;
   notes: string | null;
 } | null {
-  if (!isEnduranceDiscipline(input.discipline)) return null;
   const eventDate = (input.eventDate ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return null;
-  const dist = Number(input.targetDistanceKm);
-  if (!Number.isFinite(dist) || dist <= 0 || dist > 1000) return null;
+  // The kind is open text, so the only rules are non-empty and bounded. Lowercased
+  // so 'Race' and 'race' are one kind rather than two that sort apart.
+  const kind =
+    (input.kind ?? "").trim().toLowerCase().slice(0, 40) || DEFAULT_EVENT_KIND;
+  // The cardio pair, validated as a pair. A discipline the classifier does not know
+  // is invalid; a distance outside the plausible band is invalid; and exactly one of
+  // the two present is invalid, because a trajectory needs both and a stored half
+  // would render as a plan the engine silently declines to coach.
+  const discipline =
+    input.discipline == null || input.discipline === ("" as string)
+      ? null
+      : isEnduranceDiscipline(input.discipline)
+        ? input.discipline
+        : undefined;
+  if (discipline === undefined) return null;
+  const rawDist = input.targetDistanceKm;
+  let dist: number | null = null;
+  if (rawDist != null && String(rawDist) !== "") {
+    const n = Number(rawDist);
+    if (!Number.isFinite(n) || n <= 0 || n > 1000) return null;
+    dist = n;
+  }
+  if ((discipline == null) !== (dist == null)) return null;
   const time =
     input.targetTimeSec != null && Number.isFinite(Number(input.targetTimeSec))
       ? Math.max(0, Math.round(Number(input.targetTimeSec)))
       : null;
   return {
+    kind,
     eventName: (input.eventName ?? "").trim().slice(0, 120) || null,
-    discipline: input.discipline,
+    discipline,
     eventDate,
     targetDistanceKm: dist,
     targetTimeSec: time && time > 0 ? time : null,
@@ -151,9 +182,16 @@ function sanitize(input: EndurancePlanInput): {
 // edit). Belt-and-braces alongside the partial unique index. Profile-scoped.
 function hasActiveForDiscipline(
   profileId: number,
-  discipline: EndurancePlanDiscipline,
+  discipline: EndurancePlanDiscipline | null,
   exceptId?: number
 ): boolean {
+  // An event with no cardio discipline is outside the one-active-plan-per-discipline
+  // rule entirely — a household may have a meet, a tournament and a 10K on the
+  // calendar at once. Stated here rather than left to SQL, where `discipline = NULL`
+  // would answer "no duplicate" for the right result by accident (and would answer
+  // the same if the column stopped being nullable). The partial UNIQUE index agrees:
+  // SQLite treats NULLs as distinct, so it never collides these rows either.
+  if (discipline == null) return false;
   const row = db
     .prepare(
       `SELECT COUNT(*) AS n FROM endurance_plans
@@ -179,12 +217,13 @@ export function createEndurancePlanCore(
       db
         .prepare(
           `INSERT INTO endurance_plans
-             (profile_id, event_name, discipline, event_date, target_distance_km,
+             (profile_id, kind, event_name, discipline, event_date, target_distance_km,
               target_time_sec, status, notes)
-           VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`
         )
         .run(
           profileId,
+          s.kind,
           s.eventName,
           s.discipline,
           s.eventDate,
@@ -209,6 +248,7 @@ function mergePatch(
   const take = <T>(v: T | undefined, stored: T): T =>
     v === undefined ? stored : v;
   return {
+    kind: take(patch.kind, existing.kind),
     eventName: take(patch.eventName, existing.eventName),
     discipline: take(patch.discipline, existing.discipline),
     eventDate: take(patch.eventDate, existing.eventDate),
@@ -243,10 +283,11 @@ export function updateEndurancePlanCore(
       return { kind: "duplicate" as const };
     db.prepare(
       `UPDATE endurance_plans
-          SET event_name = ?, discipline = ?, event_date = ?, target_distance_km = ?,
-              target_time_sec = ?, notes = ?
+          SET kind = ?, event_name = ?, discipline = ?, event_date = ?,
+              target_distance_km = ?, target_time_sec = ?, notes = ?
         WHERE id = ? AND profile_id = ?`
     ).run(
+      s.kind,
       s.eventName,
       s.discipline,
       s.eventDate,
@@ -277,7 +318,7 @@ export function setEndurancePlanStatusCore(
         "SELECT discipline FROM endurance_plans WHERE id = ? AND profile_id = ?"
       )
       .get(id, profileId) as
-      { discipline: EndurancePlanDiscipline } | undefined;
+      { discipline: EndurancePlanDiscipline | null } | undefined;
     if (!existing) return { kind: "invalid" as const };
     if (
       status === "active" &&
@@ -292,22 +333,13 @@ export function setEndurancePlanStatusCore(
     // Completing records a quiet timeline milestone (#839). Re-completing is idempotent
     // (INSERT OR IGNORE on the unique (profile_id, key) index).
     if (status === "completed") {
-      const plan = db
-        .prepare(
-          `SELECT event_name, discipline, target_distance_km
-             FROM endurance_plans WHERE id = ? AND profile_id = ?`
-        )
-        .get(id, profileId) as
-        | {
-            event_name: string | null;
-            discipline: EndurancePlanDiscipline;
-            target_distance_km: number;
-          }
-        | undefined;
+      // Re-read through the shared reader so the milestone title comes off the ONE
+      // naming rule (`eventTitle`) every other surface uses — a meet with no cardio
+      // pair has no "21.1 km Run" to fall back on, and duplicating the fallback here
+      // is how the card and the milestone would have drifted.
+      const plan = getEndurancePlan(profileId, id);
       if (plan) {
-        const name =
-          plan.event_name?.trim() ||
-          `${Math.round(plan.target_distance_km * 10) / 10} km ${disciplineLabel(plan.discipline)}`;
+        const name = eventTitle(plan);
         db.prepare(
           `INSERT OR IGNORE INTO milestones
              (profile_id, key, kind, threshold, title, detail, achieved_on)

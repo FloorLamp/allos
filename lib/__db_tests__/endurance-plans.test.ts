@@ -17,6 +17,7 @@ import {
   getEndurancePlanCard,
   getEndurancePlanCards,
   getEnduranceArm,
+  getEnduranceEvents,
 } from "@/lib/queries";
 import { buildEndurancePlanFindings } from "@/lib/rule-findings";
 import {
@@ -26,7 +27,7 @@ import {
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
 } from "@/lib/endurance-plans";
-import { enduranceLongSessionKey } from "@/lib/endurance-plan";
+import { coachedPlan, enduranceLongSessionKey } from "@/lib/endurance-plan";
 
 function makeProfile(name: string): number {
   return Number(
@@ -76,7 +77,7 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
   it("computes this-week targets from the last completed week and this week's actuals", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
 
     // Base = 20 km (last completed week) → this-week target ≈ 20 × 1.1 = 22.
     expect(card.thisWeek.targetVolumeKm).toBeCloseTo(22, 0);
@@ -89,7 +90,7 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
   it("detects the long session via the Strava label, not the raw longest run", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     // The 8 km LABELED long run wins over the 12 km unlabeled run.
     expect(card.actualLongSessionKm).toBe(8);
   });
@@ -105,14 +106,14 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
       targetDistanceKm: 10,
     });
     const plan = getEndurancePlan(profileId, (out as { id: number }).id)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     expect(card.actualLongSessionKm).toBe(13);
   });
 
   it("flips to a taper before the event, ending on the event week", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     const taper = card.trajectory.weeks.filter((w) => w.phase === "taper");
     // A 10k tapers for 1 week.
     expect(taper.length).toBe(1);
@@ -247,5 +248,100 @@ describe("endurance plan lifecycle cores (#839)", () => {
       targetDistanceKm: 21.1,
     });
     expect(b.kind).toBe("ok");
+  });
+});
+
+// ── #3285: the same store now holds events with no cardio arm ───────────────────
+
+describe("events with no cardio pair (#3285)", () => {
+  it("creates a lifting meet from kind + name + date alone", () => {
+    const profileId = makeProfile("events-meet");
+    const out = createEndurancePlanCore(profileId, {
+      kind: "meet",
+      eventName: "County Powerlifting Meet",
+      eventDate: "2026-10-05",
+    });
+    expect(out.kind).toBe("ok");
+    const plan = getEndurancePlan(profileId, (out as { id: number }).id)!;
+    expect(plan.kind).toBe("meet");
+    expect(plan.discipline).toBeNull();
+    expect(plan.targetDistanceKm).toBeNull();
+    expect(coachedPlan(plan)).toBeNull();
+
+    // It is a real event on Training Overview…
+    const events = getEnduranceEvents(profileId, "2026-06-15");
+    expect(events.map((e) => [e.plan.id, e.card])).toEqual([[plan.id, null]]);
+    // …and invisible to the coaching arm, which needs a trajectory. This is the
+    // half that keeps every pre-#3285 consumer byte-identical: they read cards.
+    expect(getEndurancePlanCards(profileId, "2026-06-15")).toEqual([]);
+    expect(getEnduranceArm(profileId, "2026-06-15")).toBeNull();
+  });
+
+  it("lets many active no-discipline events coexist", () => {
+    // The one-active-per-discipline rule is about a cardio discipline. A household
+    // with a meet, a tournament and a club open on the calendar is not a duplicate.
+    const profileId = makeProfile("events-many");
+    for (const [kind, name] of [
+      ["meet", "County Meet"],
+      ["tournament", "Club Open"],
+      ["competition", "Winter Classic"],
+    ] as const) {
+      expect(
+        createEndurancePlanCore(profileId, {
+          kind,
+          eventName: name,
+          eventDate: "2026-10-05",
+        }).kind
+      ).toBe("ok");
+    }
+    expect(getActiveEndurancePlans(profileId)).toHaveLength(3);
+  });
+
+  // The cardio pair is validated AS A PAIR: half of it is refused rather than
+  // half-stored, so `coachedPlan` never has to decide what a half-pair meant.
+  it.each([
+    ["discipline with no distance", { discipline: "run" as const }],
+    ["distance with no discipline", { targetDistanceKm: 10 }],
+  ])("refuses %s", (_label, half) => {
+    const profileId = makeProfile(`events-half-${_label.slice(0, 8)}`);
+    expect(
+      createEndurancePlanCore(profileId, {
+        kind: "race",
+        eventDate: "2026-10-05",
+        ...half,
+      }).kind
+    ).toBe("invalid");
+    expect(getActiveEndurancePlans(profileId)).toHaveLength(0);
+  });
+
+  it.each([
+    ["absent", undefined, "race"],
+    ["blank", "   ", "race"],
+    ["cased and padded", "  Time Trial ", "time trial"],
+  ])("stores a %s kind as %s", (_label, given, stored) => {
+    const profileId = makeProfile(`events-kind-${stored.slice(0, 6)}`);
+    const out = createEndurancePlanCore(profileId, {
+      kind: given,
+      eventName: "Kind Test",
+      eventDate: "2026-10-05",
+    });
+    expect(getEndurancePlan(profileId, (out as { id: number }).id)!.kind).toBe(
+      stored
+    );
+  });
+
+  it("titles a completed meet's milestone by its name, not a cardio fallback", () => {
+    const profileId = makeProfile("events-meet-complete");
+    const out = createEndurancePlanCore(profileId, {
+      kind: "meet",
+      eventName: "County Meet",
+      eventDate: "2026-10-05",
+    });
+    const id = (out as { id: number }).id;
+    setEndurancePlanStatusCore(profileId, id, "completed", "2026-10-05");
+    const ms = db
+      .prepare("SELECT title FROM milestones WHERE profile_id = ? AND key = ?")
+      .get(profileId, `endurance-plan:${id}`) as { title: string } | undefined;
+    expect(ms?.title).toBe("Event completed: County Meet");
   });
 });

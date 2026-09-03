@@ -118,4 +118,53 @@ test.describe("endurance event plans (#839)", () => {
       await expect(page.getByLabel("Saved")).toBeVisible();
     }
   });
+
+  // #3285 acceptance criterion 1. The trajectory block is what a meet does NOT
+  // have, so the absence half is asserted alongside a POSITIVE reading of the same
+  // card (badge + title) — an empty result would otherwise pass just as well on a
+  // card that failed to render at all. The converse (a coached plan still carrying
+  // both blocks) is the test above, on real elements, in this same file.
+  test("a lifting meet is creatable with no discipline, and completes", async () => {
+    test.slow();
+    await clearPlans(page);
+
+    await page.getByTestId("endurance-add-toggle").click();
+    await expect(page.getByTestId("endurance-form")).toBeVisible();
+    await page.getByRole("combobox", { name: "Kind" }).fill("meet");
+    await page.getByTestId("endurance-discipline").selectOption("");
+    await page.getByTestId("endurance-event-name").fill("E2E County Meet");
+    await page.getByTestId("endurance-event-date").fill(futureEventDate());
+    // No target distance: a meet has none, and the field is no longer required.
+    await settledClick(page, page.getByTestId("endurance-submit"));
+
+    const card = page.getByTestId("endurance-plan-card");
+    await expect(card).toHaveCount(1);
+    await expect(card.getByTestId("endurance-plan-title")).toHaveText(
+      "E2E County Meet"
+    );
+    // The badge carries the KIND where a cardio plan carries its discipline.
+    await expect(card).toContainText("Meet");
+    // …and there is no trajectory to show.
+    await expect(card.getByTestId("endurance-plan-target")).toHaveCount(0);
+    await expect(card.getByTestId("endurance-plan-message")).toHaveCount(0);
+
+    // A second active meet is allowed — the one-per-scope rule is about a cardio
+    // discipline, and a meet has none.
+    await page.getByTestId("endurance-add-toggle").click();
+    await page.getByRole("combobox", { name: "Kind" }).fill("tournament");
+    await page.getByTestId("endurance-discipline").selectOption("");
+    await page.getByTestId("endurance-event-name").fill("E2E Club Open");
+    await page.getByTestId("endurance-event-date").fill(futureEventDate());
+    await settledClick(page, page.getByTestId("endurance-submit"));
+    await expect(card).toHaveCount(2);
+
+    // Completing the meet retires it from the bar (the lifecycle is unchanged).
+    await settledClick(
+      page,
+      page.getByTestId("endurance-set-completed").first() // first-ok: the meet card THIS test created
+    );
+    await expect(card).toHaveCount(1);
+
+    await clearPlans(page);
+  });
 });
