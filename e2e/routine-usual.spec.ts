@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { openDashboardAll, settledClick } from "./helpers";
+import { openDashboardAll, openFoodAdd, settledClick } from "./helpers";
 import { E2E_LOGIN_ROUTINEUSUAL, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // THE MORNING IS ONE PHYSICAL EVENT (#2458) — the composed one-tap on the dashboard.
@@ -50,6 +50,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
 
     // Both halves really landed. The servings:
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("count-berries")).toHaveText("1");
     await expect(page.getByTestId("count-fermented")).toHaveText("1");
 
@@ -77,6 +78,7 @@ test("the dashboard offers the whole morning in one tap, and collapses once it i
       await expect(taken).toHaveCount(left - 1);
     }
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await settledClick(page, page.getByTestId("undo-berries"));
     await expect(page.getByTestId("count-berries")).toHaveText("0");
     await settledClick(page, page.getByTestId("undo-fermented"));

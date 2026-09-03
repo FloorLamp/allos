@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import {
   dismissToast,
   hydratedClick,
+  openFoodAdd,
   settledBoxes,
   settledClick,
 } from "./helpers";
@@ -902,6 +903,7 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     // End it as an adult, so the Undo affordance is the one the app itself offered.
     await openFastingFold(page);
     await settledClick(page, page.getByTestId("fasting-control"));
@@ -942,6 +944,9 @@ test.describe("a profile restricted MID-FAST can still close it out (#2756)", ()
 // the assertion under test is only reached in the hours where the ranking happens to
 // cooperate, which is a spec that reports on the clock rather than on the code.
 async function revealFoodGroup(page: Page, slug: string): Promise<void> {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await page.getByTestId("food-more-groups-summary").click();
@@ -966,6 +971,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     const group = "legumes";
@@ -996,6 +1002,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(16), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     await revealFoodGroup(page, "legumes");
@@ -1033,6 +1040,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
   }) => {
     seedFast(agoInstant(FAST_MAX_HOURS + 96), null);
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
     await revealFoodGroup(page, "legumes");
@@ -1067,6 +1075,7 @@ test.describe("food logged mid-fast (#2756) and the stand-down (#2757)", () => {
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
     await revealFoodGroup(page, "legumes");
     await settledClick(page, page.getByTestId("log-legumes"));

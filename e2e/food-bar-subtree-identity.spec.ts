@@ -1,6 +1,11 @@
 import type { JSHandle, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { awaitHydrated, hydratedClick, settledClick } from "./helpers";
+import {
+  awaitHydrated,
+  hydratedClick,
+  openFoodAdd,
+  settledClick,
+} from "./helpers";
 
 // THE FOOD LOG BAR UPDATES; IT DOES NOT REPLACE ITSELF (#4815).
 //
@@ -102,6 +107,7 @@ test("the food log bar updates its overflow fold instead of replacing it (#4815)
   // into a long list and a snap-shut is a full-screen jump.
   await page.setViewportSize({ width: 430, height: 900 });
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   const more = page.locator(MORE);
   await awaitHydrated(more);
 
