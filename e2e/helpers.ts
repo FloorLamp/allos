@@ -921,9 +921,16 @@ export async function hydratedClick(
  * looks for the control.
  */
 export async function openFoodAdd(page: Page): Promise<void> {
-  const door = page.getByTestId("food-add-door");
-  if ((await door.count()) === 0) return;
-  await hydratedClick(page, door);
+  const fold = page.getByTestId("food-add");
+  if ((await fold.count()) === 0) return;
+  // ALREADY OPEN IS DONE, not "click it again": the summary stays in the DOM once the
+  // fold is open, so a second click would CLOSE the door this helper exists to open.
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  // A NATIVE `<details>` NEEDS NO HYDRATION, and this deliberately does not wait for
+  // any: e2e/offline-food-log.spec.ts opens this door inside a forced pre-hydration
+  // window on purpose (#4399), and an `awaitHydrated` here would make that spec wait
+  // for the thing it is holding back.
+  await page.getByTestId("food-add-door").click();
   await expect(page.getByTestId("food-add-panel")).toBeVisible();
 }
 

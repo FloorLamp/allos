@@ -540,6 +540,7 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
   // The pin: a reload re-reads the server's own count, so this is the row that
   // exists and not merely the optimistic number shown above.
   await page.reload();
+  await openFoodAdd(page);
   await revealFoodGroup(page, slug);
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
     String(before + 2)
@@ -559,12 +560,14 @@ test("a rapid double-tap logs TWO additive servings and never asks (#2007/#3611)
     String(before + 2)
   );
   await page.reload();
+  await openFoodAdd(page);
   await revealFoodGroup(page, slug);
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(
     String(before + 1)
   );
   await page.reload();
+  await openFoodAdd(page);
   await revealFoodGroup(page, slug);
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(page.getByTestId(`count-${slug}`)).toHaveText(String(before));

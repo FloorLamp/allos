@@ -171,6 +171,7 @@ test("a regular window offers its usual set in one tap, and stops offering it on
 
     // The absence survives a reload — it is the server's answer, not a local flag.
     await page.reload();
+    await openFoodAdd(page);
     // A reload re-mounts and re-hydrates, so this is a first interaction again.
     await hydratedClick(page, page.getByTestId("food-slot-morning"));
     await expect(page.getByTestId("count-berries")).toHaveText("1");

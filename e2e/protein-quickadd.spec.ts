@@ -86,6 +86,7 @@ test("logging protein grams sums into the adequacy floor, undo removes it (#824)
     // quick-log-overlay.mobile.spec.ts, whose fixture profile never logs protein; this one
     // cannot assert it, because an add records the scoop-size preset for good.)
     await page.reload();
+    await openFoodAdd(page);
     await expect(quickadd).toBeVisible();
     // The rows LAID OUT beside the control, which is what "ranked, not pinned"
     // is about. Since #3362 the "More food groups" disclosure is a citizen of

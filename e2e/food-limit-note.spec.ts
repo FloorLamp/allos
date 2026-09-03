@@ -152,6 +152,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     // double and never reaches the server at all; and it proves the once-a-day gate is
     // the server's (`servings - 1`), not a client flag a fresh mount would re-arm.
     await page.reload();
+    await openFoodAdd(page);
     await revealFoodGroup(page, GROUP);
     await settledClick(page, page.getByTestId(`log-${GROUP}`));
     await expect(count).toHaveText(String(before + 2));
@@ -163,6 +164,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before + 1));
     await page.reload();
+    await openFoodAdd(page);
     await revealFoodGroup(page, GROUP);
     await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before));

@@ -155,6 +155,43 @@ function FoodRowLabel({ group }: { group: FoodGroup }) {
   );
 }
 
+/**
+ * THE `+ Add` DOOR (#4477's blessed one-stream shape), or nothing at all.
+ *
+ * `folds` is false on the mount that has no day above it to read — the quick-log sheet,
+ * which IS a door — and there the panel is simply the panel. Where it folds, the door is
+ * the app's own `Disclosure`: a NATIVE `<details>`, so it opens with no JavaScript at
+ * all. That is not a nicety here. e2e/offline-food-log.spec.ts holds a forced
+ * pre-hydration window open and fills the protein amount through it (#4399); a door
+ * whose opening needed React would have taken that guarantee with it, and the failure
+ * would have read as a flake rather than as a capability that had been removed.
+ */
+function AddDoor({
+  folds,
+  label,
+  children,
+}: {
+  folds: boolean;
+  label: string;
+  children: ReactNode;
+}) {
+  if (!folds) return <div data-testid="food-add-panel">{children}</div>;
+  return (
+    <Disclosure data-testid="food-add">
+      <summary
+        data-testid="food-add-door"
+        className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-dashed border-(--border) px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-300"
+      >
+        <IconPlus className="h-4 w-4 shrink-0 transition-transform group-open:rotate-45" />
+        <span>{label}</span>
+      </summary>
+      <div data-testid="food-add-panel" className="mt-2">
+        {children}
+      </div>
+    </Disclosure>
+  );
+}
+
 // One logged serving, as the correction list renders it (#1934). The aggregate counts
 // above name no row, so they cannot be corrected; this carries the ledger id the ⋯ row
 // action edits and the window the tallies counted it in.
@@ -322,7 +359,6 @@ export default function FoodLogBar({
   // the Food tab has one, the quick-log sheet does not and is itself the door — so it
   // is also the answer to "is there anything for the add layer to fold underneath?".
   const folds = !!dayLedger;
-  const [addOpen, setAddOpen] = useState(false);
   // WHICH SURFACE THIS BAR IS ON (#3087). The same component renders on the Food
   // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
   // them apart, so the mounting declares itself and this stamps every post with it.
@@ -2125,27 +2161,17 @@ export default function FoodLogBar({
             is not a variant of the bar: the panel below is one markup, rendered under a
             fold on the surface that has something above it to read. */}
         <section data-testid="food-quick-log">
-          {folds && !addOpen && (
-            <button
-              type="button"
-              data-testid="food-add-door"
-              onClick={() => setAddOpen(true)}
-              aria-expanded={false}
-              className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-(--border) px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
-            >
-              <IconPlus className="h-4 w-4 shrink-0" stroke={2} />
-              {/* ON A PAST DAY THE SAME DOOR OPENS DATED (the blessed state): the label
-                  names the day it will write to, so the one thing the door promises is
-                  the one thing the panel does. */}
-              <span>
-                Add
-                {activeDate === today
-                  ? ""
-                  : ` to ${activeDay?.label ?? activeDate}`}
-              </span>
-            </button>
-          )}
-          <div hidden={folds && !addOpen} data-testid="food-add-panel">
+          <AddDoor
+            folds={folds}
+            // ON A PAST DAY THE SAME DOOR OPENS DATED (the blessed state): the label
+            // names the day it will write to, so the one thing the door promises is
+            // the one thing the panel does.
+            label={`Add${
+              activeDate === today
+                ? ""
+                : ` to ${activeDay?.label ?? activeDate}`
+            }`}
+          >
             {/* WHERE THE NEXT TAP LANDS. This was the Meals cards' second job — they
               were a totals display AND the slot picker — and only the picker half
               belongs with the add list. The totals are the ledger's day census
@@ -2354,21 +2380,7 @@ export default function FoodLogBar({
                 </Disclosure>
               )}
             </div>
-            {folds && (
-              <button
-                type="button"
-                data-testid="food-add-close"
-                onClick={() => setAddOpen(false)}
-                className="mt-2 flex min-h-11 items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"
-              >
-                <IconChevronDown
-                  className="h-3.5 w-3.5 rotate-180"
-                  stroke={2}
-                />
-                Done adding
-              </button>
-            )}
-          </div>
+          </AddDoor>
         </section>
         {nutrientSummary}
       </div>

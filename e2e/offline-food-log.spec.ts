@@ -130,6 +130,7 @@ test("food serving and protein grams queue together offline, then each sync exac
   // Durable server truth after a reload (which also re-runs the on-load flush
   // against the drained queue): one serving and 30 g, never duplicates.
   await page.reload();
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "nuts_seeds");
   await expect(page.getByTestId("count-nuts_seeds")).toHaveText(
@@ -235,6 +236,7 @@ test("a stated eating time rides an offline serving through replay (#2053)", asy
   await expect(page.getByTestId("offline-queue-badge")).toHaveCount(0);
 
   await page.reload();
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "berries");
   await expect(page.getByTestId("count-berries")).toHaveText(
@@ -300,6 +302,7 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
     new Date(frozenNow().getTime() + FAST_CLOCK_MS)
   );
   await page.reload();
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   await revealFoodGroup(page, "berries");
@@ -343,6 +346,7 @@ test("a fast device clock keeps the serving and the sync SAYS the time wasn't re
 
   // And the ruling's other half: the SERVING still landed. Only the minute is gone.
   await page.reload();
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
   await revealFoodGroup(page, "berries");
   await expect(page.getByTestId("count-berries")).toHaveText(
