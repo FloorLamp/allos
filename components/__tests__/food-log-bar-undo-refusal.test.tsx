@@ -449,6 +449,14 @@ describe("FoodLogBar projection publication", () => {
       const submitted = actions.addProteinGrams.mock.calls[0][0] as FormData;
       expect(submitted.get("grams")).toBe(posts);
       expect(submitted.get("date")).toBe(yesterday);
+      // And the readout then holds the server's authoritative total for the day
+      // moved to. A seed that re-applied on any render rather than on a day change
+      // would drag this back to the day's starting 0.
+      await waitFor(() =>
+        expect(screen.getByTestId("protein-quickadd-grams").textContent).toBe(
+          "30"
+        )
+      );
     }
   );
 
