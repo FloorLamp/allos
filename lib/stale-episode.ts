@@ -8,7 +8,10 @@
 // OFFERED a one-tap BACKDATED end as of the last activity day — they decide.
 
 import { daysBetweenDateStr } from "./date";
-import type { AssembledEpisode } from "./illness-episode-format";
+import {
+  isLoggedSymptomSeries,
+  type AssembledEpisode,
+} from "./illness-episode-format";
 
 // The default number of consecutive quiet days before the nudge appears.
 export const DEFAULT_STALE_QUIET_DAYS = 3;
@@ -32,7 +35,10 @@ function lastSignalDate(ep: AssembledEpisode): string | null {
   const consider = (d: string) => {
     if (max == null || d > max) max = d;
   };
-  for (const s of ep.symptoms) for (const p of s.points) consider(p.date);
+  // Logged days only — a derived fever day IS a reading day, and the readings are
+  // considered on the next line, so counting both would be one signal counted twice.
+  for (const s of ep.symptoms)
+    if (isLoggedSymptomSeries(s)) for (const p of s.points) consider(p.date);
   for (const t of ep.temperatures) consider(t.date);
   for (const m of ep.medications)
     for (const a of m.administrations) consider(a.date);

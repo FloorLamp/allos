@@ -11,7 +11,10 @@ import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
 import type { StatedTimeRefusal } from "@/lib/stated-time";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
-import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
+import {
+  queueTempRedFlagDispatch,
+  queueTempRedFlagForEpisodeOpen,
+} from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
 import {
   logSymptomCore,
@@ -28,6 +31,7 @@ import {
   setActiveSituations,
 } from "@/lib/settings/profile-attrs";
 import { BUILTIN_ILLNESS_SITUATION } from "@/lib/situations";
+import { openEpisodeIdForDate } from "@/lib/illness-episode-store";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { SYMPTOMS, symptomSlugs } from "@/lib/symptoms";
 import { getCustomSymptomNames } from "@/lib/queries";
@@ -488,15 +492,65 @@ export async function suggestSymptomsFromText(
 // Symptom→situation bridge (issue #799, direction A): activate the built-in "Illness"
 // situation so the day's symptoms fall inside an episode. Suggest-only from the UI — this
 // action only ADDS Illness to the active set (idempotent), never deactivates anything.
-export async function activateIllnessForSymptoms(): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const active = new Set(getActiveSituations(profile.id));
+//
+// ── THE SUBJECT-CAPABLE FRONT DOOR (#4712) ───────────────────────────────────
+//
+// This is the ONE door that can open an illness episode from evidence, and it now
+// accepts the evidence's SUBJECT. Before #4712 it read the session on line one, so a
+// caregiver looking at a household member's 103.4 °F reading could open an episode for
+// THEMSELVES and nobody else — while `logTemperature`, `logSymptom` and their siblings
+// in this file had accepted a posted `profile_id` since #858. The evidence could be
+// filed against the child; the episode that makes the evidence visible could not.
+//
+// WHO THE GATE NOW ADMITS, exactly: a caller posting `profile_id` must clear
+// `requireProfileWriteAccess(target)` — the #31 cross-profile gate, which asserts the
+// target is both REACHABLE from this login and WRITABLE. That is the identical gate
+// every other action in this file runs, so this widens episode-opening to precisely the
+// set that can already write that profile's symptoms and temperatures, and to nobody
+// else. Absent (or non-positive) `profile_id` still resolves the session's active
+// profile through `requireWriteAccess()`, unchanged. The gate is inlined rather than
+// shared so lib/__tests__/actions-write-access.test.ts still sees a literal
+// requireWriteAccess() in this body (the #858 pattern its siblings follow).
+//
+// It answers with the OPEN EPISODE ID so a presentation can route to the cockpit or the
+// episode page without a second read. Where the offer that walks this door is DRAWN is
+// not decided here — a door, not a placement.
+export type IllnessActivationResult = FormResult & {
+  // The open episode covering the subject's day after activation. Null only if the
+  // situation write did not produce one (nothing in this path should, but the reader
+  // answers from what happened rather than from what it expected).
+  episodeId?: number | null;
+};
+
+export async function activateIllnessForSymptoms(
+  formData?: FormData
+): Promise<IllnessActivationResult> {
+  const target = Number(formData?.get("profile_id"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const active = new Set(getActiveSituations(profileId));
   if (!active.has(BUILTIN_ILLNESS_SITUATION)) {
     active.add(BUILTIN_ILLNESS_SITUATION);
-    setActiveSituations(profile.id, [...active]);
+    setActiveSituations(profileId, [...active]);
   }
   revalidateRoute("/");
   revalidateRoute("/nutrition");
   revalidateRoute("/history");
-  return formOk();
+  // THE PUSH'S MISSING PRECONDITION HAS JUST ARRIVED (#4712). A fever logged before any
+  // episode existed reached the red-flag dispatch, found no open episode, and sent
+  // nothing while the logger's own toast fired — the co-caregiver's phone stayed dark.
+  // Opening the episode is the second event that can make that finding true, so the
+  // same orchestrator is re-asked here, for the SUBJECT rather than the acting profile.
+  // Fire-and-forget on the write path, like its reading-keyed sibling: a send failure
+  // lands in the error log, never in this response.
+  queueTempRedFlagForEpisodeOpen(profileId);
+  return {
+    ...formOk(),
+    episodeId: openEpisodeIdForDate(profileId, today(profileId)),
+  };
 }

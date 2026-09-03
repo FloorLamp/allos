@@ -27,7 +27,11 @@ import {
   ONCE_PER_EPISODE_FROZEN_KEEPS,
   planNudgeCadence,
 } from "./nudge-cadence";
-import type { AssembledEpisode, SymptomSeries } from "./illness-episode-format";
+import {
+  isLoggedSymptomSeries,
+  type AssembledEpisode,
+  type LoggedSymptomSeries,
+} from "./illness-episode-format";
 import {
   illnessThresholdFor,
   type IllnessThresholdEntry,
@@ -75,8 +79,8 @@ export function illnessCareDedupeKey(
 // so "logged N consecutive days" is a real run, not a span with holes. Points come
 // oldest-first + one-per-day (the #801 assembly guarantees it).
 function trailingConsecutivePoints(
-  points: SymptomSeries["points"]
-): SymptomSeries["points"] {
+  points: LoggedSymptomSeries["points"]
+): LoggedSymptomSeries["points"] {
   if (points.length === 0) return [];
   const out = [points[points.length - 1]];
   for (let i = points.length - 1; i > 0; i--) {
@@ -147,6 +151,10 @@ export function detectIllnessCareFindings(
   const thresholdFor = opts.thresholdFor ?? illnessThresholdFor;
   const out: IllnessCareFinding[] = [];
   for (const series of episode.symptoms) {
+    // A cited duration/trajectory line counts LOGGED days at a stated severity. The
+    // derived arm reports neither, and the temperature red flag (lib/temp-red-flag.ts)
+    // is the cited line that judges readings.
+    if (!isLoggedSymptomSeries(series)) continue;
     const entry = thresholdFor(series.symptom);
     if (!entry) continue; // no cited line ⇒ no finding, ever
 

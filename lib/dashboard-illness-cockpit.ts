@@ -3,6 +3,7 @@ import { today } from "./db";
 import type { EpisodeMedSuggestion } from "./episode-med-reconcile";
 import {
   episodeAlternateLogDate,
+  isLoggedSymptomSeries,
   type AssembledEpisode,
   type CockpitRecovery,
 } from "./illness-episode-format";
@@ -62,6 +63,11 @@ function dayRecords(episodes: readonly AssembledEpisode[], date: string) {
   const notes: Record<string, string> = {};
   for (const episode of episodes) {
     for (const symptom of episode.symptoms) {
+      // THE SAFETY NARROWING. These maps seed `SymptomLogBar`'s severity chips and its
+      // `setSymptomSeverityCore` writes, so a derived row reaching here would offer a
+      // severity editor over a measurement — the exact write the owner ruled out. The
+      // type has no severity to read, so this cannot be forgotten silently.
+      if (!isLoggedSymptomSeries(symptom)) continue;
       const row = symptom.points.find((point) => point.date === date);
       if (!row) continue;
       initial[symptom.symptom] = row.severity;

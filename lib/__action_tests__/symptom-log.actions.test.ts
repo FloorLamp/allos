@@ -36,6 +36,20 @@ const revalidate = vi.mocked(revalidatePath);
 const DATE = "2026-07-08";
 const DATE2 = "2026-07-09";
 
+function episodeRows(profileId: number) {
+  return db
+    .prepare(
+      "SELECT id, profile_id, situation, start_date, end_date FROM illness_episodes WHERE profile_id = ? ORDER BY id"
+    )
+    .all(profileId) as {
+    id: number;
+    profile_id: number;
+    situation: string;
+    start_date: string | null;
+    end_date: string | null;
+  }[];
+}
+
 function rows(profileId: number) {
   return db
     .prepare(
@@ -216,6 +230,69 @@ describe("situations illness_type flag (#799)", () => {
     expect(illness?.active).toBe(1);
     expect(illness?.illness_type).toBe(1);
     expect(hasActiveIllnessSituation(profile.id)).toBe(true);
+  });
+
+  // ── THE SUBJECT-CAPABLE FRONT DOOR (#4712) ────────────────────────────────
+  //
+  // The assertion is on the STORED ROW's `profile_id`, not on the action's answer.
+  // A wrongly-attributed episode reads exactly like a correct one from the outside:
+  // the action returns ok either way, the situation goes active either way, and only
+  // `illness_episodes.profile_id` says WHOSE illness was opened.
+  it.each([
+    {
+      name: "a posted subject opens the episode for THAT profile",
+      post: true,
+      expectSubject: true,
+    },
+    {
+      name: "no posted subject opens it for the acting profile",
+      post: false,
+      expectSubject: false,
+    },
+  ])("$name", async ({ post, expectSubject }) => {
+    const login = createLogin();
+    const caregiver = createProfile("caregiver", login.id);
+    const child = createProfile("child", login.id);
+    actAs(login, caregiver);
+
+    const res = await activateIllnessForSymptoms(
+      post ? fd({ profile_id: child.id }) : undefined
+    );
+    expect(res.ok).toBe(true);
+
+    const subject = expectSubject ? child.id : caregiver.id;
+    const other = expectSubject ? caregiver.id : child.id;
+    expect(episodeRows(subject)).toHaveLength(1);
+    expect(episodeRows(subject)[0]).toMatchObject({
+      profile_id: subject,
+      situation: "Illness",
+      end_date: null,
+    });
+    // The one that must NOT have been opened.
+    expect(episodeRows(other)).toHaveLength(0);
+    expect(hasActiveIllnessSituation(other)).toBe(false);
+    // The id rides back so a presentation can route without a second read.
+    expect(res.episodeId).toBe(episodeRows(subject)[0].id);
+  });
+
+  it("refuses a subject the login has no write grant on, and writes nothing", async () => {
+    // A MEMBER, not an admin: admins bypass grants by design, so an admin actor could
+    // not tell a working gate from an absent one.
+    const login = createLogin({ role: "member" });
+    const own = createProfile("member-own", login.id);
+    const stranger = createProfile("stranger"); // deliberately ungranted
+    actAs(login, own);
+
+    await expect(
+      activateIllnessForSymptoms(fd({ profile_id: stranger.id }))
+    ).rejects.toThrow();
+
+    expect(episodeRows(stranger.id)).toHaveLength(0);
+    expect(hasActiveIllnessSituation(stranger.id)).toBe(false);
+    // And it did not silently fall back to the acting profile either — a refused
+    // subject must write NOTHING, not "something, somewhere else".
+    expect(episodeRows(own.id)).toHaveLength(0);
+    expect(hasActiveIllnessSituation(own.id)).toBe(false);
   });
 
   it("a user situation opts in / out via the bar toggle", async () => {
