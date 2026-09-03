@@ -129,6 +129,7 @@ import {
   seedDigestTune,
   seedEmailNotify,
   seedHaConfig,
+  seedChannelStrip,
   seedMatrixInk,
   seedMatrixPhone,
   seedNotifSweep,
@@ -218,6 +219,7 @@ seedHaConfig();
 seedDigestTune();
 seedNotifSweep();
 seedEmailNotify();
+seedChannelStrip();
 seedMatrixInk();
 seedMatrixPhone();
 seedDataQualityGaps();

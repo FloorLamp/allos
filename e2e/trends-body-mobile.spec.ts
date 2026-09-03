@@ -8,7 +8,6 @@ import {
   hydratedClick,
   settledBoxes,
 } from "./helpers";
-import { expandTrendsContext } from "./trends-chrome";
 import { frozenNow } from "./worker-env";
 import { CONTROL_BOX_PX, TAP_FLOOR_PX } from "@/lib/tap-floor-tokens";
 import {
@@ -77,9 +76,14 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     for (const viewport of [PHONE, DESKTOP]) {
       await page.setViewportSize(viewport);
       await openBodyTab(page);
-      // The head row itself renders — so the absence below is an observation about
-      // the door, not about a section that never mounted.
-      await expect(page.getByTestId("body-timeline-link")).toBeVisible();
+      // THE POSITIVE CONTROL, AND IT HAS TO HOLD AT BOTH WIDTHS. It used to be
+      // `body-timeline-link`, which #4767 moved into the range-chip row — behind the
+      // phone's context bar, so it is not visible here at PHONE. `body-metric-tiles`
+      // is the opposite half of the same mistake: the tiles view is the phone
+      // presentation and is hidden at DESKTOP. The section that WOULD host the
+      // absent door is the thing this assertion is actually about, and it renders
+      // at every width.
+      await expect(page.getByTestId("trends-body")).toBeVisible();
       await expect(page.getByTestId("body-progress-photos-link")).toHaveCount(
         0
       );
@@ -134,24 +138,6 @@ test.describe("Trends → Overview → body census responsive views (#1067)", ()
     // each metric on Overview.
     await expect(page.getByTestId("vitals-today-strip")).toHaveCount(0);
 
-    // 1D follows the same phone rule: no full chart exception on Overview.
-    await expandTrendsContext(page);
-    await followLink(
-      page,
-      page.getByRole("link", { name: "1D", exact: true }),
-      /from=\d{4}-\d{2}-\d{2}.*to=\d{4}-\d{2}-\d{2}/
-    );
-    const oneDayUrl = new URL(page.url());
-    expect(oneDayUrl.searchParams.get("from")).toBe(
-      oneDayUrl.searchParams.get("to")
-    );
-    await expect(page.getByTestId("body-intraday-view")).not.toBeVisible();
-    await expect(page.getByTestId("body-metric-tiles")).toBeVisible();
-    await expect(
-      page
-        .getByTestId("trends-overview")
-        .locator('[data-testid="chart-card-plot"]:visible')
-    ).toHaveCount(0);
     await expectNoClippedContent(page);
   });
 

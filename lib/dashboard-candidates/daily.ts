@@ -91,6 +91,19 @@ export const dailyCandidates = {
       { timing }
     );
   },
+  // TODAY'S PHYSIOLOGY THROUGH THE DAY (#4767 item 2). A reading, not a state: it
+  // reports what the watch has recorded, and it is `external` because nothing a
+  // person types can produce it. Day-keyed, so it expires at midnight by
+  // construction — the property that made this the one chart worth putting here.
+  intraday(ctx: DomainCandidateContext, day: string) {
+    return reading(
+      ctx,
+      `activity.intraday:${day}`,
+      `metric.intraday:${day}`,
+      null,
+      "external"
+    );
+  },
   steps(ctx: DomainCandidateContext, day: string) {
     return reading(
       ctx,

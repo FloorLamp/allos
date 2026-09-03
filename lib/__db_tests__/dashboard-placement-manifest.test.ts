@@ -996,17 +996,29 @@ describe("actual atomic dashboard manifests", () => {
     // walk and never made them; measured by instrumenting the walk and rendering
     // all six personas, which reported five walking one day fewer and household
     // short-circuiting.
-    bodybuilder: 223,
-    "marathon-runner": 222,
-    household: 273,
-    pregnant: 219,
-    "diabetic-cgm": 230,
+    // +1 on EVERY persona (#4767 item 2), MEASURED ON THE MERGED TREE each time and
+    // never added to main's numbers by hand: the Today band's intraday chart asks
+    // for the profile's latest worn HR day before anything else, and none of these
+    // six has one on today, so all six pay exactly that one indexed read and stop.
+    // The gate doing its job — a profile that DOES have today's minutes pays the day
+    // gather too, which is the cost of DRAWING the chart rather than of asking.
+    //
+    // Re-measured against three different mains while this branch waited to land
+    // (#4228 A's −3 on five personas, then household's +4 above), and the +1 came
+    // back unchanged every time, on every persona. So it composes with all of them
+    // rather than interacting with any — which is a measurement, not an assumption
+    // about independence.
+    bodybuilder: 224,
+    "marathon-runner": 223,
+    household: 274,
+    pregnant: 220,
+    "diabetic-cgm": 231,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 245,
+    biohacker: 246,
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

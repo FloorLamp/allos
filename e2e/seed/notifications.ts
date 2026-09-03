@@ -10,6 +10,8 @@ import path from "node:path";
 
 import {
   DIGEST_TUNE_PROFILE,
+  CHANNEL_STRIP_PROFILE,
+  E2E_LOGIN_CHANNEL_STRIP,
   E2E_LOGIN_DIGEST_TUNE,
   E2E_LOGIN_EMAIL_NOTIFY,
   E2E_LOGIN_HA_NOTIFY,
@@ -138,6 +140,21 @@ export function seedMatrixInk(): void {
   seedMemberLogin(E2E_LOGIN_MATRIX_INK, id, "write");
   console.log(
     `e2e: seeded matrix column-liveness fixture — profile ${id} (${MATRIX_INK_PROFILE})`
+  );
+}
+
+// ── Channel status strip (#2565 A) ──
+export function seedChannelStrip(): void {
+  // A dedicated adult profile + login for notify-channel-strip.spec.ts. The spec walks
+  // ONE channel through all four row states, which means it writes the profile's Home
+  // Assistant config, provokes a real failed send to an unreachable host, and reads the
+  // `notify_lifecycle` row that send records — none of which may be shared. Its
+  // precondition is an ABSENCE (nothing configured, so every row starts Not set up),
+  // which it owns. No health data needed.
+  const id = fixtureProfileId(CHANNEL_STRIP_PROFILE);
+  seedMemberLogin(E2E_LOGIN_CHANNEL_STRIP, id, "write");
+  console.log(
+    `e2e: seeded channel-strip fixture — profile ${id} (${CHANNEL_STRIP_PROFILE})`
   );
 }
 

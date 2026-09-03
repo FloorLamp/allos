@@ -74,7 +74,6 @@ export default function DateRangeControl({
   rightSlot,
   trailingChips,
   companionSlot,
-  extraRanges = [],
   idPrefix = "range",
 }: {
   basePath: string;
@@ -86,12 +85,11 @@ export default function DateRangeControl({
   rightSlot?: ReactNode;
   trailingChips?: ReactNode;
   companionSlot?: ReactNode;
-  extraRanges?: QuickRange[];
   idPrefix?: string;
 }) {
-  const qrs = [...extraRanges, ...quickRanges(todayStr)];
+  const qrs = quickRanges(todayStr);
   // The predicate behind the panel's default-open state — lib/timeline-format.
-  const customActive = isCustomRange(range, todayStr, extraRanges);
+  const customActive = isCustomRange(range, todayStr);
   const filterModel = dateRangeFilterModel(range, qrs);
   return (
     // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
