@@ -64,6 +64,10 @@
   Several PRs failing the same untouched specs is a base regression until that
   run says otherwise — not a coincidence of flakes (#2791).
 - `next dev` and `next start` differ. Interaction fixes must work in both.
+- After restoring a planted mutation, BUMP THE FILE'S MTIME. `cp -a` from a
+  backup keeps the original timestamp, the harness's staleness check is
+  mtime-based, and it goes on serving the mutated build — so the restored tree
+  reports the planted red and the control reads as a real failure.
 
 ## Flake evidence
 

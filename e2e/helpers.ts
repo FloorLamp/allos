@@ -3022,6 +3022,50 @@ async function dragToEnd(
   await consumeSuppressedTap(cdp, to);
 }
 
+/**
+ * A two-finger PINCH, through the same CDP channel `touchSwipe` uses (#4852).
+ *
+ * Both fingers move symmetrically about `center`: `from` is each one's starting
+ * distance from it and `to` its finishing one, so `to > from` spreads the fingers
+ * (zoom in) and `to < from` closes them.
+ *
+ * EVERY TOUCH POINT CARRIES AN `id`, and that is not decoration: without one
+ * Chromium treats the second point as a replacement for the first, the page sees
+ * an ordinary one-finger drag, and a pinch spec passes or fails on the drag-select
+ * path instead — the exact confusion this helper exists to make impossible.
+ */
+export async function touchPinch(
+  page: Page,
+  center: { x: number; y: number },
+  from: number,
+  to: number,
+  steps = 8
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const fingers = (gap: number) => [
+    { x: center.x - gap, y: center.y, id: 1 },
+    { x: center.x + gap, y: center.y, id: 2 },
+  ];
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: fingers(from),
+    });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: fingers(from + ((to - from) * i) / steps),
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
 // ── A DRAG LEAVES ONE SWALLOWED TAP BEHIND, AND SPENDS IT HERE (#3262) ───────
 //
 // After a touch drag whose STARTING element forbids the axis the drag travels on,
@@ -3819,6 +3863,19 @@ export async function expectAtomicCardPairs(
  *
  * Idempotent by construction — it opens only the groups reading `aria-expanded="false"`
  * — so a spec may call it after any navigation without tracking what it already did.
+ *
+ * hydratedClick, not click (#4905): this is the SAME control `dose-skip.spec.ts:39`
+ * already reaches for with hydratedClick, because it is the first interaction after a
+ * goto — a tap that lands before hydration is swallowed. And a click alone doesn't say
+ * the group opened: a swallowed tap left this returning successfully with the group
+ * still shut, and the failure would surface later as "the dose row is missing" —
+ * reading like a data problem rather than a tap that never landed. Reading `aria-expanded`
+ * back after the click is what fails it here instead.
+ *
+ * The button itself is a stable member of the list — expanding one group only toggles
+ * its own sibling `<ul>` (DayLedger.tsx), it does not add, remove or reorder any
+ * `ledger-due-group-*` button — so re-resolving `groups.nth(i)` against the live
+ * locator each iteration addresses the same buttons throughout the loop.
  */
 export async function expandLedgerDueGroups(page: Page): Promise<void> {
   const groups = page.locator('[data-testid^="ledger-due-group-"]');
@@ -3826,7 +3883,8 @@ export async function expandLedgerDueGroups(page: Page): Promise<void> {
   for (let i = 0; i < count; i++) {
     const group = groups.nth(i);
     if ((await group.getAttribute("aria-expanded")) === "false") {
-      await group.click();
+      await hydratedClick(page, group);
+      await expect(group).toHaveAttribute("aria-expanded", "true");
     }
   }
 }

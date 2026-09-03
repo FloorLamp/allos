@@ -36,3 +36,14 @@
   completion median.
 - Check that the worktree exists and that its current commit is pushed.
 - Ask for the exact refusal or blocker. Do not infer progress from liveness.
+
+## A merge that half-landed
+
+- A 502 from the merge call does not mean the merge did not happen: #4912's
+  squash landed as `91a9681d` while the record stayed open. Re-read
+  `origin/main` for your commit title before retrying, then close the PR by
+  hand once its files match the squash.
+- A remote branch cannot be deleted from here (403 at the proxy), so a
+  surviving branch is only USUALLY proof that nothing merged — which is what
+  `dispatch-brief.mjs done` refuses on, and why it misfires above. Retire with
+  `--keep` after verifying the content on `main` file by file.
