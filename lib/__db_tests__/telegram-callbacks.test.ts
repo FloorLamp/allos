@@ -1252,9 +1252,7 @@ describe("the sweep is never more generous than the handler (#4544)", () => {
     // and the same expression must go red.
     const forged: ReconcileDateGuard = "none";
     expect(STRICTNESS[forged]).toBeLessThan(
-      STRICTNESS[
-        pairs.find((p) => p.prefix === "hh")?.handler ?? "none"
-      ]
+      STRICTNESS[pairs.find((p) => p.prefix === "hh")?.handler ?? "none"]
     );
   });
 });

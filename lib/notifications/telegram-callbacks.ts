@@ -357,26 +357,18 @@ async function sweepAfterTap(profileIds: readonly number[]): Promise<void> {
 
 // ── THE DECLARED CALLBACK REGISTRY (#4544) ───────────────────────────────────
 //
-// Every button this app can put in a chat, paired ONCE with the parser that recognises
-// its token and the handler that consumes it. This replaced 35 consecutive
-// parse-then-handle arms whose only guarantee was adjacency; `callbackEntry` (see
-// callback-data.ts) is the constructor that turns that adjacency into a type.
+// Every button this app can put in a chat, paired ONCE with its parser and its handler
+// by `callbackEntry` (callback-data.ts). ORDER IS DISPATCH ORDER, and where it is
+// load-bearing the entry says so — it used to be carried by line numbers in prose.
 //
-// ORDER IS DISPATCH ORDER, and it is load-bearing in four places, each said out loud at
-// the entry that depends on it. It used to be carried by line numbers in prose.
+// Bound to RECONCILE_PREFIXES in both directions: `prefixes` is `ReconcilePrefix`, so no
+// family dispatches undeclared, and `_everyDeclaredPrefixIsDispatched` below fails to
+// compile, naming the offenders, when a declared prefix has no arm. Binding them found
+// `dgtuse`/`dgtdyn`/`dgtno` — dispatched since #2217, declared nowhere, and invisible to
+// the source scan because they are minted outside lib/notifications.
 //
-// THE TWO DIRECTIONS THIS TABLE IS BOUND IN:
-//   • `prefixes` is `ReconcilePrefix`, so no family reaches the dispatcher without being
-//     declared in RECONCILE_PREFIXES — the table that answers "what happens when this
-//     message is still sitting in the chat tomorrow?";
-//   • `_everyDeclaredPrefixIsDispatched` below fails to compile when a declared prefix
-//     has no arm here.
-// Binding them found `dgtuse`/`dgtdyn`/`dgtno`, dispatched since #2217 and declared
-// nowhere, because they are minted outside the directory the source scan reads.
-//
-// WHAT IT STILL CANNOT SEE: a handler called from somewhere other than this table, and a
-// hand-written arm added to `dispatchTap` beside the loop. Neither is a shape TypeScript
-// can forbid; the loop below is the only caller today.
+// WHAT IT STILL CANNOT SEE: a handler called from anywhere other than this table, and a
+// hand-written arm added beside the loop. Neither is a shape TypeScript can forbid.
 export const CALLBACK_REGISTRY = [
   // "✅ All (N)" — mark every pending dose in the session's window taken.
   callbackEntry({
@@ -534,7 +526,8 @@ export const CALLBACK_REGISTRY = [
   // late acknowledgement compounds into a later and later nudge.
   callbackEntry({
     prefixes: ["practime"],
-    parse: (data) => parseCorrectionChipToken(data, PRACTICE_TIME_PREFIXES.chip),
+    parse: (data) =>
+      parseCorrectionChipToken(data, PRACTICE_TIME_PREFIXES.chip),
     handle: handlePracticeTimeChip,
   }),
   callbackEntry({

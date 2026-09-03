@@ -250,19 +250,14 @@ const PREFIX_TABLE = [
   },
 
   // THE THREE THIS TABLE HAD NEVER BEEN ASKED ABOUT (#4544). The digest time
-  // suggestion's exits (#2217) are minted in lib/digest-time-suggestion.ts — OUTSIDE
-  // lib/notifications, which is the only directory the source scan reads — so nothing
-  // ever noticed they were undeclared, and `dispatchTap` has been answering them since
-  // #2217. Found by binding the dispatch table to this one, which is the whole point of
-  // that binding: a prefix invisible to a scanner is not invisible to a type.
+  // suggestion's exits (#2217) are minted in lib/digest-time-suggestion.ts — outside the
+  // one directory the source scan reads — so nothing noticed they were undeclared while
+  // `dispatchTap` answered them. Found by TYPING the dispatch table against this one.
   //
-  // Inert on `actype`'s reasoning rather than `foodoptin`'s, and the distinction is the
-  // COMPARE-AND-SWAP: the token carries no minute, and `handleDigestTimeTap` re-resolves
-  // the live suggestion before writing anything — so a button sitting in a chat cannot
-  // write a time the detector has stopped proposing, and it answers DIGEST_TIME_STALE_TEXT
-  // instead. Standalone, like the other digest-riding controls: a preference question is
-  // as answerable tomorrow as today, and the digest's own claims are reconciled by its
-  // PROSE reconciler (KIND_PROSE below), which owns that message's pointer end to end.
+  // Inert on `actype`'s compare-and-swap reasoning rather than `foodoptin`'s: the token
+  // carries no minute and `handleDigestTimeTap` re-resolves the live suggestion before
+  // writing, so a button sitting in a chat cannot write a time the detector has stopped
+  // proposing. Standalone, like the digest's other riding controls.
   {
     prefix: "dgtuse",
     expiry: "standalone",
