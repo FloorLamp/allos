@@ -195,13 +195,17 @@ describe("micro-motion tokens", () => {
     // token exists to stop.
     // Every rule that TIMES something, in either class. Matched by the token it
     // spends rather than by its selector shape, because a continuity motion is
-    // written on a pseudo-element (`.motion-disclose::details-content`) and an
-    // information motion on the element itself — and the rule that matters is that
-    // whichever one it is, it rides the ONE curve. The reduced-motion block and any
-    // rule that only sets a non-timed property carry no `var(--motion-…)` at all and
-    // are not timing rules; they are asserted separately below.
+    // written on a pseudo-element (`.motion-disclose::details-content`, or a
+    // FUNCTIONAL one taking its own argument — `.motion-historyfold::view-transition-
+    // group(root)`, #4365) and an information motion on the element itself — and the
+    // rule that matters is that whichever one it is, it rides the ONE curve. The
+    // reduced-motion block and any rule that only sets a non-timed property carry no
+    // `var(--motion-…)` at all and are not timing rules; they are asserted separately
+    // below.
     const rules = (
-      SECTION.match(/\.motion-[a-z0-9-]+(?:::[a-z-]+)? \{[^}]*\}/g) ?? []
+      SECTION.match(
+        /\.motion-[a-z0-9-]+(?:::[a-z-]+(?:\([a-z-]+\))?)? \{[^}]*\}/g
+      ) ?? []
     ).filter((rule) => /var\(--motion-[a-z0-9-]+\)/.test(rule));
     expect(rules.length).toBe(ALL_KINDS.length);
     const anyToken = new RegExp(`var\\(--motion-(${ALL_KINDS.join("|")})\\)`);

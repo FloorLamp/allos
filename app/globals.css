@@ -1886,10 +1886,13 @@
    asynchronous receipt: it fires once when the quick-log gather finishes, inside a
    box that already exists, and announces that same completion through aria-live.
    Explicitly not in this vocabulary: skeleton shimmer, attention pulses on findings
-   (a finding may not campaign — reach policy), chart draw-in, page transitions. The fold pulse is the
-   near miss to keep an eye on: it fires ONCE, on the tap that incremented the count,
-   and never on arrival at the page. The overlay family below is a different question
-   at a different duration; do not cross-wire them.
+   (a finding may not campaign — reach policy), chart draw-in, CROSS-ROUTE page
+   transitions (#3676's own words — a transition spanning two DIFFERENT documents'
+   worth of state; `historyfold` below crosses one route re-rendering its own same
+   params, which is the narrower thing #3676 left for "its own issue if wanted").
+   The fold pulse is the near miss to keep an eye on: it fires ONCE, on the tap that
+   incremented the count, and never on arrival at the page. The overlay family below
+   is a different question at a different duration; do not cross-wire them.
 
    Every class is transform/box-shadow/opacity only — never a property that triggers
    layout — so a motion can never delay the next tap. The state change lands on its
@@ -1901,9 +1904,11 @@
   --motion-tick: 180ms;
   --motion-promote: 300ms;
   --motion-arrive: 200ms;
-  /* The continuity class's first and only tenant (#3676). In-band, on the same
-     curve — one feel for both classes was the condition the second class got. */
+  /* The continuity class's first tenant (#3676). In-band, on the same curve — one
+     feel for both classes was the condition the second class got. */
   --motion-disclose: 200ms;
+  /* The continuity class's second tenant (#4365) — see the section note below. */
+  --motion-historyfold: 250ms;
   /* Band-exempt, see the note above. */
   --motion-fold: 500ms;
   /* ONE curve for the whole vocabulary. Decelerating: the move arrives and
@@ -2107,6 +2112,32 @@
   transition: block-size var(--motion-disclose) var(--motion-ease);
 }
 
+/* THE SECOND CONTINUITY TENANT (#4365), and the first that crosses a NAVIGATION
+   rather than a client toggle. History's fold and rollup links are still plain URL
+   state (#4135) — no client fold model exists to hand this a per-element motion
+   class the way `disclose` above gets one — so it rides the browser's OWN View
+   Transition API instead: `components/TimelineFilterLink.tsx`'s
+   `useHistoryFoldNavigate` wraps the same-route navigation in
+   `document.startViewTransition()`, toggling this class onto `<html>` for exactly
+   that transition's lifetime. The browser diffs its own before/after paint of the
+   WHOLE page — there is no per-row markup to name — so a row that renders
+   pixel-identical either side of the toggle is never drawn as moving; only the
+   revealed or hidden region visibly changes. What this rule spends is the ONE thing
+   every motion in this section spends: `--motion-historyfold` on `--motion-ease`,
+   in place of the browser's own default crossfade timing. No `@keyframes`: the
+   browser interpolates between the two paints itself, exactly as `disclose`
+   interpolates a height rather than playing a pulse.
+
+   ONE SELECTOR, on the GROUP rather than on the old/new image pair: the UA
+   stylesheet already gives `::view-transition-old`/`::view-transition-new`
+   `animation-duration: inherit` (and `-timing-function: inherit`) from their
+   `::view-transition-group` parent, so setting the pair once here is the whole
+   answer rather than a duplicate of it. */
+.motion-historyfold::view-transition-group(root) {
+  animation-duration: var(--motion-historyfold);
+  animation-timing-function: var(--motion-ease);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Belt and braces. `microMotionPlan()` already returns no class under the
      preference, so these are not applied at all — but a stylesheet that only works
@@ -2131,6 +2162,12 @@
   .motion-disclose::details-content,
   .motion-disclose[open]::details-content {
     transition: none;
+  }
+  /* `useHistoryFoldNavigate` never calls `startViewTransition` under this
+     preference — the class below is never added — so this is the same
+     belt-and-braces as the rule above, for the same reason. */
+  .motion-historyfold::view-transition-group(root) {
+    animation-duration: 0s;
   }
 }
 
