@@ -30,8 +30,9 @@ import ModalShell from "./ModalShell";
 // command palette and the medication-monitoring "Add result" action) — and it is the
 // INITIAL state only, never a controlled value: once the user has opened or closed
 // the panel, the next render must not yank it back. Same contract as
-// CustomRangeDisclosure (#1455) and the Timeline's symptom entry (#1517), which is
-// now a wrapper over this component rather than a second copy of it.
+// CustomRangeDisclosure (#1455). The record day view's symptom entry (#1517 C) was
+// the other wrapper over this component; #4851 retired it, because the day view's
+// symptom entry is the Add past row's door now, like every other log kind's.
 //
 // `id` lands on the wrapper so an in-page anchor (`#add-result`) still finds the
 // panel whether it is open or closed.
