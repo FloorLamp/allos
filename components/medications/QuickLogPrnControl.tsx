@@ -5,7 +5,7 @@ import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import CardSectionHeader from "@/components/CardSectionHeader";
 import TodayMedRow from "@/components/medications/TodayMedRow";
-import { LabeledVerbChip } from "@/components/Chip";
+import { LabeledVerbChip } from "@/components/OfferRow";
 import { useTimeStatement } from "@/components/TimeStatement";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useCockpitDay } from "@/components/illness/CockpitDayContext";
