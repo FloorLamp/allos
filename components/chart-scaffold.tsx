@@ -5,6 +5,10 @@ import { Label, type LabelProps } from "recharts";
 import { textWidth } from "@/lib/chart-svg";
 import { chartNeutral } from "@/lib/chart-colors";
 import {
+  ANNOTATION_KIND_META,
+  type AnnotationKind,
+} from "@/lib/trend-annotations";
+import {
   categoryDateTicks,
   CHART_VALUE_AXIS_NICE_TICKS,
   CHART_VALUE_AXIS_TICKS,
@@ -653,6 +657,36 @@ export function chartSparseDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+  } as const;
+}
+
+// ── THE REFERENCE-MARK VOCABULARY (#4925) ───────────────────────────────────
+//
+// A protocol window and an event annotation are the same two marks on every
+// chart that carries them, and three cards spelled both out: the same
+// `fillOpacity` and `strokeOpacity` on the area, the same dash and opacity on the
+// line, each reading its colour out of `ANNOTATION_KIND_META` by hand. The
+// COLOUR is the kind's (identity), and the WEIGHT is the scaffold's — a window
+// has to sit under the series without competing with it, and that is one
+// decision, not three.
+
+/** A shaded intervention window (#660), behind the series. */
+export function chartWindowAreaProps(kind: AnnotationKind) {
+  const color = ANNOTATION_KIND_META[kind].color;
+  return {
+    fill: color,
+    fillOpacity: 0.08,
+    stroke: color,
+    strokeOpacity: 0.3,
+  } as const;
+}
+
+/** A vertical event marker (a medication start, an appointment, a situation). */
+export function chartAnnotationLineProps(kind: AnnotationKind) {
+  return {
+    stroke: ANNOTATION_KIND_META[kind].color,
+    strokeDasharray: chartDash.annotation,
+    strokeOpacity: 0.6,
   } as const;
 }
 

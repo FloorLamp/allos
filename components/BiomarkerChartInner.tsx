@@ -15,15 +15,16 @@ import { useChartColors } from "./useChartColors";
 import {
   chartActiveDot,
   chartAnnotationLabel,
+  chartAnnotationLineProps,
   chartAxisProps,
   chartCurve,
-  chartDash,
   chartExactDot,
   chartGridProps,
   chartInexactDot,
   chartInstantAxisProps,
   chartMarkMotion,
   chartTooltipProps,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand } from "@/lib/chart-colors";
@@ -35,7 +36,6 @@ import { formatDateWithYear, formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
@@ -238,28 +238,20 @@ export default function BiomarkerChart({
 
           {/* Protocol intervention windows (issue #660), shaded by epoch. Drawn
               over the bands but under the value line. */}
-          {windowAreas.map((w, i) => {
-            const color = ANNOTATION_KIND_META.protocol.color;
-            return (
-              <ReferenceArea
-                key={`win-${w.x1}-${w.x2}-${i}`}
-                x1={w.x1}
-                x2={w.x2}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
-              />
-            );
-          })}
+          {windowAreas.map((w, i) => (
+            <ReferenceArea
+              key={`win-${w.x1}-${w.x2}-${i}`}
+              x1={w.x1}
+              x2={w.x2}
+              {...chartWindowAreaProps("protocol")}
+            />
+          ))}
           {/* Event annotations (medication/appointment/situation) as vertical lines. */}
           {(annotations ?? []).map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={dateToEpoch(a.date)}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           <Tooltip

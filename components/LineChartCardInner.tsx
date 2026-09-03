@@ -19,6 +19,7 @@ import {
   CHART_LINE_STROKE_WIDTH,
   chartActiveDot,
   chartAnnotationLabel,
+  chartAnnotationLineProps,
   chartAxisProps,
   chartCurve,
   chartDash,
@@ -34,6 +35,7 @@ import {
   chartSparseDot,
   chartSparseLineProps,
   chartTooltipProps,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
@@ -42,7 +44,6 @@ import { formatLongDate, formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   snapWindowsToDates,
@@ -630,16 +631,12 @@ export default function LineChartCard({
             />
           ) : null}
           {snappedWindows.map((w, i) => {
-            const color = ANNOTATION_KIND_META[w.kind].color;
             return (
               <ReferenceArea
                 key={`win-${w.start}-${w.end}-${i}`}
                 x1={w.start}
                 x2={w.end}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
+                {...chartWindowAreaProps(w.kind)}
               />
             );
           })}
@@ -719,9 +716,7 @@ export default function LineChartCard({
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={a.date}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           {/* The spread band, under the mean line — each bucket's low–high as a

@@ -14,15 +14,16 @@ import {
 import { useChartColors } from "./useChartColors";
 import {
   chartActiveDot,
+  chartAnnotationLineProps,
   chartAxisProps,
   chartCurve,
-  chartDash,
   chartGridProps,
   chartInstantAxisProps,
   ChartLegend,
   chartLineDot,
   chartMarkMotion,
   chartTooltipProps,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
@@ -30,7 +31,6 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
 import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
@@ -174,29 +174,21 @@ export default function CompareChart({
             }}
             {...chartTooltipProps(c, motion)}
           />
-          {windowAreas.map((w, i) => {
-            const color = ANNOTATION_KIND_META.protocol.color;
-            return (
-              <ReferenceArea
-                key={`win-${w.x1}-${w.x2}-${i}`}
-                yAxisId="left"
-                x1={w.x1}
-                x2={w.x2}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
-              />
-            );
-          })}
+          {windowAreas.map((w, i) => (
+            <ReferenceArea
+              key={`win-${w.x1}-${w.x2}-${i}`}
+              yAxisId="left"
+              x1={w.x1}
+              x2={w.x2}
+              {...chartWindowAreaProps("protocol")}
+            />
+          ))}
           {snapped.map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               yAxisId="left"
               x={dateToEpoch(a.date)}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           <Line
