@@ -14,11 +14,12 @@ import { useChartColors } from "./useChartColors";
 import {
   CHART_LABEL_FONT_SIZE,
   chartActiveDot,
-  chartExactDot,
   chartAnnotationLabel,
   chartAxisLabelProps,
   chartAxisProps,
+  chartCurve,
   chartDash,
+  chartExactDot,
   chartGridProps,
   chartTooltipProps,
   useChartMotion,
@@ -198,7 +199,7 @@ export default function GrowthChart({
           {bandMaps.map((bm) => (
             <Line
               key={`band-${bm.percentile}`}
-              type="monotone"
+              type={chartCurve}
               dataKey={`p${bm.percentile}`}
               stroke={bandColor(bm.percentile)}
               strokeWidth={bandWidth(bm.percentile)}
@@ -211,7 +212,7 @@ export default function GrowthChart({
 
           {/* The profile's own trajectory, drawn on top. */}
           <Line
-            type="monotone"
+            type={chartCurve}
             dataKey={TRAJECTORY_KEY}
             stroke={chartSeries.brand}
             strokeWidth={2.5}

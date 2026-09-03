@@ -15,13 +15,16 @@ import { useChartColors } from "./useChartColors";
 import {
   chartActiveDot,
   chartAnnotationLabel,
+  chartAnnotationLineProps,
   chartAxisProps,
-  chartDash,
+  chartCurve,
   chartExactDot,
   chartGridProps,
   chartInexactDot,
+  chartInstantAxisProps,
   chartMarkMotion,
   chartTooltipProps,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand } from "@/lib/chart-colors";
@@ -31,16 +34,8 @@ import { loneReading } from "@/lib/trend-sparkline";
 import SingleReadingMark from "./SingleReadingMark";
 import { formatDateWithYear, formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import {
-  dateToEpoch,
-  epochToISO,
-  formatTimeTick,
-  spansYearBoundary,
-  timeAxisDomain,
-  timeAxisTicks,
-} from "@/lib/chart-time-axis";
-import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   type TrendAnnotation,
@@ -161,15 +156,12 @@ export default function BiomarkerChart({
   // 4-year lab gap renders four years wide, not one index step. Lab draws are the
   // sparsest, most-distorted series, so this chart leads the migration.
   const rows = data.map((d) => ({ ...d, t: dateToEpoch(d.date) }));
-  const xDomain = timeAxisDomain(data.map((d) => d.date));
-  const xTicks = timeAxisTicks(xDomain);
-  const withYear = spansYearBoundary(xDomain);
-  const dates = data.map((d) => d.date);
+  const xDates = data.map((d) => d.date);
   const tooltipAnnotations = annotations?.length
-    ? snapAnnotationsToDates(annotations, dates)
+    ? snapAnnotationsToDates(annotations, xDates)
     : [];
   const windowAreas = windows?.length
-    ? protocolWindowEpochs(windows, dates)
+    ? protocolWindowEpochs(windows, xDates)
     : [];
 
   // THE FILL CHANNEL (#2653, owner call 3). Hollow for a bounded reading
@@ -209,15 +201,7 @@ export default function BiomarkerChart({
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid {...chartGridProps(c)} />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={xDomain ?? ["auto", "auto"]}
-            ticks={xTicks.length ? xTicks : undefined}
-            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            {...chartAxisProps(c)}
-          />
+          <XAxis {...chartInstantAxisProps(c, xDates)} />
           <YAxis
             {...chartAxisProps(c)}
             domain={domain}
@@ -254,28 +238,20 @@ export default function BiomarkerChart({
 
           {/* Protocol intervention windows (issue #660), shaded by epoch. Drawn
               over the bands but under the value line. */}
-          {windowAreas.map((w, i) => {
-            const color = ANNOTATION_KIND_META.protocol.color;
-            return (
-              <ReferenceArea
-                key={`win-${w.x1}-${w.x2}-${i}`}
-                x1={w.x1}
-                x2={w.x2}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
-              />
-            );
-          })}
+          {windowAreas.map((w, i) => (
+            <ReferenceArea
+              key={`win-${w.x1}-${w.x2}-${i}`}
+              x1={w.x1}
+              x2={w.x2}
+              {...chartWindowAreaProps("protocol")}
+            />
+          ))}
           {/* Event annotations (medication/appointment/situation) as vertical lines. */}
           {(annotations ?? []).map((a, i) => (
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={dateToEpoch(a.date)}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           <Tooltip
@@ -295,7 +271,7 @@ export default function BiomarkerChart({
             {...chartTooltipProps(c, motion)}
           />
           <Line
-            type="monotone"
+            type={chartCurve}
             dataKey="value"
             stroke={c.line}
             strokeWidth={2}

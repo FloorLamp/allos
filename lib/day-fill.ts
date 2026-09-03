@@ -130,6 +130,17 @@ export function fillDailyRows<T extends { date: string }>(
 }
 
 /**
+ * One plotted day. `partial` marks a bucket the local day has not finished
+ * filling (#4924) — set by the daily aggregate readers, never by the fill, since
+ * a densified day has no reading to be partway through.
+ */
+export interface DaySeriesPoint {
+  date: string;
+  value: number | null;
+  partial?: boolean;
+}
+
+/**
  * The common case: a `{ date, value }` line/bar series, densified with the given
  * fill. `"zero"` asserts a real measured zero on the missing day (a rest day's
  * training volume); `"null"` asserts nothing at all (a sensor that did not
@@ -141,10 +152,9 @@ export function fillDailySeries<
   points: readonly T[],
   window: DayFillWindow,
   fill: DayGapFill
-): { date: string; value: number | null }[] {
-  return fillDailyRows<{ date: string; value: number | null }>(
-    points,
-    window,
-    (date) => ({ date, value: fill === "zero" ? 0 : null })
-  );
+): DaySeriesPoint[] {
+  return fillDailyRows<DaySeriesPoint>(points, window, (date) => ({
+    date,
+    value: fill === "zero" ? 0 : null,
+  }));
 }
