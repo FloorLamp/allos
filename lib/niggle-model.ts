@@ -29,7 +29,12 @@
 import { daysBetweenDateStr, weekdayOfDateStr, WEEKDAYS_LONG } from "./date";
 import { formatRelativeDate } from "./format-date";
 import type { InjuryLaterality } from "./injury-model";
-import { regionForExercise, REGION_SCOPES } from "./lifts";
+import {
+  exerciseDisplayName,
+  exerciseHistoryKey,
+  regionForExercise,
+  REGION_SCOPES,
+} from "./lifts";
 import type { MuscleRegion } from "./lifts";
 
 // ── THE QUIET SPELL ──────────────────────────────────────────────────────────
@@ -177,6 +182,13 @@ export interface NiggleCoachingContext {
   // say "from Tuesday" without the core knowing a timezone (#2205: instants are stored,
   // days are derived at the boundary).
   lastReportedDay: string;
+  // The canonical exercise identity the niggle was blamed on (`exerciseHistoryKey`), when
+  // the report named one. Carried for the pre-workout heads-up (#3211 part 4), whose
+  // trigger is "today's session touches the region OR THE SOURCE EXERCISE" — the second
+  // half reaches sessions the region test cannot (a shoulder niggle from Bench Press is
+  // Shoulders, while the bench itself ranks as Chest). Absent/null ⇒ the region is the
+  // whole test, which is every niggle the confirm chip writes today.
+  sourceExercise?: string | null;
 }
 
 // One tempered region, with everything a surface needs to disclose it.
@@ -186,6 +198,9 @@ export interface NiggleTemper {
   // The load fraction the suggestion applies.
   factor: number;
   lastReportedDay: string;
+  // Carried through from the context so the pre-workout heads-up (#3211 part 4) can both
+  // MATCH on it and NAME it. Null when the report blamed no lift.
+  sourceExercise: string | null;
   // The rendered disclosure line. Carried on the model rather than re-derived per
   // surface, because the phrase needs `today` and the pure formatters downstream
   // (`contextNotes`, the Training-tab chips) do not have it — the same shape
@@ -244,6 +259,7 @@ export function niggleTempers(
       label: n.label,
       factor: NIGGLE_LOAD_FACTOR,
       lastReportedDay: n.lastReportedDay,
+      sourceExercise: n.sourceExercise ?? null,
       note: niggleTemperLine(n, today),
     }));
 }
@@ -338,4 +354,67 @@ export function resolveTrainingTemper(
     niggleLabels: [],
     rationale: null,
   };
+}
+
+// ── THE PRE-WORKOUT HEADS-UP (#3211 part 4, the first moment) ────────────────
+//
+// Part 3 moved the TARGET and disclosed it on every in-app surface (`contextNotes`, the
+// Training-tab chips). The Telegram workout nudge said nothing: it formats a
+// `WorkoutRecommendation`, which carried no niggle field at all — so the one channel
+// that reaches somebody BEFORE they train was the only one silent about the knee they
+// mentioned on Tuesday.
+//
+// THE TRIGGER IS NARROWER THAN THE TEMPER'S, deliberately. `niggleTempers` lists every
+// live niggle (minus injury-excluded regions), which is right for a surface showing the
+// whole context. A push at 7am must speak only when TODAY'S session actually touches the
+// niggle, or a knee nobody is about to use becomes a fortnight of daily reminders.
+
+// The tempers today's session touches: its focus regions, the regions its exercises
+// train, or — the half the region test cannot reach — the very lift the niggle was
+// blamed on. A shoulder tweaked on Bench Press is region `Shoulders` while the bench
+// itself ranks `Chest`, so the source exercise is the only thing tying it to chest day.
+// Input order preserved (the caller's is already REGION_SCOPES-ordered).
+export function nigglesTouchingSession(
+  tempers: readonly NiggleTemper[],
+  focus: readonly MuscleRegion[],
+  exercises: readonly string[]
+): NiggleTemper[] {
+  const focusRegions = new Set<MuscleRegion>(focus);
+  const exerciseRegions = new Set<MuscleRegion>();
+  const exerciseKeys = new Set<string>();
+  for (const name of exercises) {
+    const r = regionForExercise(name);
+    if (r) exerciseRegions.add(r);
+    const key = exerciseHistoryKey(name);
+    if (key) exerciseKeys.add(key);
+  }
+  return tempers.filter(
+    (t) =>
+      focusRegions.has(t.region) ||
+      exerciseRegions.has(t.region) ||
+      (t.sourceExercise != null && exerciseKeys.has(t.sourceExercise))
+  );
+}
+
+// "Right knee niggle after Squats from Tuesday — take it easy today."
+//
+// The leading fragment is part 3's `niggleTemperLine` phrasing verbatim ("<label> niggle
+// from <when>") so one niggle reads the same wherever the app mentions it; only the ask
+// and the blamed lift are new. The lift is named from the stored canonical key through
+// `exerciseDisplayName`, which is what that function exists for — the key has lost its
+// casing and there is no logged label here to fall back on. Omitted when the report
+// blamed no lift, which is every niggle the confirm chip writes today (a note names a
+// body part, not a movement).
+export function niggleHeadsUpLine(
+  t: Pick<NiggleTemper, "label" | "lastReportedDay" | "sourceExercise">,
+  today: string
+): string {
+  const label = t.label.charAt(0).toUpperCase() + t.label.slice(1);
+  const lift = t.sourceExercise
+    ? ` after ${exerciseDisplayName(t.sourceExercise)}`
+    : "";
+  return `${label} niggle${lift} from ${reportedWhen(
+    t.lastReportedDay,
+    today
+  )} — take it easy today.`;
 }
