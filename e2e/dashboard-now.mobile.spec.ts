@@ -9,6 +9,7 @@ import {
   settledBoxes,
 } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_DAILY,
@@ -743,7 +744,7 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByTestId("now-strip")).toBeVisible();
-  const audit = await page.evaluate(() => {
+  const audit = await page.evaluate((controlBoxPx) => {
     const floored: string[] = [];
     const menus: string[] = [];
     const short: string[] = [];
@@ -776,16 +777,27 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
               `${name(el)} declares ${floor}px and renders ${box.height}px`
             );
         }
-        // The row's overflow menu is a 40x40 target in its own right (#644).
+        // THE ROW'S ⋯ MENU WEARS THE ONE CONTROL BOX (#4362 ruling 5). It used to
+        // render 40x40 and be checked for that here, which was the one control on
+        // the page that did not wear the box #3938 ruled. It reaches the 44px floor
+        // the way every other control does — `.tap-target`'s 6px per side, so
+        // 34 + 12 = 46 — and that arithmetic is asserted where the reach lives
+        // (e2e/button-height-floor.mobile.spec.ts). What belongs here is that the
+        // strip's own menus are the box, and that this sweep still SEES them.
         if (el.getAttribute("data-testid") === "overflow-menu-trigger") {
           menus.push(name(el));
-          if (box.width < 39.5 || box.height < 39.5)
-            short.push(`${name(el)} is ${box.width}x${box.height}`);
+          if (
+            Math.abs(box.width - controlBoxPx) > 0.5 ||
+            Math.abs(box.height - controlBoxPx) > 0.5
+          )
+            short.push(
+              `${name(el)} is ${box.width}x${box.height}, not the ${controlBoxPx}px control box`
+            );
         }
       }
     }
     return { floored, menus, short };
-  });
+  }, CONTROL_BOX_PX);
 
   // THE SWEEP MUST HAVE SEEN THE CONTROLS IT IS ABOUT. A Now strip whose cards
   // declared no floor at all would pass an empty-set check silently, which is the

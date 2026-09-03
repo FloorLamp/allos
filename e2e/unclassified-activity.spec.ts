@@ -87,36 +87,56 @@ test("an unspecified import renders with the generic glyph and is filterable (#2
 }) => {
   await page.goto("/training?tab=log");
 
+  // A FILTERED LOG IS A PLACE (#4079): the search is a GET form and the type chips
+  // are links, so every refinement below is a navigation rather than a client filter.
   const search = page.getByPlaceholder("Search activities or exercises…");
   await expect(search).toBeVisible();
   await search.fill(OWN_TITLE);
+  await expect(search).toHaveValue(OWN_TITLE);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  // WAIT FOR THE QUERY, NOT FOR THE PARAM. `[?&]q=` also matches `q=` with an EMPTY
+  // value, so a submit that raced the fill satisfies it and the read that follows is
+  // the unfiltered Log — where this 2017 row is folded away and the failure reads as
+  // "the row is missing" rather than "the search never carried the term". Seen once
+  // in three repeats before the value was pinned on both sides of the click.
+  await page.waitForURL(new RegExp(`[?&]q=${OWN_TITLE.replace(/ /g, "\\+")}`));
 
-  // The Server-Action round-trip ceiling used across the training log specs.
   // The feed renders slim rows (#2897); the row itself carries the type glyph.
+  // Scoped to the live page: the GET-form navigation above arrives by SSR streaming,
+  // and until the inline script relocates each Suspense boundary out of its
+  // `<div hidden>` staging container under `<body>`, every row exists twice with the
+  // same id. An unscoped locator sees both and throws strict mode. The staged copy
+  // has no `training-page` ancestor.
   const row = page
-    .getByTestId("training-log-row")
+    .getByTestId("training-page")
+    .getByTestId("history-row")
     .filter({ hasText: OWN_TITLE });
   await expect(row).toBeVisible({ timeout: 20_000 });
 
   // The DECLARED glyph for "the source did not say" — generic, never a barbell or a
   // medal. `data-icon` is the icon KEY, so this reads the resolution, not a class name.
+  // A training row icons off its own structured sport rather than off the shared
+  // substrate's one-glyph-per-kind registry, which is what keeps this assertion
+  // meaningful now that the Log renders through that substrate.
   const glyph = row.getByTestId("activity-icon");
   await expect(glyph).toHaveAttribute("data-icon", "activity");
 
   // The type chips can NAME this row. Without a chip it would be visible and
   // unfilterable at the same time — present in the feed, absent from the filter bar.
   const chips = page.getByRole("group", { name: "Activity type" });
-  await chips.getByRole("button", { name: "Unspecified" }).click();
+  await chips.getByRole("link", { name: "Unspecified" }).click();
+  await page.waitForURL(/[?&]type=unclassified/);
   await expect(
-    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+    page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toBeVisible({
     timeout: 20_000,
   });
 
   // …and it is a real filter, not a no-op: switching to Cardio drops the row.
-  await chips.getByRole("button", { name: "Cardio" }).click();
+  await chips.getByRole("link", { name: "Cardio" }).click();
+  await page.waitForURL(/[?&]type=cardio/);
   await expect(
-    page.getByTestId("training-log-row").filter({ hasText: OWN_TITLE })
+    page.getByTestId("history-row").filter({ hasText: OWN_TITLE })
   ).toHaveCount(0, {
     timeout: 20_000,
   });

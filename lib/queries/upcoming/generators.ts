@@ -561,7 +561,7 @@ const rawUpcoming = cache(function rawUpcoming(
 ): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
-    ...prnMaxItems(profileId, today),
+    ...prnMaxItems(profileId),
     ...refillItems(profileId, today),
     ...poolRefillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),

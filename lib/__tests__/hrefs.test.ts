@@ -126,9 +126,12 @@ describe("historyDayIntradayHref", () => {
 });
 
 describe("trainingLogDayHref", () => {
-  it("anchors the Training Log to the workout day", () => {
+  // The day is a READ BOUND, not a fragment. The retired `#day-` anchor resolved only
+  // while the day happened to fall inside whatever window the Log had drawn; `?day=`
+  // is a question the page answers.
+  it("bounds the Training Log to the workout day", () => {
     expect(trainingLogDayHref("2026-07-12")).toBe(
-      "/training?tab=log#day-2026-07-12"
+      "/training?tab=log&day=2026-07-12"
     );
   });
 });

@@ -33,8 +33,8 @@ import {
   activityProvenanceKey,
   TRAINING_LOG_SOURCE_DOCUMENT,
   TRAINING_LOG_SOURCE_MANUAL,
+  type TrainingLogQuery,
 } from "../../training-log-format";
-import type { TrainingLogFilters } from "../../training-log-filters";
 import { likePattern } from "../../search-projections";
 import { DOCUMENT_SOURCE_PREFIX } from "../../body-metric-extract";
 import {
@@ -373,24 +373,8 @@ export function getActivitiesSince(
     .all(profileId, since) as Activity[];
 }
 
-// One page of the Training Log feed, windowed SERVER-SIDE by whole days (issue #451). The
-// training log is browsed by recency, so paging by day (not by row) keeps a day's cards
-// intact — a page never splits a single day across the boundary, so the client can
-// append pages by plain concatenation. Keyset ("seek") pagination on `date`: pass the
-// previous page's `nextBefore` as `before` to get the next-older window; null starts
-// at the newest day. Bounded — at most `dayLimit` days' activities cross the wire per
-// call, instead of the profile's entire history (SELECT *, incl. the components TEXT)
-// on every visit. `nextBefore` is the oldest loaded date when more days remain (an
-// over-fetch of one extra date decides this without a phantom trailing page), else
-// null. Profile-scoped on both statements.
-export interface TrainingLogPage {
-  activities: Activity[]; // every activity on the returned days, date DESC, id DESC
-  days: string[]; // the distinct dates covered, date DESC
-  nextBefore: string | null; // cursor for the next-older page, or null when exhausted
-}
-
 // The SQL-shaped form of the feed's active filters (issue #1634) — what
-// resolveTrainingLogFilterSpec() turns a TrainingLogFilters into once per request. Every
+// resolveTrainingLogFilterSpec() turns a TrainingLogQuery into once per request. Every
 // field is already reduced to something a WHERE clause can use: the derived filters
 // (muscle/region tag, fault) arrive as finite PREIMAGES resolved in JS, because
 // regionForExercise() and storedActivityFault() are pure TypeScript that SQLite
@@ -403,12 +387,10 @@ export interface TrainingLogPage {
 // That distinction is made by the SHAPE, not by a predicate over it: an empty
 // preimage builds a `WHERE … IN ()` that matches nothing, while a null field emits
 // no clause at all, so the two already answer differently one line further down.
-// `trainingLogFilterSpecActive` — a spec-level "is anything filtered" that shipped in
-// #2501 and never gained a caller — was deleted in #2527: the question is asked one
-// level EARLIER, on the UI-shaped filters, by `trainingLogFiltersActive`
-// (lib/training-log-filters.ts), which is what decides whether a spec gets resolved
-// at all (lib/training-log-feed.ts). Asking it again of the resolved spec would be a
-// second answer to a settled question.
+// "Is anything filtered" is asked one level EARLIER, of the URL-shaped query, by
+// `trainingLogQueryActive` (lib/training-log-format.ts) — which is what decides
+// whether the mount says "nothing matches" or "nothing logged yet". Asking it again
+// of the resolved spec would be a second answer to a settled question.
 export interface TrainingLogFilterSpec {
   query: string | null; // free text (already trimmed), matched by LIKE
   type: ActivityType | null;
@@ -447,8 +429,8 @@ function trainingLogSourceClause(key: string): {
 }
 
 // Build the shared `AND …` fragments + params for a filter spec. Used by the day
-// scan below; deliberately a SUPERSET of the pure card predicate
-// (lib/training-log-filters.ts) — see that module's superset contract.
+// scan below and by the Log mount's id-matching read: since #4079 retired the Log's
+// private pure-predicate fork, this SQL is the only place a filter spec is applied.
 function trainingLogFilterSql(spec: TrainingLogFilterSpec): {
   sql: string;
   params: unknown[];
@@ -503,55 +485,32 @@ function trainingLogFilterSql(spec: TrainingLogFilterSpec): {
   };
 }
 
-export function getTrainingLogPage(
+// WHICH ACTIVITIES THE LOG'S LAYERED FILTERS ADMIT (#4079). The Log tab renders
+// through the shared history substrate now, so the substrate owns the WINDOW (bounds,
+// day cards, folds) and this owns only the training-only narrowing the substrate has
+// no vocabulary for: type, provenance, fault, muscle/region tag and full text over a
+// session's title, its set names and its stored component names.
+//
+// AN ID SET, NOT A PAGE. The retired feed asked SQL for the DAYS containing a match
+// and then re-filtered the cards in JS through a second pure predicate — two
+// definitions of one question, held in sync by a written superset contract. The
+// substrate's rows are already gathered; all that is left is which of them survive, so
+// one SQL answer is the whole answer and there is nothing to keep in sync.
+//
+// `null` means NO FILTER IS ACTIVE — distinct from an empty set, which means "filtered,
+// and nothing matches". The caller renders those two very differently.
+export function getTrainingLogMatchingActivityIds(
   profileId: number,
-  before: string | null,
-  dayLimit: number,
-  spec: TrainingLogFilterSpec = NO_TRAINING_LOG_FILTERS
-): TrainingLogPage {
-  const limit = Math.max(1, dayLimit);
+  spec: TrainingLogFilterSpec
+): Set<number> | null {
   const filter = trainingLogFilterSql(spec);
-  // Over-fetch one extra date so we can tell whether an older page exists without
-  // issuing a separate count (or a trailing page that comes back empty). Under a
-  // filter the scan selects the days that CONTAIN a match across the whole ledger,
-  // so `nextBefore` pages over MATCHES, not over raw days (issue #1634).
-  const dateRows = db
+  if (filter.sql === "") return null;
+  const rows = db
     .prepare(
-      `SELECT DISTINCT a.date AS date FROM activities a
-        WHERE a.profile_id = ?${before == null ? "" : " AND a.date < ?"}${filter.sql}
-        ORDER BY a.date DESC LIMIT ?`
+      `SELECT a.id AS id FROM activities a WHERE a.profile_id = ?${filter.sql}`
     )
-    .all(
-      profileId,
-      ...(before == null ? [] : [before]),
-      ...filter.params,
-      limit + 1
-    ) as {
-    date: string;
-  }[];
-
-  const hasMore = dateRows.length > limit;
-  const days = dateRows.slice(0, limit).map((r) => r.date);
-  if (days.length === 0) return { activities: [], days: [], nextBefore: null };
-
-  // EVERY activity on the selected days — including, under a filter, the ones that
-  // do NOT match. Deliberate: the filter selects DAYS here and the pure card
-  // predicate (trainingLogCardMatches) selects CARDS within them, and the card layer
-  // needs a day's full row set anyway for the manual-merge sibling picker, which
-  // must keep offering a same-day duplicate a search would otherwise hide (#64).
-  const placeholders = days.map(() => "?").join(",");
-  const activities = db
-    .prepare(
-      `SELECT * FROM activities WHERE profile_id = ? AND date IN (${placeholders})
-         ORDER BY date DESC, id DESC`
-    )
-    .all(profileId, ...days) as Activity[];
-
-  return {
-    activities,
-    days,
-    nextBefore: hasMore ? days[days.length - 1] : null,
-  };
+    .all(profileId, ...filter.params) as { id: number }[];
+  return new Set(rows.map((r) => r.id));
 }
 
 // ---- Training Log filter preimages (issue #1634) ----
@@ -671,17 +630,16 @@ export const getTrainingLogSourceKeys = cache(function getTrainingLogSourceKeys(
 // page assembler), never per render.
 export function resolveTrainingLogFilterSpec(
   profileId: number,
-  filters: TrainingLogFilters
+  query: TrainingLogQuery
 ): TrainingLogFilterSpec {
-  const query = filters.query.trim();
   return {
-    query: query === "" ? null : query,
-    type: filters.type,
-    source: filters.source,
-    tagExercises: filters.tag
-      ? getTrainingLogTagExercises(profileId, filters.tag)
+    query: query.q,
+    type: query.type,
+    source: query.source,
+    tagExercises: query.tag
+      ? getTrainingLogTagExercises(profileId, query.tag)
       : null,
-    faultIds: filters.faultOnly ? getActivityFaults(profileId).ids : null,
+    faultIds: query.fault ? getActivityFaults(profileId).ids : null,
   };
 }
 

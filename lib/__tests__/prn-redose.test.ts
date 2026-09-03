@@ -18,7 +18,7 @@ const base = {
   maxDailyCount: 4,
   latestAdministrationId: 42,
   latestGivenAt: GIVEN,
-  countToday: 1,
+  countInWindow: 1,
   now: hoursAfter(6),
   notifiedAdministrationId: null as number | null,
   tickMinutes: 5,
@@ -30,7 +30,7 @@ describe("redoseNoticeDecision — one-shot window", () => {
     expect(d.kind).toBe("fire");
     if (d.kind === "fire") {
       expect(d.administrationId).toBe(42);
-      expect(d.countToday).toBe(1);
+      expect(d.countInWindow).toBe(1);
       expect(d.maxDailyCount).toBe(4);
     }
   });
@@ -65,10 +65,10 @@ describe("redoseNoticeDecision — one-shot window", () => {
   });
 
   it("SUPPRESSED at the confirmed daily max (window open but count reached)", () => {
-    expect(redoseNoticeDecision({ ...base, countToday: 4 }).kind).toBe(
+    expect(redoseNoticeDecision({ ...base, countInWindow: 4 }).kind).toBe(
       "suppressed-max"
     );
-    expect(redoseNoticeDecision({ ...base, countToday: 5 }).kind).toBe(
+    expect(redoseNoticeDecision({ ...base, countInWindow: 5 }).kind).toBe(
       "suppressed-max"
     );
   });
@@ -109,7 +109,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
         minIntervalHours: 6,
         maxDailyCount: 4,
         latestGivenAt: null,
-        countToday: 0,
+        countInWindow: 0,
         now: GIVEN,
       })
     ).toBeNull();
@@ -120,7 +120,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       minIntervalHours: 6,
       maxDailyCount: 4,
       latestGivenAt: GIVEN,
-      countToday: 2,
+      countInWindow: 2,
       now: hoursAfter(3),
     })!;
     expect(closed.open).toBe(false);
@@ -131,7 +131,7 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
       minIntervalHours: 6,
       maxDailyCount: 4,
       latestGivenAt: GIVEN,
-      countToday: 4,
+      countInWindow: 4,
       now: hoursAfter(7),
     })!;
     expect(open.open).toBe(true);
@@ -148,7 +148,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       minIntervalHours: 6,
       maxDailyCount: null,
       latestGivenAt: GIVEN,
-      countToday: 1,
+      countInWindow: 1,
       now: hoursAfter(1),
     })!;
     expect(before).not.toBeNull();
@@ -161,7 +161,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
       minIntervalHours: 6,
       maxDailyCount: null,
       latestGivenAt: GIVEN,
-      countToday: 9,
+      countInWindow: 9,
       now: hoursAfter(7),
     })!;
     expect(after.open).toBe(true);
@@ -175,7 +175,7 @@ describe("redoseWindowStatus — interval-only config (#1458)", () => {
         minIntervalHours: 6,
         maxDailyCount: null,
         latestGivenAt: null,
-        countToday: 0,
+        countInWindow: 0,
         now: GIVEN,
       })
     ).toBeNull();
@@ -342,7 +342,7 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   it("suppresses at the mg ceiling although the count reads calm", () => {
     const d = redoseNoticeDecision({
       ...base,
-      countToday: 3, // < maxDailyCount 4 — the pre-#1854 gate would fire
+      countInWindow: 3, // < maxDailyCount 4 — the pre-#1854 gate would fire
       exposure: prnDayExposure({
         amounts: ["800 mg", "800 mg", "800 mg"],
         maxDailyAmountMg: 1200,
@@ -360,7 +360,7 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
     });
     const d = redoseNoticeDecision({
       ...base,
-      countToday: 4, // == maxDailyCount — the count gate would suppress
+      countInWindow: 4, // == maxDailyCount — the count gate would suppress
       exposure,
     });
     expect(d.kind).toBe("fire");
@@ -368,7 +368,11 @@ describe("redoseNoticeDecision × exposure (#1854)", () => {
   });
 
   it("a null exposure keeps the count gate exactly as before", () => {
-    const d = redoseNoticeDecision({ ...base, countToday: 4, exposure: null });
+    const d = redoseNoticeDecision({
+      ...base,
+      countInWindow: 4,
+      exposure: null,
+    });
     expect(d.kind).toBe("suppressed-max");
   });
 });
@@ -384,7 +388,7 @@ describe("redoseWindowStatus × exposure (#1854)", () => {
       minIntervalHours: 6,
       maxDailyCount: 6,
       latestGivenAt: GIVEN,
-      countToday: 3,
+      countInWindow: 3,
       now: hoursAfter(7),
       exposure,
     })!;

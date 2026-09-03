@@ -1,13 +1,17 @@
 // DB INTEGRATION TIER — the per-profile SUBSTANCE-content consent on the periodic
 // RECAP (#3900), asserted on the rendered message string.
 //
-// THE DEFECT. `cadenceScopeNoun` names a substance cap by its own noun — the curated
-// label for a curated key, the profile's OWN free-text name for a custom one — and both
-// cadence cap readers hand that to the recap: the week-scale verdict line ("over the
-// Nicotine cap") and the month-scale cap-weeks line ("over the … cap in 2 of 4 weeks").
-// `runRecap` sends that over Telegram, Web Push and Email with
-// `substance_telegram_enabled` never set. Ported to origin/main, every opted-out row
-// below fails.
+// THE RULE. `cadenceScopeNoun` names a substance cap by its own noun — the curated label
+// for a curated key, the profile's OWN free-text name for a custom one — and both cadence
+// cap readers hand that to the recap: the week-scale verdict line ("over the Nicotine
+// cap") and the month-scale cap-weeks line ("over the … cap in 2 of 4 weeks"). `runRecap`
+// sends that over Telegram, Web Push and Email, so a substance-log cap rides only once
+// `substance_telegram_enabled` is set for the profile.
+//
+// ALCOHOL IS THE EXEMPTION (owner ruling 2026-09-02, narrowing #3330). Its ledger is a
+// food group, so its cap is named like any food cap with the consent unset. The rows
+// below pin both halves: nicotine and a custom name stay behind the flag; alcohol never
+// was, and a change that put it back would fail the alcohol rows.
 //
 // WHY THIS TIER AND WHY THE MESSAGE STRING. The gate is a gather, so a pure test over a
 // hand-built verdict array cannot fail for a recap that asks the ledger anyway; and the
@@ -16,7 +20,7 @@
 //
 // AND THE IN-APP SURFACES MUST NOT MOVE. The same gather feeds the dashboard recap card
 // and the AI narrative's facts — surfaces the profile is standing on, where the consent
-// says nothing. Those rows are the ones that stop this fix becoming a regression.
+// says nothing. Those rows are the ones that stop this gate becoming a regression.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
@@ -132,13 +136,13 @@ const capSentence = (label: string, scale: "week" | "month"): RegExp =>
     ? new RegExp(`over the ${label} cap(?! in)`)
     : new RegExp(`over the ${label} cap in \\d+ of \\d+ weeks`);
 
-// Curated counter-ledger, a name the profile typed itself, and alcohol — #3846's own
-// subject, still named by a send it did not gate.
+// The substance-log ledger: a curated counter-ledger key and a name the profile typed
+// itself. Alcohol is asserted separately below — it is the exemption.
 const SUBSTANCES = [
   { scope: "nicotine", label: "Nicotine" },
   { scope: "Evening tincture", label: "Evening tincture" },
-  { scope: "alcohol", label: "Alcohol" },
 ] as const;
+const ALCOHOL = { scope: "alcohol", label: "Alcohol" } as const;
 
 const SCALES = ["week", "month"] as const;
 
@@ -196,7 +200,28 @@ describe("the outbound recap asks the substance consent (#3900)", () => {
     }
   );
 
-  it.each(SUBSTANCES)(
+  // THE EXEMPTION. An alcohol cap is a food cap for reach purposes: named on every
+  // scale, in the deterministic body and in the narrated one, with the consent unset,
+  // and unchanged once it is set.
+  it.each(SCALES)(
+    "%s scale: names Alcohol with the consent unset, and identically once set",
+    (scale) => {
+      const pid = cappedProfile(`recap-alcohol-${scale}`, ALCOHOL.scope);
+      const unset = sendBody(pid, scale);
+      expect(unset).toMatch(capSentence(ALCOHOL.label, scale));
+      setProfileSubstanceTelegram(pid, true);
+      expect(sendBody(pid, scale)).toBe(unset);
+    }
+  );
+
+  it("keeps Alcohol in the generated and rendered monthly narrative with consent unset", async () => {
+    const pid = cappedProfile("recap-alcohol-narrative", ALCOHOL.scope);
+    expect(await narratedSendBody(pid, "month")).toMatch(
+      capSentence(ALCOHOL.label, "month")
+    );
+  });
+
+  it.each([...SUBSTANCES, ALCOHOL])(
     "leaves $label on the dashboard and deterministic in-app facts with consent unset",
     ({ scope, label }) => {
       const pid = cappedProfile(`recap-inapp-${scope}`, scope);

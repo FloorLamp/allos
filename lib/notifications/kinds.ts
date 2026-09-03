@@ -223,17 +223,8 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     requiresFoodLogging: true,
     // FOOD_NUDGE_WINDOWS — Bedtime is deliberately excluded from the food nudge.
     ridesSlots: ["Morning", "Midday", "Evening"],
-    // #3330: alcohol is a food group whose counter is the substance ledger, so it would
-    // otherwise ride these buttons with no choice attached. Off by default and nested
-    // here rather than given its own kind — it changes what a food nudge CONTAINS, not
-    // whether one is sent.
-    extras: [
-      {
-        field: "substance_telegram_enabled",
-        label: "Include alcohol in the buttons and tally",
-        testId: "substance-telegram-enabled",
-      },
-    ],
+    // Alcohol rides these buttons under THIS toggle like every other food group (owner
+    // ruling 2026-09-02, narrowing #3330): the food-buttons consent is the choice.
     more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push and Email can't deliver this kind.",
   },
   {
@@ -306,6 +297,17 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
       timeField: "recap_hour",
       scaleField: "recap_scale",
     },
+    // #3330 / #3900: the recap's cap lines name a substance by its own noun, so the
+    // substance-log caps (nicotine, cannabis, a custom substance) ride this message only
+    // behind a per-profile choice. Off by default and nested here — it changes what a
+    // recap CONTAINS, not whether one is sent. Alcohol is a food cap and is not gated.
+    extras: [
+      {
+        field: "substance_telegram_enabled",
+        label: "Name nicotine, cannabis and custom substance caps",
+        testId: "substance-telegram-enabled",
+      },
+    ],
     // Names the lines the recap ACTUALLY composes (lib/recap.ts). It
     // advertised "volume" and "streak" until #1966 noticed: #1935 cut both of
     // those lines, and this Settings blurb was the one place the sweep missed,

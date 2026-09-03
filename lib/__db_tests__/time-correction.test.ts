@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -852,17 +853,19 @@ describe("a dose reminder carries correction chips after a confirm (#2020)", () 
     markDoseTaken(pid, doseId, itemId, today(pid), "page");
     stampTap(doseLogs(pid)[0].id, "2026-08-05 19:20:00");
 
-    const armedBefore = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armedBefore = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     const anchor = doseLogs(pid)[0].id;
     await handleCallbackQuery(
       cq("5552032", `dosetime:${pid}:${anchor}:60`, [])
     );
 
-    const armedAfter = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armedAfter = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     // The arming dose the safety read consults is the corrected one …
     expect(armedAfter).not.toBe(armedBefore);
     // … and it is EARLIER, so the computed freshness can only shrink. A correction of a
@@ -1134,9 +1137,10 @@ describe("the picker reaches last evening the next morning (#3010)", () => {
     // …and the PRN redose window arms off the CORRECTED instant, which is the safe
     // direction (#2020): a dose actually taken fourteen hours ago is not fresh, and the
     // safety read now says so instead of believing the morning tap.
-    const armed = getMedicationFamilyStates(pid, today(pid)).get(
-      itemId
-    )!.latestGivenAt!;
+    const armed = getMedicationFamilyStates(
+      pid,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId)!.latestGivenAt!;
     expect(armed).toBe("2026-08-05T16:00:00Z");
   });
 

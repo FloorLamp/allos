@@ -17,9 +17,6 @@ import {
   hasCorrectedAnyTime,
 } from "../queries";
 import { getTimezone, getProfileAge } from "../settings";
-import { getProfileSubstanceTelegram } from "../settings/notifications";
-import { ALCOHOL_FOOD_GROUP } from "../substance-use";
-import type { FoodTapRow } from "../food-log-write";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { now as clockNow } from "../clock";
 import { dateStrInTz, minuteOfDayInTz } from "../date";
@@ -46,31 +43,6 @@ import { telegramChannel } from "./telegram";
 import { composeForSend } from "./compose";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
-
-// THE CONSENTED TAP GATHER (#3330) — the ONE read every chat-facing eating-time
-// correction surface takes, so the substance opt-in is asked once and cannot be missed by
-// a caller that reaches the ledger a different way. That is the failure this replaced: the
-// first fix gated the nudge's BUTTONS and TALLY and left the correction ride-along, which
-// re-reads `food_log_events` thirty lines further down and labels each burst with its food
-// group — so an ordinary web-logged drink and an ordinary proactive send still produced
-// "🕐 Alcohol 07:50" — a wall-clock time, strictly more identifying than the tally.
-//
-// FILTERED BEFORE THE COLLAPSE, deliberately. `collapseBursts` names a burst only when it
-// has exactly ONE member, so dropping the substance rows first leaves a mixed burst
-// naming a neighbour or naming nothing at all ("2 entries") — never a redacted row and
-// never a gap someone can read backwards. A burst that was ALL substance disappears, and
-// a chip or picker token pointing at it then resolves to no burst and gets the refusal
-// that already exists for a burst that has aged out.
-//
-// The WRITE core is deliberately not gated: `restampFoodEventsCore` re-derives the burst
-// from the ledger, so a chip on a mixed burst still moves every row of the meal it names.
-// Consent governs what is SENT; leaving one row of an eating event behind at the old time
-// would be a corruption of the record, not a protection of it.
-export function consentedFoodTaps(profileId: number, now: Date): FoodTapRow[] {
-  const taps = getRecentFoodTaps(profileId, now);
-  if (getProfileSubstanceTelegram(profileId)) return taps;
-  return taps.filter((t) => t.groupKey !== ALCOHOL_FOOD_GROUP);
-}
 
 // Build the food-log nudge for a window, or null when the profile shouldn't get one.
 // The only gate here is life stage — food-group serving logging is meaningless for
@@ -116,26 +88,15 @@ export function buildFoodNudge(
   // Buttons AND the tally line both read the DAY total (#2019 retired the slot-scoped
   // "(n)" suffix along with the read-time window derivation it depended on).
   const dayServings = getFoodServingsOnDate(profileId, date);
-  // THE SUBSTANCE REACH GATE, half one (#3330, #3279 ruling 4). Alcohol is the one food
-  // group whose `food_daily_totals` counter IS the substance ledger, so it arrives through
-  // the ordinary ranking and rendered as a chat BUTTON and a "🍷 Alcohol ×2" tally entry.
-  // Half two is `consentedFoodTaps` above, which the correction ride-along below reads —
-  // two data sources, one consent, and the first version of this gate had only this half.
-  //
-  // Removing, not redacting: the key leaves both inputs and the nudge still sends with
-  // every other group intact. Only `kind: "food"` passes through this builder, so no dose
-  // reminder, escalation, redose notice — or the "avoid alcohol" food-interaction line on
-  // a dose tail, which is a fact about the medication and not a record of anyone's
-  // drinking — is reachable from this branch.
-  //
-  // ONE CONSTANT, NOT A FIRST MEMBER: every other substance (curated or custom) lives in
-  // `substance_daily_totals` and has no food-group row to reach this list. A second
-  // `ledger: "food-log"` substance would have to be filtered in both halves.
-  if (!getProfileSubstanceTelegram(profileId)) {
-    const i = rankedKeys.indexOf(ALCOHOL_FOOD_GROUP);
-    if (i >= 0) rankedKeys.splice(i, 1);
-    dayServings.delete(ALCOHOL_FOOD_GROUP);
-  }
+  // ALCOHOL RIDES THIS NUDGE LIKE ANY OTHER FOOD GROUP (owner ruling 2026-09-02,
+  // narrowing #3330). Its `food_daily_totals` counter is also the substance ledger, and
+  // #3330 gated it behind `substance_telegram_enabled` — which read "off" for every
+  // existing profile and silently removed the 🍷 button from the one nudge that logs
+  // most drinks. The consent that governs THIS message is the food-buttons one
+  // (`food_telegram_enabled`, profile-scoped); the substance flag now governs only the
+  // substances with no food-group row, on the recap's cap lines (lib/notifications/
+  // recap-data.ts). Only `kind: "food"` passes through this builder.
+
   // The protein button's own day count (#1379's sibling consistency, on #2019's day
   // meaning). The reserved key never lands in the food_daily_totals counter `dayServings` reads,
   // so its taps are counted off the ledger and merged in here — the renderer then applies
@@ -181,7 +142,7 @@ export function buildFoodNudge(
   // rides only the newest live food message in the chat — never an older one, whose
   // subject it is not and whose chips would restamp servings it never mentioned.
   const corrections = correctionBursts(
-    consentedFoodTaps(profileId, now),
+    getRecentFoodTaps(profileId, now),
     now,
     correctionMessageBinding(profileId, "food", opts.ref ?? null)
   );

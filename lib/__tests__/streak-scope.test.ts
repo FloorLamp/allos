@@ -121,7 +121,7 @@ describe("streak scope after the retirement (#1935/#1936/#1937/#1939/#1966)", ()
     // Neither rewards maintaining a run, which is the actual test.
     const surfaces = [
       "app/(app)/training/OverviewSection.tsx",
-      "app/(app)/training/TrainingLogView.tsx",
+      "app/(app)/training/TrainingLogFilterBar.tsx",
       "app/(app)/training/HistorySection.tsx",
       "components/AdherenceRefill.tsx",
       "components/practices/PracticeTrends.tsx",
