@@ -18,6 +18,7 @@
 // only (fake meds; no PHI).
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { db, today } from "@/lib/db";
 import { getMedicationFamilyStates } from "@/lib/queries";
 import { utcInstant } from "@/lib/date";
@@ -133,10 +134,15 @@ describe("the (item_id, best administration instant) index", () => {
   });
 
   it("still finds the SAME arming administration — an index changes cost, not answers", () => {
-    const state = getMedicationFamilyStates(profileId, today(profileId)).get(
-      itemId
-    );
+    const state = getMedicationFamilyStates(
+      profileId,
+      ceilingWindowEndMinute(new Date())
+    ).get(itemId);
     expect(state?.latestId).toBe(newestId);
-    expect(state?.countToday).toBe(30);
+    // ONE of the thirty, and that is the point of #4686's window: every row here is
+    // dated today while its `occurred_at` walks back a month, so a `date`-keyed count
+    // called this "30 today". The ceiling counts administration INSTANTS inside the
+    // trailing 24 hours, and only the newest is.
+    expect(state?.countInWindow).toBe(1);
   });
 });

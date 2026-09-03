@@ -45,7 +45,7 @@ afterEach(cleanup);
 // ── THE RECOVERY-LED COMPACT COCKPIT, REGION BY REGION (#4752) ──────────────
 //
 // The cockpit was a phone layout stretched across a monitor: three stat headings
-// spread across gulfs, six lines of "None today · Redose OK" above three taps, and
+// spread across gulfs, six lines of "None · Redose OK" above three taps, and
 // the headline recovery fact at footnote weight on the far right. These are the
 // claims the rebuild makes about what a caregiver now sees.
 
@@ -185,7 +185,7 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     ]);
     // ONE sentence about the whole row, replacing six lines of per-row boilerplate.
     expect(screen.getByTestId("cockpit-med-status").textContent).toBe(
-      "Nothing given today"
+      "Nothing given in 24h"
     );
     // A COLLAPSED CHIP SHOWS NEITHER (#4752's acceptance criterion): no per-med day
     // label and no per-med redose line until somebody opens the med.

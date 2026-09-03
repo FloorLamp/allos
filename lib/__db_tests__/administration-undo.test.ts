@@ -7,6 +7,7 @@
 // derived redose arming state, the over-max finding input, and supply all round-trip.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
@@ -97,12 +98,11 @@ function logThree(profileId: number, itemId: number) {
 }
 
 describe("deleteAdministrationLog / restoreAdministrationLog — window + supply round-trip", () => {
-  // Freeze the clock at a fixed mid-day. logThree logs administrations at now − 30/20/10
-  // minutes; run in the 00:00–00:30 window those relative times straddle midnight and land
-  // on YESTERDAY's profile-local date, while the assertions query today() — so countToday
-  // reads 0 (a time-of-day flake, unrelated to supply accounting). Freezing now() and
-  // today() to the same mid-day instant makes the fixture deterministic regardless of when
-  // CI runs; the delete/restore round-trip assertions below are unchanged.
+  // Freeze the clock at a fixed mid-day so the fixture is deterministic regardless of
+  // when CI runs. Since #4686 the ceiling counts the trailing 24 HOURS rather than a
+  // profile-local day, so the midnight-straddle this comment used to describe can no
+  // longer drop these rows out of the count at all — the freeze stays because the
+  // delete/restore assertions still want one fixed instant.
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-15T12:00:00Z"));
@@ -117,13 +117,21 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
       minIntervalHours: 6,
       quantityOnHand: 10,
     });
-    const date = today(profileId);
 
     // Three administrations: count 3, supply 10 − 3 = 7, over the max of 2.
     logThree(profileId, itemId);
-    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(3);
+    expect(
+      getRedoseArmingState(
+        profileId,
+        itemId,
+        ceilingWindowEndMinute(new Date())
+      ).countInWindow
+    ).toBe(3);
     expect(onHand(itemId)).toBe(7);
-    let over = getPrnOverMaxItems(profileId, date);
+    let over = getPrnOverMaxItems(
+      profileId,
+      ceilingWindowEndMinute(new Date())
+    );
     expect(over.map((o) => o.id)).toContain(itemId);
     expect(over.find((o) => o.id === itemId)!.total).toBe(3);
 
@@ -133,18 +141,32 @@ describe("deleteAdministrationLog / restoreAdministrationLog — window + supply
     const removed = deleteAdministrationLog(profileId, logId);
     expect(typeof removed?.undoId).toBe("number");
     const undoId = removed!.undoId;
-    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(2);
+    expect(
+      getRedoseArmingState(
+        profileId,
+        itemId,
+        ceilingWindowEndMinute(new Date())
+      ).countInWindow
+    ).toBe(2);
     expect(onHand(itemId)).toBe(8);
-    expect(getPrnOverMaxItems(profileId, date).map((o) => o.id)).not.toContain(
-      itemId
-    );
+    expect(
+      getPrnOverMaxItems(profileId, ceilingWindowEndMinute(new Date())).map(
+        (o) => o.id
+      )
+    ).not.toContain(itemId);
 
     // Restore → count back to 3 (a NEW ledger row), over-max fires again, supply
     // re-decremented 8 → 7.
     expect(restoreAdministrationLog(profileId, undoId!)).toBe(true);
-    expect(getRedoseArmingState(profileId, itemId, date).countToday).toBe(3);
+    expect(
+      getRedoseArmingState(
+        profileId,
+        itemId,
+        ceilingWindowEndMinute(new Date())
+      ).countInWindow
+    ).toBe(3);
     expect(onHand(itemId)).toBe(7);
-    over = getPrnOverMaxItems(profileId, date);
+    over = getPrnOverMaxItems(profileId, ceilingWindowEndMinute(new Date()));
     expect(over.find((o) => o.id === itemId)!.total).toBe(3);
     // The restored row is a fresh id (never resurrects the deleted primary key).
     expect(adminIds(itemId)).not.toContain(logId);
