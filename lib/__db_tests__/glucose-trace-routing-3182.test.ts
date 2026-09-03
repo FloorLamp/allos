@@ -24,6 +24,7 @@ import { HEALTH_CONNECT_ID } from "@/lib/integrations/health-connect";
 import { parseHealthConnectPayload } from "@/lib/integrations/health-connect";
 import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import {
+  generateHealthConnectToken,
   getHealthConnectCgmGlucose,
   setHealthConnectCgmGlucose,
   upsertConnection,
@@ -232,5 +233,24 @@ describe("late data_origin (#3182 source-identity addendum)", () => {
         value: 108.1,
       },
     ]);
+  });
+});
+
+describe("the switch's own lifecycle (#3182)", () => {
+  it("is off before anyone touches it, connection or no connection", () => {
+    expect(getHealthConnectCgmGlucose(profileId)).toBe(false);
+    upsertConnection(profileId, HEALTH_CONNECT_ID, { status: "connected" });
+    expect(getHealthConnectCgmGlucose(profileId)).toBe(false);
+  });
+
+  it("survives a token rotation", () => {
+    // A fresh mint replaces the WHOLE config by design — it is a credential
+    // operation. The switch is an ingest policy a person set deliberately, and
+    // losing it here would silently send the next push's glucose back to 288 lab
+    // rows a day with nothing on screen to say why.
+    generateHealthConnectToken(profileId);
+    setHealthConnectCgmGlucose(profileId, true);
+    generateHealthConnectToken(profileId);
+    expect(getHealthConnectCgmGlucose(profileId)).toBe(true);
   });
 });
