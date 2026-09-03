@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
@@ -165,5 +165,41 @@ describe("the composed door", () => {
 
     fireEvent.click(screen.getByTestId("w-when-done"));
     expect(screen.queryByTestId("w-when-panel")).toBeNull();
+  });
+
+  // THE CLOCK MUST NOT WRITE OVER THE DAY PICK (#4940). The wheel does not commit
+  // on the gesture — `WheelColumn` reads a flick's resting place on a ~120ms
+  // settle timer (components/TimeField.tsx) — so a column scrolled before the
+  // calendar is touched fires its commit AFTER the day pick. Both halves are in
+  // the same panel and picking a day deliberately keeps it open, so this ordering
+  // is one ordinary gesture apart, and the commit rebuilds the whole pair.
+  //
+  // THE FIXTURE REACHES THE FORBIDDEN STATE ON PURPOSE: the scroll is fired first
+  // so a settle is genuinely pending, and the day is picked inside its window.
+  // Against a handler closed over the render's `value` this reads 2026-08-29 —
+  // the day the wheel was scrolled on, put back over the one just chosen.
+  it("a wheel commit that lands after a day pick carries the picked day", async () => {
+    const { seen } = mount({ timeRequired: true, maxDate: "2026-12-31" });
+    fireEvent.click(door()!);
+    const panel = screen.getByTestId("w-when-panel");
+
+    // A flick still in the air: the column rests fifteen rows from its value and
+    // its settle has not fired.
+    const minutes = within(panel).getByRole("listbox", { name: "Minute" });
+    minutes.scrollTop = 45 * 44;
+    fireEvent.scroll(minutes);
+
+    // ...and inside that window the user picks a day.
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "August 20, 2026" })
+    );
+    expect(seen.at(-1)!.date).toBe("2026-08-20");
+
+    // Now the settle lands. It owns the MINUTE and nothing else.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(seen.at(-1)!.date).toBe("2026-08-20");
+    expect(seen.at(-1)!.statedAt).toBe("2026-08-20T19:45:00.000Z");
   });
 });

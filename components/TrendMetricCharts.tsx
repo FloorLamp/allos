@@ -60,9 +60,15 @@ export interface TrendChartSpec {
   anchorId?: string;
   // Per-card test hook (the merged body census specs open a specific chart).
   testid?: string;
-  // A short caption ABOVE the plot (the acute temperature card's "recent readings
-  // only" honesty note, the sun chart's provenance line).
+  // A short caption ABOVE the plot stating a FACT about THIS card's data —
+  // changes with what's plotted (the practice-consistency sentence). A
+  // constant explainer about what the card IS goes in `about` instead (#4927).
   note?: string | null;
+  // A constant explainer about what this card IS — the same sentence on every
+  // visit, rendered as the title's info glyph rather than as prose under the
+  // header (the acute temperature card's fever-chart pointer, the sun chart's
+  // provenance line).
+  about?: string | null;
   // A right-aligned affordance in the card header (the temperature card's link
   // across to the illness/fever surface). Server-rendered and passed in, so this
   // component stays the toggle-state owner and nothing else.
@@ -321,6 +327,7 @@ export default function TrendMetricCharts({
         // is not even a tap target there (detailHref is null).
         headline={headlineFor(chart)}
         description={chart.description}
+        about={chart.about ?? undefined}
         note={chart.note}
         anchorId={chart.anchorId}
         testid={chart.testid}

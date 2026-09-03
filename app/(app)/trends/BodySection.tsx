@@ -567,7 +567,8 @@ export default async function BodySection({
       data: skinTempChart,
       unit: TREND_METRIC_META["skin-temp"].unit,
       color: TREND_METRIC_META["skin-temp"].color,
-      note: "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
+      about:
+        "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
     });
   }
   if (sun.length > 0) {
@@ -579,7 +580,8 @@ export default async function BodySection({
       data: sun,
       unit: " min",
       color: chartSeries.amber,
-      note: "Daylight minutes from your outdoor sessions, scoped to the solar day at your home location. The same figure the day view's sun chip shows.",
+      about:
+        "Daylight minutes from your outdoor sessions, scoped to the solar day at your home location. The same figure the day view's sun chip shows.",
     });
   }
   if (temperatureAll.length > 0) {
@@ -594,7 +596,8 @@ export default async function BodySection({
       unit: " °F",
       color: chartSeries.rose,
       referenceValue: { value: FEVER_F, label: "Fever" },
-      note: "Temperature is an acute signal — a fever is tracked on the illness/fever chart, not interpreted as a slow long-term trajectory.",
+      about:
+        "An acute signal. Fevers are tracked on the illness chart, not as a long-term trend.",
       headerAction: (
         <DestinationLink
           href="/medical/episodes"

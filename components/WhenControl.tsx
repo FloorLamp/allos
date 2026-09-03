@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import AnchoredPanel from "@/components/overlay/AnchoredPanel";
 import DateField from "@/components/DateField";
 import MonthCalendar from "@/components/MonthCalendar";
@@ -121,36 +121,58 @@ export default function WhenControl({
   const today = dateStrInTz(tz, now);
   const fixedDay = minDate !== undefined && minDate === maxDate;
 
+  // EVERY EMITTER BUILDS THE NEXT PAIR FROM THE PAIR AS IT IS *NOW*, never from
+  // the one its render closed over. Each half's widget emits only its own half,
+  // so the control supplies the other from `value` — and a widget that commits
+  // LATER supplies it from a `value` the user has since replaced. The wheel does
+  // exactly that: `WheelColumn` reads a flick's resting place on a ~120ms settle
+  // timer (components/TimeField.tsx), so a column scrolled before the calendar
+  // was touched lands its minute after the day pick and carried the pre-pick day
+  // back with it — the clock writing over the day pick (#4940). Renders read
+  // `value`; only the emitters read the ref.
+  //
+  // IN THE COMMIT, not in a passive effect, for the same reason
+  // components/ProfileSwitchWatcher.tsx rotates its identity there: the writer
+  // this guards against is a timer, and a timer can land after the new tree
+  // commits and before passive effects run. A ref one paint behind would keep
+  // exactly the window the defect lives in.
+  const latest = useRef(value);
+  useLayoutEffect(() => {
+    latest.current = value;
+  }, [value]);
+
   const setDate = (date: string) => {
     // The pair moves together: a date change re-anchors the stated instant onto
     // the new day (or clears it — never invents one), so the two fields cannot
     // come apart even mid-edit.
     onChange({
       date,
-      statedAt: reanchorStatedAt(value.statedAt, date, tz, now),
+      statedAt: reanchorStatedAt(latest.current.statedAt, date, tz, now),
     });
   };
 
   const setHhmm = (hhmm: string) => {
+    const date = latest.current.date;
     if (!hhmm) {
-      onChange({ date: value.date, statedAt: null });
+      onChange({ date, statedAt: null });
       return;
     }
     // Anchored on the CURRENT date — the only way a time can enter the value —
     // so the stated instant's local day is the row's day by construction.
-    const inst = statedInstantOnDate(value.date, hhmm, tz);
-    onChange({ date: value.date, statedAt: inst ? inst.toISOString() : null });
+    const inst = statedInstantOnDate(date, hhmm, tz);
+    onChange({ date, statedAt: inst ? inst.toISOString() : null });
   };
 
   const fillNow = () => {
     // The one-tap "now": an ABSOLUTE local time, filled into the field so the
     // user sees (and can adjust) exactly what will be stated. Minute precision;
     // only offered while the chosen day is today, so the pair rule holds.
+    const date = latest.current.date;
     onChange({
-      date: value.date,
+      date,
       statedAt:
         statedInstantOnDate(
-          value.date,
+          date,
           zonedDateParts(tz, now).hhmm,
           tz
         )?.toISOString() ?? null,
@@ -231,7 +253,7 @@ export default function WhenControl({
               onChange={(e) => {
                 const iso = e.target.value;
                 onChange({
-                  date: value.date,
+                  date: latest.current.date,
                   statedAt: iso === "" ? null : iso,
                 });
               }}
@@ -278,7 +300,9 @@ export default function WhenControl({
       {mode === "correct" && grain === "minute" ? (
         <button
           type="button"
-          onClick={() => onChange({ date: value.date, statedAt: null })}
+          onClick={() =>
+            onChange({ date: latest.current.date, statedAt: null })
+          }
           disabled={disabled || value.statedAt === null}
           className="btn-ghost btn-sm"
           data-testid={`${testId}-not-stated`}
