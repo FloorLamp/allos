@@ -149,12 +149,13 @@ test("a clean tab takes the deploy by itself and says so afterwards (#2471)", as
   ).toBeNull();
   // ANY client-side navigation will do here — this case is about the taken-build
   // marker, not about which row was clicked. It uses a TOP-LEVEL row on purpose:
-  // #3079 moved Timeline into the collapsed "Plan & review" group, and a spec that
-  // has no opinion about nav shape should not have to expand a group to say so.
+  // #4965 moved Trends into the collapsed "Plan & review" group and put History
+  // in its old top-level slot, and a spec that has no opinion about nav shape
+  // should not have to expand a group to say so.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Trends" }),
-    /\/trends/
+    page.locator("aside nav").getByRole("link", { name: "History" }),
+    /\/history/
   );
   expect(
     await page.evaluate((k) => sessionStorage.getItem(k), UPDATE_TAKEN_KEY)
@@ -236,8 +237,8 @@ test("with the automatic attempt spent, the deploy raises exactly one bar and it
   // client navigation is the subject, not the nav registry.
   await followLink(
     page,
-    page.locator("aside nav").getByRole("link", { name: "Trends" }),
-    /\/trends/
+    page.locator("aside nav").getByRole("link", { name: "History" }),
+    /\/history/
   );
   await expect(bar).toBeVisible();
   await expect(page.getByTestId("update-ready-bar")).toHaveCount(1);

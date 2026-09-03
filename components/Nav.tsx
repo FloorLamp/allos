@@ -199,20 +199,14 @@ const PLAN_REVIEW: Group = {
     // not because its zero is a fault. Its real cost (the hero excluding
     // everything past today) is a separate issue and is untouched here.
     { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
-    // HISTORY — the record, which INHERITED this slot from Timeline when #3958
-    // phase 2 retired `/timeline` (#3343, owner 2026-08-29: "when phase 2 absorbs
-    // the timeline and vacates its slot, History inherits it"). Everything the note
-    // below said about Timeline is now true of it: used constantly, never from the
-    // nav, and the target of every DayHistory heatmap cell, every mini-calendar day
-    // (components/EventCalendar.tsx, opened from the record's own filter row since
-    // #4280), the weekly recap
-    // widget, and several sleep and trends surfaces; it holds the same permanent
-    // mobile dock slot (lib/mobile-dock.ts, the Q5 half of the same ruling). It is a
-    // destination reached FROM CONTEXT — the unused thing was the row, not the page.
-    //
-    // Its retro symptom entry for an arbitrary past day, named in this group's
-    // header note as `/timeline`'s unique write, moved with it to `?day=`.
-    { href: "/history", label: "History", icon: IconTimelineEvent },
+    // TRENDS — folded in here (#4965), taking History's old slot right after
+    // Upcoming. It lost its permanent row for the same reason History gained
+    // one: the owner's 2026-08-29 review ("i realize i don't actually use
+    // trends that much") already cost it the dock slot (#4102), and "look back
+    // at patterns" is a review cadence — this group's own definition (see the
+    // Upcoming note above). Icon and relevance behaviour are unchanged (no
+    // relevanceKey; the page stays reachable by URL either way).
+    { href: "/trends", label: "Trends", icon: IconTrendingUp },
     // WELLNESS (#1620) — an episodic MANAGEMENT surface whose daily reading is
     // already promoted to the dashboard: a profile opens it to create or edit a
     // practice a few times a year. #2894's doctrine covers it — "tabs for surfaces
@@ -322,7 +316,17 @@ const entries: Entry[] = [
     // Hidden for an infant profile (< 1 y); the page also gates server-side (#591).
     requiresFoodLogging: true,
   },
-  { href: "/trends", label: "Trends", icon: IconTrendingUp },
+  // HISTORY (#4965) — earned this row. It used to inherit the fold's slot from
+  // Timeline (#3958 phase 2, #3343) as a destination reached FROM CONTEXT — used
+  // constantly, never from the nav. #4918 changed that: `/history?day=` is now
+  // the owner's daily morning read, opened on purpose from the dock's Home, so
+  // the ORDER rule above counts it as a deliberate visit and it earns a
+  // permanent row instead of a folded one. Its other doors are unchanged — every
+  // DayHistory heatmap cell, every mini-calendar day (components/EventCalendar.tsx),
+  // the weekly recap widget, several sleep and trends surfaces, and the same
+  // permanent mobile dock slot (lib/mobile-dock.ts, the Q5 half of the same
+  // ruling).
+  { href: "/history", label: "History", icon: IconTimelineEvent },
   // Year in review (#2179/#2762) remains user-initiated and ungated, but a
   // once-a-year commemorative page does not spend permanent nav chrome. It was
   // reached from the Timeline's header action until #3958 phase 2 deleted that

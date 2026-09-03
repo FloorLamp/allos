@@ -85,14 +85,14 @@ test("a drawer nav link navigates and closes the drawer", async ({ page }) => {
   await page.goto("/");
   const drawer = await openMobileDrawer(page);
 
-  // A top-level row: #3079 moved Timeline into the collapsed "Plan & review"
+  // A top-level row: #4965 moved Trends into the collapsed "Plan & review"
   // group, and "a drawer nav link navigates and closes the drawer" is a claim
   // about the drawer. The grouped children get their own drawer coverage in
   // e2e/nav-consolidation.spec.ts.
   await followLink(
     page,
-    drawer.getByRole("link", { name: "Trends", exact: true }),
-    /\/trends/
+    drawer.getByRole("link", { name: "History", exact: true }),
+    /\/history/
   );
   // Navigation closes the drawer, leaving the dock's More route available.
   await expect(drawer).toHaveCount(0);

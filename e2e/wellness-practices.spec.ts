@@ -176,13 +176,14 @@ test("with nothing tracked, the always-visible quick-log row offers the first pr
   try {
     // The gate, observed rather than assumed. EXPAND THE GROUP FIRST (#3079):
     // Wellness is a child of "Plan & review", collapsed on "/", so this absence
-    // would read as a pass whether the gate worked or not — the ungated Timeline
-    // sibling proves the expansion actually happened.
+    // would read as a pass whether the gate worked or not — the ungated Trends
+    // sibling (#4965; History left this group for a top-level row) proves the
+    // expansion actually happened.
     await page.goto("/");
     const sidebarNav = page.locator("aside nav");
     await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
     await expect(
-      sidebarNav.getByRole("link", { name: "History" })
+      sidebarNav.getByRole("link", { name: "Trends" })
     ).toBeVisible();
     await expect(
       sidebarNav.getByRole("link", { name: "Wellness", exact: true })
