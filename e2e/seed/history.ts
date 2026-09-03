@@ -57,7 +57,8 @@ export function seedTimelineChrome(): void {
   // The well profile's ONE seeded day with symptoms (worst-severity upsert, like the
   // runtime write core). It is also what earns the profile its Symptoms chip, since
   // the Add past row offers the kinds a profile has rows for. TL_CHROME_QUIET_DAY
-  // deliberately gets nothing — it is where the add-door test writes.
+  // deliberately gets nothing — it is where the spec's own two writing tests
+  // (the add door, and the ⋯ correction) plant and clear their rows.
   const insSymptom = db.prepare(
     `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
      VALUES (?, ?, ?, ?, NULL)

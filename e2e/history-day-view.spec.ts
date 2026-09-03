@@ -7,6 +7,7 @@ import {
   settledBoxes,
   settledClick,
   settledPickOption,
+  settledSelect,
 } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -38,9 +39,9 @@ import { workerDbPath } from "./worker-env";
 // card at both widths.
 //
 // Fixture (#868): a dedicated login over two dedicated profiles — see
-// e2e/logins/history.ts. Deep-past days. The door test WRITES one symptom row, on a
-// day nothing else in this file reads, and clears it either side of itself, so the
-// file stays repeat-safe under --repeat-each.
+// e2e/logins/history.ts. Deep-past days. Two tests here WRITE — the door's, and the
+// ⋯ correction's — each on its own symptom key on the quiet day, cleared either side
+// of itself, so the file stays repeat-safe under --repeat-each.
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
@@ -101,12 +102,60 @@ function doorSymptomDates(): string[] {
 // --repeat-each iteration after the first — would find the row already there and go
 // green on the previous run's write.
 function clearDoorSymptom(): void {
+  clearWellSymptom(DOOR_SYMPTOM);
+}
+
+// The correction test's own key, distinct from the door's and from the seed's two, so
+// neither writing test in this file can read the other's row.
+const CORRECT_SYMPTOM = "chills";
+const CORRECT_LABEL = "Chills";
+
+function clearWellSymptom(symptom: string): void {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     db.prepare(
       "DELETE FROM symptom_logs WHERE profile_id = ? AND symptom = ?"
-    ).run(profileIdNamed(TL_CHROME_WELL_PROFILE), DOOR_SYMPTOM);
+    ).run(profileIdNamed(TL_CHROME_WELL_PROFILE), symptom);
+  } finally {
+    db.close();
+  }
+}
+
+// The row the correction is driven against, planted directly: this test is about the
+// ⋯, not about the door that would otherwise have written it.
+function seedCorrectSymptom(severity: number): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+       VALUES (?, ?, ?, ?, NULL)`
+    ).run(
+      profileIdNamed(TL_CHROME_WELL_PROFILE),
+      TL_CHROME_QUIET_DAY,
+      CORRECT_SYMPTOM,
+      severity
+    );
+  } finally {
+    db.close();
+  }
+}
+
+function correctSymptomSeverity(): number | null {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare(
+        "SELECT severity FROM symptom_logs WHERE profile_id = ? AND date = ? AND symptom = ?"
+      )
+      .get(
+        profileIdNamed(TL_CHROME_WELL_PROFILE),
+        TL_CHROME_QUIET_DAY,
+        CORRECT_SYMPTOM
+      ) as { severity: number } | undefined;
+    return row?.severity ?? null;
   } finally {
     db.close();
   }
@@ -422,6 +471,64 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
         await expect(page.getByTestId("symptom-log-bar")).toHaveCount(0);
       }
     } finally {
+      await page.context().close();
+    }
+  });
+
+  // THE OTHER HALF OF #4851: what the retired card TOOK AWAY has to still be there.
+  // The bar carried `SymptomRowControl` — the day's taps, note and clear — so until
+  // this change the day view had two ways to fix a logged symptom. One is left, the ⋯
+  // that #4621 ruling 3 put on the feed row, and #4851's acceptance criterion asks for
+  // it by name.
+  //
+  // IT NAMES AN "EXISTING E2E" AND THERE IS NONE. `history-row-edit` is driven in
+  // exactly two specs — e2e/history.spec.ts on a PRACTICE row and
+  // e2e/bristol-stool.spec.ts on a stool row — and no spec above the component tier
+  // (components/__tests__/symptom-two-pieces.test.tsx) has ever opened a symptom row's
+  // menu. So the criterion is asserted here rather than reported as satisfied by a
+  // test that does not exist.
+  //
+  // DOWNWARDS ON PURPOSE. `logSymptom` keeps the day's WORST, so a raise is also what
+  // an ordinary re-log produces; only `editSymptom` can lower one, and lowering is the
+  // correction the retired bar's labelled chips used to be the way to make.
+  test("the day's symptom row still corrects through the row menu", async ({
+    browser,
+  }) => {
+    test.slow();
+    clearWellSymptom(CORRECT_SYMPTOM);
+    seedCorrectSymptom(3);
+    const page = await signIn(browser);
+    try {
+      await page.setViewportSize(DESKTOP);
+      await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
+      const row = () =>
+        page.getByTestId("history-row").filter({ hasText: CORRECT_LABEL });
+      await expect(row().getByTestId("history-row-detail")).toContainText(
+        "Severe"
+      );
+
+      await hydratedClick(page, row().getByTestId("overflow-menu-trigger"));
+      await page.getByTestId("history-row-edit").click();
+      const form = page.getByTestId("history-row-editing");
+      // The symptom is half the row's ADDRESS, so the edit mount hands the form one
+      // choice and the picker collapses — there is no combobox to pick in here.
+      await expect(form.getByTestId("symptom-form-picker")).toHaveCount(0);
+      await settledSelect(page, form.getByTestId("symptom-form-severity"), "1");
+      await settledClick(page, form.getByTestId("symptom-form-save"));
+
+      // The STORE first, on the day being corrected: `symptom_logs` is
+      // UNIQUE(profile_id, date, symptom), so a correction that reached for today
+      // would leave this row at 3 and fork a second one.
+      await expect.poll(() => correctSymptomSeverity()).toBe(1);
+      // And the row repaints in place, which is the page's own promise (#4062).
+      await expect(row().getByTestId("history-row-detail")).toContainText(
+        "Mild"
+      );
+      await expect(row().getByTestId("history-row-detail")).not.toContainText(
+        "Severe"
+      );
+    } finally {
+      clearWellSymptom(CORRECT_SYMPTOM);
       await page.context().close();
     }
   });

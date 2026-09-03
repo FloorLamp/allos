@@ -15,8 +15,9 @@
 // which a shared profile's day cannot promise under --repeat-each.
 //
 // All dates are DEEP PAST (2026-01-*, per the #1511 relative-or-deep-past rule) so
-// they never drift into or out of a relative window. The spec's one write is the
-// add-door row on the quiet day below, cleared either side of the test that makes it.
+// they never drift into or out of a relative window. The spec's writes are two rows on
+// the quiet day below — the add door's and the ⋯ correction's — each on its own symptom
+// key and cleared either side of the test that makes it.
 export const E2E_LOGIN_TL_CHROME = "e2e_tl_chrome";
 // Acting profile (created first ⇒ lowest id ⇒ first accessible): no active
 // situation, one day WITH symptoms, one day without, one day full of events. The
@@ -34,8 +35,8 @@ export const TL_CHROME_BUSY_DAY = "2026-01-20";
 // A day carrying symptom rows, which is what puts `symptom` in this profile's
 // present kinds and therefore the Symptoms chip in its Add past row.
 export const TL_CHROME_SYMPTOM_DAY = "2026-01-15";
-// A day with nothing on it at all — where the add door's write lands, and the only
-// fixture day this spec mutates.
+// A day with nothing on it at all — where the spec's own writes land (the add door's,
+// and the ⋯ correction's), and the only fixture day it mutates.
 export const TL_CHROME_QUIET_DAY = "2026-01-18";
 // The title every busy-day activity carries, so the spec can count its own rows.
 export const TL_CHROME_ACTIVITY = "TL Chrome Session";
