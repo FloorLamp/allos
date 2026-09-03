@@ -197,6 +197,44 @@ async function boxes(scope: Locator, selector: string) {
   );
 }
 
+/**
+ * The right edge of every stroke a reader can SEE. recharts emits a
+ * `recharts-line-curve` path for the marks-and-tooltip line too, and that one is
+ * `stroke: none` — its box reaches the last plotted point whether or not any ink
+ * does, which is the measurement that flatters a broken stroke.
+ */
+async function paintedStrokeRight(scope: Locator): Promise<number> {
+  const rights = await scope
+    .locator("path.recharts-line-curve")
+    .evaluateAll((nodes) =>
+      nodes
+        .filter((n) => getComputedStyle(n).stroke !== "none")
+        .map((n) => n.getBoundingClientRect().right)
+    );
+  expect(rights.length, "no painted stroke to measure").toBeGreaterThan(0);
+  return Math.max(...rights);
+}
+
+/**
+ * Each DATE tick label and its centre x. Both axes render
+ * `.recharts-cartesian-axis-tick-value`, so the date ones are picked out by their
+ * MM-DD shape rather than by an axis class (recharts 3 renders the axis group
+ * whether or not the axis paints).
+ */
+async function xTicks(scope: Locator) {
+  return scope
+    .locator(".recharts-cartesian-axis-tick-value")
+    .evaluateAll((nodes) =>
+      nodes
+        // SVG <text>: textContent, not innerText, which SVG elements do not have.
+        .map((n) => {
+          const r = n.getBoundingClientRect();
+          return { label: (n.textContent ?? "").trim(), x: r.x + r.width / 2 };
+        })
+        .filter((t) => /^\d{2}-\d{2}$/.test(t.label))
+    );
+}
+
 test("a lone reading between two over-limit holes draws its mark (#4924 fix 3)", async ({
   browser,
 }, testInfo) => {
@@ -226,15 +264,23 @@ test("a lone reading between two over-limit holes draws its mark (#4924 fix 3)",
     // it and the dot layer is still off for all 36 of them.
     await expect(active.locator("circle.chart-dot")).toHaveCount(1);
 
-    // …and it is the LONE reading's, not the last day's: its x sits left of the
-    // right edge of the plot by roughly the trailing outage's width. Asserted as
-    // a relationship — the mark against the run it is separated from — because an
-    // absolute x would be satisfied by a dot anywhere on the plot.
+    // …and it is AT THAT DATE, read against the axis the reader reads it against.
+    // The date-tick policy puts a fortnightly tick on this window, so the lone
+    // reading's day falls strictly between two labelled ones: a relationship
+    // between elements, where an absolute x would be satisfied by a dot anywhere.
     const [mark] = await boxes(active, "circle.chart-dot");
-    const strokes = await boxes(active, "path.recharts-line-curve");
-    expect(strokes.length).toBeGreaterThan(0);
-    const runRight = Math.max(...strokes.map((s) => s.right));
-    expect(mark.left).toBeGreaterThan(runRight);
+    const ticks = await xTicks(active);
+    const at = (date: string) => {
+      const tick = ticks.find((t) => t.label === date.slice(5));
+      expect(
+        tick,
+        `no ${date.slice(5)} tick among ${ticks.map((t) => t.label)}`
+      ).toBeDefined();
+      return tick!.x;
+    };
+    const centre = (mark.left + mark.right) / 2;
+    expect(centre).toBeGreaterThan(at(day(28)));
+    expect(centre).toBeLessThan(at(day(14)));
 
     // The caption that named a date the plot never showed is still there, and now
     // the plot shows it.
@@ -288,9 +334,7 @@ test("today's HR is drawn as the day it is, not the day it will be (#4924 fix 4)
     // reaches is left of the partial mark, rather than a segment falling from
     // yesterday's average to a half-day's.
     const [partial] = await boxes(hr, "circle[data-inexact]");
-    const strokes = await boxes(hr, "path.recharts-line-curve");
-    expect(strokes.length).toBeGreaterThan(0);
-    expect(Math.max(...strokes.map((s) => s.right))).toBeLessThan(partial.left);
+    expect(await paintedStrokeRight(hr)).toBeLessThan(partial.left);
 
     // THE HEADLINE. "52 bpm" with nothing attached reads as your heart rate.
     await expect(hr.getByTestId("chart-card-headline")).toContainText(
@@ -372,6 +416,14 @@ test("every sentence under a chart sits inside the card, and none overlaps anoth
   try {
     await page.setViewportSize({ width: 1280, height: 1600 });
     await page.goto("/trends?view=all");
+    // WAIT FOR THE SENTENCE, NOT THE CARD (#3384). The captions arrive with the
+    // lazy chart chunk and are handed up to the band after it mounts; counting
+    // bands before that reads an empty page, and every assertion below is about
+    // what is IN one.
+    const active = card(page, "active-calories");
+    await expect(
+      active.getByTestId("chart-trailing-outage-note")
+    ).toBeVisible();
     const bands = page.getByTestId("chart-card-footer");
     expect(await bands.count()).toBeGreaterThan(0);
 
