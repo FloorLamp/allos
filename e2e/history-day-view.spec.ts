@@ -268,15 +268,20 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
     }
   });
 
+  // THE TWO STRIPS NO LONGER SHARE A PAGE (#4918 ruling 1), and #4558's claim is
+  // unchanged for both. The day view's per-group header retired — its date was
+  // printed below the chart as a link to the page already open, and the day bar
+  // names the day instead — so the day view now has ONE sticky strip and the sticky
+  // day header is the FEED's, which #4918 leaves exactly as it was. Each is measured
+  // on the page that still draws it, through the same helper and the same forged
+  // inset, rather than the day header being retargeted at the bar (which would have
+  // made both halves of a two-strip test read the same element).
   test("both sticky strips park below a forged top inset (#4558)", async ({
     browser,
   }) => {
     test.slow();
     const page = await signIn(browser);
     try {
-      await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
-      await chromeReady(page);
-
       const nav = page.getByTestId("timeline-day-nav");
       const day = page.locator('[data-testid="history-day"] h2');
       const flow = page.getByTestId("history-filters");
@@ -307,8 +312,10 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
         return second.y;
       };
 
-      const measure = async (inset: number) => {
-        await page.evaluate(
+      // The forged inset is a style on the document, so it is re-applied after every
+      // navigation rather than once per pass.
+      const forge = async (inset: number) =>
+        page.evaluate(
           (px) =>
             document.documentElement.style.setProperty(
               "--top-edge-inset",
@@ -316,28 +323,40 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
             ),
           inset
         );
-        await scrollTo(page, 0);
-        await expect(nav).toHaveAttribute("data-hidden", "false");
-        const [dayAtRest] = await settledBoxes([day]);
-        const maxScroll = await page.evaluate(
+      const bottom = () =>
+        page.evaluate(
           () => document.documentElement.scrollHeight - window.innerHeight
         );
-        const dayFrom = Math.round(dayAtRest.y + 40);
-        expect(
-          maxScroll - dayFrom,
-          "the busy day has a sticky window"
-        ).toBeGreaterThan(100);
 
-        await scrollTo(page, dayFrom);
-        await expect(nav).toHaveAttribute("data-hidden", "true");
-        const dayY = await parkedY(day, dayFrom, dayFrom + 48);
-
-        const deep = await scrollTo(page, maxScroll);
+      const measure = async (inset: number) => {
+        await page.goto(dayUrl(TL_CHROME_BUSY_DAY));
+        await chromeReady(page);
+        await forge(inset);
+        await scrollTo(page, 0);
+        await expect(nav).toHaveAttribute("data-hidden", "false");
+        const deep = await scrollTo(page, await bottom());
         await expect(nav).toHaveAttribute("data-hidden", "true");
         const navFrom = deep - 100;
         await scrollTo(page, navFrom);
         await expect(nav).toHaveAttribute("data-hidden", "false");
         const navY = await parkedY(nav, navFrom, navFrom - 48);
+
+        await page.goto("/history");
+        await expect(page.getByTestId("shell-chrome")).toHaveAttribute(
+          "data-ready",
+          "true"
+        );
+        await forge(inset);
+        await scrollTo(page, 0);
+        const [dayAtRest] = await settledBoxes([day.first()]); // first-ok: the feed's topmost day group is the one scrolled past
+        const maxScroll = await bottom();
+        const dayFrom = Math.round(dayAtRest.y + 40);
+        expect(
+          maxScroll - dayFrom,
+          "the feed has a sticky window"
+        ).toBeGreaterThan(100);
+        await scrollTo(page, dayFrom);
+        const dayY = await parkedY(day.first(), dayFrom, dayFrom + 48); // first-ok: same group as above
         return { dayY, navY };
       };
 

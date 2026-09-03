@@ -128,3 +128,49 @@ test("the day view is the only place the swipe is armed", async ({ page }) => {
   await touchSwipe(page, { x: 320, y: 520 }, { x: 110, y: 526 });
   await expect(page).toHaveURL(/\/history$/);
 });
+
+// ── TODAY HAS NO NEXT DAY, AND NEITHER CONTROL PRETENDS IT DOES (#4918) ──────
+//
+// The arrow shipped pointing at `dayNavHref(day)` — today's own href — while the
+// comment above it said "on today it is not drawn at all", and the leftward swipe
+// pushed the same href unconditionally. So the most-repeated navigation on a phone
+// reloaded the page it was on, and the bar read "‹ Sep 2 · Sep 3 ›".
+//
+// REACHED THROUGH A FUTURE `?day=` THAT CLAMPS, so the test names no date: whatever
+// day the run is on, `clampHistoryDay` lands it on today, which is the state under
+// test. The URL after the swipe is compared against the URL BEFORE it — a literal
+// would be asserting the clamp rather than the gesture.
+test("on today there is no next arrow and a leftward swipe changes nothing", async ({
+  page,
+}) => {
+  await page.goto("/history?day=2099-01-01");
+  await hydrated(page);
+  await expect(page.getByTestId("timeline-day-nav")).toBeVisible();
+
+  // The bar still NAMES the day it clamped to — the empty-day case #4918 defect 1
+  // is about, where the retired per-group header rendered nothing at all.
+  const name = page.getByTestId("timeline-day-name");
+  await expect(name).toContainText(/record/);
+  await expect(page.getByTestId("history-day-link")).toHaveCount(0);
+
+  await expect(page.getByTestId("timeline-day-next")).toHaveCount(0);
+  // The prev arrow is untouched: an absence assertion that could not tell "today has
+  // no next" from "the bar lost its controls" would pass on both worlds.
+  await expect(page.getByTestId("timeline-day-prev")).toBeVisible();
+
+  const before = page.url();
+  await touchSwipe(page, { x: 320, y: 520 }, { x: 110, y: 526 });
+  // A swipe that DID navigate would commit its URL client-side within the same
+  // window a real day change needs, so this waits the navigation budget out rather
+  // than reading the URL immediately and passing on a push still in flight.
+  await page.waitForTimeout(NAV_TIMEOUT / 4);
+  expect(page.url(), "a leftward swipe on today must not navigate").toBe(before);
+
+  // And the rightward swipe still works, on the same page, through the same
+  // recognizer — the gesture was disabled in one direction, not switched off.
+  await touchSwipe(page, { x: 110, y: 520 }, { x: 320, y: 514 });
+  await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/, {
+    timeout: NAV_TIMEOUT,
+  });
+  expect(page.url()).not.toBe(before);
+});
