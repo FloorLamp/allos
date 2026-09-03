@@ -317,6 +317,72 @@ export function mergeBodyMetricPartialAware(
   };
 }
 
+// The instant each measure was taken, as the SOURCE stated it (#3950, owner-ruled
+// 2026-08-29). Separate from `body_metrics.occurred_at`, which is the time the PERSON
+// stated for their whole sitting: these three answer "when was THIS measure read",
+// which one column provably cannot, because a fasted weigh-in and an evening resting-HR
+// average sit hours apart on the same day row.
+export interface BodyMetricInstants {
+  weight_at: string | null;
+  body_fat_at: string | null;
+  resting_hr_at: string | null;
+}
+
+// The instants that must accompany `mergeBodyMetricPartialAware`'s merged values.
+//
+// AN INSTANT BELONGS TO ITS MEASURE, and the whole hazard here is that the two can be
+// decided apart: keep the stored weight but take the incoming weight's instant and the
+// row now claims a 22:00 reading for a 07:00 number, with nothing to notice it. So this
+// applies the SAME per-measure rule as the value merge, from the same `partialDay` — the
+// side whose VALUE won contributes the instant, and a side that contributed no value can
+// never contribute an instant.
+export function mergeMeasureInstants(
+  existing: BodyMetricValues & BodyMetricInstants,
+  incoming: BodyMetricValues & BodyMetricInstants,
+  partialDay: boolean
+): BodyMetricInstants {
+  // `incomingWins` mirrors mergeBodyMetricPartialAware exactly: weight is
+  // last-reading-wins always; the two day-AVERAGES yield to a fuller stored value on a
+  // partially-covered day (#606).
+  const follow = (
+    incomingWins: boolean,
+    existingValue: number | null,
+    incomingValue: number | null,
+    existingAt: string | null,
+    incomingAt: string | null
+  ): string | null =>
+    incomingWins
+      ? incomingValue != null
+        ? incomingAt
+        : existingAt
+      : existingValue != null
+        ? existingAt
+        : incomingAt;
+  return {
+    weight_at: follow(
+      true,
+      existing.weight_kg,
+      incoming.weight_kg,
+      existing.weight_at,
+      incoming.weight_at
+    ),
+    body_fat_at: follow(
+      !partialDay,
+      existing.body_fat_pct,
+      incoming.body_fat_pct,
+      existing.body_fat_at,
+      incoming.body_fat_at
+    ),
+    resting_hr_at: follow(
+      !partialDay,
+      existing.resting_hr,
+      incoming.resting_hr,
+      existing.resting_hr_at,
+      incoming.resting_hr_at
+    ),
+  };
+}
+
 // Round a raw (possibly day-averaged) value to each column's stored precision:
 // resting HR to a whole bpm, body fat to 0.1%, weight to 0.01 kg.
 export function roundBodyMetric(

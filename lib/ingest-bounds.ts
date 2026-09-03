@@ -22,6 +22,8 @@
 // out-of-bounds value is DROPPED and COUNTED as skipped, never clamped (a clamped
 // value is a fabricated reading) and never fatal.
 
+import { toKm, type Km } from "./units";
+
 export interface MetricBound {
   min: number;
   max: number;
@@ -245,6 +247,67 @@ export function boundedOrNull(
 ): number | null {
   if (value == null) return null;
   return inMetricBounds(metric, value) ? roundForMetric(metric, value) : null;
+}
+
+// ---- the unit boundary for distance and duration (issue #4537) ----
+//
+// Distance→km was minted at six call sites across five mappers and duration→minutes at
+// eight, each spelling its own arithmetic and its own rounding — two quantized to 2dp
+// inline, the rest left it to `boundedOrNull`. The values land in the `distance_km` /
+// `duration_min` columns the activity duplicate/merge detector compares, so what a
+// reading stores must not depend on which mapper it arrived through.
+//
+// BOUNDS ARE DELIBERATELY NOT FOLDED IN, because the mappers disagree ON PURPOSE about
+// what an implausible reading means: Strava and Oura discard the whole activity
+// (distance and duration are its identity), Health Connect and the Fitbit archive null
+// only the bad field. Plausibility stays at the call site; only the unit moves here.
+//
+// The one deliberate NON-caller is Health Connect's per-stage sleep minutes, stored
+// EXACT so a night's stages cannot sum past their own session total (reasoned at that
+// site). Whole-minute rounding is what this is for, so that site correctly opts out.
+
+export type IngestDistanceUnit = "m" | "km" | "mi";
+export type IngestDurationUnit = "ms" | "s" | "min";
+
+// The Fitbit Takeout activity log is the only source that states its unit as free text
+// (`distanceUnit`); every other mapper knows its provider's unit statically and passes
+// the token. Returns null for a spelling we do not recognize — never a guess.
+export function parseDistanceUnit(
+  raw: string | null | undefined
+): IngestDistanceUnit | null {
+  const u = (raw ?? "").trim().toLowerCase();
+  if (/^(m|met(er|re)s?)$/.test(u)) return "m";
+  if (/^(km|kilomet(er|re)s?)$/.test(u)) return "km";
+  if (/^(mi|miles?)$/.test(u)) return "mi";
+  return null;
+}
+
+// Canonical kilometres from a value stated in `unit`, minted as `Km`. Precision is NOT
+// re-declared here — it rounds through `roundForMetric`, so METRIC_ROUND_DP above stays
+// the one place the stored precision is stated. Null/non-finite/unknown-unit is null
+// out, which the mappers' existing skip paths already handle.
+export function canonicalDistanceKm(
+  value: number | null | undefined,
+  unit: IngestDistanceUnit | null
+): Km | null {
+  if (value == null || !Number.isFinite(value) || unit == null) return null;
+  // Metres are not a display unit, so they convert here; `toKm` owns "km" and "mi",
+  // including the mile factor one mapper used to carry as a constant of its own.
+  const km = unit === "m" ? value / 1000 : toKm(value, unit);
+  return toKm(roundForMetric("distance_km", km), "km");
+}
+
+// Whole canonical minutes from a value stated in `unit` — a whole-minute column by
+// construction, which is why the rounding is stated here and not in METRIC_ROUND_DP.
+// The caller still applies its own metric's bound (`duration_min`, or `sleep_min`).
+export function canonicalDurationMin(
+  value: number | null | undefined,
+  unit: IngestDurationUnit
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const minutes =
+    unit === "ms" ? value / 60_000 : unit === "s" ? value / 60 : value;
+  return Math.round(minutes);
 }
 
 // ---- timestamp sanity window ----
