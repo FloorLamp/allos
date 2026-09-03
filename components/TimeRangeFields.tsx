@@ -2,6 +2,7 @@
 
 import { nowHHMM } from "@/lib/activity-form-model";
 import { shiftHHMM } from "@/lib/activity-meta";
+import TimeField from "@/components/TimeField";
 
 // THE HOUSE START/END PAIR (#4384 fix 6), extracted from the activity form's
 // `DateTimeFields`. #336's interplay — a "now" on each clock, a ±duration offer when
@@ -9,8 +10,10 @@ import { shiftHHMM } from "@/lib/activity-meta";
 // was solved once for activities and then not reused: the practice form shipped a bare
 // uncoupled pair, so the same two clocks meant different things depending on which
 // door you opened them behind. The pair is ONE component now and both domains mount
-// it. #3295's substance spans are its next tenant; #4218's TimeField restyles these
-// two inputs HERE when it lands, once, rather than in each host.
+// it. #3295's substance spans are its next tenant. #4218's TimeField landed here
+// (#4976): both clocks are `TimeField` now, restyled once rather than in each host —
+// which is also why the native `min` attribute on End is gone (it was the browser's
+// own constraint; `timeError` below was always the real refusal).
 //
 // THE TWO CLOCKS ARE THE WHOLE OF IT. The DAY belongs to the surface (the form's
 // DateField, the row's date, the card's day context) and the DURATION belongs to the
@@ -86,13 +89,13 @@ export default function TimeRangeFields({
               )
             )}
           </div>
-          <input
+          <TimeField
             id={`${idPrefix}-start-time`}
             name={startName}
-            type="time"
             value={startTime}
-            onChange={(e) => onStartTime(e.target.value)}
-            className="input mt-1"
+            onChange={onStartTime}
+            label="Start"
+            inputClassName="mt-1"
           />
         </div>
         <div>
@@ -123,15 +126,14 @@ export default function TimeRangeFields({
               )
             )}
           </div>
-          <input
+          <TimeField
             id={`${idPrefix}-end-time`}
             name={endName}
-            type="time"
             data-testid="end-time-input"
             value={endTime}
-            min={startTime || undefined}
-            onChange={(e) => onEndTime(e.target.value)}
-            className={`input mt-1 ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
+            onChange={onEndTime}
+            label="End"
+            inputClassName={`mt-1 ${timeError ? "border-rose-300 dark:border-rose-800" : ""}`}
           />
         </div>
       </div>

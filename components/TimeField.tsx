@@ -41,6 +41,7 @@ export default function TimeField({
   required = false,
   disabled = false,
   id,
+  name,
   label,
   inputClassName = "",
   "data-testid": testId,
@@ -51,6 +52,12 @@ export default function TimeField({
   required?: boolean;
   disabled?: boolean;
   id?: string;
+  /**
+   * Posts the canonical value through a form's FormData (DateField's own
+   * pattern, below) — the visible field can show a formatted clock, so a
+   * hidden input carries the "HH:MM" a Server Action reads.
+   */
+  name?: string;
   /** The field's accessible name — its visible label is the caller's. */
   label: string;
   inputClassName?: string;
@@ -152,6 +159,9 @@ export default function TimeField({
         // 0.5rem — exactly as the date field's calendar button does.
         className={`input pr-9 ${inputClassName}`}
       />
+      {/* The visible field can show a friendly clock, so the canonical value is
+          submitted via a hidden input for `name` usage — DateField's own pattern. */}
+      {name && <input type="hidden" name={name} value={value} />}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

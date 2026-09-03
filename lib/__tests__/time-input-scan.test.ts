@@ -17,14 +17,18 @@ import { findTags, scanDirs, walkTsx, REPO } from "./jsx-tag-scan";
 // "now"; absolute local times only). `components/WhenControl.tsx` owns those
 // rules now, and the raw time input lives THERE and nowhere else.
 //
-// THE RATCHET. The hand-rolled set below is frozen at its current counts, each
-// with the reason it is still allowed. An `event` entry is debt: it migrates to
-// the shared control when its surface is touched (#2227/#2228/#2235 are the
-// filed first movers), and its count may only SHRINK — shrinking updates the
-// entry, growing fails the build. A `plan` entry is out of the control's scope
-// on purpose: a notification slot or an appointment time states a PLAN, not an
-// observation, so "when did this happen?" is not its question and it is not
-// expected to migrate.
+// #4976 TOOK THE LIST FROM FOUR FILES TO ONE. `TimeRangeFields.tsx` (the house
+// Start/End pair) and the two PLAN forms — `NotificationPrefs.tsx`,
+// `AppointmentForm.tsx` — all mount `TimeField` now and left this list. The one
+// entry remaining, `MeasurementsQuickAdd.tsx`'s bed↔wake pair, was CLAIMED by a
+// concurrent lane (`quicklog-subject-4932`) for the whole of #4976's own dispatch,
+// so it could not be touched here without two writers on one file. THE BAN IS
+// THEREFORE NOT YET ARMED: the list is a single frozen entry rather than the
+// empty one #4976's acceptance criteria ask for, and the two `it`s below still
+// read as a ratchet rather than a bare ban. Whoever lands the bed↔wake pair onto
+// `TimeRangeFields` next removes this entry, and at THAT point — with the map
+// empty — turn `HANDROLLED_ALLOW` into a literal ban (fail on ANY match, no map to
+// consult) and delete the `event`/`plan` vocabulary this comment still describes.
 
 const SCAN_DIRS = ["app", "components"];
 
@@ -45,72 +49,41 @@ const HANDROLLED_ALLOW = new Map<
   // the same five fields the log form did, so it now MOUNTS that form and the pair it
   // carried is GONE rather than migrated.
   //
-  // PracticeSessionForm.tsx and activity-form/DateTimeFields.tsx left the list on
-  // #4384 fix 6's touch — NOT by adopting `WhenControl`, but by both mounting the one
-  // `TimeRangeFields` that now spells the pair. That is the FIRST entry below; it is the
-  // only kind of departure that shrinks this list without the control growing.
+  // components/TimeRangeFields.tsx left the list on #4384 fix 6's touch — NOT by
+  // adopting `WhenControl`, but by mounting the one shared pair (PracticeSessionForm
+  // and activity-form/DateTimeFields both mount it, so the count shrank because two
+  // spellings became one, not because a surface migrated to `WhenControl`) — and left
+  // it a SECOND time on #4218/#4976's touch, when that pair's own two inputs became
+  // `TimeField` mounts. app/(app)/settings/notifications/NotificationPrefs.tsx and
+  // app/(app)/encounters/AppointmentForm.tsx left it the same way (#4976): a
+  // notification slot and an appointment time state a PLAN rather than an
+  // observation, permanently out of `WhenControl`'s scope, but `TimeField` styles a
+  // plan's clock exactly as it styles an event's — the ratchet was never about WHICH
+  // control a time belongs to, only about whether it is drawn raw.
   //
-  // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
-  // stated here rather than smuggled: the `/history` add door's practice case and that
-  // record row's correction each stated a START through `WhenControl` and could not
-  // state an END at all, so a window stated in the expanded form was correctable on
-  // exactly one surface. Both mount the one form now, which states the RANGE — the
-  // shape this entry exists for. The ratchet's count does not move, because the pair is
-  // spelled once and four surfaces mount it.
-  [
-    "components/TimeRangeFields.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "THE HOUSE START/END PAIR (#4384 fix 6) — two times sharing one day, a " +
-        "shape `WhenControl` does not model. It is ONE entry where there were two: " +
-        "the activity form's pair and the practice form's pair were the same two " +
-        "inputs with the same rules, and the practice one had lost #336's interplay " +
-        "on the way across. Both mount this now, so the count did not shrink because " +
-        "a surface migrated to `WhenControl` — it shrank because two spellings became " +
-        "one. AND IT IS STILL RAW SINCE #4218 LANDED, deliberately: `TimeField` " +
-        "replaced the minute grain INSIDE `WhenControl`, and putting it here too " +
-        "would restyle the activity form's clocks — a surface #4218's own pass " +
-        "left on this list rather than migrating. One component to change when " +
-        "that is decided, which is the point of the extraction. Migrates when " +
-        "the control grows a range form",
-    },
-  ],
+  // THE ONE ENTRY LEFT is CLAIMED debt, not modelled debt: #4976 dispatched with this
+  // file owned by a concurrent lane (quicklog-subject-4932, mid-CI at the time) and
+  // could not touch it without two writers on one file. Its own fix is already
+  // written — mount `TimeRangeFields` in an `overnight` mode (an end earlier than the
+  // start means the next day, the same rollover `activityWindow` already applies) —
+  // and is unblocked the moment that lane lands. When it does, THIS MAP GOES EMPTY
+  // and the scan becomes a literal ban: no map to consult, any `type="time"` outside
+  // `components/TimeField.tsx` fails the build, and the `event`/`plan` vocabulary
+  // above goes with it.
   [
     "app/(app)/trends/MeasurementsQuickAdd.tsx",
     {
       count: 2,
       kind: "event",
       reason:
-        "the #1851 bed\u2192wake pair — the same range shape as the house " +
-        "start/end pair above and unmodelled for the same reason, plus one of " +
-        "its own: NEITHER clock states a date. The wake day is the sitting's, " +
-        "the bed day is DERIVED from the clock against the noon anchor, and " +
-        "the pair resolves to instants in the PROFILE's zone at the write " +
-        "boundary rather than the browser's. Migrates with TimeRangeFields " +
-        "when the control grows a range form. The form's own sitting Time is " +
-        "still WhenControl's and is not counted here.",
-    },
-  ],
-  [
-    "app/(app)/settings/notifications/NotificationPrefs.tsx",
-    {
-      count: 3,
-      kind: "plan",
-      reason:
-        "notification slot times state a PLAN (a schedule), not an observed " +
-        "event — permanently out of the control's scope",
-    },
-  ],
-  [
-    "app/(app)/encounters/AppointmentForm.tsx",
-    {
-      count: 1,
-      kind: "plan",
-      reason:
-        "an appointment time states a PLAN, not an observation — permanently " +
-        "out of the control's scope",
+        "the #1851 bed\u2192wake pair — a start/end shape `TimeRangeFields` " +
+        "already models, unmodelled here for a reason of its own: NEITHER clock " +
+        "states a date. The wake day is the sitting's, the bed day is DERIVED " +
+        "from the clock against the noon anchor, and the pair resolves to " +
+        "instants in the PROFILE's zone at the write boundary rather than the " +
+        "browser's. Migrates onto `TimeRangeFields`'s `overnight` mode (#4976) " +
+        "once its file is free of the concurrent lane holding it. The form's own " +
+        "sitting Time is WhenControl's and is not counted here.",
     },
   ],
 ]);
@@ -152,9 +125,9 @@ describe('raw <input type="time"> ratchet (issue #2236)', () => {
   // AND THE POSITIVE CONTROL MOVED RATHER THAN GOING AWAY. The retired case
   // ("the shared control itself renders one") existed so a scan that had stopped
   // matching anything could not read as a clean sweep. The allowlist-currency
-  // case below is that control now: it asserts a real LINE COUNT in each of five
-  // shipped files, so a reader that matched nothing fails there — over five
-  // files instead of one.
+  // case below is that control now: it asserts a real LINE COUNT in the one
+  // remaining shipped file (#4976 took the other four off this list), so a
+  // reader that matched nothing still fails there.
   it("every raw time input is a frozen, reasoned entry", () => {
     const offenders: string[] = [];
     for (const [rel, lines] of found) {

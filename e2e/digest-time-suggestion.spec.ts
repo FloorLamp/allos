@@ -391,9 +391,13 @@ test.describe("the digest time suggestion (issue #2217)", () => {
         })
       ).toHaveCount(1);
 
-      // STORAGE IS UNTOUCHED: the time input still holds the canonical "HH:MM" the
-      // settings tier persists, and the mode select still holds its stored token.
-      await expect(page.getByTestId("digest-hour-time")).toHaveValue("07:00");
+      // STORAGE IS UNTOUCHED: the mode select still holds its stored token, and the
+      // summary/card text above already proves the same "07:00" survived the switch.
+      // The time FIELD itself now renders in the profile's own clock by design
+      // (`TimeField`, #4976 — the fix this file's own #2255 was filed to eventually
+      // reach): a 12h login sees "7:00 AM" here, not the canonical "07:00" a native
+      // `<input type="time">` used to report regardless of locale.
+      await expect(page.getByTestId("digest-hour-time")).toHaveValue("7:00 AM");
       await expect(page.getByTestId("digest-hour")).toHaveValue("static");
     } finally {
       // Restore the default so the shared admin login preference doesn't leak.

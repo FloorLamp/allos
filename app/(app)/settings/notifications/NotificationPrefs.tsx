@@ -44,6 +44,7 @@ import { isEmailDeliverableKind } from "@/lib/notifications/email-core";
 import type { DigestTimeSuggestion } from "@/lib/digest-time-suggestion";
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import DigestTimeSuggestionRow from "./DigestTimeSuggestion";
+import TimeField from "@/components/TimeField";
 import SaveStatus from "@/components/SaveStatus";
 import CheckboxControl from "@/components/CheckboxControl";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
@@ -159,7 +160,7 @@ function timeValue(minute: number | null, auto: boolean): string {
 }
 
 // One schedule time control at minute grain (#2121): a mode select (Off /
-// optional Auto / At time) beside a native time input once a concrete time is
+// optional Auto / At time) beside a time field once a concrete time is
 // chosen. The single form value stays the persisted vocabulary — "" (off),
 // "auto", or "HH:MM" — so the control writes exactly what the settings tier
 // stores, through the same autosave-on-change path the old hour selects used.
@@ -167,18 +168,18 @@ function timeValue(minute: number | null, auto: boolean): string {
 // default) so the change saves a real value immediately; a cleared/incomplete
 // time input is ignored rather than saved as off — Off is the select's job.
 //
-// `stepMinutes` is the grid of the scheduler's OBSERVED cadence (#2216,
-// tickGridMinutes): it sets the native input's step so the spinner and quick
-// options walk the minutes a tick can actually land on. GUIDANCE, NEVER
-// VALIDATION: a typed off-grid time still fires onChange and is saved — nothing
-// here submits a form or consults validity — and the sub-hourly warning names
-// it rather than any control refusing it.
+// THE OBSERVED-CADENCE GRID (#2216, tickGridMinutes) used to steer a native
+// picker's step here; `TimeField` (#4976) has no step — its wheel always shows
+// every minute — so that steering is gone along with the browser chrome it
+// stepped. What survives, unchanged: a typed off-grid time still saves (GUIDANCE
+// WAS NEVER VALIDATION — nothing here ever consulted validity), and the
+// sub-hourly warning below still names it from the same `gridMinutes` this
+// control no longer takes.
 function TimeControl({
   value,
   onChange,
   autoOption,
   seed,
-  stepMinutes,
   label,
   testId,
   selectClassName,
@@ -187,7 +188,6 @@ function TimeControl({
   onChange: (v: string) => void;
   autoOption: string | null;
   seed: string;
-  stepMinutes: number;
   label: string;
   testId?: string;
   selectClassName?: string;
@@ -211,17 +211,15 @@ function TimeControl({
         <option value="time">At time</option>
       </select>
       {mode === "time" && (
-        <input
-          type="time"
+        <TimeField
           value={value}
-          step={stepMinutes * 60}
-          onChange={(e) => {
+          onChange={(v) => {
             // An empty value is a half-edited input (or a cleared picker) — never
             // save it as "off"; the mode select owns Off.
-            if (e.target.value !== "") onChange(e.target.value);
+            if (v !== "") onChange(v);
           }}
-          className="input w-auto"
-          aria-label={`${label} time`}
+          inputClassName="w-auto"
+          label={`${label} time`}
           data-testid={testId ? `${testId}-time` : undefined}
         />
       )}
@@ -310,20 +308,17 @@ function DigestControl({
           <option value="dynamic">As soon as it’s ready</option>
         </select>
         {!off && (
-          <input
-            type="time"
+          <TimeField
             value={time}
-            // The observed-cadence grid steers the picker (#2216); a typed
-            // off-grid time still saves — see TimeControl.
-            step={tickGridMinutes(tickMinutes) * 60}
-            onChange={(e) => {
+            // A typed off-grid time still saves — see TimeControl's header on why
+            // the observed-cadence grid no longer steers the picker (#4976).
+            onChange={(v) => {
               // An empty value is a half-edited input — never save it as "off"; the
               // mode select owns Off.
-              if (e.target.value !== "")
-                onChange({ digest_hour: e.target.value });
+              if (v !== "") onChange({ digest_hour: v });
             }}
-            className="input w-auto"
-            aria-label={
+            inputClassName="w-auto"
+            label={
               mode === "dynamic" ? `${label} earliest time` : `${label} time`
             }
             data-testid={`${testId}-time`}
@@ -957,7 +952,6 @@ export default function NotificationPrefs({
                         }
                         autoOption={e.control.auto ? autoLabel : null}
                         seed={SLOT_SEED[e.control.field] ?? "08:00"}
-                        stepMinutes={gridMinutes}
                         label={e.label}
                         testId={e.controlTestId ?? `kind-time-${e.kind}`}
                         selectClassName="input sm:w-40"
@@ -1034,19 +1028,17 @@ export default function NotificationPrefs({
                       {/* The weekday owns Off; the time input is always a
                           concrete "HH:MM" (defaulting to 09:00). */}
                       {on && (
-                        <input
-                          type="time"
+                        <TimeField
                           value={values[e.control.timeField]}
-                          step={gridMinutes * 60}
-                          onChange={(ev) => {
-                            if (ev.target.value !== "")
+                          onChange={(v) => {
+                            if (v !== "")
                               set(
                                 (e.control as { timeField: string }).timeField,
-                                ev.target.value
+                                v
                               );
                           }}
-                          className="input w-auto"
-                          aria-label={`${e.label} time`}
+                          inputClassName="w-auto"
+                          label={`${e.label} time`}
                         />
                       )}
                     </div>
@@ -1227,7 +1219,6 @@ export default function NotificationPrefs({
                       /* The Morning slot can follow the profile's wake time (#1117). */
                       autoOption={w === "Morning" ? autoLabel : null}
                       seed={SLOT_SEED[field]}
-                      stepMinutes={gridMinutes}
                       label={`${w} reminder`}
                       testId={
                         w === "Morning" ? "intake-morning-hour" : undefined
