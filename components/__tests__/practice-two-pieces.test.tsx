@@ -297,6 +297,17 @@ describe("the window and the duration read each other (#336's interplay)", () =>
       fireEvent.click(screen.getByTestId("start-time-shortcut"));
       expect(start().value).toMatch(/^\d\d:\d\d$/);
 
+      // …and then the Start is STATED OUTRIGHT, which is what the rest of this case
+      // is about. Reading it from the "now" click instead made these two cases fail
+      // every night between 23:30 and midnight (#4998): the `+30m` offer is
+      // `shiftHHMM(start, 30)`, which is same-day by contract and returns null past
+      // 23:59, so the control correctly fell back to its own `now` offer and the
+      // assertion below read a real behaviour as a regression. Nothing about a
+      // duration's distance depends on which minute of the day it is measured from,
+      // so the fixture states one rather than borrowing the wall clock — the unit-tier
+      // face of e2e-hygiene item 20 (#4963).
+      fireEvent.change(start(), { target: { value: "09:00" } });
+
       // Once a Start is stated, the OTHER side offers the duration instead — which is
       // the offer this form had no way to make.
       const offer = screen.getByTestId("end-time-shortcut");

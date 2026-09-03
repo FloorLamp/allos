@@ -111,6 +111,35 @@ component test that builds a fixture out of realistic markup can trip one, and
 the failure will name the scanner rather than the test. The fix in that case is
 to add the exclusion the other 45 already have, not to reshape the fixture.
 
+### A second hazard: the wall clock, in a tier that reads as pure
+
+A render test looks clock-free and often is not. `practice-two-pieces.test.tsx`
+clicked a control's **now** shortcut and then asserted the sibling control offered
+`+30m`; that offer is `shiftHHMM(start, 30)`, which is same-day by contract and
+returns null past 23:59. So the two cases passed all day and went red between
+23:30 and midnight, taking `test-unit` — and therefore every open PR — with them
+(#4998).
+
+This is `e2e-hygiene.md` item 20 in the component tier: **an assertion whose
+subject is a real, clock-derived value is clock-coupled even when nothing in it
+mentions time** (#4963 was the same shape in e2e). Two things follow for anyone
+writing here:
+
+- **State the instant your assertion measures from.** Driving a "now" affordance
+  is worth testing on its own; borrowing its result as the _input_ to a second
+  assertion is what couples the case to the calendar. Both fit in one test — click
+  the shortcut and check it filled, then set an explicit value before asserting
+  what depends on it.
+- **Prove the decoupling over a whole day, and prove the harness is not vacuous.**
+  Preload a `Date` shim that shifts `Date.now()` by N hours and run the file at all
+  24 offsets. The sweep only means something if the _unpatched_ test still fails
+  somewhere in it — on #4998 it failed at exactly one offset, which is both the
+  confirmation and the reason the bug survived so long.
+
+One trap worth naming: **do not bisect a clock-coupled test.** A first bisect on
+#4998 blamed an unrelated commit, because the "good" endpoint was assumed rather
+than run and the window had not opened yet when it was tested.
+
 ---
 
 ## The earlier decision (#1210), superseded 2026-08-21
