@@ -190,7 +190,23 @@ view lists everything, so no rollups. It carries what `/timeline`'s single-day v
 carried: the **intraday panel** (#1068), the day **context chips** (daylight, UV,
 weather, cycle phase), and **prev/next nav** with its swipe (#1425). It carries no
 symptom bar: #4851 retired that card, so symptom is an add-door kind everywhere and
-the day's Add past row offers it beside its siblings.
+the day's Add row offers it beside its siblings.
+
+**Order, top to bottom** (#4918): day bar → chart → add layer → rows. The chart is
+CONTENT the day view inherits — #3958 lists it beside the rows — so moving it above
+the add layer does not spend the chrome budget below; what it fixes is that the day's
+own content had the weakest position on its own page, under three frames of three
+styles. The add layer sits directly above the rows it creates, offers first (#4832).
+
+**The day bar names the day** (#4918): `TimelineDayNav` prints
+`Wed, September 3 — 15 records` between its arrows, in the #3958 header grammar and
+with "0 records" on an empty day. The per-group `<h2>` is the FEED's only — on the day
+view it rendered once per group of rows, so a day with none named no day at all, and a
+day with rows named it below the chart as a link to the page already open. `next` is
+optional and absent on today, so neither the arrow nor the leftward swipe exists there;
+the arrow's comment had claimed that since #4168 while the code passed today's own
+href. The page subtitle ("Everything recorded, newest first.") describes the feed and
+is not rendered on the day view.
 
 Two rules decide what it draws. Context is **single-subject**: daylight, UV, weather
 and cycle phase are one body's, so `?view=everyone&day=` lists the rows and draws no
@@ -235,6 +251,10 @@ that 404s on a hand-edited URL is a record you cannot get back to.
 buys it: no h1/subtitle below `sm` (the nav names the page), ONE filter row, no
 range chrome at all, sticky day headers, and the Add bar as the only other
 chrome. **A proposed addition to the header stack has to name what it displaces.**
+
+On the day view the day bar's name displaces the per-group header it replaced — the
+trade #4918 names honestly: the bar was already on screen, and the header it retired
+was the one that self-linked.
 
 ## What is deliberately elsewhere
 

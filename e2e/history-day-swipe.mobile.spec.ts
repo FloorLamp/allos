@@ -158,17 +158,29 @@ test("on today there is no next arrow and a leftward swipe changes nothing", asy
   // no next" from "the bar lost its controls" would pass on both worlds.
   await expect(page.getByTestId("timeline-day-prev")).toBeVisible();
 
+  // THE URL CANNOT SEE THIS DEFECT, and that is why the probe is what it is. The
+  // shipped bar passed `dayNavHref(day)` — TODAY'S OWN href — so a leftward swipe on
+  // the broken tree pushed a navigation to the page it was already on and the URL
+  // was identical either way. What differs is whether a navigation STARTS: the bar
+  // announces one through its own `role="status"` slot ("Opening …", #2869) for as
+  // long as the transition runs, and a heavy day render keeps that up for a real
+  // window. So the assertion is the absence of that announcement across a window in
+  // which the broken tree would have made it.
   const before = page.url();
+  const announced = page.getByTestId("timeline-day-nav").getByRole("status");
   await touchSwipe(page, { x: 320, y: 520 }, { x: 110, y: 526 });
-  // A swipe that DID navigate would commit its URL client-side within the same
-  // window a real day change needs, so this waits the navigation budget out rather
-  // than reading the URL immediately and passing on a push still in flight.
-  await page.waitForTimeout(NAV_TIMEOUT / 4);
-  expect(page.url(), "a leftward swipe on today must not navigate").toBe(before);
+  await page.waitForTimeout(3_000); // waitfortimeout-ok: the assertion IS an absence — no day change may start in the window one would have been announced in
+  await expect(announced).toHaveCount(0);
+  expect(page.url(), "a leftward swipe on today must not navigate").toBe(
+    before
+  );
 
-  // And the rightward swipe still works, on the same page, through the same
-  // recognizer — the gesture was disabled in one direction, not switched off.
+  // THE CONVERSE, through the SAME recognizer and the SAME announcement slot: the
+  // rightward swipe still works. Without it the absence above is equally green on a
+  // tree where the gesture died altogether, and on one where the status slot stopped
+  // rendering — both of which would make the probe blind rather than the day quiet.
   await touchSwipe(page, { x: 110, y: 520 }, { x: 320, y: 514 });
+  await expect(announced).toHaveText(/Opening /);
   await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/, {
     timeout: NAV_TIMEOUT,
   });

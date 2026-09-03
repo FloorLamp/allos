@@ -127,9 +127,7 @@ describe("the chart card's header and context line (#4918 rulings 4 and 7)", () 
       />
     );
     // The sentence is no longer a permanent line; it is the glyph's accessible name.
-    expect(
-      screen.queryByText(/drag to zoom · tap a mark to jump/)
-    ).toBeNull();
+    expect(screen.queryByText(/drag to zoom · tap a mark to jump/)).toBeNull();
     expect(
       screen.getByRole("button", {
         name: /Midnight to midnight · drag to zoom · tap a mark to jump to its entry/,

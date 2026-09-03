@@ -723,26 +723,26 @@ export default async function HistoryPage(props: {
           chevron sits IN the cluster — nothing is right-floated, per the spec's own
           words. (Phase 2 renders the day view; the link is already the real one.) */}
       {day == null ? (
-      <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-        {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
+        <h2 className="sticky top-edge-safe z-10 -mx-1 mb-1 bg-(--page) px-1 py-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {/* THE ONE RIGHTWARD DESTINATION CUE, not a hand-rolled chevron: the glyph and
             its geometry belong to the primitive (lib/__tests__/destination-link-primitive
             .test.ts refuses a raw one inside a link). Its `ml-auto` costs nothing here
             because the link is `inline-flex` and sized to its own content — the cue
             sits IN the text cluster, and nothing is right-floated. */}
-        <DestinationLink
-          // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
-          // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
-          // the page it was opened from had already been widened.
-          href={historyHref({
-            day: group.date,
-            everyone,
-            show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
-          })}
-          className="inline-flex items-baseline gap-2 hover:underline"
-          data-testid="history-day-link"
-        >
-          <span>{formatLongDate(group.date, prefs)}</span>
-          {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
+          <DestinationLink
+            // THE READER'S OWN BOUND RIDES ACROSS. Without `show` a day opened at
+            // `HISTORY_DEFAULT_SHOW`, so a busy day truncated on first open even though
+            // the page it was opened from had already been widened.
+            href={historyHref({
+              day: group.date,
+              everyone,
+              show: show === HISTORY_DEFAULT_SHOW ? undefined : show,
+            })}
+            className="inline-flex items-baseline gap-2 hover:underline"
+            data-testid="history-day-link"
+          >
+            <span>{formatLongDate(group.date, prefs)}</span>
+            {/* THE SEPARATOR IS LOAD-BEARING, not decoration. #3958 writes this header
               as "FRI, AUG 28 — 15 records" and the implementation dropped the dash;
               with the count promoted INSIDE the link (above), the two spans then sat
               adjacent with nothing between them, so the cluster's `textContent` read
@@ -754,15 +754,15 @@ export default async function HistoryPage(props: {
               after it, so its positive control stopped being able to see a date here
               at all. Restoring the dash puts the rendered shape back to the spec's
               own and makes the text content honest in the same stroke. */}
-          <span aria-hidden className="text-slate-500 dark:text-slate-400">
-            —
-          </span>
-          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-            {group.events.length} record
-            {group.events.length === 1 ? "" : "s"}
-          </span>
-        </DestinationLink>
-      </h2>
+            <span aria-hidden className="text-slate-500 dark:text-slate-400">
+              —
+            </span>
+            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+              {group.events.length} record
+              {group.events.length === 1 ? "" : "s"}
+            </span>
+          </DestinationLink>
+        </h2>
       ) : null}
       <HistoryRows
         rows={
