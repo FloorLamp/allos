@@ -13,7 +13,7 @@ test("merge two same-day activities from the Training Log, then Undo (#64)", asy
 
   // The row owns the #activity-N anchor now; it is the keeper's feed presence.
   const keeperRow = page
-    .locator('[id^="activity-"]')
+    .getByTestId("history-row")
     .filter({ hasText: "Training Log merge keeper" });
   await expect(keeperRow).toHaveCount(1);
   // Both same-day rows are present before the merge.

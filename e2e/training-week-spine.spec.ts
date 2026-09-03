@@ -178,65 +178,8 @@ test("an empty day states its emptiness rather than a miss", async ({
   }
 });
 
-test("the band's blocks are named — the week's sessions read on the card", async ({
-  browser,
-}) => {
-  // The other half of the same card (#2566): the spine says a session happened,
-  // this says what it was. Before it existed, Overview could tell you Tuesday had
-  // a cardio block and not that it was an 8 km run — that reading needed the Log.
-  //
-  // The fixture's week holds FIVE sessions across four days, plus two decoys the
-  // band already excludes. Literals throughout: the spec never asks the fold what
-  // it should have listed.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_WEEK_SPINE,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/training?tab=overview");
-    const list = page.getByTestId("recent-sessions");
-    await expect(list).toBeVisible();
-    // Composed into the week card, not stacked beside it.
-    await expect(page.getByTestId("training-week")).toContainText(
-      "What you did"
-    );
-    await expect(list).toHaveAttribute("data-scope", "week");
-
-    // Four sessions, newest first — two from today (the later-logged one leads),
-    // then yesterday's run, then the mobility day.
-    const sessions = list.getByTestId("recent-session");
-    await expect(sessions).toHaveCount(4);
-    await expect(sessions).toHaveText([
-      /Evening accessories/,
-      /Squat day/,
-      /Easy run/,
-      /Hip mobility/,
-    ]);
-
-    // Each row carries the Log's own summary, not a second formatting of it.
-    await expect(sessions.nth(0).getByTestId("recent-session-meta")).toHaveText(
-      "40 min"
-    );
-    // Today reads "Today" here exactly as it does in the Log's day heading.
-    await expect(sessions.nth(0)).toContainText("Today");
-    await expect(sessions.nth(2)).toContainText("Yesterday");
-
-    // The fifth in-window session is CUT, and the cut is stated — the link is the
-    // handoff, not a silent truncation.
-    await expect(list.getByTestId("recent-sessions-log-link")).toHaveText(
-      "1 more in Log"
-    );
-
-    // Neither decoy reaches the list: last week's session is outside the window,
-    // and tomorrow's planned run is a plan, not a thing that was done.
-    await expect(list).not.toContainText("Last week's session");
-    await expect(list).not.toContainText("Planned run");
-
-    // A session opens its own record.
-    await expect(
-      sessions.nth(1).getByTestId("recent-session-link")
-    ).toHaveAttribute("href", /^\/training\/activity\/\d+$/);
-  } finally {
-    await page.close();
-  }
-});
+// #4079 RETIRED "What you did". The Overview card listed the week's sessions
+// beside the band; the anti-drop census names it a RETIREMENT rather than a move —
+// "duplicate of the Log mount's first screen, one tab away" — now that the Log
+// renders the same rows through the shared history substrate. The band's own
+// assertions (above) are untouched; what left is the fold that re-listed them.

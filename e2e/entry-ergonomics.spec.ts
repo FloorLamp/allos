@@ -86,7 +86,7 @@ test("'Duplicate activity' pre-fills a create form that saves a new activity (#2
 
   // The e2e seed plants a manual "Training Log merge keeper" activity; repeat it.
   const titleRows = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Training Log merge keeper" });
   await expect(titleRows.first()).toBeVisible(); // first-ok: the "Training Log merge keeper" row (filtered) — one match
   const before = await titleRows.count();
@@ -167,150 +167,86 @@ test("Training Log houses its primary in the header and keeps secondary actions 
   expect((await contentContainer.boundingBox())!.width).toBeGreaterThan(1280);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // The compact cadence strip shares the routine row and represents exactly the
-  // trailing 14 profile-local days using the Fitness heatmap's density scale.
-  const cadence = page.getByTestId("training-log-active-days");
-  await expect(cadence).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toContainText(
-    /\d+\/21 days active/
-  );
+  // THE CADENCE STRIP AND THE WEEK SUMMARY LEFT THIS TAB (#4079, named
+  // retirements): Overview's This week card owns the week's session count and the
+  // active-days band, under the page's one week definition. Asserted as ABSENCE
+  // here and as presence there — a strip that renders in two places is the
+  // duplication the recomposition removed.
+  await expect(page.getByTestId("training-log-active-days")).toHaveCount(0);
+  await expect(page.getByTestId("training-log-week-summary")).toHaveCount(0);
+  // …and the converse, in the same test, because an absence assertion passes both
+  // on the tree that moved the strip and on the tree that lost it.
+  await page.goto("/training?tab=overview");
   await expect(
-    cadence.locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-  ).toHaveCount(21);
-  const activeDay = cadence.getByTestId("active-day").first(); // first-ok: an active-day cell in the cadence strip (count asserted above) — order-agnostic
-  await expect(activeDay).toHaveAttribute(
-    "href",
-    /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
-  );
-  // The weekly-target chips remain on Overview/Plan (#2892); this row carries
-  // only the literal weekly summary and recent cadence. The heading was renamed by
-  // #3474 ("Weekly routine" → "Weekly targets") — this absence follows the CURRENT
-  // string, or it would go green by naming one nothing renders any more.
-  const routineRow = page.getByTestId("training-log-routine-row");
-  await expect(routineRow.getByText("Weekly targets")).toHaveCount(0);
-  const weekSummary = page.getByTestId("training-log-week-summary");
-  await expect(weekSummary).toContainText(/\d+ sessions?/);
-  await expect(weekSummary).toContainText(/\d+\/7 days active/);
-
-  // The longer window is reserved for the largest practical layout. At an
-  // intermediate desktop width, the strip contracts to its newest 14 days.
-  await page.setViewportSize({ width: 1100, height: 844 });
-  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
-  await expect(cadence.getByTestId("active-days-label-expanded")).toBeHidden();
-  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
-  expect(
-    await cadence
-      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-      .evaluateAll(
-        (days) =>
-          days.filter((day) => getComputedStyle(day).display !== "none").length
-      )
-  ).toBe(14);
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await expect(page.getByTestId("activity-editor-scroll")).toBeHidden();
+    page.getByTestId("training-week").getByTestId("training-log-active-days")
+  ).toBeVisible();
+  await page.goto("/training?tab=log");
 
   const actions = page.getByTestId("training-log-actions");
   const addActivity = page.getByTestId("training-log-add-activity");
   const button = page.getByTestId("repeat-last");
   await expect(actions).toContainText("Repeat last");
   await expect(actions).toContainText("Start workout");
-  await expect(actions).not.toContainText("Add activity");
   await expect(addActivity).toBeVisible();
   await expect(addActivity).toHaveAccessibleName("Add activity");
   await expect(button).toBeVisible();
 
-  // The create is the page-header primary. Repeat/start are secondary controls
-  // aligned with search; neither group lives in the editor's scroller.
+  // The create is the page-header primary, and the in-page add stands down beside
+  // it rather than saying the same thing twice (#4014's one-primary-kind rule).
   await expect(
     addActivity.locator(
       'xpath=ancestor::*[@data-testid="training-page-action"][1]'
     )
   ).toHaveCount(1);
   await expect(
-    addActivity.locator(
-      'xpath=ancestor::*[@data-testid="training-log-controls"]'
-    )
-  ).toHaveCount(0);
-  await expect(
-    button.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
-  ).toHaveCount(1);
-  await expect(
-    button.locator('xpath=ancestor::*[@data-testid="activity-editor-scroll"]')
-  ).toHaveCount(0);
+    page.getByTestId("training-log-add-activity-inline")
+  ).toBeHidden();
+
+  // Search is a GET form now (#4079): a filtered Log is a place, so the refinements
+  // are in the URL and the control is a submit rather than a debounced client
+  // filter. It still shares the controls block with the type segments.
   const search = page.getByPlaceholder("Search activities or exercises…");
-  const searchBox = await search.boundingBox();
-  const btnBox = await button.boundingBox();
-  expect(searchBox).not.toBeNull();
-  expect(btnBox).not.toBeNull();
-  expect(searchBox!.width).toBeGreaterThan(320);
-  expect(Math.abs(btnBox!.y - searchBox!.y)).toBeLessThanOrEqual(2);
-  await expect(button).toBeEnabled();
-
-  // Search owns an inline clear action, while activity types behave as one
-  // segmented control with a single reset for all active filters.
+  await expect(
+    search.locator('xpath=ancestor::*[@data-testid="training-log-controls"][1]')
+  ).toHaveCount(1);
   await search.fill("Bench");
-  const clearSearch = page.getByRole("button", { name: "Clear search" });
-  // The control box, not `button-control`'s retired 26px desktop height (#3938).
-  expect((await clearSearch.boundingBox())?.height).toBe(CONTROL_BOX_PX);
-  await clearSearch.click();
-  await expect(search).toHaveValue("");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.waitForURL(/[?&]q=Bench/);
+  await expect(search).toHaveValue("Bench");
+
+  // The type segments are LINKS, so the selected one is the page rather than a
+  // pressed button, and one control clears every refinement at once.
   const types = page.getByRole("group", { name: "Activity type" });
-  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  await types.getByRole("link", { name: "Strength" }).click();
+  await page.waitForURL(/[?&]type=strength/);
+  await expect(types.getByRole("link", { name: "Strength" })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
-  await types.getByRole("button", { name: "Strength" }).click();
-  await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(types.getByRole("button", { name: "All" })).toHaveAttribute(
-    "aria-pressed",
-    "true"
+  await page.getByTestId("training-log-clear-filters").click();
+  await page.waitForURL(/\/training\?tab=log$/);
+  await expect(types.getByRole("link", { name: "All" })).toHaveAttribute(
+    "aria-current",
+    "page"
   );
 
-  // Mobile navigation already owns activity creation, so the page-level action
-  // group disappears rather than duplicating all three controls.
+  // ADD SURVIVES AT 390px (#4079). The page-header primary is desktop-only and the
+  // dock owns the standing quick-log, but the Log itself now carries an in-page way
+  // to add — the defect was a reader standing in their own log with no door into it.
   await page.setViewportSize({ width: 390, height: 844 });
-  await search.fill("Bench");
-  await expectPhoneTapTargets(page, "training search clear", [clearSearch]);
-  const searchRow = search.locator("..").locator("..");
-  const [phoneRow, phoneSearch, phoneClear] = await settledBoxes([
-    searchRow,
-    search,
-    clearSearch,
-  ]);
-  expect(phoneSearch.x + phoneSearch.width).toBeLessThanOrEqual(phoneClear.x);
-  expect(phoneClear.x + phoneClear.width).toBeLessThanOrEqual(
-    phoneRow.x + phoneRow.width
-  );
-  await clearSearch.click();
-  await expect(search).toHaveValue("");
-  await expect(cadence.getByTestId("active-days-label-compact")).toBeVisible();
-  expect(
-    await cadence
-      .locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
-      .evaluateAll(
-        (days) =>
-          days.filter((day) => getComputedStyle(day).display !== "none").length
-      )
-  ).toBe(14);
-  await expect(actions).toBeHidden();
   await expect(addActivity).toBeHidden();
+  const inlineAdd = page.getByTestId("training-log-add-activity-inline");
+  await expect(inlineAdd).toBeVisible();
+  await expectPhoneTapTargets(page, "training log inline add", [inlineAdd]);
 
-  // The mobile nav remains through 767px, so page actions must not reappear at
-  // the earlier 640px breakpoint and create duplicate controls.
+  // The mobile nav remains through 767px, so the header primary must not reappear
+  // at the earlier 640px breakpoint and create duplicate controls.
   await page.setViewportSize({ width: 700, height: 844 });
-  await expect(actions).toBeHidden();
   await expect(addActivity).toBeHidden();
+  await expect(inlineAdd).toBeVisible();
   await page.setViewportSize({ width: 800, height: 844 });
-  await expect(actions).toBeVisible();
   await expect(addActivity).toBeVisible();
-  const narrowFiltersBox = await types.boundingBox();
-  const narrowActionsBox = await actions.boundingBox();
-  expect(narrowFiltersBox).not.toBeNull();
-  expect(narrowActionsBox).not.toBeNull();
-  expect(narrowActionsBox!.y).toBeGreaterThan(
-    narrowFiltersBox!.y + narrowFiltersBox!.height
-  );
+  await expect(inlineAdd).toBeHidden();
 });
 
 test("Training header confines Add activity to the Log tab", async ({
@@ -362,7 +298,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // panel of prior sessions (issue #188: edit mode used to omit it entirely).
   const main = page.getByRole("main");
   const pushRow = main
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
   await expect(pushRow).toBeVisible();
@@ -443,7 +379,7 @@ test("editing cardio duration updates the parent session total", async ({
   // both its parent and visible Running component. Editing the visible field
   // must not resubmit the parent's hidden 28-minute seed.
   const row = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Intervals" })
     .first(); // first-ok: the "Intervals" activity row (filtered by its title) — order-agnostic
   await expect(row).toBeVisible();
@@ -591,7 +527,7 @@ test("the activity form keeps workout entry primary and context visible across b
 
   const pushRow = page
     .getByRole("main")
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Push day" })
     .first(); // first-ok: the seeded Push day session row (filtered by its title) — order-agnostic
 
@@ -922,7 +858,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   // follow its generated-title link to the canonical page, edit, and delete.
   await page.goto("/training?tab=log");
   const newRow = page
-    .getByTestId("training-log-row")
+    .getByTestId("history-row")
     .filter({ hasText: "Tennis" })
     .filter({ hasText: "55 min" })
     .first(); // first-ok: the Tennis/55-min row THIS spec just logged (filtered) — one match
