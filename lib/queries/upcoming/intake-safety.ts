@@ -1,4 +1,5 @@
-import { shiftDateStr } from "../../date";
+import { shiftDateStr, utcMinute } from "../../date";
+import { now as clockNow } from "../../clock";
 import {
   doseDueOn,
   currentTimeBucket,
@@ -490,25 +491,27 @@ export function dietaryLimitItems(
   }));
 }
 
-// PRN medications logged OVER their confirmed daily max today (issue #798) — the
-// count-per-day analogue of the dietary-limit (UL) warning. When today's
-// administrations exceed the user's own confirmed max_daily_count, surface a care-tier
-// finding keyed `prn-max:<itemId>` (via prnMaxSignalKey) — dismissible through the
-// SAME getFindingSuppressions bus as every other finding. Banded to Today (a
-// standing, informational safety note framed "you've logged more than your confirmed
-// daily max" — never prescriptive), and it clears itself at the next date rollover.
+// PRN medications logged OVER their confirmed max inside the TRAILING 24 HOURS
+// (issue #798; the window corrected in #4686, because the ceiling figure is a Drug
+// Facts "in 24 hours" number). The count analogue of the dietary-limit (UL) warning:
+// when those administrations exceed the user's own confirmed max_daily_count, surface
+// a care-tier finding keyed `prn-max:<itemId>` (via prnMaxSignalKey) — dismissible
+// through the SAME getFindingSuppressions bus as every other finding. Banded to Today
+// (a standing, informational safety note framed "you've logged more than your
+// confirmed max" — never prescriptive), and it clears itself as doses age out of the
+// window rather than at midnight.
 // FAMILY-AWARE (#1027): the exposure spans the ingredient family (OTC + Rx
 // ibuprofen together) against the most conservative confirmed ceiling; a
 // multi-item family names every member (#531 — label by what the count spans) and
 // stays keyed on the binding member's id. AMOUNT-AWARE (#1854): when a mg/day max
 // is confirmed and every administration's snapshotted amount parses, the verdict
-// is summed MILLIGRAMS ("2400 mg … max of 1200 mg per day"); the administration
+// is summed MILLIGRAMS ("2400 mg … max of 1200 mg in 24h"); the administration
 // count is the fallback basis, and prnOverMaxDetail states whichever was used.
 export function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
-  return getPrnOverMaxItems(profileId, today).map((m) => ({
+  return getPrnOverMaxItems(profileId, utcMinute(clockNow())).map((m) => ({
     key: prnMaxSignalKey(m.id),
     domain: "prn-max" as const,
-    title: `${m.name} — over your daily max`,
+    title: `${m.name} — over your 24-hour max`,
     detail: prnOverMaxDetail(m),
     href: MEDICATIONS_HREF,
     dueDate: null,

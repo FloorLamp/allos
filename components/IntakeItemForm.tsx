@@ -1402,7 +1402,7 @@ export default function IntakeItemForm({
                   <p className="mt-1">
                     After a dose is logged you get a one-time reminder when the
                     minimum interval passes (e.g. {`"`}6h since Ibuprofen — 2 of
-                    4 today{`"`}). These are YOUR confirmed numbers — pre-filled
+                    4 in 24h{`"`}). These are YOUR confirmed numbers — pre-filled
                     from the label as a suggestion, never applied on their own;
                     leave them blank for no reminder.
                     {prnDefaults && ` Label source: ${prnDefaults.source}.`}
@@ -1430,7 +1430,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-${fid}`}>
-                      Maximum doses per day
+                      Maximum doses in 24 hours
                     </label>
                     <input
                       id={`redose-max-${fid}`}
@@ -1449,7 +1449,7 @@ export default function IntakeItemForm({
                   </div>
                   <div>
                     <label className="label" htmlFor={`redose-max-mg-${fid}`}>
-                      Maximum mg per day
+                      Maximum mg in 24 hours
                     </label>
                     <input
                       id={`redose-max-mg-${fid}`}

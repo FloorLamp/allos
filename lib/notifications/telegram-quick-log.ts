@@ -49,9 +49,9 @@ export async function handleDoseCommand(
           dose: formatMedicationDoseProduct(m.amount, m.product),
           status: prnQuickLogRedoseStatus(m, now),
           // Family-aware throughout (#1027): the count the app shows spans the
-          // ingredient family, so the list can't read "1 today" where the card says
-          // "3 of 4 today across 2 items".
-          countToday: m.familyCount,
+          // ingredient family, so the list can't read "1 in 24h" where the card says
+          // "3 of 4 in 24h across 2 items".
+          countInWindow: m.familyCount,
           maxDailyCount: m.familyMaxDailyCount ?? m.maxDailyCount,
           familyMemberCount: m.familyMemberCount,
         })}`,

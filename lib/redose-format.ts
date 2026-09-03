@@ -27,16 +27,21 @@ export function hoursLabel(hours: number): string {
   return `${rounded}h`;
 }
 
-// The "N of M today" count fragment shared by the notice and the card. A null max
-// (#1458 — the optional "maximum doses per day" left blank) drops the ceiling half
-// and reads "1 today"; the fragment never invents a max it wasn't given.
+// The "N of M in 24h" count fragment shared by the notice and the card. A null max
+// (#1458 — the optional "maximum doses in 24 hours" left blank) drops the ceiling half
+// and reads "1 in 24h"; the fragment never invents a max it wasn't given.
+//
+// IT SAYS "in 24h" BECAUSE THAT IS THE WINDOW IT COUNTS (#4686). The figure it cites
+// is a Drug Facts "in 24 hours" number, and the count behind it is now gathered over
+// the trailing 24 hours; saying "today" would restate the calendar-day reading that
+// let midnight disarm the ceiling mid-fever.
 export function countFragment(
-  countToday: number,
+  countInWindow: number,
   maxDailyCount: number | null
 ): string {
   return maxDailyCount == null
-    ? `${countToday} today`
-    : `${countToday} of ${maxDailyCount} today`;
+    ? `${countInWindow} in 24h`
+    : `${countInWindow} of ${maxDailyCount} in 24h`;
 }
 
 // A milligram value for copy: at most one decimal place, no trailing ".0".
@@ -44,22 +49,22 @@ export function mgLabel(mg: number): string {
   return String(Math.round(mg * 10) / 10);
 }
 
-// The "N of M" fragment on whatever basis the day's exposure was HONESTLY
+// The "N of M" fragment on whatever basis the window's exposure was HONESTLY
 // computable on (#1854): milligrams when the amount-aware ceiling applied
-// ("1200 of 2400 mg today", "at least 1600 of 2400 mg today" when some doses
+// ("1200 of 2400 mg in 24h", "at least 1600 of 2400 mg in 24h" when some doses
 // carried no parseable amount), else the plain administration count. One
 // formatter so the card, the widget, the Telegram list and the redose notice
 // state the same basis — and never imply mg precision the day doesn't have.
 export function exposureFragment(
   exposure: PrnDayExposure | null,
-  countToday: number,
+  countInWindow: number,
   maxDailyCount: number | null
 ): string {
   if (!exposure || exposure.basis === "count") {
-    return countFragment(countToday, maxDailyCount);
+    return countFragment(countInWindow, maxDailyCount);
   }
   const lead = exposure.unknownAmounts > 0 ? "at least " : "";
-  return `${lead}${mgLabel(exposure.total)} of ${mgLabel(exposure.max)} mg today`;
+  return `${lead}${mgLabel(exposure.total)} of ${mgLabel(exposure.max)} mg in 24h`;
 }
 
 // The one-shot redose NOTICE message (title + body) for the fire case. The title
@@ -67,7 +72,7 @@ export function exposureFragment(
 // builders that never had it). `lastClock` is the profile-local time of the arming
 // administration ("4:02pm" today, "Jul 14, 2026 at 4:02pm" on another day); empty when
 // unknown. Example: "6h since Ibuprofen (4:02pm) — your minimum interval has passed ·
-// 2 of 4 today." `sinceName` (#1027) names the med the ARMING administration belongs
+// 2 of 4 in 24h." `sinceName` (#1027) names the med the ARMING administration belongs
 // to when a same-ingredient SIBLING's dose armed the clock — the body then reads
 // honestly ("8h since Ibuprofen OTC") while the title keeps the notice's own item.
 export function redoseNoticeMessage(input: {
@@ -81,10 +86,10 @@ export function redoseNoticeMessage(input: {
   product?: string | null;
   sinceHours: number;
   lastClock: string;
-  countToday: number;
+  countInWindow: number;
   maxDailyCount: number;
   sinceName?: string | null;
-  // The day's amount-aware exposure (#1854); the count fragment then reads
+  // The window's amount-aware exposure (#1854); the count fragment then reads
   // milligrams on the same basis the ceiling was judged on. Absent/null keeps
   // the plain count.
   exposure?: PrnDayExposure | null;
@@ -104,19 +109,19 @@ export function redoseNoticeMessage(input: {
       `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
       `interval has passed · ${exposureFragment(
         input.exposure ?? null,
-        input.countToday,
+        input.countInWindow,
         input.maxDailyCount
       )}.`,
   };
 }
 
 // The marker-agnostic status line for the med card / dashboard presentation, or null when
-// there's nothing useful to say (nothing logged today). Never permissive — it reports
+// there's nothing useful to say (nothing logged at all). Never permissive — it reports
 // window state and the running count, deferring to the user's judgment:
-//   • at the confirmed max → "Max reached · 4 of 4 today"
-//   • window open          → "Redose OK — min interval passed · 2 of 4 today"
-//   • not yet              → "Next dose in ~2h · 1 of 4 today"
-// With NO confirmed daily ceiling (#1458/#4254), the line names that absence rather
+//   • at the confirmed max → "Max reached · 4 of 4 in 24h"
+//   • window open          → "Redose OK — min interval passed · 2 of 4 in 24h"
+//   • not yet              → "Next dose in ~2h · 1 of 4 in 24h"
+// With NO confirmed 24h ceiling (#1458/#4254), the line names that absence rather
 // than letting an open window imply "within limits". It never says "Max reached",
 // because an unconfigured maximum is not a reached one.
 // `familyMemberCount` (#1027) > 1 appends "across N items" so a counter fed by a
@@ -128,7 +133,7 @@ export function redoseCardLabel(
   if (!status) return null;
   const count = exposureFragment(
     status.exposure,
-    status.countToday,
+    status.countInWindow,
     status.maxDailyCount
   );
   const across =
@@ -136,7 +141,7 @@ export function redoseCardLabel(
   if (status.atMax) return `Max reached · ${count}${across}`;
   const missingLimit =
     status.maxDailyCount == null && status.exposure == null
-      ? " · no daily limit on record"
+      ? " · no 24h limit on record"
       : "";
   if (status.open)
     return `Redose OK — min interval passed · ${count}${across}${missingLimit}`;
@@ -164,16 +169,16 @@ export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
 
 // The button label for one PRN med in the `/dose` list. `prefix` disambiguates a
 // multi-profile chat; `dose` is the pre-formatted amount ("200 mg"). The verdict half
-// is `redoseCardLabel` verbatim — "Max reached · 4 of 4 today", "Next dose in ~2h · 1
-// of 4 today" — falling back to the plain count fragment when there is no window to
-// report, and to nothing at all when nothing has been logged today. countFragment's
-// discipline holds throughout: a null max renders "2 today", never "Max reached".
+// is `redoseCardLabel` verbatim — "Max reached · 4 of 4 in 24h", "Next dose in ~2h · 1
+// of 4 in 24h" — falling back to the plain count fragment when there is no window to
+// report, and to nothing at all when nothing has been logged. countFragment's
+// discipline holds throughout: a null max renders "2 in 24h", never "Max reached".
 export function prnQuickLogLabel(input: {
   name: string;
   prefix?: string;
   dose?: string | null;
   status: RedoseStatus | null;
-  countToday: number;
+  countInWindow: number;
   maxDailyCount: number | null;
   familyMemberCount?: number;
 }): string {
@@ -183,8 +188,8 @@ export function prnQuickLogLabel(input: {
   const head = `${input.prefix ?? ""}${input.name}${input.dose ? ` · ${input.dose}` : ""}`;
   const verdict =
     redoseCardLabel(input.status, members) ??
-    (input.countToday > 0
-      ? `${countFragment(input.countToday, input.maxDailyCount)}${
+    (input.countInWindow > 0
+      ? `${countFragment(input.countInWindow, input.maxDailyCount)}${
           members > 1 ? ` across ${members} items` : ""
         }`
       : null);
@@ -196,7 +201,7 @@ export function prnQuickLogLabel(input: {
 // states the verdict that now stands, computed from post-write state by the same
 // classification the card shows. That is what makes an at-max tap honest: the app
 // treats a redose window as guidance rather than a gate, so Telegram logs it too —
-// but it says "Max reached · 5 of 4 today" instead of a bare "Logged ✅".
+// but it says "Max reached · 5 of 4 in 24h" instead of a bare "Logged ✅".
 export function prnLogAnswerText(
   base: string,
   logged: boolean,
@@ -212,10 +217,10 @@ export function prnLogAnswerText(
 //
 // One formatter for the `prn-max:<itemId>` finding so every surface it reaches
 // (Upcoming, dashboard placement, the digest) phrases the SAME verdict — and
-// states the BASIS it was computed on. Milligrams read "2400 mg logged today …
-// max of 1200 mg per day" (with an honest "At least" lead when some doses had no
-// recorded amount — the mg lower bound that is already past the ceiling); the
-// count fallback reads "5 doses logged today … max of 4 per day", never implying
+// states the BASIS it was computed on. Milligrams read "2400 mg logged in the last
+// 24h … max of 1200 mg in 24h" (with an honest "At least" lead when some doses had
+// no recorded amount — the mg lower bound that is already past the ceiling); the
+// count fallback reads "5 doses logged in the last 24h … max of 4 in 24h", never implying
 // mg precision the day's amounts don't carry. A multi-item family names every
 // member (#531 — label by what the count spans).
 export function prnOverMaxDetail(input: {
@@ -228,16 +233,16 @@ export function prnOverMaxDetail(input: {
   const mg = input.basis === "mg";
   const logged = mg
     ? `${input.unknownAmounts > 0 ? "At least " : ""}${mgLabel(input.total)} mg ` +
-      `logged today` +
+      `logged in the last 24h` +
       (input.unknownAmounts > 0
         ? ` (${input.unknownAmounts} ${
             input.unknownAmounts === 1 ? "dose" : "doses"
           } had no recorded amount)`
         : ` (summed from your logged dose amounts)`)
-    : `${input.total} ${input.total === 1 ? "dose" : "doses"} logged today`;
+    : `${input.total} ${input.total === 1 ? "dose" : "doses"} logged in the last 24h`;
   const ceiling = mg
-    ? `${mgLabel(input.max)} mg per day`
-    : `${input.max} per day`;
+    ? `${mgLabel(input.max)} mg in 24h`
+    : `${input.max} in 24h`;
   const vs = input.memberNames?.length
     ? `across ${input.memberNames.join(" + ")} vs the most conservative ` +
       `confirmed max of ${ceiling}`
@@ -250,7 +255,7 @@ export function prnOverMaxDetail(input: {
 
 // ── ONE STATUS LINE OVER A ROW OF MED CHIPS (#4752 item 4) ──────────────────
 //
-// The cockpit printed `redoseCardLabel` once per medication — "None today · Redose
+// The cockpit printed `redoseCardLabel` once per medication — "None · Redose
 // OK" three times over, six lines of boilerplate above three buttons, none of which
 // a caregiver reads before tapping. Collapsed, the same facts are ONE sentence about
 // the whole row: what has been given today, and how many windows are open. Per-med
@@ -266,11 +271,16 @@ export function medChipsStatusLine(
 ): string | null {
   if (statuses.length === 0) return null;
   const given = statuses.reduce(
-    (total, status) => total + (status?.countToday ?? 0),
+    (total, status) => total + (status?.countInWindow ?? 0),
     0
   );
   const windows = statuses.filter((status): status is RedoseStatus => !!status);
-  const parts = [given === 0 ? "Nothing given today" : `${given} given today`];
+  // The tally is the same trailing-24h one the ceilings are judged on (#4686), so it
+  // says so — a summary that reads "today" over a 24h count is the mismatch that let
+  // midnight disarm the row.
+  const parts = [
+    given === 0 ? "Nothing given in 24h" : `${given} given in 24h`,
+  ];
   const atMax = windows.filter((status) => status.atMax).length;
   const open = windows.filter((status) => status.open && !status.atMax).length;
   if (windows.length > 0) {

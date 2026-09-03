@@ -1367,16 +1367,24 @@ export async function setDoseStatus(
       // instant: the day is this action's (`date`), so anchoring the two here is what
       // makes them one claim — a client that sent a resolved instant could contradict
       // the row it lands on. Only a `taken` states an administration; a skip and a
-      // clear assert none. A malformed or non-existent local time resolves to null and
-      // the row keeps the tap instant, which is the same fallback a refused capture
-      // takes.
+      // clear assert none.
+      //
+      // AND WHEN NO TIME IS STATED, THE DAY DECIDES (#4779, #4428's rule). A tap on
+      // TODAY is happening now, so the core stamps the tap instant. A tap on a PAST
+      // day — this control renders on the Day ledger's rows and behind the quick-log
+      // sheet's day switcher, both posting the row's own day — states no minute at
+      // all, and stamping today's instant onto a row dated yesterday is the
+      // self-contradicting row #4428 removed from the bulk arm. `resolveDayDoses`
+      // below already answers this exact question this exact way; the tri-state was
+      // the arm left behind. A malformed or non-existent local time falls into the
+      // same rule rather than inventing an instant of its own.
       takenAt:
         target === "taken"
           ? (statedInstantOnDate(
               date,
               String(formData.get("at") ?? ""),
               getTimezone(profileId)
-            ) ?? undefined)
+            ) ?? (date === localToday ? undefined : null))
           : undefined,
     }
   );
