@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { dismissToast, settledClick } from "./helpers";
+import { dismissToast, openFoodAdd, settledClick } from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
@@ -96,6 +96,9 @@ function seed(): void {
 }
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await page.getByTestId("food-more-groups-summary").click();
@@ -114,6 +117,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
     await expect(page.getByTestId("food-log-bar")).toBeVisible();
     await revealFoodGroup(page, GROUP);
 
@@ -148,6 +152,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     // double and never reaches the server at all; and it proves the once-a-day gate is
     // the server's (`servings - 1`), not a client flag a fresh mount would re-arm.
     await page.reload();
+    await openFoodAdd(page);
     await revealFoodGroup(page, GROUP);
     await settledClick(page, page.getByTestId(`log-${GROUP}`));
     await expect(count).toHaveText(String(before + 2));
@@ -159,6 +164,7 @@ test.describe("the curated limit note at the log tap (#2377)", () => {
     await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before + 1));
     await page.reload();
+    await openFoodAdd(page);
     await revealFoodGroup(page, GROUP);
     await settledClick(page, page.getByTestId(`undo-${GROUP}`));
     await expect(count).toHaveText(String(before));

@@ -910,6 +910,46 @@ export async function hydratedClick(
   await button.click();
 }
 
+/**
+ * OPEN THE NUTRITION PAGE'S `+ Add` DOOR (#4477), where there is one.
+ *
+ * The Food tab's add layer folds behind a single door and expands in place; the
+ * quick-log sheet mounts the SAME bar with no day above it and is itself the door, so
+ * there is nothing there to open. This is therefore surface-agnostic and idempotent by
+ * construction — the door unmounts once it is open — which is what lets a spec that
+ * reaches a food-group control call it unconditionally, on either surface, before it
+ * looks for the control.
+ */
+export async function openFoodAdd(page: Page): Promise<void> {
+  // WAIT FOR THE SURFACE BEFORE ASKING WHETHER IT HAS A DOOR. `food-quick-log` is the
+  // add layer on BOTH mounts, so its arrival is what makes the question below
+  // answerable; asked earlier, "no door here" and "no page yet" are the same empty
+  // count and the helper returns having opened nothing. e2e/offline-food-log.spec.ts
+  // navigates with `waitUntil: "commit"` on purpose, which returns before the document
+  // is parsed, so that spec asks this question at its very earliest.
+  await page.getByTestId("food-quick-log").waitFor({ state: "attached" });
+  const fold = page.getByTestId("food-add");
+  if ((await fold.count()) === 0) return;
+  // ALREADY OPEN IS DONE, not "click it again": the summary stays in the DOM once the
+  // fold is open, so a second click would CLOSE the door this helper exists to open.
+  if (await fold.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  // A NATIVE `<details>` NEEDS NO HYDRATION, and this deliberately does not wait for
+  // any: e2e/offline-food-log.spec.ts opens this door inside a forced pre-hydration
+  // window on purpose (#4399), and an `awaitHydrated` here would make that spec wait
+  // for the thing it is holding back.
+  await page.getByTestId("food-add-door").click();
+  await expect(page.getByTestId("food-add-panel")).toBeVisible();
+  // AND WAIT FOR THE FOLD TO FINISH OPENING. `.motion-disclose` transitions
+  // `::details-content`'s block-size and clips it while it runs (app/globals.css); a
+  // probe against the just-opened door counts four running animations. So the caller
+  // measures a settled panel rather than one mid-open.
+  await fold.evaluate((el) =>
+    Promise.all(
+      el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))
+    )
+  );
+}
+
 /** Opens the dashboard's remembered exhaustive remainder when it exists. */
 export async function openDashboardAll(page: Page): Promise<void> {
   const details = page.getByTestId("dashboard-all");
@@ -3838,6 +3878,18 @@ export async function pickComposedWhen(
   const panel = page.getByTestId(`${testId}-when-panel`);
   await expect(panel).toBeVisible();
 
+  // Reading a pick back is what makes a dropped composition fail HERE (#4902). Done
+  // is a pure client dismissal: it posts nothing and validates nothing, so a
+  // composition that did NOT take closes the panel exactly like one that did and this
+  // helper returns successfully having stated nothing. The caller then fails far from
+  // here — on `medications-followups.spec.ts:317` it surfaced ~100 lines later as an
+  // assertion about a PRN course start, whose received value (the fixture's untouched
+  // original) is also exactly what a dose logged on the DEFAULT day produces.
+  //
+  // The calendar paints the chosen day and only the chosen day, so asking which day
+  // is painted asks the control what it believes its value is.
+  let expectPickedDay: ((stage: string) => Promise<void>) | null = null;
+
   if (date) {
     const [year, month, day] = date.split("-").map(Number);
     // Year before month: the month options are DISABLED outside the control's
@@ -3851,12 +3903,14 @@ export async function pickComposedWhen(
       .selectOption(String(month - 1));
     // By the cell's own accessible date name (#3744), not the bare numeral — the
     // grid shows the neighbouring months' days too.
-    await panel
-      .getByRole("button", {
-        name: `${MONTHS_LONG[month - 1]} ${day}, ${year}`,
-        exact: true,
-      })
-      .click();
+    const cellName = `${MONTHS_LONG[month - 1]} ${day}, ${year}`;
+    await panel.getByRole("button", { name: cellName, exact: true }).click();
+    expectPickedDay = async (stage: string) =>
+      expect(
+        panel.locator("button[data-calendar-day]:has(span.bg-brand-600)"),
+        stage
+      ).toHaveAttribute("aria-label", cellName);
+    await expectPickedDay("the day pick did not take");
   }
 
   if (hhmm) {
@@ -3878,6 +3932,24 @@ export async function pickComposedWhen(
       await meridiem
         .getByRole("option", { name: hour24 >= 12 ? "PM" : "AM" })
         .click();
+    // The same read-back for the clock: each column marks its chosen row
+    // `aria-selected`, so the composed value is readable without re-deriving the
+    // profile's clock format.
+    const chosen = (name: string) =>
+      panel
+        .getByRole("listbox", { name })
+        .getByRole("option", { selected: true });
+    await expect(chosen("Hour")).toHaveText(String(shownHour).padStart(2, "0"));
+    await expect(chosen("Minute")).toHaveText(hhmm.slice(3));
+    if (twelve)
+      await expect(chosen("AM or PM")).toHaveText(hour24 >= 12 ? "PM" : "AM");
+    // AND THE DAY AGAIN, because the clock is the half that can undo it: every wheel
+    // column writes the whole `{ date, statedAt }` pair, so a time committed against a
+    // render that predates the day pick would carry the old day back with it. Asking
+    // twice is also what tells the two apart — a failure here says the wheel clobbered
+    // the day, a failure above says the day never took.
+    if (expectPickedDay)
+      await expectPickedDay("the clock wrote over the day pick");
   }
 
   // Done is a pure client dismissal — it posts nothing, so what it is waited on

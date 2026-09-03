@@ -1,5 +1,5 @@
 import type { WeightUnit } from "./settings";
-import type { IntegrationId } from "./types";
+import { ACTIVITY_TYPES, type ActivityType, type IntegrationId } from "./types";
 import { kgTo, round } from "./units";
 import { formatSeconds } from "./duration";
 import { getIntegration } from "./integrations/registry";
@@ -316,4 +316,90 @@ function summarizePerSide(
       );
 
   return { text: `L ${left} · R ${right}`, status: null, totalKg };
+}
+
+// ── THE LOG TAB'S LAYERED FILTERS, READ FROM THE URL (#4079) ────────────────
+//
+// The Log renders through the shared history substrate now, whose own state — the
+// bound, the folds, the open rollups — has always lived in the URL. These are the
+// training-only refinements layered on that mount, so they live there too, and the
+// component that draws them is a plain `<form method="get">` rather than a client
+// filter machine with a debounce, a stale-response key and a Server Action pager.
+//
+// WHY THE URL AND NOT CLIENT STATE. The retired view held four filters in React,
+// re-fetched page one through a Server Action on every change, and had to reconcile
+// an in-flight response against the filter set the reader was by then looking at. A
+// filtered Log is a PLACE — it is linkable, it survives a reload, and the server can
+// answer it in one pass — so the whole apparatus was buying only the typing latency
+// a form submit already has.
+export interface TrainingLogQuery {
+  /** Free text over the session title, its set names and its component names. */
+  q: string | null;
+  /** An activity type, or null for every type. */
+  type: ActivityType | null;
+  /** A provenance KEY (activityProvenanceKey), or null for any source. */
+  source: string | null;
+  /** Only rows the editor cannot re-save as-is. Carries NO count (#4079). */
+  fault: boolean;
+  /** A muscle/region badge, spelled `muscle:chest` / `region:upper` in the URL. */
+  tag: { kind: "muscle" | "region"; value: string } | null;
+}
+
+export const NO_TRAINING_LOG_QUERY: TrainingLogQuery = {
+  q: null,
+  type: null,
+  source: null,
+  fault: false,
+  tag: null,
+};
+
+// Longest free text we will run as a LIKE scan, and the longest tag/source value we
+// will carry into a parameter. A hand-edited URL is untrusted input like any other
+// public entry point, so an over-long or unknown value degrades to "no such filter"
+// rather than reaching SQL — the same posture the retired Server Action normalizer
+// had, minus the action.
+const MAX_QUERY_LEN = 200;
+const MAX_VALUE_LEN = 120;
+
+function oneParam(value: string | string[] | undefined): string | undefined {
+  const v = Array.isArray(value) ? value[0] : value;
+  const trimmed = v?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function parseTrainingLogQuery(
+  searchParams: Record<string, string | string[] | undefined>
+): TrainingLogQuery {
+  const raw = oneParam(searchParams.q);
+  const q = raw && raw.length <= MAX_QUERY_LEN ? raw : null;
+  // The vocabulary is the DECLARED tuple, never a hand-listed copy (#2272): a copy
+  // silently omits a new type, and an unlisted type is an unfilterable one.
+  const type = ACTIVITY_TYPES.find((t) => t === oneParam(searchParams.type));
+  const source = oneParam(searchParams.src);
+  const rawTag = oneParam(searchParams.tag);
+  const split = rawTag ? rawTag.indexOf(":") : -1;
+  const kind = split > 0 ? rawTag!.slice(0, split) : null;
+  const value = split > 0 ? rawTag!.slice(split + 1) : "";
+  return {
+    q,
+    type: type ?? null,
+    source: source && source.length <= MAX_VALUE_LEN ? source : null,
+    fault: oneParam(searchParams.fault) === "1",
+    tag:
+      (kind === "muscle" || kind === "region") &&
+      value !== "" &&
+      value.length <= MAX_VALUE_LEN
+        ? { kind, value }
+        : null,
+  };
+}
+
+export function trainingLogQueryActive(query: TrainingLogQuery): boolean {
+  return (
+    query.q != null ||
+    query.type != null ||
+    query.source != null ||
+    query.fault ||
+    query.tag != null
+  );
 }

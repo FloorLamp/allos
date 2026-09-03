@@ -86,8 +86,10 @@ import {
   withDoseCorrections,
 } from "./intake";
 import { type IntakeSendSlot } from "./intake-format";
-import { buildFoodNudge, consentedFoodTaps } from "./food";
+import { buildFoodNudge } from "./food";
+import { getRecentFoodTaps } from "../queries/nutrition";
 import { keyboardChatOrigin, withChatOrigin } from "./chat-origin";
+import { composeForSend } from "./compose";
 import { now as clockNow } from "../clock";
 import { correctionBursts, correctionTokenAnchor } from "../correction-time";
 import {
@@ -723,7 +725,7 @@ const food: FamilyReconciler = {
       FOOD_TIME_PREFIXES,
       new Set(
         correctionBursts(
-          consentedFoodTaps(profileId, clockNow()),
+          getRecentFoodTaps(profileId, clockNow()),
           clockNow(),
           correctionMessageBinding(profileId, "food", {
             chatId: p.chatId,
@@ -770,7 +772,7 @@ const food: FamilyReconciler = {
       const picker =
         anchor != null
           ? correctionBursts(
-              consentedFoodTaps(profileId, now),
+              getRecentFoodTaps(profileId, now),
               now,
               correctionMessageBinding(profileId, "food", ref)
             ).find((b) => b.fromId === anchor)
@@ -1613,7 +1615,13 @@ async function reconcileProse(
       })
     );
   if (!rebuilt) return;
-  const hash = messageBodyHash(rebuilt);
+  // COMPOSED BEFORE IT IS HASHED (#4538), for the same reason the bundle is attached
+  // before the keyboard plan is made: the stored hash was taken on the message as
+  // DELIVERED and `messageBodyHash` covers the title, so a raw rebuild would differ on
+  // the "[Name] " label alone and every multi-profile digest would draw one edit that
+  // changed nothing. The RAW message still goes to `rebuildMessage`, which composes it
+  // there, exactly once.
+  const hash = messageBodyHash(composeForSend(profileId, rebuilt));
   // THE IDEMPOTENCE PIN. Nothing changed ⇒ no Telegram call at all, which is what keeps
   // an hourly sweep over the most-read message in the app off the rate limiter.
   if (pointer.bodyHash === hash) return;

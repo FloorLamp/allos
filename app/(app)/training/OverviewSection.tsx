@@ -1,9 +1,11 @@
 import DestinationLink from "@/components/DestinationLink";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   getActivityDates,
   getActivitySuggestions,
   getCardioByActivity,
   getDayLoadInputs,
+  getActiveDaysStrip,
   getFrequencyTargetProgressForHome,
   getIllnessCoachingContext,
   getTrainingWeekDayTypes,
@@ -78,10 +80,8 @@ import PrCard from "@/components/PrCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
 import WeekSpine from "./WeekSpine";
-import RecentSessions from "./RecentSessions";
+import ActiveDaysStrip from "@/components/ActiveDaysStrip";
 import { buildWeekSpine } from "@/lib/training-week-spine";
-import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
-import { recentSessionsView } from "@/lib/training-recent-sessions";
 import TrainingContextChips from "./TrainingContextChips";
 import FitnessCheckStrip from "./FitnessCheckStrip";
 import MuscleCoverageCard from "./MuscleCoverageCard";
@@ -146,23 +146,6 @@ export default async function OverviewSection() {
     today: todayStr,
     rows: weekDays.rows,
   });
-  // …and what those blocks actually WERE (#2566). The band says a session
-  // happened; it cannot say the run was 8 km. This reads the Training Log's own
-  // newest page and folds it — same cards, same numbers, same wording (#221) —
-  // so the week's sessions are legible here without opening the Log.
-  //
-  // Seven ACTIVE days is the widest a week can be, so the window is the smallest
-  // one that can still COUNT what it cut. The cheaper-looking option is to take
-  // the count from `spine.sessions`, which is already computed above — but the
-  // spine tallies activity rows and the feed drops create-at-start drafts
-  // (#2870 step 3), so a live draft would make the card offer "1 more in Log"
-  // over a Log that has none. An overview may show less than the whole; it may
-  // not miscount it. Nothing older is read except when the week is empty and the
-  // fallback needs the last session.
-  const recentSessions = recentSessionsView(
-    buildTrainingLogFeedPage(profile.id, null, units, formatPrefs, 7).groups,
-    { weekStart: weekDays.start, today: todayStr }
-  );
   // The weekly routine, scoped to the targets whose home IS this page (#2888) —
   // strength regions and groups, activity types, and mobility regions. A food habit or
   // a wellness practice is a real target on a real page; that page is not this one.
@@ -562,15 +545,17 @@ export default async function OverviewSection() {
         </h3>
         <WeekSpine spine={spine} />
 
-        {/* What those blocks were. The band is the shape, this is the content —
-            one card, so "which days / what I did / what the routine still wants"
-            is one read. Nothing here recomputes: the rows ARE the Training Log's
-            cards, capped and folded (#221). */}
-        <RecentSessions view={recentSessions} />
+        {/* THE ACTIVE-DAYS BAND, HOME AT LAST (#4079's anti-drop census). It used to
+            head the Log tab, where it answered "how often lately" beside a feed that
+            answers "what, exactly" — two questions, one surface. It belongs to the
+            week card, next to the spine it extends: the spine is this week, the band
+            is the run-up to it, and both read the same activity days. */}
+        <div className="mt-4">
+          <ActiveDaysStrip data={getActiveDaysStrip(profile.id, 21)} />
+        </div>
 
         <div className="mt-5 border-t border-black/10 pt-4 dark:border-white/10">
-          <div className="flex items-baseline justify-between gap-2">
-            <h4 className="section-label">Weekly targets</h4>
+          <CardSectionHeader title="Weekly targets" variant="label">
             {/* The chips RENDER here and are EDITED in Plan (#2892) — one home. */}
             <DestinationLink
               href="/training?tab=plan#targets"
@@ -578,7 +563,7 @@ export default async function OverviewSection() {
             >
               Edit targets
             </DestinationLink>
-          </div>
+          </CardSectionHeader>
           {targets.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               No weekly targets set yet.

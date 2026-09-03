@@ -72,7 +72,7 @@ test.describe("Equipment manager (#391)", () => {
     await page.goto("/training?tab=log");
     await expect(
       page
-        .locator('[id^="activity-"]')
+        .getByTestId("history-row")
         .filter({ hasText: "E2E Equipment Delete Session" })
         .first() // first-ok: the session THIS spec created (unique name); asserts its set survived the equipment delete
     ).toBeVisible();

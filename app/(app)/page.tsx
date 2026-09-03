@@ -62,6 +62,7 @@ import {
   frequencyScopeLabel,
   isStrengthProgrammingScope,
 } from "@/lib/frequency-targets";
+import { cadenceScopeNoun } from "@/lib/cadence";
 import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import {
   activeByKey,
@@ -109,6 +110,7 @@ import {
 } from "@/lib/format-date";
 import {
   clinicalResultClaimsFreshness,
+  clinicalResultHostsAcknowledge,
   RECENT_LAB_STALE_LABEL,
   recentLabHighlights,
 } from "@/lib/recent-labs";
@@ -123,6 +125,10 @@ import { getLastSleepRecordDate } from "@/lib/queries/domain-dormancy";
 import { freshnessAgeDays } from "@/lib/freshness";
 import { glanceAgeToken } from "@/lib/glance-age";
 import { VITAL_PRESENTATION_FLOORS } from "@/lib/vitals-latest";
+import {
+  TREND_METRIC_PRESENTATION_FLOORS,
+  trendMetricPresentationFreshness,
+} from "@/lib/trend-metric-freshness";
 import { getRecapCard } from "@/lib/notifications/recap-data";
 import { upcomingRowQualifiers } from "@/lib/notifications/upcoming-digest";
 import { recapLineAnnotation, recapLineId, recapRangeLabel } from "@/lib/recap";
@@ -198,8 +204,7 @@ import {
   keepStreamReminder,
 } from "./stream-lifecycle-actions";
 import { dismissOnboardingChecklist } from "./onboarding/actions";
-import { CHECKLIST_TASKS } from "@/lib/onboarding-checklist";
-import { remainingOnboardingChecklistSuggestions } from "@/lib/onboarding";
+import { orderedOnboardingChecklistTasks } from "@/lib/onboarding-checklist";
 import {
   episodeStatesForProfiles,
   openEpisodeRowsForProfiles,
@@ -233,6 +238,10 @@ import {
 } from "@/lib/sleep-summary";
 import UsualRoutineControl from "@/components/dashboard/UsualRoutineControl";
 import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntryAction";
+import {
+  StandingAge,
+  staleMeasurementDoor,
+} from "@/components/dashboard/StandingAge";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
 import {
@@ -282,6 +291,7 @@ import {
   type UpcomingItem,
 } from "@/lib/upcoming";
 import { isSuppressed } from "@/lib/upcoming-suppress";
+import { itemDetailText } from "@/lib/upcoming-aggregate";
 import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
 import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
@@ -318,10 +328,15 @@ function attentionRowDetail(
   formatPrefs: DisplayFormatPrefs
 ) {
   const due = upcomingDueText(item, today, formatPrefs);
-  if (!item.detail) return due;
+  // THE DETAIL IS RENDERED, NOT READ (#3526). The biomarker retest row's sentence is
+  // composed by a login-less generator and carries the raw ISO day; this is a surface
+  // WITH a login, so it re-composes the row's carried facts through the same
+  // `formatPrefs` the due text already uses. Every other item's detail is unchanged.
+  const detail = itemDetailText(item, today, formatPrefs);
+  if (!detail) return due;
   return (
     <>
-      <span data-testid="attention-item-detail">{item.detail}</span>
+      <span data-testid="attention-item-detail">{detail}</span>
       {due ? ` · ${due}` : null}
     </>
   );
@@ -911,21 +926,25 @@ async function renderDashboard(
       // acknowledge lifecycle #3225 already runs, read through the same suppression
       // bus above. The date is the COLLECTION date the record carries, so a
       // backfilled import of old results claims nothing.
+      const acknowledged = labAcknowledged(name);
       const fresh = clinicalResultClaimsFreshness(
         observation.date,
         on,
-        labAcknowledged(name)
+        acknowledged
       );
       labPromotions.set(name, {
         changed,
         fresh,
-        // GROWING THE ACKNOWLEDGE MOUNT, AND ONLY WHERE IT IS MISSING (#4232). The
-        // acknowledgment is the flag dismissal (#3225), and its only mount is the
-        // attention row's snooze/dismiss menu — which a non-flagged result never
-        // has. So a fresh result whose key carries no attention item hosts the menu
-        // on its own row; one whose key DOES already renders it there, and a second
-        // menu posting the same signal would be two controls for one state.
-        ...(fresh && !activeAttentionKeys.has(findingKey)
+        // Which rows host their own acknowledge control, and why — see
+        // `clinicalResultHostsAcknowledge`, which owns the rule so this surface and
+        // the result detail page's "Seen it" cannot drift apart.
+        ...(clinicalResultHostsAcknowledge({
+          collectedOn: observation.date,
+          today: on,
+          flag: observation.flag,
+          acknowledged,
+          hasAttentionItem: activeAttentionKeys.has(findingKey),
+        })
           ? { acknowledgeKey: findingKey }
           : {}),
         ...(changed
@@ -1699,24 +1718,53 @@ async function renderDashboard(
     );
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
-    const onboardingChecklistSteps = remainingOnboardingChecklistSuggestions(
+    const onboardingChecklistSteps = orderedOnboardingChecklistTasks(
       onboardingChecklist.focuses,
       onboardingChecklistCompletion
-    )
-      .slice(0, 4)
-      .map((suggestion) => CHECKLIST_TASKS[suggestion]);
+    );
+    // THE CHECKLIST IS A MOMENT BLOCK, NOT A ROW (#4362 ruling 3). It was one
+    // candidate whose facts column joined every remaining label with "·" — one door
+    // for four steps, and none of the sentences saying why any of them is worth
+    // doing. A person setting up the app is exactly who deserves per-step doors, so
+    // each step is its own row under one header, which is what every other group of
+    // same-origin atoms already does.
+    onboardingChecklistSteps.forEach((step, index) => {
+      add(
+        setupCandidates.onboardingChecklistStep(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          step.suggestion
+        ),
+        {
+          label: step.label,
+          // The row's own door: with no control in the trailing slot the row is
+          // link-wrapped, so the step's name IS the way in.
+          href: step.href,
+          detail: step.benefit,
+          // The block's header, declared once by its first member (the canvas reads
+          // the first that has one) and printed over the whole set.
+          moment:
+            index === 0 ? { title: "A few useful next steps" } : undefined,
+        }
+      );
+    });
     add(
       setupCandidates.onboardingProgress(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "checklist"
       ),
       {
-        label: "A few useful next steps",
-        // The suggestions themselves, named in the facts column: one row cannot hold
-        // N doors, and a bare count would be the thing this list exists to avoid.
-        // The door goes to the first remaining step; the dismiss stays on the row.
-        detail: onboardingChecklistSteps.map((step) => step.label).join(" · "),
-        href: onboardingChecklistSteps[0]?.href,
+        // No label: the block's header already names the set, and printing it again
+        // on the row beneath would say the same thing twice. What this row carries
+        // is the reassurance the block's own copy owes a first-run reader, and the
+        // dismiss for the whole set.
+        //
+        // THE SENTENCE IS SHORTER THAN THE ONE THE CARD PRINTED, and not by taste:
+        // the card's second half ("You do not need to complete every suggestion")
+        // is second-person, and the dashboard is a cross-profile surface — a carer
+        // reading a ward's setup is not the person being addressed. #945's guard
+        // catches it here, where it could not in the deleted component. The first
+        // half already says the whole thing.
+        detail: "Pick what helps now and leave the rest for later.",
         control: (
           <form action={dismissOnboardingChecklist}>
             <Button type="submit" pendingLabel="…">
@@ -1955,7 +2003,17 @@ async function renderDashboard(
         momentOpen
       ),
       {
-        label: `Log ${progress.target.scope_value}`,
+        // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841 item 2).
+        // The label used to be `Log ${scope_value}` beside an action that also read
+        // "Log", so the row printed the verb twice and named its subject by the
+        // STORED KEY — "Log Lower · 0 of 2 this week · Log". `cadenceScopeNoun` is
+        // the app's existing answer to "what is this target called" (the recap and
+        // the practice nudge already ask it), so the noun comes from there rather
+        // than from a second casing rule here.
+        label: cadenceScopeNoun(
+          progress.target.scope_kind,
+          progress.target.scope_value
+        ),
         detail: `${progress.count} of ${progress.per_week} this week`,
         href: habitHref,
         actionLabel: "Log",
@@ -2259,6 +2317,22 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // THE DOOR THAT ENDS THE DORMANCY (#4841 item 3). The line says a reading is
+        // missing; until now the only thing it opened was the history of the reading
+        // it says is missing. This is the door #4757 gives a stale reading, on the
+        // row where the reading is gone altogether — the same form, the same group
+        // and the same words as `staleMeasurementDoor` puts on the live vitals rows,
+        // so the family speaks once. It is spelled out rather than borrowed because
+        // that helper is gated on a glance-age token, and a dormant row has no
+        // reading left to have an age. "Vitals history" stays beside it as the
+        // family's door, like every other row here.
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
+          />
+        ),
         presence: "dormant",
       }
     );
@@ -2279,13 +2353,7 @@ async function renderDashboard(
               data-testid="vitals-latest-bp"
             >
               <span>{`${vitalsModel.bp.systolic}/${vitalsModel.bp.diastolic} mmHg`}</span>
-              <span
-                data-testid="vitals-latest-bp-age"
-                data-stale={age.stale ? "true" : undefined}
-                className={`standing-age ${age.className}`}
-              >
-                {age.text}
-              </span>
+              <StandingAge age={age} testId="vitals-latest-bp-age" />
               {direction && (
                 <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous blood pressure`}</span>
               )}
@@ -2294,6 +2362,7 @@ async function renderDashboard(
         })(),
         href: "/trends#body",
         disclosure: bpAge?.title ?? undefined,
+        control: staleMeasurementDoor(bpAge!, "vitals", "Log a vital"),
         presence: "current",
       }
     );
@@ -2314,6 +2383,14 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // Its blood-pressure sibling's door, for the same reason (#4841 item 3).
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
+          />
+        ),
         presence: "dormant",
       }
     );
@@ -2334,13 +2411,7 @@ async function renderDashboard(
               data-testid="vitals-latest-resting-hr"
             >
               <span>{`${vitalsModel.restingHr.value} bpm`}</span>
-              <span
-                data-testid="vitals-latest-resting-hr-age"
-                data-stale={age.stale ? "true" : undefined}
-                className={`standing-age ${age.className}`}
-              >
-                {age.text}
-              </span>
+              <StandingAge age={age} testId="vitals-latest-resting-hr-age" />
               {direction && (
                 <span className="sr-only">{`${direction === "flat" ? "flat" : direction} versus previous resting heart rate`}</span>
               )}
@@ -2363,6 +2434,7 @@ async function renderDashboard(
         },
         href: "/trends#body",
         disclosure: restingHrAge?.title ?? undefined,
+        control: staleMeasurementDoor(restingHrAge!, "vitals", "Log a vital"),
         presence: "current",
       }
     );
@@ -2444,15 +2516,7 @@ async function renderDashboard(
             showFlagLabel
           />
         ),
-        detail: (
-          <span
-            data-testid="recent-lab-date"
-            data-stale={age.stale ? "true" : undefined}
-            className={`standing-age ${age.className}`}
-          >
-            {age.text}
-          </span>
-        ),
+        detail: <StandingAge age={age} testId="recent-lab-date" />,
         href: row.href,
         disclosure: age.title ?? undefined,
         moment: { title: "Recent clinical results", href: "/results" },
@@ -2524,7 +2588,24 @@ async function renderDashboard(
     );
   } else {
     const latestWeight = bodyMetrics.at(-1);
-    if (latestWeight)
+    if (latestWeight) {
+      // Weight's glance floor is the one its Trends card already reads (#4757): the
+      // self-measured six weeks of TREND_METRIC_PRESENTATION_FLOORS, by reference, so
+      // the dashboard and the chart cannot disagree about how old a weigh-in may be.
+      // Between that floor and the 90-day dormancy collapse the row keeps its value,
+      // goes amber, and grows the door.
+      const weightAge = glanceAgeToken({
+        date: latestWeight.date,
+        today: on,
+        freshness: trendMetricPresentationFreshness(
+          "weight",
+          latestWeight.date,
+          on
+        ),
+        form: "long",
+        floorLabel: TREND_METRIC_PRESENTATION_FLOORS.weight.label,
+        dateLabel: formatLongDate(latestWeight.date, formatPrefs),
+      });
       add(
         progressCandidates.weightLatest(
           { subject: profileSubject, sourceOrder: sourceOrder++ },
@@ -2535,30 +2616,27 @@ async function renderDashboard(
           label: "Latest",
           value: `${latestWeight.value} ${units.weightUnit}`,
           // The date stays visible when the destination door appears (#3555).
-          detail: (
-            <span className="standing-age">
-              {formatLongDate(latestWeight.date, formatPrefs)}
-            </span>
-          ),
+          detail: <StandingAge age={weightAge} testId="weight-latest-age" />,
           // The desktop column (#3252): the SAME trailing-90-day series the weight
           // domain already derived above for this page — not a second read, and not a
-          // second window. `stale` is false by construction here: this branch is the
-          // one the dormancy verdict left alive, and weight declares no glance floor
-          // between "current" and "dormant" (its dormant row is a different row, with
-          // no plot at all).
+          // second window. The tone follows this row's own glance age, as the resting
+          // HR plot does.
           series: {
             points: bodyMetrics,
             seriesKey: "metric:weight",
-            stale: false,
+            stale: weightAge.stale,
             name: `Weight, last ${WEIGHT_TREND_WINDOW_DAYS} days`,
             pointLabel: (point) =>
               `${point.value} ${units.weightUnit} · ${formatLongDate(point.date, formatPrefs)}`,
             loneCaption: `Single reading · ${formatLongDate(latestWeight.date, formatPrefs)}`,
           },
           href: "/trends#body",
+          disclosure: weightAge.title ?? undefined,
+          control: staleMeasurementDoor(weightAge, "body", "Log weight"),
           presence: "current",
         }
       );
+    }
     add(
       progressCandidates.weightTrend(
         {

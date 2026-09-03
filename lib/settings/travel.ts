@@ -20,7 +20,7 @@ import {
 } from "./kv";
 import { getTimezone, setTimezone } from "./display";
 import { isValidTimezone } from "../timezone";
-import { instantNow, now as clockNow } from "../clock";
+import { instantNow } from "../clock";
 import {
   appendTimezoneSwitch,
   connectedTimezoneSwitchHistory,
@@ -103,7 +103,7 @@ export function switchProfileTimezone(
   // history. Consumers continue to fail open; the timezone still moves and the
   // home marker still follows the explicit user choice.
   if (historyTrusted) {
-    const history = appendTimezoneSwitch(connectedHistory, record, clockNow());
+    const history = appendTimezoneSwitch(connectedHistory, record);
     setProfileSetting(
       profileId,
       SWITCHES_KEY,

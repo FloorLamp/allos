@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   anchoredPosition,
   type AnchoredAlign,
@@ -43,8 +44,8 @@ import {
 // The panel is measured through a REF CALLBACK rather than an effect: the portal
 // node entering the DOM is the event that makes measurement possible, and
 // measuring there places the panel before it is ever painted at the wrong
-// coordinates. Until the first measurement `pos` is null, which a consumer
-// renders as `visibility: hidden` — never as a panel briefly at 0,0.
+// coordinates. Until then the style below is a hidden one — never a panel
+// briefly at 0,0.
 
 export function useAnchoredPopover({
   open,
@@ -69,19 +70,26 @@ export function useAnchoredPopover({
   // Used for the viewport clamp before the panel has been measured, so the first
   // paint of a known-width panel is already in the right place.
   fallbackWidth?: number;
-  // For a panel that scrolls itself: the height it WANTS. Escaping the ancestor's
-  // clip is only half the job — a list that then runs off the bottom of the
-  // screen is unreachable in a way the clipped one at least hinted at. Given
-  // this, the panel is capped to the room actually available on the side it lands
-  // and its own `overflow` scrolls the rest. Omit it and the panel is placed but
-  // never capped, which is what a menu and a calendar want.
+  // A cap the panel wants for its OWN sake, tighter than the room: a listbox that
+  // should stop at eight rows on a tall screen rather than growing to fill it.
+  // `pos.maxHeight` is reported either way and is never more than the room on the
+  // side the panel landed — applying it is the consumer's job (#4776).
   preferredMaxHeight?: number;
   remeasureKey?: unknown;
 }): {
-  pos: AnchoredPosition | null;
+  // THE WHOLE ANSWER, READY TO WEAR (#4887) — a style, not four numbers, because
+  // the numbers are separable and the decision is not. `maxHeight` is required
+  // (#4776) because a consumer applying only the coordinates is not opting out of
+  // a bound, it does not know there was one, and its panel runs off the screen
+  // edge. A style leaves nothing to drop, so the two hosts that portal an anchored
+  // surface — AnchoredPanel's box and Combobox's listbox, which #4887 ruled stay
+  // two — differ in what they put inside it and in nothing else.
+  panelStyle: CSSProperties;
+  // The style hides an unplaced panel already; a host that must not ACT on one —
+  // moving focus in, which a browser refuses on a hidden element — asks here.
+  measured: boolean;
   // Pass as the portaled panel's `ref`.
   attachPanel: (node: HTMLElement | null) => void;
-  reposition: () => void;
   panelRef: React.RefObject<HTMLElement | null>;
 } {
   const panelRef = useRef<HTMLElement | null>(null);
@@ -134,5 +142,17 @@ export function useAnchoredPopover({
     };
   }, [open, reposition, remeasureKey]);
 
-  return { pos, attachPanel, reposition, panelRef };
+  return {
+    panelStyle: {
+      position: "fixed",
+      top: pos?.top ?? 0,
+      left: pos?.left ?? 0,
+      width: pos?.width,
+      maxHeight: pos?.maxHeight,
+      visibility: pos ? "visible" : "hidden",
+    },
+    measured: pos !== null,
+    attachPanel,
+    panelRef,
+  };
 }

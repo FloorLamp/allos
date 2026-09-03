@@ -498,6 +498,11 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
     why: "A recap line about ONE logged session — a record of something that happened, which a later session never supersedes.",
   },
   {
+    kind: "practice-recap",
+    reissuable: false,
+    why: "A note about ONE finished practice — a record of something that happened, and a later session is a different subject rather than a newer answer to the same question. It also carries no buttons and no state a second copy could recompute.",
+  },
+  {
     kind: "ease-back",
     reissuable: false,
     why: "One-shot per illness episode (#837); there is no second send to supersede the first.",
@@ -592,6 +597,11 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
     kind: "workout-recap",
     prose: null,
     why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false. Since #2272 the line can be followed by the type ASK when the session's source declined to classify it — a question, not a claim, and its buttons refuse a stale tap on their own (see the `actype` entry above), so there is still no sentence here for a prose reconciler to correct.",
+  },
+  {
+    kind: "practice-recap",
+    prose: null,
+    why: "Three measurements of a session that happened — its length, its average heart rate, and that average as a rise over the profile's resting baseline. Nothing in the app makes a finished practice un-happen, and editing the row's duration afterwards does not make the stated average false: it was the average over the window as the row stood when it was measured. There is no claim here for a prose reconciler to correct.",
   },
   {
     kind: "milestone",

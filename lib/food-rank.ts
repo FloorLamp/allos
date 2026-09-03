@@ -154,8 +154,8 @@ function slotAbsence(slotWeight: number, overallWeight: number): boolean {
 // than by coincidence (#2225). It also sets the nudge's progressive-expansion page size
 // in both directions (#1075/#1807), which is why an EVEN count matters there: the
 // keyboard lays two buttons per row. Kept small so the keyboard and the phone-width bar
-// stay scannable; the long tail is one disclosure ("More food groups" / "➕ Show more")
-// away on both surfaces, never unreachable (#559).
+// stay scannable; the long tail is one disclosure ("All groups" on the web since #4477,
+// "➕ Show more" on the keyboard) away on both surfaces, never unreachable (#559).
 //
 // The two surfaces still budget the slots in their own medium, and that asymmetry is
 // deliberate (#2225): the protein entry consumes one of the nudge's keyboard slots, while

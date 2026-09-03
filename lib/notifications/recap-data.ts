@@ -88,6 +88,7 @@ import {
   getProfileAge,
   getProfileSubstanceTelegram,
 } from "../settings";
+import { substanceDef } from "../substance-use";
 import {
   isAdultForClinical,
   isStrengthTrainingRelevant,
@@ -290,15 +291,17 @@ export function gatherRecapInput(
   // WHICH TARGETS BOTH CAP READERS MAY SEE — one predicate, because a target dropped
   // from the week verdict and kept in the cap-weeks sentence would be named anyway.
   //
-  // The substance half (#3900) is the consent `buildFoodNudge` already asks (#3330):
-  // `cadenceScopeNoun` names a substance cap by its own noun — the curated label for a
-  // curated key, the profile's OWN free-text name for a custom one — so these two lines
-  // carried substance content into a chat, a push body and an inbox. Alcohol included:
-  // its ledger is a food group but its cap is an ordinary `scope_kind: "substance"`.
-  // Removing, not redacting; the rest of the recap still sends.
-  const includeTarget = (target: { scope_kind: string }) =>
+  // The substance half (#3900, #3330): `cadenceScopeNoun` names a substance cap by its
+  // own noun — the curated label for a curated key, the profile's OWN free-text name for a
+  // custom one — so these two lines carry substance content into a chat, a push body and
+  // an inbox, and do so only behind the per-profile consent. ALCOHOL IS EXEMPT (owner
+  // ruling 2026-09-02): its ledger is a food group, so its cap is named like any food cap
+  // and the consent covers the substance-log ledger only — the same line `isSubstanceLogged`
+  // draws for writes. Removing, not redacting; the rest of the recap still sends.
+  const includeTarget = (target: { scope_kind: string; scope_value: string }) =>
     (trainingRelevant || !isTrainingFrequencyScope(target)) &&
     (target.scope_kind !== "substance" ||
+      substanceDef(target.scope_value).ledger === "food-log" ||
       !forSend ||
       getProfileSubstanceTelegram(profileId));
 

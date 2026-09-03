@@ -41,11 +41,13 @@ import {
   composeFinishNudge,
   importedRecapLine,
   recapNudgeLine,
+  sessionPhysiologyClause,
   weeklyRemainingLine,
   type FinishTypeAsk,
   type ImportedSessionFacts,
 } from "./workout-recap-format";
 import { getFrequencyTargetProgress } from "../queries";
+import { getEventPhysiology } from "../queries/event-physiology";
 import { getSessionCadenceFacts } from "../queries/cadence-ledger";
 import type { ActivityType } from "../types/training";
 import { collectWindowDoses } from "./intake";
@@ -57,9 +59,7 @@ import {
 import { OBLIGATION_ORDER } from "../intake-schedule";
 import { intakeShortLabels } from "../intake-short-name";
 import { dispatch } from "./index";
-import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
-import { prefixMessage } from "./types";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -351,16 +351,32 @@ export async function runPostWorkoutForActivity(
       "workout-recap",
       getProfileHomeAssistant(profileId).disabledKinds
     );
+  // WHAT THE MINUTE STREAM SAYS (#4775 §2). The same event-physiology result the
+  // activity page renders, formatted as a clause on whatever recap line is already
+  // going out. Read only when the recap line is enabled at all and the row can be
+  // bounded, so a profile with the kind off pays nothing for it.
+  const physiology =
+    recapEnabled && finishRow ? getEventPhysiology(profileId, finishRow) : null;
+  const hrClause = physiology ? sessionPhysiologyClause(physiology) : null;
   // #2272: an IMPORTED finish has no `exercise_sets`, so the strength recap declines
-  // and the message had nothing to say — measurably, no imported activity had ever
-  // produced a recap. It now gets a line built from the facts the import actually
-  // carries (duration, distance, HR, relative effort), with no volume/PR language.
-  // Same gate: the `workout-recap` kind of the #928 matrix, no new policy.
+  // and the message had nothing to say. Its own facts stand in — EXCEPT its avg/max
+  // HR when the stream has covered the window, because then the two would state the
+  // same quantity twice from two sources and invite the reader to reconcile them. The
+  // stream's split is the more specific claim, so it wins and the import's summary
+  // steps aside; with no coverage the import's figure is all there is and is kept.
+  const importedLine =
+    recapEnabled && finishRow?.source
+      ? importedRecapLine(
+          hrClause
+            ? { ...importedFacts(finishRow), avgHr: null, maxHr: null }
+            : importedFacts(finishRow)
+        )
+      : null;
+  const baseLine = recapNudgeLine(recap, recapEnabled) ?? importedLine;
+  // The clause RIDES a line and never makes one: a manual row with nothing to recap
+  // sends exactly what it sent before this issue.
   const recapLine =
-    recapNudgeLine(recap, recapEnabled) ??
-    (recapEnabled && finishRow?.source
-      ? importedRecapLine(importedFacts(finishRow))
-      : null);
+    baseLine && hrClause ? `${baseLine} · ${hrClause}` : baseLine;
   // §3 (#981): the recap line gains a forward-looking weekly-remaining status, from the
   // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
   // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
@@ -432,19 +448,14 @@ export async function runPostWorkoutForActivity(
     };
   }
 
-  // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
-  // nobody, and this is a dispatch-path builder, so it never met the tick's
-  // prefixMessage. In a shared household chat a post-workout DOSE list is
-  // unattributable. prefixForProfile is the one derivation (#377/#429) — it labels
-  // only when the instance tracks more than one profile, so a single-profile
-  // instance is unchanged.
+  // ATTRIBUTION (#1721) is now `dispatch`'s (#4538): "🏋️ Post-workout — 2 doses" /
+  // "🏋️ Workout complete" name nobody, and in a shared household chat a post-workout
+  // DOSE list is unattributable — so the label is applied to every dispatch rather
+  // than by whichever builder remembered to ask for it.
   //
   // The winner dispatches OUTSIDE the election transaction (#3058 contract): a
   // network round trip can never sit inside a write lock three processes share.
-  const results = await dispatch(
-    profileId,
-    prefixMessage(msg, prefixForProfile(profileId))
-  );
+  const results = await dispatch(profileId, msg);
   if (results.length === 0) {
     // No channel configured — release the claim so a later-configured channel
     // (or the tick backstop) can elect a fresh winner.

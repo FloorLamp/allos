@@ -498,18 +498,21 @@ export default function SymptomLogBar({
 
   return (
     <div data-testid="symptom-log-bar">
+      {/* NOT A HEADER ROW (#4548 ruling 3). This was `justify-between` around ONE
+          child, and the count it looks like it would push to the right edge lives
+          inside the label's own paragraph. There is nothing for the arrangement to
+          arrange, so the wrapper goes and the label carries the margin; adopting
+          CardSectionHeader here would have moved the count instead. */}
       {showTitle && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="section-label">
-            Daily symptoms
-            <span
-              data-testid="symptom-logged-count"
-              className="ml-2 font-normal normal-case tracking-normal"
-            >
-              {loggedCount} logged
-            </span>
-          </p>
-        </div>
+        <p className="section-label mb-2">
+          Daily symptoms
+          <span
+            data-testid="symptom-logged-count"
+            className="ml-2 font-normal normal-case tracking-normal"
+          >
+            {loggedCount} logged
+          </span>
+        </p>
       )}
 
       {/* ONE ROW (#4752 item 5). The day toggle, both add buttons and the empty

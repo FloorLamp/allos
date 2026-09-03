@@ -9,6 +9,7 @@ import {
   logHistoricalDose,
   updateHistoricalDose,
 } from "@/app/(app)/nutrition/intake-actions";
+import { undoDelete } from "@/app/(app)/undo-actions";
 import { actAs, fd, seedActor } from "./harness";
 
 function seedMedication(
@@ -403,6 +404,80 @@ describe("logHistoricalDose", () => {
           .get(foreignLogId) as { amount: string }
       ).amount
     ).toBe("5 mg");
+  });
+
+  // #4902: the whole of `medications-followups.spec.ts:317` at this tier, because the
+  // claim that spec ends on — "the administration and course correction are one write",
+  // so the backdated start SURVIVES the dose being removed again — is a claim about
+  // these four writers and nothing about a browser. The e2e red read the fixture's
+  // ORIGINAL start back out at the end, which is only meaningful if delete or undo
+  // moves `started_on`; neither touches `medication_courses` at all, and this is the
+  // assertion that says so rather than the grep that suggested it.
+  it("keeps the backdated PRN course start through edit, delete, undo and delete", async () => {
+    const { profile } = seedActor();
+    const backdated = shiftDateStr(today(profile.id), -45);
+    const originalStart = shiftDateStr(today(profile.id), -5);
+    const { itemId, doseId } = seedMedication(profile.id, {
+      asNeeded: true,
+      startedOn: originalStart,
+    });
+    const startedOn = () =>
+      (
+        db
+          .prepare(
+            "SELECT started_on FROM medication_courses WHERE item_id = ?"
+          )
+          .get(itemId) as { started_on: string | null }
+      ).started_on;
+    const soleLogId = () =>
+      (
+        db
+          .prepare("SELECT id FROM intake_item_logs WHERE item_id = ?")
+          .get(itemId) as { id: number } | undefined
+      )?.id;
+
+    expect(startedOn()).toBe(originalStart);
+    expect(
+      await logHistoricalDose(
+        fd({
+          id: itemId,
+          dose_id: doseId,
+          date: backdated,
+          time: "03:17",
+          amount: "225 mg",
+        })
+      )
+    ).toEqual({ ok: true });
+    expect(startedOn()).toBe(backdated);
+
+    // The spec's edit moves only the amount and the clock, so the day — and with it
+    // the course start the day licensed — must sit still.
+    expect(
+      await updateHistoricalDose(
+        fd({
+          id: itemId,
+          log_id: soleLogId(),
+          date: backdated,
+          time: "04:18",
+          amount: "250 mg",
+        })
+      )
+    ).toEqual({ ok: true });
+    expect(startedOn()).toBe(backdated);
+
+    const { undoId } = await deleteAdministration(fd({ log_id: soleLogId() }));
+    expect(typeof undoId).toBe("number");
+    expect(soleLogId()).toBeUndefined();
+    expect(startedOn()).toBe(backdated);
+
+    expect(await undoDelete(undoId!)).toEqual({ ok: true });
+    expect(startedOn()).toBe(backdated);
+
+    await deleteAdministration(fd({ log_id: soleLogId() }));
+    expect(soleLogId()).toBeUndefined();
+    // The correction outlives the administration that licensed it: history says the
+    // course had begun by then, and removing one row is not evidence it had not.
+    expect(startedOn()).toBe(backdated);
   });
 });
 

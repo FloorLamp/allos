@@ -43,6 +43,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { stubTelegramSends } from "./telegram-spies";
 
 import { db, today } from "@/lib/db";
@@ -355,7 +356,10 @@ async function familyTickCalls(profileId: number): Promise<{
 }> {
   const date = today(profileId);
   await runRedoseNotices(profileId, "TickScope", date);
-  const overMax = getPrnOverMaxItems(profileId, date).length;
+  const overMax = getPrnOverMaxItems(
+    profileId,
+    ceilingWindowEndMinute(new Date())
+  ).length;
   const quick = getPrnMedicationsForQuickLog(profileId);
   const ibuprofen = quick.find((q) => q.name === "Ibuprofen");
   return {
@@ -742,9 +746,12 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     const { profileId, otcItemId } = seedFamilyProfile("TickFamLifetime");
     const date = today(profileId);
     const first = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(
+        profileId,
+        ceilingWindowEndMinute(new Date())
+      ).get(otcItemId)
     );
-    expect(first?.countToday).toBe(2);
+    expect(first?.countInWindow).toBe(2);
 
     // A dose confirmed between ticks — the write that must never be missed.
     const dose = db
@@ -753,12 +760,18 @@ describe("a tick scope's memo cannot outlive its tick", () => {
     logAdministration(otcItemId, dose.id, date, 0, "200 mg");
 
     const second = await runInTickScope(async () =>
-      getMedicationFamilyStates(profileId, date).get(otcItemId)
+      getMedicationFamilyStates(
+        profileId,
+        ceilingWindowEndMinute(new Date())
+      ).get(otcItemId)
     );
-    expect(second?.countToday).toBe(3);
+    expect(second?.countInWindow).toBe(3);
     // And with no scope at all, every read is fresh.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      getMedicationFamilyStates(
+        profileId,
+        ceilingWindowEndMinute(new Date())
+      ).get(otcItemId)?.countInWindow
     ).toBe(3);
   });
 
@@ -778,16 +791,25 @@ describe("a tick scope's memo cannot outlive its tick", () => {
 
     await runInTickScope(async () => {
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+        getMedicationFamilyStates(
+          profileId,
+          ceilingWindowEndMinute(new Date())
+        ).get(otcItemId)?.countInWindow
       ).toBe(2);
       logAdministration(otcItemId, dose.id, date, 0, "200 mg");
       expect(
-        getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+        getMedicationFamilyStates(
+          profileId,
+          ceilingWindowEndMinute(new Date())
+        ).get(otcItemId)?.countInWindow
       ).toBe(2);
     });
     // The moment the scope closes, the write is visible again.
     expect(
-      getMedicationFamilyStates(profileId, date).get(otcItemId)?.countToday
+      getMedicationFamilyStates(
+        profileId,
+        ceilingWindowEndMinute(new Date())
+      ).get(otcItemId)?.countInWindow
     ).toBe(3);
   });
 

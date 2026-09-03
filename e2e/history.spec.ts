@@ -195,10 +195,34 @@ test.describe("the record (#3958)", () => {
     expect(clock).toMatch(/^(logged )?\d{1,2}:\d{2}(am|pm)?$/);
   });
 
+  // #4452 §3. THE ROW'S HEIGHT CANNOT ANSWER THE ONE-LINE QUESTION, and the ceiling
+  // below used to be the only thing asked. Measured at 390px on this fixture: the
+  // rows that carry an ⋯ menu are 46-47px tall and the rows without one are 44, so
+  // the height reports the row's CHROME and not whether its text wrapped. #4452 asked
+  // whether the ceiling should be tightened; the constant `2 × lineHeight + 24` is
+  // exactly a two-line text budget, so tightening it is asking the wrong box.
+  //
+  // THOSE NUMBERS MOVED UNDER THIS COMMENT, and the old ones are worth keeping
+  // because the argument was first made on them: the ⋯ rows measured 52-53 when
+  // `OverflowMenu`'s control rendered 40px, which is where the reading "a menu row and
+  // a two-line row are the same 53px" came from. #4362's fifth ruling put that control
+  // on the 34px box, so the coincidence the argument was drawn on is gone — the
+  // conclusion is not re-derived here, because #4452's ruling is #4452's.
+  //
+  // So the two claims are now measured on the two different boxes that actually
+  // carry them: the row's height still bounds the row's CHROME (padding, a control
+  // that grew — `py-1.5`→`py-6` reds it at 88px), and the one-line claim is asked of
+  // the TEXT CELLS against their OWN line boxes, where a wrap is visible.
   test("is one line per row at 390px, and the page never scrolls sideways", async ({
     page,
   }) => {
     seedDay();
+    // THE FIXTURE HAS TO BE ABLE TO REACH THE FORBIDDEN STATE. Without a title too
+    // long for the cluster, every row is one line whatever the truncation rules say,
+    // and the cell assertion below is green against a tree that has lost them. This
+    // is the same row the 320px truncation case seeds, measured wrapping to 40px
+    // here at 390px once `truncate` is taken off the cluster.
+    seedLongTitle();
     await phone(page);
     await page.goto(`/history?day=${DAY}`);
 
@@ -212,13 +236,25 @@ test.describe("the record (#3958)", () => {
       ];
       const doc = document.documentElement;
       return {
-        // ONE LINE MEANS ONE LINE OF TEXT, measured as the row's height against its
-        // own line box rather than against a constant — a 44px row that wrapped
-        // inside a taller container would satisfy any absolute ceiling.
         rows: list.map((el) => ({
           height: el.getBoundingClientRect().height,
           lineHeight: parseFloat(getComputedStyle(el).lineHeight),
           right: el.getBoundingClientRect().right,
+          // THE TEXT CELLS, each against its own line box. Two selectors, named by
+          // hand: the identity half the shared row primitive owns (icon, title,
+          // subject, detail — `components/LoggedEventRow.tsx`) and the trailing
+          // clock, which sits outside it. Deliberately NOT the row content wrapper:
+          // that holds the ⋯ menu control and so is as tall as the control box on a
+          // perfectly one-line row.
+          cells: [
+            ...el.querySelectorAll<HTMLElement>(
+              '[data-logged-event-row], [data-testid="history-row-clock"]'
+            ),
+          ].map((cell) => ({
+            what: cell.getAttribute("data-testid") ?? "identity",
+            height: cell.getBoundingClientRect().height,
+            lineHeight: parseFloat(getComputedStyle(cell).lineHeight),
+          })),
         })),
         viewport: doc.clientWidth,
         scrollWidth: doc.scrollWidth,
@@ -230,6 +266,15 @@ test.describe("the record (#3958)", () => {
         row.height,
         `a record row is ${Math.round(row.height)}px tall against a ${row.lineHeight}px line`
       ).toBeLessThan(row.lineHeight * 2 + 24);
+      // Every row draws its identity; a row that draws none would satisfy the loop
+      // below by having nothing to check.
+      expect(row.cells.map((cell) => cell.what)).toContain("identity");
+      for (const cell of row.cells) {
+        expect(
+          Math.round(cell.height),
+          `the ${cell.what} cell is ${Math.round(cell.height)}px against its own ${cell.lineHeight}px line — it has wrapped`
+        ).toBeLessThanOrEqual(cell.lineHeight);
+      }
       expect(Math.round(row.right)).toBeLessThanOrEqual(geometry.viewport);
     }
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport + 1);
