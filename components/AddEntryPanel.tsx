@@ -30,8 +30,9 @@ import ModalShell from "./ModalShell";
 // command palette and the medication-monitoring "Add result" action) — and it is the
 // INITIAL state only, never a controlled value: once the user has opened or closed
 // the panel, the next render must not yank it back. Same contract as
-// CustomRangeDisclosure (#1455) and the Timeline's symptom entry (#1517), which is
-// now a wrapper over this component rather than a second copy of it.
+// CustomRangeDisclosure (#1455). The record day view's symptom entry (#1517 C) was
+// the other wrapper over this component; #4851 retired it, because the day view's
+// symptom entry is the Add past row's door now, like every other log kind's.
 //
 // `id` lands on the wrapper so an in-page anchor (`#add-result`) still finds the
 // panel whether it is open or closed.
@@ -51,7 +52,6 @@ export default function AddEntryPanel({
   id,
   panelId,
   testId,
-  toggleTestId,
   dense = false,
   presentation = "inline",
   housed = false,
@@ -68,9 +68,6 @@ export default function AddEntryPanel({
   // DOM id for the panel region, referenced by the toggle's aria-controls.
   panelId: string;
   testId?: string;
-  // The toggle's own testid, when the surface's spec names it independently of the
-  // wrapper (the day view's `history-symptom-toggle`). Defaults to `<testId>-toggle`.
-  toggleTestId?: string;
   // Tighter rhythm + a small-caps-weight heading, for a panel that sits INSIDE a
   // day view rather than at the foot of a page. Purely visual.
   dense?: boolean;
@@ -108,9 +105,7 @@ export default function AddEntryPanel({
         <button
           ref={triggerRef}
           type="button"
-          data-testid={
-            toggleTestId ?? (testId ? `${testId}-toggle` : undefined)
-          }
+          data-testid={testId ? `${testId}-toggle` : undefined}
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen(true)}
@@ -147,7 +142,7 @@ export default function AddEntryPanel({
     >
       <button
         type="button"
-        data-testid={toggleTestId ?? (testId ? `${testId}-toggle` : undefined)}
+        data-testid={testId ? `${testId}-toggle` : undefined}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
