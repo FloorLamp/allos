@@ -33,6 +33,7 @@ function seriesOf(
     return { date, severity: sev, note: null };
   });
   return {
+    source: "logged",
     symptom,
     label: symptom,
     points,

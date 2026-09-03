@@ -71,7 +71,10 @@ import {
   allEpisodesForProfile,
   assembleIllnessEpisode,
 } from "./illness-episode";
-import { episodeHeadline } from "./illness-episode-format";
+import {
+  episodeHeadline,
+  isLoggedSymptomSeries,
+} from "./illness-episode-format";
 import { episodeHref } from "./hrefs";
 import { ALCOHOL_FOOD_GROUP, substanceDef } from "./substance-use";
 import { historyHref } from "./hrefs";
@@ -1403,7 +1406,7 @@ function collectEvents(
     if (!anchor) continue;
     if (assembled.id == null) continue; // no stable row → no detail route to link
     const detailItems: NonNullable<TimelineEvent["detailItems"]> = [];
-    for (const s of assembled.symptoms.slice(0, 6))
+    for (const s of assembled.symptoms.filter(isLoggedSymptomSeries).slice(0, 6))
       detailItems.push({ label: s.label, value: severityLabel(s.maxSeverity) });
     if (assembled.maxTempF != null)
       detailItems.push({

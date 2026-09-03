@@ -449,6 +449,7 @@ describe("assignOrderedEpisodeFacts", () => {
       flag: "high",
     };
     const symptom = {
+      source: "logged" as const,
       symptom: "cough",
       label: "Cough",
       points: [{ date: "2026-06-04", severity: 2, note: null }],
@@ -499,6 +500,7 @@ describe("assignOrderedEpisodeFacts", () => {
 
   it("presents an explicitly linked symptom only in its owning episode", () => {
     const symptom = {
+      source: "logged" as const,
       symptom: "headache",
       label: "Headache",
       points: [
@@ -599,6 +601,7 @@ describe("illnessTimelineEvents", () => {
         ],
         symptoms: [
           {
+            source: "logged" as const,
             symptom: "cough",
             label: "Cough",
             maxSeverity: 2,

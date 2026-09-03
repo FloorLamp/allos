@@ -2,7 +2,9 @@ import {
   episodeDayNumber,
   feverTrend,
   feverTrendLabel,
+  isLoggedSymptomSeries,
   type AssembledEpisode,
+  type LoggedSymptomSeries,
 } from "@/lib/illness-episode-format";
 import { severityLabel } from "@/lib/symptoms";
 import NotesText from "@/components/NotesText";
@@ -65,7 +67,7 @@ function SeverityDots({ severity }: { severity: number }) {
 function SymptomPill({
   symptom,
 }: {
-  symptom: AssembledEpisode["symptoms"][number];
+  symptom: LoggedSymptomSeries;
 }) {
   return (
     <li className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm dark:bg-ink-800">
@@ -145,13 +147,17 @@ export default function EpisodeSummary({
   );
   const trend = feverTrendLabel(feverTrend(episode.temperatures));
   const peakSymptomLimit = 5;
+  // "Peak symptoms" is a worst-severity pill list, so it reads the LOGGED arm only —
+  // the derived fever row states a reading, not a severity, and this card already
+  // renders the peak temperature above (#4712 item 4 leaves its placement unruled).
+  const loggedSymptoms = episode.symptoms.filter(isLoggedSymptomSeries);
   const collapseSymptoms =
-    collapsePeakSymptoms && episode.symptoms.length > peakSymptomLimit;
+    collapsePeakSymptoms && loggedSymptoms.length > peakSymptomLimit;
   const leadingSymptoms = collapseSymptoms
-    ? episode.symptoms.slice(0, peakSymptomLimit)
-    : episode.symptoms;
+    ? loggedSymptoms.slice(0, peakSymptomLimit)
+    : loggedSymptoms;
   const remainingSymptoms = collapseSymptoms
-    ? episode.symptoms.slice(peakSymptomLimit)
+    ? loggedSymptoms.slice(peakSymptomLimit)
     : [];
 
   return (
@@ -250,7 +256,7 @@ export default function EpisodeSummary({
             />
           </div>
         ) : null}
-        {episode.symptoms.length > 0 && (
+        {loggedSymptoms.length > 0 && (
           <div
             className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
             data-testid="episode-symptoms"
@@ -279,7 +285,7 @@ export default function EpisodeSummary({
                   className="hidden flex-wrap gap-2 print:flex"
                   data-testid="episode-print-symptoms"
                 >
-                  {episode.symptoms.map((symptom) => (
+                  {loggedSymptoms.map((symptom) => (
                     <SymptomPill key={symptom.symptom} symptom={symptom} />
                   ))}
                 </ul>
