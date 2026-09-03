@@ -929,7 +929,7 @@ export default async function HistoryPage(props: {
               ? formatMonthDay(shiftDateStr(day, 1), prefs)
               : formatMonthDay(day, prefs)
           }
-          targetSelector='[data-testid="app-content-container"]'
+          targetSelector="main"
         />
       ) : null}
 

@@ -24,12 +24,24 @@ import type { AppRoute } from "@/lib/hrefs";
 //
 // ── What the swipe is attached to ────────────────────────────────────────────
 //
-// The page's content container, not the event feed: a day with nothing logged
+// The page column — <main> — and not the event feed: a day with nothing logged
 // renders an empty state instead of a feed, and "swipe past the quiet day" is
 // precisely when you most want the gesture. It is still SCOPED, not global —
-// anything portalled over the page (the nav drawer, a bottom sheet, the activity
-// dock) is a sibling of <body> and therefore outside the target, so an open
-// overlay's own gestures can never double as a day change. Inside the container
+// the nav drawer, the log sheet and the bottom dock are all siblings of <main>
+// (app/(app)/layout.tsx), so an open overlay's own gestures can never double as
+// a day change.
+//
+// <main> RATHER THAN THE CONTENT CONTAINER, and the difference is the whole
+// point of the paragraph above. The recognizer requires the touch to START
+// inside the target, and `app-content-container` is a plain block that ends
+// where the content ends: measured at 390x844 on a quiet day view it is 393px
+// tall, so a swipe anywhere in the lower half of the screen began outside it and
+// was silently dropped. <main> is `flex-1` inside a `min-h-screen` row, so it
+// covers the column whatever the page holds — which is what "swipe past the
+// quiet day" always assumed. #4851 is what surfaced this: retiring the day
+// view's symptom card made a short day view ordinary rather than rare, and the
+// three shipped swipe specs went red on coordinates that had been inside the
+// container only because that card was tall. Inside the target
 // the recognizer stands down for horizontally scrollable children
 // (`ignoreSameAxisScrollers`) so the filter chips, a wide table or a chart strip
 // keep their own scroll, and for gestures starting in the left edge zone
