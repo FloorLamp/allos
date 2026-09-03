@@ -760,8 +760,9 @@ silently becomes a trace — a genuine discrete draw misrouted into a trace lose
 identity, its band and its document. That default direction is a SAFETY CHOICE rather
 than a measurement, and nothing here has tested it: the observation path is the shipped
 one and #3182 is about the shape it produces, but **prod holds no CGM data at all** and
-this repo holds no real-exporter payload carrying glucose — `blood_glucose` appears only
-in the two #3182 test files and one fixture. So no sensor has reached either branch, and
+this repo holds no real-exporter payload carrying glucose — outside the ingest code
+itself, `blood_glucose` appears only in the two #3182 test files and one synthetic
+fixture. So no sensor has reached either branch, and
 the switch is what the first person to link one turns on, once.
 
 The 2026-09-02 ruling also named a `specimen_source` clause — interstitial fluid to the
