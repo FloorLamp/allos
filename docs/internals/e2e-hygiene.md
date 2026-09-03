@@ -1548,6 +1548,20 @@ seam, **`lib/clock.ts`**:
   `00:10` local) can be stress-tested on demand:
   `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- dashboard-illness-phase5 workout-presence`.
 
+**Forward-clock runs (#4370).** Moving that instant MONTHS ahead is the only
+instrument that finds a fixture which will age out later — a census over source
+text cannot, because the fuse can be a bare year inside a regex, and the worst
+half is an absence assertion that goes vacuously green once the year turns.
+`e2e-full.yml`'s `e2e-forward-clock` job runs the whole suite at +3 and +6 months
+on the weekly schedule; reproduce one locally with
+`ALLOS_TEST_NOW="2027-01-13T12:00:00Z" npm run test:e2e -- <spec>`. A red there is
+a fuse, not a regression — fix the fixture. Measured 2026-09-02 against #4369's
+pre-#4385 `ride-detail` assertion, restored on a scratch branch: green at the real
+clock, red at 2027 with `Received string: "Monday, January 11, 2027…"`. The
+neighbouring `not.toContainText("2026")` passed in that same run, which is the
+limit of the instrument — it catches the fuse that fires, never the assertion that
+stops meaning anything.
+
 `ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
 absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
 `WARN [clock]` on every boot when it is set, so a misconfigured production

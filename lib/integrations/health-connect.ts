@@ -1,8 +1,14 @@
 import type { ActivityType } from "@/lib/types";
 import { tzOffsetMs, utcInstant, utcMinute, zonedDateParts } from "@/lib/date";
 import { anchorImpliedDay } from "@/lib/metric-window-overlap";
-import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
-import { toKg, toKm, type Kg } from "@/lib/units";
+import {
+  boundedOrNull,
+  canonicalDistanceKm,
+  canonicalDurationMin,
+  inMetricBounds,
+  inTimeWindow,
+} from "@/lib/ingest-bounds";
+import { toKg, type Kg } from "@/lib/units";
 import { metricAggregation } from "@/lib/metric-buckets";
 import { SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { SUB_DAILY_WINDOW_MAX_MIN } from "./health-connect-metrics";
@@ -692,7 +698,7 @@ function minutesBetween(start?: string, end?: string): number | null {
   const a = new Date(start).getTime();
   const b = new Date(end).getTime();
   if (Number.isNaN(a) || Number.isNaN(b) || b <= a) return null;
-  return Math.round((b - a) / 60000);
+  return canonicalDurationMin(b - a, "ms");
 }
 
 // The same window in EXACT seconds. Sleep durations derive from this rather than from
@@ -930,10 +936,9 @@ export function parseHealthConnectPayload(
     }
   };
   interval("steps", "steps", (r) => num(r.count, r.steps, r.value));
-  interval("distance", "distance_km", (r) => {
-    const m = num(r.meters, r.distance_meters, r.value);
-    return m == null ? null : m / 1000;
-  });
+  interval("distance", "distance_km", (r) =>
+    canonicalDistanceKm(num(r.meters, r.distance_meters, r.value), "m")
+  );
   interval("active_calories", "active_kcal", (r) =>
     num(r.calories, r.kcal, r.value)
   );
@@ -1167,8 +1172,10 @@ export function parseHealthConnectPayload(
     const p = parts(end, tz);
     // Bound the total (minutes): a session can't exceed 24 h, so an absurd duration
     // is dropped and counted like a malformed one (#132).
-    const sleepMin =
-      secs != null ? boundedOrNull("sleep_min", Math.round(secs / 60)) : null;
+    const sleepMin = boundedOrNull(
+      "sleep_min",
+      canonicalDurationMin(secs, "s")
+    );
     if (!p || !start || !end || secs == null || secs <= 0 || sleepMin == null) {
       out.skipped++;
       continue;
@@ -1355,18 +1362,18 @@ export function parseHealthConnectPayload(
     // only the bad field rather than the whole activity.
     const duration_min = boundedOrNull(
       "duration_min",
-      minutesBetween(start, end) ??
-        (secs != null ? Math.round(secs / 60) : null)
+      minutesBetween(start, end) ?? canonicalDurationMin(secs, "s")
     );
-    const meters = num(e.distance_meters, e.meters, e.distance);
-    // METRES → the canonical kilometres the column stores. The bounds filter runs on
-    // the converted number and hands back a plain one, so the canonical mint sits on
-    // the far side of it, at the point the value is declared to be kilometres (#2149).
-    const boundedKm = boundedOrNull(
-      "distance_km",
-      meters != null ? meters / 1000 : null
+    // METRES → the canonical kilometres the column stores, through the one shared unit
+    // boundary (#4537), which rounds and mints the `Km` brand (#2149). Plausibility
+    // stays here and stays field-local: an implausible distance nulls the column
+    // rather than discarding the exercise, unlike Strava's core-field rule.
+    const km = canonicalDistanceKm(
+      num(e.distance_meters, e.meters, e.distance),
+      "m"
     );
-    const distance_km = boundedKm == null ? null : toKm(boundedKm, "km");
+    const distance_km =
+      km != null && inMetricBounds("distance_km", km) ? km : null;
     const endParts = end ? parts(end, tz) : null;
     const externalId = `${HEALTH_CONNECT_ID}:${start}`;
     out.activities.push({
