@@ -112,14 +112,13 @@ export default function SidebarLogButton({
         fallbackWidth={PANEL_WIDTH_PX}
         panelClassName="w-96"
       >
-        {/* The panel SCROLLS ITSELF rather than being capped by the positioner:
-            `preferredMaxHeight` is for a list whose height is unknown, and this
-            one's is known — the menu's single panel-level reserve (#3736). 70vh is
-            the height at which a short desktop window (a half-screen split, a
-            laptop with a docked devtools pane) still shows the segment track
-            under the offers instead of pushing it past the viewport edge. */}
+        {/* No height management here: since #4776 AnchoredPanel caps the popover
+            to the room between the trigger and the viewport edge and scrolls the
+            rest, which is what the 70vh reserve this used to carry was reaching
+            for on a short desktop window (a half-screen split, a laptop with a
+            docked devtools pane). */}
         {() => (
-          <div className="max-h-[70vh] overflow-y-auto p-4">
+          <div className="p-4">
             <QuickLogMenu
               open={open}
               cycleRelevant={cycleRelevant}

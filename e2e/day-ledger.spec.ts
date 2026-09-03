@@ -487,7 +487,12 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // states only what the bucket still owes. The positive half is asserted first so
     // the absence below is read off a row that really rendered — `not.toContainText`
     // is happiest of all against an element that is not there.
-    await expect(morning(page).locator("h4")).toHaveText(
+    //
+    // Addressed by ROLE, not by tag. This read `locator("h4")` and went red when
+    // #4548 moved the group header onto `CardSectionHeader` (h4 → h3): the claim is
+    // that the group's HEADING carries the word, and the level it happens to sit at
+    // is the shared header's business, not this spec's.
+    await expect(morning(page).getByRole("heading")).toHaveText(
       TIME_BUCKET_LABELS.Morning
     );
     const summary = morning(page).locator('[data-testid^="ledger-due-group-"]');
