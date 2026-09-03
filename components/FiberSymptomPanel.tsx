@@ -3,14 +3,14 @@ import { formatMonthDay } from "@/lib/format-date";
 import type { FiberSymptomPanel as PanelModel } from "@/lib/fiber-symptom-panel";
 import { chartFiberPanelMarks } from "@/lib/chart-colors";
 import { severityLabelFor, symptomLabel } from "@/lib/symptoms";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // The fiber × GI-symptom read-together panel (issue #2788): the daily fiber series
 // and the GI-symptom days on ONE time axis, so the reader can draw their own
 // connection — the app draws none. A pure formatter over the panel model
 // (lib/fiber-symptom-panel.ts, where the vocabulary and the #2385 declaration live):
 // no computed correlation, no verdict copy, no finding, no send. Server-rendered,
-// no custom scrub — the shared visualization disclosure carries each day's detail.
+// no custom scrub — each day column is its own door to the day's detail (#4760).
 //
 // Encoding: one column per calendar day, colors from the chart chokepoint
 // (chartFiberPanelMarks — the fiber-series sky for bars, the palette amber for dots).
@@ -77,14 +77,13 @@ export default function FiberSymptomPanel({
           const worst = day.symptoms[0]?.severity ?? 0;
           const label = dayTitle(day, formatPrefs);
           return (
-            <div
+            <SeriesPoint
               key={day.date}
               data-testid={`fiber-symptom-day-${day.date}`}
               data-grams={day.grams == null ? undefined : Math.round(day.grams)}
               data-symptoms={day.symptoms.length || undefined}
-              role="img"
-              aria-label={label}
-              className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
+              label={label}
+              className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5"
             >
               <div className="flex h-14 w-full items-end">
                 {day.grams == null ? (
@@ -113,7 +112,7 @@ export default function FiberSymptomPanel({
                   />
                 )}
               </div>
-            </div>
+            </SeriesPoint>
           );
         })}
       </div>
@@ -123,8 +122,8 @@ export default function FiberSymptomPanel({
           {formatMonthDay(panel.days[panel.days.length - 1].date, formatPrefs)}
         </span>
       </div>
-      <VisualizationDetails
-        label="Fiber and symptom daily details"
+      <SeriesSummary
+        label="Fiber and gut symptoms by day"
         items={panel.days.map((day) => dayTitle(day, formatPrefs))}
       />
       {/* What the marks ARE — the encoding, never a connection between the series. */}

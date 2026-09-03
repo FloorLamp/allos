@@ -34,6 +34,11 @@ import {
 import { getForecastSuspension, listCyclePeriods } from "@/lib/cycle-store";
 import { cycleControlState } from "@/lib/cycle-plausibility";
 import { summarizeStepsToday, STEPS_TRAILING_DAYS } from "@/lib/steps-today";
+import IntradayChart from "@/components/IntradayChart";
+import { getIntradayDay } from "@/lib/queries/intraday";
+import { getLatestHrDay } from "@/lib/queries/metrics";
+import { gatherHistoryLog } from "@/lib/history";
+import { intradayFreshness } from "@/lib/intraday";
 import {
   isFoodLoggingRelevant,
   isLongevityRelevant,
@@ -143,6 +148,7 @@ import {
 import {
   attentionCandidates,
   attentionAheadDetail,
+  attentionDoseChipLabel,
   careCandidates,
   dailyCandidates,
   engagementFromSource,
@@ -241,7 +247,12 @@ import {
   snoozeCoaching,
   undoAttentionDose,
 } from "./actions";
-import { episodeHref, encounterHref, type AppRoute } from "@/lib/hrefs";
+import {
+  episodeHref,
+  encounterHref,
+  historyDayIntradayHref,
+  type AppRoute,
+} from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySickFromStates } from "@/lib/household-history";
 import { visibleRecentlyResolved } from "@/lib/recently-resolved";
@@ -277,6 +288,13 @@ import { loadContextLabel } from "@/lib/lifts";
 import { formatMinutes } from "@/lib/duration";
 
 export const dynamic = "force-dynamic";
+
+// The bound on the day gather behind the Today band's chart (#4767 item 2). It is a
+// ROW cap on one profile-local day, and the chart draws only the subset that carries
+// a clock — so this is not a limit on what the chart can show so much as a refusal to
+// read an unbounded day. A day past it has more entries than any 358px axis could
+// mark legibly, and the day view itself is one tap away with its own paging.
+const DASHBOARD_INTRADAY_DAY_ROWS = 200;
 
 // The soonest scheduled visit, flattened by the page (#171/#1215). `whenLabel`
 // carries date AND clock time through the login's display prefs — a 9am and a 4pm
@@ -634,6 +652,15 @@ async function renderDashboard(
         now: clockNow(),
       }
     );
+    // ONE COLLAPSED READING, drawn twice (#4752 item 1): the accordion line above the
+    // body and the body's own recovery header read the SAME object, so an expanded
+    // cockpit and the line it expanded from cannot state two different last doses.
+    const collapsedStatus = {
+      ...clinicalStatus,
+      worsening: displayStatus.worsening,
+      temperature: displayStatus.temperature,
+      lastMeds: displayStatus.lastMeds,
+    };
     return {
       episodeKey: key,
       episodeOrder: c.episodeOrder,
@@ -660,18 +687,14 @@ async function renderDashboard(
               key,
               latestDose
             ),
-      status: {
-        ...clinicalStatus,
-        worsening: displayStatus.worsening,
-        temperature: displayStatus.temperature,
-        lastMeds: displayStatus.lastMeds,
-      },
+      status: collapsedStatus,
       feverFree: model.feverFree,
       episodeHref: episodeHref(c.episode.id),
       body: (
         <IllnessCockpitBody
           profileId={c.profileId}
           episode={displayEpisode}
+          status={collapsedStatus}
           crossProfile={!c.isActive}
           canWrite={scope.access.get(c.profileId) === "write"}
           ownsSharedProfileControls={c.episodeOrder === 0}
@@ -703,6 +726,24 @@ async function renderDashboard(
     };
   });
   const illnessUi = getIllnessNowUi(profile.id);
+
+  // WHO EACH NOW CLUSTER IS ABOUT (#4752 item 6). The ranker keys a group by profile
+  // id and only groups at all when a cross-profile row is present, so this map is
+  // consulted exactly when there is more than one subject on screen. The viewer's own
+  // cluster says "You", not their name — that is what a person reading their own
+  // dashboard recognizes above their own rows.
+  const nowSubjectNames = disambiguateProfileNames(accessible);
+  const nowSubjects = new Map(
+    accessible.map((p) => [
+      String(p.id),
+      {
+        key: String(p.id),
+        profile: p,
+        name:
+          p.id === profile.id ? "You" : (nowSubjectNames.get(p.id) ?? p.name),
+      },
+    ])
+  );
 
   // Recently-resolved reopen affordance (issue #1140 Part A): for the viewer and every
   // bounded household member, the most-recent episode still inside its 7-day reopen
@@ -1154,6 +1195,35 @@ async function renderDashboard(
   // The PROFILE-LOCAL hour decides whether today is complete enough to compare against
   // whole days (#3258). Local, not UTC — a delta appearing on the server's clock would
   // be the same artifact in a different disguise.
+  // THE DAY SO FAR (#4767 item 2) — the SAME IntradayChart the /history day view
+  // draws, in its existing compact geometry. No second implementation and no model
+  // of its own: the events are `gatherHistoryLog`'s own resolved day rows, the same
+  // list the day view hands the panel, so a window drawn here can never name
+  // something that page would not show.
+  //
+  // GATED LIKE THE CARD IT REPLACES, and gated CHEAPLY FIRST. `getLatestHrDay` is one
+  // indexed read; a profile with no wearable, or a morning nothing has synced into
+  // yet, pays that and stops — the day gather below never runs for them, and they see
+  // no frame at all rather than an empty axis. The second half of the gate is n > 1:
+  // one sample is a dot, not a day (the same rule the sparkline column applies at
+  // `loneReading`).
+  const intradayCandidate =
+    getLatestHrDay(profile.id) === on
+      ? getIntradayDay(
+          profile.id,
+          on,
+          gatherHistoryLog(profile.id, {
+            loginId: login.id,
+            day: on,
+            limit: DASHBOARD_INTRADAY_DAY_ROWS,
+          }).dayEvents
+        )
+      : null;
+  const intradayToday =
+    intradayCandidate && (intradayCandidate.hr?.pointCount ?? 0) > 1
+      ? intradayCandidate
+      : null;
+
   const stepsRows = getMetricDailyTotals(profile.id, "steps");
   const stepsSummary =
     stepsRows.length > 0
@@ -1270,14 +1340,18 @@ async function renderDashboard(
       control: canWrite ? (
         <>
           {item.doseId != null && (
+            /* ONE ACTION GRAMMAR SECTION-WIDE (#4752 item 7). "Mark taken" was a
+               bare verb beside a row that already said everything except WHEN, so
+               the slot moves onto the control that writes it and the verb becomes
+               one word. Same action, same undo — only the sentence changed. */
             <DoseConfirmButton
               action={markAttentionDose}
               undoAction={undoAttentionDose}
               fields={{ dose_id: item.doseId }}
+              payload={attentionDoseChipLabel(item, on, formatPrefs)}
+              ariaLabel={`Take ${item.title}`}
               testid="attention-mark-taken"
-            >
-              Mark taken
-            </DoseConfirmButton>
+            />
           )}
           {item.followUpResolve != null && (
             <FollowUpResolveControls
@@ -1503,6 +1577,7 @@ async function renderDashboard(
   }
 
   const finishedActivityId = workoutPresence?.activityId;
+  const finishedDayHref = historyDayIntradayHref(workoutPresence?.date ?? on);
   if (showRecapCard && finishedRecap && finishedActivityId != null) {
     const recapFacts = [
       ["sets", `${finishedRecap.totalWorkingSets} working sets`],
@@ -1522,8 +1597,13 @@ async function renderDashboard(
         ),
         {
           value,
-          href: "/training",
-          moment: { title: "Session complete", href: "/training" },
+          // THE RECEIPT'S PHYSIOLOGY DOOR (#4767 item 4). "Session complete" used to
+          // land on /training, which answers what you LOGGED; the question this
+          // moment raises is what it DID to you, and only the day view's intraday
+          // panel answers that. The session's OWN day, not today — the finished
+          // window carries a day of slack across midnight.
+          href: finishedDayHref,
+          moment: { title: "Session complete", href: finishedDayHref },
         }
       )
     );
@@ -2057,6 +2137,30 @@ async function renderDashboard(
         // The control is unchanged from the quick-log sheet's mount, whose reserved
         // height pins it (LOG_SHEET_CONTEXT_RESERVE_PX).
         control: <UsualRoutineControl {...routineControl} />,
+      }
+    );
+
+  if (intradayToday)
+    add(
+      dailyCandidates.intraday(
+        { subject: profileSubject, sourceOrder: sourceOrder++ },
+        on
+      ),
+      {
+        // The lag sentence is the row's FACTS — the one thing the drawing cannot
+        // say about itself (#4767 item 5).
+        value: intradayFreshness(intradayToday) ?? undefined,
+        href: historyDayIntradayHref(on),
+        presence: "current",
+        figure: (
+          <IntradayChart
+            model={intradayToday}
+            formatPrefs={formatPrefs}
+            profileId={profile.id}
+            variant="compact"
+            className="w-full"
+          />
+        ),
       }
     );
 
@@ -2844,6 +2948,7 @@ async function renderDashboard(
           presentations={presentations}
           aheadPresentations={aheadPresentations}
           attentionBadgeCount={attentionBadgeCount}
+          nowSubjects={nowSubjects}
           illnessGroupNode={
             placedIllnessCockpits.length > 0 ? (
               <IllnessNowGroup

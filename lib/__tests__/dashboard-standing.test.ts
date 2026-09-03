@@ -123,6 +123,7 @@ describe("fixed Standing instrument cluster", () => {
       ["today", "protein-today", undefined],
       ["today", "nap-total", undefined],
       ["today", "cycle-phase", undefined],
+      ["today", "intraday-today", undefined],
       ["body", "weight", undefined],
       ["body", "blood-pressure", undefined],
       ["body", "resting-heart-rate", undefined],

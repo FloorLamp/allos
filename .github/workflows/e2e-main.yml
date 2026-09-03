@@ -25,9 +25,22 @@ name: E2E (main)
 # argument against this file. That ruling covers a DETECTOR only: promoting this
 # to a per-merge gate is a separate decision, and the objection recorded in
 # ci-main.yml still stands against it.
+#
+# AND A NIGHTLY, UNCONDITIONALLY (#4370 part 1, ruled 2026-09-02). The push
+# detector below works correctly and its skip is a sensible optimisation, but a
+# change-triggered signal cannot watch time-triggered breakage: #4358's fixture
+# aged out at midnight, the last run that actually executed Playwright was
+# 2026-08-30T23:24:07Z, and runs 654-662 (00:20Z, 00:30Z, 00:50Z, 01:03Z) all
+# skipped, so main never once observed it. It was found by the next contributor's
+# PR going red. The nightly runs the whole suite whatever the diff was, so the
+# clock that causes this class is also what catches it. 00:41 UTC is chosen to
+# sit just past the UTC date boundary a day-keyed fixture ages out on, off the
+# :00 spike GitHub delays worst.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "41 0 * * *"
   workflow_dispatch:
 
 # DEBOUNCE, not cancel. ci-main.yml uses cancel-in-progress because its three
@@ -46,12 +59,100 @@ on:
 # Exact when merges are spaced out, and a short bisect range when they are not —
 # against a status quo where the range is "some merge, discovered later, by
 # somebody else's PR".
+#
+# event_name is in the group so the nightly can never be REPLACED by the pending
+# push run of a burst (or replace one). The debounce above is about collapsing a
+# burst of merges; an unconditional nightly that a merge could evict would be
+# unconditional in name only.
 concurrency:
-  group: e2e-main
+  group: e2e-main-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
+  # A SKIP THAT SAYS SO, IN BOTH LANGUAGES ITS READERS SPEAK (#4370 part 2).
+  #
+  # The detection used to live inside the matrix job, so a skipped push produced
+  # four shards reporting SUCCESS with every step skipped — indistinguishable,
+  # to a badge, to a person, or to scripts/orchestration/merge-gate-core.mjs's
+  # `baseDetectorNotice`, from four shards that ran the suite and passed. That is
+  # silent in the direction of false confidence, which is the one direction a
+  # detector may not be silent in.
+  #
+  # Hoisting the detector into its own job fixes both readers at once. A person
+  # gets the step summary written below, in words. A machine gets a check-run
+  # conclusion of `skipped` instead of `success` on all four shards, because the
+  # matrix job is now gated by `if:` rather than each of its steps — no new
+  # reporting layer, just the conclusion GitHub already has for this.
+  #
+  # It also costs less on the runs it applies to: a skipped push paid FOUR
+  # full-history checkouts and now pays one.
+  #
+  # ITS NAME MUST NOT START WITH `e2e-main`. `baseDetectorNotice` picks this
+  # workflow's check runs out of main's list by that prefix and counts them as
+  # shards, and this job always succeeds — so `e2e-main-detect` would read as one
+  # shard that ran and passed, which is the very false green above, restored
+  # through the back door.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      # Full history so `github.event.before` resolves: a push to main can carry
+      # more than the one squash commit, and the skip below must see the whole
+      # range or not skip at all.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The same runtime-surface rule ci.yml applies to PRs, applied to the merge
+      # — see that job for why each path is on the list. Roughly a fifth of recent
+      # main commits are prose, skills, orchestration tooling or unit-test files
+      # only, and no browser can exercise those; measured, such a run costs 1.4
+      # CI-minutes against 39.6 for the same matrix.
+      #
+      # FAIL OPEN. If the range cannot be computed — a force-push, a rewritten
+      # base, the zero SHA on a first push — run the matrix. Skipping is the
+      # answer that can be silently wrong, and this workflow exists because
+      # something was silently un-covered. The schedule and workflow_dispatch
+      # events have no range at all and are unconditional by ruling, so they are
+      # answered first rather than left to fall through the fail-open branch.
+      - name: Detect changes with a runtime surface
+        id: changes
+        run: |
+          set -uo pipefail
+          before='${{ github.event.before }}'
+          if [ '${{ github.event_name }}' != 'push' ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "${{ github.event_name }} run - the full suite runs whatever the diff was."
+          elif [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Cannot resolve the pushed range - running the matrix rather than guessing."
+          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "No runtime surface in this push - skipping the browser suite."
+          fi
+
+      # In words, on the run's own front page, so a person who opens a green
+      # E2E (main) and reads no further still cannot mistake it for a pass.
+      - name: Say that nothing ran
+        if: steps.changes.outputs.code != 'true'
+        run: |
+          {
+            echo "## E2E (main): NOTHING RAN"
+            echo
+            echo "This push has no runtime surface, so no browser suite was executed."
+            echo "**This run is not evidence that main's e2e tier is green.** The four"
+            echo "shards below report \`skipped\`, not \`success\`."
+            echo
+            echo "The nightly schedule (00:41 UTC) runs the whole suite unconditionally;"
+            echo "that run is what covers time-triggered breakage on main (#4370)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   e2e-main:
+    needs: detect
+    if: needs.detect.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -72,40 +173,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      # Full history so `github.event.before` resolves: a push to main can carry
-      # more than the one squash commit, and the skip below must see the whole
-      # range or not skip at all.
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      # The same runtime-surface rule ci.yml applies to PRs, applied to the merge
-      # — see that job for why each path is on the list. Roughly a fifth of recent
-      # main commits are prose, skills, orchestration tooling or unit-test files
-      # only, and no browser can exercise those; measured, such a run costs 1.4
-      # CI-minutes against 39.6 for the same matrix.
-      #
-      # FAIL OPEN. If the range cannot be computed — a force-push, a rewritten
-      # base, the zero SHA on a first push — run the matrix. Skipping is the
-      # answer that can be silently wrong, and this workflow exists because
-      # something was silently un-covered.
-      - name: Detect changes with a runtime surface
-        id: changes
-        run: |
-          set -uo pipefail
-          before='${{ github.event.before }}'
-          if [ -z "$before" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Cannot resolve the pushed range - running the matrix rather than guessing."
-          elif git diff --name-only "$before" HEAD | grep -qvE '^(README\.md|SECURITY\.md|LICENSE|AGENTS\.md|CLAUDE\.md|docs/|\.claude/skills/|lib/__tests__/|lib/__db_tests__/|lib/__action_tests__/|components/__tests__/|scripts/orchestration/|scripts/orchestrator-checkin\.sh$)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "No runtime surface in this push - skipping the browser suite."
-          fi
 
       - uses: ./.github/actions/e2e-setup
-        if: steps.changes.outputs.code == 'true'
 
       # No retries flag, exactly like ci.yml's sharded matrix: playwright.config.ts
       # sets `retries: 0` everywhere and is the single place that decides. Main is
@@ -117,7 +187,6 @@ jobs:
       # buckets here exactly as it plans twelve there, and exits non-zero if they
       # are not an exact partition of the suite.
       - name: E2E (Playwright, shard ${{ matrix.shard }}/${{ strategy.job-total }})
-        if: steps.changes.outputs.code == 'true'
         run: |
           set -euo pipefail
           PLAN=$(./node_modules/.bin/tsx scripts/e2e-shard-plan.ts ${{ matrix.shard }} ${{ strategy.job-total }})
@@ -125,15 +194,23 @@ jobs:
           mapfile -t ARGS <<< "$PLAN"
           npm run test:e2e -- "${ARGS[@]}"
 
+      # A push red names the merge that caused it. A NIGHTLY red names nothing,
+      # because nothing changed — which is the whole point, and also the thing a
+      # reader will get wrong at 6am if the run does not say it.
+      - name: Attribute the nightly
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
+        run: |
+          echo "Nightly unconditional run. A failure here was caused by the clock, not by a merge (#4370)." >> "$GITHUB_STEP_SUMMARY"
+
       # Names the failing spec on the check itself, which is what makes this
       # attributable from the API without downloading an artifact — agents behind
       # a filtering proxy can read job logs and cannot reach blob storage.
       - name: Flake report
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        if: ${{ !cancelled() }}
         run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: e2e-main-report-shard-${{ matrix.shard }}

@@ -14,6 +14,11 @@ import {
   settledBoxes,
   settledFill,
 } from "./helpers";
+import {
+  diffRecentActivities,
+  snapshotRecentActivities,
+} from "./shared-profile-guard";
+import { frozenNow } from "./worker-env";
 
 // Pick an activity in the editor's exercise combobox. The option button's text
 // varies with the input state: a partial filter lists options as the name plus a
@@ -1143,6 +1148,12 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
 }) => {
   await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
+  // The BEFORE reading for the row-absence assertion at the end (#4741). That claim
+  // used to be a closing COMMENT and CI contradicted it twice, so it is now a diff
+  // over the same snapshot the shared-profile guard reads.
+  const at = frozenNow();
+  const activitiesBefore = snapshotRecentActivities(at);
+
   // Force every saveActivity call to fail at the network layer. saveActivity runs
   // as a Server Action — a POST to the page carrying a `next-action` header; the
   // service worker passes non-GET straight through (public/sw.js), so this is an
@@ -1156,9 +1167,19 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // the honest "Couldn’t save" indicator (the exact { ok: false } not-owned/invalid
   // branches are pinned directly at the action tier — the single-profile e2e DB
   // can't naturally produce a stale foreign id).
+  //
+  // AN ABORT MODELS A SAVE THAT DID NOT PERSIST, WHICH IS #332's SUBJECT — not a
+  // server that ANSWERS with a rejection. The two reach the form differently:
+  // `{ ok: false }` takes the `!res.ok` branch, an abort throws
+  // `TypeError: Failed to fetch` into the catch and is classified retriable
+  // (`activity-autosave-retriable`, measured on this case). Both end at
+  // `setStatus("error")`, so both raise this indicator — which is why the case is
+  // honest, and why the count below is what says the abort actually happened.
+  let abortedActionPosts = 0;
   await page.route("**/*", async (route) => {
     const req = route.request();
     if (req.method() === "POST" && req.headers()["next-action"]) {
+      abortedActionPosts += 1;
       await route.abort("failed");
       return;
     }
@@ -1180,6 +1201,22 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // hits the aborted request.
   await page.getByTestId("cardio-duration").fill("30");
 
+  // THE FORCED FAILURE IS ASSERTED BEFORE ANYTHING IS CONCLUDED FROM IT (#4741).
+  // A forced failure that does not fire makes every assertion below it a claim
+  // about an ordinary successful save, and the case reads green or red for reasons
+  // that have nothing to do with #332. This is a PRESENCE assertion on a counter
+  // the route handler owns, so it is the same object the abort runs through, and
+  // its ceiling is free: waiting longer cannot invent a POST that was never made.
+  // It comes FIRST so that when this case reds, the report already says whether the
+  // interception applied — the question #4741 was opened to settle.
+  await expect
+    .poll(() => abortedActionPosts, {
+      message:
+        "no Server Action POST was intercepted — the forced failure never fired, " +
+        "so nothing below this line is a test of #332 (see #4741)",
+    })
+    .toBeGreaterThan(0);
+
   // The failure must surface as the error indicator (SaveStatus, aria-label
   // "Couldn’t save"), and the success check must never appear.
   // Desktop renders the active indicator in the sticky header; the mobile
@@ -1192,8 +1229,22 @@ test("a failed activity save surfaces an error, never a false 'Saved ✓' (#332)
   // contain the word — this pinned the autosave indicator only by luck.
   await expect(page.getByLabel("Saved", { exact: true })).toHaveCount(0);
 
-  // Nothing persisted (the save was forced to fail), so there is no draft row to
-  // clean up — the shared seed DB is left untouched.
+  // NOTHING PERSISTED — ASSERTED, NOT ASSUMED (#4741). One reading, taken at a
+  // moment the two assertions above have made settled: the save has been attempted,
+  // intercepted and answered on screen. No poll — a retrying absence check would
+  // wait out exactly the window a late write lands in.
+  //
+  // It reuses the guard's own snapshot/diff rather than a second query, and does NOT
+  // repeat its repair: `noSharedProfileLeak` (e2e/fixtures.ts) already deletes ADDED
+  // rows in teardown. What this adds is ATTRIBUTION — the guard reads after the
+  // context is gone, and its message cannot say which of this file's two identical
+  // fixtures produced the row. "Running" + 30 min generates
+  // "Afternoon 30 Min Running Session" here, and the est-calories case above builds
+  // the same activity for real, so a bare guard failure names a title both cases mint.
+  expect(
+    diffRecentActivities(activitiesBefore, snapshotRecentActivities(at)).added,
+    "the save was forced to fail, so no activity row may exist (#332/#4741)"
+  ).toEqual([]);
 });
 
 test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async ({

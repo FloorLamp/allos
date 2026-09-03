@@ -1,13 +1,32 @@
 import DestinationIndicator from "@/components/DestinationIndicator";
 import { PendingTextLink } from "@/components/PendingLink";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import type { FreshnessState } from "@/lib/freshness";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
+
+type DotState = FreshnessState | "unmeasured";
+const DOT_COLOR: Record<DotState, string> = {
+  current: "bg-emerald-500",
+  due: "bg-amber-500",
+  "not-applicable": "bg-slate-300 dark:bg-slate-600",
+  unmeasured: "bg-slate-300 dark:bg-slate-600",
+};
+const DOT_WORD: Record<DotState, string> = {
+  current: "current",
+  due: "retest due",
+  "not-applicable": "not measured",
+  unmeasured: "not measured",
+};
 
 export default function FitnessCheckStrip({
   model,
 }: {
   model: FitnessCheckModel;
 }) {
+  const tests = model.results.map((result) => {
+    const state: DotState = !result.measured ? "unmeasured" : result.freshness;
+    return { result, state, text: `${result.label} — ${DOT_WORD[state]}` };
+  });
   const retest = model.coverage.stale;
   const missing = model.coverage.unmeasured;
   const action =
@@ -24,43 +43,19 @@ export default function FitnessCheckStrip({
           aria-label={`${model.coverage.fresh} of ${model.coverage.total} tests current`}
           data-testid="fitness-freshness-dots"
         >
-          {model.results.map((result) => {
-            const state = !result.measured ? "unmeasured" : result.freshness;
-            const color =
-              state === "current"
-                ? "bg-emerald-500"
-                : state === "due"
-                  ? "bg-amber-500"
-                  : "bg-slate-300 dark:bg-slate-600";
-            const word =
-              state === "current"
-                ? "current"
-                : state === "due"
-                  ? "retest due"
-                  : "not measured";
-            return (
-              <span
-                key={result.key}
-                className={`h-2.5 w-2.5 rounded-full ${color}`}
-                aria-label={`${result.label} — ${word}`}
-                data-testid="fitness-freshness-dot"
-                data-state={state}
-              />
-            );
-          })}
+          {tests.map(({ result, state, text }) => (
+            <SeriesPoint
+              key={result.key}
+              className={`relative h-2.5 w-2.5 rounded-full ${DOT_COLOR[state]}`}
+              label={text}
+              data-testid="fitness-freshness-dot"
+              data-state={state}
+            />
+          ))}
         </div>
-        <VisualizationDetails
-          label="Test details"
-          items={model.results.map((result) => {
-            const state = !result.measured ? "unmeasured" : result.freshness;
-            const word =
-              state === "current"
-                ? "current"
-                : state === "due"
-                  ? "retest due"
-                  : "not measured";
-            return `${result.label} — ${word}`;
-          })}
+        <SeriesSummary
+          label="Fitness tests"
+          items={tests.map((test) => test.text)}
         />
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {model.coverage.fresh} of {model.coverage.total} current

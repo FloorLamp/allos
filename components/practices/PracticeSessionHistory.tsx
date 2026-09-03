@@ -12,6 +12,8 @@ import {
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import Link from "next/link";
+import { historyDayIntradayHref } from "@/lib/hrefs";
 import { normalizePracticeName } from "@/lib/practice";
 import type { PracticeLog } from "@/lib/types";
 import { removePracticeSession } from "@/app/(app)/wellness/actions";
@@ -107,7 +109,21 @@ export default function PracticeSessionHistory({
       header: "Session",
       slot: "title",
       cellClassName: "tabular-nums text-slate-700 dark:text-slate-200",
-      cell: (session) => sessionTitle(session, formatPrefs, showPracticeName),
+      // THE COMPLETION RECEIPT'S PHYSIOLOGY DOOR (#4767 item 4). A logged session
+      // states its window and its duration; what it cannot state is what the body
+      // did during it, and the day view's intraday panel is the one surface that
+      // can. The row's own identity carries the link — the same rule the record's
+      // rows follow — so the words that name the session are the words that go to
+      // it, and the text is unchanged.
+      cell: (session) => (
+        <Link
+          href={historyDayIntradayHref(session.date)}
+          className="hover:text-brand-700 hover:underline dark:hover:text-brand-400"
+          data-testid="practice-session-day-door"
+        >
+          {sessionTitle(session, formatPrefs, showPracticeName)}
+        </Link>
+      ),
     },
     {
       // NO `trailing` HERE, ON PURPOSE (#3904): a session's date, clock and duration

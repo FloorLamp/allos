@@ -121,11 +121,10 @@ describe("the ★ ↔ Body-card correspondence (#1643)", () => {
   });
 
   it("answers null for the cards that have no savable series", () => {
-    // The percentile card, the Sleep summary and the intraday HR zoom are cards but
-    // not metrics — they can only ever occupy their ranked slot.
+    // The percentile card and the Sleep chart are cards but not metrics — they can
+    // only ever occupy their ranked slot.
     expect(seriesKeyForBodyCard("growth")).toBeNull();
     expect(seriesKeyForBodyCard("sleep")).toBeNull();
-    expect(seriesKeyForBodyCard("hr-day")).toBeNull();
   });
 
   it("answers null for a saved ref that names no Body card", () => {

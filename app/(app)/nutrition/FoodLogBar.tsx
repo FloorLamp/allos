@@ -1704,8 +1704,12 @@ export default function FoodLogBar({
   // beside `/history`'s door. `slotCounts` is already the ACTIVE day's, so the offer
   // shrinks against the day being filled and not against today.
   //
-  // The span needs no gate here: the picker offers today plus six days back, and
-  // `isUsualBackfillDateAccepted` bounds the core at the same six.
+  // The span needs no gate here because two spans agree: the bar's picker offers today
+  // plus six days back as the BAR'S OWN one-tap offer (#4754 — never the shared day
+  // bound, which retired), and `isUsualBackfillDateAccepted` bounds the core at the
+  // same six. When #4477's `+ Add` door replaces the picker, the bar's write reaches
+  // whatever day the page shows while `USUAL_BACKFILL_WINDOW_DAYS` stays where it is —
+  // so that is the change that makes a gate owed here, not this one.
   const usualOffer = useMemo(
     () =>
       usualFoodOffer(
@@ -1805,11 +1809,27 @@ export default function FoodLogBar({
     [usualGroups, usualProteinGrams]
   );
 
-  // The bundle promises doses only while it promises FOOD: the food half is the offer's
-  // gate (lib/usual-routine.ts), and a dose-only "usual" is a worse copy of the dose
-  // rows that already exist. Empty groups therefore means no bundle at all, exactly as
-  // it does on every other host.
-  const usualDosesOffered = usualGroups.length > 0 ? usualDoseRider : [];
+  // THE FOOD HALF STANDING, COUNTED THE WAY `usualRoutineOffer` COUNTS IT. The half is
+  // the offer's gate (lib/usual-routine.ts) and a dose-only "usual" is a worse copy of
+  // the dose rows that already exist — but the scoop is a MEMBER of that half (#4379,
+  // ruling 2026-09-02), so the gate asks for any food MEMBER and never for a catalog
+  // group. The names list IS the half: one derivation for what the button says and what
+  // it stands on, rather than two spellings that can drift apart.
+  //
+  // THIS CHANGES NOTHING TODAY, AND THE REASON IS WORTH WRITING DOWN, because the gate
+  // it replaces (`usualGroups.length > 0`) reads like the oversight #4765 filed it as.
+  // It is not: on this page the two predicates are the same one. `usualBySlot` can only
+  // carry the reserved key or a slug that resolves to a group — `getFoodRegularity`
+  // drops everything else before the measure sees it — and `usualFoodOffer` stands only
+  // at FOOD_USUAL_MIN_GROUPS or more MEMBERS, the scoop counted. Two or more members of
+  // which at most one is the scoop always leaves a group, so a scoop-only half is a
+  // shape this derivation cannot reach. The dashboard's `getUsualRoutineOffer` is
+  // bounded the same way; the shape exists only where a STORED offer is reduced against
+  // a fresh one (`standingUsualOffer`, the Telegram keyboard rebuild), which no web
+  // surface reads. What is fixed here is the SPELLING: the gate now states the rule the
+  // offer functions state, so it stays right if either of those two invariants moves.
+  const usualFoodStands = usualFoodNames.length > 0;
+  const usualDosesOffered = usualFoodStands ? usualDoseRider : [];
   const doseIds = usualDosesOffered.map((d) => d.id);
   // The label is the promise, through the ONE phrase every host of this bundle renders
   // (#2458) — so the nutrition page and the dashboard cannot name one write differently.
@@ -1817,7 +1837,9 @@ export default function FoodLogBar({
 
   async function logUsual() {
     const slugs = usualGroups.map((g) => g.slug);
-    if (slugs.length === 0) return;
+    // The same gate the button renders on, not a second one: a scoop-only bundle has no
+    // slugs to post and is still a write this tap performs.
+    if (!usualFoodStands) return;
     const noticeScope = currentReceiptProfileScope();
     for (const slug of slugs)
       reserveToastLifecycle(
@@ -2088,8 +2110,11 @@ export default function FoodLogBar({
               read than it saves. The label NAMES every group it will write, and both it
               and the write core derive that list from the same rule, so the button
               cannot promise a write the server would not perform. It is an OFFER: the
-              user's tap is the write, always. */}
-          {usualGroups.length > 0 && (
+              user's tap is the write, always. Rendered on the FOOD HALF standing, which
+              counts the scoop as a member (#4379/#4765) — `data-groups` stays catalog
+              slugs alone, because the reserved key is a member of the NAME and never of
+              the posted group list. */}
+          {usualFoodStands && (
             <button
               type="button"
               data-testid="food-usual-offer"

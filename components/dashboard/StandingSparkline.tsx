@@ -7,7 +7,7 @@ import {
 import { fillDailySeries } from "@/lib/day-fill";
 import { glanceSeriesToneClass } from "@/lib/glance-age";
 import SingleReadingMark from "@/components/SingleReadingMark";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 
 // THE STANDING SPARKLINE COLUMN (#3252) — one aligned column, desktop only.
 //
@@ -34,8 +34,8 @@ import VisualizationDetails from "@/components/VisualizationDetails";
 //
 // INLINE SVG, no chart library. The page adds none, and the marks here are the issue's
 // own spec: a 2px stroke, a ~12% area fill under it, an emphasized endpoint dot, and
-// a nearest-point SVG title naming the exact value and date. The shared disclosure
-// below exposes the same history to touch and keyboard users without a custom scrub.
+// one band per reading over the plot naming the exact value and date — the hover
+// readout, and the same band is the touch, keyboard and AT door to it (#4760).
 //
 // The GAP is not decided here either: `seriesGapForSeriesKey` already declares, per
 // series, whether a missing day is a hole a level may cross or an absence the stroke
@@ -169,84 +169,109 @@ export default function StandingSparkline({
     dense.length > 1 ? (WIDTH - PAD * 2) / (dense.length - 1) : WIDTH;
 
   return (
-    <>
-      <div
-        className={`hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
-        style={{ width: WIDTH }}
+    // THE PLOT COLUMN TAKES NO POINTER (#4760, restoring #3459). This row's whole
+    // anatomy is one door: `.standing-stretch::after` reaches `--standing-trail`
+    // (13rem at min-[45rem]) to the RIGHT of the facts cell, so the door's hit area
+    // already covers this entire column — that is what makes the desktop plot part
+    // of the link, asserted in e2e/dashboard.spec.ts. On main this column was
+    // unpositioned, so it painted in the block layer BENEATH that positioned
+    // pseudo-element and the door won every hit. The bands below need a containing
+    // block, so this wrapper is now `relative` — which lifts the column into the
+    // positioned layer, later in DOM than the `<dd>`, and it started taking the
+    // pointer the door was supposed to get.
+    //
+    // `pointer-events-none` puts the hit back exactly where main had it. The cost is
+    // the bands' HOVER readout on this one adopter, and it is not a real cost: the
+    // door already covered this column on main, so the SVG `<title>` tooltip that
+    // used to live here was unreachable too. What #4760 actually adds survives
+    // untouched — every band is still `tabIndex=0` with its value as the accessible
+    // name, `:focus::after` still paints the readout for the keyboard, and the
+    // sr-only summary below still carries the whole series for AT. Hit-testing is
+    // all this turns off; focus and painting are unaffected.
+    <div
+      className={`pointer-events-none relative hidden min-[45rem]:col-start-3 min-[45rem]:row-start-1 min-[45rem]:block min-[45rem]:justify-self-end ${tone}`}
+      style={{ width: WIDTH }}
+    >
+      <svg
+        data-testid="standing-sparkline"
+        data-sparkline-state="series"
+        data-sparkline-points={values.length}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        width={WIDTH}
+        height={HEIGHT}
+        className="hidden min-[45rem]:block"
+        role="img"
+        aria-label={series.name}
+        preserveAspectRatio="xMidYMid meet"
       >
-        <svg
-          data-testid="standing-sparkline"
-          data-sparkline-state="series"
-          data-sparkline-points={values.length}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          width={WIDTH}
-          height={HEIGHT}
-          className="hidden min-[45rem]:block"
-          role="img"
-          aria-label={series.name}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {strokes.map((run) => {
-            const key = `${run[0].date}-${run.at(-1)!.date}`;
-            const line = run.map((p) => `${p.x},${p.y}`).join(" ");
-            return (
-              <g key={key}>
-                {run.length > 1 && (
-                  // The area, at ~12% of the line's own colour. `currentColor` carries the
-                  // glance tone down from the wrapper, so the fill can never drift from
-                  // the stroke it sits under.
-                  <polygon
-                    points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
-                    fill="currentColor"
-                    fillOpacity={0.12}
-                  />
-                )}
-                <polyline
-                  points={line}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+        {strokes.map((run) => {
+          const key = `${run[0].date}-${run.at(-1)!.date}`;
+          const line = run.map((p) => `${p.x},${p.y}`).join(" ");
+          return (
+            <g key={key}>
+              {run.length > 1 && (
+                // The area, at ~12% of the line's own colour. `currentColor` carries the
+                // glance tone down from the wrapper, so the fill can never drift from
+                // the stroke it sits under.
+                <polygon
+                  points={`${run[0].x},${HEIGHT} ${line} ${run.at(-1)!.x},${HEIGHT}`}
+                  fill="currentColor"
+                  fillOpacity={0.12}
                 />
-              </g>
-            );
-          })}
-          {last && (
-            // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
-            // reading, the newest mark is the one the eye is looking for.
-            <circle
-              data-testid="standing-sparkline-endpoint"
-              cx={last.x}
-              cy={last.y}
-              r={2.5}
-              fill="currentColor"
-            />
-          )}
-          {strokes.flat().map((point) => (
-            // One transparent band per reading carries semantic SVG naming; the
-            // disclosure below carries the same values for sighted touch and keyboard.
-            <rect
-              key={point.date}
-              data-testid="standing-sparkline-point"
-              x={Math.max(0, point.x - band / 2)}
-              y={0}
-              width={band}
-              height={HEIGHT}
-              fill="transparent"
-            >
-              <title>{series.pointLabel(point)}</title>
-            </rect>
-          ))}
-        </svg>
-      </div>
-      <div className="relative z-10 hidden min-[45rem]:col-span-2 min-[45rem]:col-start-2 min-[45rem]:block">
-        <VisualizationDetails
-          label={`${series.name} history details`}
-          items={strokes.flat().map((point) => series.pointLabel(point))}
-          data-testid="standing-sparkline-details"
+              )}
+              <polyline
+                points={line}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          );
+        })}
+        {last && (
+          // The endpoint is ALWAYS drawn: on a row whose whole point is the latest
+          // reading, the newest mark is the one the eye is looking for.
+          <circle
+            data-testid="standing-sparkline-endpoint"
+            cx={last.x}
+            cy={last.y}
+            r={2.5}
+            fill="currentColor"
+          />
+        )}
+      </svg>
+      {strokes.flat().map((point) => (
+        // One band per reading, laid over the plot in the same coordinates it is
+        // drawn in (the viewBox renders 1:1). It names the reading and is the door
+        // to it for hover, touch and keyboard alike.
+        <SeriesPoint
+          key={point.date}
+          data-testid="standing-sparkline-point"
+          label={series.pointLabel(point)}
+          className="absolute top-0"
+          style={{
+            // CLAMPED AT BOTH ENDS (#4534). A band is centred on its reading, and
+            // the first and last readings sit ON the plot's edges — so half of
+            // each end band falls outside the plot. The lower clamp was already
+            // here; this is its missing twin, and the end it was missing is the
+            // one that matters most: the NEWEST reading, the mark a reader goes
+            // to first. Uncaught because the shell's clip absorbed it — measured
+            // at 1280px, the last band ran 38px past the 176px plot and 21px past
+            // the standing card, and `overflow: hidden` there takes the focus
+            // ring and the readout with the paint.
+            left: Math.min(Math.max(0, point.x - band / 2), WIDTH - band),
+            width: band,
+            height: HEIGHT,
+          }}
         />
-      </div>
-    </>
+      ))}
+      <SeriesSummary
+        label={`${series.name} history`}
+        items={strokes.flat().map((point) => series.pointLabel(point))}
+        data-testid="standing-sparkline-summary"
+      />
+    </div>
   );
 }

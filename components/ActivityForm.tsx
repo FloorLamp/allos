@@ -1326,6 +1326,7 @@ export default function ActivityForm({
         <SessionCompleteStep
           recap={stepRecap}
           unit={units.weightUnit}
+          date={date}
           intensity={intensity}
           onIntensity={setIntensity}
           notes={notes}
