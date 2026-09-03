@@ -43,12 +43,8 @@ import {
   type CorrectionMessageRef,
 } from "./message-pointers";
 import { telegramChannel } from "./telegram";
-import { prefixForProfile } from "./attribution";
-import {
-  prefixMessage,
-  type NotificationAction,
-  type NotificationMessage,
-} from "./types";
+import { composeForSend } from "./compose";
+import type { NotificationAction, NotificationMessage } from "./types";
 import { GLYPH } from "./glyphs";
 
 // THE CONSENTED TAP GATHER (#3330) — the ONE read every chat-facing eating-time
@@ -271,9 +267,11 @@ export function buildFoodOptInPrompt(profileId: number): NotificationMessage {
 // isn't actually configured (belt-and-suspenders; the caller already checks).
 export async function sendFoodOptInPrompt(profileId: number): Promise<void> {
   if (!telegramChannel.isConfigured(profileId)) return;
-  const msg = prefixMessage(
-    buildFoodOptInPrompt(profileId),
-    prefixForProfile(profileId)
+  // The ONE send in the app that reaches a channel without going through `dispatch`
+  // (see above), so it composes explicitly (#4538) rather than inheriting it. Unbidden,
+  // like every dispatch send, so the origin is the same one.
+  await telegramChannel.send(
+    profileId,
+    composeForSend(profileId, buildFoodOptInPrompt(profileId), "telegram-nudge")
   );
-  await telegramChannel.send(profileId, msg);
 }

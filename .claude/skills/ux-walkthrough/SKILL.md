@@ -93,8 +93,9 @@ Journeys: `onboarding`, `invite`, `pages` (all-routes census, both widths),
   overrides. Playwright cache miss → set `UX_CHROMIUM` (in Claude Code
   remote: `/opt/pw-browsers/chromium`).
 - Knobs: `UX_BASE`, `UX_ADMIN_USER`/`UX_ADMIN_PASS` (must match the server
-  env), `UX_TIMEOUT_MS`, and `UX_ROUTES` — a comma-separated route/prefix
-  filter for `pages` (e.g. `UX_ROUTES=/trends` audits one hub).
+  env), `UX_TIMEOUT_MS`, and `UX_ROUTES` — a comma-separated `pages` filter
+  whose entries are PREFIXES (`UX_ROUTES=/trends` audits one hub). Every route
+  starts with `/`, so `=` makes an entry exact: `UX_ROUTES==/` is home (#4661).
 
 ## 3. Review
 
@@ -319,8 +320,8 @@ Run a seeded mini-census while a merged UI change is still fresh:
 UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run
 ```
 
-It maps Git's changed files `app/(app)/X/**` → `UX_ROUTES=/X`, validating
-each prefix against the route tree. Shared chrome (`components/**`, layouts,
+It maps `app/(app)/X/**` → `UX_ROUTES=/X` (root page → exact `=/`), each
+validated against the route tree. Shared chrome (`components/**`, layouts,
 `app/globals.css`) runs the whole set — nothing defends a narrower claim.
 
 A renamed/deleted route, unknown `app/` shape, or diff with no censused UI

@@ -269,15 +269,16 @@ export function zoneInChainAt(
 
 // ---- Stored switch history ----
 
-// How many switches are kept per profile. A trip is a handful of switches; the
-// history exists only so a day already rendered can still be explained, so it is
-// bounded rather than an unbounded log. Oldest are dropped first.
-export const MAX_STORED_SWITCHES = 24;
-
-// How far back a stored switch stays useful: the longest window any adherence
-// surface scores (the month calendar and the 90-day dose history), with room over.
-// Beyond it the switch day is off every strip and the record is dead weight.
-export const SWITCH_RETENTION_DAYS = 120;
+// A SAFETY CAP, not a retention policy (#3428). The history was bounded at 24
+// records and 120 days back when its only reader was the switch-day excusal rules,
+// which never ask about a day older than the 90-day dose strip. `zoneAtInstant`
+// asks about ANY past instant, and there is no age at which the zone a night was
+// slept in stops being the zone it was slept in — a pruned record silently
+// re-labels every instant before it under the wrong zone, which is the defect this
+// history exists to prevent. So the only bound left is the one that keeps a
+// runaway writer from growing a settings row without limit. A heavy traveller's
+// ~100 switches a year is ~10 KB of JSON; at this cap the row cannot exceed ~500 KB.
+export const MAX_STORED_SWITCHES = 5000;
 
 export interface DecodedTimezoneSwitchHistory {
   switches: TimezoneSwitch[];
@@ -326,21 +327,16 @@ export function serializeTimezoneSwitches(
   return JSON.stringify(switches);
 }
 
-// Append a switch to a profile's history, dropping records that have aged past
-// SWITCH_RETENTION_DAYS and then trimming to MAX_STORED_SWITCHES newest-last. Pure,
-// so the pruning rule is pinned without a database.
+// Append a switch to a profile's history, keeping every record up to the safety
+// cap. Pure, so the rule is pinned without a database. The caller passes a history
+// that has already been through `connectedTimezoneSwitchHistory`, so there is no
+// unusable record here to filter out — and filtering one out silently would be the
+// laundering the writer's trust check exists to refuse.
 export function appendTimezoneSwitch(
   history: readonly TimezoneSwitch[],
-  next: TimezoneSwitch,
-  now: Date
+  next: TimezoneSwitch
 ): TimezoneSwitch[] {
-  const floor = now.getTime() - SWITCH_RETENTION_DAYS * 86_400_000;
-  const kept = history.filter((sw) => {
-    const t = new Date(sw.at).getTime();
-    return Number.isFinite(t) && t >= floor;
-  });
-  kept.push(next);
-  return kept.slice(-MAX_STORED_SWITCHES);
+  return [...history, next].slice(-MAX_STORED_SWITCHES);
 }
 
 // ---- The banner (shown, never sent — #3084) ----

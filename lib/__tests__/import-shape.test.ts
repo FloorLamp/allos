@@ -1402,3 +1402,79 @@ describe("derived results are dropped WITH a trail (#2678)", () => {
     ]);
   });
 });
+
+// THE AI/PASTE ROUTE STORES A DOCUMENT (#4732). The prompt asks for the report BODY
+// verbatim, so this path is the one that most often holds a whole rendered report —
+// and it used to write it straight into `impression`, unparsed and unbounded, while
+// every FHIR route bounded the same column at 8000 characters. Both fields now go
+// through lib/imaging-study's shared cap, and only a section the report LABELS as its
+// impression reaches `impression`.
+describe("extractionToPersistInput — imaging report body (#4732)", () => {
+  // The bound in lib/imaging-study.ts (IMAGING_NARRATIVE_MAX); a capped value is that
+  // many characters plus the ellipsis the capper appends.
+  const CAP = 8000;
+  const study = (impression: string | null) =>
+    doneExtraction({
+      imagingStudies: [
+        {
+          modality: "CT",
+          body_region: "Chest",
+          laterality: null,
+          contrast: null,
+          contrast_agent: null,
+          study_date: "2024-02-01",
+          dose_msv: null,
+          impression,
+          indication: null,
+          status: "final",
+        },
+      ],
+    });
+  const shape = (impression: string | null) =>
+    extractionToPersistInput(study(impression), "2024-02-01")
+      .imagingStudies![0]!;
+
+  const LABELLED =
+    "CT CHEST WITHOUT CONTRAST\nFINDINGS: No acute process.\n" +
+    "IMPRESSION: 6 mm right lower lobe nodule.";
+
+  it.each([
+    // name, extracted body, expected impression, expected narrative
+    [
+      "a labelled report yields the section as the impression and the whole body as the narrative",
+      LABELLED,
+      "6 mm right lower lobe nodule.",
+      LABELLED,
+    ],
+    [
+      "an unlabelled report contributes NO impression — the body is the narrative alone",
+      "Mild degenerative change at L4-L5.",
+      null,
+      "Mild degenerative change at L4-L5.",
+    ],
+    ["no report at all leaves both fields empty", null, null, null],
+  ])("%s", (_name, body, impression, narrative) => {
+    expect(shape(body)).toMatchObject({
+      impression,
+      report_narrative: narrative,
+    });
+  });
+
+  it("bounds BOTH fields — neither is ever written raw", () => {
+    // A runaway document whose labelled impression is itself over the cap, so the
+    // parsed field and the narrative are each too long on their own.
+    const impressionBody = "stable nodule. ".repeat(1000);
+    const raw = `FINDINGS: ${"low attenuation focus. ".repeat(1000)}\nIMPRESSION: ${impressionBody}`;
+    expect(raw.length).toBeGreaterThan(CAP);
+    expect(impressionBody.length).toBeGreaterThan(CAP);
+
+    const row = shape(raw);
+    expect(row.impression).not.toBe(raw);
+    expect(row.report_narrative).not.toBe(raw);
+    expect(row.impression).not.toBe(impressionBody);
+    for (const field of [row.impression, row.report_narrative]) {
+      expect(field!.length).toBe(CAP + 1);
+      expect(field!.endsWith("…")).toBe(true);
+    }
+  });
+});
