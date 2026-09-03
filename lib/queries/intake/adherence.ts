@@ -969,7 +969,22 @@ export function logHistoricalDose(
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
       // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      //
+      // THE OUTCOME IS THE REFUSAL, NOT A LOG (#4909). The CAS carries one predicate
+      // the read above does not — `kind = 'medication'` — and this core is
+      // kind-neutral (#1933), so an item that HAS courses but is no longer a
+      // medication misses and writes nothing. Discarding that committed half the
+      // intent, under a form that had just said "start date will move back to
+      // match". `outside-course` is the honest kind rather than a new one: the
+      // extension was the only thing that would have put this day inside a course.
+      // And returning is a whole abort — a miss wrote nothing, and this is
+      // deliberately the transaction's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     db.prepare(
       `INSERT INTO intake_item_logs
@@ -1161,8 +1176,15 @@ export function updateHistoricalDose(
 
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
-      // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      // transaction (Tx token), the DML lives with the invariant's owner. The
+      // outcome is the refusal (#4909) for the reason logHistoricalDose gives, and
+      // this is likewise the amendment's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     const amount = amountOverride?.trim() || row.dose_amount;
     db.prepare(

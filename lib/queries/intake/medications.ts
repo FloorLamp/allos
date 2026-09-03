@@ -742,6 +742,11 @@ export function setMedicationActive(
 // historical-PRN backdated course extension, #1933). Runs INSIDE the caller's
 // transaction — the Tx token is the proof — and is changes-checked: `not-found` means
 // the (course, item, profile, kind) scope didn't match and nothing was written.
+//
+// THE OUTCOME IS NOT OPTIONAL (#4909). `kind = 'medication'` is the one predicate a
+// caller's own course read need not carry, so a caller that finds a course by
+// (item, profile) alone can still miss here — and a discarded miss commits the rest
+// of the caller's transaction around a start that never moved.
 export function setCourseStartDate(
   tx: Tx,
   profileId: number,
