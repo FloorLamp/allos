@@ -67,9 +67,14 @@ import { formatBytes } from "@/lib/format-bytes";
 export default function UploadForm({
   demo = false,
   onUploaded,
+  subjectProfileId,
 }: {
   demo?: boolean;
   onUploaded?: () => void;
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting
+  // profile. Posted as `profile_id` and re-gated by `uploadMedicalDocument`'s own
+  // `gateItemProfile` call — never trusted here.
+  subjectProfileId?: number;
 }) {
   const [selected, setSelected] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +84,8 @@ export default function UploadForm({
 
   async function handleUpload(formData: FormData) {
     setError(null);
+    if (subjectProfileId != null)
+      formData.set("profile_id", String(subjectProfileId));
     let result;
     try {
       result = await uploadMedicalDocument(formData);

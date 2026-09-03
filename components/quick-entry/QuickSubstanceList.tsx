@@ -32,8 +32,11 @@ export interface QuickSubstanceRow {
 // revalidates behind the sheet.
 export default function QuickSubstanceList({
   substances,
+  subjectProfileId,
 }: {
   substances: QuickSubstanceRow[];
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting profile.
+  subjectProfileId?: number;
 }) {
   return (
     <ul
@@ -54,6 +57,7 @@ export default function QuickSubstanceList({
               substance={substance.key}
               capProgress={substance.capProgress}
               testIdPrefix="quick-entry-substance"
+              subjectProfileId={subjectProfileId}
             />
           </div>
         </li>

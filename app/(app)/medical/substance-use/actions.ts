@@ -195,14 +195,18 @@ export async function recordSubstanceInstrumentAction(
 export async function logSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id)))
+  // #4932: the quick-log sheet's subject chip mounts this SAME control cross-profile,
+  // so the tap follows gateItemProfile() → requireProfileWriteAccess(subjectProfileId)
+  // like every other sheet body; every other mount posts no subject and falls back
+  // to the acting-profile gate.
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = resolveSubstanceKey(
     String(formData.get("substance") ?? "")
   );
   if (substance === null) return { ok: false, error: "Unknown substance." };
-  return logOneUnit(profile.id, substance, webOrigin(formData));
+  return logOneUnit(profileId, substance, webOrigin(formData));
 }
 
 // The surface this post came from, defaulting to the substance page's own form when
@@ -300,8 +304,10 @@ export async function trackSubstanceUseAction(
 export async function undoSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
-  const { profile } = await requireWriteAccess();
-  if (isMinor(getProfileAge(profile.id)))
+  // #4932: the add's inverse must resolve the SAME subject the add did, so it reads
+  // it through the same gateItemProfile().
+  const profileId = await gateItemProfile(formData);
+  if (isMinor(getProfileAge(profileId)))
     return { ok: false, error: MINOR_REFUSAL };
   const substance = resolveSubstanceKey(
     String(formData.get("substance") ?? "")
@@ -309,14 +315,14 @@ export async function undoSubstanceUnitAction(
   if (substance === null) return { ok: false, error: "Unknown substance." };
   const outcome =
     substanceDef(substance).ledger === "food-log"
-      ? undoFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
-      : undoSubstanceUnitCore(profile.id, substance, today(profile.id));
+      ? undoFoodServingCore(profileId, ALCOHOL_FOOD_GROUP, today(profileId))
+      : undoSubstanceUnitCore(profileId, substance, today(profileId));
   if (outcome.kind !== "undone")
     return { ok: false, error: "Couldn't undo that." };
   revalidateSubstanceUse();
   return {
     ok: true,
-    weekCount: getSubstanceWeekState(profile.id, substance).count,
+    weekCount: getSubstanceWeekState(profileId, substance).count,
   };
 }
 
