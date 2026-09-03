@@ -50,6 +50,7 @@ import {
   E2E_LOGIN_INTRADAY,
   INTRADAY_PROFILE,
   INTRADAY_ACTIVITY,
+  INTRADAY_PRACTICE,
   INTRADAY_TICK_DOC,
   INTRADAY_TICK_TIME,
 } from "../fixture-logins";
@@ -537,7 +538,8 @@ export function seedIntradayPanel(): void {
   // (clipped at the left edge, never re-attributed) with one deep-stage sub-band,
   // per-minute HR from midnight through mid-morning with a workout spike, a windowed
   // cardio activity (the workout block), and two clock-timed document uploads (the tick
-  // rail). Because the day is today, the now-marker renders too.
+  // rail), and a windowed morning practice session on its own Practice row (#4852).
+  // Because the day is today, the now-marker renders too.
   //
   // THREE DAYS BACK carries only a weigh-in — a real feed event with NO clock time — so
   // the same profile proves the data gate: the day renders, the panel does not.
@@ -563,6 +565,7 @@ export function seedIntradayPanel(): void {
     db.prepare("DELETE FROM activities WHERE profile_id = ?").run(idId);
     db.prepare("DELETE FROM medical_documents WHERE profile_id = ?").run(idId);
     db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(idId);
+    db.prepare("DELETE FROM practice_logs WHERE profile_id = ?").run(idId);
 
     // Layer 1 — per-minute HR. Overnight rest sampled every 5 minutes (00:00–06:55),
     // then continuous minutes through the ride: an easy warm-up, the 08:00–09:00 effort,
@@ -626,6 +629,18 @@ export function seedIntradayPanel(): void {
         { name: "Cycling", type: "cardio", distance_km: 22, duration_min: 60 },
       ])
     );
+
+    // Layer 3b — the PRACTICE session (#4852). Same block shape as the ride above
+    // and its OWN row: a workout and a sauna on one line read as one kind of thing.
+    // Bounded by a stated start AND end, so it earns a block rather than the
+    // start-only tick a session with no length gets. 07:00–07:30 keeps it clear of
+    // the ride and inside the wear window — see INTRADAY_PRACTICE for why the
+    // second one matters to the lag sentence.
+    db.prepare(
+      `INSERT INTO practice_logs
+         (profile_id, practice, date, start_time, end_time, duration_min, source)
+       VALUES (?, ?, ?, '07:00', '07:30', 30, 'manual')`
+    ).run(idId, INTRADAY_PRACTICE, idToday);
 
     // Layer 4 — clock-timed feed events for the tick rail. Two document uploads at
     // known LOCAL wall times (the timeline derives an event's clock time from
