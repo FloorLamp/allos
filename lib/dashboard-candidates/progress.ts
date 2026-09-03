@@ -167,12 +167,21 @@ export const progressCandidates = {
       { relevance: profileDataRelevance("never") }
     );
   },
+  // AN ACTION, NOT A STATE (#4841 item 4, owner ruling 2026-09-03 14:05 UTC —
+  // "dormant weight gets the same log-a-weight door as the live row"). Vitals'
+  // dormant rows made exactly this move for exactly this reason (#4841 item 3,
+  // `dailyCandidates.vitalDormant`): declaring the kind is what routes a
+  // candidate to Act and earns it the write control, so weight's dormant line
+  // — a prompt to weigh in, not a report — gets the same door the same way. The
+  // relevance stays `profile-data`/`dormant`, so #2652's one-honest-line rule
+  // and the dormant presence sit exactly where they were.
   weightDormant(ctx: DomainCandidateContext, lastRecord: string) {
-    return state(
+    return action(
       ctx,
       "weight.dormant",
       `weight.dormancy:${lastRecord}`,
       "weight.summary",
+      "may",
       { relevance: profileDataRelevance("dormant") }
     );
   },
