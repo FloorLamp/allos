@@ -163,4 +163,40 @@ describe("the post-merge e2e detector and ci-main.yml's header", () => {
     expect(events).not.toContain("pull_request_target");
     expect(events).not.toContain("merge_group");
   });
+
+  // THE NIGHTLY, AND WHY IT IS A TRIGGER ASSERTION AND NOT A PROSE ONE (#4370).
+  //
+  // The push detector is correct and its skip is a sensible optimisation. What
+  // it cannot do is watch breakage that no diff caused: #4358's fixture aged out
+  // at midnight and nine consecutive main runs skipped, so main never observed
+  // it. The nightly is the only part of this workflow that runs whatever the
+  // diff was, so it is the only part that covers that class — and like the
+  // pull_request assertion above, it lives in the trigger list, where no rewrite
+  // of the surrounding prose can satisfy it.
+  it("runs the suite unconditionally on a nightly schedule", () => {
+    const e2eMain = read("e2e-main.yml");
+    expect(triggerEvents(e2eMain)).toContain("schedule");
+    expect(triggerConfig(e2eMain, "schedule")).toMatch(
+      /cron:\s*"[^"]*\*\s+\*\s+\*"/
+    );
+  });
+
+  // A SKIPPED SHARD MUST NOT REPORT `success` (#4370 part 2).
+  //
+  // The detection used to sit inside the matrix job, on each step's `if:`. Four
+  // shards then completed with every step skipped and a conclusion of SUCCESS —
+  // which a badge, a person and merge-gate-core's `baseDetectorNotice` all read
+  // as "ran and passed". Hoisting it into its own job is what makes the shards
+  // report `skipped` instead, so the guard is that the gating is at JOB level:
+  // a per-step `if:` on the browser steps is the defect, whatever it is worded
+  // like. `baseDetectorNotice`'s own half of this is in merge-gate-script.test.
+  it("gates the browser matrix at job level, so a skip reports as a skip", () => {
+    const e2eMain = read("e2e-main.yml");
+    expect(e2eMain).toMatch(/^\s+needs: detect$/m);
+    expect(e2eMain).toMatch(/^\s+if: needs\.detect\.outputs\.code == 'true'$/m);
+    const lines = e2eMain.split("\n");
+    const matrixJob = lines.slice(keyIndex(lines, "e2e-main", 2)).join("\n");
+    expect(matrixJob).toContain("Playwright, shard");
+    expect(matrixJob).not.toContain("steps.changes");
+  });
 });

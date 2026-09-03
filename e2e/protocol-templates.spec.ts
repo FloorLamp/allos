@@ -125,3 +125,51 @@ test("the outcome combobox saves stored and derived biomarkers (#1586)", async (
   );
   await page.waitForURL(/\/longevity(?:#|$)/);
 });
+
+// THE FORM BLEEDS EXACTLY WHERE ITS HOST LETS IT (#4534).
+//
+// The form used to pull `-mx-4` at every width, and below `md` that bought nothing:
+// the sheet's content region declares `overflow-x-hidden` there on purpose (#3360),
+// so the box ran the full viewport while only the panel's width was ever painted and
+// the actions bar's border stopped 16px short of each edge. Dropping the base pull is
+// an ABSENCE, and an absence cannot say the bleed still happens where it is real — so
+// this asserts the surviving half, as a relationship between two boxes rather than
+// against a pixel count. From `md` the same region is `md:overflow-visible` and the
+// footer's rule spans the panel edge to edge, which is what the bleed is FOR.
+test("the actions bar spans the panel from md, and no wider than it below (#4534)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/longevity#protocols");
+  await page.getByRole("main").getByTestId("new-protocol-toggle").click();
+  const form = page.getByTestId("protocol-form");
+  await expect(form).toBeVisible();
+
+  const edges = async () =>
+    form.evaluate((el) => {
+      const panel = el.closest("[data-sheet-content]")!.getBoundingClientRect();
+      const actions = el
+        .querySelector('[data-testid="protocol-form-actions"]')!
+        .getBoundingClientRect();
+      return {
+        // Positive means the bar reaches PAST the panel's content edge.
+        left: Math.round(panel.left - actions.left),
+        right: Math.round(actions.right - panel.right),
+        clipsX: getComputedStyle(el.closest("[data-sheet-content]")!).overflowX,
+      };
+    });
+
+  // Below `md` the host clips, so a bleed would only ever be a lie about the box.
+  expect(await edges()).toEqual({ left: 0, right: 0, clipsX: "hidden" });
+
+  // From `md` the host stops clipping and the bar spends the panel's own gutter.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(form).toBeVisible();
+  const wide = await edges();
+  expect(wide.clipsX).toBe("visible");
+  expect({ left: wide.left > 0, right: wide.right > 0 }).toEqual({
+    left: true,
+    right: true,
+  });
+  expect(wide.left).toBe(wide.right);
+});

@@ -62,6 +62,7 @@ import {
 } from "@/lib/notifications/push";
 import { CHAT_WIDE, sendTelegramMessage } from "@/lib/notifications/telegram";
 import { sendTestEmailToLogin } from "@/lib/notifications/email";
+import { recordedSend } from "@/lib/notifications/delivery-marker";
 import { sendFoodOptInPrompt } from "@/lib/notifications/food";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { canAccessProfile } from "@/lib/auth";
@@ -477,16 +478,20 @@ export async function sendTestNotification(): Promise<{
         "No Telegram channel — enable Telegram, fill in your chat id, and ask an admin to set the bot token on Settings → Server.",
     };
   try {
-    await sendTelegramMessage(
-      telegramChatId,
-      {
-        title: "🔔 Test notification",
-        body: "Notifications are working ✅",
-        kind: "test",
-      },
-      // A channel check addressed to the LOGIN's own chat (#1995): it is about the
-      // wiring, not about any data subject, and it carries no keyboard.
-      CHAT_WIDE
+    // The test is this login's own attempt, so its outcome is this login's row on the
+    // channel strip (#2565) — a success is what moves Ready to Delivering.
+    await recordedSend("telegram", [login.id], () =>
+      sendTelegramMessage(
+        telegramChatId,
+        {
+          title: "🔔 Test notification",
+          body: "Notifications are working ✅",
+          kind: "test",
+        },
+        // A channel check addressed to the LOGIN's own chat (#1995): it is about the
+        // wiring, not about any data subject, and it carries no keyboard.
+        CHAT_WIDE
+      )
     );
     return { ok: true, message: "Sent ✅ — check your Telegram." };
   } catch (e) {

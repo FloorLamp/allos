@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { closeEditor, openFact } from "./intake-form-helpers";
+import { hydratedClick } from "./helpers";
 // The web dose check-off is a TAKEN / SKIPPED / CLEAR tri-state (#232): a
 // deliberate skip is a first-class decision, distinct from a silent miss, with
 // its own control beside the ✅ take. This drives the whole cycle in the real app
@@ -35,7 +36,13 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
   // is allowed to move.
   await page.goto("/nutrition?tab=food");
   const morning = page.getByTestId("ledger-group-morning");
-  await morning.locator('[data-testid^="ledger-due-group-"]').click();
+  // hydratedClick, not click: the due row's disclosure is a controlled React button
+  // and this is the first interaction after the goto, so a lost tap would surface as
+  // the dose row below being absent rather than as a tap that never landed (#4835).
+  await hydratedClick(
+    page,
+    morning.locator('[data-testid^="ledger-due-group-"]')
+  );
   const row = page
     .getByTestId("day-ledger")
     .locator(

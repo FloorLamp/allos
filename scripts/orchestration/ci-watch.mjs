@@ -126,12 +126,42 @@ async function checkRuns(sha) {
   }
 }
 
+// A `cancelled` run never reached a verdict, so it is not one (#4800, #4802).
+// GitHub returns the newest run per name PER CHECK SUITE, so a head whose
+// workflow was triggered twice carries the concurrency-cancelled run beside the
+// green that replaced it, and tallying the raw list reported RED on a head whose
+// checks tab was green — in the tool the runbook says to run BEFORE the gate.
+// Nothing here picks a winner between two runs, so nothing here can mask a red:
+// of what is left under a name, ALL must still be green.
+const reachedAVerdict = (r) => r.conclusion !== "cancelled";
+
+// SETTLEMENT IS DERIVED FROM THE RAW SET AND THE VERDICT FROM THE FILTERED ONE,
+// and that split is the whole design decision here. The fingerprint's job is to
+// notice that the registered set has STOPPED MOVING, and a cancelled run
+// arriving IS movement — it is a check suite registering, which is the one
+// signal that more runs may still be coming. A cancelled run is `completed`, so
+// it holds nothing pending; drop it from the fingerprint too and a suite that
+// registers and is cancelled between two polls becomes invisible, and this
+// watcher settles green in the middle of registration. Keeping it costs one
+// extra poll on a superseded head and buys back the only thing watching for
+// that — and being unsettled a poll too long is the safe direction, where a
+// premature green is not.
 function snapshot(runs) {
-  const pending = runs.filter((r) => r.status !== "completed");
-  const failed = runs.filter(
+  const decided = runs.filter(reachedAVerdict);
+  const pending = decided.filter((r) => r.status !== "completed");
+  const failed = decided.filter(
     (r) =>
       r.status === "completed" &&
       !["success", "neutral", "skipped"].includes(r.conclusion)
+  );
+  // A name whose EVERY run was cancelled has no verdict at all — not green, and
+  // not red either, because nothing failed. Unsettled is the honest state, and
+  // exit 2 already means "re-invoke", which is what a re-run needs. The merge
+  // gate calls the same shape INCOMPLETE; two tools disagreeing about one head
+  // is worse than either being wrong alone.
+  const named = new Set(decided.map((r) => r.name));
+  const noVerdict = [...new Set(runs.map((r) => r.name))].filter(
+    (name) => !named.has(name)
   );
   // Identity of the registered set: names + ids, order-independent. Two equal
   // consecutive fingerprints with zero pending = registration has settled.
@@ -139,7 +169,14 @@ function snapshot(runs) {
     .map((r) => `${r.name}#${r.id}`)
     .sort()
     .join("|");
-  return { pending, failed, fingerprint, total: runs.length };
+  return {
+    pending,
+    failed,
+    noVerdict,
+    fingerprint,
+    total: runs.length,
+    decided: decided.length,
+  };
 }
 
 const deadline = Date.now() + maxMinutes * 60_000;
@@ -165,10 +202,20 @@ for (;;) {
   // A settled green on the head is therefore the stronger evidence and wins. Dirty
   // still blocks when the checks have NOT settled, because there the original reasoning
   // holds: no merge ref means no run to wait for.
+  //
+  // AND THE COMPARISON HERE IS `.length`, NOT THE ARRAY. `s.pending === 0` on an
+  // array is always false, so this branch was unreachable and every dirty read
+  // took the BLOCKED exit — the #4016 fix below was written, documented, and
+  // never once executed.
   if (pr.mergeable_state === "dirty") {
-    if (s.total > 0 && s.pending === 0 && s.failed === 0) {
+    if (
+      s.total > 0 &&
+      s.pending.length === 0 &&
+      s.failed.length === 0 &&
+      s.noVerdict.length === 0
+    ) {
       console.error(
-        `NOTE: PR #${prNumber} reads mergeable_state=dirty, but all ${s.total} checks on\n` +
+        `NOTE: PR #${prNumber} reads mergeable_state=dirty, but all ${s.decided} checks on\n` +
           `head ${pr.head.sha.slice(0, 8)} have settled and passed. The flag is stale —\n` +
           "verify with `git merge-tree --write-tree origin/main <head>` before treating it\n" +
           "as a conflict; a push to the branch clears a stale flag."
@@ -176,7 +223,7 @@ for (;;) {
     } else {
       console.error(
         `BLOCKED: PR #${prNumber} is conflict-dirty and its checks have not settled\n` +
-          `(${s.total} registered, ${s.pending} pending, ${s.failed} failed). GitHub cannot build\n` +
+          `(${s.total} registered, ${s.pending.length} pending, ${s.failed.length} failed). GitHub cannot build\n` +
           "the merge ref, so no new CI will start. Reconcile in a worktree — but confirm the\n" +
           "conflict locally first, because this flag is cached and goes stale."
       );
@@ -192,11 +239,11 @@ for (;;) {
       (run) => run.event === "pull_request" && run.head_sha === pr.head.sha
     )
     .sort((a, b) => b.id - a.id)[0];
-  if (
-    ci?.status === "completed" &&
-    ci.conclusion !== "success" &&
-    s.failed.length === 0
-  )
+  // The same reading for the workflow run itself: a cancelled CI run reached no
+  // verdict, so it is neither a red nor a settled green. It reads as unsettled,
+  // which is exit 2 — "re-invoke" — and a re-run is what it needs.
+  const ciDecided = ci?.status === "completed" && reachedAVerdict(ci);
+  if (ciDecided && ci.conclusion !== "success" && s.failed.length === 0)
     s.failed.push(ci);
   const stamp = new Date().toISOString().slice(11, 19);
   console.log(
@@ -205,8 +252,9 @@ for (;;) {
   );
 
   const settled =
-    ci?.status === "completed" &&
+    ciDecided &&
     s.pending.length === 0 &&
+    s.noVerdict.length === 0 &&
     s.total > 0 &&
     s.fingerprint === lastFingerprint;
   lastFingerprint = s.fingerprint;
@@ -238,7 +286,7 @@ for (;;) {
       process.exit(1);
     }
     console.log(
-      `GREEN — all ${s.total} registered checks settled and passing.`
+      `GREEN — all ${s.decided} registered checks settled and passing.`
     );
     if (pr.mergeable_state === "behind") {
       console.log(
@@ -252,7 +300,13 @@ for (;;) {
 
   if ((once && polls >= 2) || Date.now() >= deadline) {
     console.log(
-      "UNSETTLED — CI workflow incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke."
+      "UNSETTLED — CI workflow incomplete or registration/pending not yet stable. This is NOT a verdict; re-invoke." +
+        (s.noVerdict.length
+          ? ` No verdict for ${s.noVerdict.join(", ")} (every run cancelled — re-run it).`
+          : "") +
+        (ci?.status === "completed" && !ciDecided
+          ? " The CI workflow run itself was cancelled — re-run it."
+          : "")
     );
     process.exit(2);
   }

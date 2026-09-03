@@ -45,9 +45,9 @@ import type { BodyMetricKind } from "./types";
 // A rankable card on the body census. The per-metric cards reuse `TrendMetricSlug`
 // (lib/trend-metrics) verbatim — the #482 one-identity rule: the tile, the
 // chart, the detail route and now the rank key are ONE name per subject. Three
-// cards are not metrics: the WHO/CDC growth-percentile card, the Sleep summary tile
-// (its own /sleep surface), and the "HR (day)" intraday card.
-export type BodyCardId = TrendMetricSlug | "growth" | "sleep" | "hr-day";
+// cards are not metrics: the WHO/CDC growth-percentile card and the Sleep chart (its
+// own /sleep surface).
+export type BodyCardId = TrendMetricSlug | "growth" | "sleep";
 
 // THE BASE LAYOUT: the body census ADULT reading order, flattened across its runs.
 // This array IS the stable tie-break — with no signal firing the ranker returns it
@@ -93,7 +93,6 @@ export const BODY_CARD_LAYOUT: readonly BodyCardId[] = [
   "sleep",
   "resting-hr",
   "hr",
-  "hr-day",
   "hrv",
   // Daily subjective + environment. The check-in's three ratings sit together and in
   // the order the card itself asks them (#1408: mood is the one-tap hero, energy and

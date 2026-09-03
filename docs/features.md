@@ -2482,13 +2482,13 @@ does not push crisis content to a possibly-shared or locked device. A
 mental-health **appointment** additionally defaults to **minimal detail**
 ("Medical appointment") on shared/exported surfaces — household rollups, the
 Household card's digest and the `.ics` family calendar feed — overridable per
-profile. **Mood check-ins never appear on a shared surface at all**: a daily
-self-report has no useful minimal form, and access granted to help with someone's
-medications is not access to their mood feed. Both rules live in
-`lib/appointment-sensitivity.ts` as the ONE decision every shared surface
-consults, so a surface added later inherits them rather than restating them; the
-profile's OWN surfaces always show everything. Informational,
-a screening instrument, **never a diagnosis**.
+profile. That visit rule lives in `lib/appointment-sensitivity.ts` as the ONE
+decision every shared surface consults, so a surface added later inherits it
+rather than restating it. It is the only thing a shared surface changes:
+**mood check-ins are shown** there as on the profile's own surfaces — a
+household is a family, and the morning digest already reaches the same
+caregivers with the same check-in. Informational, a screening instrument,
+**never a diagnosis**.
 
 ## Crisis support
 

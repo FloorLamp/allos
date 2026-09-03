@@ -334,16 +334,11 @@ export function logUsualRoutineCore(
           // a dated bundle wrote an administration instant sitting on a different day
           // from the row it was filed under; the pair rule the rest of the model turns
           // on says an instant outside its own row's day is corruption, not precision.
-          markDoseTaken(
-            profileId,
-            doseId,
-            offered.itemId,
-            date,
-            via,
-            date === t ? undefined : null,
+          markDoseTaken(profileId, doseId, offered.itemId, date, via, {
+            takenAt: date === t ? undefined : null,
             notifyMessageId,
-            bundleId
-          ),
+            bundleId,
+          }),
     });
   }
 

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import fs from "node:fs";
-import { settledCheck, settledClick } from "./helpers";
+import { openChannelRow, settledCheck, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_EMAIL_NOTIFY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { workerDbPath, workerMailboxPath } from "./worker-env";
@@ -87,8 +87,10 @@ test.describe("email notification channel (#1855)", () => {
     try {
       // ── Unconfigured state: the card names BOTH missing prerequisites ──────
       await member.goto("/settings/notifications");
-      const card = member.getByTestId("login-email");
-      await expect(card).toBeVisible();
+      // Since #2565 A the channel's configuration lives behind its strip row; every
+      // reload below re-opens it rather than racing the per-device open memory.
+      const card = await openChannelRow(member, "email");
+      await expect(member.getByTestId("login-email")).toBeVisible();
       await expect(member.getByTestId("login-email-no-smtp")).toBeVisible();
       await expect(member.getByTestId("login-email-no-address")).toBeVisible();
       // Unconfigured channel ⇒ the matrix column header says "not set up", and
@@ -99,6 +101,7 @@ test.describe("email notification channel (#1855)", () => {
       setSmtpConfigured(true);
       setLoginAddress(ADDRESS);
       await member.reload();
+      await openChannelRow(member, "email");
       await expect(card).toBeVisible();
       await expect(member.getByTestId("login-email-no-smtp")).toHaveCount(0);
       await expect(member.getByTestId("login-email-no-address")).toHaveCount(0);
@@ -119,6 +122,7 @@ test.describe("email notification channel (#1855)", () => {
       // Persisted: a fresh render shows the channel on, and the matrix's email
       // column is now deliverable for this profile.
       await member.reload();
+      await openChannelRow(member, "email");
       await expect(member.getByTestId("login-email-enabled")).toBeChecked();
       await expect(member.getByTestId("email-content-free")).toBeChecked();
 
@@ -141,6 +145,7 @@ test.describe("email notification channel (#1855)", () => {
       };
       await toggleCell(false);
       await member.reload();
+      await openChannelRow(member, "email");
       await expect(
         member.getByTestId("matrix-cell-email-refill")
       ).not.toBeChecked();

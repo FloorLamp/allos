@@ -1,195 +1,195 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  pickDispatchError,
-  isDeliveryHealthy,
-  decideMarker,
+  CHANNEL_ROW_LABEL,
+  channelRowLine,
+  channelRowState,
+  foldFailures,
+  type DeliveryOutcomeRow,
 } from "../notifications/delivery-status";
 
-describe("pickDispatchError", () => {
-  it("returns null when every channel succeeded", () => {
-    expect(
-      pickDispatchError([
-        { id: "telegram", ok: true },
-        { id: "push", ok: true },
-      ])
-    ).toBeNull();
-  });
+// #2565 A. Every expectation is a pinned literal, never re-derived from the module.
 
-  it("returns null when nothing was attempted (no configured channel)", () => {
-    expect(pickDispatchError([])).toBeNull();
-  });
+const failing: DeliveryOutcomeRow = {
+  state: "failing",
+  detail: "Telegram API 401: Unauthorized",
+  at: "2026-09-01T10:00:00Z",
+};
+const delivering: DeliveryOutcomeRow = {
+  state: "delivering",
+  detail: null,
+  at: "2026-09-01T11:00:00Z",
+};
 
-  it("returns the first failed channel + its error", () => {
-    expect(
-      pickDispatchError([
-        { id: "telegram", ok: false, error: "401 unauthorized" },
-        { id: "push", ok: true },
-      ])
-    ).toEqual({ channel: "telegram", error: "401 unauthorized" });
-  });
+describe("channelRowState — the four truthful states (owner ruling 2026-08-18)", () => {
+  it.each([
+    // Not set up dominates and HIDES a stale outcome, whichever it was.
+    { setUp: false, row: null, expected: { state: "not-set-up" } },
+    { setUp: false, row: delivering, expected: { state: "not-set-up" } },
+    { setUp: false, row: failing, expected: { state: "not-set-up" } },
+    // Configured with no completed attempt is Ready — never Delivering.
+    { setUp: true, row: null, expected: { state: "ready" } },
+    {
+      setUp: true,
+      row: delivering,
+      expected: { state: "delivering", at: "2026-09-01T11:00:00Z" },
+    },
+    {
+      setUp: true,
+      row: failing,
+      expected: {
+        state: "erroring",
+        detail: "Telegram API 401: Unauthorized",
+        at: "2026-09-01T10:00:00Z",
+      },
+    },
+    // A failure that recorded no sentence still names itself a failure.
+    {
+      setUp: true,
+      row: { ...failing, detail: null },
+      expected: {
+        state: "erroring",
+        detail: "unknown send failure",
+        at: "2026-09-01T10:00:00Z",
+      },
+    },
+  ])(
+    "setUp=$setUp row=$row.state → $expected.state",
+    ({ setUp, row, expected }) => {
+      expect(channelRowState(setUp, row)).toEqual(expected);
+    }
+  );
 
-  it("reports a failure even when another channel succeeded", () => {
-    // A partial failure still means a channel is broken → surface it.
-    expect(
-      pickDispatchError([
-        { id: "push", ok: true },
-        { id: "telegram", ok: false, error: "chat not found" },
-      ])
-    ).toEqual({ channel: "telegram", error: "chat not found" });
-  });
-
-  it("falls back to a generic message when the error string is missing", () => {
-    expect(pickDispatchError([{ id: "telegram", ok: false }])).toEqual({
-      channel: "telegram",
-      error: "unknown send failure",
+  it("prints the ruling's four words, one per state", () => {
+    expect(CHANNEL_ROW_LABEL).toEqual({
+      "not-set-up": "Not set up",
+      ready: "Ready",
+      delivering: "Delivering",
+      erroring: "Erroring",
     });
   });
 });
 
-describe("isDeliveryHealthy", () => {
-  it("is true only when at least one channel was attempted and all succeeded", () => {
-    expect(isDeliveryHealthy([{ id: "telegram", ok: true }])).toBe(true);
-    expect(
-      isDeliveryHealthy([
-        { id: "telegram", ok: true },
-        { id: "push", ok: true },
-      ])
-    ).toBe(true);
+describe("channelRowLine — what the strip row prints under the channel name", () => {
+  // A stub age, so the sentence is asserted and not the relative-time thresholds
+  // (those are lib/__tests__/format-date's). Its argument is echoed, which is how the
+  // WHICH-instant half of each line is pinned.
+  const age = (at: string) => `AGE(${at})`;
+  const opts = { profileName: "Rosa", age };
+
+  it.each([
+    // Not set up names the tier that owes the step — the mixed-scope trap #2565 B
+    // named for the matrix headers, answered here from the same `columnLiveness`.
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "server" as const,
+      expected: "Not set up — an admin configures it on Settings → Server.",
+    },
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "login" as const,
+      expected: "Not set up — open this row to set it up.",
+    },
+    {
+      state: { state: "not-set-up" } as const,
+      blocker: "profile" as const,
+      expected: "Not set up — open this row to set it up for Rosa.",
+    },
+    {
+      state: { state: "ready" } as const,
+      blocker: null,
+      expected: "Ready — not tested yet.",
+    },
+    {
+      state: { state: "delivering", at: "2026-09-01T11:00:00Z" } as const,
+      blocker: null,
+      expected: "Delivering — last message AGE(2026-09-01T11:00:00Z).",
+    },
+    {
+      state: {
+        state: "erroring",
+        detail: "Telegram API 401: Unauthorized",
+        at: "2026-09-01T10:00:00Z",
+      } as const,
+      blocker: null,
+      expected:
+        "Erroring — Telegram API 401: Unauthorized (AGE(2026-09-01T10:00:00Z)).",
+    },
+  ])("$state.state/$blocker", ({ state, blocker, expected }) => {
+    expect(channelRowLine(state, { ...opts, blocker })).toBe(expected);
   });
 
-  it("is false when a channel failed", () => {
-    expect(
-      isDeliveryHealthy([
-        { id: "telegram", ok: false, error: "boom" },
-        { id: "push", ok: true },
-      ])
-    ).toBe(false);
-  });
-
-  it("is false when nothing was attempted (clears nothing)", () => {
-    expect(isDeliveryHealthy([])).toBe(false);
+  // The dot carries colour and nothing else, so the WORD has to be in the text.
+  it("opens every line with that state's own word", () => {
+    const lines = [
+      channelRowLine({ state: "not-set-up" }, { ...opts, blocker: "login" }),
+      channelRowLine({ state: "ready" }, { ...opts, blocker: null }),
+      channelRowLine(
+        { state: "delivering", at: "2026-09-01T11:00:00Z" },
+        { ...opts, blocker: null }
+      ),
+      channelRowLine(
+        { state: "erroring", detail: "boom", at: "2026-09-01T10:00:00Z" },
+        { ...opts, blocker: null }
+      ),
+    ];
+    expect(lines.map((l) => l.split(" — ")[0])).toEqual(
+      Object.values(CHANNEL_ROW_LABEL)
+    );
   });
 });
 
-describe("decideMarker (channel-aware clearing, #192)", () => {
-  it("sets the failure when a channel failed (no prior marker)", () => {
-    expect(
-      decideMarker([{ id: "push", ok: false, error: "bad VAPID" }], "")
-    ).toEqual({
-      action: "set",
-      failure: { channel: "push", error: "bad VAPID" },
-    });
-  });
+describe("foldFailures — the Settings → Server aggregate", () => {
+  const tg = { channel: "telegram", detail: "401", at: "2026-09-01T10:00:00Z" };
+  const ha = {
+    channel: "home-assistant",
+    detail: "HTTP 500",
+    at: "2026-09-01T10:00:00Z",
+  };
+  const later = {
+    channel: "email",
+    detail: "relay refused",
+    at: "2026-09-02T08:00:00Z",
+  };
 
-  it("keeps the marker untouched when nothing was attempted", () => {
-    expect(decideMarker([], "push")).toEqual({ action: "freeze" });
-  });
-
-  // --- Cross-profile tick: push broken globally, Telegram works. ---
-
-  it("A: a both-channels profile with a broken push SETS the push failure", () => {
-    // Profile A dispatches Telegram (ok) + push (fails) → record push.
-    expect(
-      decideMarker(
-        [
-          { id: "telegram", ok: true },
-          { id: "push", ok: false, error: "bad VAPID" },
-        ],
-        ""
-      )
-    ).toEqual({
-      action: "set",
-      failure: { channel: "push", error: "bad VAPID" },
-    });
-  });
-
-  it("B: a Telegram-only profile does NOT clear a push failure it never attempted", () => {
-    // Profile B (Telegram only) succeeds later in the same tick — push is still
-    // broken and was not attempted, so the marker must survive.
-    expect(decideMarker([{ id: "telegram", ok: true }], "push")).toEqual({
-      action: "freeze",
-    });
-  });
-
-  it("a later successful push DOES clear the push failure", () => {
-    // Once push is fixed, a dispatch that attempts push and succeeds clears it.
-    expect(
-      decideMarker(
-        [
-          { id: "telegram", ok: true },
-          { id: "push", ok: true },
-        ],
-        "push"
-      )
-    ).toEqual({ action: "clear" });
-  });
-
-  it("clears when a single-channel healthy dispatch attempts the failing channel", () => {
-    // Send-test remediation: the broken channel is the one tested successfully.
-    expect(decideMarker([{ id: "telegram", ok: true }], "telegram")).toEqual({
-      action: "clear",
-    });
-  });
-
-  it("keeps a telegram failure when only push is attempted successfully", () => {
-    // Symmetric to the push case: a push-only success must not mask a broken
-    // Telegram.
-    expect(decideMarker([{ id: "push", ok: true }], "telegram")).toEqual({
-      action: "freeze",
-    });
-  });
-
-  it("clears on any healthy dispatch when the prior channel is unknown (legacy marker)", () => {
-    // A marker written before channel tracking has no stored channel; fall back
-    // to the original clear-on-healthy behavior.
-    expect(decideMarker([{ id: "telegram", ok: true }], "")).toEqual({
-      action: "clear",
-    });
-  });
-
-  // --- Home Assistant channel (#248): the marker is channel-agnostic, so the same
-  // channel-aware clearing rules must hold for a third channel id. ---
-
-  it("HA: sets a home-assistant failure like any other channel", () => {
-    expect(
-      decideMarker(
-        [
-          { id: "telegram", ok: true },
-          { id: "home-assistant", ok: false, error: "HTTP 404" },
-        ],
-        ""
-      )
-    ).toEqual({
-      action: "set",
-      failure: { channel: "home-assistant", error: "HTTP 404" },
-    });
-  });
-
-  it("HA: a Telegram-only profile does NOT clear a home-assistant failure it never attempted", () => {
-    expect(
-      decideMarker([{ id: "telegram", ok: true }], "home-assistant")
-    ).toEqual({ action: "freeze" });
-  });
-
-  it("HA: a later successful home-assistant send clears the home-assistant failure", () => {
-    expect(
-      decideMarker([{ id: "home-assistant", ok: true }], "home-assistant")
-    ).toEqual({ action: "clear" });
-  });
-
-  it("overwrites an existing failure with a newly-failing channel", () => {
-    // push was broken; now push is ok but telegram fails → record telegram.
-    expect(
-      decideMarker(
-        [
-          { id: "telegram", ok: false, error: "chat not found" },
-          { id: "push", ok: true },
-        ],
-        "push"
-      )
-    ).toEqual({
-      action: "set",
-      failure: { channel: "telegram", error: "chat not found" },
-    });
+  it.each([
+    { name: "nothing failing", rows: [], expected: null },
+    {
+      name: "one failure",
+      rows: [tg],
+      expected: {
+        error: "401",
+        at: "2026-09-01T10:00:00Z",
+        channel: "telegram",
+      },
+    },
+    {
+      name: "the most recent attempt wins",
+      rows: [tg, later, ha],
+      expected: {
+        error: "relay refused",
+        at: "2026-09-02T08:00:00Z",
+        channel: "email",
+      },
+    },
+    {
+      name: "a same-second tie breaks by channel order, whichever came first in the list",
+      rows: [ha, tg],
+      expected: {
+        error: "401",
+        at: "2026-09-01T10:00:00Z",
+        channel: "telegram",
+      },
+    },
+    {
+      name: "a failure with no sentence is one this surface cannot explain",
+      rows: [{ channel: "push", detail: null, at: "2026-09-03T00:00:00Z" }, tg],
+      expected: {
+        error: "401",
+        at: "2026-09-01T10:00:00Z",
+        channel: "telegram",
+      },
+    },
+  ])("$name", ({ rows, expected }) => {
+    expect(foldFailures(rows)).toEqual(expected);
   });
 });

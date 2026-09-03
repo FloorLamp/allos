@@ -45,10 +45,9 @@ describe("BODY_CARD_LAYOUT", () => {
     }
   });
 
-  it("also names the three non-metric cards", () => {
+  it("also names the two non-metric cards", () => {
     expect(BODY_CARD_LAYOUT).toContain("growth");
     expect(BODY_CARD_LAYOUT).toContain("sleep");
-    expect(BODY_CARD_LAYOUT).toContain("hr-day");
   });
 });
 

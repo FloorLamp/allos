@@ -174,7 +174,13 @@ export default function IllnessNowGroup({
             // gutter (the strip's row supplies none for it) and it keeps the rail
             // and the fill that say someone is ill right now: below `sm` there are
             // no borders, so the FILL is what carries that (#3897).
-            className="min-w-0 max-w-full border-l-4 border-l-rose-500 p-4 max-sm:bg-rose-50! sm:p-5 dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
+            // A READABLE MEASURE, CENTERED (#4752 item 2). The cockpit was a phone
+            // layout stretched across whatever the viewport happened to be: a med's
+            // name sat a monitor's width from its own button and three stat headings
+            // spread across the gulfs between them. Capping the column at ~880px
+            // dissolves both by construction — nothing inside needs a desktop rule —
+            // and below that width `w-full` means the phone is unchanged.
+            className="mx-auto w-full min-w-0 max-w-[880px] border-l-4 border-l-rose-500 p-4 max-sm:bg-rose-50! sm:p-5 dark:border-l-rose-400 max-sm:dark:bg-rose-950!"
           >
             <div
               data-testid="illness-cockpit-header-row"

@@ -44,6 +44,10 @@
 - A green names its tier and nothing more. `CI (main)` covers `check`,
   `test-unit`, `test-db` — it cannot see e2e. `E2E (main)` is the post-merge
   browser run and the only main-side evidence about the browser tier.
+- `E2E (main)` skips a push with no runtime surface, and a skip is not a green:
+  its four shards report `skipped`, the run summary says nothing ran, and the
+  merge gate prints "ran NOTHING" rather than a shard count. Its nightly run
+  (00:41 UTC) is unconditional and is what covers main between code pushes.
 
 ## Diagnosing a red
 
@@ -70,6 +74,10 @@
   alone is not a reason to mint a new census issue.
 - Clock-adjacent failures need forced-skew branch/main comparison with
   `ALLOS_TEST_NOW`; minutes-apart runs are insufficient.
+- The weekly census also runs the suite at `ALLOS_TEST_NOW` +3 and +6 months
+  (`e2e-forward-clock`). A red there is a fuse, not a regression on main — fix
+  the fixture, do not revert a merge. Dispatch it on demand with the
+  `forward_clock` input.
 - Repeated failures invalidate a “distinct one-offs” argument.
 - Consult `docs/internals/e2e-hygiene.md` before diagnosing a known failure
   class.

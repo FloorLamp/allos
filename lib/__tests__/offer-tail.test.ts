@@ -379,14 +379,15 @@ describe("the prn: keyboard discriminator", () => {
     // slot, which is why this is a bound and not a bug report — but it is written
     // down, and it turns red if the cap arithmetic or the row grouping changes.
     //
-    // RULED 2026-09-01 (#3808, question 1), AND THE RULING IS NOT WHAT THIS PINS.
-    // At the cap the person should keep the collapse control and lose the `+N more`
-    // text tail: the control is functional at exactly the moment the list is largest,
-    // and the tail is informational, so the tail yields. That is a BEHAVIOUR change and
-    // it is not built — `capTelegramKeyboard` is generic over rows and has no notion of
-    // a row that must survive, so exempting one is a signature change plus a decision
-    // about the tail it displaces. Until it is, the two expectations below state
-    // TODAY'S behaviour, and the second is the one that flips when the ruling lands.
+    // RULED (#3808, question 1) — AND THESE TWO EXPECTATIONS ARE THE RULING, not a
+    // placeholder waiting for one. The 2026-09-01 ruling exempted the collapse control
+    // from the cap so the control would survive and the `+N more` tail would yield; it
+    // was RESCINDED on 2026-09-02 once the arithmetic was checked. At exactly
+    // TELEGRAM_MAX_BUTTONS items an exemption does not SAVE a slot, it DISPLACES one:
+    // an offer drops instead of the control, `dropped` is still 1, and the tail prints
+    // anyway — so "the tail yields" was never an outcome the exemption produced. Buying
+    // it would need a "this row must survive" flag on `capTelegramKeyboard`, which is
+    // generic over rows on purpose. So the control yields and the honest tail survives.
     const list = (n: number) => {
       const items = Array.from({ length: n }, (_, i) => ({
         itemId: i + 1,

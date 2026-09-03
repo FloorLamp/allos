@@ -167,7 +167,6 @@ export default async function MedicationsPage(props: {
               stackItems={actingData.stackItems}
               pgxVariants={actingData.pgxVariants}
               pediatric={actingData.pediatric}
-              age={actingData.age}
               todayStr={actingData.todayStr}
               conditions={medConditions}
             />

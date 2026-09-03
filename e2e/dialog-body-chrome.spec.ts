@@ -218,7 +218,21 @@ test.describe("a dialog body renders content, never chrome (#3361)", () => {
     // each side. 700px is inside that band with room on either side.
     test.use({ viewport: { width: 700, height: 900 } });
 
-    test("the protocol form's footer sits flush with the panel edge, not past it", async ({
+    // MEASURED AGAINST THE EDGE THE FOOTER ACTUALLY PAINTS TO (#4534), which is
+    // the panel's CONTENT edge below `md`, not its border edge. This test used to
+    // compare the footer's box with the panel's box and pass on a rule that never
+    // reached either edge: the sheet's content region declares `overflow-x-hidden`
+    // below `md` (#3360), so a `-mx-4` bleed moved the BOX and nothing else.
+    // Measured at 700px on the tree that carried it — footer box [14, 686],
+    // panel box [14, 686], content box [30, 670], painted [30, 670]. Box-flush,
+    // 16px short per side on screen, and green. That is the #4534 defect class
+    // sitting inside the guard written for it, so the comparison moved to the
+    // content box and the form stopped claiming a bleed it could not spend.
+    //
+    // BOTH HALVES STAY. #3361's bug was a footer hanging PAST the panel, so the
+    // containment assertion is kept beside the flush one — flush alone is
+    // satisfied by a footer that overhangs equally on both sides.
+    test("the protocol form's footer sits flush with the edge it paints to, and never past the panel", async ({
       page,
     }) => {
       test.slow(); // next compiles this route on first hit
@@ -230,28 +244,47 @@ test.describe("a dialog body renders content, never chrome (#3361)", () => {
       );
 
       const panel = page.locator("[data-sheet-panel]");
+      const content = page.locator("[data-sheet-content]");
       const footer = page.getByTestId("protocol-form-actions");
       await expect(panel).toBeVisible();
       await expect(footer).toBeVisible();
 
-      // ONE settled layout for both reads — a bleed assertion built from two
+      // ONE settled layout for all three reads — a bleed assertion built from
       // independent boundingBox calls is exactly the shape settledBoxes exists
       // to retire.
-      const [panelBox, footerBox] = await settledBoxes([panel, footer]);
+      const [panelBox, contentBox, footerBox] = await settledBoxes([
+        panel,
+        content,
+        footer,
+      ]);
 
       // A bleed that matches the host's padding EXACTLY puts the body's edge on
-      // the panel's edge. `1` is the sub-pixel rounding of two device-pixel
-      // reads, not a tolerance for being wrong: the defect this pins was 8px per
-      // side, so a window that admits it would have to be eight times wider.
+      // the edge it can paint to. `1` is the sub-pixel rounding of two
+      // device-pixel reads, not a tolerance for being wrong: the defect this pins
+      // was 8px per side, so a window that admits it would have to be eight times
+      // wider.
       const FLUSH_EPSILON = 1;
       expect(
-        Math.abs(footerBox.x - panelBox.x),
-        "the footer's left edge must sit on the panel's, not past it"
+        Math.abs(footerBox.x - contentBox.x),
+        "the footer's left edge must sit on the edge it paints to"
       ).toBeLessThanOrEqual(FLUSH_EPSILON);
       expect(
-        Math.abs(footerBox.x + footerBox.width - (panelBox.x + panelBox.width)),
-        "the footer's right edge must sit on the panel's, not past it"
+        Math.abs(
+          footerBox.x + footerBox.width - (contentBox.x + contentBox.width)
+        ),
+        "the footer's right edge must sit on the edge it paints to"
       ).toBeLessThanOrEqual(FLUSH_EPSILON);
+
+      // AND NEVER PAST THE PANEL, which is the half #3361 was filed for.
+      expect(
+        {
+          left: footerBox.x >= panelBox.x - FLUSH_EPSILON,
+          right:
+            footerBox.x + footerBox.width <=
+            panelBox.x + panelBox.width + FLUSH_EPSILON,
+        },
+        "the footer hung past the panel"
+      ).toEqual({ left: true, right: true });
     });
   });
 });

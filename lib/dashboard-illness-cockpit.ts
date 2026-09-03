@@ -4,18 +4,21 @@ import type { EpisodeMedSuggestion } from "./episode-med-reconcile";
 import {
   episodeAlternateLogDate,
   type AssembledEpisode,
+  type CockpitRecovery,
 } from "./illness-episode-format";
 import type { IntakeCatalogOptions } from "./queries/intake-options";
 import {
   getCustomSymptomNames,
   getIntakeCatalogOptions,
-  getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getSymptomLogOrder,
   getEpisodeMedReconciliations,
 } from "./queries";
 import type { PrnMedForQuickLog } from "./queries/intake/adherence";
-import type { PediatricFormContext } from "./prn-dosing";
+import {
+  loadIntakeFormContext,
+  type IntakeFormContext,
+} from "./intake-form-context";
 import { schoolReturnStatusesFor } from "./school-return-data";
 import { schoolReturnCompactLabel } from "./school-return";
 import {
@@ -31,7 +34,9 @@ export interface DashboardIllnessControls {
   medReconciliation: EpisodeMedSuggestion[];
   prnMeds: PrnMedForQuickLog[];
   intakeOptions: IntakeCatalogOptions;
-  pediatric: PediatricFormContext;
+  // The whole subject context the cockpit's add-medication fold feeds its form
+  // (#4609) — this profile's, not the viewer's.
+  intakeForm: IntakeFormContext;
   initial: Record<string, number>;
   initialAlt?: Record<string, number>;
   initialNotes: Record<string, string>;
@@ -45,7 +50,10 @@ export interface DashboardIllnessCockpitModel {
   temperatureUnit: TemperatureUnit;
   timeZone: string;
   nowIso: string;
-  feverFree: { label: string; met: boolean } | null;
+  // THE COUNTDOWN, NOT ONLY ITS LABEL (#4752 item 1). The recovery-led header draws a
+  // progress ring, so the cleared hours and the convention's threshold have to survive
+  // the gather rather than being folded into a string nothing can measure.
+  feverFree: CockpitRecovery | null;
   controls: DashboardIllnessControls | null;
 }
 
@@ -109,7 +117,7 @@ export function gatherDashboardIllnessCockpits(
     sharedControls = {
       prnMeds: getPrnMedicationsForQuickLog(profileId),
       intakeOptions: getIntakeCatalogOptions(profileId),
-      pediatric: getPediatricFormContext(profileId, options.weightUnit),
+      intakeForm: loadIntakeFormContext(profileId, options.weightUnit),
       customNames: getCustomSymptomNames(profileId),
       rankedKeys: getSymptomLogOrder(profileId),
     };
@@ -166,6 +174,8 @@ export function gatherDashboardIllnessCockpits(
                 options.temperatureUnit
               ),
               met: schoolStatus.met,
+              clearedForHours: schoolStatus.clearedForHours,
+              thresholdHours: schoolStatus.thresholdHours,
             }
           : null,
       controls: sharedControls

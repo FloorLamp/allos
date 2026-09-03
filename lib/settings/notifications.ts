@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db, writeTx } from "../db";
 import type { NotificationKind } from "../notifications/types";
+import { invalidateDeliveryOutcome } from "../notifications/delivery-marker";
 import {
   managingLoginIdsForProfile,
   profilesManagedByLogin,
@@ -103,6 +104,7 @@ export function setLoginTelegram(
   loginId: number,
   cfg: { telegramEnabled: boolean; telegramChatId: string }
 ): LoginTelegram {
+  const before = getLoginTelegram(loginId);
   writeTx(() => {
     setLoginSetting(
       loginId,
@@ -110,6 +112,13 @@ export function setLoginTelegram(
       cfg.telegramEnabled ? "1" : "0"
     );
     setLoginSetting(loginId, "telegram_chat_id", cfg.telegramChatId.trim());
+    // A changed target out-dates what the old one did (#2565): the row returns to
+    // Ready until something is sent to the new chat.
+    if (
+      before.telegramEnabled !== cfg.telegramEnabled ||
+      before.telegramChatId !== cfg.telegramChatId.trim()
+    )
+      invalidateDeliveryOutcome("telegram", loginId);
   });
   return getLoginTelegram(loginId);
 }
@@ -145,6 +154,7 @@ export function setLoginEmailNotify(
   loginId: number,
   cfg: LoginEmailNotify
 ): LoginEmailNotify {
+  const before = getLoginEmailNotify(loginId);
   writeTx(() => {
     setLoginSetting(
       loginId,
@@ -156,6 +166,10 @@ export function setLoginEmailNotify(
       "email_notify_full_content",
       cfg.emailFullContent ? "1" : "0"
     );
+    // Turning the channel off or on is a configuration change (#2565); the content
+    // mode only changes what a mail says, not whether it arrives.
+    if (before.emailEnabled !== cfg.emailEnabled)
+      invalidateDeliveryOutcome("email", loginId);
   });
   return getLoginEmailNotify(loginId);
 }
@@ -673,6 +687,7 @@ export function setProfileHomeAssistant(
     disabledKinds: readonly NotificationKind[];
   }
 ): ProfileHomeAssistant {
+  const before = getProfileHomeAssistant(profileId);
   writeTx(() => {
     setProfileSetting(profileId, "ha_notify_enabled", cfg.enabled ? "1" : "0");
     setProfileSetting(
@@ -686,6 +701,14 @@ export function setProfileHomeAssistant(
       "ha_notify_disabled_kinds",
       serializeDisabledKinds(cfg.disabledKinds)
     );
+    // The TARGET changed (#2565) — not the routing, which the matrix's HA column
+    // writes through this same function and which says nothing about the webhook.
+    if (
+      before.enabled !== cfg.enabled ||
+      before.webhookUrl !== cfg.webhookUrl.trim() ||
+      before.secret !== cfg.secret.trim()
+    )
+      invalidateDeliveryOutcome("home-assistant", profileId);
   });
   return getProfileHomeAssistant(profileId);
 }
@@ -821,11 +844,16 @@ export function setTelegramBotConfig(cfg: {
   telegramBotToken: string;
   telegramMode: TelegramMode;
 }): TelegramBotConfig {
+  const before = getTelegramBotConfig();
   // Write the token, mode, and one-time webhook secret as one transaction (mirrors
   // setUnitPrefs) so a partial failure can't leave the config half-updated.
   writeTx(() => {
     setSetting("telegram_bot_token", cfg.telegramBotToken.trim());
     setSetting("telegram_mode", cfg.telegramMode);
+    // A new bot is a new configuration for EVERY Telegram owner (#2565); the inbound
+    // mode changes how taps arrive, not whether a send lands.
+    if (before.telegramBotToken !== cfg.telegramBotToken.trim())
+      invalidateDeliveryOutcome("telegram");
     // Generate a stable webhook secret once, so inbound calls can be authenticated.
     if (!getSetting("telegram_webhook_secret")) {
       setSetting("telegram_webhook_secret", crypto.randomUUID());

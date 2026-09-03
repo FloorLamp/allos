@@ -794,3 +794,93 @@ export function emergencyEpisodeSection(
     latestTemp: ep.latestTemp ? fmtTemp(ep.latestTemp.degF, tempUnit) : null,
   };
 }
+
+// ── THE RECOVERY-LED COCKPIT HEADER (#4752 item 1) ──────────────────────────
+//
+// The cockpit's header IS the status, so the three things it says are computed here
+// rather than assembled in JSX: a headline about the person, one summary line folding
+// last-temp and last-meds into prose, and the fraction the progress ring draws. All
+// three read the SAME `EpisodeCollapsedStatus` the collapsed accordion line already
+// renders, so an expanded cockpit and its own collapsed line can never disagree.
+export interface CockpitRecovery {
+  /** Hours cleared of the convention's clock, or null with no measured normal. */
+  clearedForHours: number | null;
+  thresholdHours: number;
+  met: boolean;
+  /** The shared compact clause (lib/school-return.ts) — one spelling, every surface. */
+  label: string;
+}
+
+// THE HEADLINE, AND WHAT IT REFUSES TO SAY. It states only what the fever-free clock
+// already establishes; with no clock — no fever this episode, or nothing measured
+// since one — it is the person's NAME and nothing else, because every other sentence
+// available at that point would be a judgement the data has not made.
+export function cockpitRecoveryHeadline(
+  name: string,
+  recovery: CockpitRecovery | null
+): string {
+  if (!recovery || recovery.clearedForHours == null) return name;
+  if (recovery.met) return `${name} is fever-free`;
+  return recovery.clearedForHours * 2 >= recovery.thresholdHours
+    ? `${name} is nearly there`
+    : `${name} is on the mend`;
+}
+
+// ONE LINE, THREE CLAUSES. The stat grid it replaces spread the same three facts
+// across a monitor's width under three headings; as prose they read in one pass and
+// an absent fact says so in the same breath instead of printing "Not logged" under a
+// heading of its own.
+//
+// IT COMES BACK IN PARTS BECAUSE TWO OF THEM CARRY IDENTITY. The last temperature and
+// the last dose are dashboard CANDIDATES in their own right, and a candidate's
+// identity attributes have to ride on an element; a single joined string has no
+// elements. The line is `cockpitSummaryLine` below, over these same parts, so the
+// prose and the marked-up rendering can never drift.
+export type CockpitSummaryPart = "recovery" | "temperature" | "medication";
+
+export function cockpitSummaryParts(
+  status: EpisodeCollapsedStatus,
+  recovery: CockpitRecovery | null
+): { key: CockpitSummaryPart; text: string }[] {
+  return [
+    ...(recovery ? [{ key: "recovery" as const, text: recovery.label }] : []),
+    {
+      key: "temperature" as const,
+      text: status.temperature
+        ? `last reading ${status.temperature.value}${
+            status.temperature.when ? ` ${status.temperature.when}` : ""
+          }`
+        : "no temperature logged",
+    },
+    {
+      key: "medication" as const,
+      text: status.lastMeds
+        ? `last med ${status.lastMeds.name}${
+            status.lastMeds.when ? ` ${status.lastMeds.when}` : ""
+          }`
+        : "no meds logged",
+    },
+  ];
+}
+
+export function cockpitSummaryLine(
+  status: EpisodeCollapsedStatus,
+  recovery: CockpitRecovery | null
+): string {
+  return cockpitSummaryParts(status, recovery)
+    .map((part) => part.text)
+    .join(" · ");
+}
+
+// The ring's filled fraction, 0..1. Null where there is no clock to draw: a ring at
+// zero and a ring that does not apply look identical, and only one of them is true.
+export function cockpitRecoveryFraction(
+  recovery: CockpitRecovery | null
+): number | null {
+  if (!recovery || recovery.clearedForHours == null) return null;
+  if (recovery.thresholdHours <= 0) return 1;
+  return Math.max(
+    0,
+    Math.min(1, recovery.clearedForHours / recovery.thresholdHours)
+  );
+}

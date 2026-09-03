@@ -43,6 +43,12 @@ import {
   type EmailRecipient,
 } from "./email-core";
 
+import {
+  outcomeOf,
+  recordDeliveryOutcome,
+  recordedSend,
+} from "./delivery-marker";
+
 const log = createLogger("email-notify");
 
 // The login's notification address = its auth address (logins.email, migration
@@ -120,8 +126,10 @@ async function sendToRecipients(
         text: mail.text,
       });
       ok++;
+      recordDeliveryOutcome("email", [r.loginId], { ok: true });
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
+      recordDeliveryOutcome("email", [r.loginId], outcomeOf(e));
     }
   }
   if (ok === 0 && errors.length > 0) {
@@ -133,6 +141,12 @@ export const emailChannel: NotificationChannel = {
   id: "email",
   isConfigured(profileId: number) {
     return isEmailConfigured() && resolveEmailRecipients(profileId).length > 0;
+  },
+  owners(profileId: number, msg: NotificationMessage) {
+    if (!isEmailDeliverableKind(msg.kind)) return [];
+    return resolveEmailRecipients(profileId, msg.kind ?? "other").map(
+      (r) => r.loginId
+    );
   },
   async send(profileId: number, msg: NotificationMessage) {
     // A button-only kind (food nudge, mood check-in) would arrive as words about
@@ -176,6 +190,8 @@ export async function sendTestEmailToLogin(
     mode,
     getPublicUrl()
   );
-  await sendEmail({ to: address, subject: mail.subject, text: mail.text });
+  await recordedSend("email", [loginId], () =>
+    sendEmail({ to: address, subject: mail.subject, text: mail.text })
+  );
   return "sent";
 }

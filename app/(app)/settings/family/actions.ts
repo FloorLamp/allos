@@ -14,6 +14,7 @@ import {
   type Role,
 } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
+import { invalidateDeliveryOutcome } from "@/lib/notifications/delivery-marker";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
@@ -558,6 +559,8 @@ export async function setLoginEmail(formData: FormData): Promise<FamilyResult> {
       email || null,
       id
     );
+    // A new address is a new configuration for this login's Email channel (#2565).
+    invalidateDeliveryOutcome("email", id);
   } catch (err) {
     if (
       err instanceof Error &&
