@@ -8,11 +8,11 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { now, sqlNow } from "@/lib/clock";
+import { STATED_FUTURE_SKEW_MS } from "@/lib/stated-time";
 import { db, today } from "@/lib/db";
 import {
   FROZEN_WALL_TIME_UTC,
   frozenInstantForDay,
-  frozenInstantFrom,
   TIER_FROZEN_INSTANT,
 } from "./frozen-clock";
 
@@ -73,82 +73,52 @@ describe("the db/action tiers freeze the clock (#4509)", () => {
   });
 });
 
-// THE FROZEN INSTANT MUST LEAD SQLITE'S CLOCK, BY LESS THAN A DAY (#4837). The fake
-// Date does not advance and `datetime('now')` does, so a JS-seeded expiry judged
-// against a SQL timestamp is only correct while the frozen instant is AHEAD. Before
-// this, the day came from the real clock unconditionally, which put the instant up to
-// 15 minutes BEHIND it every night after 23:45 — `auth.test.ts:346` tolerates 1000 ms
-// and went red on four PRs at once.
-//
-// THE UPPER BOUND IS THE HALF NOBODY EXPECTS, and it is why the day rolls at the wall
-// time and not before it: `auth.test.ts:326` reads `Date.now()` off the frozen clock
-// against a slid DB expiry and allows 29 of its 30 days, so a lead of a full day fails
-// it. A margin added below to cover a whole tier run pushes the lead past 24h and
-// simply moves the daily red an hour earlier — measured, not reasoned:
-// `expected 2503805000 to be greater than 2505600000`.
-//
-// These drive the choice with an injected real clock, so both edges are reachable at
-// any hour rather than only between 23:45 and midnight.
-const DAY_MS = 24 * 60 * 60 * 1000;
+// WHERE THE WALL TIME IS ALLOWED TO SIT (#4837), and why it is not a free choice.
+// The fake Date does not advance and SQLite's `datetime('now')` does, so the freeze
+// leads SQL by L = W - r for a wall time W and a real time-of-day r, both as ms after
+// midnight. Two assertions in auth.test.ts pin L from opposite sides, and because L is
+// largest at midnight and smallest at the end of the day, the headroom above and the
+// red window below are THE SAME NUMBER, 86_400_000 - W. These fail when a change to
+// the constant crosses either edge, and say which edge and what the interval is —
+// crossing one is the thing the next person needs to meet, not a symptom to chase.
+const LEAD_CAP_MS = 24 * 60 * 60 * 1000;
+// The band the one quantity may sit in. Its FLOOR is the stated-time skew plus room to
+// express a statement past it: a spec exercising a REFUSED future time must be able to
+// name one later than the frozen now, past the skew, and still on the frozen day
+// (bristol-stool-write.test.ts). Below this the "future" verdict is unreachable and
+// that fixture goes quietly green on the wrong thing — which is why an endpoint like
+// 23:59:59.999 is refused rather than admired, before its 1 ms of cap headroom is even
+// argued about. Its CEILING is nightly red: 23:45 spent 900_000 ms here, the defect.
+const MIN_HEADROOM_MS = STATED_FUTURE_SKEW_MS + 60_000;
+const MAX_RESIDUAL_MS = 720_000;
+const WALL_MS = Date.parse(`1970-01-01T${FROZEN_WALL_TIME_UTC}`);
 
-describe("the frozen instant leads the real clock, by less than a day (#4837)", () => {
-  it.each([
-    [
-      "mid-morning, nowhere near the wall time",
-      "2026-09-02T09:00:00.000Z",
-      "2026-09-02",
-    ],
-    [
-      "a minute before it, still ahead",
-      "2026-09-02T23:44:00.000Z",
-      "2026-09-02",
-    ],
-    [
-      "one second past it — the first red minute",
-      "2026-09-02T23:45:01.000Z",
-      "2026-09-03",
-    ],
-    [
-      "the 23:49 the tier actually failed at",
-      "2026-09-02T23:49:27.000Z",
-      "2026-09-03",
-    ],
-    [
-      "the last millisecond of the day",
-      "2026-09-02T23:59:59.999Z",
-      "2026-09-03",
-    ],
-    ["month end rolls the month", "2026-09-30T23:50:00.000Z", "2026-10-01"],
-    ["year end rolls the year", "2026-12-31T23:50:00.000Z", "2027-01-01"],
-  ])("%s freezes on %s", (_label, realNow, day) => {
-    expect(frozenInstantFrom(new Date(realNow)).toISOString()).toBe(
-      `${day}T${FROZEN_WALL_TIME_UTC}`
+const INTERVAL =
+  `FROZEN_WALL_TIME_UTC = ${FROZEN_WALL_TIME_UTC} is ${WALL_MS} ms after midnight. ` +
+  `The cap is ${LEAD_CAP_MS} ms: auth.test.ts:326 allows 29 of a 30-day TTL while ` +
+  `reading Date.now() off this clock, and a run starting at midnight leads SQLite by ` +
+  `the whole wall time. auth.test.ts:346 needs that lead POSITIVE, so the day's last ` +
+  `${LEAD_CAP_MS} - W ms are red. Headroom under the cap and nightly red are the SAME ` +
+  `number, so moving this constant spends one to buy the other; it must land between ` +
+  `${MIN_HEADROOM_MS} and ${MAX_RESIDUAL_MS} ms of the cap. See the interval ` +
+  `arithmetic in frozen-clock.ts.`;
+
+describe("the wall time sits inside the interval auth.test.ts leaves it (#4837)", () => {
+  it("clears the lead cap by enough to survive an edit near it", () => {
+    expect(LEAD_CAP_MS - WALL_MS, INTERVAL).toBeGreaterThanOrEqual(
+      MIN_HEADROOM_MS
     );
   });
 
-  // The property the rows above are examples of, over a whole UTC day at the
-  // resolution the defect appears at. The extremes are asserted rather than each
-  // reading, so a failure prints the worst lead in whichever direction went wrong —
-  // which is the number that says how long SQLite's clock had to overtake the freeze,
-  // or how far past a day it ran.
-  it("keeps the lead over SQLite's clock inside (0, 24h] at every minute", () => {
-    const leads = Array.from({ length: 24 * 60 }, (_, minute) => {
-      const realNow = new Date(Date.UTC(2026, 8, 2, 0, minute));
-      return frozenInstantFrom(realNow).getTime() - realNow.getTime();
-    });
-    expect(Math.min(...leads)).toBeGreaterThan(0);
-    // A FULL DAY IS REACHABLE AND SAFE, at the one instant `realNow` IS the wall
-    // time: the roll lands exactly 24h out, and every SQL timestamp compared against
-    // it is read later than this, so the lead an assertion actually sees is already
-    // under a day. Anything WIDER is the failure this bound is here for — a lead
-    // margin of M puts the maximum at 24h + M and moves auth.test.ts:326's red
-    // earlier in the evening instead of removing it.
-    expect(Math.max(...leads)).toBeLessThanOrEqual(DAY_MS);
+  it("spends no more than the budget on nightly red", () => {
+    expect(LEAD_CAP_MS - WALL_MS, INTERVAL).toBeLessThanOrEqual(
+      MAX_RESIDUAL_MS
+    );
   });
 
-  // And the instant THIS run froze at leads the clock it actually has to beat.
-  // Measured against SQLite rather than against `Date.now()`, which this tier fakes to
-  // the frozen instant itself and which would therefore compare it to itself:
+  // And the instant THIS run froze at is inside both bounds, against the clock it
+  // actually has to beat. Measured with SQLite rather than `Date.now()`, which this
+  // tier fakes to the frozen instant itself and would compare it to itself:
   // `datetime('now')` is the unreachable real clock the whole invariant is about.
   it("holds for the instant this run actually froze at", () => {
     const sqlRealNow = Date.parse(
@@ -157,7 +127,13 @@ describe("the frozen instant leads the real clock, by less than a day (#4837)", 
       ).t.replace(" ", "T") + "Z"
     );
     const lead = TIER_FROZEN_INSTANT.getTime() - sqlRealNow;
-    expect(lead).toBeGreaterThan(0);
-    expect(lead).toBeLessThan(DAY_MS);
+    expect(
+      lead,
+      `The freeze is BEHIND SQLite by ${-lead} ms, so every JS-seeded expiry judged ` +
+        `against a SQL timestamp in this tier is wrong by that much. This is the ` +
+        `accepted residual — the last ${LEAD_CAP_MS - WALL_MS} ms of the UTC day, ` +
+        `plus however long this run took to get here. ${INTERVAL}`
+    ).toBeGreaterThan(0);
+    expect(lead, INTERVAL).toBeLessThan(LEAD_CAP_MS);
   });
 });
