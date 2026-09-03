@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
+import OfferRow from "@/components/OfferRow";
+import { LabeledVerbChip } from "@/components/Chip";
 import EntryHistoryTable, {
   type EntryHistoryColumn,
 } from "@/components/EntryHistoryTable";
@@ -42,12 +44,6 @@ export interface DoseHistoryEntry {
   amount: string | null;
   product: string | null;
 }
-
-// The offer row's shape: the sheet-row grammar the app already draws an offer in —
-// a full-width bordered row at the #644 tap floor, not a button-control. No new
-// `globals.css` utility for four rows that exist inside one panel.
-const OFFER_ROW_CLASS =
-  "press flex min-h-11 w-full items-center rounded-lg border border-(--border) bg-surface px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-(--ghost-hover) disabled:opacity-50 dark:text-slate-200";
 
 // What the backfill door is showing. `offers` is the missed-day list; `form` is
 // today's form, either blank ("Another date…") or seeded with a day the offer could
@@ -98,6 +94,8 @@ export default function DoseHistoryPanel({
   maxDate,
   defaultTime,
   canWrite = true,
+  subjectProfileId,
+  tz,
   courseBound = true,
   backfillDisabledReason,
   note,
@@ -117,6 +115,23 @@ export default function DoseHistoryPanel({
   maxDate: string;
   defaultTime: string;
   canWrite?: boolean;
+  // WHOSE doses this panel writes (#4693). Absent on every single-subject mount — the
+  // acting profile's own /medications or Supplements tab — where the actions' shared
+  // `gateItemProfile` falls back to the acting-profile gate. Present when the panel
+  // is mounted by a SUBJECT-SCOPED CONTAINER displaying another profile's item: the
+  // backfill, the missed-day offer, the amend and the delete then all post it as
+  // `profile_id`, and every one of them is re-gated server-side against that subject.
+  // The panel is one surface, so it takes one subject: a door that inherited and a
+  // row control that did not would file two halves of the same page on two people.
+  subjectProfileId?: number;
+  // The SUBJECT's timezone, and the other half of `subjectProfileId` (#4009's pair,
+  // restated at app/(app)/history/HistoryRows.tsx:529). The backfill and the amend both
+  // COLLECT A WALL CLOCK, and the actions re-anchor it in the gated profile's zone — so
+  // a panel that named the subject and collected on the caregiver's calendar would move
+  // the administration time on a save with nothing edited, and would offer a "Now" that
+  // is not the subject's. Absent on every single-subject mount, where the form's own
+  // fallback to the app-wide provider is already the right zone.
+  tz?: string;
   // Whether this item's history is bounded by a medication course (see the form).
   courseBound?: boolean;
   // Why a backfill can't be offered right now (no live dose, no course covering any
@@ -200,6 +215,10 @@ export default function DoseHistoryPanel({
         fd.set("id", String(itemId));
         fd.set("dose_id", String(soleDose.id));
         fd.set("date", date);
+        // The offer is the form's write with the fields pre-answered, so it carries
+        // the subject the form carries — otherwise one tap files the caregiver.
+        if (subjectProfileId != null)
+          fd.set("profile_id", String(subjectProfileId));
         // The same field names and the same amount the form posts, so the offer and
         // the form produce one row rather than two spellings of one write. The TIME
         // is the one value derived better than the form derives it — see
@@ -292,7 +311,13 @@ export default function DoseHistoryPanel({
       ) : null}
       {canWrite && backfill?.kind === "offers" ? (
         <div
-          className="mt-2 flex flex-col gap-1"
+          // A run of chips WRAPS and a column of rows STACKS, and the gap differs
+          // because the chips are coarse-pointer targets that reach 6px past their
+          // own box: `gap-3` is twice that reach, the floor #3938 set for adjacent
+          // targets. The full-width rows tile a column and take the list gap.
+          className={`mt-2 flex gap-1 ${
+            soleDose ? "flex-wrap items-center gap-3" : "flex-col"
+          }`}
           data-testid="dose-backfill-offers"
         >
           {/* THE TAP IS THE WRITE (#1505/#3674). Each row names the day and the dose
@@ -300,29 +325,44 @@ export default function DoseHistoryPanel({
               — its plausibility gates, bounds, course binding and as-needed handling
               unchanged and still re-checked server-side. There is no second write
               path here, only a second way to reach the one there is. */}
-          {offeredDays.map((date) => (
-            <button
-              key={date}
-              type="button"
-              data-testid="dose-backfill-offer"
-              disabled={ledger.blocked(date)}
-              onClick={() => logMissedDay(date)}
-              className={OFFER_ROW_CLASS}
-            >
-              {`${formatLongDate(date, formatPrefs)} · ${
-                soleDose ? offerPromise : "choose a dose"
-              }`}
-            </button>
-          ))}
-          <button
-            type="button"
-            data-testid="dose-backfill-other"
-            onClick={() => setBackfill({ kind: "form" })}
-            className={OFFER_ROW_CLASS}
+          {/* AND THE LABEL CARRIES THE DAY (#4753), which is what makes a wrong-day
+              tap visibly wrong. With ONE live dose the tap writes, so it is the
+              labeled-verb chip. With several it can only OPEN the picker — not a
+              write, so the applicability test leaves it the row it was. `soleDose` is
+              a property of the ITEM, so a panel renders one shape or the other and
+              never a mixed list. */}
+          {offeredDays.map((date) =>
+            soleDose ? (
+              <LabeledVerbChip
+                key={date}
+                tone="neutral"
+                testId="dose-backfill-offer"
+                label={`${formatLongDate(date, formatPrefs)} · ${offerPromise}`}
+                verb="Log"
+                disabled={ledger.blocked(date)}
+                onAct={() => logMissedDay(date)}
+              />
+            ) : (
+              <OfferRow
+                key={date}
+                tone="neutral"
+                testId="dose-backfill-offer"
+                onAct={() => logMissedDay(date)}
+              >
+                {`${formatLongDate(date, formatPrefs)} · choose a dose`}
+              </OfferRow>
+            )
+          )}
+          {/* A door, not an offer: no payload to name, so no chip. `w-full` puts it
+              on its own line below the wrapped run. */}
+          <OfferRow
+            tone="neutral"
+            testId="dose-backfill-other"
+            onAct={() => setBackfill({ kind: "form" })}
           >
             Another date…
-          </button>
-          <div>
+          </OfferRow>
+          <div className="w-full">
             <button
               type="button"
               onClick={() => setBackfill(null)}
@@ -340,6 +380,8 @@ export default function DoseHistoryPanel({
           maxDate={maxDate}
           initialDate={backfill.date}
           defaultTime={defaultTime}
+          subjectProfileId={subjectProfileId}
+          tz={tz}
           onDone={() => setBackfill(null)}
         />
       ) : null}
@@ -365,6 +407,8 @@ export default function DoseHistoryPanel({
                   statedAt: entry.statedAt,
                   amount: entry.amount,
                 }}
+                subjectProfileId={subjectProfileId}
+                tz={tz}
                 onDone={done}
               />
             )}
@@ -379,6 +423,8 @@ export default function DoseHistoryPanel({
             deleteFormData={(entry) => {
               const fd = new FormData();
               fd.set("log_id", String(entry.id));
+              if (subjectProfileId != null)
+                fd.set("profile_id", String(subjectProfileId));
               return fd;
             }}
             deleteAction={deleteAdministration}

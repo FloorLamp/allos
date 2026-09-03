@@ -1355,24 +1355,30 @@ export async function setDoseStatus(
     // The tri-state check-off renders on the Nutrition/Medications pages, the day
     // ledger's rows and the quick-log sheet's dose list, all posting THIS action.
     parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page"),
-    // THE STATE THE CONTROL WAS SHOWING, which decides whether this may overwrite
-    // (#280): a row in a list of what a day still owes renders CLEAR whether or not
-    // another device resolved it since, so from clear the tap may only resolve. Absent
-    // — a caller rendering no state — keeps the explicit set this action always did.
-    String(formData.get("from") ?? "") === "clear" && target !== "clear",
-    // THE TIME THE TAP STATES (#4426), and the wire carries a WALL TIME, not an
-    // instant: the day is this action's (`date`), so anchoring the two here is what
-    // makes them one claim — a client that sent a resolved instant could contradict
-    // the row it lands on. Only a `taken` states an administration; a skip and a clear
-    // assert none. A malformed or non-existent local time resolves to null and the row
-    // keeps the tap instant, which is the same fallback a refused capture takes.
-    target === "taken"
-      ? (statedInstantOnDate(
-          date,
-          String(formData.get("at") ?? ""),
-          getTimezone(profileId)
-        ) ?? undefined)
-      : undefined
+    {
+      // THE STATE THE CONTROL WAS SHOWING, which decides whether this may overwrite
+      // (#280): a row in a list of what a day still owes renders CLEAR whether or not
+      // another device resolved it since, so from clear the tap may only resolve.
+      // Absent — a caller rendering no state — keeps the explicit set this action
+      // always did.
+      resolveOnly:
+        String(formData.get("from") ?? "") === "clear" && target !== "clear",
+      // THE TIME THE TAP STATES (#4426), and the wire carries a WALL TIME, not an
+      // instant: the day is this action's (`date`), so anchoring the two here is what
+      // makes them one claim — a client that sent a resolved instant could contradict
+      // the row it lands on. Only a `taken` states an administration; a skip and a
+      // clear assert none. A malformed or non-existent local time resolves to null and
+      // the row keeps the tap instant, which is the same fallback a refused capture
+      // takes.
+      takenAt:
+        target === "taken"
+          ? (statedInstantOnDate(
+              date,
+              String(formData.get("at") ?? ""),
+              getTimezone(profileId)
+            ) ?? undefined)
+          : undefined,
+    }
   );
   revalidateIntake();
   return doseStatusResult(outcome, target);
@@ -1455,9 +1461,11 @@ export async function resolveDayDoses(
               dose.itemId,
               date,
               loggedVia,
-              date === localToday ? undefined : null,
-              null,
-              bundleId
+              {
+                takenAt: date === localToday ? undefined : null,
+                notifyMessageId: null,
+                bundleId,
+              }
             )
           : markDoseSkipped(
               profile.id,
@@ -1489,10 +1497,21 @@ export async function resolveDayDoses(
 // Deliberately backfill one past dose from a dose-history panel. The profile-local
 // wall time is converted here; the core owns everything else, including the optional
 // supply adjustment (pool-aware for a shared bottle, #1374).
+//
+// THE SURFACE'S SUBJECT, NOT THE ACTING PROFILE (#4693). A dose-history panel stands
+// on ONE item, so the surface hosting it names one subject — and on a subject-scoped
+// container (`/medications/[id]` viewed cross-profile) an ADD follows that surface
+// instead of the switcher. It takes the gate its amend path has had since #4009:
+// `gateItemProfile` → requireProfileWriteAccess on the posted `profile_id`, falling
+// back to the acting-profile gate on every single-subject mount, which posts none.
+// The zone, the core call and the audit row all take the profile that gate returns —
+// a wall time anchored in the CAREGIVER's zone would file the subject's dose at the
+// wrong instant.
 export async function logHistoricalDose(
   formData: FormData
 ): Promise<FormResult> {
-  const { login, profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
+  const { login } = await requireSession();
   const itemId = Number(formData.get("id"));
   const doseId = Number(formData.get("dose_id"));
   const date = String(formData.get("date") ?? "");
@@ -1506,12 +1525,12 @@ export async function logHistoricalDose(
     return formError("Enter a valid dose date and time.");
   }
 
-  const recordedAt = zonedWallTimeToUtc(getTimezone(profile.id), date, time);
+  const recordedAt = zonedWallTimeToUtc(getTimezone(profileId), date, time);
   if (!recordedAt) return formError("Enter a valid dose date and time.");
   const loggedVia = parseWebOrigin(formData.get(LOGGED_VIA_FIELD), "page");
 
   const outcome = logHistoricalDoseCore(
-    profile.id,
+    profileId,
     itemId,
     doseId,
     recordedAt,
@@ -1522,7 +1541,7 @@ export async function logHistoricalDose(
   if (outcome.kind === "logged") {
     recordAudit({
       loginId: login.id,
-      profileId: profile.id,
+      profileId,
       action: AUDIT_ACTIONS.doseLogBackfill,
       target: String(itemId),
       detail: outcome.date,

@@ -67,6 +67,11 @@ export interface WorkoutPresence {
   activityId: number | null;
   activityType: ActivityType | null;
   title: string | null;
+  // The activity's own profile-local day, null when idle. The finished window has a
+  // day of slack in it (a session that ended just after midnight still reads as just
+  // finished), so a receipt that doors to "today" would door to the wrong day for
+  // exactly the person who most just finished (#4767 item 4).
+  date: string | null;
   // active: minutes elapsed since start_time; finished: minutes since end_time;
   // idle: 0. Clamped to >= 0.
   sinceMin: number;
@@ -128,6 +133,7 @@ const IDLE: WorkoutPresence = {
   activityId: null,
   activityType: null,
   title: null,
+  date: null,
   sinceMin: 0,
   stale: false,
 };
@@ -202,6 +208,7 @@ export function computeWorkoutPresence(
       activityId: active.row.id,
       activityType: active.row.type,
       title: active.row.title,
+      date: active.row.date,
       sinceMin: Math.max(
         0,
         Math.round((nowMs - activeStart.getTime()) / 60_000)
@@ -232,6 +239,7 @@ export function computeWorkoutPresence(
       activityId: finished.row.id,
       activityType: finished.row.type,
       title: finished.row.title,
+      date: finished.row.date,
       sinceMin: Math.max(0, Math.round((nowMs - finished.endMs) / 60_000)),
       stale: false,
     };

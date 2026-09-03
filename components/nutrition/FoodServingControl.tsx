@@ -18,6 +18,22 @@ import RollingNumber from "@/components/RollingNumber";
 // NO MINUS AT ZERO (#3987): a permanently disabled control is chrome that says nothing,
 // on the row people tap most. The 32px box is kept for the ones that do render —
 // `.tap-target` adds a fixed 12px, so the 44px floor (#3486/#3514) is reached from 32px.
+//
+// AND THIS IS NOT `components/Stepper` (#4542's sixth site, decided here so the next
+// sweep reads it at the site rather than in a commit message). A stepper's middle is a
+// PENDING value its buttons edit and something else commits; this pair commits on every
+// tap — `onBump` runs a Server Action through an optimistic ledger with rollback, an
+// offline queue and an Undo toast — and the middle is a `RollingNumber` reading of the
+// total already written. So "−" is not "one less", it is "take the last one back", which
+// is what both labels say. The chrome follows from that and would have to be argued back
+// out of the primitive: no control box at all (this renders a fragment into the row's own
+// flex), an asymmetric pair rather than one button style (a ghost minus beside the page's
+// primary brand-filled chip, which also carries the settle animation), tabler glyphs
+// rather than the primitive's text pair, `h-8` round with `.tap-target` rather than
+// `h-11`/`sm:h-9 w-7`, and a minus that is ABSENT below one rather than disabled. Adopting
+// it would need a variant or mode prop, which is the outcome #4542 rules out by name.
+// `ProteinQuickAdd` is the same shape with a per-tap magnitude field in place of the
+// reading; `RpeStepper` is a real stepper still waiting on #4505.
 
 export default function FoodServingControl({
   slug,

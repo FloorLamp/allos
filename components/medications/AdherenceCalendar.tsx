@@ -4,7 +4,7 @@ import type {
   AdherenceCalendarCell,
   AdherenceCalendarState,
 } from "@/lib/adherence-calendar";
-import VisualizationDetails from "@/components/VisualizationDetails";
+import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
 import { StateLegend, stateCellClass } from "@/components/StateCells";
 
 // The month adherence calendar on a medication's detail page (issue #852 item 5): the
@@ -17,8 +17,7 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 // Cell colors come from the ONE blessed adherence palette (issue #1445), whose
 // steps are validated in CI: `taken`/`partial` are two steps of the same brand
 // ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a
-// `data-state`, and the legend and shared detail disclosure keep state from being
-// color-alone.
+// `data-state` and names its own day and state, so state is never color-alone.
 const STATE_STYLE: Record<AdherenceCalendarState, string> = {
   taken: chartAdherenceState.taken.class,
   partial: chartAdherenceState.partial.class,
@@ -49,18 +48,26 @@ function dayNumber(date: string): string {
   return String(Number(date.slice(8, 10)));
 }
 
+function cellText(cell: AdherenceCalendarCell): string | null {
+  return cell.date && cell.state
+    ? `${cell.date} · ${STATE_LABEL[cell.state]}`
+    : null;
+}
+
 function Cell({ cell }: { cell: AdherenceCalendarCell }) {
-  if (cell.date == null || cell.state == null) {
+  const text = cellText(cell);
+  if (cell.date == null || cell.state == null || text == null) {
     return <div aria-hidden="true" className="aspect-square" />;
   }
   return (
-    <div
+    <SeriesPoint
       data-testid="adherence-cal-day"
       data-state={cell.state}
-      className={stateCellClass("tile", STATE_STYLE[cell.state])}
+      label={text}
+      className={`relative ${stateCellClass("tile", STATE_STYLE[cell.state])}`}
     >
       {dayNumber(cell.date)}
-    </div>
+    </SeriesPoint>
   );
 }
 
@@ -101,14 +108,10 @@ export default function AdherenceCalendar({
             week.map((cell, ci) => <Cell key={`${wi}-${ci}`} cell={cell} />)
           )}
         </div>
-        <VisualizationDetails
-          label="Daily details"
+        <SeriesSummary
+          label="Adherence by day"
           items={model.weeks.flatMap((week) =>
-            week.flatMap((cell) =>
-              cell.date && cell.state
-                ? [`${cell.date} · ${STATE_LABEL[cell.state]}`]
-                : []
-            )
+            week.flatMap((cell) => cellText(cell) ?? [])
           )}
         />
       </div>

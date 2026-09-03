@@ -83,8 +83,8 @@ const CANONICAL_INSTANT_COLUMNS: Record<
     why: "migration 165 (#2154) — BORN canonical: the nullable event instant a vitals reading carries when somebody stated a time. No rows hold a value and nothing writes it yet, so the entry exists to bind the first writer rather than to record a conversion. `created_at` beside it stays bare and is NOT claimed here.",
   },
   body_metrics: {
-    columns: ["occurred_at"],
-    why: "migration 165 (#2235) — BORN canonical: the day's weigh-in instant. Same rule as medical_records, and the table's only instant column.",
+    columns: ["occurred_at", "weight_at", "body_fat_at", "resting_hr_at"],
+    why: "migration 165 (#2235) made `occurred_at` canonical — BORN canonical: the instant the PERSON stated for their sitting. 20260902-body-metric-measure-instants (#3950, owner-ruled) added the three PER-MEASURE instants the source states, likewise born canonical: one shared column cannot hold weight, body fat and resting HR, whose readings sit hours apart. The ingest writer binds them through the parser's `utcInstant`-shaped stamps; nothing else writes them.",
   },
   intake_item_logs: {
     columns: ["occurred_at", "recorded_at"],

@@ -636,15 +636,9 @@ describe("a message binds only bursts of its own domain (#3108)", () => {
       (ptr) => ptr.messageId === 9955
     )!;
     const d = seedDose(pid, "Digest Tab");
-    markDoseTaken(
-      pid,
-      d.doseId,
-      d.itemId,
-      date,
-      "telegram-command",
-      undefined,
-      digestPtr.id
-    );
+    markDoseTaken(pid, d.doseId, d.itemId, date, "telegram-command", {
+      notifyMessageId: digestPtr.id,
+    });
     const logRow = doseLogs(pid)[0];
     stampTap(logRow.id, "2026-08-05 05:31:00");
     setNow("2026-08-05T05:40:00Z");

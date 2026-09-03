@@ -348,28 +348,32 @@ when the app has no public URL, a `getUpdates` long-poll loop
 (`npm run notify -- poll`, run by the Docker sidecar); both delegate to
 `lib/notifications/telegram-callbacks.ts`. The mode is a setting
 (`telegram_mode`), and the shared public URL lives in `getPublicUrl()`
-(`lib/settings.ts`). **Delivery-health marker (#131 → lifecycle state #942):**
-`dispatch()` (`lib/notifications/index.ts`) folds every send fan-out into a
-global delivery-health marker — set on any failed channel, cleared on the next
-all-OK send — so a revoked bot token / wrong chat id surfaces on **Settings →
-Notifications** (the admin Server section) instead of only as the tick's exit
-code; the login-scoped **Send test** button (#1072) is the remediation path (a
-successful test clears it). As of #942 the marker is a first-class **lifecycle
-row** (`notify_lifecycle`, migration 061, keyed `'delivery-health'`) rather than
-three ad-hoc `notify_last_error*` settings keys: presence of a `state='failing'`
-row = a live failure, a healthy dispatch DELETEs it, and `getNotifyError()`
-returns the identical shape it always did (the row I/O is
-`lib/notifications/delivery-marker.ts`; migration 061 copies any live legacy
-marker into the row on upgrade and retires the old keys). The pure decision half
-is `lib/notifications/delivery-status.ts`
-(`pickDispatchError`/`isDeliveryHealthy`/`decideMarker`, unit-tested), whose
-`decideMarker` now speaks the shared **set/clear/freeze**
-`MarkerLifecycleAction` vocabulary (`lib/lifecycle.ts`) — "freeze" (formerly
-"keep") is the third state, the marker left exactly as it stood. **Clearing is
-channel-aware (#192):** the marker records _which_ channel failed, and a healthy
-dispatch only clears it when it actually attempted that channel (`decideMarker`)
-— so in a tick's per-profile fan-out, a Telegram-only profile can't clear a
-still-broken push recorded by a both-channels profile earlier in the same tick.
+(`lib/settings.ts`). **Scoped delivery lifecycle (#131 → #942 → #2565):** each
+channel adapter records the outcome of every send it makes against the
+DELIVERY OWNER it addressed — `(telegram, login_id)`, `(push, login_id)`,
+`(email, login_id)`, `(home-assistant, profile_id)` — as one `notify_lifecycle`
+row per owner (`delivery-<channel>-<owner>`; migration
+`20260902-notify-lifecycle-owner` adds `owner_id` to the #942 table). The row
+holds the LATEST attempt under the current configuration: `delivering` or
+`failing`, the transport's error sentence, and the instant. A shared Telegram
+chat applies its one send to every login mapped to it; Web Push is Delivering
+for a login when any of its browsers took the push and Erroring when every
+live attempt failed; Email records each resolved login; Home Assistant records
+the profile. A configuration write for an owner (chat id, address, browser
+subscription, webhook; the bot token or SMTP relay for every owner of that
+channel) DELETES its rows, so a row's existence means "about the configuration
+that stands now" — there is no generation counter. The strip on **Settings →
+Notifications** reads the owner rows (`channelRowState`,
+`lib/notifications/delivery-status.ts`): **Not set up** (the matrix's
+configuration liveness, dominating and hiding stale outcomes) / **Ready**
+(configured, no completed attempt — never called Delivering) / **Delivering** /
+**Erroring** (row forced open). `getNotifyError()` on **Settings → Server** is
+now a deterministic FOLD over the scoped failures (latest attempt, ties by
+channel order) with the pre-#2565 instance-wide row as its fallback until the
+first scoped attempt on that channel retires it — so one login's success never
+clears another login's error, which is what the #192 channel-aware clear was
+approximating. A whole-dispatch timeout (#3057) is recorded by `dispatch()`
+against the owners the adapter names (`NotificationChannel.owners`).
 **Two suppression contracts (#227):** tick nudges split into **bus-gated
 nudges** and **safety reminders**. A _bus-gated_ nudge (the **refill**,
 **preventive**, **workout**, and **illness-care** pushes, plus the retest lines
@@ -1893,6 +1897,26 @@ always calendar** — `week_mode` defines only weeks, and no rolling-month
 convention is invented. Weeks still go through `resolveRecapWindow`, so #223's
 "this week matches the routine counters" and #1021's completed-week send are
 byte-for-byte unchanged.
+
+**Rate lines cover completed days only (#4228 A).** `windowAdherence` walks the
+window up to yesterday, never through today: a dose is countable once its day has
+ended, and walking through today counted every dose not taken YET as missed, so
+the card's in-progress calendar week read "Adherence 0% · 12 missed" every
+week-start morning. A window holding no completed day yields no adherence line at
+all. The count lines still cover the whole window (the #223 counter match), and the
+notification's completed window (#1021) already ended before today and is unchanged.
+
+**News before stats (#4228 D).** The notification body splits into two sections
+set apart by a blank line, news first. Every `RecapLine` declares its `section`
+where it is built: a line is NEWS when it states a change or a target shortfall
+(PRs, missed/resumed deltas, the targets verdict, a nutrient at 0 of N, Zone 2
+under its target, adherence when it carries misses, goals reached or missed, a
+fitness check, recovery days) and a STAT when it is a total or a coverage figure
+(workout count, food coverage, weight, sleep, regularity, mood). Within each
+section the declared line order is kept. This supersedes #3033's line-order clause
+for the notification body only — `Recap.lines`, the headline, the card's atoms and
+the retrospective are untouched, and so are the daily digest and the household
+card.
 
 **The inclusion test**, generalized from #1935's owner-decided coverage rule: a
 line appears at a scale only if its fact **becomes visible** at that scale, and

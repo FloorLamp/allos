@@ -3,6 +3,7 @@ import {
   clinicalResultDetailHref,
   clinicalResultAddHref,
   historyDayHref,
+  historyDayIntradayHref,
   trainingLogDayHref,
   dayHistoryAddHref,
   dataSectionHref,
@@ -111,6 +112,16 @@ describe("historyDayHref", () => {
   // `#timeline-day-…` fragment to carry — the two things that died with `/timeline`.
   it("selects the day on the record", () => {
     expect(historyDayHref("2026-07-12")).toBe("/history?day=2026-07-12");
+  });
+});
+
+describe("historyDayIntradayHref", () => {
+  // The panel is a POSITION ON the page `?day=` already selects — the thing
+  // `/data#integrations` is — not the feed fragment `/timeline` retired with its route.
+  it("lands the receipt doors on the day view's intraday panel", () => {
+    expect(historyDayIntradayHref("2026-07-12")).toBe(
+      "/history?day=2026-07-12#day-at-a-glance"
+    );
   });
 });
 

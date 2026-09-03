@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { dismissToast, hydratedClick, settledClick } from "./helpers";
+import {
+  dismissToast,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 import Database from "better-sqlite3";
 import { frozenNow, workerDbPath } from "./worker-env";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -214,8 +219,16 @@ test.describe("the fasting lifecycle (#2756)", () => {
     await expect(details).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("fasting-fold")).toHaveCount(1);
     await expect(fold).toBeVisible();
+    // settledBoxes, not a raw rect: a DETACHED node's getBoundingClientRect() is all
+    // zeros, and this page's subtree is replaced rather than updated under load
+    // (#4815), so a height of 0 read one line after `toBeVisible()` passed is a node
+    // that stopped existing — not a fold that is too short (#4835). A genuinely short
+    // fold still has a box and still fails on the number below; a genuinely
+    // zero-height one is not visible, so the line above catches that.
+    const [foldBox] = await settledBoxes([fold]);
     expect(
-      await fold.evaluate((element) => element.getBoundingClientRect().height)
+      foldBox.height,
+      "the idle fold must stay a thumb-sized target"
     ).toBeGreaterThanOrEqual(44);
     await expect(page.getByTestId("fasting-control")).not.toBeVisible();
     await expect(page.getByTestId("fasting-backdate-toggle")).not.toBeVisible();
