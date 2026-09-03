@@ -369,41 +369,55 @@ describe("stored switch history", () => {
     ).toEqual({ switches: [], valid: false });
   });
 
-  it("prunes records older than the retention window on append", () => {
-    const now = new Date("2026-05-01T00:00:00Z");
-    const ancient: TimezoneSwitch = {
-      at: "2025-01-01T00:00:00Z",
-      from: NY,
-      to: TOKYO,
-    };
-    const recent: TimezoneSwitch = {
-      at: "2026-04-20T00:00:00Z",
-      from: TOKYO,
-      to: NY,
-    };
-    const next: TimezoneSwitch = { at: NOON_UTC, from: NY, to: TOKYO };
-    expect(appendTimezoneSwitch([ancient, recent], next, now)).toEqual([
-      recent,
-      next,
-    ]);
+  // #3428 item 1. The old rule dropped anything past 120 days and kept 24 records,
+  // sized for the excusal rules' 90-day strip. `zoneAtInstant` asks about instants of
+  // any age, and a dropped record answers every instant before it with the wrong
+  // zone — so nothing ages out. Three years of monthly hops is the shape a heavy
+  // traveller reaches; it must survive whole.
+  it("keeps a three-year, 200-switch history unpruned", () => {
+    let history: TimezoneSwitch[] = [];
+    const zones = [NY, TOKYO];
+    for (let i = 0; i < 200; i++) {
+      const day = new Date(Date.UTC(2023, 0, 1) + i * 5 * 86_400_000);
+      history = appendTimezoneSwitch(history, {
+        at: `${day.toISOString().slice(0, 10)}T12:00:00Z`,
+        from: zones[i % 2],
+        to: zones[(i + 1) % 2],
+      });
+    }
+    expect(history).toHaveLength(200);
+    expect(history[0].at).toBe("2023-01-01T12:00:00Z");
+    // Three years of coverage, and the oldest record is the one a resolver needs to
+    // answer for the oldest instant — under the retired rule it was the first to go.
+    expect(history.at(-1)!.at).toBe("2025-09-22T12:00:00Z");
+    // The chain still validates end to end, so the whole span is readable.
+    expect(connectedTimezoneSwitchHistory(history, NY)).toHaveLength(200);
+    // Switch 30 (2023-05-31T12:00Z, an even index) landed in Tokyo and switch 31 had
+    // not happened yet, so an instant two and a half years before "now" still resolves
+    // to the zone it was lived in. Under the retired 120-day floor this record was gone
+    // and the same instant answered Tokyo only by accident of the current zone.
+    expect(zoneAtInstant(history, NY, new Date("2023-06-01T00:00:00Z"))).toBe(
+      TOKYO
+    );
+    // Before the first record at all: that switch's `from`.
+    expect(zoneAtInstant(history, NY, new Date("2022-12-01T00:00:00Z"))).toBe(
+      NY
+    );
   });
 
-  it("keeps the newest MAX_STORED_SWITCHES and no more", () => {
-    const now = new Date("2026-05-01T00:00:00Z");
+  // The remaining bound is a safety valve on a runaway writer, not a retention
+  // policy — nothing the app does approaches it.
+  it("caps the stored history at MAX_STORED_SWITCHES, newest kept", () => {
     let history: TimezoneSwitch[] = [];
     for (let i = 0; i < MAX_STORED_SWITCHES + 5; i++) {
-      history = appendTimezoneSwitch(
-        history,
-        {
-          at: `2026-04-30T00:00:${String(i).padStart(2, "0")}Z`,
-          from: NY,
-          to: TOKYO,
-        },
-        now
-      );
+      history = appendTimezoneSwitch(history, {
+        at: `2026-04-30T00:00:${String(i % 60).padStart(2, "0")}Z`,
+        from: NY,
+        to: TOKYO,
+      });
     }
     expect(history).toHaveLength(MAX_STORED_SWITCHES);
-    expect(history[history.length - 1].at).toBe("2026-04-30T00:00:28Z");
+    expect(MAX_STORED_SWITCHES).toBeGreaterThan(200);
   });
 });
 
