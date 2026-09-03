@@ -62,6 +62,7 @@ import {
   frequencyScopeLabel,
   isStrengthProgrammingScope,
 } from "@/lib/frequency-targets";
+import { cadenceScopeNoun } from "@/lib/cadence";
 import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import {
   activeByKey,
@@ -1974,7 +1975,17 @@ async function renderDashboard(
         momentOpen
       ),
       {
-        label: `Log ${progress.target.scope_value}`,
+        // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841 item 2).
+        // The label used to be `Log ${scope_value}` beside an action that also read
+        // "Log", so the row printed the verb twice and named its subject by the
+        // STORED KEY — "Log Lower · 0 of 2 this week · Log". `cadenceScopeNoun` is
+        // the app's existing answer to "what is this target called" (the recap and
+        // the practice nudge already ask it), so the noun comes from there rather
+        // than from a second casing rule here.
+        label: cadenceScopeNoun(
+          progress.target.scope_kind,
+          progress.target.scope_value
+        ),
         detail: `${progress.count} of ${progress.per_week} this week`,
         href: habitHref,
         actionLabel: "Log",
@@ -2278,6 +2289,22 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // THE DOOR THAT ENDS THE DORMANCY (#4841 item 3). The line says a reading is
+        // missing; until now the only thing it opened was the history of the reading
+        // it says is missing. This is the door #4757 gives a stale reading, on the
+        // row where the reading is gone altogether — the same form, the same group
+        // and the same words as `staleMeasurementDoor` puts on the live vitals rows,
+        // so the family speaks once. It is spelled out rather than borrowed because
+        // that helper is gated on a glance-age token, and a dormant row has no
+        // reading left to have an age. "Vitals history" stays beside it as the
+        // family's door, like every other row here.
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
+          />
+        ),
         presence: "dormant",
       }
     );
@@ -2328,6 +2355,14 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // Its blood-pressure sibling's door, for the same reason (#4841 item 3).
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
+          />
+        ),
         presence: "dormant",
       }
     );
