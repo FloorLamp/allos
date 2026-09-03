@@ -90,6 +90,9 @@ export interface CallbackEntry<
   P extends readonly ReconcilePrefix[] = readonly ReconcilePrefix[],
 > {
   readonly prefixes: P;
+  // Which guard the handler consults on the token's date, or absent when the payload
+  // carries no date. Carried onto the built entry so the pairing test can read it.
+  readonly dateGuard?: ReconcileDateGuard;
   // The handler's promise, or null when this entry does not recognise the token.
   readonly run: (cq: TelegramCallbackQuery) => Promise<TapWrote> | null;
 }
@@ -107,6 +110,7 @@ export function callbackEntry<T, const P extends readonly ReconcilePrefix[]>(
 ): CallbackEntry<P> {
   return {
     prefixes: spec.prefixes,
+    dateGuard: spec.dateGuard,
     run: (cq) => {
       const token = spec.parse(cq.data);
       return token == null ? null : spec.handle(cq, token);

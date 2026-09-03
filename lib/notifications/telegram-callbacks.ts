@@ -377,7 +377,7 @@ async function sweepAfterTap(profileIds: readonly number[]): Promise<void> {
 // WHAT IT STILL CANNOT SEE: a handler called from somewhere other than this table, and a
 // hand-written arm added to `dispatchTap` beside the loop. Neither is a shape TypeScript
 // can forbid; the loop below is the only caller today.
-const CALLBACK_REGISTRY = [
+export const CALLBACK_REGISTRY = [
   // "✅ All (N)" — mark every pending dose in the session's window taken.
   callbackEntry({
     prefixes: ["all"],

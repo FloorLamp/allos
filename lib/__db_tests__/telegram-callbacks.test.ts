@@ -25,7 +25,16 @@ import { getProfileSetting } from "@/lib/settings";
 import { preventiveSignalKey } from "@/lib/preventive-upcoming";
 import { refillSignalKey } from "@/lib/refill-nudge";
 import { escalationMarkerKey } from "@/lib/notifications/escalate";
-import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import {
+  CALLBACK_REGISTRY,
+  handleCallbackQuery,
+} from "@/lib/notifications/telegram-callbacks";
+import {
+  HOST_INHERITED,
+  RECONCILE_DATE_GUARD,
+  reconcileEntryFor,
+  type ReconcileDateGuard,
+} from "@/lib/notifications/reconcile-registry";
 import { stackOfferToken } from "@/lib/notifications/intake";
 import { DOSE_LOG_DATE_WINDOW_DAYS } from "@/lib/dose-log-window";
 import {
@@ -1173,5 +1182,79 @@ describe("✅ All on a past day writes what the day owed, and nothing else", () 
       .all(restDose, preDose, bornTodayDose, yesterday);
     expect(rows).toEqual([{ name: "TG4019 Rest day med", status: "taken" }]);
     expect(lastAnswerText()).toBe("All logged ✅");
+  });
+});
+
+// ── THE REGISTRY'S TWO DECLARATIONS ABOUT A DATE, PAIRED (#4544) ─────────────
+//
+// `CALLBACK_REGISTRY` says what the HANDLER does with a token's date;
+// `RECONCILE_DATE_GUARD` says how late the SWEEP will leave that message tappable. They
+// are allowed to differ — `mood` differs on purpose — but only in ONE direction, and the
+// direction is the whole content of the rule: reconciliation may only ever REDUCE what a
+// chat claims, so a sweep that is MORE GENEROUS than its handler leaves a button standing
+// that the tap would refuse. That is the #614 defect with its sign flipped, and nothing
+// was watching for it.
+//
+// Strictness is a total order over the three answers, so this is a comparison rather than
+// a table of pairs: exact-day (today only) is stricter than dose-window (±2 days), which
+// is stricter than none.
+describe("the sweep is never more generous than the handler (#4544)", () => {
+  const STRICTNESS: Record<ReconcileDateGuard, number> = {
+    none: 0,
+    "dose-window": 1,
+    "exact-day": 2,
+  };
+
+  // Every registry entry that BOTH declares a handler guard and elects a family — the
+  // pairs the rule is about. An inert or host-inherited prefix elects no family, so the
+  // sweep has no answer of its own to compare against.
+  const pairs = CALLBACK_REGISTRY.flatMap((entry) => {
+    const handler = entry.dateGuard;
+    if (handler == null) return [];
+    return entry.prefixes.flatMap((prefix) => {
+      const family = reconcileEntryFor(prefix)?.family;
+      return family == null || family === HOST_INHERITED
+        ? []
+        : [{ prefix, family, handler }];
+    });
+  });
+
+  it("finds the pairs (it would pass vacuously otherwise)", () => {
+    expect(pairs.map((p) => p.prefix).sort()).toEqual([
+      "all",
+      "demote",
+      "escack",
+      "escskip",
+      "esctake",
+      "food",
+      "foodprotein",
+      "hh",
+      "medstop",
+      "mood",
+      "moodkeep",
+      "skip",
+      "take",
+    ]);
+  });
+
+  it.each(pairs)(
+    "$prefix: the $family sweep is at least as strict as its handler",
+    ({ family, handler }) => {
+      expect(
+        STRICTNESS[RECONCILE_DATE_GUARD[family].guard]
+      ).toBeGreaterThanOrEqual(STRICTNESS[handler]);
+    }
+  );
+
+  it("CONTROL: the comparison fails when the sweep is the looser of the two", () => {
+    // `hh` is the strict pair — handler and sweep both exact-day. Forge the sweep's
+    // answer down to `none` THROUGH THE SAME LOOKUP the assertion above runs through,
+    // and the same expression must go red.
+    const forged: ReconcileDateGuard = "none";
+    expect(STRICTNESS[forged]).toBeLessThan(
+      STRICTNESS[
+        pairs.find((p) => p.prefix === "hh")?.handler ?? "none"
+      ]
+    );
   });
 });
