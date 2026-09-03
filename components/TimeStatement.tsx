@@ -1,9 +1,22 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { IconClock } from "@tabler/icons-react";
 import WhenControl, { type WhenValue } from "@/components/WhenControl";
 import { useTimezone } from "@/components/TimezoneProvider";
+import {
+  DOSE_ACTION_ICON,
+  DOSE_ACTION_NEUTRAL,
+} from "@/components/medications/dose-action-styles";
 import { statedHhmm } from "@/lib/stated-time";
+
+// THE CLOCK GLYPH IS THE ONLY SPELLING OF THIS TOGGLE (#4426's rendering ruling,
+// 2026-09-02), so it is not a `label` prop any more and no mount can choose words —
+// four dialects said this one sentence four ways. The question is the ACCESSIBLE NAME
+// and never a `title=`: #2378/#3375 ruled hover-only text out of this codebase because
+// a touch or keyboard reader never receives it, and
+// lib/__tests__/raw-title-boundary.test.ts holds that line.
+export const HAPPENED_EARLIER = "Happened earlier?";
 
 // ONE COLLAPSED TIME STATEMENT (#4426), over the shared `WhenControl` (#2236) and in
 // the #3273 vocabulary: "this happened at a different time than my tap". The app spoke
@@ -22,7 +35,16 @@ import { statedHhmm } from "@/lib/stated-time";
 //      surface people leave open, so a change DROPS the statement rather than
 //      re-anchoring it: 23:50 said about yesterday is not a claim about today, and
 //      re-anchoring would invent one in the future.
-//   4. A STATEMENT IS SPENT BY THE TAP IT ANSWERS. These surfaces stay open for a
+//   4. THE REVEAL IS A LABELLED STATEMENT, NEVER A BARE BOX (#4384 fix 3). Opening
+//      "Happened earlier?" used to hand the reader an EMPTY time input whose only
+//      label was an `aria-label` — on the practice row, a blank box between the word
+//      "Today" and a ghost "Now", which reads as a broken dropdown rather than as a
+//      question. The row leads with `timeLabel` as a VISIBLE field label, pointed at
+//      the control's own time input, so what the box is for is on screen in the state
+//      it is always in when it opens: empty. That is why the label lives here and not
+//      in `WhenControl` — the control's other mounts are always-on-screen fields
+//      inside forms that label their own sections, and #4218 owns its internals.
+//   5. A STATEMENT IS SPENT BY THE TAP IT ANSWERS. These surfaces stay open for a
 //      genuine second observation, and a second observation is a different time —
 //      restating a minute CORRECTS the row the first tap wrote instead of adding one.
 //      `spend` takes what the tap CONSUMED and drops only that, because the settle runs
@@ -35,21 +57,17 @@ export interface TimeStatement {
   instant: string | null;
   /** Rule 4: drop the statement `consumed` paid for, and only that one. */
   spend: (consumed: string | null) => void;
-  /** The toggle and its reveal together, or null where the surface does not offer them. */
-  node: ReactNode;
   /**
-   * THE SAME STATEMENT, ADDRESSABLE IN TWO PIECES — for a surface whose toggle is
-   * already one of its domain action buttons and whose reveal belongs somewhere else
-   * in the layout. The PRN row is that surface: "Earlier dose" sits beside the row's
-   * own dose control — in the labeled-verb chip's clock-door seat (#4753) — while the
-   * reveal opens in the row's FOOTER, so no single node can be in both places.
+   * ALWAYS TWO PIECES, because the halves belong in two places: the door sits in the
+   * ACTION ROW immediately right of the action it modifies, the reveal opens BELOW
+   * that row where a day, a minute and a save button have room. There is no third
+   * node combining them — one could only ever be in one of the two places, and the
+   * mount that seated it correctly was the one that hand-rolled its own door.
    *
-   * THIS IS NOT A MODE (#4738 ruling 2). Nothing about the statement's behaviour
-   * changes with which piece a host renders — same state, same reveal, same four
-   * rules — and there is no prop to pass, so the control cannot grow a second
-   * behaviour by being configured into one. What a host chooses is where the two
-   * halves are DRAWN, which was always the host's.
+   * THIS IS NOT A MODE (#4738 ruling 2): same state, same reveal, same rules
+   * wherever a host draws them, and no prop to pass.
    */
+  door: ReactNode;
   reveal: ReactNode;
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -58,12 +76,10 @@ export interface TimeStatement {
 export function useTimeStatement({
   shown = true,
   day,
-  label,
   timeLabel,
   testId,
   tz: tzProp,
   disabled = false,
-  className,
 }: {
   // Rule 2 — the ONE expression the render and the write both read.
   shown?: boolean;
@@ -75,8 +91,8 @@ export function useTimeStatement({
   // it from the surface, and the statement is the same control in both. A mount that
   // wants to reach another day moves its SURFACE's day, never this control's.
   day: string;
-  // The domain's verb, as the toggle's words and its accessible name.
-  label: string;
+  // The revealed field's own label. The DOOR takes no words from a mount (see
+  // `HAPPENED_EARLIER`); this names the minute being stated, which is the domain's.
   timeLabel: string;
   // `{testId}-toggle` names the button; the `WhenControl` takes `testId` itself, so
   // its shipped `-date` / `-time` ids are unchanged.
@@ -84,7 +100,6 @@ export function useTimeStatement({
   // The TARGET profile's zone where a host logs for someone else.
   tz?: string;
   disabled?: boolean;
-  className?: string;
 }): TimeStatement {
   const contextTz = useTimezone();
   const tz = tzProp ?? contextTz;
@@ -106,18 +121,26 @@ export function useTimeStatement({
   // state a day through it however it is hosted.
   const reveal =
     shown && open ? (
-      <WhenControl
-        mode="state"
-        grain="minute"
-        value={when}
-        onChange={setWhen}
-        tz={tz}
-        minDate={day}
-        maxDate={day}
-        timeLabel={timeLabel}
-        disabled={disabled}
-        testId={testId}
-      />
+      <>
+        {/* `WhenControl` names its time input `{testId}-time`, which is what this
+            points at — one label, visible and associated, rather than a second
+            spelling of the accessible name the control already carries. */}
+        <label className="label" htmlFor={`${testId}-time`}>
+          {timeLabel}
+        </label>
+        <WhenControl
+          mode="state"
+          grain="minute"
+          value={when}
+          onChange={setWhen}
+          tz={tz}
+          minDate={day}
+          maxDate={day}
+          timeLabel={timeLabel}
+          disabled={disabled}
+          testId={testId}
+        />
+      </>
     ) : null;
   return {
     at,
@@ -131,19 +154,23 @@ export function useTimeStatement({
     open,
     setOpen,
     reveal,
-    node: shown ? (
-      <div className={className}>
-        <button
-          type="button"
-          data-testid={`${testId}-toggle`}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="btn-ghost btn-sm"
-        >
-          {label}
-        </button>
-        {reveal ? <div className="mt-2">{reveal}</div> : null}
-      </div>
+    // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
+    // already the shared language of these rows — practices and protocols import it
+    // beside medications — so the door wears the same box as the action it sits
+    // against rather than a fifth one.
+    door: shown ? (
+      <button
+        type="button"
+        data-testid={`${testId}-toggle`}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        aria-label={HAPPENED_EARLIER}
+        className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
+      >
+        <IconClock className="h-4 w-4" stroke={2} />
+        <span className="sr-only">{HAPPENED_EARLIER}</span>
+      </button>
     ) : null,
   };
 }

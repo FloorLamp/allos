@@ -1,9 +1,11 @@
 import { test, expect } from "./fixtures";
 import { type Locator, type Page } from "@playwright/test";
-import { followLink } from "./nav";
+import { followLink, loginAs } from "./nav";
+import { E2E_LOGIN_FEVER_AXIS, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import {
   dismissToast,
   expectNoClippedContent,
+  expectSvgTextInsidePlot,
   hydratedClick,
   settledBoxes,
   settledClick,
@@ -266,7 +268,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       "data-chip-verb",
       /^(?:Take|Give)$/
     );
-    const panelDoor = doseWorkingRow.getByTestId("prn-log-more");
+    const panelDoor = doseWorkingRow.getByTestId("prn-log-when-toggle");
     await expect(panelDoor).toHaveAccessibleName("Happened earlier?");
     await expect(panelDoor).toHaveText("Happened earlier?"); // the visible glyph only — the words are sr-only
     await expect(panelDoor.locator("span")).toHaveClass(/sr-only/);
@@ -756,5 +758,60 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       .filter({ hasText: "Rested; plenty of fluids" })
       .first(); // first-ok: filtered to the resolution note THIS spec logged — one match
     await expect(restedNote).toBeVisible();
+  });
+
+  // The date axis stays inside its own viewBox (#4858). The last date tick is drawn
+  // at x = W - PLOT_RIGHT = 312 of a 320-unit viewBox, so a label CENTRED on it
+  // hangs (width / 2 - 8) user units past the viewBox and the `<svg>` clips it —
+  // silently, because the `<svg>` box itself fits the viewport fine.
+  //
+  // WHY THIS DRIVES ITS OWN FIXTURE AND NOT PROFILE 1, which is the whole reason to
+  // anchor rather than to widen PLOT_RIGHT. Profile 1 renders "Sep 3" — 24.8px, or
+  // 22.2 user units at this viewport — so a centred label clears the edge by at most
+  // 3.1 user units, AND its last reading's clock time moves with the run, which
+  // slides the tick left of 312. Measured on the pre-fix tree at 390px, profile 1's
+  // last label ran [348.1, 373.0] against an `<svg>` right edge of 374.0: it FIT, by
+  // 1.0px. That is why the shared clipping guard reds on some runs and not others.
+  // This fixture removes both variables: a noon last reading pins the tick to 312,
+  // and the login's ISO date format makes the label "2026-09-03" (48.6px, 43.4 user
+  // units), which overflows by 15.3px on every run. Both numbers come from the same
+  // measurement — the probe run recorded in this change's commit message.
+  test("anchors the fever chart's end date ticks inside its viewBox", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FEVER_AXIS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await openCurrentEpisode(page);
+      const chart = page.getByTestId("episode-fever-chart");
+      await expect(chart).toBeVisible();
+
+      // Wait for the tick this test is about before measuring anything — the label
+      // is the content, and an empty plot fits any width.
+      const ticks = chart.locator("text[text-anchor]");
+      await expect(ticks.last()).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+
+      // The DEFECT first, through the guard that owns this question for every chart
+      // (#1573): every `<svg text>` paints inside its own plot. Reverting the
+      // anchoring reds here, naming the label and the box it escaped, rather than
+      // reding on the spelling below and leaving the reader to infer the harm.
+      await expectSvgTextInsidePlot(page);
+
+      // Then the mechanism, named rather than inferred from geometry: the ends
+      // anchor to the plot, everything between stays centred on its own tick.
+      // Read as one array so the axis is pinned end to end — the tick COUNT
+      // included, since the fixture's four readings are what put a tick on the
+      // plot edge in the first place.
+      expect(
+        await ticks.evaluateAll((nodes) =>
+          nodes.map((n) => n.getAttribute("text-anchor"))
+        )
+      ).toEqual(["start", "middle", "middle", "end"]);
+    } finally {
+      await page.context().close();
+    }
   });
 });

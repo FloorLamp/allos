@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { stripComments } from "./strip-comments";
 import { makeTmpDir } from "./tmp-dir";
 import {
+  censusRouteScope,
   DISCLOSURE_EXPANSIONS,
   DYNAMIC_ROUTES,
   HOVER_CAPTURES,
@@ -643,6 +644,43 @@ describe("ux census hub variants", () => {
       "coverage",
       "manage",
       "trash",
+    ]);
+  });
+});
+
+// UX_ROUTES scoping (#4661). The prefix form cannot name the dashboard, because
+// every route begins with `/` — so the app's most-changed surface was the one
+// route that could not be censused alone, and "just look at the dashboard" meant
+// a two-viewport pass over the whole route set. The `=` form is the fix; these
+// rows are what says the two forms still differ.
+describe("censusRouteScope", () => {
+  const ROUTES = ["/", "/trends", "/trends/metric/weight", "/trendsetter"];
+
+  it.each([
+    { spec: undefined, kept: ROUTES },
+    { spec: "", kept: ROUTES },
+    { spec: "  ,  ", kept: ROUTES },
+    // The defect, stated as a row: `/` as a prefix takes everything.
+    { spec: "/", kept: ROUTES },
+    { spec: "=/", kept: ["/"] },
+    {
+      spec: "/trends",
+      kept: ["/trends", "/trends/metric/weight", "/trendsetter"],
+    },
+    { spec: "=/trends", kept: ["/trends"] },
+    // Exact and prefix entries compose in one spec.
+    { spec: "=/,/trends/metric", kept: ["/", "/trends/metric/weight"] },
+    { spec: "=/nowhere", kept: [] },
+  ])("scopes $spec", ({ spec, kept }) => {
+    expect(ROUTES.filter(censusRouteScope(spec).keep)).toEqual(
+      ROUTES.filter((r) => kept.includes(r))
+    );
+  });
+
+  it("reports the parsed entries the run log prints", () => {
+    expect(censusRouteScope(" =/ , /trends ,, ").entries).toEqual([
+      "=/",
+      "/trends",
     ]);
   });
 });

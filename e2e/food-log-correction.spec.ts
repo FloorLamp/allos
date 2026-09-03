@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { hydratedClick, settledClick, settledSelect } from "./helpers";
+import {
+  hydratedClick,
+  openFoodAdd,
+  settledClick,
+  settledSelect,
+} from "./helpers";
 import { frozenNow } from "./worker-env";
 import { shiftDateStr } from "@/lib/date";
 
@@ -31,6 +36,9 @@ import { shiftDateStr } from "@/lib/date";
 // again — so it leaves the shared profile exactly as it found it.
 
 async function revealFoodGroup(page: Page, slug: string) {
+  // The add layer folds behind one `+ Add` door (#4477) and the overflow is a
+  // second fold inside it, so reaching a row means opening both.
+  await openFoodAdd(page);
   const row = page.getByTestId(`food-group-${slug}`);
   if (!(await row.isVisible())) {
     await hydratedClick(page, page.getByTestId("food-more-groups-summary"));
@@ -96,6 +104,7 @@ test("a mis-slotted serving is corrected from the log and the meal tallies follo
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Log into Morning explicitly, so the correction has a known source window.
@@ -170,6 +179,7 @@ test("the ⋯ menu removes the corrected row it names, and Undo restores that ro
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Capture the Evening baselines FIRST: `count-<slug>` always reads the active slot, so
@@ -286,6 +296,7 @@ test("the sheet corrects a serving's eating time; Meal follows the hour until to
 }) => {
   test.slow(); // the nutrition route compiles on first hit
   await page.goto("/nutrition");
+  await openFoodAdd(page);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   await hydratedClick(page, page.getByTestId("food-slot-morning"));

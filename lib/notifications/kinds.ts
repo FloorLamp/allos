@@ -43,6 +43,7 @@ export const ALL_NOTIFICATION_KINDS = [
   "food",
   "mood",
   "practice",
+  "practice-recap",
   "digest",
   "upcoming",
   "weekly-recap",
@@ -222,17 +223,8 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     requiresFoodLogging: true,
     // FOOD_NUDGE_WINDOWS — Bedtime is deliberately excluded from the food nudge.
     ridesSlots: ["Morning", "Midday", "Evening"],
-    // #3330: alcohol is a food group whose counter is the substance ledger, so it would
-    // otherwise ride these buttons with no choice attached. Off by default and nested
-    // here rather than given its own kind — it changes what a food nudge CONTAINS, not
-    // whether one is sent.
-    extras: [
-      {
-        field: "substance_telegram_enabled",
-        label: "Include alcohol in the buttons and tally",
-        testId: "substance-telegram-enabled",
-      },
-    ],
+    // Alcohol rides these buttons under THIS toggle like every other food group (owner
+    // ruling 2026-09-02, narrowing #3330): the food-buttons consent is the choice.
     more: "Tapping a button logs a serving; your full food log stays on the Nutrition page. Buttons need a chat channel, so Web Push and Email can't deliver this kind.",
   },
   {
@@ -260,6 +252,15 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     safety: false,
     control: { type: "always" },
     more: "Driven by the weekly targets on your practice protocols — there is nothing to send until you create one. Dismissing the matching item on Upcoming silences this nudge too.",
+  },
+  {
+    kind: "practice-recap",
+    label: "Practice finish note",
+    blurb:
+      "What a finished practice did to your heart rate, once your watch's data has caught up.",
+    safety: false,
+    control: { type: "always" },
+    more: "It waits for the minute-by-minute heart rate covering the session, which usually arrives half an hour or so after you finish. If it never arrives, nothing is sent — a note with no number in it would only repeat the tap. Nothing is sent for a practice you have no heart-rate data for.",
   },
   {
     kind: "digest",
@@ -296,6 +297,17 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
       timeField: "recap_hour",
       scaleField: "recap_scale",
     },
+    // #3330 / #3900: the recap's cap lines name a substance by its own noun, so the
+    // substance-log caps (nicotine, cannabis, a custom substance) ride this message only
+    // behind a per-profile choice. Off by default and nested here — it changes what a
+    // recap CONTAINS, not whether one is sent. Alcohol is a food cap and is not gated.
+    extras: [
+      {
+        field: "substance_telegram_enabled",
+        label: "Name nicotine, cannabis and custom substance caps",
+        testId: "substance-telegram-enabled",
+      },
+    ],
     // Names the lines the recap ACTUALLY composes (lib/recap.ts). It
     // advertised "volume" and "streak" until #1966 noticed: #1935 cut both of
     // those lines, and this Settings blurb was the one place the sweep missed,

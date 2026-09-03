@@ -7,6 +7,7 @@ import {
   expectNoClippedContent,
   expectPhoneTapTargets,
   hydratedClick,
+  openFoodAdd,
   openMobileDrawer,
   settledBoxes,
 } from "./helpers";
@@ -440,6 +441,7 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
     page,
   }) => {
     await page.goto("/nutrition");
+    await openFoodAdd(page);
 
     // The one-tap logger renders for an adult profile (the seeded admin).
     await expect(page.getByTestId("food-log-bar")).toBeVisible();

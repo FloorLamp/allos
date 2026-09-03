@@ -41,6 +41,7 @@ import {
 } from "./illness-episode-store";
 import type {
   AssembledEpisode,
+  LoggedSymptomSeries,
   SymptomSeries,
   TemperaturePoint,
   EpisodeMedication,
@@ -48,6 +49,7 @@ import type {
   AdministrationPoint,
 } from "./illness-episode-format";
 import {
+  deriveFeverSeries,
   isOpenEpisode,
   episodeConditionExternalId,
 } from "./illness-episode-format";
@@ -201,13 +203,14 @@ function assembleIllnessEpisodeFromFacts(
   const dayRollups = facts.symptomDays.filter(
     (day) => day.date >= from && day.date <= to
   );
-  const bySymptom = new Map<string, SymptomSeries>();
+  const bySymptom = new Map<string, LoggedSymptomSeries>();
   // getSymptomDaysInRange is newest-day-first; build each series oldest-first.
   for (const day of [...dayRollups].reverse()) {
     for (const s of day.symptoms) {
       let series = bySymptom.get(s.symptom);
       if (!series) {
         series = {
+          source: "logged",
           symptom: s.symptom,
           label: symptomLabel(s.symptom),
           points: [],
@@ -224,7 +227,7 @@ function assembleIllnessEpisodeFromFacts(
       series.maxSeverity = Math.max(series.maxSeverity, s.severity);
     }
   }
-  const symptoms = [...bySymptom.values()].sort(
+  const loggedSymptoms = [...bySymptom.values()].sort(
     (a, b) =>
       b.maxSeverity - a.maxSeverity ||
       a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
@@ -264,6 +267,17 @@ function assembleIllnessEpisodeFromFacts(
   );
   const latestTemp =
     temperatures.length > 0 ? temperatures[temperatures.length - 1] : null;
+
+  // ── The derived fever row (#4712 item 4) ────────────────────────────────────
+  // Composed here, from the readings assembled just above, so every surface that
+  // reads `episode.symptoms` sees the same row from the same facts (#221). It is
+  // APPENDED after the worst-first logged sort rather than sorted into it: the
+  // derived arm carries no severity to sort ON, and where the row should sit beside
+  // stated symptoms is a presentation question the owner has not ruled.
+  const feverSeries = deriveFeverSeries(temperatures);
+  const symptoms: SymptomSeries[] = feverSeries
+    ? [...loggedSymptoms, feverSeries]
+    : loggedSymptoms;
 
   // ── PRN administrations with amounts (#797) ─────────────────────────────────
   // Only AS-NEEDED (PRN) meds: the illness story is what was taken FOR the illness
@@ -340,7 +354,7 @@ function assembleIllnessEpisodeFromFacts(
 
   // ── Notes (symptom notes), oldest first ─────────────────────────────────────
   const notes: { date: string; text: string }[] = [];
-  for (const series of symptoms) {
+  for (const series of loggedSymptoms) {
     for (const p of series.points) {
       if (p.note)
         notes.push({ date: p.date, text: `${series.label}: ${p.note}` });
@@ -350,7 +364,7 @@ function assembleIllnessEpisodeFromFacts(
 
   // ── Concrete window bookkeeping ─────────────────────────────────────────────
   const dataDays = [
-    ...symptoms.flatMap((s) => s.points.map((p) => p.date)),
+    ...loggedSymptoms.flatMap((s) => s.points.map((p) => p.date)),
     ...temperatures.map((t) => t.date),
     ...medications.flatMap((m) => m.administrations.map((a) => a.date)),
   ].sort();
@@ -372,7 +386,7 @@ function assembleIllnessEpisodeFromFacts(
     asOf,
     dayCount,
     symptoms,
-    distinctSymptomCount: symptoms.length,
+    distinctSymptomCount: loggedSymptoms.length,
     temperatures,
     maxTempF,
     latestTemp,

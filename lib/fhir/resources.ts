@@ -50,9 +50,10 @@ import type {
   OpticalKind,
 } from "../types";
 import {
+  capImagingImpression,
+  capImagingNarrative,
   normalizeLaterality,
   normalizeModality,
-  parseImpressionSection,
 } from "../imaging-study";
 import {
   parseDiopter,
@@ -1429,10 +1430,6 @@ export function observationsFromDiagnosticReport(
 // (a code vocabulary normalizeModality doesn't speak), which still falls through to
 // normalizeModality on the coding's display text.
 
-// The rendered-report narrative cap: a decoded inline attachment / conclusion is
-// stored as the impression, capped so a runaway document can't bloat the row.
-const IMAGING_NARRATIVE_MAX = 8000;
-
 // DICOM acquisition-modality codes (ImagingStudy.modality / .series.modality,
 // DiagnosticReport imaging categories) → our modality enum. A code vocabulary
 // normalizeModality (which reads report PHRASINGS) can't resolve, so this small
@@ -1568,22 +1565,6 @@ function stripHtml(s: string): string {
     .trim();
 }
 
-function capNarrative(s: string): string {
-  const t = s.trim();
-  return t.length > IMAGING_NARRATIVE_MAX
-    ? t.slice(0, IMAGING_NARRATIVE_MAX).trimEnd() + "…"
-    : t;
-}
-
-// The impression a report labels for itself, under the SAME bound as the narrative
-// (#3594). A labelled section that runs to the end of a runaway document parses to
-// the whole body, and this is the field every display surface prefers — so the cap
-// belongs on the parse result, not only on the narrative it came from.
-function capImpression(narrative: string | null): string | null {
-  const section = parseImpressionSection(narrative);
-  return section ? capNarrative(section) : null;
-}
-
 // Decode ONE inline FHIR Attachment to plain text — ONLY when it carries inline
 // base64 `data` with a text-ish contentType. A binary attachment (application/pdf,
 // image/*) or a remote `url`-only reference returns null: we DELIBERATELY never fetch
@@ -1707,8 +1688,8 @@ export function mapImagingStudyResource(
     dose_msv: null,
     // The study's own description + notes: a narrative, not a labelled impression
     // (#3594). parseImpressionSection fills the impression only if it says so.
-    impression: capImpression(impressionRaw),
-    report_narrative: impressionRaw ? capNarrative(impressionRaw) : null,
+    impression: capImagingImpression(impressionRaw),
+    report_narrative: impressionRaw ? capImagingNarrative(impressionRaw) : null,
     indication: conceptListText(r?.reasonCode),
     status: typeof r?.status === "string" ? r.status : null,
     external_id: imagingExternalId(idPrefix, "study", r, [
@@ -1785,9 +1766,9 @@ export function mapDiagnosticReport(
           // are what may be stored as the finding (#3594). With no conclusion, the
           // rendered report is parsed only if it labels its own impression section.
           impression: conclusionImpression
-            ? capNarrative(conclusionImpression)
-            : capImpression(formText),
-          report_narrative: capNarrative(narrative),
+            ? capImagingNarrative(conclusionImpression)
+            : capImagingImpression(formText),
+          report_narrative: capImagingNarrative(narrative),
           indication: null,
           status: typeof r?.status === "string" ? r.status : null,
           external_id: imagingExternalId(idPrefix, "report", r, [
@@ -1811,7 +1792,7 @@ export function mapDiagnosticReport(
     category: "lab",
     name,
     canonical: name,
-    value: capNarrative(narrative),
+    value: capImagingNarrative(narrative),
     value_num: null,
     unit: null,
     date,
@@ -1862,8 +1843,8 @@ export function mapDocumentReferenceImaging(
     dose_msv: null,
     // A whole rendered report and nothing else — the impression is only what the
     // document labels as one (#3594).
-    impression: capImpression(text),
-    report_narrative: capNarrative(text),
+    impression: capImagingImpression(text),
+    report_narrative: capImagingNarrative(text),
     indication: null,
     status:
       typeof r?.docStatus === "string"

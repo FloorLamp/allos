@@ -34,6 +34,8 @@ import {
   type DigestCategory,
 } from "./digest-tune";
 import { GLYPH } from "./glyphs";
+import type { ReconcileDateGuard, ReconcilePrefix } from "./reconcile-registry";
+import type { TelegramCallbackQuery } from "./telegram";
 
 // WHAT A TAP HANDLER REPORTS BACK (#3933): the profile whose records it WROTE, or
 // undefined when it wrote none. `handleCallbackQuery` sweeps that profile's other live
@@ -46,6 +48,55 @@ import { GLYPH } from "./glyphs";
 // chat the message sits in: the household round writes under the member and the stale
 // keyboards it invalidates are the member's own.
 export type TapWrote = number | undefined;
+
+// ── ONE DECLARED CALLBACK ENTRY (#4544) ──────────────────────────────────────
+//
+// `dispatchTap` used to hold 35 consecutive parse-then-handle arms, so a token parser
+// and the handler that consumes its payload were paired by ADJACENCY and by nothing
+// else. Here the pairing is the type: `T` is inferred from `parse` and demanded of
+// `handle`, and `prefixes` is the reconcile registry's own declaration, so a family
+// cannot reach the dispatcher without answering "what happens when this message is
+// still sitting in the chat tomorrow?".
+//
+// A payload carrying a `date` must also name which guard its handler consults, in
+// RECONCILE_DATE_GUARD's vocabulary. `handleMoodTap` consults none — safe today, and
+// exactly the shape the next date-bearing prefix would have inherited in silence; the
+// answer `"none"` is legal, and "nobody looked" is not, because only one of them
+// compiles. It is a DECLARATION and not a second guard: the dispatcher does not run it,
+// because the handlers' refusals differ in wording and in outcome and unifying those
+// would be a behaviour change. Its consumer is the pairing test in
+// lib/__db_tests__/telegram-callbacks.test.ts.
+export interface CallbackEntry<
+  P extends readonly ReconcilePrefix[] = readonly ReconcilePrefix[],
+> {
+  readonly prefixes: P;
+  // Which guard the handler consults on the token's date, or absent when the payload
+  // carries no date. Carried onto the built entry so the pairing test can read it.
+  readonly dateGuard?: ReconcileDateGuard;
+  // The handler's promise, or null when this entry does not recognise the token.
+  readonly run: (cq: TelegramCallbackQuery) => Promise<TapWrote> | null;
+}
+
+type DateAnswer<T> = [T] extends [{ date: string }]
+  ? { dateGuard: ReconcileDateGuard }
+  : { dateGuard?: never };
+
+export function callbackEntry<T, const P extends readonly ReconcilePrefix[]>(
+  spec: {
+    prefixes: P;
+    parse: (data: unknown) => T | null;
+    handle: (cq: TelegramCallbackQuery, token: T) => Promise<TapWrote>;
+  } & DateAnswer<T>
+): CallbackEntry<P> {
+  return {
+    prefixes: spec.prefixes,
+    dateGuard: spec.dateGuard,
+    run: (cq) => {
+      const token = spec.parse(cq.data);
+      return token == null ? null : spec.handle(cq, token);
+    },
+  };
+}
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
 // #233's refill "Open form"); mirrors telegram.ts's InlineKeyboard.

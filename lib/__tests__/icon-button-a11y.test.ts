@@ -113,11 +113,26 @@ function isIconOnly(children: string): boolean {
   return c.trim().length === 0;
 }
 
-function hasAccessibleName(attrs: string, children: string): boolean {
+// A button that spreads a ControlTooltip anchor (#4511). The name is not written
+// at the call site BY DESIGN — `ControlAnchorProps` requires `"aria-label": string`,
+// so the spread cannot arrive without one, and the same string is what the tooltip
+// draws. That is a stronger guarantee than the attribute this file looks for, not a
+// weaker one: a type, not a convention. Narrow on purpose — the file must import the
+// component, so an unrelated `{...spread}` still counts as unnamed.
+const spreadsControlAnchor = (attrs: string, src: string): boolean =>
+  /\{\s*\.\.\.anchor\s*\}/.test(attrs) &&
+  /from "@\/components\/ControlTooltip"/.test(src);
+
+function hasAccessibleName(
+  attrs: string,
+  children: string,
+  src: string
+): boolean {
   if (/\baria-label\b/.test(attrs)) return true;
   if (/\baria-labelledby\b/.test(attrs)) return true;
   if (/\btitle\s*=/.test(attrs)) return true;
   if (/\bsr-only\b/.test(children)) return true;
+  if (spreadsControlAnchor(attrs, src)) return true;
   return false;
 }
 
@@ -151,7 +166,7 @@ function findButtons(rel: string, src: string): Found[] {
       const line = src.slice(0, i).split("\n").length;
       out.push({
         loc: `${rel}:${line}`,
-        named: hasAccessibleName(attrs, children),
+        named: hasAccessibleName(attrs, children, src),
       });
     }
     i = tagEnd + 1;

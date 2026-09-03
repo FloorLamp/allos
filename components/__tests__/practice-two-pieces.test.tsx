@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PracticeSessionForm from "@/components/practices/PracticeSessionForm";
+import { shiftHHMM } from "@/lib/activity-meta";
 import LogPracticeButton from "@/components/practices/LogPracticeButton";
 
 // THE PRACTICE DOMAIN'S TWO PIECES (#4424, `LOG_MANIFEST.practice.pieces`).
@@ -147,6 +148,12 @@ function fieldSignature(): string[] {
     .map((el) => {
       const aria = el.getAttribute("aria-label");
       if (aria) return aria;
+      // Both shapes the form draws: a label WRAPPING its control, and — since the
+      // start/end pair became the shared `TimeRangeFields` — a label pointing at one
+      // by `for`. Reading only the first would flatten every field in the shared pair
+      // to "INPUT", and a signature that cannot tell Start from End is not one.
+      const forLabel = el.id && document.querySelector(`label[for="${el.id}"]`);
+      if (forLabel) return forLabel.textContent?.trim() ?? "";
       const label = el.closest("label");
       if (!label) return el.tagName;
       return [...label.childNodes]
@@ -259,6 +266,78 @@ describe("PracticeSessionForm is ONE form for add and for edit", () => {
     const added = payload("logPractice");
     expect(added.start_time).toBe("");
     expect("start_time" in added).toBe(true);
+  });
+});
+
+// #4384 FIX 6 — THE WINDOW AND THE DURATION READ EACH OTHER, through the pair the
+// activity form already mounted (`components/TimeRangeFields.tsx`). The form shipped
+// four uncoupled boxes: nothing derived, no shortcut was offered, and an end before its
+// start was accepted and written. Asserted in BOTH modes because "the details modal and
+// the session-history edit form" are this one component — which is the whole reason the
+// interplay could be added once instead of twice.
+describe("the window and the duration read each other (#336's interplay)", () => {
+  const start = () => screen.getByLabelText("Start") as HTMLInputElement;
+  const end = () => screen.getByLabelText("End") as HTMLInputElement;
+  const duration = () => screen.getByLabelText("Duration") as HTMLInputElement;
+
+  it.each([
+    ["add", undefined],
+    ["edit", ROW],
+  ] as const)(
+    "%s mode: a stated clock offers the other at the duration's distance, then the third derives",
+    (_mode, row) => {
+      openForm(row);
+      // Cleared first, so what the case measures is the interplay and not the seed.
+      fireEvent.change(start(), { target: { value: "" } });
+      fireEvent.change(end(), { target: { value: "" } });
+      fireEvent.change(duration(), { target: { value: "30" } });
+
+      // With no clock stated, each side offers the one thing it can: now.
+      expect(screen.getByTestId("start-time-shortcut").textContent).toBe("now");
+      fireEvent.click(screen.getByTestId("start-time-shortcut"));
+      expect(start().value).toMatch(/^\d\d:\d\d$/);
+
+      // Once a Start is stated, the OTHER side offers the duration instead — which is
+      // the offer this form had no way to make.
+      const offer = screen.getByTestId("end-time-shortcut");
+      expect(offer.textContent).toBe("+30m");
+      fireEvent.click(offer);
+      expect(end().value).toBe(shiftHHMM(start().value, 30));
+
+      // …and with both clocks stated the duration stops being a second place to type
+      // one: it is the span, and it says where it came from.
+      expect(duration().readOnly).toBe(true);
+      expect(duration().value).toBe("30");
+      expect(screen.getByText("Calculated from start and end.")).toBeTruthy();
+    }
+  );
+
+  it("refuses an end before its start, in the activity form's words", async () => {
+    openForm();
+    fireEvent.change(start(), { target: { value: "09:00" } });
+    fireEvent.change(end(), { target: { value: "08:00" } });
+    expect(
+      screen.getByText("End time must be after the start time.")
+    ).toBeTruthy();
+    // The refusal is the SUBMIT's, not the message's — asserted on the button rather
+    // than on "nothing was posted", because the end input's `min` makes the click a
+    // no-op either way and would satisfy that check on a form with no refusal in it.
+    const submit = () =>
+      screen.getByTestId("practice-log-detailed-submit") as HTMLButtonElement;
+    expect(submit().disabled).toBe(true);
+    await save("Log session");
+    expect(posted.logPractice ?? []).toHaveLength(0);
+
+    // THE CONVERSE, because "nothing was posted" is also what a broken form does:
+    // correct the end and the same click writes.
+    fireEvent.change(end(), { target: { value: "09:40" } });
+    expect(submit().disabled).toBe(false);
+    await save("Log session");
+    expect(payload("logPractice")).toMatchObject({
+      start_time: "09:00",
+      end_time: "09:40",
+      duration_min: "40",
+    });
   });
 });
 
@@ -376,6 +455,24 @@ describe("Upcoming's row is a mount of the one control (#4424 ruling 7)", () => 
     fireEvent.click(screen.getByTestId("practice-log-button"));
     await waitFor(() => expect(posted.logPractice ?? []).toHaveLength(1));
     expect(payload("logPractice").duration_min).toBe("20");
+  });
+
+  // #4384 FIX 4 — the unit was the `placeholder`, so the stepper named what it counted
+  // in the one state where a bare number is unambiguous (empty) and went silent in the
+  // state where it is not.
+  it("names its unit while it holds a value, not only while blank", async () => {
+    render(upcoming(0));
+    const stepper = screen.getByTestId("practice-inline-duration");
+    expect(
+      (screen.getByTestId("practice-duration-input") as HTMLInputElement).value
+    ).toBe("20");
+    expect(stepper.textContent).toContain("min");
+    // …and the same word in the blank state, which is what the placeholder gave and
+    // what this must not have taken away.
+    fireEvent.change(screen.getByTestId("practice-duration-input"), {
+      target: { value: "" },
+    });
+    expect(stepper.textContent).toContain("min");
   });
 
   it("asks before a second same-day session, and writes nothing when declined", async () => {

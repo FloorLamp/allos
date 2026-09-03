@@ -100,4 +100,62 @@ test.describe("the record's base empty state (#1410)", () => {
       await page.context().close();
     }
   });
+
+  // ── AN EMPTY DAY NAMES ITS DAY (#4918 defects 1 and 4 of the frame) ──────────
+  //
+  // This is the exact screenshot: a day view with nothing on it. Its only date text
+  // was the per-group sticky header, which renders ONCE PER GROUP OF ROWS — so a day
+  // with no rows named no day at all, and the largest thing on the page was a `p-10`
+  // dashed box. The name is the day bar's now, count included, and the box is compact
+  // and says what it is about.
+  //
+  // THE PAST DAY AND TODAY ARE TWO CASES because the copy differs, and today is
+  // reached through a future `?day=` that clamps rather than through a date literal —
+  // the profile-local today is not the run's UTC date under the suite's rotating pin.
+  test("an empty day is named in the bar, with a compact message about the rows", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TL_EMPTY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await page.goto(`/history?day=${A_QUIET_DAY}`);
+      const name = page.getByTestId("timeline-day-name");
+      await expect(name).toBeVisible();
+      // "0 records", not "no records": the same grammar a day WITH rows prints, so
+      // the count is the day's own and the empty case is not a second sentence.
+      await expect(name).toHaveText(/^.+ — 0 records$/);
+      // The retired header and its self-linking chevron are gone from this view.
+      await expect(page.getByTestId("history-day-link")).toHaveCount(0);
+      await expect(page.getByTestId("history-empty-filtered")).toHaveText(
+        "No entries."
+      );
+
+      // …and the page's own subtitle, which describes the FEED, is not on the day
+      // view above the day's name.
+      await expect(page.locator("main")).not.toContainText(
+        "Everything recorded, newest first."
+      );
+
+      await page.goto("/history?day=2099-01-01");
+      await expect(page.getByTestId("timeline-day-name")).toHaveText(
+        /^.+ — 0 records$/
+      );
+      await expect(page.getByTestId("history-empty-filtered")).toHaveText(
+        "No entries yet today."
+      );
+
+      // THE CONVERSE, on the page that still owns both: the feed keeps its subtitle
+      // and its day-header door. A guard that only asserted the day view's absences
+      // would be green on a tree that had lost them everywhere.
+      await page.goto("/history");
+      await expect(page.locator("main")).toContainText(
+        "Everything recorded, newest first."
+      );
+      await expect(page.getByTestId("timeline-day-name")).toHaveCount(0);
+    } finally {
+      await page.context().close();
+    }
+  });
 });

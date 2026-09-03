@@ -345,7 +345,7 @@ describe("the record's ⋯ posts to the domain's own action", () => {
         },
       }),
     ]);
-    fireEvent.change(screen.getByLabelText("Duration (minutes)"), {
+    fireEvent.change(screen.getByLabelText("Duration"), {
       target: { value: "25" },
     });
     await act(async () =>

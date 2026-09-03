@@ -22,6 +22,7 @@ import { bulkTakeLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   dayCountsLabel,
   stackLabel,
@@ -357,7 +358,24 @@ export default function DayLedger({
     );
   }
 
-  function renderRow(row: LedgerRow) {
+  // THE TIME GUTTER (#4477's blessed one-stream ledger). The day is ONE list now, so
+  // the bucket cannot be a heading over a frame of its own; it is a left column, printed
+  // on the first row of each bucket's run and blank on the rest. That keeps "the bucket
+  // is named once" true while removing a heading, a per-bucket count and a frame from
+  // between the page's chrome and its first fact.
+  function gutter(label: string | null) {
+    return (
+      <span
+        aria-hidden={label ? undefined : true}
+        data-testid={label ? `ledger-gutter-${label.toLowerCase()}` : undefined}
+        className="w-14 shrink-0 self-start pt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400"
+      >
+        {label}
+      </span>
+    );
+  }
+
+  function renderRow(row: LedgerRow, label: string | null) {
     if (row.kind === "serving") {
       const clock = historyClock(row.hhmm, row.clockKind, prefs);
       return (
@@ -371,6 +389,7 @@ export default function DayLedger({
             removingServingId === row.eventId ? " opacity-50" : ""
           }`}
         >
+          {gutter(label)}
           {pickBox("servings", row.eventId, `Select the ${row.name} serving`)}
           <LoggedEventRow
             icon={
@@ -438,6 +457,7 @@ export default function DayLedger({
               : ""
           }`}
         >
+          {gutter(label)}
           {/* Only a TAKEN row: a skip is re-answered on its own control, and both cores
               a batch could reach scope themselves to taken. */}
           {row.status === "taken"
@@ -477,7 +497,7 @@ export default function DayLedger({
       );
     }
 
-    if (row.kind === "stack") return renderStack(row);
+    if (row.kind === "stack") return renderStack(row, label);
 
     const doses = row.doses.filter(pending);
     if (doses.length === 0) return null;
@@ -495,6 +515,7 @@ export default function DayLedger({
         className="border-t border-(--divider) bg-(--accent-soft) first:border-t-0"
       >
         <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
+          {gutter(label)}
           <button
             type="button"
             data-testid={`ledger-due-group-${row.bucket}`}
@@ -549,13 +570,14 @@ export default function DayLedger({
     );
   }
 
-  function renderStack(row: LedgerStack) {
+  function renderStack(row: LedgerStack, bucketLabel: string | null) {
     const stillOpen = row.open.filter(pending);
     const expanded = open.has(row.id);
     const label = stackLabel({ ...row, open: stillOpen });
     return (
       <li key={row.id} className="border-t border-(--divider) first:border-t-0">
         <div className="flex min-h-11 items-center gap-2 px-3 py-1.5">
+          {gutter(bucketLabel)}
           <button
             type="button"
             data-testid={`ledger-stack-${row.id}`}
@@ -638,8 +660,7 @@ export default function DayLedger({
 
   return (
     <section data-testid="day-ledger" className="space-y-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="section-label">Ledger</h3>
+      <CardSectionHeader title="Ledger" variant="label">
         <span className="flex items-center gap-3">
           <p
             data-testid="day-ledger-census"
@@ -659,7 +680,7 @@ export default function DayLedger({
             </Button>
           )}
         </span>
-      </div>
+      </CardSectionHeader>
       {selecting && (
         <div
           data-testid="ledger-selection-bar"
@@ -761,45 +782,57 @@ export default function DayLedger({
           message="Nothing logged yet."
         />
       ) : (
-        groups.map((group) => {
-          const warnings = keepApart.find(
-            (entry) => entry.bucket === group.bucket
-          )?.content;
-          return (
-            <section
-              key={group.bucket}
-              data-testid={`ledger-group-${group.bucket
-                .toLowerCase()
-                .replaceAll(" ", "-")}`}
-            >
-              <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                <h4 className="section-label">
-                  {TIME_BUCKET_LABELS[group.bucket]}
-                </h4>
-                <span
-                  data-testid={`ledger-group-count-${group.bucket
-                    .toLowerCase()
-                    .replaceAll(" ", "-")}`}
-                  className="text-xs tabular-nums text-slate-500 dark:text-slate-400"
-                >
-                  {dayCountsLabel(group.servings, group.doses)}
-                </span>
-              </div>
-              {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
-                  anti-drop gate): it is current safety advice about what to take
-                  together, so it belongs beside the taps, not on a management list. */}
-              {warnings}
-              {/* Named so "the ledger's rows" is addressable as itself rather than as
-                  "the first `ul` inside the section", which is what the chrome
-                  measurement in e2e/day-ledger.spec.ts used to rely on. That is a
-                  robustness improvement and NOT a diagnosed fix — see the spec, which
-                  carries the honest account of what is and is not known. */}
-              <ul data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
-                {group.rows.map(renderRow)}
-              </ul>
-            </section>
-          );
-        })
+        // ONE STREAM, ONE FRAME (#4477's blessed shape). The day used to be N framed
+        // lists, each under its own heading and count; it is one list now, with the
+        // bucket in the gutter of its first row. Named so "the ledger's rows" is
+        // addressable as itself — the ground colour the accent is measured against is
+        // read off THIS element.
+        <div data-testid="ledger-rows" className={LOGGED_EVENT_LIST}>
+          {groups.map((group) => {
+            const warnings = keepApart.find(
+              (entry) => entry.bucket === group.bucket
+            )?.content;
+            const labelledIndex = group.rows.findIndex(
+              (row) => row.kind !== "due" || row.doses.some(pending)
+            );
+            return (
+              <section
+                key={group.bucket}
+                data-testid={`ledger-group-${group.bucket
+                  .toLowerCase()
+                  .replaceAll(" ", "-")}`}
+                // The hairline BETWEEN buckets. Each bucket's own `ul` drops the top
+                // border of its first row (`first:border-t-0`), which is right inside a
+                // run and wrong at the seam, so the seam is drawn here.
+                className="border-t border-(--divider) first:border-t-0"
+              >
+                {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
+                    anti-drop gate): it is current safety advice about what to take
+                    together, so it belongs beside the taps, not on a management list.
+                    Inside the frame now, as a band above the bucket's rows. */}
+                {warnings && (
+                  <div className="border-t border-(--divider) px-3 pt-2 first:border-t-0">
+                    {warnings}
+                  </div>
+                )}
+                <ul>
+                  {group.rows.map((row, index) =>
+                    renderRow(
+                      row,
+                      // THE LABEL RIDES THE FIRST ROW THAT ACTUALLY DRAWS. A due row
+                      // whose doses this session has already resolved renders null, and
+                      // pinning the label to index 0 would take the bucket's name off
+                      // the page under the finger that cleared it.
+                      index === labelledIndex
+                        ? TIME_BUCKET_LABELS[group.bucket]
+                        : null
+                    )
+                  )}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
       )}
     </section>
   );

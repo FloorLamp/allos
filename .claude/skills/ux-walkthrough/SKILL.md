@@ -81,12 +81,21 @@ Journeys: `onboarding`, `invite`, `pages` (all-routes census, both widths),
   thing that may write it: `npm run gen:census-baseline`, commit the diff —
   the diff IS the annotation. Never hand-edit a number
   (`census-chrome-baseline.test.ts` checks canonical form).
+- **Which question each half answers (#4661).** It answers CHROME changes only:
+  its landmarks are seed-independent, so a change confined to what `<main>`
+  CONTAINS can never move it — #3366's removed dashboard cards and #4396's
+  Elsewhere rows each regenerated it byte-identically, correctly.
+- So a byte-identical regeneration means the shell did not move. A CONTENT
+  change is answered by the other half: a `DISCLOSURE_EXPANSIONS` (or
+  `HOVER_CAPTURES`) entry plus a `pages` run. A "#1510 re-annotation" criterion
+  needs whichever half matches; `gen:census-baseline` alone discharges chrome.
 - Screenshots land in `data/ux-shots/` (gitignored) unless `UX_SHOTS`
   overrides. Playwright cache miss → set `UX_CHROMIUM` (in Claude Code
   remote: `/opt/pw-browsers/chromium`).
 - Knobs: `UX_BASE`, `UX_ADMIN_USER`/`UX_ADMIN_PASS` (must match the server
-  env), `UX_TIMEOUT_MS`, and `UX_ROUTES` — a comma-separated route/prefix
-  filter for `pages` (e.g. `UX_ROUTES=/trends` audits one hub).
+  env), `UX_TIMEOUT_MS`, and `UX_ROUTES` — a comma-separated `pages` filter
+  whose entries are PREFIXES (`UX_ROUTES=/trends` audits one hub). Every route
+  starts with `/`, so `=` makes an entry exact: `UX_ROUTES==/` is home (#4661).
 
 ## 3. Review
 
@@ -311,8 +320,8 @@ Run a seeded mini-census while a merged UI change is still fresh:
 UX_SEED=1 node scripts/orchestration/post-merge-census.mjs HEAD^ HEAD --run
 ```
 
-It maps Git's changed files `app/(app)/X/**` → `UX_ROUTES=/X`, validating
-each prefix against the route tree. Shared chrome (`components/**`, layouts,
+It maps `app/(app)/X/**` → `UX_ROUTES=/X` (root page → exact `=/`), each
+validated against the route tree. Shared chrome (`components/**`, layouts,
 `app/globals.css`) runs the whole set — nothing defends a narrower claim.
 
 A renamed/deleted route, unknown `app/` shape, or diff with no censused UI

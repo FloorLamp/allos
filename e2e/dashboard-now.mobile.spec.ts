@@ -9,6 +9,7 @@ import {
   settledBoxes,
 } from "./helpers";
 import { frozenNow, workerDbPath } from "./worker-env";
+import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_DAILY,
@@ -293,6 +294,52 @@ test("unmet weekly targets leave a handled day's Now empty", async ({
     for (let i = 0; i < NOW_QUIET_TARGETS.length; i++) {
       await expect(offers.nth(i)).toHaveAttribute("data-lane", "everything");
     }
+  } finally {
+    await page.context().close();
+  }
+});
+
+// #4841 item 2 — THE ACT ROW SAYS ITS VERB ONCE AND NAMES ITS TARGET.
+//
+// From the owner's phone screenshot: "Log cardio · 0 of 2 this week · Log". The row's
+// label was `Log ${scope_value}` beside an action that also read "Log", so the row
+// printed the verb twice and named its subject by the STORED KEY — which is why the
+// screenshot showed "Lower" and "Chest" capitalised beside "cardio" and "berries".
+//
+// Now Quiet's two open targets are strength GROUPS, whose stored keys ("Lower",
+// "Upper") are exactly the shape that read wrong; `cadenceScopeNoun` turns them into
+// "Lower body" / "Upper body". The verb count is taken over the ROW'S OWN text, which
+// is the thing the reader sees twice — an assertion on the action alone would have
+// stayed green through the whole defect, because the action was always right.
+test("a frequency-target act row names its target and says Log once", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
+  try {
+    await openDashboardAll(page);
+    // ADDRESSED BY IDENTITY, NEVER BY THE WORDS UNDER TEST. Filtering the rows by
+    // "Lower body" would make the whole check vanish on the broken tree — zero rows,
+    // zero assertions, and a red that says nothing about the label or the verb.
+    const rows = page.locator(
+      '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+    );
+    await expect(rows).toHaveCount(NOW_QUIET_TARGETS.length);
+    // The NOUN, exactly, cased by `cadenceScopeNoun`: "Log Lower" and "Lower" both
+    // fail this. Sorted, because the habit order is not this test's subject.
+    expect(
+      (await rows.getByTestId("standing-label").allInnerTexts()).sort()
+    ).toEqual(["Lower body", "Upper body"]);
+    // ONE verb per row, and it is the action's. Counted over the row's whole
+    // rendered text rather than over any one element, because "twice" was a fact
+    // about the ROW: before the fix this read 2.
+    //
+    // `innerText` AND NOT `textContent`, and that is the assertion's correctness
+    // rather than a preference: textContent concatenates the detail straight onto
+    // the action ("…this weekLog"), destroying the word boundary the count is keyed
+    // on — measured here, where the textContent spelling counted 0 on the FIXED tree
+    // and 1 on the broken one, i.e. exactly backwards.
+    for (const shown of await rows.allInnerTexts())
+      expect(shown.match(/\bLog\b/g)?.length ?? 0).toBe(1);
   } finally {
     await page.context().close();
   }
@@ -697,7 +744,7 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
 }) => {
   await page.goto("/");
   await expect(page.getByTestId("now-strip")).toBeVisible();
-  const audit = await page.evaluate(() => {
+  const audit = await page.evaluate((controlBoxPx) => {
     const floored: string[] = [];
     const menus: string[] = [];
     const short: string[] = [];
@@ -730,16 +777,27 @@ test("no Now-card control gives up its declared tap floor at 390px", async ({
               `${name(el)} declares ${floor}px and renders ${box.height}px`
             );
         }
-        // The row's overflow menu is a 40x40 target in its own right (#644).
+        // THE ROW'S ⋯ MENU WEARS THE ONE CONTROL BOX (#4362 ruling 5). It used to
+        // render 40x40 and be checked for that here, which was the one control on
+        // the page that did not wear the box #3938 ruled. It reaches the 44px floor
+        // the way every other control does — `.tap-target`'s 6px per side, so
+        // 34 + 12 = 46 — and that arithmetic is asserted where the reach lives
+        // (e2e/button-height-floor.mobile.spec.ts). What belongs here is that the
+        // strip's own menus are the box, and that this sweep still SEES them.
         if (el.getAttribute("data-testid") === "overflow-menu-trigger") {
           menus.push(name(el));
-          if (box.width < 39.5 || box.height < 39.5)
-            short.push(`${name(el)} is ${box.width}x${box.height}`);
+          if (
+            Math.abs(box.width - controlBoxPx) > 0.5 ||
+            Math.abs(box.height - controlBoxPx) > 0.5
+          )
+            short.push(
+              `${name(el)} is ${box.width}x${box.height}, not the ${controlBoxPx}px control box`
+            );
         }
       }
     }
     return { floored, menus, short };
-  });
+  }, CONTROL_BOX_PX);
 
   // THE SWEEP MUST HAVE SEEN THE CONTROLS IT IS ABOUT. A Now strip whose cards
   // declared no floor at all would pass an empty-set check silently, which is the

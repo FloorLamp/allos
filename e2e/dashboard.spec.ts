@@ -5,12 +5,18 @@ import { loginAs } from "./nav";
 import {
   E2E_LOGIN_DAILY,
   E2E_LOGIN_DASHBOARD_ALL,
+  E2E_LOGIN_FLABS,
   E2E_LOGIN_SICK_SELF,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
-import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
+import {
+  hydratedClick,
+  openDashboardAll,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -393,6 +399,85 @@ test("multiple naps produce one Standing total and keep individuals outside Stan
 // the readings it no longer names are still whole one tap away. Both halves matter
 // — a test that only watched the dashboard shrink would pass if the data had been
 // deleted instead of moved.
+// The flagged-lab fixture's acknowledgment, cleared either side of the test below so
+// --repeat-each and a neighbouring spec sharing this worker's DB both start clean. The
+// profile carries ONE lab, so the namespace sweep names exactly its A1c.
+function clearFlaggedLabAcknowledgment(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `DELETE FROM upcoming_dismissals
+        WHERE signal_key LIKE 'biomarker-flag:%'
+          AND profile_id IN (
+            SELECT lp.profile_id
+              FROM login_profiles lp
+              JOIN logins l ON l.id = lp.login_id
+             WHERE l.username = ?)`
+    ).run(E2E_LOGIN_FLABS);
+  } finally {
+    db.close();
+  }
+}
+
+// SAYING "SEEN IT" TO A CHRONIC NOTABLE, IN THE BROWSER (#3225). The owner's 37
+// notables came from one June panel: flagged, months old, and therefore past the
+// 14-day collection window that gives a flagged result an attention row to host the
+// control. This fixture is that shape in one reading — an A1c flagged high, drawn 120
+// days ago — and it is the only seeded profile that reaches it, which is why the test
+// signs in rather than reading the shared dashboard.
+//
+// The assertion after the dismissal is deliberately NOT that the row disappears.
+// Acknowledging spends a precedence; it does not delete a reading, and the row is
+// still the profile's latest A1c reading afterwards, still saying 8.2 and still High.
+test("a months-old flagged result offers its acknowledgment on the dashboard", async ({
+  browser,
+}) => {
+  clearFlaggedLabAcknowledgment();
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FLABS,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const row = page
+      .locator(
+        '[data-testid="dashboard-candidate"][data-candidate-id^="labs.latest:"]'
+      )
+      .filter({ hasText: "Hemoglobin A1c" });
+    // Quiet by construction: a result too old to be fresh and too old to carry an
+    // attention item holds no claim, so it sits in the one fold rather than in
+    // Standing. That is also what makes it the row with nowhere else to be
+    // acknowledged.
+    await expect(row).toHaveAttribute("data-lane", "everything");
+    await expect(row).toContainText("8.2");
+
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Actions for Hemoglobin A1c" })
+    );
+    await page
+      .getByRole("menu")
+      .getByRole("menuitem", { name: "Dismiss" })
+      .click();
+    // The menu closing is the action having run; the control going is the server
+    // having revalidated with the acknowledgment in hand.
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    await openDashboardAll(page);
+    await expect(row.getByTestId("dashboard-row-controls")).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    // …and the reading itself is untouched — still there, still 8.2, still High.
+    await expect(row).toContainText("8.2");
+    await expect(row).toContainText("High");
+  } finally {
+    clearFlaggedLabAcknowledgment();
+    await page.close();
+  }
+});
+
 test("the clinical family renders its cap and /results keeps the census", async ({
   page,
 }) => {
@@ -813,15 +898,25 @@ test("the Standing link covers its phone label and desktop plot without covering
   }
 });
 
-// NO ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076). The kind glyph existed because
-// "a line that earned a glyph would be halfway to a card"; with no cards left the
-// rule has no element, and the owner ruled that NO domain icon replaces it ("too many
-// icons"). Identity is carried by the label column and the block header instead.
+// NO IDENTITY OR DOMAIN ICONS IN ROWS, ANYWHERE ON THE PAGE (#4076, wording amended
+// by #4362 ruling 1). The kind glyph existed because "a line that earned a glyph would
+// be halfway to a card"; with no cards left the rule has no element, and the owner
+// ruled that NO domain icon replaces it ("too many icons"). Identity is carried by the
+// label column and the block header instead.
+//
+// THE WORDING IS THE RULING. #4076 said "no icons of ANY kind in rows", and read
+// literally that reaches the marks inside a row's VALUE — including the one below,
+// which is an accessibility channel. The owner ruled the invariant is about IDENTITY
+// AND DOMAIN icons, so the wording says that here and the guard's scope is the label
+// cell.
 //
 // The absence is asserted with its POSITIVE CONTROL in the same test: a page whose
 // rows never rendered would satisfy "no icons in rows" on an empty screen, which is
-// the failure this shape exists to catch.
-test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
+// the failure this shape exists to catch. And with its CONVERSE, which is the half an
+// absence can never state — see the second block below.
+test("no row on the dashboard draws an identity icon, and the severity marks stay", async ({
+  page,
+}) => {
   await page.goto("/");
   await openDashboardAll(page);
   const main = page.getByRole("main");
@@ -876,6 +971,62 @@ test("no row on the dashboard draws an icon of any kind", async ({ page }) => {
   expect(await labelsWithIcons()).toHaveLength(1);
   await forged.evaluate((node) => (node as Element).remove());
   expect(await labelsWithIcons()).toEqual([]);
+
+  // ── THE CONVERSE (#4362 ruling 1) ──────────────────────────────────────────
+  // Everything above asserts something is GONE, and an absence is equally green on
+  // the tree where the mark vanished from the rows that NEED it. The ruling on
+  // #4362's first item is exactly that: `MedicalValue`'s flag caret survives the
+  // invariant, because it is the non-colour severity channel #1220/#2315 exist for.
+  // Deleting it to satisfy a literal "any kind" would have taken that channel with
+  // it, and no assertion on this page would have noticed.
+  //
+  // SO THE CLAIM IS A RELATIONSHIP BETWEEN REAL ROWS, not a mark counted against a
+  // constant. Two comparisons, both on rendered output:
+  //  * WORDS DO WHAT COLOUR DOES. "High" paints rose and "Below optimal" paints
+  //    amber — #1220's complaint is that a reader who cannot separate those two sees
+  //    one severity. So the two rows must paint differently AND say different words:
+  //    if the words ever collapse to one, colour is carrying the distinction alone.
+  //  * DIRECTION IS A SHAPE. The directional row draws its caret; the directionless
+  //    one cannot point anywhere and draws none, while still naming its status in
+  //    words. That fixture is seeded for this claim (e2e/seed/medical.ts, "the
+  //    compact dashboard must say Abnormal explicitly").
+  const labValue = (canonical: string) =>
+    main
+      .locator(
+        `[data-testid="dashboard-candidate"][data-candidate-id="labs.latest:${canonical}"]`
+      )
+      .getByTestId("standing-value");
+  const severity = async (canonical: string) => {
+    const value = labValue(canonical);
+    await expect(value).toBeVisible();
+    return {
+      word: (await value.getByTestId("medical-flag-text").innerText()).trim(),
+      carets: await value.locator("svg").count(),
+      // The paint the word exists to survive, read off the element rather than a
+      // class string.
+      paint: await value
+        .locator("span")
+        .first() // first-ok: MedicalValue's own paint span, inside a row addressed by its seeded candidate id
+        .evaluate((node) => getComputedStyle(node).color),
+    };
+  };
+
+  const outOfRange = await severity("LDL Cholesterol");
+  const aboveOptimal = await severity(
+    "Estimated Glomerular Filtration Rate (eGFR)"
+  );
+  const directionless = await severity("E2E Directionless Lab Status");
+
+  expect(outOfRange.paint).not.toBe(aboveOptimal.paint);
+  expect(outOfRange.word).not.toBe(aboveOptimal.word);
+  expect([outOfRange.word, aboveOptimal.word, directionless.word]).toEqual([
+    "High",
+    "Below optimal",
+    "Abnormal",
+  ]);
+  expect(outOfRange.carets).toBe(1);
+  expect(aboveOptimal.carets).toBe(1);
+  expect(directionless.carets).toBe(0);
 });
 
 test("Standing draws its aligned sparkline column on the desktop", async ({

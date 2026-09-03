@@ -59,7 +59,7 @@ test("flipping the date/time prefs re-renders a record date and a training log t
 
     await page.goto("/training?tab=log");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
-    // 24h default — the ride's start renders as "07:15", never a 12h "7:15 AM".
+    // 24h default — the ride's start renders as "07:15", never a 12h "7:15am".
     await expect(page.getByText(/07:15/).first()).toBeVisible(); // first-ok: asserts a time renders in 24h format — order-agnostic presence
 
     // Timeline day headers default to the mdy long shape ("Monday, July 6") —
@@ -104,9 +104,14 @@ test("flipping the date/time prefs re-renders a record date and a training log t
     await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
 
     // The training log timestamp now renders a 12-hour clock on Training → Log.
+    // "7:15am", in the shared history substrate's own clock grammar (#4079): the Log
+    // renders through `historyClock`, whose `lower-nospace` meridiem is branded as
+    // `HistoryClock` precisely so one page cannot carry two meridiem styles. The
+    // record/.ics "7:15 AM" is the OTHER style, and it does not belong here — what
+    // this line pins is that the 12h pref reached a training-log timestamp.
     await page.goto("/training?tab=log");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible(); // first-ok: the seeded Strava ride activity — order-agnostic presence
-    await expect(page.getByText(/7:15\s*AM/).first()).toBeVisible(); // first-ok: asserts a time renders in 12h format — order-agnostic presence
+    await expect(page.getByText(/7:15am/).first()).toBeVisible(); // first-ok: asserts a time renders in 12h format — order-agnostic presence
 
     // Timeline day headers follow the pref ("Monday, 2026-07-06" — iso keeps the
     // weekday prefix, #1020).

@@ -11,6 +11,9 @@ import {
   touchSwipe,
 } from "./helpers";
 import { frozenNow } from "./worker-env";
+import { loginAs } from "./nav";
+import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { E2E_LOGIN_LOGSHEET_RESERVE } from "./logins/nutrition";
 
 // Content clipped inside its own container at 390px (issue #2614).
 //
@@ -989,4 +992,63 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
       "a clipped overrun is not a suspect — it cannot make the region scrollable"
     ).toBe("nothing overflows");
   });
+});
+
+// ── THE STANDING OFFER'S BOX IS ITS OWN (#4918 defect 3, ruling 6) ───────────
+//
+// `HistoryUsualOffers` wrapped its rows in a bare `grid`. A grid track's default
+// minimum is its item's MAX-CONTENT width, so `OfferRow`'s `w-full` button was
+// sized to its own single-line summary and the `truncate` span inside it never got
+// a narrower box to truncate in — the card ran past the column every other block on
+// the page stops at. The same control inside the dashboard's flex hosts was fine,
+// which is why this is asserted on the HOST rather than on the control's paint.
+//
+// BOTH WIDTHS, because the defect is intrinsic sizing and not a phone rule: the
+// track grows to the content at any column width, and the owner's screenshot was a
+// desktop one. 390 is where the app's clipping rule (#2614) is stated; the desktop
+// pass is what says the fix is not a media query.
+//
+// FIXTURE: the quick-log reserve profile (#3736) — it carries a standing routine
+// offer AND the deliberately long item label that seed renamed to overflow, so this
+// asserts the case `truncate` exists for rather than one that never needed it. It
+// is measured, never tapped, on both this spec and its own.
+test("the record's standing offer stays inside its column (#4918)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_LOGSHEET_RESERVE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/history");
+      const host = page.getByTestId("history-add-usual");
+      await expect(host).toBeVisible();
+      // The seed's own claim, read back: a one-line label would satisfy the layout
+      // assertion below on a tree that still had the defect.
+      const names = page.locator('[data-testid$="-names"]').first(); // first-ok: whichever window's offer stands, its summary is the truncating span
+      await expect(names).toBeVisible();
+      expect(
+        ((await names.textContent()) ?? "").length,
+        `${width}px: the fixture's offer summary is long enough to overflow`
+      ).toBeGreaterThan(40);
+
+      await expectNoEscapingOverflow(host, `${width}px: the offer's host`);
+      // AND THE RELATIONSHIP, not only the host's own scrollWidth: the button's
+      // right edge against the edge of the column that holds it. An absolute width
+      // cannot see a row that hangs past a container which is itself narrower than
+      // the viewport.
+      const overhang = await overhangWithin(
+        host.getByRole("button").first(), // first-ok: the first standing offer is the row measured
+        page.getByTestId("history-add")
+      );
+      expect(
+        Math.round(overhang),
+        `${width}px: the offer row hangs past the add layer's column`
+      ).toBeLessThanOrEqual(0);
+    }
+  } finally {
+    await page.context().close();
+  }
 });

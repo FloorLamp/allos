@@ -44,6 +44,7 @@ import { digestWorkoutLine } from "@/lib/notifications/workout-format";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { recommendCoaching } from "@/lib/coaching";
 import { setProfileBirthdate } from "@/lib/settings/profile-attrs";
+import { reportNiggle } from "@/lib/niggle-store";
 
 // A login reading canonical units, matching what the notification path assumes.
 const CELSIUS_UNITS: UnitPrefs = {
@@ -419,6 +420,81 @@ describe("the workout nudge discloses today's weather parking (#2002)", () => {
     expect(rec.parkedNotes).toEqual([]);
     expect(plainBody(buildWorkoutTargetReminder(pid)!.body)).not.toContain(
       "Too cold"
+    );
+  });
+});
+
+// ── The pre-workout niggle heads-up (#3211 part 4, first moment) ─────────────
+//
+// The #2002 shape one more time, and the same seam: part 3 tempered the target and
+// disclosed it through `contextNotes`, which every IN-APP surface renders. The Telegram
+// nudge formats a `WorkoutRecommendation` and had no niggle field at all, so the channel
+// that reaches somebody BEFORE they train was the only one that never mentioned it.
+//
+// What the pure tier cannot see, and what is pinned here: the store's row survives the
+// gather (liveness, the profile-local day, the canonical source-exercise key) and arrives
+// at the formatter as a rendered line.
+describe("the workout nudge carries the niggle heads-up (#3211 part 4)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-07-08T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A right knee reported YESTERDAY and blamed on the squat — the #2948 scenario, as a
+  // real row through the only write path the table has.
+  function reportKnee(pid: number): void {
+    const out = reportNiggle(
+      pid,
+      {
+        region: "Legs",
+        laterality: "right",
+        bodyTerm: "knee",
+        sourceExercise: "Back Squat",
+      },
+      "2026-07-07T12:00:00Z"
+    );
+    expect(out).toMatchObject({ ok: true, kind: "created" });
+  }
+
+  it("says it on a day the session touches the niggle", () => {
+    const pid = makeProfile("nudge-niggle-legs");
+    const t = today(pid);
+    target(pid, "region", "Legs", 2);
+    logLifts(pid, shiftDateStr(t, -10), ["Back Squat", "Leg Press"]);
+    reportKnee(pid);
+
+    const rec = recommendWorkout(pid)!;
+    const body = plainBody(buildWorkoutTargetReminder(pid)!.body);
+
+    // The gather kept the report's own day and its canonical lift key through to the
+    // rendered line — neither is recoverable from the pure tier's hand-built input.
+    expect(rec.niggleNotes).toEqual([
+      "Right knee niggle after Back Squat from yesterday — take it easy today.",
+    ]);
+    expect(body).toContain(rec.niggleNotes![0]);
+  });
+
+  it("says nothing on a day the session goes nowhere near it", () => {
+    const pid = makeProfile("nudge-niggle-back");
+    const t = today(pid);
+    target(pid, "region", "Back", 2);
+    logLifts(pid, shiftDateStr(t, -10), ["Lat Pulldown", "Pull Up"]);
+    reportKnee(pid);
+
+    // THE FIXTURE REACHES THE FORBIDDEN STATE. Without this line the assertion below
+    // would pass just as happily on a profile with no niggle at all, and would be
+    // testing nothing: the niggle IS live and the tier DOES carry it — the heads-up is
+    // silent because today is back day, which is the whole point of the filter.
+    const nw = recommendNextWorkout(gatherCoachingInput(pid, "kg", "km"));
+    expect(nw.niggleTempers.map((n) => n.label)).toEqual(["right knee"]);
+
+    const rec = recommendWorkout(pid)!;
+    expect(rec.niggleNotes).toEqual([]);
+    expect(plainBody(buildWorkoutTargetReminder(pid)!.body)).not.toContain(
+      "niggle"
     );
   });
 });

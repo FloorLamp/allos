@@ -30,6 +30,7 @@ import {
 } from "../../reference-range";
 import { retestDaysForBiomarker, isRetestWorthy } from "../../biomarker-retest";
 import {
+  type BiomarkerRetestFacts,
   biomarkerRetestTitle,
   biomarkerRetestDetail,
 } from "../../biomarker-retest-copy";
@@ -434,6 +435,14 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
     )
       continue;
     const agoMonths = monthsApprox(daysBetween(effectiveDate, today));
+    // The retest facts, built ONCE and both carried and composed from (#3526).
+    const retest: BiomarkerRetestFacts = {
+      effectiveDate,
+      agoMonths,
+      intervalMonths: monthsApprox(interval),
+      flag: r.flag,
+      reasons: mod.reasons,
+    };
     const item: UpcomingItem = {
       key: biomarkerDismissalKey(name),
       domain: "biomarker",
@@ -444,13 +453,11 @@ const biomarkerRetestSignals = cache(function biomarkerRetestSignals(
       // currently newest — matching the family-stable `key` above, which would
       // otherwise carry two different titles on two different days (#1394/#1395).
       title: biomarkerRetestTitle(anchor),
-      detail: biomarkerRetestDetail({
-        effectiveDate,
-        agoMonths,
-        intervalMonths: monthsApprox(interval),
-        flag: r.flag,
-        reasons: mod.reasons,
-      }),
+      // Composed with the RAW ISO day, which is what a login-less channel gets and
+      // keeps (#3526): this layer has no login and so no DisplayFormatPrefs to
+      // resolve. A page re-composes `retest` through the viewer's prefs instead.
+      detail: biomarkerRetestDetail(retest, effectiveDate),
+      retest,
       // The SAME reasons the detail flattens, carried structurally (issue #656): the
       // cited risk lines lead (they explain "why sooner"), then the flag status when
       // the stale reading was out-of-range/non-optimal. `detail` is unchanged.
@@ -554,7 +561,7 @@ const rawUpcoming = cache(function rawUpcoming(
 ): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
-    ...prnMaxItems(profileId, today),
+    ...prnMaxItems(profileId),
     ...refillItems(profileId, today),
     ...poolRefillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),

@@ -1,8 +1,9 @@
 "use client";
 
-import { IconClock, IconCheck } from "@tabler/icons-react";
+import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import { LabeledVerbChip } from "@/components/Chip";
 import { useTimeStatement } from "@/components/TimeStatement";
@@ -20,15 +21,16 @@ import { useLoggedViaStamp } from "@/components/LoggedViaSurface";
 import { dateStrInTz } from "@/lib/date";
 
 // One PRN (as-needed) medication's shared quick-log row (#797).
-// A primary one-tap records an administration NOW; "Earlier dose" reveals
-// the shared WhenControl (#2236) — a DATED absolute time, empty until stated, with
-// a one-tap "Now" — the retro-entry home ("gave it at 4pm, logging it now"). The
-// old relative chips (30 min / 1 hr ago) are gone: a relative offset is computed at
-// TAP time, so it drifts with every minute a rendered page sits open, which is the
-// argument lib/correction-time.ts already made and this control never saw
-// — the failure #2236 exists to end. Each successful log is a real administration
-// (the ledger allows multiples/day), and the action's own revalidate brings back the
-// updated "N today · last …" subtitle with its response.
+// A primary one-tap records an administration NOW; the clock door beside it — this
+// row's retired "Earlier dose" words, now the glyph the ruling makes the statement's
+// only spelling (#4426) — reveals the shared WhenControl (#2236): a DATED absolute
+// time, empty until stated, with a one-tap "Now", the retro-entry home ("gave it at
+// 4pm, logging it now"). The old relative chips (30 min / 1 hr ago) are gone: a
+// relative offset is computed at TAP time, so it drifts with every minute a rendered
+// page sits open, which is the argument lib/correction-time.ts already made and this
+// control never saw — the failure #2236 exists to end. Each successful log is a real
+// administration (the ledger allows multiples/day), and the action's own revalidate
+// brings back the updated "N today · last …" subtitle with its response.
 //
 // THE DAY COMES FROM THE CARD, THE STATEMENT STATES THE TIME (#4691, converged by
 // #4426 under #4738's ruling 3). The row used to hand the WhenControl `minDate ===
@@ -49,14 +51,6 @@ import { dateStrInTz } from "@/lib/date";
 // blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
 // post-success cooldown, keyed per offset so the now-tap and a retro entry are separate
 // writes — which absorbs the queued second click on the same button.
-// THE CLOCK DOOR IS A GLYPH AND ITS NAME IS A QUESTION (#4426's time-grammar ruling,
-// rendered by #4752 item 8). "Earlier dose" was the door's visible words AND its
-// accessible name; the ruling makes the clock the ONLY spelling of "happened
-// earlier", so the words go and the question becomes the name. It is spelled as the
-// accessible name alone and NEVER as a `title=`: #2378/#3375 ruled hover-only text
-// out of this codebase because a touch or keyboard reader never receives it, and
-// lib/__tests__/raw-title-boundary.test.ts holds that line.
-const EARLIER_DOSE = "Happened earlier?";
 // ONE WORD, AND NEVER "now" (#4753's copy migration, owner-blessed on the issue).
 // "Taken now" carried the whole sentence because the button had no label to say it
 // with; the chip's label states the dose, so the verb is only the verb.
@@ -144,7 +138,6 @@ export default function QuickLogPrnControl({
   const statement = useTimeStatement({
     day: cardDay,
     tz,
-    label: EARLIER_DOSE,
     timeLabel: "Specific time",
     testId: "prn-log-when",
     disabled: busy,
@@ -199,24 +192,10 @@ export default function QuickLogPrnControl({
     });
   }
 
-  // THE CLOCK DOOR, drawn once and seated by whichever arm renders below. It is
-  // #4426's toggle — the reveal opens in this row's FOOTER, which is why this mount
-  // takes the statement in two pieces — so the pill's seat holds the door itself
-  // rather than a second copy of the statement.
-  const clockDoor = (
-    <button
-      type="button"
-      onClick={() => statement.setOpen(!statement.open)}
-      disabled={busy}
-      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
-      aria-expanded={statement.open}
-      aria-label={EARLIER_DOSE}
-      data-testid="prn-log-more"
-    >
-      <IconClock className="h-4 w-4" stroke={2} />
-      <span className="sr-only">{EARLIER_DOSE}</span>
-    </button>
-  );
+  // Seated by whichever arm renders below; the reveal opens in this row's FOOTER,
+  // which is why this mount draws the statement in two pieces. The door itself used
+  // to be hand-rolled here, glyph and accessible name and all (#4426).
+  const clockDoor = statement.door;
 
   const control = compactActions ? (
     // THE ICON-ONLY ARM KEEPS THE SHAPE IT SHIPPED WITH, deliberately (#4753, open
@@ -305,28 +284,28 @@ export default function QuickLogPrnControl({
   if (layout === "detail") {
     return (
       <div data-testid="quick-log-prn-item" data-item-id={itemId}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="section-label">Today</div>
-            <div
-              className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200"
-              data-testid="prn-day-label"
-            >
-              {dayLabel}
-            </div>
-            {redoseLine ? (
-              <div
-                className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="prn-redose-line"
-              >
-                {redoseLine}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {control}
-          </div>
+        {/* THE SHARED HEADER ROW (#4548 ruling 4). The same "Today" eyebrow with the
+            same trailing control the read-only arm of this card already draws as a
+            CardSectionHeader — one alignment, one margin — so the two arms of the
+            medication card's Today block can no longer be arranged differently.
+            The day label and the redose line are the block's BODY, not the row. */}
+        <CardSectionHeader title="Today" variant="label">
+          {control}
+        </CardSectionHeader>
+        <div
+          className="text-sm font-medium text-slate-700 dark:text-slate-200"
+          data-testid="prn-day-label"
+        >
+          {dayLabel}
         </div>
+        {redoseLine ? (
+          <div
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="prn-redose-line"
+          >
+            {redoseLine}
+          </div>
+        ) : null}
         {options ? (
           <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
             {options}

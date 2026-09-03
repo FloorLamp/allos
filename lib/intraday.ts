@@ -346,8 +346,16 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   // `activityWindow` can bound — it has a start AND an end, stated or derived from a
   // duration — is a BLOCK; a window carrying only a start is a TICK at that minute,
   // which is the honest render for a session whose length nobody said. Inferring a
-  // length from typical durations would be fabrication, so a start-only session gets
-  // the same shape every other clock-timed event with no span gets.
+  // length from typical durations would be fabrication AT THIS TIER, so a start-only
+  // session gets the same shape every other clock-timed event with no span gets.
+  //
+  // NARROWED (#4775, owner ruling 2026-09-02): a Start-now practice no longer arrives
+  // here start-only. `startLivePracticeSession` stamps the practice's OWN usual
+  // duration onto the row and marks it `derived_window = 1`, which is a claim the row
+  // makes about itself and carries into its own copy ("about 15 min") — not an
+  // inference this renderer makes on the row's behalf, which is what the sentence
+  // above forbids and still forbids. A practice with no recorded duration writes none,
+  // so a start-only row still reaches this branch and still draws as a tick.
   //
   // The start-only tick is why this loop places ticks at all rather than leaving them
   // to the rail below: `sortTime` for a practice session is `bestKnownInstant`, which

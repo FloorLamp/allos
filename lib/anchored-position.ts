@@ -14,7 +14,9 @@
 export const ANCHOR_GAP = 4; // the visual gap between control and panel
 export const ANCHOR_MARGIN = 8; // keep the panel this far from the viewport edges
 
-export type AnchoredAlign = "start" | "end";
+// `center` is the TOOLTIP alignment (#4511): a tooltip is a label for the control
+// it names, so it is centred on it rather than lined up with one of its edges.
+export type AnchoredAlign = "start" | "center" | "end";
 
 export interface AnchorRect {
   top: number;
@@ -29,9 +31,11 @@ export interface AnchoredPosition {
   left: number;
   // Present only when the caller asked to match the anchor's width.
   width?: number;
-  // Present only when the caller declared a `preferredMaxHeight` — i.e. the panel
-  // scrolls itself and may therefore be shrunk to fit.
-  maxHeight?: number;
+  // How tall the panel may be on the side it landed. ALWAYS present (#4776): a
+  // consumer that does not apply it is not opting out of a constraint, it simply
+  // does not know there was one, and the panel then runs off the screen edge —
+  // which is where confirm and cancel live.
+  maxHeight: number;
 }
 
 export function anchoredPosition({
@@ -49,12 +53,10 @@ export function anchoredPosition({
   viewport: { width: number; height: number };
   align?: AnchoredAlign;
   matchAnchorWidth?: boolean;
-  // The height the panel WANTS, for a panel that scrolls itself. Escaping the
-  // ancestor's clip is only half the job: a list that then runs off the bottom of
-  // the screen is unreachable in a way the clipped one at least hinted at. With
-  // this the panel is capped to the room actually available on the side it lands
-  // and its own `overflow` scrolls the rest. Omit it and the panel is placed but
-  // never capped, which is what a menu and a calendar want.
+  // A cap the panel wants for its OWN sake, tighter than the room: a listbox that
+  // should stop at eight rows on a tall screen rather than growing to fill it.
+  // Omit it and the panel simply takes the room, which is what a menu and a
+  // calendar want — never more than the room, either way.
   preferredMaxHeight?: number;
 }): AnchoredPosition {
   const width = matchAnchorWidth ? anchor.width : panel.width;
@@ -63,40 +65,39 @@ export function anchoredPosition({
   const roomAbove = anchor.top - ANCHOR_GAP - ANCHOR_MARGIN;
   const desired = preferredMaxHeight ?? panel.height;
 
-  // Below by default. Flip up only when it will not fit below AND it does fit
-  // above — a flip into an even smaller gap trades one clipped panel for
-  // another. An UNCAPPED panel that fits neither side stays below, which is
-  // where it has always been; a CAPPED one takes the roomier side, because it
-  // will shrink to whichever it lands on either way.
-  const above =
-    desired > roomBelow &&
-    (desired <= roomAbove ||
-      (preferredMaxHeight != null && roomAbove > roomBelow));
-  const room = above ? roomAbove : roomBelow;
-  const maxHeight =
-    preferredMaxHeight == null
-      ? undefined
-      : Math.max(0, Math.min(preferredMaxHeight, room));
+  // Below by default; flip up when it will not fit below and there is more room
+  // above. Every panel is now capped to the side it lands on and scrolls the
+  // rest, so the roomier side is strictly better — the old rule kept an UNCAPPED
+  // panel below when it fit neither side, on the reasoning that flipping only
+  // moved the overflow, and that reasoning ended when the overflow did (#4776).
+  const above = desired > roomBelow && roomAbove > roomBelow;
+  const room = Math.max(0, above ? roomAbove : roomBelow);
+  const maxHeight = Math.min(preferredMaxHeight ?? room, room);
+  // An above-placed panel is positioned from the height it will ACTUALLY take,
+  // so its bottom edge lands against the anchor rather than a gap below it.
   const top = above
-    ? anchor.top - ANCHOR_GAP - (maxHeight ?? panel.height)
+    ? anchor.top - ANCHOR_GAP - Math.min(desired, room)
     : anchor.bottom + ANCHOR_GAP;
 
-  // `start` lines the left edges up, `end` the right ones — then the whole panel
-  // is pushed back inside the viewport. The margin wins over the alignment: a
-  // panel aligned perfectly to a control that is itself half off-screen is not
-  // what anyone asked for.
+  // `start` lines the left edges up, `end` the right ones, `center` puts the
+  // panel's midline on the anchor's — then the whole panel is pushed back inside
+  // the viewport. The margin wins over the alignment: a panel aligned perfectly to
+  // a control that is itself half off-screen is not what anyone asked for.
+  const aligned =
+    align === "end"
+      ? anchor.right - width
+      : align === "center"
+        ? anchor.left + anchor.width / 2 - width / 2
+        : anchor.left;
   const left = Math.max(
     ANCHOR_MARGIN,
-    Math.min(
-      align === "end" ? anchor.right - width : anchor.left,
-      viewport.width - width - ANCHOR_MARGIN
-    )
+    Math.min(aligned, viewport.width - width - ANCHOR_MARGIN)
   );
 
   return {
     top,
     left,
     ...(matchAnchorWidth ? { width } : {}),
-    ...(maxHeight == null ? {} : { maxHeight }),
+    maxHeight,
   };
 }

@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
-import { settledClick } from "./helpers";
+import { openFoodAdd, settledClick } from "./helpers";
 import {
   E2E_LOGIN_NUTRITION,
   E2E_LOGIN_FIBER_SOURCES,
@@ -68,6 +68,7 @@ test.describe("Nutrition trio", () => {
     });
     try {
       await page.goto("/nutrition?tab=food");
+      await openFoodAdd(page);
 
       // The gauge shows all three values (today bar + weekly marker + goal band).
       const gauge = page.getByTestId("protein-gauge");
@@ -272,6 +273,7 @@ test.describe("Nutrition trio", () => {
         // (#980 item 4) — the demote/substitute is explicable without reflowing the
         // nutrition layout.
         await page.goto("/nutrition?tab=food");
+        await openFoodAdd(page);
         await page.getByTestId("nutrition-suggestions-summary").click();
         const prefNote = page.getByTestId("suggestions-preference-note");
         await expect(prefNote).toBeVisible({ timeout: WAIT });

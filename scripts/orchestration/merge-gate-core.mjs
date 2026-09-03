@@ -170,5 +170,13 @@ export function baseDetectorNotice(runs, ref, detector = "e2e-main") {
   const pending = shards.filter((run) => run.status !== "completed");
   if (pending.length)
     return `${detector}: still running on ${at} (${pending.length} of ${shards.length})`;
-  return `${detector}: ${at} is green (${shards.length} shards)`;
+  // A SKIPPED SHARD IS NOT A GREEN ONE (#4370). e2e-main skips a push with no
+  // runtime surface, and this line used to fold `skipped` in with `success` and
+  // report "is green (4 shards)" over a run that executed no browser at all —
+  // the exact false confidence #4370 was filed about, printed at the moment a
+  // merge decision is taken.
+  const ran = shards.filter((run) => run.conclusion !== "skipped");
+  if (!ran.length)
+    return `${detector}: ${at} ran NOTHING (${shards.length} shards skipped — no runtime surface in that push). Not a green; the nightly is what covers main`;
+  return `${detector}: ${at} is green (${ran.length} of ${shards.length} shards ran)`;
 }

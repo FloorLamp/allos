@@ -407,6 +407,19 @@ describe("cadenceWeekVerdictLine (#2395)", () => {
     expect(cadenceScopeNoun("substance", "Kratom")).toBe("Kratom");
     expect(cadenceScopeNoun("group", "Upper")).toBe("Upper body");
   });
+
+  // #4841 item 2: the dashboard's frequency-target act row asks this for its LABEL, so
+  // the answer has to be a plain noun in every scope the row can carry — no verb, and
+  // never the raw stored key ("cardio", "Lower", "berries"). The four kinds are the
+  // ones the acceptance criteria name.
+  it.each([
+    ["region", "Chest", "Chest"],
+    ["type", "cardio", "Cardio"],
+    ["food_group", "berries", "Berries"],
+    ["practice", "Red light therapy", "Red light therapy"],
+  ])("names a %s target by its noun", (kind, value, noun) => {
+    expect(cadenceScopeNoun(kind, value)).toBe(noun);
+  });
 });
 
 // ── A cap over SEVERAL closed weeks (#2397) ─────────────────────────────────────

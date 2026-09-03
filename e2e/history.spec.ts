@@ -173,11 +173,19 @@ test.describe("the record (#3958)", () => {
 
     const day = page.getByTestId("history-day");
     await expect(day).toHaveCount(1);
-    const header = day.getByTestId("history-day-link");
+    // THE DAY VIEW'S NAME IS THE BAR'S (#4918 ruling 1), in the same #3958 grammar
+    // the feed's header keeps. The per-group header is gone from THIS view and the
+    // self-linking door with it — asserted as the absence of the door rather than of
+    // an `h2`, because the bar's name is an `h2` too.
+    await expect(day.getByTestId("history-day-link")).toHaveCount(0);
+    const header = page.getByTestId("timeline-day-name");
     await expect(header).toBeVisible();
-    // The day header is the whole "which day am I in" affordance, so the count line
-    // beside it has to be the day's, not the page's.
-    await expect(day.locator("h2")).toContainText(/\d+ records?/);
+    await expect(header).toContainText(/\d+ records?/);
+    // AND THE NAME IS ABOVE THE CHART, not below it: the defect was a date printed
+    // after the day's content, so the order is the claim and not merely the presence.
+    const nameBox = (await header.boundingBox())!;
+    const chartBox = (await page.getByTestId("intraday-panel").boundingBox())!;
+    expect(nameBox.y).toBeLessThan(chartBox.y);
 
     const serving = page
       .getByTestId("history-row")
@@ -195,10 +203,34 @@ test.describe("the record (#3958)", () => {
     expect(clock).toMatch(/^(logged )?\d{1,2}:\d{2}(am|pm)?$/);
   });
 
+  // #4452 §3. THE ROW'S HEIGHT CANNOT ANSWER THE ONE-LINE QUESTION, and the ceiling
+  // below used to be the only thing asked. Measured at 390px on this fixture: the
+  // rows that carry an ⋯ menu are 46-47px tall and the rows without one are 44, so
+  // the height reports the row's CHROME and not whether its text wrapped. #4452 asked
+  // whether the ceiling should be tightened; the constant `2 × lineHeight + 24` is
+  // exactly a two-line text budget, so tightening it is asking the wrong box.
+  //
+  // THOSE NUMBERS MOVED UNDER THIS COMMENT, and the old ones are worth keeping
+  // because the argument was first made on them: the ⋯ rows measured 52-53 when
+  // `OverflowMenu`'s control rendered 40px, which is where the reading "a menu row and
+  // a two-line row are the same 53px" came from. #4362's fifth ruling put that control
+  // on the 34px box, so the coincidence the argument was drawn on is gone — the
+  // conclusion is not re-derived here, because #4452's ruling is #4452's.
+  //
+  // So the two claims are now measured on the two different boxes that actually
+  // carry them: the row's height still bounds the row's CHROME (padding, a control
+  // that grew — `py-1.5`→`py-6` reds it at 88px), and the one-line claim is asked of
+  // the TEXT CELLS against their OWN line boxes, where a wrap is visible.
   test("is one line per row at 390px, and the page never scrolls sideways", async ({
     page,
   }) => {
     seedDay();
+    // THE FIXTURE HAS TO BE ABLE TO REACH THE FORBIDDEN STATE. Without a title too
+    // long for the cluster, every row is one line whatever the truncation rules say,
+    // and the cell assertion below is green against a tree that has lost them. This
+    // is the same row the 320px truncation case seeds, measured wrapping to 40px
+    // here at 390px once `truncate` is taken off the cluster.
+    seedLongTitle();
     await phone(page);
     await page.goto(`/history?day=${DAY}`);
 
@@ -212,13 +244,25 @@ test.describe("the record (#3958)", () => {
       ];
       const doc = document.documentElement;
       return {
-        // ONE LINE MEANS ONE LINE OF TEXT, measured as the row's height against its
-        // own line box rather than against a constant — a 44px row that wrapped
-        // inside a taller container would satisfy any absolute ceiling.
         rows: list.map((el) => ({
           height: el.getBoundingClientRect().height,
           lineHeight: parseFloat(getComputedStyle(el).lineHeight),
           right: el.getBoundingClientRect().right,
+          // THE TEXT CELLS, each against its own line box. Two selectors, named by
+          // hand: the identity half the shared row primitive owns (icon, title,
+          // subject, detail — `components/LoggedEventRow.tsx`) and the trailing
+          // clock, which sits outside it. Deliberately NOT the row content wrapper:
+          // that holds the ⋯ menu control and so is as tall as the control box on a
+          // perfectly one-line row.
+          cells: [
+            ...el.querySelectorAll<HTMLElement>(
+              '[data-logged-event-row], [data-testid="history-row-clock"]'
+            ),
+          ].map((cell) => ({
+            what: cell.getAttribute("data-testid") ?? "identity",
+            height: cell.getBoundingClientRect().height,
+            lineHeight: parseFloat(getComputedStyle(cell).lineHeight),
+          })),
         })),
         viewport: doc.clientWidth,
         scrollWidth: doc.scrollWidth,
@@ -230,6 +274,15 @@ test.describe("the record (#3958)", () => {
         row.height,
         `a record row is ${Math.round(row.height)}px tall against a ${row.lineHeight}px line`
       ).toBeLessThan(row.lineHeight * 2 + 24);
+      // Every row draws its identity; a row that draws none would satisfy the loop
+      // below by having nothing to check.
+      expect(row.cells.map((cell) => cell.what)).toContain("identity");
+      for (const cell of row.cells) {
+        expect(
+          Math.round(cell.height),
+          `the ${cell.what} cell is ${Math.round(cell.height)}px against its own ${cell.lineHeight}px line — it has wrapped`
+        ).toBeLessThanOrEqual(cell.lineHeight);
+      }
       expect(Math.round(row.right)).toBeLessThanOrEqual(geometry.viewport);
     }
     expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport + 1);
@@ -439,8 +492,12 @@ test.describe("the record (#3958)", () => {
     // inherited.
     await page.goto("/history?day=2099-01-01");
     await expect(page.getByTestId("history-filters")).toBeVisible();
-    const days = await page.getByTestId("history-day-link").allTextContents();
-    expect(days.join(" ")).not.toContain("2099");
+    // THE BAR IS WHAT NAMES THE CLAMPED DAY NOW (#4918 ruling 1) — and it names it
+    // whether or not the day has rows, which the retired per-group header could not:
+    // a clamp landing on a quiet today used to leave this assertion nothing to read.
+    const named = page.getByTestId("timeline-day-name");
+    await expect(named).toBeVisible();
+    expect(await named.textContent()).not.toContain("2099");
   });
 
   test("the jump rail owns a lane and never overlaps a row's action column", async ({
@@ -643,12 +700,19 @@ test.describe("the record (#3958)", () => {
   });
 
   // ── THE DAY HEADER IS A DOOR AND SAYS SO (#4045 §7) ───────────────────────
+  //
+  // ON THE FEED, which is the only view that still draws it (#4918 ruling 1). The
+  // header is a DOOR to a day, and the day view is already through it — there it was
+  // a link to the page it was on, so the day view's name moved to the day bar and
+  // this door stayed exactly as it is on the page that lists many days.
   test("makes the whole day header the day link, chevron included", async ({
     page,
   }) => {
     seedDay();
-    await page.goto(`/history?day=${DAY}`);
-    const link = page.getByTestId("history-day-link");
+    await page.goto("/history");
+    const group = page.locator(`#timeline-day-${DAY}`);
+    await expect(group).toBeVisible();
+    const link = group.getByTestId("history-day-link");
     // THE COUNT IS INSIDE THE TAP TARGET. Asserted on the link's own text — shipped,
     // the count was a sibling of the link, which every "the h2 states a count" check
     // was satisfied by.
@@ -670,8 +734,8 @@ test.describe("the record (#3958)", () => {
     // And the chevron that says the header is a door at all, in the text cluster: the
     // link's box ends where its content ends rather than spanning the header.
     await expect(link.locator("svg")).toHaveCount(1);
-    const spans = await page.evaluate(() => {
-      const h2 = document.querySelector('[data-testid="history-day"] h2')!;
+    const spans = await page.evaluate((id: string) => {
+      const h2 = document.querySelector(`#${id} h2`)!;
       const a = h2.querySelector("a")!;
       return {
         header: Math.round(h2.getBoundingClientRect().width),
@@ -680,7 +744,7 @@ test.describe("the record (#3958)", () => {
         // and it is the link, so no sibling can drift to the far edge.
         children: h2.childElementCount,
       };
-    });
+    }, `timeline-day-${DAY}`);
     expect(spans.children).toBe(1);
     expect(spans.link).toBeLessThan(spans.header);
   });

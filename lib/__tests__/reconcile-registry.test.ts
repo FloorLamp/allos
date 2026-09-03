@@ -48,6 +48,15 @@ import { ALL_NOTIFICATION_KINDS } from "@/lib/notifications/kinds";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const NOTIFY_DIR = path.join(REPO, "lib/notifications");
 
+// ONE MINT SITE LIVES OUTSIDE lib/notifications, AND THAT WAS A HOLE (#4544). The digest
+// time suggestion's three exits are built in lib/digest-time-suggestion.ts — the module
+// that OWNS the suggestion, which is the right home for them — so this scan, which reads
+// one directory, could not see them and the registry did not carry them. Found by typing
+// the dispatch table against the registry rather than by any wider sweep; named here so
+// the scan covers them from now on. Rule (5) resolves them: the file declares each prefix
+// as a same-file `const` and builds the token from `${NAME}:`.
+const EXTRA_MINT_SOURCES = ["lib/digest-time-suggestion.ts"];
+
 function productionSources(): { rel: string; text: string }[] {
   return fs
     .readdirSync(NOTIFY_DIR)
@@ -55,7 +64,13 @@ function productionSources(): { rel: string; text: string }[] {
     .map((f) => ({
       rel: `lib/notifications/${f}`,
       text: fs.readFileSync(path.join(NOTIFY_DIR, f), "utf8"),
-    }));
+    }))
+    .concat(
+      EXTRA_MINT_SOURCES.map((rel) => ({
+        rel,
+        text: fs.readFileSync(path.join(REPO, rel), "utf8"),
+      }))
+    );
 }
 
 // Strip comments so a prose mention of a token shape in a header comment is not read as
@@ -168,6 +183,9 @@ describe("the callback-vocabulary completeness guard (#1779)", () => {
       "usual",
       "stacktake",
       "medstop",
+      // The mint site outside lib/notifications (#4544) — if EXTRA_MINT_SOURCES is ever
+      // dropped, this fails here rather than silently re-opening the hole.
+      "dgtuse",
     ]) {
       expect(minted.has(known), `scan missed the "${known}:" prefix`).toBe(
         true

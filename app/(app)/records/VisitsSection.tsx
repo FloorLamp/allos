@@ -18,6 +18,7 @@ import { isAppointmentKind } from "@/lib/preventive-appointment";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { EmptyState } from "@/components/ui";
 import AddEntryPanel from "@/components/AddEntryPanel";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
 import AppointmentList from "@/app/(app)/encounters/AppointmentList";
 import EncounterList from "@/app/(app)/encounters/EncounterList";
@@ -147,8 +148,7 @@ export default function VisitsSection({
   const pastSection = (
     // Past — the encounter history, without an entry form between the two lists.
     <section data-testid="visits-past">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h3 className="section-label">Past</h3>
+      <CardSectionHeader title="Past" variant="label">
         {showHousehold && (
           <DestinationLink
             href={EPISODES_HREF}
@@ -158,7 +158,7 @@ export default function VisitsSection({
             View illness episodes
           </DestinationLink>
         )}
-      </div>
+      </CardSectionHeader>
       <EncounterList
         items={encounters}
         defaultDate={now}

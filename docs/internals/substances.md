@@ -196,46 +196,57 @@ dedicated store, so one store never has two quick-log owners in the census.
 Substance data stays out of share links, the emergency card and print surfaces by
 default, and a send names a substance only behind the per-profile opt-in below. The
 neutral stance changes what the **owner** can do, not what the app broadcasts. No
-substance ever generates a finding-driven send.
+substance ever generates a finding-driven send — **with one recorded exception**.
 
-Telegram carries this profile's alcohol rows only after an explicit per-profile opt-in —
-`substance_telegram_enabled`, off by default, the same consent shape as food buttons
-(`getProfileFoodTelegram`) and profile-scoped for the same reason: one login's chat
-receives every profile it manages, so the choice belongs to the data subject. There is no
-backfill; an existing profile with Telegram already wired up reads "off" on first deploy
-and stops carrying substance content until someone says otherwise (#3330).
+**The exception (owner decision, 2026-09-02, #4775 §5).** The paired-observation
+`alcohol-*` entries (`lib/paired-observations.ts`) may render **one** line in the
+morning digest, behind `substance_telegram_enabled` and only above the pair's own
+effect floor. This overrules #2177's "never a send" for this pair family and nothing
+else. It is one line, never a message of its own: it is appended to a Sleep section
+that already exists, so it cannot be the thing that makes a digest go out. Everything
+that made the original ruling right still holds — the opt-in is off by default, the
+pair's monthly dismissal silences the line as it silences the card, and the copy is
+the verdict's own sentence with both arms' n and no advice verb. The gather is
+`gatherSubstanceObservationLine` (`lib/notifications/digest-data.ts`), which asks the
+flag before it computes anything at all.
 
-Alcohol is the reach the food nudge governs, because alcohol is the one substance whose
-ledger is a food group (`ledger: "food-log"`) and so rides that nudge. Every other
-substance, curated or custom, lives in `substance_daily_totals` and has no food-nudge
-surface — but a declared **cap** on any substance, alcohol included, is named by its own
-noun on the periodic recap's two cap lines, which go out over Telegram, Web Push and
-Email (#3900). The same flag governs both reaches. `TELEGRAM_DOMAIN_CENSUS` keeps
+What the exception does NOT open: no other substance, no cap finding, no second line,
+and no send that exists because of a substance.
+
+**Alcohol is the special case, by owner ruling (2026-09-02).** Its ledger is a food group
+(`ledger: "food-log"`), so it rides the food nudge's buttons and tally under the
+food-buttons consent (`food_telegram_enabled`, `getProfileFoodTelegram`) exactly like
+every other group, and its cap is named on the recap like any food cap. #3330 first put
+alcohol behind the substance flag below; that read "off" for every existing profile and
+removed the 🍷 button from the one nudge that logs most drinks, so the drinks went
+unlogged — which is a worse record, not a better protection. The food-buttons consent is
+already profile-scoped for the same reason (one login's chat receives every profile it
+manages, so the choice belongs to the data subject), and it is the choice that governs.
+
+Every other substance, curated or custom, lives in `substance_daily_totals` and has no
+food-nudge surface; a declared **cap** on one is named by its own noun on the periodic
+recap's two cap lines, which go out over Telegram, Web Push and Email (#3900). Those ride
+only behind `substance_telegram_enabled` — off by default, per profile, no backfill; the
+toggle sits on the Recap row in Settings → Notifications. `TELEGRAM_DOMAIN_CENSUS` keeps
 `substance` off the slash-command vocabulary.
 
-The flag is read in three gathers, and the three are the whole of it — the first attempt
-gated only the first, the eating-time correction rows kept naming the drink from a second
-read thirty lines downstream, and the recap named the cap from a third module out:
+The flag is read in ONE gather, and that is the whole of it (an earlier design read it in
+three — `buildFoodNudge`'s buttons and tally, and the eating-time correction rows' recent-tap
+read — both of which were alcohol-only and went with the alcohol ruling above; every chat
+surface now pairs correction bursts straight from `getRecentFoodTaps`):
 
-- `buildFoodNudge` drops the group from the ranked keys and the day totals, which is the
-  quick-log **button** and the `Today:` **tally**.
-- `consentedFoodTaps` (same file) drops it from the recent-tap read every eating-time
-  **correction** surface takes — the chips beside the nudge, the `Recorded: … (corrected)`
-  statement in the prose, the reconcile sweep's dead-token set and picker anchor, and the
-  picker handler's own `resolve` in `telegram-time-correction.ts`, which is outside the
-  nudge builder entirely. Filtered before `collapseBursts`, so a mixed burst collapses to
-  a form naming a neighbour or naming nothing, never a gap; an all-substance burst is
-  gone, and a token aimed at it takes the refusal that already exists for one that aged
-  out.
-- `gatherRecapInput` drops `scope_kind: "substance"` targets from both cadence cap
-  readers when the gather is `forSend`, including the gather used to generate a stored
-  AI narrative. This removes the week **verdict** line ("over
-  the Nicotine cap") and the period **cap-weeks** line ("over the Nicotine cap in 2 of 4
-  weeks") — a custom substance names itself on both, since `cadenceScopeNoun` returns the
-  profile's own string. The dashboard recap card and year retrospective remain
-  unfiltered: they are surfaces the profile is standing on, not sends. The stored AI
-  narrative is safe to paste into the send because it is generated from the gated facts;
-  its in-app card renders the deterministic cap facts beside that prose, preserving the
+- `gatherRecapInput` drops `scope_kind: "substance"` targets whose ledger is the
+  substance log from both cadence cap readers when the gather is `forSend`, including the
+  gather used to generate a stored AI narrative — the predicate is
+  `substanceDef(scope_value).ledger === "food-log"`, the same line `isSubstanceLogged`
+  draws for writes, so an alcohol cap passes and a nicotine, cannabis or custom cap does
+  not. This removes the week **verdict** line ("over the Nicotine cap") and the period
+  **cap-weeks** line ("over the Nicotine cap in 2 of 4 weeks") — a custom substance names
+  itself on both, since `cadenceScopeNoun` returns the profile's own string. The
+  dashboard recap card and year retrospective remain unfiltered: they are surfaces the
+  profile is standing on, not sends. The stored AI narrative is safe to paste into the
+  send because it is generated from the gated facts; its in-app card renders the
+  deterministic cap facts beside that prose, preserving the
   profile's own substance view (#3909).
 
   **This gate can suppress a whole recap, and that is the intended outcome.**

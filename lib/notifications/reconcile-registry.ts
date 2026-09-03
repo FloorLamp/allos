@@ -73,7 +73,7 @@ export type ReconcilePrefixEntry = {
     }
 );
 
-export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
+const PREFIX_TABLE = [
   // ── Class 1: state-claim buttons ───────────────────────────────────────────
   // The message asserts something is outstanding and an in-app write can resolve it.
 
@@ -248,7 +248,44 @@ export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = [
     inert:
       "the post-workout type ask (#2272) — 'your tracker didn't say what this was'. It rides the recap the way `demote` rides a dose reminder, carries an activity id and no date, and its write is a COMPARE-AND-SWAP on the row still being `unclassified`: a session classified in the app since, or absorbed by the duplicate auto-merge (#2271), refuses the tap and says which happened (already-classified / out-of-date) instead of confirming a write that did not occur. That is the difference from the correction chips, which are NOT inert — those expire on a CLOCK nothing can re-check at tap time, so only the sweep can stop them lying. This one cannot lie: it is asked ONCE, and the answer it can still write is the only one it will ever accept.",
   },
-];
+
+  // THE THREE THIS TABLE HAD NEVER BEEN ASKED ABOUT (#4544). The digest time
+  // suggestion's exits (#2217) are minted in lib/digest-time-suggestion.ts — outside the
+  // one directory the source scan reads — so nothing noticed they were undeclared while
+  // `dispatchTap` answered them. Found by TYPING the dispatch table against this one.
+  //
+  // Inert on `actype`'s compare-and-swap reasoning rather than `foodoptin`'s: the token
+  // carries no minute and `handleDigestTimeTap` re-resolves the live suggestion before
+  // writing, so a button sitting in a chat cannot write a time the detector has stopped
+  // proposing. Standalone, like the digest's other riding controls.
+  {
+    prefix: "dgtuse",
+    expiry: "standalone",
+    inert:
+      "writes the digest send time the detector currently proposes (#2217) — re-resolved at tap, never read off the button",
+  },
+  {
+    prefix: "dgtdyn",
+    expiry: "standalone",
+    inert:
+      "switches the digest to dynamic mode (#2217) — a preference, which is whatever it currently is and cannot go stale",
+  },
+  {
+    prefix: "dgtno",
+    expiry: "standalone",
+    inert:
+      "declines the suggestion and records one suppression row (#2217) — the same preference question, answered the other way",
+  },
+] as const satisfies readonly ReconcilePrefixEntry[];
+
+// EVERY PREFIX THIS APP HAS DECLARED, as a type. The dispatch registry (#4544) is typed
+// against it, so a callback family cannot reach `dispatchTap` without an entry here, and
+// — through CALLBACK_REGISTRY's exhaustiveness check — an entry here cannot exist with
+// no arm to answer it. The table above therefore keeps its literal types, and the export
+// below hands every existing consumer the same widened shape it always had.
+export type ReconcilePrefix = (typeof PREFIX_TABLE)[number]["prefix"];
+
+export const RECONCILE_PREFIXES: readonly ReconcilePrefixEntry[] = PREFIX_TABLE;
 
 // ── THE DATE-GUARD DECLARATION (issue #2018) ─────────────────────────────────
 //
@@ -498,6 +535,11 @@ export const KIND_REISSUE: readonly KindReissueEntry[] = [
     why: "A recap line about ONE logged session — a record of something that happened, which a later session never supersedes.",
   },
   {
+    kind: "practice-recap",
+    reissuable: false,
+    why: "A note about ONE finished practice — a record of something that happened, and a later session is a different subject rather than a newer answer to the same question. It also carries no buttons and no state a second copy could recompute.",
+  },
+  {
     kind: "ease-back",
     reissuable: false,
     why: "One-shot per illness episode (#837); there is no second send to supersede the first.",
@@ -592,6 +634,11 @@ export const KIND_PROSE: readonly KindProseEntry[] = [
     kind: "workout-recap",
     prose: null,
     why: "A record of one session that happened. Nothing in the app makes a completed workout un-happen, so the sentence cannot become false. Since #2272 the line can be followed by the type ASK when the session's source declined to classify it — a question, not a claim, and its buttons refuse a stale tap on their own (see the `actype` entry above), so there is still no sentence here for a prose reconciler to correct.",
+  },
+  {
+    kind: "practice-recap",
+    prose: null,
+    why: "Three measurements of a session that happened — its length, its average heart rate, and that average as a rise over the profile's resting baseline. Nothing in the app makes a finished practice un-happen, and editing the row's duration afterwards does not make the stated average false: it was the average over the window as the row stood when it was measured. There is no claim here for a prose reconciler to correct.",
   },
   {
     kind: "milestone",

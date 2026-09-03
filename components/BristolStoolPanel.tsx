@@ -9,6 +9,7 @@ import {
   type BristolPanel as PanelModel,
 } from "@/lib/bristol-stool";
 import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
+import CardSectionHeader from "@/components/CardSectionHeader";
 
 // The Bristol stool-form panel (issue #2785): a DISTRIBUTION and a per-day dot strip,
 // never an averaged line.
@@ -76,18 +77,14 @@ export default function BristolStoolPanel({
       data-testid="bristol-panel"
       className="border-t border-black/5 pt-5 dark:border-white/5"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="section-label">Stool form</h3>
+      <CardSectionHeader title="Stool form" variant="label">
         <span className="text-xs text-slate-500 dark:text-slate-400">
           Last 4 weeks
         </span>
-      </div>
+      </CardSectionHeader>
 
       {/* The distribution: how often each type, over the window. */}
-      <div
-        className="mt-3 flex items-end gap-1"
-        data-testid="bristol-distribution"
-      >
+      <div className="flex items-end gap-1" data-testid="bristol-distribution">
         {panel.distribution.map((d) => {
           const label = distributionTitle(d, panel.total);
           return (

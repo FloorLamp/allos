@@ -351,3 +351,28 @@ export function parseImpressionSection(
   const section = (cut ? after.slice(0, cut.index) : after).trim();
   return section.length > 0 ? section : null;
 }
+
+// THE ONE BOUND ON A STORED REPORT (#3594 / #4732). A rendered radiology report is a
+// whole document, and every import route that stores one keeps it under the same
+// 8000-character ceiling so a runaway decode cannot bloat the row. It lives here,
+// beside the parser, because the routes that need it — the FHIR mappers and the
+// AI/paste extraction adapter — must not each carry their own idea of the bound.
+const IMAGING_NARRATIVE_MAX = 8000;
+
+export function capImagingNarrative(s: string): string {
+  const t = s.trim();
+  return t.length > IMAGING_NARRATIVE_MAX
+    ? t.slice(0, IMAGING_NARRATIVE_MAX).trimEnd() + "…"
+    : t;
+}
+
+// The impression a report labels for itself, under the SAME bound as the narrative
+// (#3594). A labelled section that runs to the end of a runaway document parses to
+// the whole body, and this is the field every display surface prefers — so the cap
+// belongs on the parse result, not only on the narrative it came from. Parsed from
+// the RAW narrative, then capped: parsing the already-capped text would lose an
+// impression section that sits past the ceiling.
+export function capImagingImpression(narrative: string | null): string | null {
+  const section = parseImpressionSection(narrative);
+  return section ? capImagingNarrative(section) : null;
+}

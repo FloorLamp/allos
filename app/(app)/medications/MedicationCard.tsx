@@ -82,6 +82,7 @@ import {
 import { IconX } from "@tabler/icons-react";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { isOnDemand } from "@/lib/intake-schedule";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import { symptomLabelOptions } from "@/lib/symptoms";
 
 // A side effect is described in the SAME human vocabulary a symptom is (#1676), so
@@ -184,7 +185,7 @@ export default function MedicationCard({
     product: string | null;
   }[];
   // The redose-window status line (#798): "Redose OK — min interval passed · 2 of 4
-  // today" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
+  // in 24h" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
   // Pre-formatted server-side via the shared redoseCardLabel.
   prnRedoseLine?: string | null;
   prnRedosePrimary?: boolean;
@@ -548,12 +549,11 @@ export default function MedicationCard({
                 tz={timezone}
               />
             ) : (
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="section-label">Today</span>
+              <CardSectionHeader title="Today" variant="label">
                 <span className="text-sm text-slate-600 dark:text-slate-300">
                   {prnDayLabel ?? "None today"}
                 </span>
-              </div>
+              </CardSectionHeader>
             )}
             {prnAdministrations.length > 0 && (
               <ul
@@ -930,10 +930,10 @@ export default function MedicationCard({
 
           {/* Side effects. */}
           <div>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="section-label">
-                Side effects ({sideEffects.length})
-              </span>
+            <CardSectionHeader
+              title={`Side effects (${sideEffects.length})`}
+              variant="label"
+            >
               {canWrite ? (
                 <button
                   type="button"
@@ -946,7 +946,7 @@ export default function MedicationCard({
                   {addingEffect ? "Cancel" : "Add side effect"}
                 </button>
               ) : null}
-            </div>
+            </CardSectionHeader>
 
             {canWrite && addingEffect && (
               <form

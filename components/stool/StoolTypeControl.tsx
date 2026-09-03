@@ -64,10 +64,8 @@ export default function StoolTypeControl({
   // tap's (`TAP_REACH`).
   const statement = useTimeStatement({
     day: today,
-    label: "Happened earlier?",
     timeLabel: "Time it happened",
     testId: "stool-when",
-    className: "mt-3",
   });
   useEffect(
     () => () => {
@@ -198,7 +196,10 @@ export default function StoolTypeControl({
           </button>
         ))}
       </div>
-      {statement.node}
+      {/* This domain's action is the GRID, so #4426's "immediately right" has no one
+          button to sit against; the door takes the first seat after it instead. */}
+      <div className="mt-3 flex items-center gap-2">{statement.door}</div>
+      {statement.reveal ? <div className="mt-2">{statement.reveal}</div> : null}
       <p
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"

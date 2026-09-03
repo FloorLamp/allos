@@ -13,11 +13,13 @@ import {
   pickComposedWhen,
 } from "./helpers";
 import { openMedDetailViaHref } from "./med-card-helpers";
+import { pinnedTimezone } from "./pinned-timezone";
+import { shiftDateStr, utcSqlString } from "@/lib/date";
 import {
   expectDesktopOrdinarySubmit,
   expectPhoneOrdinarySubmit,
 } from "./ordinary-submit-actions";
-import { workerDbPath } from "./worker-env";
+import { frozenNow, workerDbPath } from "./worker-env";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
 // prescription-fields disclosure, the "Generic"-led brand picker, the amount-only PRN
@@ -29,6 +31,101 @@ import { workerDbPath } from "./worker-env";
 // add-medication form is the "Add medication"
 // card's intake form; its name combobox picks the collapsed catalog option.
 const PRN_MED = "PRN Quicklog Med (e2e)";
+
+// THE BACKDATED-DOSE TEST OWNS ITS MEDICATION (#4862). Logging a past dose moves the
+// PRN course's start back to that day and nothing puts it back, so the test both
+// MUTATES a course start and ASSERTS the one it caused. On the shared seeded med that
+// pairing is unsound in both directions, and a worker runs many spec files against ONE
+// database copy:
+//   • anything that moves that course start first — a co-resident write, or an earlier
+//     run of this test in the same worker — leaves the assertion reading a start it did
+//     not cause, which is the #4862 red; and
+//   • once the start sits at or before the chosen day, `logHistoricalDose` finds the day
+//     already INSIDE the course, writes no course correction at all, and the assertion
+//     passes on a value that was there before it ran.
+// A medication created here, per run, and removed after cannot reach either state — the
+// same "seed what you drive, remove what you added" shape e2e/day-ledger.spec.ts uses.
+const OWN_PRN_MED = "Backdated PRN Med (e2e)";
+
+function openWorkerDb(): Database.Database {
+  const db = new Database(workerDbPath());
+  db.pragma("busy_timeout = 5000");
+  return db;
+}
+
+function ownedZone(): string {
+  return pinnedTimezone(frozenNow().toISOString()).zone;
+}
+
+function removeOwnPrnMed(): void {
+  const db = openWorkerDb();
+  try {
+    const row = db
+      .prepare("SELECT id FROM intake_items WHERE profile_id = 1 AND name = ?")
+      .get(OWN_PRN_MED) as { id: number } | undefined;
+    if (!row) return;
+    db.prepare("DELETE FROM intake_item_logs WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM medication_courses WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM intake_item_doses WHERE item_id = ?").run(row.id);
+    db.prepare("DELETE FROM intake_items WHERE id = ?").run(row.id);
+  } finally {
+    db.close();
+  }
+}
+
+// An active PRN medication whose course started FIVE days ago, with one administration
+// today so the detail page renders its dose-history panel. Five days is the side of the
+// boundary that matters: the day this test picks is 45 days back, so it lands OUTSIDE
+// the course and the write core must correct the start rather than find it covered.
+// Fully synthetic name with no rxcui, like the seeded PRN fixtures, so it matches no
+// interaction/PGx/food-drug dataset; supply stays high so it never joins a low-supply
+// surface. Returns the seeded start, which the assertion's expected value must differ
+// from for the test to be testing anything.
+function seedOwnPrnMed(): string {
+  removeOwnPrnMed();
+  const db = openWorkerDb();
+  try {
+    const todayLocal = frozenNow().toLocaleDateString("en-CA", {
+      timeZone: ownedZone(),
+    });
+    const startedOn = shiftDateStr(todayLocal, -5);
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, notes, condition, obligation, kind, active,
+              quantity_on_hand, qty_per_dose)
+           VALUES (1, ?, 'As-needed med — e2e backdated-dose fixture', 'daily',
+                   'may', 'medication', 1, 60, 1)`
+        )
+        .run(OWN_PRN_MED).lastInsertRowid
+    );
+    const doseId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '400 mg', 'Anytime', 'any', 0)`
+        )
+        .run(itemId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
+       VALUES (?, ?, NULL, NULL, 'PRN — e2e backdated-dose fixture')`
+    ).run(itemId, startedOn);
+    db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, recorded_at, amount, status)
+       VALUES (?, ?, ?, ?, '400 mg', 'taken')`
+    ).run(
+      doseId,
+      itemId,
+      todayLocal,
+      utcSqlString(new Date(frozenNow().getTime() - 90 * 60 * 1000))
+    );
+    return startedOn;
+  } finally {
+    db.close();
+  }
+}
 
 function removeOwnedSideEffect(effect: string) {
   const db = new Database(workerDbPath());
@@ -187,7 +284,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
     scheduledRow.getByTestId("dose-take"),
     scheduledRow.getByTestId("dose-skip"),
     prnRow.getByTestId("prn-log-now"),
-    prnRow.getByTestId("prn-log-more"),
+    prnRow.getByTestId("prn-log-when-toggle"),
   ];
   const actionWidths = await Promise.all(
     actionButtons.map(async (button) => (await button.boundingBox())!.width)
@@ -319,132 +416,149 @@ test("logs, edits, and deletes a historical medication dose", async ({
 }, testInfo) => {
   const loggedAmount = `${225 + testInfo.repeatEachIndex} mg`;
   const updatedAmount = `${250 + testInfo.repeatEachIndex} mg`;
-  await page.goto("/medications");
-  // Row→detail href nav owned by the shared med-card driver (#868 class-2).
-  await openMedDetailViaHref(page, PRN_MED);
+  const seededStart = seedOwnPrnMed();
+  try {
+    await page.goto("/medications");
+    // Row→detail href nav owned by the shared med-card driver (#868 class-2).
+    await openMedDetailViaHref(page, OWN_PRN_MED);
 
-  const history = page.getByTestId("dose-history");
-  await history.getByRole("button", { name: "Log past dose" }).click();
-  const form = history.getByTestId("historical-dose-form");
-  await expect(form).toContainText(
-    "records a separate administration in dose history"
-  );
-  await expect(form).toContainText("start date will move back to match");
-  const maxDate = await form
-    .locator('input[type="hidden"][name="date"]')
-    .inputValue();
-  const date = new Date(`${maxDate}T00:00:00Z`);
-  // The fixture starts five days ago. Logging 45 days ago proves the former 30-day
-  // cap is gone and moves the PRN course start backward atomically.
-  date.setUTCDate(date.getUTCDate() - 45);
-  const beforeStart = date.toISOString().slice(0, 10);
-  // ONE DOOR FOR THE PAIR (#4218) — see e2e/dose-history.spec.ts. The EDIT below
-  // is an amendment, where the time is optional and keeps its own field.
-  await pickComposedWhen(page, "historical-dose", {
-    date: beforeStart,
-    hhmm: "03:17",
-  });
-  await form.getByLabel("Amount").fill(loggedAmount);
-  const submit = form.getByRole("button", { name: "Save dose" });
-  const actions = submit.locator("xpath=parent::div");
-  const cancel = actions.getByRole("button", { name: "Cancel" });
-  const desktopViewport = page.viewportSize();
-  expect(
-    desktopViewport,
-    "the medication history project has a fixed desktop viewport"
-  ).not.toBeNull();
-  await expectDesktopOrdinarySubmit({
-    form,
-    owner: actions,
-    submit,
-    adjacent: cancel,
-    name: "historical dose primary",
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expectPhoneOrdinarySubmit({
-    form,
-    owner: actions,
-    submit,
-    adjacent: cancel,
-    name: "historical dose primary",
-  });
-  await settledClick(page, submit);
+    const history = page.getByTestId("dose-history");
+    await history.getByRole("button", { name: "Log past dose" }).click();
+    const form = history.getByTestId("historical-dose-form");
+    await expect(form).toContainText(
+      "records a separate administration in dose history"
+    );
+    await expect(form).toContainText("start date will move back to match");
+    const maxDate = await form
+      .locator('input[type="hidden"][name="date"]')
+      .inputValue();
+    const date = new Date(`${maxDate}T00:00:00Z`);
+    // This test's own med starts five days ago (seededStart). Logging 45 days ago proves
+    // the former 30-day cap is gone and moves the PRN course start backward atomically —
+    // a day OUTSIDE the seeded course, so the correction is a real state change and not a
+    // start that was already there.
+    date.setUTCDate(date.getUTCDate() - 45);
+    const beforeStart = date.toISOString().slice(0, 10);
+    // ONE DOOR FOR THE PAIR (#4218) — see e2e/dose-history.spec.ts. The EDIT below
+    // is an amendment, where the time is optional and keeps its own field.
+    await pickComposedWhen(page, "historical-dose", {
+      date: beforeStart,
+      hhmm: "03:17",
+    });
+    await form.getByLabel("Amount").fill(loggedAmount);
+    const submit = form.getByRole("button", { name: "Save dose" });
+    const actions = submit.locator("xpath=parent::div");
+    const cancel = actions.getByRole("button", { name: "Cancel" });
+    const desktopViewport = page.viewportSize();
+    expect(
+      desktopViewport,
+      "the medication history project has a fixed desktop viewport"
+    ).not.toBeNull();
+    await expectDesktopOrdinarySubmit({
+      form,
+      owner: actions,
+      submit,
+      adjacent: cancel,
+      name: "historical dose primary",
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectPhoneOrdinarySubmit({
+      form,
+      owner: actions,
+      submit,
+      adjacent: cancel,
+      name: "historical dose primary",
+    });
+    await settledClick(page, submit);
 
-  await expect(page.getByText(`Logged past dose of ${PRN_MED}.`)).toBeVisible();
-  await expect(history).toContainText(loggedAmount);
-  await expect(history).toContainText(/(?:3:17am|03:17)/);
-  await page.setViewportSize(desktopViewport!);
+    await expect(
+      page.getByText(`Logged past dose of ${OWN_PRN_MED}.`)
+    ).toBeVisible();
+    await expect(history).toContainText(loggedAmount);
+    await expect(history).toContainText(/(?:3:17am|03:17)/);
+    await page.setViewportSize(desktopViewport!);
 
-  const loggedRow = history
-    .getByTestId("dose-history-row")
-    .filter({ hasText: loggedAmount });
-  await loggedRow.getByRole("button", { name: "Dose actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
-  // The row swaps its cells for the edit form in place (the shared
-  // EntryHistoryTable, #2417), so the amount text the row was FILTERED on is gone
-  // while the editor is open — the form is scoped to the panel instead.
-  const editForm = history.getByTestId("historical-dose-form");
-  await editForm.getByLabel("Amount").fill(updatedAmount);
-  await editForm.getByTestId("historical-dose-time").fill("04:18");
-  await settledClick(
-    page,
-    editForm.getByRole("button", { name: "Save changes" })
-  );
-  await expect(page.getByText(`Updated dose of ${PRN_MED}.`)).toBeVisible();
+    const loggedRow = history
+      .getByTestId("dose-history-row")
+      .filter({ hasText: loggedAmount });
+    await loggedRow.getByRole("button", { name: "Dose actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    // The row swaps its cells for the edit form in place (the shared
+    // EntryHistoryTable, #2417), so the amount text the row was FILTERED on is gone
+    // while the editor is open — the form is scoped to the panel instead.
+    const editForm = history.getByTestId("historical-dose-form");
+    await editForm.getByLabel("Amount").fill(updatedAmount);
+    await editForm.getByTestId("historical-dose-time").fill("04:18");
+    await settledClick(
+      page,
+      editForm.getByRole("button", { name: "Save changes" })
+    );
+    await expect(
+      page.getByText(`Updated dose of ${OWN_PRN_MED}.`)
+    ).toBeVisible();
 
-  const updatedRow = history
-    .getByTestId("dose-history-row")
-    .filter({ hasText: updatedAmount });
-  await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
-  await updatedRow.getByRole("button", { name: "Dose actions" }).click();
-  // Removing one logged event confirms first and undoes after — the shared delete
-  // path every EntryHistoryTable row now goes through. The menu item only OPENS the
-  // dialog; the write happens when the dialog is answered.
-  await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
-  await settledClick(
-    page,
-    page
-      .getByTestId("confirm-dialog")
-      .getByRole("button", { name: "Delete dose" })
-  );
-  await expect(page.getByText("Dose deleted.")).toBeVisible();
-  await expect(updatedRow).toHaveCount(0);
-  await settledClick(page, page.getByRole("button", { name: "Undo" }));
-  const restoredRow = history
-    .getByTestId("dose-history-row")
-    .filter({ hasText: updatedAmount });
-  await expect(restoredRow).toBeVisible();
-  // The undo posts its own "Restored." toast into the bottom-right stack, and the
-  // dose table is the BOTTOM section of this page — so the row menu re-opened below
-  // sits under it for the full 6s auto-dismiss window (#2861).
-  await dismissToast(page, "Restored.");
+    const updatedRow = history
+      .getByTestId("dose-history-row")
+      .filter({ hasText: updatedAmount });
+    await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
+    await updatedRow.getByRole("button", { name: "Dose actions" }).click();
+    // Removing one logged event confirms first and undoes after — the shared delete
+    // path every EntryHistoryTable row now goes through. The menu item only OPENS the
+    // dialog; the write happens when the dialog is answered.
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete dose" })
+    );
+    await expect(page.getByText("Dose deleted.")).toBeVisible();
+    await expect(updatedRow).toHaveCount(0);
+    await settledClick(page, page.getByRole("button", { name: "Undo" }));
+    const restoredRow = history
+      .getByTestId("dose-history-row")
+      .filter({ hasText: updatedAmount });
+    await expect(restoredRow).toBeVisible();
+    // The undo posts its own "Restored." toast into the bottom-right stack, and the
+    // dose table is the BOTTOM section of this page — so the row menu re-opened below
+    // sits under it for the full 6s auto-dismiss window (#2861).
+    await dismissToast(page, "Restored.");
 
-  // Undo is part of the behavior under test; remove the restored fixture again
-  // so --repeat-each starts from the same dose history instead of accumulating
-  // duplicate rows with identical timestamps.
-  await restoredRow.getByRole("button", { name: "Dose actions" }).click();
-  await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
-  await settledClick(
-    page,
-    page
-      .getByTestId("confirm-dialog")
-      .getByRole("button", { name: "Delete dose" })
-  );
-  await expect(restoredRow).toHaveCount(0);
-  // Second delete, second toast — and the Medication actions menu opened next is in
-  // the same quadrant (#2861).
-  await dismissToast(page, "Dose deleted.");
+    // Undo is part of the behavior under test; remove the restored fixture again
+    // so --repeat-each starts from the same dose history instead of accumulating
+    // duplicate rows with identical timestamps.
+    await restoredRow.getByRole("button", { name: "Dose actions" }).click();
+    await hydratedClick(page, page.getByRole("menuitem", { name: "Delete" }));
+    await settledClick(
+      page,
+      page
+        .getByTestId("confirm-dialog")
+        .getByRole("button", { name: "Delete dose" })
+    );
+    await expect(restoredRow).toHaveCount(0);
+    // Second delete, second toast — and the Medication actions menu opened next is in
+    // the same quadrant (#2861).
+    await dismissToast(page, "Dose deleted.");
 
-  // The administration and course correction are one write: editing immediately
-  // afterward must show the selected dose date as the new PRN start. The course dates
-  // are behind the stop-date fact now, so the assertion opens it.
-  await page.getByRole("button", { name: "Medication actions" }).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
-  const dates = await openFact(page, "stopDate");
-  // The field renders the profile's own date format, so assert the DAY it holds
-  // rather than the spelling of it.
-  const shown = await dates.getByLabel("Using since").inputValue();
-  expect(new Date(`${shown} UTC`).toISOString().slice(0, 10)).toBe(beforeStart);
+    // The administration and course correction are one write: editing immediately
+    // afterward must show the selected dose date as the new PRN start. The course dates
+    // are behind the stop-date fact now, so the assertion opens it.
+    await page.getByRole("button", { name: "Medication actions" }).click();
+    await page.getByRole("menuitem", { name: "Edit" }).click();
+    const dates = await openFact(page, "stopDate");
+    // The field renders the profile's own date format, so assert the DAY it holds
+    // rather than the spelling of it.
+    const shown = await dates.getByLabel("Using since").inputValue();
+    expect(new Date(`${shown} UTC`).toISOString().slice(0, 10)).toBe(
+      beforeStart
+    );
+    expect(
+      beforeStart,
+      "the assertion must not read the seeded start back"
+    ).not.toBe(seededStart);
+  } finally {
+    removeOwnPrnMed();
+  }
 });
 
 // #2417: the medications surface carries the same one-click door onto the cross-item

@@ -37,6 +37,10 @@ import {
 } from "@/lib/dashboard-relevance";
 import { trackedPageFor } from "@/lib/recent-pages";
 import { logSheetSegments } from "@/lib/log-sheet";
+import { biomarkerFlagDismissalKey } from "@/lib/dismissal-keys";
+import { dashboardAttentionCandidateId } from "@/lib/dashboard-attention-identity";
+import { isNotableFlag } from "@/lib/reference-range";
+import type { MedicalFlag } from "@/lib/types";
 
 const session = vi.hoisted(() => ({
   loginId: 0,
@@ -862,6 +866,67 @@ describe("actual atomic dashboard manifests", () => {
       );
   });
 
+  // WHERE THE ACKNOWLEDGMENT IS OFFERED (#3225). It spends a CLAIM, so the control
+  // belongs on the rows that still hold one — fresh, or notable — and nowhere a
+  // second control would post the same signal, which is a row whose
+  // `biomarker-flag:` key already carries an attention fact.
+  //
+  // "chronic notable" is this issue's own population and the state that moved. A
+  // notable result too old to be fresh is also too old to carry an attention item:
+  // the flagged window bounds the COLLECTION date at 14 days, inside the 30-day
+  // freshness window — so #4232's freshness-only rule left the owner's 37 June
+  // notables with no acknowledge control on the dashboard at all, only on the detail
+  // page each row links to. Reach is counted per state because a table over real
+  // personas says nothing about a state no persona reaches.
+  it("offers the acknowledgment on every unspent claim and nowhere twice", () => {
+    const reach = new Map<string, number>();
+    for (const [persona, placements] of manifests) {
+      const presentations = rowPresentations.get(persona)!;
+      const placed = new Set(
+        placements.map(({ candidate }) => candidate.candidateId)
+      );
+      for (const placement of placements.filter((entry) =>
+        entry.candidate.candidateId.startsWith("labs.latest:")
+      )) {
+        const name = placement.candidate.candidateId.slice(
+          "labs.latest:".length
+        );
+        const presentation = presentations.get(
+          placement.candidate.candidateId
+        )!;
+        // The flag the ROW ITSELF prints, read off its `MedicalValue`, so notability
+        // here is the word the person sees and not a second read of the record.
+        const flag = (
+          presentation.value as ReactElement<{ flag: MedicalFlag | null }>
+        ).props.flag;
+        const state = placed.has(
+          dashboardAttentionCandidateId(biomarkerFlagDismissalKey(name))
+        )
+          ? "hosted on its attention row"
+          : placement.candidate.rankReasons.owed
+            ? "fresh"
+            : isNotableFlag(flag)
+              ? "chronic notable"
+              : "quiet and ordinary";
+        reach.set(state, (reach.get(state) ?? 0) + 1);
+        expect(
+          presentation.control != null,
+          `${persona}:${name} (${state})`
+        ).toBe(state === "fresh" || state === "chronic notable");
+      }
+    }
+    for (const state of [
+      "fresh",
+      "hosted on its attention row",
+      "chronic notable",
+      "quiet and ordinary",
+    ])
+      expect(
+        reach.get(state) ?? 0,
+        `${state} was never produced`
+      ).toBeGreaterThan(0);
+  });
+
   // NOW GATHERS BY SUBJECT ON A REAL HOUSEHOLD MANIFEST (#4752 item 6). The layers
   // are unchanged — safety is uncapped and still leads — but a cross-profile Now
   // clusters each subject's rows before drawing them, so the viewer's own live
@@ -989,6 +1054,17 @@ describe("actual atomic dashboard manifests", () => {
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
   const QUERY_BASELINE: Record<string, number> = {
+    // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
+    // as well as their own table, so a profile whose only eye care is VISITS stops
+    // having its pane hidden. That is one representative-id encounters read plus
+    // the shared conditions list, once per render under the request memo.
+    // `household` spends +1 rather than +2 because `hasSpecialtyLensContent`
+    // short-circuits: it reads conditions only when the visits read found nothing,
+    // and on that persona one of the two lines stops at the visits read.
+    // The two bits gate the Records › Specialty panes and nothing else (no nav leaf
+    // carries them), so this is a cost the dashboard pays for a question asked on
+    // another page — recorded here rather than absorbed, and the cheapest way to
+    // remove it later is to drop the two vestigial bits from NavRelevance.
     // −3 each (#4228 A): the recap's adherence walk stops before today, so no
     // persona makes today's three per-day reads any more — the day's activities,
     // its taken set and its skipped set. `household` is unmoved because its acting
@@ -1008,17 +1084,24 @@ describe("actual atomic dashboard manifests", () => {
     // back unchanged every time, on every persona. So it composes with all of them
     // rather than interacting with any — which is a measurement, not an assumption
     // about independence.
-    bodybuilder: 224,
-    "marathon-runner": 223,
+    bodybuilder: 225,
+    "marathon-runner": 224,
     household: 274,
-    pregnant: 220,
-    "diabetic-cgm": 231,
+    pregnant: 221,
+    "diabetic-cgm": 232,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 246,
+    biohacker: 247,
+    // −1 each (#4775): the paired-observation registry gained a third alcohol entry
+    // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
+    // other two already read — and the factor read happens before each entry's
+    // short-circuit, so it was being paid once per entry. `factorDaysReader` memoizes
+    // it per gather the way `outcomeSeriesReader` already memoized the outcome side,
+    // so three entries now cost one read where two cost two. The new entry's own
+    // outcome series is lazy and is not reached on these personas.
   };
 
   // A BACKSTOP, NOT THE METER. The baseline above is the meter; this is the bound

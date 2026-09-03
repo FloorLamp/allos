@@ -37,7 +37,13 @@ import {
 } from "../../correction-time";
 import { decrementSupply, incrementSupply } from "./refill";
 import { setCourseStartDate } from "./medications";
-import { getMedicationFamilyStates, redoseWindowState } from "./prn-family";
+import {
+  CEILING_WINDOW_SQL,
+  ceilingWindowBounds,
+  getMedicationFamilyStates,
+  redoseWindowState,
+} from "./prn-family";
+import { ceilingWindowEndMinute } from "../../prn-redose";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
@@ -963,7 +969,22 @@ export function logHistoricalDose(
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
       // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      //
+      // THE OUTCOME IS THE REFUSAL, NOT A LOG (#4909). The CAS carries one predicate
+      // the read above does not — `kind = 'medication'` — and this core is
+      // kind-neutral (#1933), so an item that HAS courses but is no longer a
+      // medication misses and writes nothing. Discarding that committed half the
+      // intent, under a form that had just said "start date will move back to
+      // match". `outside-course` is the honest kind rather than a new one: the
+      // extension was the only thing that would have put this day inside a course.
+      // And returning is a whole abort — a miss wrote nothing, and this is
+      // deliberately the transaction's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     db.prepare(
       `INSERT INTO intake_item_logs
@@ -1155,8 +1176,15 @@ export function updateHistoricalDose(
 
     if (courseToExtend) {
       // Backdate the course's start through the course core (#2132) — the same
-      // transaction (Tx token), the DML lives with the invariant's owner.
-      setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date);
+      // transaction (Tx token), the DML lives with the invariant's owner. The
+      // outcome is the refusal (#4909) for the reason logHistoricalDose gives, and
+      // this is likewise the amendment's first write.
+      if (
+        setCourseStartDate(tx, profileId, itemId, courseToExtend.id, date) ===
+        "not-found"
+      ) {
+        return { kind: "outside-course" };
+      }
     }
     const amount = amountOverride?.trim() || row.dose_amount;
     db.prepare(
@@ -1754,18 +1782,20 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
 
 // The arming state for one PRN item's redose one-shot: the latest administration's id
 // + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
-// discipline) and today's administration count (drives the "N of M" + max
-// suppression). Profile-scoped via the parent item. `date` is the profile-local day.
+// discipline) and the TRAILING-24h administration count (drives the "N of M" + max
+// suppression, #4686). Profile-scoped via the parent item. `nowMinute` is the instant
+// the ceiling window ends, and the count reads the same one predicate the family gather
+// does — the two must never disagree about what is inside the window.
 export interface RedoseArmingState {
   latestId: number | null;
   latestGivenAt: string | null;
-  countToday: number;
+  countInWindow: number;
 }
 
 export function getRedoseArmingState(
   profileId: number,
   itemId: number,
-  date: string
+  nowMinute: number
 ): RedoseArmingState {
   // The most-recent administration (by intake time, id as tiebreak) that arms the
   // one-shot. Scoped through the parent item so a forged itemId can't read across
@@ -1787,21 +1817,23 @@ export function getRedoseArmingState(
       `SELECT COUNT(*) AS n
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
-        WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
-          AND l.status = 'taken'`
+        WHERE s.profile_id = ? AND l.item_id = ?
+          AND l.status = 'taken' AND ${CEILING_WINDOW_SQL}`
     )
-    .get(profileId, itemId, date) as { n: number };
+    .get(profileId, itemId, ...ceilingWindowBounds(profileId, nowMinute)) as {
+    n: number;
+  };
   return {
     latestId: latest?.id ?? null,
     latestGivenAt: latest?.administeredAt ?? null,
-    countToday: count.n,
+    countInWindow: count.n,
   };
 }
 
-// A PRN med (or ingredient FAMILY, #1027) whose today's administration count has
-// EXCEEDED the confirmed daily max (#798) — the input to the over-max care finding
-// (the #148 UL-warning shape applied per-day). "Over" is strictly greater than the
-// max (you've logged MORE than the label allows today).
+// A PRN med (or ingredient FAMILY, #1027) whose TRAILING-24h administration count has
+// EXCEEDED the confirmed max (#798, window corrected in #4686) — the input to the
+// over-max care finding (the #148 UL-warning shape). "Over" is strictly greater than
+// the max (you've logged MORE than the label allows in 24 hours).
 //
 // FAMILY-AWARE (#1027 ask 2): the exposure is the ingredient family's COMBINED
 // taken administrations (OTC ibuprofen + Rx ibuprofen 800 together), compared
@@ -1836,11 +1868,11 @@ export interface PrnOverMaxItem {
 
 export function getPrnOverMaxItems(
   profileId: number,
-  date: string
+  nowMinute: number
 ): PrnOverMaxItem[] {
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
-  const states = getMedicationFamilyStates(profileId, date);
+  const states = getMedicationFamilyStates(profileId, nowMinute);
   // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
   // the active PRN-configured meds once (profile-scoped). Either ceiling form
   // (count or mg/day, #1854) makes an item "configured".
@@ -1909,15 +1941,19 @@ export interface PrnMedForQuickLog {
   displayName?: string;
   product: string | null;
   amount: string | null;
+  // The item's OWN administrations on the profile-local day — the "2 today · last
+  // 4:02pm" label, which genuinely renders a DAY and is untouched by #4686.
   count: number;
   lastGivenAt: string | null;
   minIntervalHours: number | null;
   maxDailyCount: number | null;
+  // The ingredient family's administrations inside the trailing 24 hours (#4686) —
+  // the ceiling's basis.
   familyCount: number;
   familyLastGivenAt: string | null;
   // min confirmed max across the family; falls back to the item's own max.
   familyMaxDailyCount: number | null;
-  // The family's amount-aware day exposure (#1854) from the ONE family gather —
+  // The family's amount-aware window exposure (#1854) from the ONE family gather —
   // null when no ceiling is confirmed. Feeds prnQuickLogRedoseStatus so the
   // quick-log/card/Telegram "N of M" line reads milligrams when they're known.
   familyExposure: PrnDayExposure | null;
@@ -1964,12 +2000,15 @@ function getPrnQuickLogItems(
     | "familyExposure"
     | "familyMemberCount"
   >[];
-  const families = getMedicationFamilyStates(profileId, date);
+  const families = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(clockNow())
+  );
   return rows.map((r) => {
     const fam = families.get(r.id);
     return {
       ...r,
-      familyCount: fam?.countToday ?? r.count,
+      familyCount: fam?.countInWindow ?? r.count,
       familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
       familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
       familyExposure: fam?.exposure ?? null,
