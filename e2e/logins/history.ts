@@ -4,12 +4,10 @@
 // fixture-profile name for THIS domain here, beside the fixtures that use it.
 
 // ── Timeline mobile chrome budget (issue #1517) ──────────────────────────────
-// ONE login granted TWO dedicated profiles, because the thing under test is a
-// per-profile DEFAULT: the day view's symptom entry opens on arrival when the day
-// already carries symptoms OR an illness-type situation is active, and stays
-// collapsed otherwise. Those are three states of the same component and no single
-// profile can hold them all — a profile with an active illness is expanded on EVERY
-// day, which is exactly the branch that has to be provable separately.
+// ONE login granted TWO dedicated profiles. The second one is still earning its keep
+// after #4851: the day view's standalone symptom card used to arrive already open
+// when an illness-type situation was active, and "no card even then" is a per-profile
+// branch that a profile without an active illness cannot state.
 //
 // Dedicated ON PURPOSE (#868): the shared seed's profile 1 carries a live episode
 // and a rotating symptom history, so "this day has no symptoms" is a landmine there;
@@ -17,22 +15,27 @@
 // which a shared profile's day cannot promise under --repeat-each.
 //
 // All dates are DEEP PAST (2026-01-*, per the #1511 relative-or-deep-past rule) so
-// they never drift into or out of a relative window, and the spec only navigates,
-// scrolls and toggles client state — no writes, so it is repeat-safe.
+// they never drift into or out of a relative window. The spec's one write is the
+// add-door row on the quiet day below, cleared either side of the test that makes it.
 export const E2E_LOGIN_TL_CHROME = "e2e_tl_chrome";
 // Acting profile (created first ⇒ lowest id ⇒ first accessible): no active
-// situation, one day WITH symptoms, one day without, one day full of events.
+// situation, one day WITH symptoms, one day without, one day full of events. The
+// symptom day is also what earns this profile its Symptoms chip — the Add past row
+// offers the kinds a profile HAS rows for, like every other chip on it.
 export const TL_CHROME_WELL_PROFILE = "Timeline Chrome Well (e2e)";
 // The second profile, carrying an ACTIVE illness-type situation and no symptom rows
-// — so an ordinary quiet day must still arrive with the entry open.
+// — so an ordinary quiet day can prove the retired auto-open (#4851 item 3) is gone
+// on the one profile that used to trigger it.
 export const TL_CHROME_SICK_PROFILE = "Timeline Chrome Sick (e2e)";
 
 // A day with enough events to give the single-day view real scroll range at 390px,
 // which is what makes "the day nav is still reachable mid-page" assertable.
 export const TL_CHROME_BUSY_DAY = "2026-01-20";
-// A day carrying symptom rows (the "you are amending" auto-expand).
+// A day carrying symptom rows, which is what puts `symptom` in this profile's
+// present kinds and therefore the Symptoms chip in its Add past row.
 export const TL_CHROME_SYMPTOM_DAY = "2026-01-15";
-// A day with nothing on it at all (the collapsed case).
+// A day with nothing on it at all — where the add door's write lands, and the only
+// fixture day this spec mutates.
 export const TL_CHROME_QUIET_DAY = "2026-01-18";
 // The title every busy-day activity carries, so the spec can count its own rows.
 export const TL_CHROME_ACTIVITY = "TL Chrome Session";

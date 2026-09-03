@@ -1,14 +1,20 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import { hydratedClick, settledBoxes, settledClick } from "./helpers";
+import {
+  followLink,
+  hydratedClick,
+  settledBoxes,
+  settledClick,
+  settledPickOption,
+} from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_TL_CHROME,
   TL_CHROME_SICK_PROFILE,
+  TL_CHROME_WELL_PROFILE,
   TL_CHROME_BUSY_DAY,
-  TL_CHROME_SYMPTOM_DAY,
   TL_CHROME_QUIET_DAY,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
@@ -17,21 +23,24 @@ import { workerDbPath } from "./worker-env";
 // #3958 phase 2 retired that route and `/history?day=` became the app's one "that
 // day" anchor.
 //
-// Two of #1517's three fixes still have a subject here:
-//   A. the sticky/scroll priority — the day nav (used constantly) takes the pinned
-//      slot and rides the shell chrome, while the filter row scrolls away;
-//   C. the symptom logger arrives collapsed behind "+ Log symptom" unless logging is
-//      the point of the visit (the day already has symptoms, or an illness-type
-//      situation is active).
+// ONE of #1517's three fixes still has a subject here — A, the sticky/scroll
+// priority: the day nav (used constantly) takes the pinned slot and rides the shell
+// chrome, while the filter row scrolls away.
 //
 // Fix B (collapsing the filter block) does not: the record has one filter row and no
 // range chrome, so there is nothing to collapse. The note where its test stood says
 // what asserts the budget instead.
 //
+// Fix C — the symptom logger folded behind "+ Log symptom" — has no subject either,
+// because #4851 retired the card it folded. The day view's symptom entry is the Add
+// past row's door now, like every other log kind's, and the test below is what
+// replaced C's: the chip, the door on the day being read, and the absence of the
+// card at both widths.
+//
 // Fixture (#868): a dedicated login over two dedicated profiles — see
-// e2e/logins/history.ts for why the auto-expand's three states cannot share one
-// profile. Deep-past days, navigation + client toggles only, no writes, so it is
-// repeat-safe under --repeat-each.
+// e2e/logins/history.ts. Deep-past days. The door test WRITES one symptom row, on a
+// day nothing else in this file reads, and clears it either side of itself, so the
+// file stays repeat-safe under --repeat-each.
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
@@ -43,14 +52,61 @@ function dayUrl(date: string): string {
 // The sick profile's id, so the spec can switch the session's active profile to it
 // through the product's own affordance.
 function sickProfileId(): number {
+  return profileIdNamed(TL_CHROME_SICK_PROFILE);
+}
+
+function profileIdNamed(name: string): number {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+        id: number;
+      }
+    ).id;
+  } finally {
+    db.close();
+  }
+}
+
+// The symptom the add door writes, and the ONE thing this file mutates. Not `cough`
+// or `headache` — those are the seeded symptom day's, and a fixture that shared a key
+// with the seed could not tell its own write apart from the seed's.
+const DOOR_SYMPTOM = "sneezing";
+const DOOR_LABEL = "Sneezing";
+
+// EVERY DAY the well profile carries this symptom on, which is the shape the "posts
+// to the day being read, never today" assertion needs: a door that defaulted to today
+// produces `[<today>]` here, and one that lost the day entirely produces `[]`. Asking
+// only "is there a row on the day I read" could not tell those apart.
+function doorSymptomDates(): string[] {
   const db = new Database(workerDbPath());
   try {
     db.pragma("busy_timeout = 5000");
     return (
       db
-        .prepare("SELECT id FROM profiles WHERE name = ?")
-        .get(TL_CHROME_SICK_PROFILE) as { id: number }
-    ).id;
+        .prepare(
+          "SELECT date FROM symptom_logs WHERE profile_id = ? AND symptom = ? ORDER BY date"
+        )
+        .all(profileIdNamed(TL_CHROME_WELL_PROFILE), DOOR_SYMPTOM) as {
+        date: string;
+      }[]
+    ).map((row) => row.date);
+  } finally {
+    db.close();
+  }
+}
+
+// Start (and leave) from ABSENCE. Without this the second viewport's pass — and every
+// --repeat-each iteration after the first — would find the row already there and go
+// green on the previous run's write.
+function clearDoorSymptom(): void {
+  const db = new Database(workerDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "DELETE FROM symptom_logs WHERE profile_id = ? AND symptom = ?"
+    ).run(profileIdNamed(TL_CHROME_WELL_PROFILE), DOOR_SYMPTOM);
   } finally {
     db.close();
   }
@@ -255,45 +311,96 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
   // e2e/history.spec.ts ("spends no more than the chrome budget above its first
   // record at 390px").
 
-  test("the symptom entry is collapsed on an ordinary day and open when it is the point of the visit (C)", async ({
+  // #4851 — THE DAY VIEW'S SYMPTOM ENTRY IS THE ADD PAST ROW'S DOOR, and the
+  // standalone card that used to sit below the chart is gone. This replaces #1517 C's
+  // fold test: the fold's subject was a second entry surface the day view no longer
+  // has, so porting that test would have asserted a collapse over nothing.
+  //
+  // BOTH WIDTHS, because the Add past row is the thing that changed shape: it scrolls
+  // horizontally at 390 and wraps from `sm` up, so the chip has to be reachable in a
+  // scroller as well as in a wrapped row.
+  test("symptoms is an Add past chip, and its door writes on the day being read", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await signIn(browser);
+    try {
+      for (const viewport of [DESKTOP, PHONE]) {
+        clearDoorSymptom();
+        expect(doorSymptomDates(), `${viewport.width}: starts absent`).toEqual(
+          []
+        );
+        await page.setViewportSize(viewport);
+        await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
+
+        // THE RETIRED CARD, asserted where it stood.
+        await expect(page.getByTestId("history-symptom-entry")).toHaveCount(0);
+        await expect(page.getByTestId("history-symptom-toggle")).toHaveCount(0);
+
+        // THE CHIP, in the row with its siblings rather than on a line of its own.
+        const chip = page.getByTestId("history-add-symptom");
+        await expect(chip).toHaveText("Symptoms");
+        await followLink(page, chip, /kind=symptom/);
+        // The day rode across the chip: the door can only be about the day being read
+        // if the navigation kept it.
+        expect(new URL(page.url()).searchParams.get("day")).toBe(
+          TL_CHROME_QUIET_DAY
+        );
+
+        await hydratedClick(page, page.getByTestId("history-add-open-symptom"));
+        const panel = page.getByTestId("history-add-panel-symptom");
+        await expect(panel).toBeVisible();
+        await settledPickOption(
+          page,
+          panel.getByRole("combobox", { name: "Symptom" }),
+          DOOR_LABEL
+        );
+        await settledClick(page, panel.getByTestId("symptom-form-save"));
+
+        // THE ASSERTION THIS TEST EXISTS FOR, asked of the store and asked FIRST, so a
+        // door that posted today fails here by NAMING the day it used rather than as a
+        // missing row two lines down. `settledClick` returned on the action's own
+        // response, so the row is committed. The whole date set is compared: a door
+        // that lost the day gives `[]`, one that defaulted to today gives `[<today>]`,
+        // and a stray second row cannot hide behind a matching first one.
+        expect(
+          doorSymptomDates(),
+          `${viewport.width}: the door posted the day being read`
+        ).toEqual([TL_CHROME_QUIET_DAY]);
+        // And the day's own feed shows it, which is the reader's half of the same claim.
+        await expect(
+          page.getByTestId("history-row-title").filter({ hasText: DOOR_LABEL })
+        ).toHaveCount(1);
+
+        // THE CONVERSE, through the product: a future `?day=` clamps to today
+        // (`clampHistoryDay`), so this is today's own day view — and the symptom just
+        // written is not on it.
+        await page.goto("/history?day=2099-01-01&kind=symptom");
+        await expect(
+          page.getByTestId("history-row-title").filter({ hasText: DOOR_LABEL })
+        ).toHaveCount(0);
+      }
+    } finally {
+      clearDoorSymptom();
+      await page.context().close();
+    }
+  });
+
+  // #4851 item 3 — THE SICK-DAY AUTO-OPEN GOES. The second entry surface used to
+  // arrive already open on an ordinary quiet day whenever an illness-type situation
+  // was active; the illness cockpit is the sick-day surface, and the record does not
+  // need a second one. The sick profile is the only fixture that can say so, because
+  // the branch was per-profile.
+  test("an active illness situation opens no symptom card on the day view", async ({
     browser,
   }) => {
     test.slow();
     const sickId = sickProfileId();
     const page = await signIn(browser);
     try {
-      // 1. A quiet day, no active situation → collapsed behind "+ Log symptom",
-      //    with the bar itself out of the tab order.
-      await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
-      const entry = page.getByTestId("history-symptom-entry");
-      await expect(entry).toBeVisible();
-      await expect(entry).toHaveAttribute("data-open", "false");
-      await expect(page.getByTestId("history-symptom-toggle")).toContainText(
-        "Log symptom"
-      );
-      await expect(page.getByTestId("symptom-log-bar")).toBeHidden();
-
-      // …and one tap still gets you there.
-      await hydratedClick(page, page.getByTestId("history-symptom-toggle"));
-      await expect(entry).toHaveAttribute("data-open", "true");
-      await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
-
-      // 2. A day that already carries symptoms → open on arrival (you are amending).
-      await page.goto(dayUrl(TL_CHROME_SYMPTOM_DAY));
-      await expect(page.getByTestId("history-symptom-entry")).toHaveAttribute(
-        "data-open",
-        "true"
-      );
-      await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
-
-      // 3. An ACTIVE illness situation → open on an ordinary quiet day too, so the
-      //    sick-day flow #799 built the bar for stays one tap.
-      //
-      //    The switch is driven at DESKTOP width on purpose: below `md` the profile
-      //    menu lives inside the nav drawer, and the (hidden) desktop sidebar
-      //    renders the same markup at every viewport, so an unscoped trigger is two
-      //    elements. Switching is a session-level Server Action — the viewport it
-      //    was driven from is not part of what this test asserts.
+      // The switch is driven at DESKTOP width on purpose: below `md` the profile menu
+      // lives inside the nav drawer, and the (hidden) desktop sidebar renders the same
+      // markup at every viewport, so an unscoped trigger is two elements.
       await page.setViewportSize(DESKTOP);
       await page.goto("/history");
       const trigger = page.getByTestId("profile-identity-bar");
@@ -305,12 +412,15 @@ test.describe("the record day view's phone chrome (#1517, inherited)", () => {
       // goto over an in-flight action loses the write (#1437).
       await expect(trigger).toContainText(TL_CHROME_SICK_PROFILE);
 
-      await page.setViewportSize(PHONE);
-      await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
-      await expect(page.getByTestId("history-symptom-entry")).toHaveAttribute(
-        "data-open",
-        "true"
-      );
+      for (const viewport of [DESKTOP, PHONE]) {
+        await page.setViewportSize(viewport);
+        await page.goto(dayUrl(TL_CHROME_QUIET_DAY));
+        // The day view rendered — without this the two absences below are satisfied by
+        // a page that failed to load at all.
+        await expect(page.getByTestId("timeline-day-nav")).toBeVisible();
+        await expect(page.getByTestId("history-symptom-entry")).toHaveCount(0);
+        await expect(page.getByTestId("symptom-log-bar")).toHaveCount(0);
+      }
     } finally {
       await page.context().close();
     }
