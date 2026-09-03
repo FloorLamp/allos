@@ -213,11 +213,15 @@ export const HIGH_STAKES = [
 //
 // WHERE THIS VOCABULARY COMES FROM, since a guard's pattern must be how the REPO
 // writes the construct and not how an issue describes it. Every symbol below was
-// taken from the module that defines it and counted across lib/, app/ and
-// components/ (`git grep -c "\b<sym>\s*("`), not from a list in a brief:
+// taken from the module that DEFINES it and then counted, not read off a list in
+// an issue. Counts are at 2ec49466 (this change's merge base), over lib/, app/ and
+// components/; the call-shaped ones with
+// `git grep -c "\b<sym>\s*(" 2ec49466 -- lib/ app/ components/` and the two that
+// are read as bare identifiers with `\b<sym>\b`:
 //   lib/auth.ts             requireWriteAccess 402, requireProfileWriteAccess 146,
 //                           requireAdmin 95, accessForProfile 35,
-//                           requireLoginWriteAccess 17, accessibleProfiles(ForLogin) 34
+//                           requireLoginWriteAccess 17, accessibleProfiles 13,
+//                           accessibleProfilesForLogin 21
 //   app/(app)/gate-item.ts  gateItemProfile 157
 //   lib/scope.ts            requireScope 38
 //   lib/cross-profile.ts    profileIdsIn 46, authorizedProfileSubset 16
@@ -225,7 +229,7 @@ export const HIGH_STAKES = [
 //                           subjectChipVisible 19
 //   lib/appointment-sensitivity.ts  sharedSurfaceDetail 19
 //   lib/notifications/managing-logins.ts  managingLoginIdsForProfile 40
-//   the cross-profile render flag, `crossProfile`, 49 across 11 files
+//   the cross-profile render flag `crossProfile`, 49 across 11 files
 //
 // `requireSession` is DELIBERATELY ABSENT. It authenticates and decides no write
 // authority (lib/auth.ts says so: the write guard is the authoritative boundary,

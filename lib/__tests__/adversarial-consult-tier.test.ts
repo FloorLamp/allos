@@ -876,7 +876,10 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
       ].join("\n"),
     },
     sources: [
-      { where: "PR title", text: "The clock glyph is the only spelling of the time statement" },
+      {
+        where: "PR title",
+        text: "The clock glyph is the only spelling of the time statement",
+      },
       {
         where: "PR body",
         text: claimProse(
@@ -945,7 +948,9 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
     const [hit] = classify(AUTHORIZATION_MOVE).diffHits;
     expect(hit.file).toBe("app/(app)/nutrition/intake-actions.ts");
     expect(hit.hunk).toBe("@@ -1497,10 +1497,21 @@");
-    expect(hit.line).toBe("-const { login, profile } = await requireWriteAccess();");
+    expect(hit.line).toBe(
+      "-const { login, profile } = await requireWriteAccess();"
+    );
     expect(hit.signal).toBe("authorization gate");
   });
 
@@ -954,13 +959,14 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
   // a shape the repo writes constantly.
   const hunk = (...lines: string[]) => ["@@ -1,4 +1,6 @@", ...lines].join("\n");
   const file = "lib/queries/intake/doses.ts";
-  const silent = (patch: string, f = file) =>
-    diffSignals([f], { [f]: patch });
+  const silent = (patch: string, f = file) => diffSignals([f], { [f]: patch });
 
   it.each([
     [
       "a comment that names the gate",
-      hunk("+// requireProfileWriteAccess(profileId) asserts the caller may write it."),
+      hunk(
+        "+// requireProfileWriteAccess(profileId) asserts the caller may write it."
+      ),
       file,
     ],
     [
@@ -994,15 +1000,21 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
     [
       "a scoping predicate moved between two files",
       {
-        "lib/a.ts": hunk('-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'),
-        "lib/b.ts": hunk('+      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'),
+        "lib/a.ts": hunk(
+          '-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
+        "lib/b.ts": hunk(
+          '+      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
       },
       [],
     ],
     [
       "a scoping predicate deleted outright",
       {
-        "lib/a.ts": hunk('-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'),
+        "lib/a.ts": hunk(
+          '-      "DELETE FROM food_log_events WHERE id = ? AND profile_id = ?"'
+        ),
       },
       ["profile scoping"],
     ],
@@ -1024,24 +1036,66 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
   // what sees #4834 (one patient's name over another's controls) and half of #4801.
   // Each line below is the shape its symbol is actually written in.
   it.each([
-    ["authorization gate", "-  const { profile } = await requireWriteAccess();"],
+    [
+      "authorization gate",
+      "-  const { profile } = await requireWriteAccess();",
+    ],
     ["authorization gate", "+  await requireProfileWriteAccess(profileId);"],
     ["authorization gate", "+  await requireLoginWriteAccess();"],
     ["authorization gate", "-  const session = await requireAdmin();"],
-    ["authorization gate", "+  const profileId = await gateItemProfile(formData);"],
-    ["authorization gate", "+    accessForProfile(login.id, login.role, profileId) === \"write\""],
-    ["authorization gate", "-  const list = accessibleProfiles(login.id, login.role);"],
+    [
+      "authorization gate",
+      "+  const profileId = await gateItemProfile(formData);",
+    ],
+    [
+      "authorization gate",
+      '+    accessForProfile(login.id, login.role, profileId) === "write"',
+    ],
+    [
+      "authorization gate",
+      "-  const list = accessibleProfiles(login.id, login.role);",
+    ],
     ["authorization gate", "+  return accessibleProfilesForLogin(loginId);"],
-    ["authorization gate", "+  const scope = await requireScope(searchParams);"],
-    ["authorization gate", "-  const ids = authorizedProfileSubset(scope.ids, requested);"],
-    ["authorization gate", "+    `SELECT id FROM doses WHERE profile_id IN ${profileIdsIn(ids)}`,"],
-    ["cross-profile visibility", "+  const detail = sharedSurfaceDetail(kind, requested);"],
-    ["cross-profile visibility", "-export function sharedSurfaceWithholdsCategory("],
-    ["cross-profile visibility", "-          const actionVisible = itemAffordanceVisible(item.writeTarget);"],
-    ["cross-profile visibility", "+import { subjectChipVisible } from \"@/lib/multi-view\";"],
-    ["cross-profile visibility", "+    readForProfiles(scope.viewIds, (pid) => rows(pid)),"],
-    ["cross-profile visibility", "-  for (const id of managingLoginIdsForProfile(profileId)) {"],
-    ["cross-profile visibility", "+const doseVerb = (crossProfile: boolean) => (crossProfile ? \"Give\" : \"Take\");"],
+    [
+      "authorization gate",
+      "+  const scope = await requireScope(searchParams);",
+    ],
+    [
+      "authorization gate",
+      "-  const ids = authorizedProfileSubset(scope.ids, requested);",
+    ],
+    [
+      "authorization gate",
+      "+    `SELECT id FROM doses WHERE profile_id IN ${profileIdsIn(ids)}`,",
+    ],
+    [
+      "cross-profile visibility",
+      "+  const detail = sharedSurfaceDetail(kind, requested);",
+    ],
+    [
+      "cross-profile visibility",
+      "-export function sharedSurfaceWithholdsCategory(",
+    ],
+    [
+      "cross-profile visibility",
+      "-          const actionVisible = itemAffordanceVisible(item.writeTarget);",
+    ],
+    [
+      "cross-profile visibility",
+      '+import { subjectChipVisible } from "@/lib/multi-view";',
+    ],
+    [
+      "cross-profile visibility",
+      "+    readForProfiles(scope.viewIds, (pid) => rows(pid)),",
+    ],
+    [
+      "cross-profile visibility",
+      "-  for (const id of managingLoginIdsForProfile(profileId)) {",
+    ],
+    [
+      "cross-profile visibility",
+      '+const doseVerb = (crossProfile: boolean) => (crossProfile ? "Give" : "Take");',
+    ],
   ])("sees %s in: %s", (signal, line) => {
     const f = "app/(app)/x-actions.ts";
     expect(diffSignals([f], { [f]: hunk(line) }).map((h) => h.signal)).toEqual([
@@ -1056,12 +1110,20 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
   it.each([
     [
       "a shared-surface visibility change is CONSULT, not MANDATORY",
-      { "lib/queries/recent-changes.ts": hunk("-  const visible = opts.shared ? changes.filter((c) => !sharedSurfaceWithholdsCategory(c.category)) : changes;") },
+      {
+        "lib/queries/recent-changes.ts": hunk(
+          "-  const visible = opts.shared ? changes.filter((c) => !sharedSurfaceWithholdsCategory(c.category)) : changes;"
+        ),
+      },
       "CONSULT",
     ],
     [
       "an authorization gate is MANDATORY",
-      { "app/(app)/x-actions.ts": hunk("-  const { profile } = await requireWriteAccess();") },
+      {
+        "app/(app)/x-actions.ts": hunk(
+          "-  const { profile } = await requireWriteAccess();"
+        ),
+      },
       "MANDATORY",
     ],
   ])("%s", (_label, patches, verdict) => {
@@ -1077,7 +1139,12 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
   it("keeps the four verdicts on four exit codes", () => {
     // The diff tier adds no fifth answer: an orchestrator's procedure and the
     // merge-gate neighbours read these numbers.
-    expect(EXIT).toEqual({ mandatory: 0, ordinary: 1, cannotAnswer: 2, consult: 3 });
+    expect(EXIT).toEqual({
+      mandatory: 0,
+      ordinary: 1,
+      cannotAnswer: 2,
+      consult: 3,
+    });
   });
 
   it("declares exactly the signals that were measured, with a stated reason", () => {
@@ -1097,7 +1164,9 @@ describe("the diff tier: the classification is evidence from the hunks (#4842)",
     // names a fact about every diff (189 call sites) rather than about this one.
     expect(
       diffSignals(["app/(app)/x/page.tsx"], {
-        "app/(app)/x/page.tsx": hunk("+  const session = await requireSession();"),
+        "app/(app)/x/page.tsx": hunk(
+          "+  const session = await requireSession();"
+        ),
       })
     ).toEqual([]);
   });
@@ -1134,16 +1203,18 @@ describe("the gate section is a transcript, not a claim (#4842)", () => {
     ].join("\n");
     const prose = claimProse(body);
     expect(prose).not.toContain("credential");
-    expect(vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)).toEqual([
-      "warning",
-    ]);
+    expect(
+      vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)
+    ).toEqual(["warning"]);
   });
 
   it("does not eat a heading that merely contains the word", () => {
     // "gating" and "gated" are not the gate report; only the section is.
-    const prose = claimProse("## The gating rule\nA warning stops firing here.");
-    expect(vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)).toEqual([
-      "warning",
-    ]);
+    const prose = claimProse(
+      "## The gating rule\nA warning stops firing here."
+    );
+    expect(
+      vocabularyHits([{ where: "b", text: prose }]).map((h) => h.term)
+    ).toEqual(["warning"]);
   });
 });
