@@ -196,11 +196,8 @@ export default function StoolTypeControl({
           </button>
         ))}
       </div>
-      {/* THE CLOCK DOOR (#4426's rendering ruling), in the row directly under the
-          seven type buttons it modifies — this domain's action is the GRID, so
-          "immediately right" has no single button to sit against and the door takes
-          the first seat after it instead. It was a "Happened earlier?" text button
-          here; the glyph is the only spelling now. */}
+      {/* This domain's action is the GRID, so #4426's "immediately right" has no one
+          button to sit against; the door takes the first seat after it instead. */}
       <div className="mt-3 flex items-center gap-2">{statement.door}</div>
       {statement.reveal ? <div className="mt-2">{statement.reveal}</div> : null}
       <p

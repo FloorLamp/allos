@@ -11,12 +11,10 @@ import {
 import { statedHhmm } from "@/lib/stated-time";
 
 // THE CLOCK GLYPH IS THE ONLY SPELLING OF THIS TOGGLE (#4426's rendering ruling,
-// 2026-09-02), so it is not a `label` prop any more and no mount can choose words.
-// Four dialects said this one sentence four ways — "Happened earlier?" and "Taken
-// earlier?" as visible text, "Earlier dose" as a link, a "Now" chip — and the ruling
-// converges them in WHERE as much as in WHAT. The question is the ACCESSIBLE NAME and
-// never a `title=`: #2378/#3375 ruled hover-only text out of this codebase because a
-// touch or keyboard reader never receives it, and
+// 2026-09-02), so it is not a `label` prop any more and no mount can choose words —
+// four dialects said this one sentence four ways. The question is the ACCESSIBLE NAME
+// and never a `title=`: #2378/#3375 ruled hover-only text out of this codebase because
+// a touch or keyboard reader never receives it, and
 // lib/__tests__/raw-title-boundary.test.ts holds that line.
 export const HAPPENED_EARLIER = "Happened earlier?";
 
@@ -51,17 +49,14 @@ export interface TimeStatement {
   /** Rule 4: drop the statement `consumed` paid for, and only that one. */
   spend: (consumed: string | null) => void;
   /**
-   * THE STATEMENT IS ALWAYS DRAWN IN TWO PIECES, because its two halves belong in two
-   * places: the door sits in the ACTION ROW, immediately right of the action it
-   * modifies, and the reveal opens BELOW that row where a date, a time and a save
-   * button have room. There is no third node combining them — a single one could only
-   * ever be in one of the two places, and the mount that seated it correctly was the
-   * one that hand-rolled its own door.
+   * ALWAYS TWO PIECES, because the halves belong in two places: the door sits in the
+   * ACTION ROW immediately right of the action it modifies, the reveal opens BELOW
+   * that row where a day, a minute and a save button have room. There is no third
+   * node combining them — one could only ever be in one of the two places, and the
+   * mount that seated it correctly was the one that hand-rolled its own door.
    *
-   * THIS IS NOT A MODE (#4738 ruling 2). Nothing about the statement's behaviour
-   * changes with where a host draws the pieces — same state, same reveal, same four
-   * rules — and there is no prop to pass, so the control cannot grow a second
-   * behaviour by being configured into one.
+   * THIS IS NOT A MODE (#4738 ruling 2): same state, same reveal, same four rules
+   * wherever a host draws them, and no prop to pass.
    */
   door: ReactNode;
   reveal: ReactNode;
@@ -142,11 +137,10 @@ export function useTimeStatement({
     open,
     setOpen,
     reveal,
-    // THE STANDARD 34px ICON BUTTON (#3938's control box, in the one-tap action row's
-    // paint), with the question as its accessible name and the glyph as its only
-    // visible spelling. `dose-action-styles` is already the shared language of these
-    // rows — practices and protocols import it beside medications — so the door wears
-    // the same box as the action it is seated against rather than a fifth one.
+    // THE STANDARD 34px ICON BUTTON (#3938's control box). `dose-action-styles` is
+    // already the shared language of these rows — practices and protocols import it
+    // beside medications — so the door wears the same box as the action it sits
+    // against rather than a fifth one.
     door: shown ? (
       <button
         type="button"

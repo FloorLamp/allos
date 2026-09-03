@@ -109,11 +109,8 @@ export default function ScheduledDoseAction({
               : "Not logged"}
         </span>
       ) : (
-        // THE DOOR IN ITS SEAT (#4426's rendering ruling): immediately right of the
-        // take/skip pair it modifies and in the same 34px box, rather than the
-        // full-width "Taken earlier?" text button that used to sit under the whole
-        // row and spelled this one question a fifth way. The pair and the door share
-        // one group so the row's `justify-between` cannot push them apart.
+        // The pair and #4426's door share one group so the row's `justify-between`
+        // cannot push the door away from the action it modifies.
         <div className="flex shrink-0 items-center gap-2">
           <DoseStatusControl
             doseId={doseId}

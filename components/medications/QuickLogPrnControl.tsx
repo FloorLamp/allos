@@ -190,12 +190,9 @@ export default function QuickLogPrnControl({
     });
   }
 
-  // THE CLOCK DOOR IS THE SHARED CONTROL'S OWN (#4426's rendering ruling). This row
-  // used to hand-roll the glyph button beside the statement it opened — the last
-  // hand-rolled half of the toggle in the tree — so the door's box, its glyph and its
-  // accessible name lived here and could drift from every other mount's. Seated by
-  // whichever arm renders below; the reveal opens in this row's FOOTER, which is why
-  // this mount takes the statement in two pieces.
+  // Seated by whichever arm renders below; the reveal opens in this row's FOOTER,
+  // which is why this mount draws the statement in two pieces. The door itself used
+  // to be hand-rolled here, glyph and accessible name and all (#4426).
   const clockDoor = statement.door;
 
   const control = compactActions ? (
