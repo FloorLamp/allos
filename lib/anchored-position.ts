@@ -38,14 +38,20 @@ export interface AnchoredPosition {
   maxHeight: number;
 }
 
-export function anchoredPosition({
-  anchor,
-  panel,
-  viewport,
-  align = "start",
-  matchAnchorWidth = false,
-  preferredMaxHeight,
-}: {
+// The one exemption from that bound (#4917), reached only through `capHeight:
+// false` below. A tooltip is `pointer-events-none` — nothing can scroll it — so
+// capping its height would truncate the one thing it exists to show rather than
+// let it overflow; the control is a `max-width` instead, so a long label wraps.
+// `maxHeight: null` rather than an absent field, so a caller that reads it sees
+// a stated exemption and not a gap that looks like the #4776 bug.
+export interface UnboundedAnchoredPosition {
+  top: number;
+  left: number;
+  width?: number;
+  maxHeight: null;
+}
+
+interface AnchoredPositionArgs {
   anchor: AnchorRect;
   // The panel as measured. `height` is 0 before its first measurement, which is
   // why a consumer keeps it hidden until then.
@@ -58,7 +64,29 @@ export function anchoredPosition({
   // Omit it and the panel simply takes the room, which is what a menu and a
   // calendar want — never more than the room, either way.
   preferredMaxHeight?: number;
-}): AnchoredPosition {
+}
+
+// Two call signatures, one implementation (#4917): a forked positioner is the
+// parallel concept this repo forbids, so the exemption is a narrower RETURN TYPE
+// on the same function rather than a second one. Default callers get the #4776
+// bound; only `capHeight: false` opts out, and only into the type above.
+export function anchoredPosition(
+  args: AnchoredPositionArgs & { capHeight: false }
+): UnboundedAnchoredPosition;
+export function anchoredPosition(
+  args: AnchoredPositionArgs & { capHeight?: true }
+): AnchoredPosition;
+export function anchoredPosition({
+  anchor,
+  panel,
+  viewport,
+  align = "start",
+  matchAnchorWidth = false,
+  preferredMaxHeight,
+  capHeight = true,
+}: AnchoredPositionArgs & {
+  capHeight?: boolean;
+}): AnchoredPosition | UnboundedAnchoredPosition {
   const width = matchAnchorWidth ? anchor.width : panel.width;
   const roomBelow =
     viewport.height - anchor.bottom - ANCHOR_GAP - ANCHOR_MARGIN;
@@ -98,6 +126,6 @@ export function anchoredPosition({
     top,
     left,
     ...(matchAnchorWidth ? { width } : {}),
-    maxHeight,
+    maxHeight: capHeight ? maxHeight : null,
   };
 }
