@@ -67,6 +67,7 @@ import {
   runStaleWorkoutSuggest,
 } from "../notifications/workout-presence";
 import { flushPostWorkoutDispatches } from "../notifications/post-workout-queue";
+import { runPracticeRecaps } from "../notifications/practice-recap-dispatch";
 import { expireWorkoutDrafts } from "../workout-finish";
 import { runRefills } from "../notifications/refill";
 import { runPoolRefills } from "../notifications/supply-pool";
@@ -925,6 +926,27 @@ export async function tickProfile(
       });
       anyFailed = true;
     }
+  }
+
+  // The practice finish note (#4775 §3). NOT slot-gated and not waking-gated: it is
+  // timed to a real event the person just performed, exactly like the post-workout
+  // finish above, and its own two-hour bound is what keeps it from firing at an
+  // unwelcome hour — a practice finished at 23:00 is eligible until 01:00 and the
+  // person who tapped it is awake. It sends only when the minute stream has covered
+  // the session, so on most passes it does one bounded query and stops.
+  try {
+    const pr = await runPracticeRecaps(
+      profileId,
+      (msg) => send(profileId, msg),
+      now
+    );
+    if (pr.failed) anyFailed = true;
+  } catch (e) {
+    log.error("practice finish note failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
   }
 
   // Coaching rest-episode continuity (#44 item 3b): advance/clear the persisted

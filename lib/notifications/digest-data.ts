@@ -6,7 +6,12 @@
 
 import { db, today } from "../db";
 import { now } from "../clock";
-import { shiftDateStr, zonedDateParts } from "../date";
+import {
+  parseUtcSql,
+  shiftDateStr,
+  zonedDateParts,
+  zonedMinuteStr,
+} from "../date";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -35,6 +40,9 @@ import {
   digestTimeSuggestionLine,
 } from "../digest-time-suggestion";
 import { getFindingSuppressions } from "../queries/upcoming/suppressions";
+import { isFindingSuppressed } from "../findings";
+import { buildPairedObservationFindings } from "../rule-findings";
+import { getProfileSubstanceTelegram } from "../settings/notifications";
 import { upcomingToFinding } from "../findings";
 import { dismissedSignalKeys, findingProminence } from "../dismissal-fatigue";
 import { recentPRs, recentCardioPRs } from "../coaching";
@@ -61,6 +69,16 @@ import { groupUpcoming } from "../upcoming";
 import { integrationToItem, isEscalatingIntegration } from "../attention";
 import { getIntegrationAttention } from "../queries/integrations";
 import { mainSleepNights } from "../sleep-regularity";
+import {
+  eventRecovery,
+  getWindowPhysiology,
+  priorEventWindows,
+} from "../queries/event-physiology";
+import { getRestingHrSignal } from "../queries/coaching";
+import {
+  restingHrJumpThreshold,
+  DEFAULT_COACHING_THRESHOLDS,
+} from "../coaching/engine";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
 import {
   arrivalStatistics,
@@ -111,6 +129,7 @@ import {
   type DigestActivity,
   type DigestDocument,
   type DigestInput,
+  type DigestOvernightHr,
   type DigestSleep,
 } from "./digest";
 import { documentFootprintByKind } from "../import-persist";
@@ -209,7 +228,87 @@ export function gatherDigestSleep(
     deepMin: stages?.deep ?? null,
     remMin: stages?.rem ?? null,
     sri: reg ? reg.sri : null,
+    overnightHr: gatherOvernightHr(profileId, last),
   };
+}
+
+/**
+ * The overnight-HR facts for the main sleep SESSION (#4775 §4), or null when the
+ * minute stream did not cover it.
+ *
+ * The window is the session's own start and end, projected to the profile-local minute
+ * the HR reader already projects to — never fixed clock hours. A 02:00 bedtime and a
+ * 22:00 one are the same night to this line, and a "midnight to 06:00" read would
+ * report a different night's floor for the person who went to bed late.
+ *
+ * COVERAGE IS THE GATE, as everywhere in this feature. A morning digest fires hours
+ * after wake, so the pipeline has normally caught up long since — but a watch that
+ * synced late, or a night the last hour of which has not landed, would otherwise
+ * produce an overnight LOW computed over a partial night. That is the number this
+ * whole line is about, and it is the one a short window gets most wrong.
+ */
+function gatherOvernightHr(
+  profileId: number,
+  night: { start: string; end: string }
+): DigestOvernightHr | null {
+  const tz = getTimezone(profileId);
+  const start = parseUtcSql(night.start);
+  const end = parseUtcSql(night.end);
+  if (!start || !end) return null;
+  const physiology = getWindowPhysiology(profileId, {
+    start: zonedMinuteStr(tz, start),
+    end: zonedMinuteStr(tz, end),
+  });
+  if (!physiology.covered || !physiology.inWindow) return null;
+  // The DEVICE's own daily resting figure and the profile's baseline for it — the
+  // same `getRestingHrSignal` the recovery ceiling and `rest-rhr` read, so the three
+  // can never disagree about what this profile's resting heart rate is.
+  const resting = getRestingHrSignal(profileId);
+  return {
+    lowBpm: physiology.inWindow.lowBpm,
+    avgBpm: physiology.inWindow.meanBpm,
+    restingBpm: resting?.recent ?? null,
+    usualRestingBpm: resting && resting.baseline > 0 ? resting.baseline : null,
+    elevated:
+      resting != null &&
+      resting.baseline > 0 &&
+      resting.recent >=
+        resting.baseline +
+          restingHrJumpThreshold(resting, DEFAULT_COACHING_THRESHOLDS),
+  };
+}
+
+/**
+ * ONE paired-observation line about the drink log for the digest (#4775 §5), or null.
+ *
+ * THE REACH EXCEPTION, in one place. #2177 ruled that a paired observation is never a
+ * send, and `docs/internals/substances.md` §Reach that no substance ever generates a
+ * finding-driven send. The owner overruled both for THIS pair family on 2026-09-02,
+ * and both documents record it. The three things that made those rulings right are all
+ * kept:
+ *   • the per-profile opt-in `substance_telegram_enabled`, OFF by default (#3330), is
+ *     asked by the CALLER before this runs — nothing about substances is computed, let
+ *     alone sent, for a profile that has not asked;
+ *   • the pair's own monthly dismissal applies, so declining it in the app silences it
+ *     here too (dismiss once, silence everywhere, #227);
+ *   • the copy is the verdict's own sentence, with both arms' n and no advice verb —
+ *     not a second, chattier rendering written for a chat window.
+ *
+ * AT MOST ONE, whatever the page shows. Two lines about one night is a cost the page
+ * accepted (two alcohol pairs can clear their floors together); a morning message is
+ * not the place to pay it, so the first in registry order speaks and the rest do not.
+ */
+export function gatherSubstanceObservationLine(
+  profileId: number,
+  todayStr: string
+): string | null {
+  const suppressions = getFindingSuppressions(profileId);
+  for (const finding of buildPairedObservationFindings(profileId, todayStr)) {
+    if (!finding.dedupeKey.includes(":alcohol-")) continue;
+    if (isFindingSuppressed(finding, suppressions, todayStr)) continue;
+    return finding.detail ?? null;
+  }
+  return null;
 }
 
 // How many personal records were set on `date` — the notable predicate behind a
@@ -290,6 +389,12 @@ export function gatherDigestInput(
   // Gathered up front: the Tune control has to know whether a Sleep section is in
   // play today before the return object is assembled.
   const sleep = gatherDigestSleep(profileId, demoted);
+  // §5's opt-in is asked HERE, before anything about substances is computed: a profile
+  // that has not turned it on pays nothing and is told nothing (#3330).
+  const substanceObservationLine =
+    sleep && getProfileSubstanceTelegram(profileId)
+      ? gatherSubstanceObservationLine(profileId, td)
+      : null;
 
   const active = getIntakeItems(profileId).filter((s) => s.active);
   const itemById = new Map(active.map((item) => [item.id, item]));
@@ -421,6 +526,16 @@ export function gatherDigestInput(
         // The provenance the import already stored (#1913 item 1). It rides THIS line,
         // which is what retires the separate "📥 Strava: workouts" arrival narration.
         source: a.source,
+        // The recovery fact (#4775 §2), riding the first send that already carries the
+        // activity rather than a delayed post-workout message of its own (owner-ruled).
+        // By morning the stream has long since covered last night's session, which is
+        // exactly why this is the carrier and the finish tap is not: `eventRecovery`
+        // returns null on an uncovered window and the clause simply is not there.
+        ...(eventRecovery(
+          profileId,
+          a,
+          priorEventWindows(profileId, a.type, a)
+        ) ?? {}),
       }))
     : [];
   const yDue = dueDoseIdsOn(yd);
@@ -665,6 +780,7 @@ export function gatherDigestInput(
         ),
       };
     })(),
+    substanceObservationLine,
     // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
     // is fresh; buildDigest renders a Sleep section only when present.
     sleep,

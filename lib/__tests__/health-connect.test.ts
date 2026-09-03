@@ -21,6 +21,7 @@ describe("parseHealthConnectPayload — guards", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
       details: { warnings: [], origins: [] },
       pushedAt: null,
