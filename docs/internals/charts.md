@@ -278,6 +278,26 @@ reduced from. A row whose domain has no trend read gets no sparkline, which
 is why blood pressure (two quantities, and one plot may not encode two
 identities by hue) has none.
 
+### The family drawing (#4969)
+
+**The drawing belongs to the family, not to a member.** `StandingReadingFamily`
+composes a single row out of several members — last night's sleep, today's
+naps, steps, the intraday chart — and the row's sparkline and its full-width
+figure (#4767) are the FAMILY's, resolved once by the page into a map keyed by
+`StandingFamilyKey` beside the member presentation map, never hung off
+whichever member's fields happened to carry the data. `DashboardStandingPresentation` — the type every member's row is declared through, in every
+lane — carries no `series` or `figure` field at all, so "a member has nowhere
+to put a sparkline" is a property the type system holds, not a convention a
+reviewer checks: a family whose two members each try to supply a series
+cannot be expressed.
+
+The figure renders full width under every member's facts, on every viewport —
+never gated behind the 45rem seam the sparkline column is (above). A row with
+no plotted member simply renders no trailing column and no figure; presence
+follows the same rule as everywhere else in Standing — a family renders when
+any member is placed — so a family's drawing is never the reason it appears or
+disappears.
+
 ### A headline is a claim about NOW (#2615)
 
 A chart card's header carries the latest plotted value in large type. That is

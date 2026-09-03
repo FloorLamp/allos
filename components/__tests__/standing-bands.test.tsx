@@ -65,7 +65,7 @@ const BEHIND = placement(
   "attention",
   0
 );
-const STEPS = placement("activity.steps:d", "steps-today", "today", "rest", 1);
+const STEPS = placement("activity.steps:d", "day-so-far", "today", "rest", 1);
 const BP = placement(
   "vitals.blood-pressure:2026-08-19",
   "blood-pressure",
@@ -101,6 +101,8 @@ const PRESENTATIONS = new Map<string, DashboardStandingPresentation>([
   [RHR.candidate.candidateId, { value: "54 bpm", presence: "current" }],
 ]);
 
+const NO_DRAWINGS = new Map();
+
 const cluster = (
   placements: readonly StandingPlacement[],
   presentations = PRESENTATIONS
@@ -108,6 +110,7 @@ const cluster = (
   <DashboardStandingCluster
     placements={placements}
     presentations={presentations}
+    drawings={NO_DRAWINGS}
   />
 );
 
