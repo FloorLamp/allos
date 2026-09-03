@@ -67,14 +67,7 @@ export default function EmailNotificationSettings({
   }
 
   return (
-    <div id="login-email" className="card space-y-5" data-testid="login-email">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Email (your inbox)
-        </h2>
-        <SaveStatus {...status} />
-      </div>
-
+    <div id="login-email" className="space-y-5" data-testid="login-email">
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Reminders for every profile you manage can arrive at your
         account&rsquo;s email address
@@ -160,7 +153,13 @@ export default function EmailNotificationSettings({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={save} disabled={busy} className="btn">
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          className="btn"
+          data-testid="login-email-save"
+        >
           Save
         </button>
         {enabled && (
@@ -171,9 +170,10 @@ export default function EmailNotificationSettings({
             className="btn-ghost"
             data-testid="login-email-send-test"
           >
-            Send test email
+            Send test
           </button>
         )}
+        <SaveStatus {...status} />
       </div>
 
       {result && (
