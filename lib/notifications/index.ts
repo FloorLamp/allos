@@ -4,6 +4,7 @@
 import { createLogger } from "../log";
 import { type DispatchOptions, type NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
+import { composeForSend } from "./compose";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
 import { emailChannel } from "./email";
@@ -80,13 +81,20 @@ export async function dispatch(
     log.warn("no configured channels; nothing sent");
     return [];
   }
+  // COMPOSED ONCE, HERE (#4538) — after the "is anything sending?" gate, so a profile
+  // with no channel costs no reads. Attribution used to depend on which caller
+  // remembered it while the rebuild applied it unconditionally, so a label could appear
+  // on a message that was sent without one. Every dispatch is an UNBIDDEN send, which
+  // is what `telegram-nudge` means (#3087); the on-demand surfaces go out through
+  // `sendTelegramMessage` instead.
+  const composed = composeForSend(profileId, msg, "telegram-nudge");
   const results = await settleWithinDeadline(
     channels.map((c) => ({
       id: c.id,
       promise: (async (): Promise<DispatchResult> => {
         try {
-          await c.send(profileId, msg, opts);
-          log.info("sent", { channel: c.id, title: msg.title });
+          await c.send(profileId, composed, opts);
+          log.info("sent", { channel: c.id, title: composed.title });
           return { id: c.id, ok: true };
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);

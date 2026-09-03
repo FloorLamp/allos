@@ -5,10 +5,10 @@ import {
   messageKeyboard,
 } from "../notifications/telegram-render";
 import {
-  prefixMessage,
   profileMessagePrefix,
   type NotificationMessage,
 } from "../notifications/types";
+import { composeMessage } from "../notifications/compose";
 
 // The pure wire-format half of the Telegram channel chokepoint (issue #454). These
 // pin that the render the chokepoint's rebuild performs — prefix → escape → HTML,
@@ -44,8 +44,8 @@ describe("chokepoint rebuild composition is byte-identical (#377/#454)", () => {
   };
 
   it("rebuildMessage would render the SAME HTML the old inline path produced", () => {
-    // The chokepoint does: prefixMessage(msg, prefixForProfile(id)) → renderMessageHtml.
-    const attributed = prefixMessage(rebuilt, profileMessagePrefix("Ada", 2));
+    // The chokepoint does: composeMessage(msg, prefixForProfile(id)) → renderMessageHtml.
+    const attributed = composeMessage(rebuilt, profileMessagePrefix("Ada", 2));
     // Former inline path rendered exactly this string.
     expect(renderMessageHtml(attributed)).toBe(
       "<b>[Ada] 💊 Morning supplements</b>\nD3 · Magnesium"
@@ -53,7 +53,7 @@ describe("chokepoint rebuild composition is byte-identical (#377/#454)", () => {
   });
 
   it("the prefix changes only the title — the keyboard is unaffected", () => {
-    const attributed = prefixMessage(rebuilt, profileMessagePrefix("Ada", 2));
+    const attributed = composeMessage(rebuilt, profileMessagePrefix("Ada", 2));
     // messageKeyboard on the prefixed message equals messageKeyboard on the raw
     // message (prefix touches the title only), so a rebuild's buttons don't drift.
     expect(messageKeyboard(attributed)).toEqual(messageKeyboard(rebuilt));
@@ -68,7 +68,7 @@ describe("chokepoint rebuild composition is byte-identical (#377/#454)", () => {
   });
 
   it("a single-profile rebuild renders no label (unchanged)", () => {
-    const attributed = prefixMessage(rebuilt, profileMessagePrefix("Ada", 1));
+    const attributed = composeMessage(rebuilt, profileMessagePrefix("Ada", 1));
     expect(renderMessageHtml(attributed)).toBe(
       "<b>💊 Morning supplements</b>\nD3 · Magnesium"
     );
