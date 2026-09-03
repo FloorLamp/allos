@@ -204,8 +204,7 @@ import {
   keepStreamReminder,
 } from "./stream-lifecycle-actions";
 import { dismissOnboardingChecklist } from "./onboarding/actions";
-import { CHECKLIST_TASKS } from "@/lib/onboarding-checklist";
-import { remainingOnboardingChecklistSuggestions } from "@/lib/onboarding";
+import { orderedOnboardingChecklistTasks } from "@/lib/onboarding-checklist";
 import {
   episodeStatesForProfiles,
   openEpisodeRowsForProfiles,
@@ -1719,24 +1718,53 @@ async function renderDashboard(
     );
   }
   if (onboardingChecklist && onboardingChecklistCompletion) {
-    const onboardingChecklistSteps = remainingOnboardingChecklistSuggestions(
+    const onboardingChecklistSteps = orderedOnboardingChecklistTasks(
       onboardingChecklist.focuses,
       onboardingChecklistCompletion
-    )
-      .slice(0, 4)
-      .map((suggestion) => CHECKLIST_TASKS[suggestion]);
+    );
+    // THE CHECKLIST IS A MOMENT BLOCK, NOT A ROW (#4362 ruling 3). It was one
+    // candidate whose facts column joined every remaining label with "·" — one door
+    // for four steps, and none of the sentences saying why any of them is worth
+    // doing. A person setting up the app is exactly who deserves per-step doors, so
+    // each step is its own row under one header, which is what every other group of
+    // same-origin atoms already does.
+    onboardingChecklistSteps.forEach((step, index) => {
+      add(
+        setupCandidates.onboardingChecklistStep(
+          { subject: profileSubject, sourceOrder: sourceOrder++ },
+          step.suggestion
+        ),
+        {
+          label: step.label,
+          // The row's own door: with no control in the trailing slot the row is
+          // link-wrapped, so the step's name IS the way in.
+          href: step.href,
+          detail: step.benefit,
+          // The block's header, declared once by its first member (the canvas reads
+          // the first that has one) and printed over the whole set.
+          moment:
+            index === 0 ? { title: "A few useful next steps" } : undefined,
+        }
+      );
+    });
     add(
       setupCandidates.onboardingProgress(
         { subject: profileSubject, sourceOrder: sourceOrder++ },
         "checklist"
       ),
       {
-        label: "A few useful next steps",
-        // The suggestions themselves, named in the facts column: one row cannot hold
-        // N doors, and a bare count would be the thing this list exists to avoid.
-        // The door goes to the first remaining step; the dismiss stays on the row.
-        detail: onboardingChecklistSteps.map((step) => step.label).join(" · "),
-        href: onboardingChecklistSteps[0]?.href,
+        // No label: the block's header already names the set, and printing it again
+        // on the row beneath would say the same thing twice. What this row carries
+        // is the reassurance the block's own copy owes a first-run reader, and the
+        // dismiss for the whole set.
+        //
+        // THE SENTENCE IS SHORTER THAN THE ONE THE CARD PRINTED, and not by taste:
+        // the card's second half ("You do not need to complete every suggestion")
+        // is second-person, and the dashboard is a cross-profile surface — a carer
+        // reading a ward's setup is not the person being addressed. #945's guard
+        // catches it here, where it could not in the deleted component. The first
+        // half already says the whole thing.
+        detail: "Pick what helps now and leave the rest for later.",
         control: (
           <form action={dismissOnboardingChecklist}>
             <Button type="submit" pendingLabel="…">

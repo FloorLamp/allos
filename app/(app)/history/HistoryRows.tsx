@@ -32,6 +32,7 @@ import {
   IconPoo,
 } from "@tabler/icons-react";
 import { timelineEntryAnchorId } from "@/lib/timeline-format";
+import ActivityIcon from "@/components/ActivityIcon";
 import DateField from "@/components/DateField";
 import HistoricalDoseForm from "@/components/medications/HistoricalDoseForm";
 import LoggedEventRow, {
@@ -812,11 +813,28 @@ export default function HistoryRows({
             <LoggedEventRow
               icon={
                 showGlyphs ? (
-                  <Glyph
-                    aria-hidden
-                    className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
-                    stroke={1.75}
-                  />
+                  // A ROW MAY NAME ITS OWN GLYPH, and only a training row does
+                  // (#4079). The kind registry above is total and answers every kind
+                  // completely EXCEPT `activity`, where the kind is the least
+                  // interesting thing about the row: an imported ride and a barbell
+                  // session are both `activity`, and #2897 rules that the row icons
+                  // off the structured sport. The composer already emits the three
+                  // fields; drawing them here is what stopped the Log tab's move onto
+                  // this substrate from flattening every session to one running figure.
+                  row.iconType ? (
+                    <ActivityIcon
+                      type={row.iconType}
+                      title={row.iconTitle}
+                      sportNames={row.iconSportNames}
+                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                    />
+                  ) : (
+                    <Glyph
+                      aria-hidden
+                      className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                      stroke={1.75}
+                    />
+                  )
                 ) : undefined
               }
             >

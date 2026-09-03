@@ -23,7 +23,7 @@ import {
 } from "@/lib/workout-finish";
 import { getWorkoutPresence } from "@/lib/queries/presence";
 import { getActivityDetailData } from "@/lib/training-activity-detail";
-import { buildTrainingLogFeedPage } from "@/lib/training-log-feed";
+import { getTimelineEvents } from "@/lib/timeline";
 import type { UnitPrefs } from "@/lib/settings";
 import { seedProfile } from "./fixtures";
 
@@ -148,11 +148,13 @@ describe("startWorkoutSession (#2870 step 3)", () => {
       },
       "page"
     );
-    const feed = buildTrainingLogFeedPage(profileId, null, UNITS);
-    const feedIds = feed.groups.flatMap((g) =>
-      g.cards.map((c) => c.activity.id)
-    );
-    expect(feedIds).not.toContain(res.id);
+    // THE FEED IS THE SHARED GATHER NOW (#4079): the Log tab, the record and every
+    // day view read `getTimelineEvents`, so the draft rule is asked of it. Before
+    // this it was asked only of the Log's private feed, and the same husk was absent
+    // from one surface and listed on the other.
+    const feedIds = () =>
+      getTimelineEvents(profileId, { units: UNITS }).map((e) => e.id);
+    expect(feedIds()).not.toContain(`activity:${res.id}`);
     // Its own page still resolves — the draft's one address.
     expect(getActivityDetailData(profileId, res.id, UNITS)).not.toBeNull();
     // One set makes it an entry: the feed shows it again.
@@ -160,10 +162,7 @@ describe("startWorkoutSession (#2870 step 3)", () => {
       `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
        VALUES (?, 'Back Squat', 1, 100, 5)`
     ).run(res.id);
-    const after = buildTrainingLogFeedPage(profileId, null, UNITS);
-    expect(
-      after.groups.flatMap((g) => g.cards.map((c) => c.activity.id))
-    ).toContain(res.id);
+    expect(feedIds()).toContain(`activity:${res.id}`);
     expect(discardWorkoutSession(profileId, res.id).kind).toBe("discarded");
   });
 

@@ -8,10 +8,8 @@ import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import ImportFeed from "@/components/ImportFeed";
 import RelativeTime from "@/components/RelativeTime";
 import SyncTimestamp from "@/components/integrations/SyncTimestamp";
-import TrainingLogRow from "@/app/(app)/training/TrainingLogRow";
 import type { CuratedSupplementSuggestion } from "@/lib/supplement-suggest-curated";
 import type { FeedEntry } from "@/lib/import-feed";
-import type { TrainingLogCardData } from "@/lib/training-log-card";
 import {
   DEFAULT_FORMAT_PREFS,
   formatTimestampDisplay,
@@ -100,36 +98,14 @@ describe("a constant explainer states itself once (#3970 rule 1)", () => {
 // that carries the rare condition — a fixture without the fault or the mismatch would
 // make both assertions unfailable.
 describe("a rare warning keeps its icon (#3970 rule 3)", () => {
-  it("keeps the training row's editor-fault dot", () => {
-    const card = {
-      activity: { id: 7, title: "Faulted session", type: "strength" },
-      parts: [],
-      metrics: [],
-      contextMetrics: [],
-      gear: null,
-      provenance: { label: "Manual" },
-      fault: "Back Squat has no equipment",
-      timeText: null,
-      durationText: null,
-      distanceText: null,
-      speedText: null,
-      heartRateText: null,
-      calorieText: null,
-    } as unknown as TrainingLogCardData;
-    render(
-      <TrainingLogRow
-        card={card}
-        showSubjectChip={false}
-        onFilterTag={() => {}}
-      />
-    );
-    expect(
-      screen.getByRole("button", {
-        name: "Editor can’t re-save this as-is: Back Squat has no equipment",
-      })
-    ).toBeTruthy();
-  });
-
+  // THE TRAINING ROW'S EDITOR-FAULT DOT WAS THE THIRD SURFACE HERE, and it is gone
+  // rather than moved: #4079 retired the Log's private row for the shared history
+  // substrate's, which carries no per-row fault reason. The FILTER survives ("Can't
+  // be saved", now without its count); the per-row explanation of WHY a given row
+  // cannot be re-saved does not, and it is named in neither #4079's anti-drop census
+  // nor #3970's. Removing the case rather than leaving it red is the honest state —
+  // this list must name surfaces that exist — but the loss is deliberate here and
+  // reported, not silent.
   it("keeps the import feed's patient-name mismatch warning", () => {
     const feed: FeedEntry[] = [
       {

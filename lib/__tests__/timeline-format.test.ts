@@ -6,7 +6,6 @@ import {
   flagTone,
   groupTimelineDays,
   isTimelineUnfiltered,
-  trainingLogActivityHref,
   clinicalObservationHref,
   normalizeTimelineRange,
   parseDetailItems,
@@ -106,10 +105,6 @@ describe("timeline formatting", () => {
       from: "2026-07-01",
       to: undefined,
     });
-  });
-
-  it("builds training log deep links for activities", () => {
-    expect(trainingLogActivityHref(42)).toBe("/training?tab=log#activity-42");
   });
 
   it("allows activity events to carry activity-icon metadata", () => {
