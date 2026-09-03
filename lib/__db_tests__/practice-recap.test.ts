@@ -28,7 +28,10 @@ import {
 } from "@/lib/practice-log";
 import { getPracticeSession } from "@/lib/queries/wellness";
 import { dispatch } from "@/lib/notifications";
-import type { NotificationMessage } from "@/lib/notifications/types";
+import type {
+  NotificationKind,
+  NotificationMessage,
+} from "@/lib/notifications/types";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-practice";
 // 18:00 UTC. The practice below runs 17:00 → 17:20, so at NOW it finished 40 min ago —
@@ -37,7 +40,10 @@ const NOW = new Date("2026-07-17T18:00:00Z");
 const START_HHMM = "17:00";
 const DURATION_MIN = 20;
 
-function newProfile(name: string, disabledKinds: string[] = []): number {
+function newProfile(
+  name: string,
+  disabledKinds: NotificationKind[] = []
+): number {
   const id = Number(
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
       .lastInsertRowid
@@ -344,7 +350,7 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     // One prior session establishes the usual: 20 minutes.
     seedPractice(p, date, "Sauna");
 
-    const started = startLivePracticeSession(p, "Sauna", "web");
+    const started = startLivePracticeSession(p, "Sauna", "page");
     expect(started.kind).toBe("started");
     const liveId = started.kind === "started" ? started.session.id : 0;
     expect(getPracticeSession(p, liveId)).toMatchObject({
@@ -366,7 +372,7 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
     const p = newProfile("PracSwept");
     const date = today(p);
     seedPractice(p, date, "Sauna");
-    const started = startLivePracticeSession(p, "Sauna", "web");
+    const started = startLivePracticeSession(p, "Sauna", "page");
     const liveId = started.kind === "started" ? started.session.id : 0;
 
     // Seven hours on: past LIVE_PRACTICE_STALE_HOURS, so the sweep closes it without
@@ -382,7 +388,7 @@ describe("Start now stamps the practice's usual duration (owner ruling 2026-09-0
 
   it("writes no duration for a practice with no recorded one — blank stays blank", () => {
     const p = newProfile("PracNoHistory");
-    const started = startLivePracticeSession(p, "Breathwork", "web");
+    const started = startLivePracticeSession(p, "Breathwork", "page");
     const liveId = started.kind === "started" ? started.session.id : 0;
     expect(getPracticeSession(p, liveId)).toMatchObject({
       duration_min: null,

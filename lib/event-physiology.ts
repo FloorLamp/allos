@@ -80,6 +80,8 @@ export interface EventInWindowHr {
   measuredMin: number;
   meanBpm: number;
   peakBpm: number;
+  /** The lowest reading inside the window — the night's floor, on a sleep session. */
+  lowBpm: number;
 }
 
 export interface EventPhysiology {
@@ -196,6 +198,7 @@ export function eventPhysiology(input: EventPhysiologyInput): EventPhysiology {
           measuredMin: minutes.length,
           meanBpm: meanOf(minutes.map((b) => b.bpm)),
           peakBpm: Math.max(...minutes.map((b) => b.bpm)),
+          lowBpm: Math.min(...minutes.map((b) => b.bpm)),
         }
       : null;
 

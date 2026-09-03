@@ -6,7 +6,7 @@
 
 import { db, today } from "../db";
 import { now } from "../clock";
-import { shiftDateStr, zonedDateParts } from "../date";
+import { parseUtcSql, shiftDateStr, zonedDateParts, zonedMinuteStr } from "../date";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -63,8 +63,14 @@ import { getIntegrationAttention } from "../queries/integrations";
 import { mainSleepNights } from "../sleep-regularity";
 import {
   eventRecovery,
+  getWindowPhysiology,
   priorEventWindows,
 } from "../queries/event-physiology";
+import { getRestingHrSignal } from "../queries/coaching";
+import {
+  restingHrJumpThreshold,
+  DEFAULT_COACHING_THRESHOLDS,
+} from "../coaching/engine";
 import { isLastNight, isSleepTracking } from "../sleep-summary";
 import {
   arrivalStatistics,
@@ -115,6 +121,7 @@ import {
   type DigestActivity,
   type DigestDocument,
   type DigestInput,
+  type DigestOvernightHr,
   type DigestSleep,
 } from "./digest";
 import { documentFootprintByKind } from "../import-persist";
@@ -213,6 +220,53 @@ export function gatherDigestSleep(
     deepMin: stages?.deep ?? null,
     remMin: stages?.rem ?? null,
     sri: reg ? reg.sri : null,
+    overnightHr: gatherOvernightHr(profileId, last),
+  };
+}
+
+/**
+ * The overnight-HR facts for the main sleep SESSION (#4775 §4), or null when the
+ * minute stream did not cover it.
+ *
+ * The window is the session's own start and end, projected to the profile-local minute
+ * the HR reader already projects to — never fixed clock hours. A 02:00 bedtime and a
+ * 22:00 one are the same night to this line, and a "midnight to 06:00" read would
+ * report a different night's floor for the person who went to bed late.
+ *
+ * COVERAGE IS THE GATE, as everywhere in this feature. A morning digest fires hours
+ * after wake, so the pipeline has normally caught up long since — but a watch that
+ * synced late, or a night the last hour of which has not landed, would otherwise
+ * produce an overnight LOW computed over a partial night. That is the number this
+ * whole line is about, and it is the one a short window gets most wrong.
+ */
+function gatherOvernightHr(
+  profileId: number,
+  night: { start: string; end: string }
+): DigestOvernightHr | null {
+  const tz = getTimezone(profileId);
+  const start = parseUtcSql(night.start);
+  const end = parseUtcSql(night.end);
+  if (!start || !end) return null;
+  const physiology = getWindowPhysiology(profileId, {
+    start: zonedMinuteStr(tz, start),
+    end: zonedMinuteStr(tz, end),
+  });
+  if (!physiology.covered || !physiology.inWindow) return null;
+  // The DEVICE's own daily resting figure and the profile's baseline for it — the
+  // same `getRestingHrSignal` the recovery ceiling and `rest-rhr` read, so the three
+  // can never disagree about what this profile's resting heart rate is.
+  const resting = getRestingHrSignal(profileId);
+  return {
+    lowBpm: physiology.inWindow.lowBpm,
+    avgBpm: physiology.inWindow.meanBpm,
+    restingBpm: resting?.recent ?? null,
+    usualRestingBpm: resting && resting.baseline > 0 ? resting.baseline : null,
+    elevated:
+      resting != null &&
+      resting.baseline > 0 &&
+      resting.recent >=
+        resting.baseline +
+          restingHrJumpThreshold(resting, DEFAULT_COACHING_THRESHOLDS),
   };
 }
 

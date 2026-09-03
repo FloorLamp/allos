@@ -12,6 +12,7 @@ import { plainBody, type MessageBody } from "@/lib/notifications/rich-text";
 import {
   buildDigest,
   type DigestInput,
+  type DigestSleep,
 } from "@/lib/notifications/digest";
 
 const plain = (lines: readonly MessageBody[] | undefined): string[] =>
@@ -77,5 +78,73 @@ describe("the Yesterday recovery clause", () => {
         { ...session, recoveryMin: 27.6, usualRecoveryMin: 34.4 },
       ])[0]
     ).toContain("back to resting in 28 min (usual 34)");
+  });
+});
+
+const NIGHT = { lastNightMin: 420, baselineMin: 430 };
+
+function sleepLines(overnightHr: DigestSleep["overnightHr"]): string[] {
+  const model = buildDigest({
+    ...empty,
+    sleep: { ...NIGHT, overnightHr },
+  });
+  return plain(model?.sections.find((s) => s.heading === "Sleep")?.lines);
+}
+
+describe("the Sleep section's overnight-HR line", () => {
+  it("states the night's floor, its average and the device's resting figure", () => {
+    expect(
+      sleepLines({
+        lowBpm: 49,
+        avgBpm: 56,
+        restingBpm: 55,
+        usualRestingBpm: 53,
+        elevated: false,
+      }).at(-1)
+    ).toBe("📈 Overnight HR low 49 · avg 56 — resting 55 (usual 53)");
+  });
+
+  // The verdict is a CLAUSE on the facts, and it qualifies the night (#992).
+  it("appends the elevated clause on a rest-rhr-threshold night", () => {
+    expect(
+      sleepLines({
+        lowBpm: 58,
+        avgBpm: 64,
+        restingBpm: 61,
+        usualRestingBpm: 53,
+        elevated: true,
+      }).at(-1)
+    ).toContain("elevated");
+  });
+
+  it("says nothing at all when the stream did not cover the sleep session", () => {
+    const lines = sleepLines(null);
+    expect(lines.join(" ")).not.toContain("Overnight HR");
+    // …and the duration line the digest always carried is untouched.
+    expect(lines[0]).toContain("Last night:");
+  });
+
+  it("states the two stream facts alone when the profile has no resting history", () => {
+    const line = sleepLines({
+      lowBpm: 49,
+      avgBpm: 56,
+      restingBpm: null,
+      usualRestingBpm: null,
+      elevated: false,
+    }).at(-1);
+    expect(line).toContain("low 49 · avg 56");
+    expect(line).not.toContain("resting");
+  });
+
+  it("rounds rather than printing a mean's decimals", () => {
+    expect(
+      sleepLines({
+        lowBpm: 48.6,
+        avgBpm: 55.4,
+        restingBpm: 54.7,
+        usualRestingBpm: 52.5,
+        elevated: false,
+      }).at(-1)
+    ).toBe("📈 Overnight HR low 49 · avg 55 — resting 55 (usual 53)");
   });
 });

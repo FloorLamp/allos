@@ -114,6 +114,26 @@ export interface DigestSleep {
   deepMin?: number | null; // deep-stage minutes when the source reports stages
   remMin?: number | null; // REM-stage minutes when reported
   sri?: number | null; // Sleep Regularity Index when the signal is meaningful
+  // OVERNIGHT HEART RATE (#4775 §4), scoped to the main sleep SESSION's own window
+  // rather than to fixed clock hours — a 02:00 bedtime and a 22:00 one are the same
+  // night to this line, which is the whole reason it is not a "midnight to 06:00"
+  // read. Absent whenever the minute stream did not cover the session: an overnight
+  // low computed over half a night is a number, and a wrong one.
+  overnightHr?: DigestOvernightHr | null;
+}
+
+export interface DigestOvernightHr {
+  lowBpm: number;
+  avgBpm: number;
+  // The DEVICE's daily resting figure and the profile's own baseline for it. Both
+  // optional: a profile can have a covered night and no resting-HR history at all.
+  restingBpm: number | null;
+  usualRestingBpm: number | null;
+  // Does tonight's resting figure clear the SAME threshold the `rest-rhr` rule uses
+  // (7 bpm, or twice the profile's own spread)? Decided in the gather through the one
+  // shared `restingHrJumpThreshold`, never re-derived here — a second spelling would
+  // let this line call a night elevated on a morning the rest rule stayed quiet.
+  elevated: boolean;
 }
 
 export interface DigestInput {
@@ -802,6 +822,30 @@ export function buildDigest(input: DigestInput): DigestModel | null {
           glyph: GLYPH.trend,
           head: `Sleep regularity ${sri.value}`,
           notes: [sri.qualifier],
+        })
+      );
+    }
+    // Overnight HR (#4775 §4): "Overnight HR low 49 · avg 56 · resting 55 (usual 53)".
+    // FACTS FIRST, verdict as a clause — the same register as the duration line above
+    // it, and by #992's contract the "— elevated" qualifies the NIGHT, never the
+    // sleeper. It states no recommendation: the rest recommendation is `rest-rhr`'s
+    // job and is unchanged by this line existing.
+    if (s.overnightHr) {
+      const hr = s.overnightHr;
+      const notes: (string | null)[] = [];
+      if (hr.restingBpm != null) {
+        const usual =
+          hr.usualRestingBpm != null
+            ? ` (usual ${Math.round(hr.usualRestingBpm)})`
+            : "";
+        notes.push(`resting ${Math.round(hr.restingBpm)}${usual}`);
+      }
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
+          head: `Overnight HR low ${Math.round(hr.lowBpm)} · avg ${Math.round(hr.avgBpm)}`,
+          notes,
+          because: hr.elevated ? "elevated" : null,
         })
       );
     }

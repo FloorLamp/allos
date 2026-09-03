@@ -83,6 +83,7 @@ describe("in-window facts", () => {
       measuredMin: 30,
       meanBpm: 134.5,
       peakBpm: 149,
+      lowBpm: 120,
     });
     // 15 minutes before 10:00, i.e. 09:45..09:59 — not the whole 09:40 run.
     expect(p.preWindowMeanBpm).toBe(55);
