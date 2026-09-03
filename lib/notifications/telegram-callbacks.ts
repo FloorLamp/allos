@@ -1038,17 +1038,12 @@ async function handleDoseTap(
   const messageId = cq.message?.message_id;
   const outcome =
     kind === "take"
-      ? markDoseTaken(
-          profileId,
-          tap.doseId,
-          tap.itemId,
-          tap.date,
-          NUDGE,
-          undefined,
-          chatId != null && messageId != null
-            ? messagePointerIdAt(profileId, chatId, messageId)
-            : null
-        )
+      ? markDoseTaken(profileId, tap.doseId, tap.itemId, tap.date, NUDGE, {
+          notifyMessageId:
+            chatId != null && messageId != null
+              ? messagePointerIdAt(profileId, chatId, messageId)
+              : null,
+        })
       : markDoseSkipped(profileId, tap.doseId, tap.itemId, tap.date, NUDGE);
   // A dose ALREADY resolved (#280) moved nothing, and neither did a stale or inactive
   // one — only these three outcomes wrote a row.
@@ -1273,16 +1268,10 @@ async function handleAllTaken(
     if (
       !e.taken &&
       !e.skipped &&
-      markDoseTaken(
-        profileId,
-        e.dose.id,
-        e.item.id,
-        all.date,
-        NUDGE,
-        undefined,
+      markDoseTaken(profileId, e.dose.id, e.item.id, all.date, NUDGE, {
         notifyMessageId,
-        bundleId
-      ) === "logged"
+        bundleId,
+      }) === "logged"
     ) {
       logged++;
     }
@@ -1402,16 +1391,10 @@ async function handleStackTaken(
       continue;
     }
     if (
-      markDoseTaken(
-        profileId,
-        e.dose.id,
-        e.item.id,
-        date,
-        NUDGE,
-        undefined,
+      markDoseTaken(profileId, e.dose.id, e.item.id, date, NUDGE, {
         notifyMessageId,
-        bundleId
-      ) === "logged"
+        bundleId,
+      }) === "logged"
     ) {
       logged++;
     }

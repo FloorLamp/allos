@@ -580,6 +580,24 @@ ${landingLines}
   WORKING. Fix the surface so the control can see it again; widening the census's own
   pattern to admit your new markup loosens the one thing watching for that class
   repo-wide, to make one branch green.
+
+  (8) A RETIRED ELEMENT IS STILL REACHED BY ITS SHAPE. When you DELETE a component,
+  the specs that drive it are not only the ones that name it. A spec can reach it
+  structurally — \`getByTestId('protocol-heatmap').locator('details').locator('summary')\`
+  — naming neither the component, nor its testid, nor any string it rendered, so a
+  sweep for the component name AND a sweep for its visible label both come back clean
+  and both are wrong. Measured 2026-09-02 on #4760, which retired a disclosure across
+  18 mounts: the lane swept for \`VisualizationDetails\` and for the "…details" label,
+  reported a clean census, and \`e2e/protocol-practice.spec.ts:298\` went red in CI on a
+  chain that contains none of those tokens. Rebuilt properly the sweep was 31 files and
+  13 after intersection, and it found the red plus eleven true negatives.
+  So when you delete a component, census it a third way: for the TAGS and ROLES its
+  markup contributed — \`locator('details')\`, \`locator('summary')\`, \`getByRole('listbox')\`
+  — chained off ANY testid, and for the generic disclosure helpers
+  (\`openDisclosure(page, …)\`) whose target is an argument rather than a literal. Then
+  resolve each helper call site to the id it actually passes; a helper name in the
+  grep is not a hit until you know what it opened.
+
 - A GUARD THAT REMOVES A PROPERTY CANNOT ALSO PROVE THE PROPERTY SURVIVED. When your
   change takes something away — a frame, a gutter, a label, a permission, a field —
   the natural guard asserts ABSENCE: nothing still has it. That assertion passes on
