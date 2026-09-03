@@ -351,15 +351,18 @@ describe("clinicalResultHostsAcknowledge (#3225)", () => {
       hasAttentionItem: false,
       hosts: true,
     },
-  ])("$case", ({ collectedOn, flag, acknowledged, hasAttentionItem, hosts }) => {
-    expect(
-      clinicalResultHostsAcknowledge({
-        collectedOn,
-        today,
-        flag,
-        acknowledged,
-        hasAttentionItem,
-      })
-    ).toBe(hosts);
-  });
+  ])(
+    "$case",
+    ({ collectedOn, flag, acknowledged, hasAttentionItem, hosts }) => {
+      expect(
+        clinicalResultHostsAcknowledge({
+          collectedOn,
+          today,
+          flag,
+          acknowledged,
+          hasAttentionItem,
+        })
+      ).toBe(hosts);
+    }
+  );
 });

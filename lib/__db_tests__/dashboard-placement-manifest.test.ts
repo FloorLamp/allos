@@ -891,7 +891,9 @@ describe("actual atomic dashboard manifests", () => {
         const name = placement.candidate.candidateId.slice(
           "labs.latest:".length
         );
-        const presentation = presentations.get(placement.candidate.candidateId)!;
+        const presentation = presentations.get(
+          placement.candidate.candidateId
+        )!;
         // The flag the ROW ITSELF prints, read off its `MedicalValue`, so notability
         // here is the word the person sees and not a second read of the record.
         const flag = (
@@ -907,9 +909,10 @@ describe("actual atomic dashboard manifests", () => {
               ? "chronic notable"
               : "quiet and ordinary";
         reach.set(state, (reach.get(state) ?? 0) + 1);
-        expect(presentation.control != null, `${persona}:${name} (${state})`).toBe(
-          state === "fresh" || state === "chronic notable"
-        );
+        expect(
+          presentation.control != null,
+          `${persona}:${name} (${state})`
+        ).toBe(state === "fresh" || state === "chronic notable");
       }
     }
     for (const state of [

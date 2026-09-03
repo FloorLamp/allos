@@ -11,7 +11,12 @@ import {
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
 import { DISCLOSURE_EXPANSIONS } from "../scripts/ux-census-routes.mjs";
-import { openDashboardAll, settledBoxes, settledClick } from "./helpers";
+import {
+  hydratedClick,
+  openDashboardAll,
+  settledBoxes,
+  settledClick,
+} from "./helpers";
 
 function resetDashboardAllOffer(): void {
   const db = new Database(workerDbPath());
@@ -448,9 +453,10 @@ test("a months-old flagged result offers its acknowledgment on the dashboard", a
     await expect(row).toHaveAttribute("data-lane", "everything");
     await expect(row).toContainText("8.2");
 
-    await row
-      .getByRole("button", { name: "Actions for Hemoglobin A1c" })
-      .click();
+    await hydratedClick(
+      page,
+      row.getByRole("button", { name: "Actions for Hemoglobin A1c" })
+    );
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Dismiss" })
