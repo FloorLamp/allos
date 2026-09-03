@@ -72,7 +72,10 @@ import {
   OFFLINE_CAPTURE_REFUSED_MESSAGE,
   shouldQueueOffline,
 } from "@/lib/offline/queue";
-import { usualFoodOffer } from "@/lib/food-regularity";
+import {
+  isUsualBackfillDateAccepted,
+  usualFoodOffer,
+} from "@/lib/food-regularity";
 import { foodLimitNoteText } from "@/lib/food-limit-note";
 import { applyFoodServingPlacements } from "@/lib/food-serving-projection";
 import type { ProfileToastScope } from "@/lib/toast-upsert";
@@ -314,6 +317,12 @@ export default function FoodLogBar({
   // The fold's own state, so switching days can close it along with the statement it
   // was showing.
   const [whenOpen, setWhenOpen] = useState(false);
+  // WHETHER THE ADD LAYER FOLDS BEHIND A DOOR, AND WHETHER THE DOOR IS OPEN (#4477).
+  // `dayLedger` is the surface's own answer to "is there a day above this to read?" —
+  // the Food tab has one, the quick-log sheet does not and is itself the door — so it
+  // is also the answer to "is there anything for the add layer to fold underneath?".
+  const folds = !!dayLedger;
+  const [addOpen, setAddOpen] = useState(false);
   // WHICH SURFACE THIS BAR IS ON (#3087). The same component renders on the Food
   // tab, on the dashboard and inside the quick-log sheet; the server cannot tell
   // them apart, so the mounting declares itself and this stamps every post with it.
@@ -1704,12 +1713,22 @@ export default function FoodLogBar({
   // beside `/history`'s door. `slotCounts` is already the ACTIVE day's, so the offer
   // shrinks against the day being filled and not against today.
   //
-  // The span needs no gate here because two spans agree: the bar's picker offers today
-  // plus six days back as the BAR'S OWN one-tap offer (#4754 — never the shared day
-  // bound, which retired), and `isUsualBackfillDateAccepted` bounds the core at the
-  // same six. When #4477's `+ Add` door replaces the picker, the bar's write reaches
-  // whatever day the page shows while `USUAL_BACKFILL_WINDOW_DAYS` stays where it is —
-  // so that is the change that makes a gate owed here, not this one.
+  // THE SPAN IS GATED HERE NOW, and the gate is the CORE'S OWN PREDICATE rather than a
+  // second opinion about the same six days. Until #4477 this needed no gate because two
+  // spans happened to agree: the bar's picker offered today plus six days back (#4754 —
+  // never the shared day bound, which retired) and `isUsualBackfillDateAccepted` bounds
+  // the core at the same six, so every day the bar could show was a day the core would
+  // take. #4477's blessed day-navigation ruling breaks that agreement deliberately —
+  // "the ‹ › pager and the calendar reach any past day", with `USUAL_BACKFILL_WINDOW_DAYS`
+  // left where it is on purpose — and the same ruling says what the offer must then do:
+  // it "renders only within its 6-day window". So the gate is that sentence, not a
+  // defensive check.
+  //
+  // IT CHANGES NO OUTCOME ON TODAY'S TREE and is still not dead code: the picker this
+  // bar reads still spans seven days, so every day it can show passes. What it removes
+  // is the coincidence — when the pager widens `days`, "Log my usual" stops being an
+  // offer the write core answers `invalid-date` to, without that lane having to
+  // rediscover this file.
   const usualOffer = useMemo(
     () =>
       usualFoodOffer(
@@ -1828,7 +1847,8 @@ export default function FoodLogBar({
   // a fresh one (`standingUsualOffer`, the Telegram keyboard rebuild), which no web
   // surface reads. What is fixed here is the SPELLING: the gate now states the rule the
   // offer functions state, so it stays right if either of those two invariants moves.
-  const usualFoodStands = usualFoodNames.length > 0;
+  const usualFoodStands =
+    usualFoodNames.length > 0 && isUsualBackfillDateAccepted(today, activeDate);
   const usualDosesOffered = usualFoodStands ? usualDoseRider : [];
   const doseIds = usualDosesOffered.map((d) => d.id);
   // The label is the promise, through the ONE phrase every host of this bundle renders
@@ -1986,8 +2006,14 @@ export default function FoodLogBar({
     [groupsBySlot]
   );
 
+  // RANKED ONE-TAP CHIPS (#4477's blessed add door). These were N full-width bordered
+  // stepper rows at the record's own weight — the issue's complaint 2, "the least
+  // informational layer takes the most pixels". The row's ANATOMY is unchanged (the
+  // glyph, the name, and `FoodServingControl`, which stays the domain's one row control
+  // per #4424 ruling 3); what changed is that a chip is as wide as its name instead of
+  // as wide as the page, so the whole ranked head fits the space two rows used to take.
   const rows = (list: FoodGroup[]) => (
-    <ul className="space-y-1.5">
+    <ul className="flex flex-wrap gap-1.5">
       {list.map((g) => {
         const mealCount = slotCounts[g.slug] ?? 0;
         const renderedCoordinate = foodServingCoordinate(
@@ -2008,13 +2034,13 @@ export default function FoodLogBar({
             // The overflow is grouped by tier, so rank is not recoverable from DOM order
             // there.
             data-rank={rankBySlug.get(g.slug)}
-            className="flex items-center gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2"
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-(--border) bg-surface py-1 pl-2.5 pr-1"
           >
             <FoodGroupIcon
               slug={g.slug}
-              className={`h-5 w-5 shrink-0 ${FOOD_GROUP_TIER_TINT[g.tier]}`}
+              className={`h-4 w-4 shrink-0 ${FOOD_GROUP_TIER_TINT[g.tier]}`}
             />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <FoodRowLabel group={g} />
             </div>
             {/* THE DOMAIN'S ONE ROW CONTROL (#4424 ruling 3). */}
@@ -2085,10 +2111,41 @@ export default function FoodLogBar({
             removingServingId={removingId}
           />
         )}
+        {/* THE ADD LAYER IS ONE DOOR (#4477's blessed one-stream shape). The add list
+            used to stand open under the day at the record's own weight — a slot
+            heading, a segmented control, a time fold and five-plus full-width stepper
+            rows, all below the ledger and all of it chrome on the way to nothing. It
+            folds to one `+ Add`, and the door expands IN PLACE (no modal, no
+            navigation) into the same controls in a compressed dress.
+
+            WHERE THE DOOR EXISTS: on the mount that shows the day's stream. `dayLedger`
+            is what says this bar is reviewing a day rather than being opened to write —
+            the quick-log sheet mounts this same component with no day, and IS already a
+            door, so folding a second one inside it would be two doors to one form. This
+            is not a variant of the bar: the panel below is one markup, rendered under a
+            fold on the surface that has something above it to read. */}
         <section data-testid="food-quick-log">
+          {folds && !addOpen && (
+            <button
+              type="button"
+              data-testid="food-add-door"
+              onClick={() => setAddOpen(true)}
+              aria-expanded={false}
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-(--border) px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-(--ghost-hover) dark:text-slate-300"
+            >
+              <IconPlus className="h-4 w-4 shrink-0" stroke={2} />
+              {/* ON A PAST DAY THE SAME DOOR OPENS DATED (the blessed state): the label
+                  names the day it will write to, so the one thing the door promises is
+                  the one thing the panel does. */}
+              <span>
+                Add{activeDate === today ? "" : ` to ${activeDay?.label ?? activeDate}`}
+              </span>
+            </button>
+          )}
+          <div hidden={folds && !addOpen} data-testid="food-add-panel">
           {/* WHERE THE NEXT TAP LANDS. This was the Meals cards' second job — they
               were a totals display AND the slot picker — and only the picker half
-              belongs with the add list. The totals are the ledger's group headings
+              belongs with the add list. The totals are the ledger's day census
               above; this is the choice, next to the rows that act on it. */}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="section-label">Add to {activeSlot}</h3>
@@ -2104,44 +2161,6 @@ export default function FoodLogBar({
               testId="food-meal-slots"
             />
           </div>
-          {/* The regularity shortcut (#2380). Present only when the ledger says this
-              window has a habit AND at least two of it are still unlogged today — one
-              group is already one tap on the row below, so the offer would cost more to
-              read than it saves. The label NAMES every group it will write, and both it
-              and the write core derive that list from the same rule, so the button
-              cannot promise a write the server would not perform. It is an OFFER: the
-              user's tap is the write, always. Rendered on the FOOD HALF standing, which
-              counts the scoop as a member (#4379/#4765) — `data-groups` stays catalog
-              slugs alone, because the reserved key is a member of the NAME and never of
-              the posted group list. */}
-          {usualFoodStands && (
-            <button
-              type="button"
-              data-testid="food-usual-offer"
-              data-groups={usualGroups.map((g) => g.slug).join(",")}
-              data-doses={doseIds.join(",")}
-              aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
-              disabled={usualLedger.blocked()}
-              onClick={() => void logUsual()}
-              className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
-            >
-              <IconPlus
-                className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
-                stroke={2}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Your usual {activeSlot}
-                </span>
-                <span
-                  data-testid="food-usual-names"
-                  className="block truncate text-xs text-slate-600 dark:text-slate-300"
-                >
-                  {usualPhrase}
-                </span>
-              </span>
-            </button>
-          )}
           {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
               The control used to stand open above the rows on every visit; it is a
               question most taps never answer, so it collapses behind one affordance
@@ -2212,6 +2231,44 @@ export default function FoodLogBar({
               </span>
             </div>
           </Disclosure>
+          {/* The regularity shortcut (#2380). Present only when the ledger says this
+              window has a habit AND at least two of it are still unlogged today — one
+              group is already one tap on the row below, so the offer would cost more to
+              read than it saves. The label NAMES every group it will write, and both it
+              and the write core derive that list from the same rule, so the button
+              cannot promise a write the server would not perform. It is an OFFER: the
+              user's tap is the write, always. Rendered on the FOOD HALF standing, which
+              counts the scoop as a member (#4379/#4765) — `data-groups` stays catalog
+              slugs alone, because the reserved key is a member of the NAME and never of
+              the posted group list. */}
+          {usualFoodStands && (
+            <button
+              type="button"
+              data-testid="food-usual-offer"
+              data-groups={usualGroups.map((g) => g.slug).join(",")}
+              data-doses={doseIds.join(",")}
+              aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
+              disabled={usualLedger.blocked()}
+              onClick={() => void logUsual()}
+              className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+            >
+              <IconPlus
+                className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
+                stroke={2}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Your usual {activeSlot}
+                </span>
+                <span
+                  data-testid="food-usual-names"
+                  className="block truncate text-xs text-slate-600 dark:text-slate-300"
+                >
+                  {usualPhrase}
+                </span>
+              </span>
+            </button>
+          )}
           {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
               section after it. It does the same job as the rows above it —
               reach a food-group row — so it wears the same card idiom and sits
@@ -2264,9 +2321,13 @@ export default function FoodLogBar({
                   // are one dense line now (#3987) and it has to be the same height as
                   // them, which mobile-ui-polish measures as a RELATIONSHIP. It still
                   // clears the 44px tap floor on its own.
-                  className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200"
+                  className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200 sm:w-72"
                 >
-                  <span>More food groups ({moreGroups.length})</span>
+                  {/* "ALL GROUPS ›" (#4477's blessed door): the tail of the ranking,
+                      named as the whole catalog it opens rather than as a remainder
+                      count, because the ranked chips above it are no longer a list this
+                      is the rest of. */}
+                  <span>All groups</span>
                   <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 {/* The expanded tier sections keep their own layout — this
@@ -2289,6 +2350,18 @@ export default function FoodLogBar({
                 </div>
               </Disclosure>
             )}
+          </div>
+          {folds && (
+            <button
+              type="button"
+              data-testid="food-add-close"
+              onClick={() => setAddOpen(false)}
+              className="mt-2 flex min-h-11 items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"
+            >
+              <IconChevronDown className="h-3.5 w-3.5 rotate-180" stroke={2} />
+              Done adding
+            </button>
+          )}
           </div>
         </section>
         {nutrientSummary}
