@@ -18,7 +18,14 @@
 // Zoom is EPHEMERAL client state: no route param, no history entry. Reload or back
 // returns to the full day.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ActivityIcon from "@/components/ActivityIcon";
 import { chartDash } from "@/components/chart-scaffold";
 import { useResettableState } from "@/components/useResettableState";
@@ -43,6 +50,8 @@ import {
   MIN_ZOOM_MINUTES,
   axisTicks,
   clipSegmentsToView,
+  daylightBandX,
+  expectedSleepBandX,
   hrAxisLabels,
   INTRADAY_ROW_NAMES,
   intradayGeometry,
@@ -234,6 +243,17 @@ export default function IntradayChart({
     ].map((label) => [label.key, label])
   );
   const zoomed = view != null;
+
+  // ── Background bands (#4918 rulings 3 and 7) — geometry only, drawn first so
+  // every other layer paints over them. Neither reserves a row: `geo` above was
+  // computed without looking at `solarDay`/`expectedSleep` at all.
+  const daylightBand = daylightBandX(geo, model);
+  const expectedSleepBand = expectedSleepBandX(geo, model);
+  // A hatch `<pattern>` needs an id, and this chart mounts TWICE per panel
+  // (compact + wide, both in the DOM at once) — `useId()` keeps the two from
+  // colliding the way a hardcoded id would.
+  const reactId = useId();
+  const hatchId = `intraday-expected-sleep-${reactId}`;
 
   const segments = useMemo(
     () => clipSegmentsToView(geo, fine ?? model.hr?.segments ?? []),
@@ -515,6 +535,70 @@ export default function IntradayChart({
         }}
         onKeyDown={onKeyDown}
       >
+        {expectedSleepBand && (
+          <defs>
+            {/* The hatch itself: a diagonal-line fill so the expected window reads
+                as a FORECAST, not a fact — the same violet a real session block
+                draws solid. */}
+            <pattern
+              id={hatchId}
+              width={6}
+              height={6}
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={6}
+                stroke={chartSeries.violet}
+                strokeWidth={2}
+                opacity={0.5}
+              />
+            </pattern>
+          </defs>
+        )}
+
+        {/* THE DAYLIGHT BAND (#4918 ruling 3) — sunrise→sunset, subtle, and
+            BEHIND EVERYTHING: a background fact about the day, not a row. Its
+            height spans the plot's existing content bounds; `geo` above never
+            looked at `model.solarDay` to compute them, so this band reserves no
+            space of its own. */}
+        {daylightBand && (
+          <rect
+            data-testid="intraday-daylight-band"
+            x={daylightBand.left}
+            y={geo.padTop}
+            width={Math.max(0, daylightBand.right - daylightBand.left)}
+            height={Math.max(0, geo.axisY - geo.padTop)}
+            fill={chartSeries.amber}
+            opacity={0.06}
+          />
+        )}
+
+        {/* THE EXPECTED SLEEP BAND (#4918 ruling 7) — the profile's usual
+            bed→wake window, hatched, confined to the sleep row's own bounds
+            (the row a real session would draw in). Gone the instant a session
+            lands: `model.expectedSleep` is null then. */}
+        {expectedSleepBand && (
+          <rect
+            data-testid="intraday-expected-sleep"
+            x={expectedSleepBand.left}
+            y={geo.sleepTop}
+            width={Math.max(
+              0,
+              expectedSleepBand.right - expectedSleepBand.left
+            )}
+            height={geo.sleepH}
+            rx={3}
+            fill={`url(#${hatchId})`}
+            stroke={chartSeries.violet}
+            strokeOpacity={0.4}
+            strokeDasharray="2 2"
+          />
+        )}
+
         {/* Hour gridlines behind everything, on the axis's own step. */}
         {ticks.map((minute) => (
           <line
@@ -648,7 +732,10 @@ export default function IntradayChart({
             {label.text}
           </text>
         ))}
-        {geo.hasSleep && (
+        {/* The row NAME shows for a real session or the expected band alike —
+            both draw in the same lane, and #4852's gutter rule is about the row,
+            not which of the two currently occupies it. */}
+        {(geo.hasSleep || geo.hasExpectedSleep) && (
           <RowName
             geo={geo}
             text={INTRADAY_ROW_NAMES.sleep}

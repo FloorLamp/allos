@@ -26,6 +26,8 @@ function input(over: Partial<IntradayInput> = {}): IntradayInput {
     sleep: [],
     zone2: null,
     nowMinute: null,
+    solarDay: null,
+    expectedSleep: null,
     ...over,
   };
 }
@@ -193,7 +195,10 @@ describe("splitHrSegments", () => {
 });
 
 describe("buildIntradayModel — layer gating", () => {
-  it("returns null when nothing on the day is intraday (no empty frame)", () => {
+  // #4918's empty-day ruling: the day view's card ALWAYS renders now, so the pure
+  // builder always returns a model — an empty day gets one with all four data
+  // layers empty rather than no model at all.
+  it("returns an empty-but-real model when nothing on the day is intraday", () => {
     // A weigh-in and a grouped lab panel: real feed events, but day-grained —
     // no clock time, so no ticks, and no HR / sleep / windowed workout either.
     const model = buildIntradayModel(
@@ -204,11 +209,20 @@ describe("buildIntradayModel — layer gating", () => {
         ],
       })
     );
-    expect(model).toBeNull();
+    expect(model.hr).toBeNull();
+    expect(model.sleep).toEqual([]);
+    expect(model.blocks).toEqual([]);
+    expect(model.ticks).toEqual([]);
   });
 
-  it("returns null on a completely empty day", () => {
-    expect(buildIntradayModel(input())).toBeNull();
+  it("returns an empty model on a completely empty day, never null", () => {
+    const model = buildIntradayModel(input());
+    expect(model.hr).toBeNull();
+    expect(model.sleep).toEqual([]);
+    expect(model.blocks).toEqual([]);
+    expect(model.ticks).toEqual([]);
+    expect(model.solarDay).toBeNull();
+    expect(model.expectedSleep).toBeNull();
   });
 
   it("drops the HR layer but keeps the panel when only ticks exist", () => {
@@ -619,12 +633,12 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks.map((t) => t.minute)).toEqual([390]);
   });
 
-  it("stays data-gated: a day of untimed practice rows draws no panel", () => {
-    expect(
-      buildIntradayModel(
-        input({ events: [practiceEvent("practice:5", win(null, null, 20))] })
-      )
-    ).toBeNull();
+  it("stays data-gated: a day of untimed practice rows draws no blocks or ticks", () => {
+    const model = buildIntradayModel(
+      input({ events: [practiceEvent("practice:5", win(null, null, 20))] })
+    );
+    expect(model.blocks).toEqual([]);
+    expect(model.ticks).toEqual([]);
   });
 });
 
@@ -717,21 +731,20 @@ describe("buildIntradayModel — the tick rail", () => {
   });
 
   it("is data-gated away when an insight is the only clock-timed event", () => {
-    expect(
-      buildIntradayModel(
-        input({
-          events: [
-            {
-              id: "insight:5",
-              date: DAY,
-              category: "insight",
-              title: "AI insight",
-              sortTime: "03:07",
-            },
-          ],
-        })
-      )
-    ).toBeNull();
+    const model = buildIntradayModel(
+      input({
+        events: [
+          {
+            id: "insight:5",
+            date: DAY,
+            category: "insight",
+            title: "AI insight",
+            sortTime: "03:07",
+          },
+        ],
+      })
+    );
+    expect(model.ticks).toEqual([]);
   });
 });
 
@@ -751,8 +764,13 @@ describe("buildIntradayModel — the now-marker", () => {
     expect(buildIntradayModel(input({ hr }))!.nowMinute).toBeNull();
   });
 
-  it("never justifies a frame on its own", () => {
-    expect(buildIntradayModel(input({ nowMinute: 600 }))).toBeNull();
+  it("never justifies a frame on its own — the four data layers stay empty", () => {
+    const model = buildIntradayModel(input({ nowMinute: 600 }));
+    expect(model.nowMinute).toBe(600);
+    expect(model.hr).toBeNull();
+    expect(model.sleep).toEqual([]);
+    expect(model.blocks).toEqual([]);
+    expect(model.ticks).toEqual([]);
   });
 });
 
@@ -838,5 +856,55 @@ describe("intradayFreshness (#4767)", () => {
       ],
     });
     expect(intradayFreshness(covered)).toBe("Synced just now");
+  });
+});
+
+describe("buildIntradayModel — the daylight band (#4918 ruling 3)", () => {
+  it("carries solarDay through untouched", () => {
+    const model = buildIntradayModel(
+      input({ solarDay: { sunriseMin: 372, sunsetMin: 1146 } })
+    );
+    expect(model.solarDay).toEqual({ sunriseMin: 372, sunsetMin: 1146 });
+  });
+
+  it("is null when the day has none (no home location, or a polar day/night)", () => {
+    expect(buildIntradayModel(input()).solarDay).toBeNull();
+  });
+});
+
+describe("buildIntradayModel — the expected sleep window (#4918 ruling 7)", () => {
+  it("crosses midnight backward for an evening bedtime, like any span that bleeds in from yesterday", () => {
+    // 23:00 bed, 06:30 wake: the bed minute (1380) is LARGER than the wake minute
+    // (390), so it belongs to the night before — same as a real session entering
+    // from before midnight (see the sleep-clipping describe above), and clipToDay
+    // clips the negative start to 0 exactly the same way it would a real one.
+    const model = buildIntradayModel(
+      input({ expectedSleep: { bedMinutes: 1380, wakeMinutes: 390 } })
+    );
+    expect(1380 - MINUTES_IN_DAY).toBeLessThan(0); // the crossing this test is about
+    expect(model.expectedSleep).toEqual({
+      startMinute: 0,
+      endMinute: 390,
+      clippedStart: true,
+      clippedEnd: false,
+    });
+  });
+
+  it("keeps a night-owl's post-midnight bedtime on the SAME day as its wake", () => {
+    // 01:00 bed, 09:00 wake: the bed minute (60) is already smaller than wake
+    // (540), so no shift — both sit on this day already.
+    const model = buildIntradayModel(
+      input({ expectedSleep: { bedMinutes: 60, wakeMinutes: 540 } })
+    );
+    expect(model.expectedSleep).toEqual({
+      startMinute: 60,
+      endMinute: 540,
+      clippedStart: false,
+      clippedEnd: false,
+    });
+  });
+
+  it("is null when there is nothing to expect", () => {
+    expect(buildIntradayModel(input()).expectedSleep).toBeNull();
   });
 });

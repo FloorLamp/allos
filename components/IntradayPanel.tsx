@@ -13,15 +13,26 @@
 // cannot spend.
 import IntradayChart from "@/components/IntradayChart";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
+import DaylightChip, { type DaylightUv } from "@/components/DaylightChip";
+import CyclePhaseChip from "@/components/CyclePhaseChip";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { intradayFreshness, type IntradayModel } from "@/lib/intraday";
 import { INTRADAY_PANEL_ANCHOR } from "@/lib/hrefs";
 import type { SleepWaitingState } from "@/lib/sleep-waiting";
+import type { HomeLocation } from "@/lib/home-location";
+import type { CyclePhase, CyclePeriod } from "@/lib/cycle";
 
 export default function IntradayPanel({
   model,
   formatPrefs,
   profileId,
+  home,
+  timezone,
+  daylightOutdoor,
+  uv,
+  cyclePhase,
+  cyclePeriod,
+  weather,
   waiting,
   waitingDetail,
 }: {
@@ -31,6 +42,21 @@ export default function IntradayPanel({
    *  day, not only the acting profile's, and #1515's per-minute window has to ask
    *  for the right one. Re-validated against the session server-side. */
   profileId: number;
+  /**
+   * THE DAY'S CONTEXT (#4918 ruling 3) — DaylightChip's and CyclePhaseChip's own
+   * inputs, plus the weather line, all formerly the standalone `history-day-context`
+   * strip below the day bar. Each chip stays quiet by default (`DaylightChip` draws
+   * nothing without a home location, `CyclePhaseChip` nothing off a cycle), so
+   * passing them in unconditionally costs nothing on a day with none of it.
+   */
+  home: HomeLocation | null;
+  timezone: string;
+  daylightOutdoor: number;
+  uv: DaylightUv | null;
+  cyclePhase: CyclePhase | null;
+  cyclePeriod: CyclePeriod | null;
+  /** The #1726 notable-conditions summary, or null on a day nothing was notable. */
+  weather: string | null;
   /**
    * TODAY'S SLEEP IS STILL ON ITS WAY (#4918 ruling 7). The state is #2097's, whole
    * — the same decision the dashboard row and the /sleep hero read, never a second
@@ -100,6 +126,25 @@ export default function IntradayPanel({
           {waitingDetail ? ` · ${waitingDetail}` : null}
         </p>
       )}
+      {/* THE REST OF THE DAY'S CONTEXT (#4918 ruling 3) — daylight, UV, cycle phase,
+          weather. Formerly the standalone `history-day-context` strip; each chip is
+          quiet by default, so this costs nothing on a day none of it applies. */}
+      <DaylightChip
+        home={home}
+        date={model.date}
+        timezone={timezone}
+        outdoorMinutes={daylightOutdoor}
+        uv={uv}
+      />
+      <CyclePhaseChip phase={cyclePhase} period={cyclePeriod} />
+      {weather ? (
+        <div
+          className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="history-day-weather"
+        >
+          {weather}
+        </div>
+      ) : null}
       <IntradayChart
         model={model}
         formatPrefs={formatPrefs}
