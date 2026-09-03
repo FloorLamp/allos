@@ -116,12 +116,21 @@ export interface IntradaySleepBlock {
   stages: { stage: SleepStage; startMinute: number; endMinute: number }[];
 }
 
+/** Which ledger a block's window travelled on — the row it draws in (#4852). */
+export type IntradayBlockSource = "activity" | "practice";
+
 // A drawn SPAN on the axis: an activity's window, or one practice session's (#3142).
 // Not "a workout" — the layer is keyed on having a bounded window, and the title is
 // whatever feed event the window travelled on.
+//
+// `source` says WHICH, because #4852 gives the two their own rows: a morning workout
+// and an evening sauna stacked on one line read as one kind of thing. Same shape and
+// colour, different row — so the split is a placement decision the layout makes, and
+// this field is the only thing the model has to say about it.
 export interface IntradayBlock {
   key: string;
   eventId: string;
+  source: IntradayBlockSource;
   anchorId: string;
   startMinute: number;
   endMinute: number;
@@ -399,6 +408,12 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
       blocks.push({
         key: event.id,
         eventId: event.id,
+        // The row the block draws in (#4852). The feed CATEGORY is the discriminator
+        // because it is the only thing here that knows which ledger the row came
+        // from: `clockWindow` is carried by exactly two producers — an activity
+        // (lib/timeline.ts) and one practice session (lib/history.ts) — and nothing
+        // about the window itself distinguishes them.
+        source: event.category === "practice" ? "practice" : "activity",
         anchorId: timelineEntryAnchorId(event.id),
         ...clipped,
         title: event.title,

@@ -35,8 +35,12 @@ test.describe("Skin temperature variation trend", () => {
         card.getByRole("heading", { name: "Skin temperature variation" })
       ).toBeVisible();
       // The card must explain that the number is a deviation, not a temperature —
-      // a bare "0.6 °C" reads as a fever value without it.
-      await expect(card).toContainText("baseline");
+      // a bare "0.6 °C" reads as a fever value without it. That explainer is a
+      // constant one (#4927), so it lives on the title's info glyph rather than
+      // as printed prose under the header.
+      await expect(
+        card.getByRole("button", { name: /baseline/ })
+      ).toBeVisible();
 
       // #1486 made tiles and charts two renderings of ONE metric set, and tiles are
       // the DEFAULT on mobile — so a metric registered only as a chart would be

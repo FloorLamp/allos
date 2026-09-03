@@ -1085,17 +1085,43 @@ describe("actual atomic dashboard manifests", () => {
     // back unchanged every time, on every persona. So it composes with all of them
     // rather than interacting with any — which is a measurement, not an assumption
     // about independence.
-    bodybuilder: 226,
-    "marathon-runner": 225,
-    household: 275,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    // +1 on EVERY persona and +4 on biohacker (#4299): the sleep clock-skew check asks
+    // whether any synced sleep session's stored instants disagree with the heart rate
+    // recorded across them. A persona with no synced sleep pays the candidate read and
+    // stops — that is the +1 — while biohacker, which has synced nights AND a heart-rate
+    // trace, pays the candidate read, ONE batched read of the minutes across the judged
+    // span, its travel log, and the narrow last-night repeat of the same question the
+    // bed/wake row asks.
+    //
+    // MEASURED AT +33 BEFORE THE GATHER WAS BATCHED, on this same test: the first
+    // version issued one heart-rate SELECT per night, so its cost grew with the
+    // profile's sleep history rather than with the question. That is what this baseline
+    // is for, and it is why biohacker moves by 4 here instead of by 33.
+    //
+    // RE-MEASURED ON THE MERGED TREE, with #4775's −1 already in main's numbers: the
+    // same +1/+4 came back on every persona, so the two moves compose rather than
+    // interact. Measured, not arithmetic on two branches' deltas.
+    // +1 on EVERY persona (#3195): the day's ride-best recap is one statement for the
+    // day's rides. None of the six has a ride with a stored summary today, so the
+    // per-ride prior read and the segment read never execute — the +1 is the statement
+    // asking, not answering. A persona that DID ride today pays the reads that produce
+    // the sentence, which is the cost of having one rather than of looking.
+    //
+    // RE-MEASURED ON THE MERGED TREE against #4299's numbers, which had themselves been
+    // measured against #4775's: the same +1 came back on all six, biohacker included.
+    // Three independent moves in this baseline today and each composes with the others
+    // — measured each time, never summed.
+    bodybuilder: 227,
+    "marathon-runner": 226,
+    household: 276,
+    pregnant: 223,
+    "diabetic-cgm": 234,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 248,
+    biohacker: 252,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
