@@ -811,9 +811,9 @@ test("the strip's own rhythm is tighter on a phone and unchanged on the desktop"
 test("the illness cockpit keeps every section at 390px, on the stepped-down seams", async ({
   browser,
 }) => {
-  for (const [options, seam, header] of [
-    [PHONE, "12px", "8px"],
-    [DESKTOP, "16px", "12px"],
+  for (const [options, seam] of [
+    [PHONE, "12px"],
+    [DESKTOP, "16px"],
   ] as const) {
     const page = await openDashboard(
       browser,
@@ -831,12 +831,18 @@ test("the illness cockpit keeps every section at 390px, on the stepped-down seam
       await expect(cockpit.getByTestId("cockpit-end-episode")).toBeVisible();
 
       // EVERY SEAM, not one of them. The cockpit's rhythm is carried by each
-      // ruled section boundary (IllnessCockpitBody's readings band, the stale
-      // nudge, the PRN block and the footer), and a guard that read only
-      // `cockpit-prn` would have left three of the four free to drift. Seams are
-      // found by their own border rather than by testid, so a section that is
-      // conditional — the stale nudge does not render for every episode — is
-      // covered when it renders and cannot fail the guard when it does not.
+      // ruled section boundary, and a guard that read only `cockpit-prn` would
+      // have left the others free to drift. Seams are found by their own border
+      // rather than by testid, so a section that is conditional — the stale
+      // nudge does not render for every episode — is covered when it renders and
+      // cannot fail the guard when it does not.
+      //
+      // TWO OF THE FOUR SEAMS ARE GONE, AND THAT IS #4752 (item 1). The readings
+      // band became the recovery HEADER, which opens the card and so rules
+      // nothing above it; the footer band held "Feeling better", which is now
+      // promoted into that header beside the countdown. The floor below names
+      // the two that remain unconditional rather than counting, because a count
+      // is what would have gone quiet when the population changed under it.
       const rhythm = await cockpit.evaluate((body) => {
         const seams = Array.from(body.children)
           .map((child) => ({ child, style: getComputedStyle(child) }))
@@ -855,22 +861,18 @@ test("the illness cockpit keeps every section at 390px, on the stepped-down seam
                 ? `${style.marginTop}/${style.paddingTop}`
                 : `${style.marginBottom}/${style.paddingBottom}`,
           }));
-        return {
-          seams,
-          headerMargin: getComputedStyle(body.querySelector("h3")!)
-            .marginBottom,
-        };
+        return { seams };
       });
-      // The sweep must have found the seams it is about.
+      // The sweep must have found the seams it is about: the symptom section and
+      // the med block both render for every writable cockpit.
       expect(
-        rhythm.seams.length,
+        rhythm.seams.map((entry) => entry.what),
         `seams found: ${JSON.stringify(rhythm.seams)}`
-      ).toBeGreaterThanOrEqual(3);
+      ).toEqual(expect.arrayContaining(["section", "cockpit-prn"]));
       expect(
         rhythm.seams.map((entry) => entry.edge),
         JSON.stringify(rhythm.seams)
       ).toEqual(rhythm.seams.map(() => `${seam}/${seam}`));
-      expect(rhythm.headerMargin).toBe(header);
       if (options === PHONE) await expectNoClippedContent(page);
     } finally {
       await page.context().close();

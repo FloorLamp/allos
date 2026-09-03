@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   countFragment,
   exposureFragment,
+  medChipsStatusLine,
   mgLabel,
   prnOverMaxDetail,
   hoursLabel,
@@ -476,5 +477,63 @@ describe("prnOverMaxDetail (#1854)", () => {
       }),
     });
     expect(m.body).toContain("800 of 2400 mg today");
+  });
+});
+
+// ── ONE STATUS LINE OVER A ROW OF CHIPS (#4752 item 4) ──────────────────────
+//
+// Collapsed, the cockpit's meds say what the whole ROW stands at instead of
+// repeating "None today · Redose OK" once per medication. The cases below are the
+// ones that decide a word: nothing given, a plural of open windows, a partial, and
+// a ceiling — which is named even when it is not open, because a caregiver must not
+// have to expand three panels to find it.
+describe("medChipsStatusLine", () => {
+  const window = (over: Partial<RedoseStatus>): RedoseStatus => ({
+    open: true,
+    atMax: false,
+    countToday: 1,
+    maxDailyCount: 4,
+    sinceHours: 7,
+    opensInHours: 0,
+    exposure: null,
+    ...over,
+  });
+
+  it.each([
+    ["no medications have no line at all", [], null],
+    [
+      "a med with no window contributes its count and no window clause",
+      [null],
+      "Nothing given today",
+    ],
+    [
+      "both windows open",
+      [window({ countToday: 0 }), window({ countToday: 0 })],
+      "Nothing given today · both windows open",
+    ],
+    [
+      "three open windows say all, not both",
+      [window({}), window({}), window({})],
+      "3 given today · all windows open",
+    ],
+    [
+      "a partial counts the open ones",
+      [window({}), window({ open: false, countToday: 2 })],
+      "3 given today · 1 of 2 windows open",
+    ],
+    [
+      "a lone closed window is singular",
+      [window({ open: false })],
+      "1 given today · window not open yet",
+    ],
+    [
+      // At the ceiling is NOT open, and it is named: this is the half of the
+      // summary that changes what a caregiver does next.
+      "a ceiling is named and does not count as open",
+      [window({ atMax: true, countToday: 4 }), window({ countToday: 1 })],
+      "5 given today · 1 of 2 windows open · 1 at max",
+    ],
+  ] as const)("%s", (_name, statuses, expected) => {
+    expect(medChipsStatusLine(statuses)).toBe(expected);
   });
 });

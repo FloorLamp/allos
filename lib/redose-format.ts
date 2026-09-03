@@ -10,6 +10,13 @@ import type {
   PrnExposureBasis,
   RedoseStatus,
 } from "./prn-redose";
+import { prnQuickLogRedoseStatus } from "./prn-redose";
+import {
+  administrationDayLabel,
+  administrationLastDoseLabel,
+  formatGivenAtClockWithRelativeAge,
+} from "./administration-format";
+import type { TimeFormat } from "./format-date";
 import { formatMedicationDoseProduct } from "./medication-dose-format";
 import { GLYPH } from "./notifications/glyphs";
 
@@ -239,4 +246,94 @@ export function prnOverMaxDetail(input: {
     `${logged} ${vs}. Informational — if this looks wrong, adjust the log; ` +
     `if you're in pain, contact your clinician.`
   );
+}
+
+// ── ONE STATUS LINE OVER A ROW OF MED CHIPS (#4752 item 4) ──────────────────
+//
+// The cockpit printed `redoseCardLabel` once per medication — "None today · Redose
+// OK" three times over, six lines of boilerplate above three buttons, none of which
+// a caregiver reads before tapping. Collapsed, the same facts are ONE sentence about
+// the whole row: what has been given today, and how many windows are open. Per-med
+// detail is still the exact `redoseCardLabel` those rows always drew; it moves into
+// the expanded panel, where somebody is actually acting on that med.
+//
+// INFORMATIONAL, like every other line this module builds. "Open" restates the user's
+// own confirmed interval and never says a dose may be taken; a med at its confirmed
+// ceiling is counted as not open AND named, because that is the half of this summary
+// a caregiver must not have to expand three panels to find.
+export function medChipsStatusLine(
+  statuses: readonly (RedoseStatus | null)[]
+): string | null {
+  if (statuses.length === 0) return null;
+  const given = statuses.reduce(
+    (total, status) => total + (status?.countToday ?? 0),
+    0
+  );
+  const windows = statuses.filter((status): status is RedoseStatus => !!status);
+  const parts = [given === 0 ? "Nothing given today" : `${given} given today`];
+  const atMax = windows.filter((status) => status.atMax).length;
+  const open = windows.filter((status) => status.open && !status.atMax).length;
+  if (windows.length > 0) {
+    parts.push(
+      open === 0
+        ? windows.length === 1
+          ? "window not open yet"
+          : "no windows open yet"
+        : open === windows.length
+          ? windows.length === 1
+            ? "window open"
+            : windows.length === 2
+              ? "both windows open"
+              : "all windows open"
+          : `${open} of ${windows.length} windows open`
+    );
+  }
+  if (atMax > 0) parts.push(`${atMax} at max`);
+  return parts.join(" · ");
+}
+
+// ── ONE PRN ROW'S THREE STRINGS (#797/#798), computed once ──────────────────
+//
+// The day/last-dose line, the redose-window line and whether the window earns CTA
+// emphasis were assembled side by side at every surface that draws a PRN row. They
+// are one question — "where does this medication stand right now" — so they are one
+// computation, and the illness cockpit's chips could not have adopted the shared
+// answer without it. Structural input keeps this module free of the query layer.
+export function prnRowStatus(
+  med: {
+    count: number;
+    lastGivenAt: string | null;
+    minIntervalHours: number | null;
+    maxDailyCount: number | null;
+    familyCount: number;
+    familyLastGivenAt: string | null;
+    familyMaxDailyCount: number | null;
+    familyExposure?: PrnDayExposure | null;
+    familyMemberCount: number;
+  },
+  tz: string,
+  now: Date,
+  timeFormat?: TimeFormat
+): {
+  status: RedoseStatus | null;
+  dayLabel: string;
+  redoseLine: string | null;
+  redosePrimary: boolean;
+} {
+  const lastClock = formatGivenAtClockWithRelativeAge(
+    tz,
+    med.lastGivenAt,
+    timeFormat,
+    now
+  );
+  const status = prnQuickLogRedoseStatus(med, now);
+  const redoseLine = redoseCardLabel(status, med.familyMemberCount);
+  return {
+    status,
+    dayLabel: redoseLine
+      ? administrationLastDoseLabel(med.count, lastClock)
+      : administrationDayLabel(med.count, lastClock),
+    redoseLine,
+    redosePrimary: redoseActionIsPrimary(status),
+  };
 }
