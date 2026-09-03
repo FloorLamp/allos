@@ -2874,6 +2874,17 @@ x.isVisible().catch(() => false))` right after `goto` races the render. Wait
     rounds. `Emulation.setCPUThrottlingRate` slows the RENDERER; the timer that
     closes this window is not in the renderer, and 20x moved it not at all. Before
     reaching for the throttle, ask which process the suspect state lives in.
+20. **An assertion whose subject is real, recency-ranked app content is
+    clock-coupled even when nothing in it mentions time** (#4963).
+    `mobile-clipping.mobile.spec.ts:921` forged away a container's horizontal
+    reserve to trigger a synthetic escapee, then never restored it before the
+    next phase asserted silence on a clipped label — so that phase graded the
+    sheet's real frecency-ranked food-group chips (#591/#2225) against a body
+    it had itself narrowed. Which chip sits flush at a wrapped row's edge
+    tracks the frozen clock, so the test went red for whatever slice of the
+    day put an escaping chip last. Fix: undo a forgery before the assertion
+    that follows it, stated at the forgery site — never widen the assertion
+    that catches it.
 
 **Two spec-authoring hazards worth their own note.**
 

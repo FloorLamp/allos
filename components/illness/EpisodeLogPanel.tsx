@@ -134,6 +134,16 @@ export default function EpisodeLogPanel({
           profileId={profileId}
           showTitle={false}
           analysisHref={profileId == null ? "/trends/symptoms" : undefined}
+          // NO DOSE OFFER ON THIS MOUNT (#4712 judgement 1, corrected). This page's
+          // own Meds section (below, in page.tsx) renders whenever it has PRNs to
+          // show — which is every time the fold's dose offer would too — so feeding
+          // the offer real meds data here would duplicate a chip the persistent
+          // section already renders. The offer stays episode-only here.
+          //
+          // ONGOING IS THE ANSWER for the episode half, not the id this bar omits
+          // above (established newest-open default association): viewing the open
+          // episode itself IS having one; a closed/backfilled episode is not.
+          hasOpenEpisode={ongoing}
         />
       </div>
     </CockpitDayProvider>
