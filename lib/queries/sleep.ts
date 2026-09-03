@@ -24,6 +24,7 @@ import {
 import { HEALTH_CONNECT_ID } from "../integrations/health-connect";
 import { sleepOverlapPairs, type SleepSessionRow } from "../sleep-overlap";
 import { getMoodLogs } from "./mood";
+import { getSuspectSleepSessions } from "./sleep-clock-skew";
 import { getActivityDates } from "./training/activities";
 import { getIntakeDosesForHistory, getIntakeItems } from "./intake/schedule";
 import { getIntakeLogsInRange } from "./intake/adherence";
@@ -540,10 +541,25 @@ export function getSleepMoodData(
     editableHistory.map((row) => row.date),
     boundedDays
   );
-  const history = editableHistory.map((row) => ({
-    ...row,
-    bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
-  }));
+  // The clock-skew mark (#4299), folded in AFTER the manual-editability pass so the two
+  // cannot fight over `sleepSampleId`: a night is either the duration-only manual row
+  // that pass identified, or a synced session the detector contradicted — never both, and
+  // a suspect night stays UNeditable either way (`sleepEditable` is untouched here).
+  const suspectSampleByWakeDay = new Map(
+    getSuspectSleepSessions(profileId, since).map((s) => [
+      s.wakeDay,
+      s.sampleId,
+    ])
+  );
+  const history = editableHistory.map((row) => {
+    const suspectSampleId = suspectSampleByWakeDay.get(row.date) ?? null;
+    return {
+      ...row,
+      bedtimeSupplements: bedtimeByWakeDay.get(row.date) ?? null,
+      sleepSuspect: suspectSampleId != null,
+      sleepSampleId: row.sleepSampleId ?? suspectSampleId,
+    };
+  });
   return {
     points: sleepMoodPoints(history),
     history,

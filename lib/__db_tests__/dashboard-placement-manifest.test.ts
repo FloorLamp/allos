@@ -1085,17 +1085,33 @@ describe("actual atomic dashboard manifests", () => {
     // back unchanged every time, on every persona. So it composes with all of them
     // rather than interacting with any — which is a measurement, not an assumption
     // about independence.
-    bodybuilder: 225,
-    "marathon-runner": 224,
-    household: 274,
-    pregnant: 221,
-    "diabetic-cgm": 232,
+    // +1 on EVERY persona and +4 on biohacker (#4299): the sleep clock-skew check asks
+    // whether any synced sleep session's stored instants disagree with the heart rate
+    // recorded across them. A persona with no synced sleep pays the candidate read and
+    // stops — that is the +1 — while biohacker, which has synced nights AND a heart-rate
+    // trace, pays the candidate read, ONE batched read of the minutes across the judged
+    // span, its travel log, and the narrow last-night repeat of the same question the
+    // bed/wake row asks.
+    //
+    // MEASURED AT +33 BEFORE THE GATHER WAS BATCHED, on this same test: the first
+    // version issued one heart-rate SELECT per night, so its cost grew with the
+    // profile's sleep history rather than with the question. That is what this baseline
+    // is for, and it is why biohacker moves by 4 here instead of by 33.
+    //
+    // RE-MEASURED ON THE MERGED TREE, with #4775's −1 already in main's numbers: the
+    // same +1/+4 came back on every persona, so the two moves compose rather than
+    // interact. Measured, not arithmetic on two branches' deltas.
+    bodybuilder: 226,
+    "marathon-runner": 225,
+    household: 275,
+    pregnant: 222,
+    "diabetic-cgm": 233,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 247,
+    biohacker: 251,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's
