@@ -49,6 +49,7 @@ import type {
   AdministrationPoint,
 } from "./illness-episode-format";
 import {
+  DERIVED_FEVER_SYMPTOM,
   deriveFeverSeries,
   isOpenEpisode,
   episodeConditionExternalId,
@@ -274,7 +275,14 @@ function assembleIllnessEpisodeFromFacts(
   // APPENDED after the worst-first logged sort rather than sorted into it: the
   // derived arm carries no severity to sort ON, and where the row should sit beside
   // stated symptoms is a presentation question the owner has not ruled.
-  const feverSeries = deriveFeverSeries(temperatures);
+  //
+  // A day that already carries a STATED `fever` row yields the derived one for that
+  // day (owner-ruled 2026-09-03, judgement 3) — `bySymptom` above already holds the
+  // logged fever series if one exists, so its dates are the suppression set.
+  const statedFeverDates = new Set(
+    bySymptom.get(DERIVED_FEVER_SYMPTOM)?.points.map((p) => p.date) ?? []
+  );
+  const feverSeries = deriveFeverSeries(temperatures, statedFeverDates);
   const symptoms: SymptomSeries[] = feverSeries
     ? [...loggedSymptoms, feverSeries]
     : loggedSymptoms;
