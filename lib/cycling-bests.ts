@@ -124,15 +124,20 @@ export function rideBests(
     powerPriors.length === 0
       ? []
       : ride.powerCurve.flatMap(({ seconds, watts }) => {
-          const rank = rankAmong(
-            watts,
-            powerPriors.flatMap((prior) =>
-              prior.powerCurve
-                .filter((point) => point.seconds === seconds)
-                .map((point) => point.watts)
-            ),
-            higher
+          const pool = powerPriors.flatMap((prior) =>
+            prior.powerCurve
+              .filter((point) => point.seconds === seconds)
+              .map((point) => point.watts)
           );
+          // NO PRIORS AT *THIS DURATION*, NO MARKER AT THIS DURATION — the same
+          // rule as the empty-history case, asked at the granularity the marker is
+          // actually about. A ride's curve stops at its own length, so the first
+          // ride long enough to record a 45-minute effort has an EMPTY pool there
+          // however many earlier rides carry power. "Best" over nothing is the
+          // over-claim this feature exists not to make (#2385), and the population
+          // footnote counts rides rather than durations, so it cannot catch it.
+          if (pool.length === 0) return [];
+          const rank = rankAmong(watts, pool, higher);
           return rank == null ? [] : [{ seconds, rank }];
         });
 
@@ -160,9 +165,14 @@ export function rideBests(
         });
 
   return {
+    // ZERO WHEN THE RIDE CONTRIBUTED NOTHING OF THIS KIND, priors or no priors:
+    // there was no comparison, so there is no population to state. Counting the
+    // priors alone would let a ride whose only split is a 1.7 km run-out print
+    // "compared with 2 earlier rides with recorded splits" under a table where
+    // nothing was compared at all.
     comparedPowerRides:
-      powerPriors.length + (ride.powerCurve.length > 0 ? 1 : 0),
-    comparedSplitRides: splitPriors.length + (ride.splits.length > 0 ? 1 : 0),
+      ride.powerCurve.length > 0 ? powerPriors.length + 1 : 0,
+    comparedSplitRides: ride.splits.length > 0 ? splitPriors.length + 1 : 0,
     power,
     splits,
   };
@@ -212,31 +222,45 @@ export function comparedWindowText(
 // power duration falls back to its fastest split; one that won nothing, or that is
 // the FIRST ride of its kind (`comparedRides === 1`, where "best" would only mean
 // "only"), earns no statement at all.
-export interface RideBestHeadline {
-  kind: "power" | "splits";
-  // Power-curve duration in seconds, or the winning split's own `index`.
-  key: number;
-  comparedRides: number;
-}
+export type RideBestHeadline = (
+  | { kind: "power"; seconds: number; watts: number }
+  | { kind: "split"; index: number; timeSec: number }
+) & { comparedRides: number };
 
-export function rideBestHeadline(bests: RideBests): RideBestHeadline | null {
-  const power = bests.power
-    .filter((entry) => entry.rank === 1)
-    .sort((a, b) => b.seconds - a.seconds)[0];
-  if (power && bests.comparedPowerRides > 1) {
-    return {
-      kind: "power",
-      key: power.seconds,
-      comparedRides: bests.comparedPowerRides,
-    };
+// The winning row's own NUMBER travels with the verdict rather than being looked
+// up again beside it: a headline that named a duration whose watts the caller
+// then failed to find is a state this union cannot represent.
+export function rideBestHeadline(
+  ride: RideEfforts,
+  bests: RideBests
+): RideBestHeadline | null {
+  if (bests.comparedPowerRides > 1) {
+    const won = bests.power
+      .filter((entry) => entry.rank === 1)
+      .sort((a, b) => b.seconds - a.seconds)[0];
+    const point =
+      won && ride.powerCurve.find((entry) => entry.seconds === won.seconds);
+    if (point) {
+      return {
+        kind: "power",
+        seconds: point.seconds,
+        watts: point.watts,
+        comparedRides: bests.comparedPowerRides,
+      };
+    }
   }
-  const split = bests.splits.find((entry) => entry.rank === 1);
-  if (split && bests.comparedSplitRides > 1) {
-    return {
-      kind: "splits",
-      key: split.index,
-      comparedRides: bests.comparedSplitRides,
-    };
+  if (bests.comparedSplitRides > 1) {
+    const won = bests.splits.find((entry) => entry.rank === 1);
+    const split =
+      won && ride.splits.find((entry) => entry.index === won.index);
+    if (split) {
+      return {
+        kind: "split",
+        index: split.index,
+        timeSec: split.timeSec,
+        comparedRides: bests.comparedSplitRides,
+      };
+    }
   }
   return null;
 }

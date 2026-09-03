@@ -31,8 +31,10 @@ import {
   parsePowerZones,
 } from "../../cycling-stream-summary";
 import {
+  rideBestHeadline,
   rideBests,
   type PriorRide,
+  type RideBestHeadline,
   type RideBests,
 } from "../../cycling-bests";
 import { speedKmh } from "../../coaching/cardio";
@@ -213,7 +215,9 @@ export interface CyclingOverviewData {
 // than two subtly different populations.
 function priorRideEfforts(
   profileId: number,
-  ride: Activity,
+  // Only the ordering key, so the two callers pass what they have rather than a
+  // whole Activity one of them never loaded.
+  ride: { id: number; date: string },
   activityName: string,
   intervalM: number
 ): PriorRide[] {
@@ -256,6 +260,98 @@ function priorRideEfforts(
           )?.timesSec ?? [],
       },
     ];
+  });
+}
+
+// WHAT A RIDE EARNED, FOR THE POST-RIDE STATEMENT (#3195 parts 3 and 4).
+//
+// The dashboard asks this once per render, so unlike the detail page it may not
+// parse even ONE ride's streams: the subject ride is read from its OWN cached
+// summary exactly as its predecessors are. `rideBests` takes `RideEfforts`
+// precisely so both readers can reach it — the detail page from the streams it
+// already parsed for the charts, this one from a handful of stored numbers.
+//
+// Bounded by construction: one statement for the day's rides, then one prior read
+// and one segment read per ride that HAS a usable summary. A profile with no
+// cycling telemetry that day pays the first statement and stops.
+export interface RideBestRecap {
+  activityId: number;
+  activityName: string;
+  headline: RideBestHeadline | null;
+  // The ride's `pr_rank = 1` efforts, in the order the course tables render them.
+  // The PROVIDER's rank, not this app's comparison — see segmentPrStatement.
+  segmentPrNames: string[];
+}
+
+export function getRideBestRecaps(
+  profileId: number,
+  day: string,
+  intervalM: number
+): RideBestRecap[] {
+  return readTx(() => {
+    const rows = db
+      .prepare(
+        `SELECT a.id AS id, a.date AS date, a.type AS type, a.title AS title,
+                a.components AS components, t.stream_summary_json AS summary
+           FROM activity_telemetry t
+           JOIN activities a ON a.id = t.activity_id
+          WHERE t.profile_id = ? AND a.profile_id = ? AND a.date = ?
+            AND a.type IN ('cardio', 'sport')
+          ORDER BY a.id, t.snapshot_at, t.id`
+      )
+      .all(profileId, profileId, day) as {
+      id: number;
+      date: string;
+      type: string;
+      title: string;
+      components: string | null;
+      summary: string | null;
+    }[];
+    // Newest snapshot per ride wins, the same rule priorRideEfforts applies.
+    const byRide = new Map<number, (typeof rows)[number]>();
+    for (const row of rows) {
+      if (cyclingActivityName(row) == null) continue;
+      byRide.set(row.id, row);
+    }
+    return [...byRide.values()].flatMap((row) => {
+      const activityName = cyclingActivityName(row)!;
+      const summary = parseCyclingStreamSummary(row.summary);
+      if (!summary) return [];
+      const splitTimes =
+        summary.splitTimesSec.find(
+          (entry) => Math.round(entry.intervalM) === Math.round(intervalM)
+        )?.timesSec ?? [];
+      const efforts = {
+        powerCurve: summary.powerCurve,
+        // The stored times are the ride's comparable splits in order, so their
+        // positions ARE the split indices the detail page numbers rows by.
+        splits: splitTimes.map((timeSec, index) => ({
+          index: index + 1,
+          timeSec,
+        })),
+      };
+      const bests = rideBests(
+        efforts,
+        priorRideEfforts(profileId, row, activityName, intervalM)
+      );
+      const segmentPrNames = (
+        db
+          .prepare(
+            `SELECT name FROM activity_segment_efforts
+              WHERE profile_id = ? AND activity_id = ? AND pr_rank = 1
+              ORDER BY start_index, id`
+          )
+          .all(profileId, row.id) as { name: string }[]
+      ).map((effort) => effort.name);
+      return [
+        {
+          activityId: row.id,
+          activityName,
+          headline: rideBestHeadline(efforts, bests),
+          segmentPrNames,
+        },
+      ];
+    });
   });
 }
 
