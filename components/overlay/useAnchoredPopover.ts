@@ -69,12 +69,10 @@ export function useAnchoredPopover({
   // Used for the viewport clamp before the panel has been measured, so the first
   // paint of a known-width panel is already in the right place.
   fallbackWidth?: number;
-  // For a panel that scrolls itself: the height it WANTS. Escaping the ancestor's
-  // clip is only half the job — a list that then runs off the bottom of the
-  // screen is unreachable in a way the clipped one at least hinted at. Given
-  // this, the panel is capped to the room actually available on the side it lands
-  // and its own `overflow` scrolls the rest. Omit it and the panel is placed but
-  // never capped, which is what a menu and a calendar want.
+  // A cap the panel wants for its OWN sake, tighter than the room: a listbox that
+  // should stop at eight rows on a tall screen rather than growing to fill it.
+  // `pos.maxHeight` is reported either way and is never more than the room on the
+  // side the panel landed — applying it is the consumer's job (#4776).
   preferredMaxHeight?: number;
   remeasureKey?: unknown;
 }): {

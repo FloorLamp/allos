@@ -22,6 +22,7 @@ import { bulkTakeLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   dayCountsLabel,
   stackLabel,
@@ -659,8 +660,7 @@ export default function DayLedger({
 
   return (
     <section data-testid="day-ledger" className="space-y-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="section-label">Ledger</h3>
+      <CardSectionHeader title="Ledger" variant="label">
         <span className="flex items-center gap-3">
           <p
             data-testid="day-ledger-census"
@@ -680,7 +680,7 @@ export default function DayLedger({
             </Button>
           )}
         </span>
-      </div>
+      </CardSectionHeader>
       {selecting && (
         <div
           data-testid="ledger-selection-bar"

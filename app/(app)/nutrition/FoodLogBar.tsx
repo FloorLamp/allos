@@ -19,6 +19,8 @@ import FoodGroupIcon, {
   FOOD_GROUP_TIER_TINT,
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
+import OfferRow from "@/components/OfferRow";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import IntakeContextBar from "@/components/IntakeContextBar";
 import {
   useClaimToastKey,
@@ -2176,8 +2178,7 @@ export default function FoodLogBar({
               were a totals display AND the slot picker — and only the picker half
               belongs with the add list. The totals are the ledger's day census
               above; this is the choice, next to the rows that act on it. */}
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="section-label">Add to {activeSlot}</h3>
+            <CardSectionHeader title={`Add to ${activeSlot}`} variant="label">
               <SegmentedControl
                 options={FOOD_SLOTS.map((meal) => ({
                   value: meal,
@@ -2189,7 +2190,7 @@ export default function FoodLogBar({
                 ariaLabel="Meal to add to"
                 testId="food-meal-slots"
               />
-            </div>
+            </CardSectionHeader>
             {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
               The control used to stand open above the rows on every visit; it is a
               question most taps never answer, so it collapses behind one affordance
@@ -2271,15 +2272,17 @@ export default function FoodLogBar({
               slugs alone, because the reserved key is a member of the NAME and never of
               the posted group list. */}
             {usualFoodStands && (
-              <button
-                type="button"
-                data-testid="food-usual-offer"
-                data-groups={usualGroups.map((g) => g.slug).join(",")}
-                data-doses={doseIds.join(",")}
-                aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
+              <OfferRow
+                tone="brand"
+                testId="food-usual-offer"
+                data={{
+                  "data-groups": usualGroups.map((g) => g.slug).join(","),
+                  "data-doses": doseIds.join(","),
+                }}
+                ariaLabel={`Log your usual ${activeSlot}: ${usualPhrase}`}
                 disabled={usualLedger.blocked()}
-                onClick={() => void logUsual()}
-                className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+                onAct={() => void logUsual()}
+                className="mb-2.5"
               >
                 <IconPlus
                   className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
@@ -2296,7 +2299,7 @@ export default function FoodLogBar({
                     {usualPhrase}
                   </span>
                 </span>
-              </button>
+              </OfferRow>
             )}
             {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
               section after it. It does the same job as the rows above it —

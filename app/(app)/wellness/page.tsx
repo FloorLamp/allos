@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import Link from "next/link";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import { today } from "@/lib/db";
 import {
   getPracticeDays,
@@ -144,8 +145,7 @@ export default async function WellnessPage(props: {
       )}
 
       <section>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="section-label">Your practices</h2>
+        <CardSectionHeader title="Your practices" variant="label">
           <Link
             href={historyHref({ kind: "practice" })}
             className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
@@ -153,7 +153,7 @@ export default async function WellnessPage(props: {
           >
             View practice history
           </Link>
-        </div>
+        </CardSectionHeader>
         {practices.length === 0 ? (
           <EmptyState message="No practices yet. Add one to set a weekly goal and start logging sessions." />
         ) : (

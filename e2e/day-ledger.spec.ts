@@ -499,7 +499,10 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
         `ledger-gutter-${TIME_BUCKET_LABELS.Morning.toLowerCase()}`
       )
     ).toHaveText(TIME_BUCKET_LABELS.Morning);
-    await expect(morning(page).locator("h4")).toHaveCount(0);
+    // The heading is gone, not moved: #4548 had put it on `CardSectionHeader` and this
+    // read it by ROLE for that reason. A bucket in the gutter is not a heading at all,
+    // so the absence is asserted by role too — the same question, one shape later.
+    await expect(morning(page).getByRole("heading")).toHaveCount(0);
     const summary = morning(page).locator('[data-testid^="ledger-due-group-"]');
     await expect(summary).toContainText(/\d+ doses? due/);
     await expect(summary).not.toContainText(TIME_BUCKET_LABELS.Morning);
