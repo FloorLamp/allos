@@ -186,6 +186,58 @@ describe("anchoredPosition — horizontal placement", () => {
     expect(offLeft.left).toBe(ANCHOR_MARGIN);
   });
 
+  // THE TOOLTIP ALIGNMENT (#4511, owner ruling 2026-08-31). Both tooltip kinds ask
+  // this function, so "below the control, centred on it, above only when there is no
+  // room below" is decided here and nowhere else. A tooltip is small and its anchor is
+  // a glyph, so the interesting cases are the ones where centring would push it off
+  // an edge: the margin has to win there exactly as it does for `start` and `end`.
+  it.each([
+    // [what, anchor left, anchor width, panel width, expected left]
+    ["centres a wide tooltip on a narrow glyph", 180, 44, 200, 180 + 22 - 100],
+    [
+      "clamps at the right edge rather than centring",
+      370,
+      24,
+      200,
+      400 - 200 - 8,
+    ],
+    ["clamps at the left edge rather than centring", 4, 24, 200, 8],
+  ])("%s", (_what, left, width, panelWidth, expected) => {
+    expect(
+      anchoredPosition({
+        anchor: field(100, left, width),
+        panel: { height: 40, width: panelWidth },
+        viewport: VIEWPORT,
+        align: "center",
+      }).left
+    ).toBe(expected);
+  });
+
+  it("puts a centred tooltip BELOW its anchor, and flips it up only with no room", () => {
+    // The side placements the info tooltip used to prefer are gone: this asks for the
+    // one axis the ruling is about, at both ends of the viewport.
+    const roomy = field(100, 180, 44);
+    expect(
+      anchoredPosition({
+        anchor: roomy,
+        panel: { height: 40, width: 200 },
+        viewport: VIEWPORT,
+        align: "center",
+      }).top
+    ).toBe(roomy.bottom + ANCHOR_GAP);
+
+    // 4px of room below a 40px panel, and the whole viewport above it.
+    const pinned = field(VIEWPORT.height - 60, 180, 44);
+    expect(
+      anchoredPosition({
+        anchor: pinned,
+        panel: { height: 40, width: 200 },
+        viewport: VIEWPORT,
+        align: "center",
+      }).top
+    ).toBe(pinned.top - ANCHOR_GAP - 40);
+  });
+
   it("takes the anchor's width only when asked, and reports it", () => {
     const anchor = field(100, 20, 240);
     expect(

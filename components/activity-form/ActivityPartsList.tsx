@@ -30,6 +30,7 @@ import {
   partFactSummary,
   partOptionsOffered,
 } from "@/lib/activity-part-facts";
+import ControlTooltip from "@/components/ControlTooltip";
 import InfoTooltipIcon from "@/components/InfoTooltipIcon";
 import { setRpeTrackingAction } from "@/app/(app)/training/activity-actions";
 import { getExerciseGuide } from "@/lib/exercise-guides";
@@ -773,32 +774,44 @@ export default function ActivityPartsList({
                         {/* Reorder legs (issue #337) — swim → bike → run without
                             deleting and re-adding. 44×44 on a phone (#1613), the
                             unchanged compact size from `sm` up. */}
-                        <button
-                          type="button"
-                          onClick={() => movePart(pi, -1)}
-                          disabled={pi === 0}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
-                          aria-label="Move activity up"
-                        >
-                          <IconChevronUp className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => movePart(pi, 1)}
-                          disabled={pi === parts.length - 1}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
-                          aria-label="Move activity down"
-                        >
-                          <IconChevronDown className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removePart(pi)}
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                          aria-label="Remove activity"
-                        >
-                          <IconX className="h-4 w-4" />
-                        </button>
+                        <ControlTooltip label="Move activity up">
+                          {(anchor) => (
+                            <button
+                              {...anchor}
+                              type="button"
+                              onClick={() => movePart(pi, -1)}
+                              disabled={pi === 0}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
+                            >
+                              <IconChevronUp className="h-4 w-4" />
+                            </button>
+                          )}
+                        </ControlTooltip>
+                        <ControlTooltip label="Move activity down">
+                          {(anchor) => (
+                            <button
+                              {...anchor}
+                              type="button"
+                              onClick={() => movePart(pi, 1)}
+                              disabled={pi === parts.length - 1}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent sm:h-8 sm:w-7 dark:text-slate-400 dark:hover:bg-ink-800"
+                            >
+                              <IconChevronDown className="h-4 w-4" />
+                            </button>
+                          )}
+                        </ControlTooltip>
+                        <ControlTooltip label="Remove activity">
+                          {(anchor) => (
+                            <button
+                              {...anchor}
+                              type="button"
+                              onClick={() => removePart(pi)}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-rose-400 hover:bg-rose-50 hover:text-rose-600 sm:h-8 sm:w-8 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            >
+                              <IconX className="h-4 w-4" />
+                            </button>
+                          )}
+                        </ControlTooltip>
                       </>
                     )}
                   </div>
