@@ -6,7 +6,6 @@ import {
   accessForProfile,
 } from "@/lib/auth";
 import { assembleIllnessEpisode } from "@/lib/illness-episode";
-import { antipyreticPrnMeds } from "@/lib/prn-defaults";
 import {
   episodeRowToDerived,
   resolveEpisodeAcrossProfiles,
@@ -388,9 +387,13 @@ export default async function EpisodePage(props: {
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
                   profileId={target}
-                  antipyreticMeds={antipyreticPrnMeds(prnMeds)}
-                  intakeContext={intakeContext}
-                  nowIso={clockNow().toISOString()}
+                  // NO DOSE OFFER HERE (#4712 judgement 1, corrected) — see the
+                  // matching note in IllnessCockpitBody.tsx. This page's own Meds
+                  // section below renders whenever `prnMeds` is non-empty, which is
+                  // every time the fold's dose offer would have anything to show
+                  // (antipyreticPrnMeds is that same list narrowed), so feeding it
+                  // real data here would duplicate a chip the persistent section
+                  // already renders.
                   photoControl={
                     <label
                       htmlFor="episode-symptom-photo-input"

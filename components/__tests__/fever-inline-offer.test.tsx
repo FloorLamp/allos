@@ -7,9 +7,13 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SymptomLogBar from "@/components/illness/SymptomLogBar";
+import IllnessCockpitBody from "@/components/illness/IllnessCockpitBody";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import { PICKER_SYMPTOMS } from "@/lib/symptoms";
 import type { PrnMedForQuickLog } from "@/lib/queries/intake/adherence";
 import type { IntakeFormContext } from "@/lib/intake-form-context";
+import type { AssembledEpisode } from "@/lib/illness-episode-format";
+import type { DashboardIllnessCockpitModel } from "@/lib/dashboard-illness-cockpit";
 
 // THE FOLD'S INLINE FEVER OFFER (#4712 judgement 1, owner ruling 2026-09-03 15:40 UTC,
 // option A). Three things the ruling states that a test can see:
@@ -303,5 +307,129 @@ describe("the row grammar: primary episode action, dose beside it, Not now as a 
     expect(screen.getByTestId("fever-offer")).toBeTruthy();
     expect(screen.getByTestId("fever-offer-open-episode")).toBeTruthy();
     expect(screen.queryByTestId("fever-offer-dose")).toBeNull();
+  });
+});
+
+// A REGRESSION FOUND IN CI (#4712, e2e `dashboard-illness-phase5.spec.ts:84`): the
+// cockpit's own persistent Meds section (`cockpit-prn`) already renders a
+// `cockpit-med-chip-<id>` for every active PRN, including any antipyretic. Feeding
+// that SAME list to the fold's dose offer put a second chip for one medication inside
+// one situation group. The ruling offers what is not already on screen; it does not
+// re-offer what the group already has — so `IllnessCockpitBody` no longer threads its
+// PRN data into the fold at all (see the code comment there), and this proves it stays
+// that way: the persistent section renders the chip, the fold offers only the
+// episode, and the medication's testid resolves to exactly one element throughout.
+describe("the offer never duplicates a chip the cockpit's own Meds section already shows (#4712)", () => {
+  const EPISODE: AssembledEpisode = {
+    id: 900,
+    situation: "Stomach bug",
+    start: TODAY,
+    end: null,
+    ongoing: true,
+    firstDay: TODAY,
+    lastActiveDay: TODAY,
+    asOf: TODAY,
+    dayCount: 1,
+    symptoms: [],
+    distinctSymptomCount: 0,
+    temperatures: [],
+    maxTempF: null,
+    latestTemp: null,
+    medications: [],
+    totalAdministrations: 0,
+    conditions: [],
+    notes: [],
+  };
+
+  const STATUS = {
+    dayLabel: "Day 1",
+    dayOnlyLabel: null,
+    temperature: null,
+    lastMeds: null,
+    worsening: false,
+  };
+
+  function cockpitModel(): DashboardIllnessCockpitModel {
+    return {
+      date: TODAY,
+      temperatureUnit: "F",
+      timeZone: "UTC",
+      nowIso: new Date().toISOString(),
+      feverFree: null,
+      controls: {
+        staleNudge: null,
+        medReconciliation: [],
+        prnMeds: [ANTIPYRETIC],
+        antipyreticPrnMeds: [ANTIPYRETIC],
+        intakeOptions: {
+          medications: [],
+          medicationBrands: [],
+          supplements: [],
+          stacks: [],
+        },
+        intakeForm: INTAKE_CONTEXT,
+        initial: {},
+        initialNotes: {},
+        customNames: [],
+        rankedKeys: [],
+      },
+    };
+  }
+
+  function renderCockpit(episodeId: number | null = EPISODE.id): void {
+    render(
+      <ConfirmProvider>
+        <IllnessCockpitBody
+          profileId={SUBJECT}
+          episode={{ ...EPISODE, id: episodeId }}
+          status={STATUS}
+          crossProfile={false}
+          canWrite
+          ownsSharedProfileControls
+          hasPluralOpenEpisodes={false}
+          profileDisplayName="Kid"
+          model={cockpitModel()}
+        />
+      </ConfirmProvider>
+    );
+  }
+
+  it("the Meds section alone renders the medication's chip", () => {
+    renderCockpit();
+    expect(
+      screen.getAllByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`)
+    ).toHaveLength(1);
+  });
+
+  it("logging a fever here offers NOTHING — not a block with an empty dose side", async () => {
+    renderCockpit();
+    await openFold();
+    await logReading("102.1");
+    // Both halves are already answered by the surfaces around this fold: the
+    // episode is open (this cockpit only exists because one is), and the
+    // medication is already a chip a few px below. The fold closes exactly as an
+    // ordinary reading would rather than opening an offer with nothing left to
+    // offer — the fix is NOT "show the block with both actions hidden".
+    expect(screen.queryByTestId("fever-offer")).toBeNull();
+    expect(screen.queryByTestId("temp-quick-entry")).toBeNull();
+    // THE ASSERTION THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: one chip, not two,
+    // for the same medication inside this one cockpit.
+    expect(
+      screen.getAllByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`)
+    ).toHaveLength(1);
+  });
+
+  // THE EPISODE HALF STILL WORKS on this same mount, on its own — the fix
+  // suppresses only the DOSE side (always redundant here), never the episode
+  // question when there genuinely is none known yet.
+  it("still offers the episode alone when this write has none, without touching the chip count", async () => {
+    renderCockpit(null);
+    await openFold();
+    await logReading("102.1");
+    expect(screen.getByTestId("fever-offer-open-episode")).toBeTruthy();
+    expect(screen.queryByTestId("fever-offer-dose")).toBeNull();
+    expect(
+      screen.getAllByTestId(`cockpit-med-chip-${ANTIPYRETIC.id}`)
+    ).toHaveLength(1);
   });
 });
