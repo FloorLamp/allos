@@ -163,18 +163,51 @@ by component type, so a `<ChartGrid/>` wrapping a `<CartesianGrid/>` renders no
 grid at all. (`ChartLegend` is a real component only because it sits outside the
 recharts tree.)
 
-| Decision         | Rule                                                                                                                | Export                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Grid             | horizontal-only, solid hairlines. Never a dashed both-axes grid — the loudest "default recharts" tell               | `chartGridProps`                   |
-| Curve            | straight segments between readings — never an interpolating spline, which invents a peak nobody measured            | `chartCurve`                       |
-| Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                                          | `chartAxisProps`                   |
-| Dots             | off above 30 points; exact readings are solid with a surface-colored ring; only inexact bounded readings are hollow | `chartLineDot` / `chartInexactDot` |
-| Hover dot        | r ≥ 4, present even when resting dots are off                                                                       | `chartActiveDot`                   |
-| Label size       | **≥ 10px**, always (a viewBox panel's floor is computed — §6)                                                       | `CHART_LABEL_FONT_SIZE`            |
-| Dashes           | a named vocabulary (annotation / reference / target / now / cursor), never a literal                                | `chartDash`                        |
-| Tooltip          | one surface, one type size, one hover duration                                                                      | `chartTooltipProps`                |
-| Stacked segments | 2px surface gap, so segments read as discrete quantities                                                            | `chartStackSegmentProps`           |
-| Legend           | every ≥ 2-series chart has one                                                                                      | `ChartLegend`                      |
+| Decision         | Rule                                                                                                                        | Export                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Grid             | horizontal-only, solid hairlines. Never a dashed both-axes grid — the loudest "default recharts" tell                       | `chartGridProps`                   |
+| Curve            | straight segments between readings — never an interpolating spline, which invents a peak nobody measured                    | `chartCurve`                       |
+| Axes             | no tick marks, no spine; ticks at 11px in a **text** token                                                                  | `chartAxisProps`                   |
+| Dots             | off above 30 points; exact readings are solid with a surface-colored ring; only inexact bounded readings are hollow         | `chartLineDot` / `chartInexactDot` |
+| Isolated reading | a reading NO stroke reaches draws its mark whatever the density says — the clutter rule governs marks the stroke duplicates | `chartLineDot` (`isolated`)        |
+| Partial day      | a bucket the profile's local day is still filling draws hollow, and the stroke ends at the last complete day                | `chartLineDot` (`inexact`)         |
+| Hover dot        | r ≥ 4, present even when resting dots are off                                                                               | `chartActiveDot`                   |
+| Label size       | **≥ 10px**, always (a viewBox panel's floor is computed — §6)                                                               | `CHART_LABEL_FONT_SIZE`            |
+| Dashes           | a named vocabulary (annotation / reference / target / now / cursor), never a literal                                        | `chartDash`                        |
+| Tooltip          | one surface, one type size, one hover duration                                                                              | `chartTooltipProps`                |
+| Stacked segments | 2px surface gap, so segments read as discrete quantities                                                                    | `chartStackSegmentProps`           |
+| Legend           | every ≥ 2-series chart has one                                                                                              | `ChartLegend`                      |
+
+### One footer, one owner, one padding (#4924)
+
+`ChartCard` owns the plot slot AND the band beneath it. A chart hands its
+captions up through `ChartCaptionBand`'s context as a DESCRIPTOR — the sentences
+are the chart's, because only it knows its own gaps, aggregation and sources; the
+layout is the card's, because it owns the height and the padding — and the card
+renders `[captions…, footer, footerAction]` in one wrapper with one gap. Nothing
+in a footer brings its own top margin.
+
+Before this, three components each rendered part of one card's footer, and the
+chart's captions were inside the fixed-height plot slot, so they overflowed it:
+on the 2026-09-03 screenshot two cards printed a caption flush against the card's
+bottom edge and Mood printed its caption and its footer on top of each other.
+
+**"Fix a range" is earned there.** Because the band can see that a live outage is
+being named, the bulk-correction door renders for any metric whose
+`TrendMetricMeta.correctionField` the review page accepts, while that caption is
+showing — not as a prop hand-placed on one card.
+
+### Today is partial, and the chart says so (#4924)
+
+A daily bucket over a stream is a running total until local midnight. The daily
+aggregate readers (`getHrDailySummary`, `getHrDailySummaryInRange`, the additive
+half of `getMetricDailyTotals`) flag the profile-local today as `partial`, and a
+point reading taken today is left alone — a height is complete when it is
+measured. The flag travels with the point, so three things say one thing: the
+mark draws HOLLOW (fill means exactness — owner call 3 on #2830), the stroke is
+cut before it through the same run machinery an over-limit hole uses, and the
+card's headline reads "· so far today" instead of a staleness stamp, which is the
+opposite question and passes a today-dated reading at full confidence.
 
 ### Ticks are a policy, not a default (#4924)
 
