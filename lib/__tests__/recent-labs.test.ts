@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CLINICAL_RESULT_FRESH_DAYS,
   clinicalResultClaimsFreshness,
+  clinicalResultHostsAcknowledge,
   recentLabHighlights,
   RECENT_LAB_STALE_DAYS,
 } from "@/lib/recent-labs";
@@ -277,5 +278,88 @@ describe("clinicalResultClaimsFreshness (#4232)", () => {
   // every row above pass while the page claimed for a different length of time.
   it("keys the window on the ruled 30 days", () => {
     expect(CLINICAL_RESULT_FRESH_DAYS).toBe(30);
+  });
+});
+
+// WHICH ROWS HOST THEIR OWN ACKNOWLEDGE CONTROL (#3225, generalising #4232).
+//
+// The population this issue is about is the CHRONIC NOTABLE: 37 markers from one
+// June panel, notable, long past the 30-day freshness window AND past the 14-day
+// collection window that bounds a flagged-result attention item — so under #4232's
+// freshness-only rule no row on the dashboard offered the acknowledgment that spends
+// its precedence. The first row of the table is that case and it is the one that
+// moved; every other row is a side of the boundary that must NOT have moved.
+describe("clinicalResultHostsAcknowledge (#3225)", () => {
+  const today = "2026-09-03";
+  const CHRONIC = "2026-06-03"; // the owner's panel: notable, 92 days old
+  const daysAgo = (n: number) => shiftDateStr(today, -n);
+
+  it.each([
+    {
+      case: "a chronic notable with no attention item — the case that had no control",
+      collectedOn: CHRONIC,
+      flag: "high" as const,
+      acknowledged: false,
+      hasAttentionItem: false,
+      hosts: true,
+    },
+    {
+      case: "…and once acknowledged it stops offering the same state twice",
+      collectedOn: CHRONIC,
+      flag: "high" as const,
+      acknowledged: true,
+      hasAttentionItem: false,
+      hosts: false,
+    },
+    {
+      case: "a notable still inside the attention window hosts the menu there",
+      collectedOn: daysAgo(3),
+      flag: "high" as const,
+      acknowledged: false,
+      hasAttentionItem: true,
+      hosts: false,
+    },
+    {
+      case: "a fresh non-notable result — #4232's own case, unchanged",
+      collectedOn: daysAgo(3),
+      flag: "normal" as const,
+      acknowledged: false,
+      hasAttentionItem: false,
+      hosts: true,
+    },
+    {
+      case: "an old ordinary result has no claim to spend",
+      collectedOn: CHRONIC,
+      flag: "normal" as const,
+      acknowledged: false,
+      hasAttentionItem: false,
+      hosts: false,
+    },
+    {
+      case: "a good durable-immunity titer is not notable (#544)",
+      collectedOn: CHRONIC,
+      flag: "immune" as const,
+      acknowledged: false,
+      hasAttentionItem: false,
+      hosts: false,
+    },
+    {
+      case: "an undatable notable still hosts one — notability needs no date",
+      collectedOn: null,
+      flag: "low" as const,
+      acknowledged: false,
+      hasAttentionItem: false,
+      hosts: true,
+    },
+  ])("$case", ({ collectedOn, flag, acknowledged, hasAttentionItem, hosts }) => {
+    expect(
+      clinicalResultHostsAcknowledge({
+        collectedOn,
+        today,
+        flag,
+        acknowledged,
+        hasAttentionItem,
+      })
+    ).toBe(hosts);
   });
 });
