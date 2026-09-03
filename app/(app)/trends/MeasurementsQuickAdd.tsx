@@ -383,6 +383,11 @@ export default function MeasurementsQuickAdd({
       return v === null || String(v).trim() === "" ? null : String(v);
     };
     const date = String(formData.get("date") ?? "").trim();
+    // #4932: the quick-log sheet's subject chip mounts this SAME form cross-profile.
+    // `profileId` present means a non-acting subject was chosen; stamp it so
+    // `addMeasurements`'s `gateItemProfile` re-gates THAT profile rather than
+    // defaulting to the acting one.
+    if (profileId != null) formData.set("profile_id", String(profileId));
 
     const body = {
       weight: s("weight"),
@@ -621,6 +626,17 @@ export default function MeasurementsQuickAdd({
       return "queued";
     };
 
+    // The queue is stamped to the acting profile and carries no subject (same as
+    // MoodForm's identical guard) — a non-acting subject's save must fail honestly
+    // offline rather than queue a write that could replay onto somebody else.
+    if (
+      profileId != null &&
+      typeof navigator !== "undefined" &&
+      navigator.onLine === false
+    ) {
+      setError("You're offline — reconnect to save these measurements.");
+      return;
+    }
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       const captured = await queueOffline();
       if (captured === "queued") return;
@@ -635,7 +651,7 @@ export default function MeasurementsQuickAdd({
     try {
       saved = await addMeasurements(stampLoggedVia(formData));
     } catch (err) {
-      if (shouldQueueOffline(navigator.onLine !== false, err)) {
+      if (profileId == null && shouldQueueOffline(navigator.onLine !== false, err)) {
         const captured = await queueOffline();
         if (captured === "queued") return;
         if (captured !== "unqueueable") {

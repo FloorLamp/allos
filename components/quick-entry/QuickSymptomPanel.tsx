@@ -41,6 +41,7 @@ export default function QuickSymptomPanel({
   temperatureUnit,
   textIntakeEnabled,
   trackingIllness,
+  subjectProfileId,
 }: {
   today: string;
   severities: Record<string, number>;
@@ -50,6 +51,10 @@ export default function QuickSymptomPanel({
   temperatureUnit: TemperatureUnit;
   textIntakeEnabled: boolean;
   trackingIllness: string[];
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting
+  // profile — the SAME `profileId` prop the illness cockpit's own mount already
+  // passes (SymptomLogBar's cross-profile support predates this sheet).
+  subjectProfileId?: number;
 }) {
   return (
     <div className="space-y-3 py-1" data-testid="quick-symptom-panel">
@@ -72,6 +77,7 @@ export default function QuickSymptomPanel({
         temperatureUnit={temperatureUnit}
         textIntakeEnabled={textIntakeEnabled}
         showTitle={false}
+        profileId={subjectProfileId}
       />
     </div>
   );

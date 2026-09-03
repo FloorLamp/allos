@@ -41,6 +41,7 @@ import { microMotionPlan } from "@/lib/micro-motion";
 export default function StoolTypeControl({
   todayCount,
   today,
+  subjectProfileId,
 }: {
   // How many Bristol readings this profile already has for today, from the server.
   todayCount: number;
@@ -49,6 +50,12 @@ export default function StoolTypeControl({
   // the SERVER's day rather than on a browser that may have crossed midnight.
   // `TAP_REACH` files this as a `today` tap; a BACKFILL states its day on `StoolForm`.
   today: string;
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting profile.
+  // Posted as `profile_id` and re-gated by `logStoolForm`'s own `gateItemProfile`
+  // call. Offline capture REFUSES rather than queues (see `offline` below) — the
+  // same reason `OfflineDecision`'s comment gives: the replay carries no target
+  // profile and would land on the wrong person.
+  subjectProfileId?: number;
 }) {
   const pipeline = useWritePipeline("stool-form");
   const [count, setCount] = useState(todayCount);
@@ -105,7 +112,13 @@ export default function StoolTypeControl({
       // ONLY when a time was actually stated, and never a day: the ABSENCE of each
       // field leaves the instant to the clock seam and the day to the action's `today`,
       // so an untouched sheet posts precisely the body it always posted (#3273).
-      fields: { type: String(type), ...(stated ? { at: stated } : {}) },
+      fields: {
+        type: String(type),
+        ...(stated ? { at: stated } : {}),
+        ...(subjectProfileId != null
+          ? { profile_id: String(subjectProfileId) }
+          : {}),
+      },
       action: logStoolForm,
       settle: (res) => {
         if (!res.ok)
@@ -142,13 +155,19 @@ export default function StoolTypeControl({
         };
       },
       failureMessage: "Couldn't log that. Try again.",
-      offline: () => ({
-        kind: "capture",
-        flow: "stool",
-        date: today,
-        payload: { type, at: stated },
-        keptMessage: "Saved offline — will sync when you reconnect.",
-      }),
+      offline: () =>
+        subjectProfileId != null
+          ? {
+              kind: "refuse",
+              message: "You're offline — reconnect to log for someone else.",
+            }
+          : {
+              kind: "capture",
+              flow: "stool",
+              date: today,
+              payload: { type, at: stated },
+              keptMessage: "Saved offline — will sync when you reconnect.",
+            },
     });
     // The server's total is authoritative; a capture has no revalidate behind it, so
     // its +1 stands in until replay; nothing written rolls back.

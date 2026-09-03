@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth";
+import { gateSubjectProfile } from "./gate-item";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { today } from "@/lib/db";
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
@@ -297,9 +298,24 @@ export type QuickEntryData =
   | { form: "unavailable"; message: string };
 
 export async function loadQuickEntry(
-  form: QuickEntryForm
+  form: QuickEntryForm,
+  // The sheet's chosen subject (#4932) — present when the title-row chip names
+  // someone other than the acting profile. ONE GATE for it: an explicit non-acting
+  // subject is write-checked exactly like a posted write is
+  // (gateSubjectProfile → requireProfileWriteAccess), so a login can gather for a
+  // profile no more than it could post to it. Absent or equal to the acting profile,
+  // this stays the acting-profile read requireSession() below already allowed —
+  // every WRITE the mounted forms post still re-gates itself through
+  // gateItemProfile, which is what keeps this a read-only allowlist entry in
+  // actions-write-access.test.ts.
+  subjectProfileId?: number
 ): Promise<QuickEntryData> {
-  const { login, profile } = await requireSession();
+  const { login, profile: actingProfile } = await requireSession();
+  const profileId =
+    subjectProfileId != null && subjectProfileId !== actingProfile.id
+      ? await gateSubjectProfile(subjectProfileId)
+      : actingProfile.id;
+  const profile = { id: profileId };
   const date = today(profile.id);
 
   if (form === "food") {
@@ -366,9 +382,25 @@ export async function loadQuickEntry(
     // row exists because "the web app made you find /wellness first"). The empty list
     // IS the bootstrap state, so it is a `practice` payload and the list component
     // renders the create form in it.
+    //
+    // #4932 invariant 2: the bootstrap CREATE (`savePractice`) is a first-class
+    // definition row and, like the #4693 census found for creates generally, is not
+    // yet subject-following — it always writes the ACTING profile. Rendering it for
+    // a chosen non-acting subject with nothing tracked would silently create the
+    // practice on the wrong person, so that one shape earns the unavailable state;
+    // logging an EXISTING tracked practice does not (`logPractice` already follows
+    // the subject through `gateItemProfile`).
+    const practices = getTrackedPractices(profile.id, date);
+    if (practices.length === 0 && subjectProfileId != null && subjectProfileId !== actingProfile.id) {
+      return {
+        form: "unavailable",
+        message:
+          "This profile has no tracked practices yet. Switch to it to start one.",
+      };
+    }
     return {
       form: "practice",
-      practices: getTrackedPractices(profile.id, date),
+      practices,
       today: date,
     };
   }
@@ -408,6 +440,20 @@ export async function loadQuickEntry(
   }
 
   if (form === "cycle") {
+    // #4932 invariant 2 (full subject-keyed context, or no door): the cycle writes
+    // (start/end/reopen, medical/cycles/actions.ts) are documented there as
+    // DECLARATIONS BY THE ACTING PROFILE, deliberately gated on the session's active
+    // profile rather than a posted subject — a different shape from a record
+    // correction, and this issue does not change that shape. A chip naming someone
+    // else would render a button that silently logged the WRONG person's period, so
+    // the form shows the unavailable state instead of a partial, misleading one.
+    if (subjectProfileId != null && subjectProfileId !== actingProfile.id) {
+      return {
+        form: "unavailable",
+        message:
+          "Period logging is a declaration by the profile acting — switch to this profile to log it.",
+      };
+    }
     // Relevance-gated server-side on the SAME `cycle` bit as the sheet row, the Cycle
     // nav entry, and the dashboard presentation — so a hand-written `?quick=log-period` deep
     // link cannot reach the offer on a profile the domain does not apply to.

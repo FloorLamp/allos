@@ -31,6 +31,7 @@ export default function QuickPracticeList({
   practices,
   today,
   onDone,
+  subjectProfileId,
 }: {
   practices: TrackedPractice[];
   // The acting profile's today (YYYY-MM-DD) — the day the counts are counting, and
@@ -39,6 +40,10 @@ export default function QuickPracticeList({
   // Dismisses the sheet. Used ONLY by the zero-state create branch below — the
   // logging branch deliberately stays open (see the paragraph above).
   onDone?: () => void;
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting profile.
+  // The gather (`loadQuickEntry`) refuses the zero-state create for a non-acting
+  // subject, so this is only ever passed alongside a non-empty `practices`.
+  subjectProfileId?: number;
 }) {
   // ZERO STATE: the first practice is offered here (#3066). The /wellness nav row is
   // hidden until practice state exists (#1620, correct), and every other door onto
@@ -104,6 +109,7 @@ export default function QuickPracticeList({
               liveSession={practice.liveSession}
               inlineDuration
               inlineWhen
+              subjectProfileId={subjectProfileId}
             />
           </div>
         </li>

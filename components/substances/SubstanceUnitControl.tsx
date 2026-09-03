@@ -33,6 +33,7 @@ export default function SubstanceUnitControl({
   capProgress,
   capAttention = false,
   testIdPrefix,
+  subjectProfileId,
 }: {
   substance: string;
   weekCount?: number;
@@ -40,6 +41,10 @@ export default function SubstanceUnitControl({
   capAttention?: boolean;
   /** `substance` on the record's card, `quick-entry-substance` in the sheet. */
   testIdPrefix: string;
+  // The quick-log sheet's chosen subject (#4932), when it is not the acting
+  // profile. Posted as `profile_id` and re-gated by the action's own
+  // `gateItemProfile` call.
+  subjectProfileId?: number;
 }) {
   const ledger = useOptimisticLedger("substance-unit");
   const stampLoggedVia = useLoggedViaStamp();
@@ -56,6 +61,8 @@ export default function SubstanceUnitControl({
       write: () => {
         const fd = stampLoggedVia(new FormData());
         fd.set("substance", substance);
+        if (subjectProfileId != null)
+          fd.set("profile_id", String(subjectProfileId));
         return kind === "log"
           ? logSubstanceUnitAction(fd)
           : undoSubstanceUnitAction(fd);

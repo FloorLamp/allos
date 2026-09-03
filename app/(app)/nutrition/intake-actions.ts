@@ -1423,10 +1423,15 @@ export type ResolveDayDosesResult =
 export async function resolveDayDoses(
   formData: FormData
 ): Promise<ResolveDayDosesResult> {
-  const { profile } = await requireWriteAccess();
+  // #4429: the day-ledger and the quick-log sheet's past-day switcher both post a
+  // FOUND row for whichever profile is on screen, which may not be the acting one —
+  // `markTaken`'s per-row arm already crosses this boundary, this bulk sibling did
+  // not. `gateItemProfile` is the app's one answer to "which profile is this write
+  // for" (posted `profile_id` → requireProfileWriteAccess, absent → acting).
+  const profileId = await gateItemProfile(formData);
   const date = String(formData.get("date") ?? "");
   const status = String(formData.get("status") ?? "");
-  const localToday = today(profile.id);
+  const localToday = today(profileId);
   if (
     !isRealIsoDate(date) ||
     !doseLogDays(localToday).includes(date) ||
@@ -1448,7 +1453,7 @@ export async function resolveDayDoses(
   // to infer it from the minute they happened to land in. Only the taken arm carries
   // one — a skip is its own statement and never joins a collapsed row.
   const bundleId = newDoseBundle();
-  const doses = pendingDayDoses(profile.id, date)
+  const doses = pendingDayDoses(profileId, date)
     .filter((dose) => named.has(dose.doseId))
     .map((dose) => ({
       doseId: dose.doseId,
@@ -1456,7 +1461,7 @@ export async function resolveDayDoses(
       outcome:
         status === "taken"
           ? markDoseTaken(
-              profile.id,
+              profileId,
               dose.doseId,
               dose.itemId,
               date,
@@ -1468,7 +1473,7 @@ export async function resolveDayDoses(
               }
             )
           : markDoseSkipped(
-              profile.id,
+              profileId,
               dose.doseId,
               dose.itemId,
               date,
