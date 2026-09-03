@@ -22,8 +22,9 @@
 // Fixtures are synthetic throwaway rows (per-file temp DB). No PHI.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { db, today } from "@/lib/db";
-import { utcMinute, utcInstant } from "@/lib/date";
+import { utcInstant } from "@/lib/date";
 import { setTimezone } from "@/lib/settings";
 import { getMedicationFamilyStates } from "@/lib/queries/intake/prn-family";
 import { getPrnOverMaxItems } from "@/lib/queries";
@@ -97,9 +98,10 @@ function logAdministration(
 }
 
 function countFor(profileId: number, itemId: number): number {
-  return getMedicationFamilyStates(profileId, utcMinute(new Date())).get(
-    itemId
-  )!.countInWindow;
+  return getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(new Date())
+  ).get(itemId)!.countInWindow;
 }
 
 function cardLine(profileId: number, itemId: number): string | null {
@@ -138,7 +140,7 @@ describe("the ceiling counts the trailing 24 hours, not a calendar day (#4686)",
     // And the over-max care finding rides the same count: a sixth is over.
     logAdministration(itemId, doseId, "2026-09-03", "2026-09-03T09:00:00Z");
     expect(
-      getPrnOverMaxItems(p, utcMinute(new Date())).map((o) => o.id)
+      getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date())).map((o) => o.id)
     ).toContain(itemId);
   });
 
@@ -186,8 +188,14 @@ describe("an untimed administration is anchored at local noon of its own day", (
     // tz, row date, expected count
     ["UTC", "2026-09-03", 1], // today, before local noon → in
     ["UTC", "2026-09-02", 1], // yesterday, local noon is 21h ago → in
+    ["UTC", "2026-09-01", 0], // two days back, local noon is 45h ago → out
     ["Pacific/Kiritimati", "2026-09-03", 1], // today (local), noon 11h ago → in
     ["Pacific/Kiritimati", "2026-09-02", 0], // yesterday (local), noon 35h ago → out
+    // A day that has NOT HAPPENED. `isDoseDateAccepted` admits a day either side of
+    // today, so a row dated tomorrow is writable, and two writers pass `takenAt: null`
+    // for any non-today date — an untimed row filed under a future day is reachable and
+    // is not inside the last 24 hours by any reading.
+    ["UTC", "2026-09-04", 0],
   ] as const)("%s, dated %s → %i", (tz, date, expected) => {
     const p = seedProfile(`Untimed-${tz}-${date}`, tz);
     const { itemId, doseId } = seedPrnMed(p, "Acetaminophen");

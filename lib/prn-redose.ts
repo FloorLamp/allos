@@ -32,7 +32,7 @@ import {
   dateStrInTz,
   parseUtcSql,
   shiftDateStr,
-  utcMinute,
+  utcInstant,
   zonedWallTimeToUtc,
 } from "./date";
 import {
@@ -55,15 +55,30 @@ export const PRN_MAX_PREFIX = "prn-max:";
 // The interval half is untouched and stays instant-based: "how long since the last
 // dose" is a duration and never needed a window.
 export const PRN_CEILING_WINDOW_HOURS = 24;
+const CEILING_WINDOW_MINUTES = PRN_CEILING_WINDOW_HOURS * 60;
 
-// The instant the ceiling window opens, TRUNCATED TO ITS MINUTE. The truncation is
-// what lets the several gathers in one render agree on a memo key (the family-state
-// gather is memoized per request and per tick, #2111) without any of them having to
-// share a `now`; it widens the window by under a minute, which no ceiling can feel.
-export function prnCeilingWindowStart(now: Date): string {
-  return utcMinute(
-    new Date(now.getTime() - PRN_CEILING_WINDOW_HOURS * 3_600_000)
-  );
+// THE INSTANT THE WINDOW ENDS, AS THE MINUTES-SINCE-EPOCH THE GATHERS TAKE.
+//
+// A NUMBER, and that is load-bearing twice over.
+//
+// It has to be a PRIMITIVE because the family-state gather is memoized per request
+// with React's `cache`, which keys on ARGUMENT IDENTITY (#2111) — a `Date` would
+// miss on every call. And it has to be TRUNCATED because the several gathers that
+// render together each take their own `now`; at minute resolution they agree, and the
+// window is widened by under a minute, which no ceiling can feel.
+//
+// It has to be a NUMBER rather than a canonical instant string because these gathers
+// used to take the profile-local `date`. Same type, different meaning is how a stale
+// call site goes on compiling while silently asking for a ~48-hour window; a number
+// makes every one of them a compile error instead. Do not widen this back to `string`.
+export function ceilingWindowEndMinute(now: Date): number {
+  return Math.floor(now.getTime() / 60_000);
+}
+
+// The instant the ceiling window opens, as a canonical instant to compare `occurred_at`
+// against.
+export function prnCeilingWindowStart(nowMinute: number): string {
+  return utcInstant(new Date((nowMinute - CEILING_WINDOW_MINUTES) * 60_000));
 }
 
 // WHERE A ROW THAT STATES NO ADMINISTRATION INSTANT SITS IN THAT WINDOW.
@@ -75,11 +90,16 @@ export function prnCeilingWindowStart(now: Date): string {
 // EARLIEST `date` whose local noon is not before the window start — the exact floor a
 // `l.date >= ?` comparison needs, since noon is monotonic in the date.
 //
-// There is deliberately NO upper bound. Local noon of TODAY is in the future until
-// midday, so a bounded rule would drop a dose logged this morning out of the ceiling
-// for the first half of every day — a count that reads LOWER than the calendar-day one
-// it replaced, on the safety line. An unplaced row cannot be placed after `now` either,
-// so treating it as inside is both the safe reading and the simple one.
+// The floor is what an unplaced row needs; the CAP is profile-local today, and the two
+// are not symmetric. Local noon of TODAY is in the future until midday, so capping by
+// the anchor would drop a dose logged this morning out of the ceiling for the first
+// half of every day — a count LOWER than the calendar-day one it replaced, on the
+// safety line. Capping by the row's own DAY has no such cost: `isDoseDateAccepted`
+// admits a day either side of today, and two writers pass `takenAt: null` for any
+// non-today date, so a row dated TOMORROW is writable — and an administration nobody
+// timed, filed under a day that has not happened, is not inside the last 24 hours by
+// any reading. Latent rather than live (no surface offers a future day today), and
+// free to close.
 //
 // This anchor is for the COUNT only. Nothing here feeds the interval clock: an elapsed
 // time computed from a placeholder is how a safety line says "Redose OK" for a dose

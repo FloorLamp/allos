@@ -1,4 +1,4 @@
-import { shiftDateStr, utcMinute } from "../../date";
+import { shiftDateStr } from "../../date";
 import { now as clockNow } from "../../clock";
 import {
   doseDueOn,
@@ -72,7 +72,7 @@ import {
   getMedMonitoringItems,
   getPrnOverMaxItems,
 } from "../intake";
-import { prnMaxSignalKey } from "../../prn-redose";
+import { ceilingWindowEndMinute, prnMaxSignalKey } from "../../prn-redose";
 import { prnOverMaxDetail } from "../../redose-format";
 import {
   dietaryLimitSignalKey,
@@ -507,17 +507,22 @@ export function dietaryLimitItems(
 // is confirmed and every administration's snapshotted amount parses, the verdict
 // is summed MILLIGRAMS ("2400 mg … max of 1200 mg in 24h"); the administration
 // count is the fallback basis, and prnOverMaxDetail states whichever was used.
-export function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
-  return getPrnOverMaxItems(profileId, utcMinute(clockNow())).map((m) => ({
-    key: prnMaxSignalKey(m.id),
-    domain: "prn-max" as const,
-    title: `${m.name} — over your 24-hour max`,
-    detail: prnOverMaxDetail(m),
-    href: MEDICATIONS_HREF,
-    dueDate: null,
-    band: "today" as const,
-    dueText: "Review",
-  }));
+// NO `today` PARAMETER, unlike every other builder here: since #4686 this one is not
+// about a day. Its window ends at the current instant and starts 24 hours earlier, so
+// there is no day for a caller to name.
+export function prnMaxItems(profileId: number): UpcomingItem[] {
+  return getPrnOverMaxItems(profileId, ceilingWindowEndMinute(clockNow())).map(
+    (m) => ({
+      key: prnMaxSignalKey(m.id),
+      domain: "prn-max" as const,
+      title: `${m.name} — over your 24-hour max`,
+      detail: prnOverMaxDetail(m),
+      href: MEDICATIONS_HREF,
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Review",
+    })
+  );
 }
 
 // Known drug-/supplement-interactions among the profile's ACTIVE stack (issue #144).

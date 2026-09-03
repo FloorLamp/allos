@@ -13,6 +13,7 @@
 // Every value is synthetic (fake meds + a fake HA webhook URL; no phones, no PHI).
 
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { db, today } from "@/lib/db";
 import { setProfileHomeAssistant, getProfileSetting } from "@/lib/settings";
 import { utcSqlString } from "@/lib/date";
@@ -148,7 +149,10 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     logAdmin(otc.itemId, otc.doseId, date, 8, now);
     const rxAdmin = logAdmin(rx.itemId, rx.doseId, date, 1, now);
 
-    const states = getMedicationFamilyStates(p, date);
+    const states = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    );
     const state = states.get(otc.itemId)!;
     expect(state).toBeTruthy();
     expect(states.get(rx.itemId)!.familyKey).toBe(state.familyKey);
@@ -165,7 +169,10 @@ describe("getMedicationFamilyStates — the two-ibuprofen family (#1027)", () =>
     const p = newProfile("FamUnrelated");
     seedIbuprofenPair(p);
     const other = seedMed(p, "Acetaminophen");
-    const states = getMedicationFamilyStates(p, today(p));
+    const states = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    );
     expect(states.get(other.itemId)!.memberIds).toEqual([other.itemId]);
   });
 });
@@ -235,7 +242,7 @@ describe("family over-max care finding (#1027)", () => {
     for (const h of [12, 10, 8]) logAdmin(otc.itemId, otc.doseId, date, h, now);
     for (const h of [6, 2]) logAdmin(rx.itemId, rx.doseId, date, h, now);
 
-    const items = getPrnOverMaxItems(p, date);
+    const items = getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()));
     expect(items).toHaveLength(1);
     expect(items[0].id).toBe(otc.itemId); // anchored on the confirmed-max member
     expect(items[0].basis).toBe("count"); // no mg max confirmed → count fallback
@@ -266,7 +273,7 @@ describe("family over-max care finding (#1027)", () => {
     const date = today(p);
     logAdmin(itemId, doseId, date, 10, now);
     logAdmin(itemId, doseId, date, 2, now);
-    const items = getPrnOverMaxItems(p, date);
+    const items = getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()));
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       id: itemId,
@@ -307,7 +314,10 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     for (const h of [10, 6, 2])
       logAdmin(rx.itemId, rx.doseId, date, h, now, "800 mg");
 
-    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    const state = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    ).get(otc.itemId)!;
     expect(state.minConfirmedMaxMg).toBe(1200);
     expect(state.exposure).toMatchObject({
       basis: "mg",
@@ -317,7 +327,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
       unknownAmounts: 0,
     });
 
-    const items = getPrnOverMaxItems(p, date);
+    const items = getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()));
     expect(items).toHaveLength(1);
     // Anchored on the member holding the binding mg max; the key namespace is the
     // registered `prn-max:` finding prefix (dismiss bus + suppression registry).
@@ -350,14 +360,19 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     for (const h of [12, 10, 8, 5, 2])
       logAdmin(otc.itemId, otc.doseId, date, h, now, "200 mg");
 
-    const state = getMedicationFamilyStates(p, date).get(otc.itemId)!;
+    const state = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    ).get(otc.itemId)!;
     expect(state.exposure).toMatchObject({
       basis: "mg",
       total: 1000,
       max: 1200,
       over: false,
     });
-    expect(getPrnOverMaxItems(p, date)).toHaveLength(0);
+    expect(
+      getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()))
+    ).toHaveLength(0);
   });
 
   it("count remains the fallback when an administration's amount doesn't parse", () => {
@@ -372,7 +387,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
       logAdmin(otc.itemId, otc.doseId, date, h, now, "200 mg");
     logAdmin(rx.itemId, rx.doseId, date, 2, now, "1 tablet"); // unparseable
 
-    const items = getPrnOverMaxItems(p, date);
+    const items = getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()));
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ basis: "count", total: 5, max: 4 });
     const up = collectUpcoming(p, date).find(
@@ -395,7 +410,7 @@ describe("family over-max care finding — mg basis (#1854)", () => {
     logAdmin(rx.itemId, rx.doseId, date, 4, now, "800 mg");
     logAdmin(otc.itemId, otc.doseId, date, 2, now, "1 tablet"); // unknown mg
 
-    const items = getPrnOverMaxItems(p, date);
+    const items = getPrnOverMaxItems(p, ceilingWindowEndMinute(new Date()));
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       basis: "mg",
@@ -476,7 +491,10 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
     const date = today(p);
     logAdmin(a1.itemId, a1.doseId, date, 8, now);
     const arming = logAdmin(a2.itemId, a2.doseId, date, 1, now);
-    const state = getMedicationFamilyStates(p, date).get(a3.itemId)!;
+    const state = getMedicationFamilyStates(
+      p,
+      ceilingWindowEndMinute(new Date())
+    ).get(a3.itemId)!;
     expect(state.memberIds.sort()).toEqual(
       [a1.itemId, a2.itemId, a3.itemId].sort()
     );

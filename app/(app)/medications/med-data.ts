@@ -34,7 +34,11 @@ import {
   getEffectiveActiveSituations,
 } from "@/lib/queries";
 import { loadIntakeFormContext } from "@/lib/intake-form-context";
-import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
+import {
+  ceilingWindowEndMinute,
+  effectiveMaxDailyCount,
+  redoseWindowStatus,
+} from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { prnQuickLogRedoseStatus } from "@/lib/prn-redose";
@@ -61,7 +65,7 @@ import {
   type MedicationListRow,
 } from "@/lib/medication-list";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
-import { lastNDates, zonedDateParts, parseUtcSql, utcMinute } from "@/lib/date";
+import { lastNDates, zonedDateParts, parseUtcSql } from "@/lib/date";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -336,7 +340,7 @@ export function loadMedicationsData(
   // instant rather than the day; the per-item day label below still reads `todayStr`.
   const familyStates = getMedicationFamilyStates(
     profileId,
-    utcMinute(nowInstant)
+    ceilingWindowEndMinute(nowInstant)
   );
   const prnInfoFor = (
     s: IntakeItem

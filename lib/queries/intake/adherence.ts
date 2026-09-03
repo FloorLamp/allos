@@ -17,13 +17,7 @@ import {
   type ItemCadence,
 } from "../../intake-cadence";
 import { instantNow, now as clockNow } from "../../clock";
-import {
-  shiftDateStr,
-  dateStrInTz,
-  utcInstant,
-  utcMinute,
-  parseUtcSql,
-} from "../../date";
+import { shiftDateStr, dateStrInTz, utcInstant, parseUtcSql } from "../../date";
 import { getTimezone, setProfileSetting } from "../../settings";
 import { escalationMarkerKey } from "../../notifications/escalation-keys";
 import {
@@ -49,6 +43,7 @@ import {
   getMedicationFamilyStates,
   redoseWindowState,
 } from "./prn-family";
+import { ceilingWindowEndMinute } from "../../prn-redose";
 import type { PrnDayExposure, PrnExposureBasis } from "../../prn-redose";
 import type {
   AdministrationOutcome,
@@ -372,45 +367,32 @@ function applyDoseStatusCore(
     // actually taken even after a later dosage edit rewrites the dose row. A skip
     // records no amount — nothing was consumed.
     const amount = target === "taken" ? owned.amount : null;
-
-    // `recorded_at` is immutable capture; `occurred_at` is the administration the
-    // Taken action asserts. An offline replay may carry the captured administration
-    // instant; an unusable value costs only that precision and falls back to the app
-    // clock. A skip records the action but asserts no administration.
-    //
-    // ONE ANSWER FOR BOTH ARMS (#4779). This used to be computed only for the INSERT,
-    // and the UPDATE below wrote a bare `instantNow()` — so an explicit
-    // `takenAt: null` was honoured on a first tap and silently ignored on a flip, and
-    // a skipped→taken flip on a PAST day stamped today's instant onto a row dated
-    // days ago. Same statement, same answer, whichever arm runs.
-    const capturedAt = clockNow();
-    const explicitlyUntimed = opts.takenAt === null;
-    const stamp = opts.takenAt
-      ? resolveQueuedTakenAt(
-          opts.takenAt,
-          getTimezone(profileId),
-          date,
-          // The APP's now (#2312), not a bare `new Date()`. This used to read
-          // real time on the reasoning that a client capture and the server's
-          // clock are two independent REAL clocks — the same reasoning the food
-          // path carried until #2287 overturned it. The guard's OTHER half
-          // already compares against `date`, which came from `today()`, i.e.
-          // from this seam: a predicate whose two halves read two different
-          // clocks is not one predicate. And under the e2e freeze the capture
-          // and the seam are the same frozen instant, so real time refuses a
-          // seconds-old stamp as hours in the future and the dose silently
-          // loses its captured minute. Inert in production, where the seam IS
-          // real time, so a genuinely fast device is still refused.
-          capturedAt
-        )
-      : null;
-    // The instant this row states it was administered, or NULL when it states none.
-    const occurredAt =
-      target === "taken" && !explicitlyUntimed
-        ? utcInstant(stamp ?? capturedAt)
-        : null;
-
     if (!existing) {
+      // `recorded_at` is immutable capture; `occurred_at` is the administration the
+      // Taken action asserts. An offline replay may carry the captured administration
+      // instant; an unusable value costs only that precision and falls back to the app
+      // clock. A skip records the action but asserts no administration.
+      const capturedAt = clockNow();
+      const explicitlyUntimed = opts.takenAt === null;
+      const stamp = opts.takenAt
+        ? resolveQueuedTakenAt(
+            opts.takenAt,
+            getTimezone(profileId),
+            date,
+            // The APP's now (#2312), not a bare `new Date()`. This used to read
+            // real time on the reasoning that a client capture and the server's
+            // clock are two independent REAL clocks — the same reasoning the food
+            // path carried until #2287 overturned it. The guard's OTHER half
+            // already compares against `date`, which came from `today()`, i.e.
+            // from this seam: a predicate whose two halves read two different
+            // clocks is not one predicate. And under the e2e freeze the capture
+            // and the seam are the same frozen instant, so real time refuses a
+            // seconds-old stamp as hours in the future and the dose silently
+            // loses its captured minute. Inert in production, where the seam IS
+            // real time, so a genuinely fast device is still refused.
+            capturedAt
+          )
+        : null;
       db.prepare(
         `INSERT INTO intake_item_logs
            (dose_id, item_id, date, amount, status, recorded_at, occurred_at,
@@ -423,13 +405,16 @@ function applyDoseStatusCore(
         amount,
         target,
         utcInstant(capturedAt),
-        occurredAt,
+        target === "taken" && !explicitlyUntimed
+          ? utcInstant(stamp ?? capturedAt)
+          : null,
         opts.notifyMessageId ?? null,
         loggedVia,
         opts.bundleId ?? null
       );
     } else {
-      // The immutable record stamp stays put; only what the row STATES can change.
+      // The immutable record stamp stays put. The explicit target owns whether this row
+      // states an administration: taken means now, skipped means none.
       db.prepare(
         `UPDATE intake_item_logs
             SET status = ?, amount = ?, supply_adjusted = ?, occurred_at = ?
@@ -438,7 +423,7 @@ function applyDoseStatusCore(
         target,
         amount,
         target === "taken" ? 1 : 0,
-        occurredAt,
+        target === "taken" ? instantNow() : null,
         doseId,
         date
       );
@@ -1776,8 +1761,8 @@ export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
 // The arming state for one PRN item's redose one-shot: the latest administration's id
 // + its intake time (arms/re-arms the timer, keyed by id per the notify_last_*
 // discipline) and the TRAILING-24h administration count (drives the "N of M" + max
-// suppression, #4686). Profile-scoped via the parent item. `nowUtc` is the instant the
-// ceiling window ends, and the count reads the same one predicate the family gather
+// suppression, #4686). Profile-scoped via the parent item. `nowMinute` is the instant
+// the ceiling window ends, and the count reads the same one predicate the family gather
 // does — the two must never disagree about what is inside the window.
 export interface RedoseArmingState {
   latestId: number | null;
@@ -1788,7 +1773,7 @@ export interface RedoseArmingState {
 export function getRedoseArmingState(
   profileId: number,
   itemId: number,
-  nowUtc: string
+  nowMinute: number
 ): RedoseArmingState {
   // The most-recent administration (by intake time, id as tiebreak) that arms the
   // one-shot. Scoped through the parent item so a forged itemId can't read across
@@ -1813,7 +1798,7 @@ export function getRedoseArmingState(
         WHERE s.profile_id = ? AND l.item_id = ?
           AND l.status = 'taken' AND ${CEILING_WINDOW_SQL}`
     )
-    .get(profileId, itemId, ...ceilingWindowBounds(profileId, nowUtc)) as {
+    .get(profileId, itemId, ...ceilingWindowBounds(profileId, nowMinute)) as {
     n: number;
   };
   return {
@@ -1861,11 +1846,11 @@ export interface PrnOverMaxItem {
 
 export function getPrnOverMaxItems(
   profileId: number,
-  nowUtc: string
+  nowMinute: number
 ): PrnOverMaxItem[] {
   const out: PrnOverMaxItem[] = [];
   const seenFamilies = new Set<string>();
-  const states = getMedicationFamilyStates(profileId, nowUtc);
+  const states = getMedicationFamilyStates(profileId, nowMinute);
   // Anchor selection needs each member's own confirmed maxes + PRN flag; re-read
   // the active PRN-configured meds once (profile-scoped). Either ceiling form
   // (count or mg/day, #1854) makes an item "configured".
@@ -1993,7 +1978,10 @@ function getPrnQuickLogItems(
     | "familyExposure"
     | "familyMemberCount"
   >[];
-  const families = getMedicationFamilyStates(profileId, utcMinute(clockNow()));
+  const families = getMedicationFamilyStates(
+    profileId,
+    ceilingWindowEndMinute(clockNow())
+  );
   return rows.map((r) => {
     const fam = families.get(r.id);
     return {

@@ -14,10 +14,12 @@ import { workerDbPath } from "./worker-env";
 // the Medications card and the dashboard presentation render the status line. The add-form
 // test drives the confirm flow: pre-fill the label defaults, opt in, save.
 //
-// #868 fixture ownership: the "N of 4 in 24h" count is a SHARED-seed tally whose exact
-// value drifts near the day boundary (the seeded "~7h ago" administration rolls onto
-// yesterday when the suite runs in the early morning, so today's count is 0), so these
-// specs assert the count PATTERN (`/\d of 4 in 24h/`) and the max, never a pinned "1 of 4".
+// #868 fixture ownership: the "N of 4 in 24h" count is a SHARED-seed tally that other
+// specs add to, so these specs assert the count PATTERN (`/\d of 4 in 24h/`) and the
+// max, never a pinned "1 of 4". The day-boundary drift this note used to describe —
+// the seeded "~7h ago" administration rolling onto yesterday's `date` in the early
+// morning and dropping the count to 0 — is gone since #4686: the ceiling counts the
+// trailing 24 HOURS, so a 7-hour-old dose is inside it at every hour of the day.
 // The add-form test creates its own uniquely-named med each run and DB-cleans it in
 // afterAll, so a --repeat-each run neither collides on the row nor leaves an
 // ibuprofen med behind to skew the neighbor interaction specs.

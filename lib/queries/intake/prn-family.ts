@@ -32,7 +32,7 @@ import {
   familyDisplayLabel,
   type MedicationFamily,
 } from "../../medication-family";
-import { parseUtcSql } from "../../date";
+import { dateStrInTz } from "../../date";
 import {
   prnCeilingWindowStart,
   prnDayExposure,
@@ -169,31 +169,30 @@ export function redoseWindowState(
 //     lexicographically in chronological order, so no `strftime`/`CAST` is needed and
 //     the epoch-width trap that comes with one cannot arise.
 //   • `occurred_at` NULL — the row states no instant, so it is placed by profile-local
-//     NOON of its own `date` (see `prnUntimedDateFloor`, which turns that anchor into
-//     the one `date` floor this comparison needs).
-//
-// Deliberately UNBOUNDED above: see `prnUntimedDateFloor` for why a row dated today
-// must count before local noon, and why an unplaced row is read as inside.
+//     NOON of its own `date`, between a floor (`prnUntimedDateFloor`) and profile-local
+//     today. The two bounds are not symmetric; `prnUntimedDateFloor` says why.
 export const CEILING_WINDOW_SQL =
   "((l.occurred_at IS NOT NULL AND l.occurred_at >= ?)" +
-  " OR (l.occurred_at IS NULL AND l.date >= ?))";
+  " OR (l.occurred_at IS NULL AND l.date >= ? AND l.date <= ?))";
 
-// The two bind parameters `CEILING_WINDOW_SQL` takes, in order. `nowUtc` is a
-// canonical instant; an unreadable one is refused rather than silently producing a
-// window that matches everything (the `localDaySpan` precedent).
+// The three bind parameters `CEILING_WINDOW_SQL` takes, in order. `nowMinute` is
+// minutes since the epoch (`ceilingWindowEndMinute`), never a date string — see that
+// function for why the type carries the distinction.
 export function ceilingWindowBounds(
   profileId: number,
-  nowUtc: string
-): [string, string] {
-  const now = parseUtcSql(nowUtc);
-  if (!now)
-    throw new Error(`ceilingWindowBounds: unreadable instant ${nowUtc}`);
-  const start = prnCeilingWindowStart(now);
-  return [start, prnUntimedDateFloor(getTimezone(profileId), start)];
+  nowMinute: number
+): [string, string, string] {
+  const tz = getTimezone(profileId);
+  const start = prnCeilingWindowStart(nowMinute);
+  return [
+    start,
+    prnUntimedDateFloor(tz, start),
+    dateStrInTz(tz, new Date(nowMinute * 60_000)),
+  ];
 }
 
 // Family safety state for every ACTIVE medication item, keyed by ITEM id (one
-// shared state object per family). `nowUtc` is the instant the CEILING WINDOW ends
+// shared state object per family). `nowMinute` is the instant the CEILING WINDOW ends
 // — the trailing 24 hours (#4686), not a calendar day, because every ceiling this
 // state feeds cites a label figure stated per 24 hours. Two small queries per family
 // (latest arming administration + the window's combined count), profile-scoped
@@ -207,9 +206,14 @@ export function ceilingWindowBounds(
 // gather) — where `cache()` is identity.
 //
 //   • `cache()` — collapses the per-render fan-out, the #2094 shape, keyed
-//     (profileId, nowUtc) as primitives so identity actually matches. `nowUtc` is
-//     minute-truncated by `prnCeilingWindowStart`, which is what lets two gathers
-//     that took their own `now` still land on one key.
+//     (profileId, nowMinute) as primitives so identity actually matches. The key is
+//     the caller's argument verbatim, so the collapse is only as good as the
+//     agreement between callers: `ceilingWindowEndMinute` truncates to the minute, so
+//     two gathers that took their own `now` agree WITHIN a minute and pay for the
+//     gather twice across a minute boundary. That is a cost, not a correctness bound —
+//     the count is a read, and either minute is an honest answer. `loadMedicationsData`
+//     is the live example: it reads its own `nowInstant` while the quick-log gather
+//     inside it reads `clockNow()`.
 //   • `tickCached` — the same collapse for the tick, whose scope
 //     `scripts/notify.ts` opens per profile (lib/tick-cache.ts).
 //
@@ -222,22 +226,22 @@ export function ceilingWindowBounds(
 const getMedicationFamilyStatesForRequest = cache(
   tickCached(
     "getMedicationFamilyStates",
-    (profileId: number, nowUtc: string) => `${profileId}:${nowUtc}`,
+    (profileId: number, nowMinute: number) => `${profileId}:${nowMinute}`,
     getMedicationFamilyStatesUncached
   )
 );
 export const getMedicationFamilyStates = snapshotCached(
   "intake.medication-family-states",
-  (profileId: number, nowUtc: string) => `${profileId}:${nowUtc}`,
+  (profileId: number, nowMinute: number) => `${profileId}:${nowMinute}`,
   getMedicationFamilyStatesForRequest
 );
 
 function getMedicationFamilyStatesUncached(
   profileId: number,
-  nowUtc: string
+  nowMinute: number
 ): Map<number, MedFamilyState> {
   const out = new Map<number, MedFamilyState>();
-  const window = ceilingWindowBounds(profileId, nowUtc);
+  const window = ceilingWindowBounds(profileId, nowMinute);
   for (const family of getActiveMedicationFamilies(profileId)) {
     const ids = family.members.map((m) => m.id);
     const placeholders = ids.map(() => "?").join(", ");

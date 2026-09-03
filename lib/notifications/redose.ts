@@ -32,11 +32,11 @@ import {
   getRedoseArmingState,
   getMedicationFamilyStates,
 } from "../queries";
-import { redoseNoticeDecision } from "../prn-redose";
+import { ceilingWindowEndMinute, redoseNoticeDecision } from "../prn-redose";
 import { redoseNoticeMessage } from "../redose-format";
 import { formatGivenAtNoticeTime } from "../administration-format";
 import { getProfileSetting, setProfileSetting, getTimezone } from "../settings";
-import { parseUtcSql, utcMinute } from "../date";
+import { parseUtcSql } from "../date";
 import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
@@ -82,8 +82,8 @@ export async function runRedoseNotices(
   // members. The per-item one-shot marker semantics are unchanged — the notice
   // still belongs to this item, keyed by the arming administration id (a sibling's
   // id works identically: ids are ledger-global and never recycle).
-  const nowUtc = utcMinute(now);
-  const families = getMedicationFamilyStates(profileId, nowUtc);
+  const nowMinute = ceilingWindowEndMinute(now);
+  const families = getMedicationFamilyStates(profileId, nowMinute);
 
   let failed = false;
   for (const item of items) {
@@ -91,7 +91,7 @@ export async function runRedoseNotices(
     const arming = fam ?? {
       // A notice item is always an active med, so it's always in the family map;
       // this per-item fallback only guards a race with a just-paused item.
-      ...getRedoseArmingState(profileId, item.id, nowUtc),
+      ...getRedoseArmingState(profileId, item.id, nowMinute),
       latestItemId: null as number | null,
       latestItemName: null as string | null,
       minConfirmedMax: null as number | null,

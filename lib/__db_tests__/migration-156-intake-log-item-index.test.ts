@@ -18,9 +18,10 @@
 // only (fake meds; no PHI).
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { ceilingWindowEndMinute } from "@/lib/prn-redose";
 import { db, today } from "@/lib/db";
 import { getMedicationFamilyStates } from "@/lib/queries";
-import { utcInstant, utcMinute } from "@/lib/date";
+import { utcInstant } from "@/lib/date";
 
 const INDEX = "idx_intake_log_item_recorded";
 
@@ -135,7 +136,7 @@ describe("the (item_id, best administration instant) index", () => {
   it("still finds the SAME arming administration — an index changes cost, not answers", () => {
     const state = getMedicationFamilyStates(
       profileId,
-      utcMinute(new Date())
+      ceilingWindowEndMinute(new Date())
     ).get(itemId);
     expect(state?.latestId).toBe(newestId);
     // ONE of the thirty, and that is the point of #4686's window: every row here is
