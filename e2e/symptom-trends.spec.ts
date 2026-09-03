@@ -127,7 +127,10 @@ test.describe("symptom trends (#1852)", () => {
   // symptom card; that card retired when the day view's symptom entry became the Add
   // past row's door, and the bar now reaches this page from the surfaces that still
   // mount it. The dashboard's illness cockpit is the nearest of those — it is the
-  // sick-day surface the ruling names — and the assertion below is unchanged.
+  // sick-day surface the ruling names — and the assertion below is unchanged. The
+  // cockpit draws here because the shared seed gives profile 1 an OPEN illness episode
+  // (e2e/seed/illness.ts): if that ever stops being true this test loses its bar, so
+  // the dependency is named rather than left to be rediscovered from a bare timeout.
   test("the bar links to the analysis", async ({ page }) => {
     const db = openDb();
     try {
