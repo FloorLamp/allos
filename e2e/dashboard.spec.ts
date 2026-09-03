@@ -1008,7 +1008,7 @@ test("no row on the dashboard draws an identity icon, and the severity marks sta
       // class string.
       paint: await value
         .locator("span")
-        .first()
+        .first() // first-ok: MedicalValue's own paint span, inside a row addressed by its seeded candidate id
         .evaluate((node) => getComputedStyle(node).color),
     };
   };

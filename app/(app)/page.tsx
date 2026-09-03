@@ -1757,8 +1757,14 @@ async function renderDashboard(
         // on the row beneath would say the same thing twice. What this row carries
         // is the reassurance the block's own copy owes a first-run reader, and the
         // dismiss for the whole set.
-        detail:
-          "Pick what helps now and leave the rest for later. You do not need to complete every suggestion.",
+        //
+        // THE SENTENCE IS SHORTER THAN THE ONE THE CARD PRINTED, and not by taste:
+        // the card's second half ("You do not need to complete every suggestion")
+        // is second-person, and the dashboard is a cross-profile surface — a carer
+        // reading a ward's setup is not the person being addressed. #945's guard
+        // catches it here, where it could not in the deleted component. The first
+        // half already says the whole thing.
+        detail: "Pick what helps now and leave the rest for later.",
         control: (
           <form action={dismissOnboardingChecklist}>
             <Button type="submit" pendingLabel="…">
