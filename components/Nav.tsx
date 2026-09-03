@@ -336,11 +336,14 @@ const entries: Entry[] = [
   // the RECORD's header should carry the action the Timeline's did is an open
   // question on #3958 — it is a header addition on the one page with a stated
   // chrome budget.
-  // Sleep (#1066): a data-gated READING surface below Trends — it
-  // heads the reading cluster (a one-morning-glance page), and its adjacency to
-  // Trends fails-soft the old muscle-memory path (sleep is being extracted FROM
-  // Trends → Overview → body census). Gate = any recorded sleep session (the `sleep` relevance bit);
-  // like every relevance gate it's cosmetic — the page stays reachable by URL (the
+  // Sleep (#1066): a data-gated READING surface — it heads the reading
+  // cluster (a one-morning-glance page). It sat below Trends until #4965 put
+  // History in that slot instead. Sleep was extracted FROM Trends → Overview
+  // → body census, and used to sit right beside it to fail-soft that
+  // muscle-memory path; Trends is a Plan & review child now, so the adjacency
+  // is gone, but the extraction history it followed from is unchanged. Gate =
+  // any recorded sleep session (the `sleep` relevance bit); like every
+  // relevance gate it's cosmetic — the page stays reachable by URL (the
   // pillar deep-link and dashboard healthspan readout both point here).
   {
     href: "/sleep",
