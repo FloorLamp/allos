@@ -117,7 +117,13 @@ const rank = (candidates: DashboardCandidate[]) =>
   });
 
 describe("dashboard illness ordering", () => {
-  it("layers uncapped safety, whole ordered episodes, then capped ordinary work", () => {
+  // THE LAYERS NOW RUN INSIDE A SUBJECT (#4752 item 6). Safety, then whole ordered
+  // episodes, then the capped ordinary work — the layering is unchanged, but a
+  // cross-profile Now gathers each subject's rows before it draws them, so the
+  // viewer's own ordinary rows sit under the viewer's own episode instead of
+  // trailing a household member's. Nothing is promoted: a group's seat is its best
+  // member's, which is why 7 still leads 2 and 2 still leads 11.
+  it("layers uncapped safety, whole ordered episodes, then capped ordinary work, grouped by subject", () => {
     const candidates = [
       episodeMember(11, "member-b", 0, "reading"),
       ordinary("ordinary-c", 93),
@@ -153,12 +159,12 @@ describe("dashboard illness ordering", () => {
       "candidate.reading:7:active-a:1",
       "candidate.state:7:active-b:0",
       "candidate.should:7:active-b:0",
+      "ordinary-a",
+      "ordinary-b",
       "candidate.state:2:member-a:0",
       "candidate.reading:2:member-a:0",
       "candidate.state:11:member-b:0",
       "candidate.reading:11:member-b:0",
-      "ordinary-a",
-      "ordinary-b",
     ]);
   });
 
@@ -179,9 +185,9 @@ describe("dashboard illness ordering", () => {
       .map((placement) => placement.candidate.candidateId);
     expect(now).toEqual([
       "candidate.state:7:active:0",
-      "candidate.state:8:member:0",
       "dose.owed",
       "workout.live:42",
+      "candidate.state:8:member:0",
     ]);
   });
 
