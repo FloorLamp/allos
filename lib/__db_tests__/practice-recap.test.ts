@@ -121,6 +121,35 @@ function seedHrMinutes(
     );
 }
 
+/**
+ * Earlier fully-covered sessions of the same practice, each 20 minutes at 80 bpm — a
+ * usual rise of +27 over the fixture's 53 bpm baseline. The COUNT is the variable: the
+ * usual is stated at three and withheld at two.
+ */
+function seedPriorSessions(
+  profileId: number,
+  at: readonly (readonly [string, string])[]
+): void {
+  const insertPrior = db.prepare(
+    `INSERT INTO practice_logs
+       (profile_id, practice, date, start_time, duration_min, live, derived_window)
+     VALUES (?, 'Red light therapy', ?, ?, 20, 0, 1)`
+  );
+  const insertHr = db.prepare(
+    `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
+     VALUES (?, ?, 80, 1, 'health-connect')`
+  );
+  for (const [day, hhmm] of at) {
+    insertPrior.run(profileId, day, hhmm);
+    const base = Date.parse(`${day}T${hhmm}:00Z`);
+    for (let i = 0; i < 30; i++)
+      insertHr.run(
+        profileId,
+        new Date(base + i * 60_000).toISOString().slice(0, 16)
+      );
+  }
+}
+
 async function tick(
   profileId: number,
   at: Date = NOW
@@ -204,12 +233,16 @@ describe("the practice finish message waits for the stream", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  // THE BOUND. Same uncovered row, asked two hours and one minute after the end.
+  // THE BOUND, and the fixture is FULLY COVERED on purpose: the bound is then the
+  // ONLY thing keeping this row silent, so the case can actually fail if the bound
+  // stops working. An uncovered fixture here would have stayed green with the bound
+  // deleted — it was silent for the other reason — which is a test that cannot reach
+  // the state it forbids.
   it("stops being eligible past the two-hour bound, still without a marker", async () => {
     const p = newProfile("PracExpired");
     const date = today(p);
     const rowId = seedPractice(p, date);
-    seedHrMinutes(p, date, 10);
+    seedHrMinutes(p, date, 30);
     const fetchMock = stubFetch();
 
     // Window ends 17:20; 19:21 is one minute past the bound.
@@ -217,6 +250,18 @@ describe("the practice finish message waits for the stream", () => {
     expect(r.sent).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null).toBeNull();
+  });
+
+  // The other side of the same boundary, so the bound is a bound and not a wall.
+  it("is still eligible one minute INSIDE the bound", async () => {
+    const p = newProfile("PracJustInside");
+    const date = today(p);
+    seedPractice(p, date);
+    seedHrMinutes(p, date, 30);
+    const fetchMock = stubFetch();
+    // 19:19 is one minute short of two hours after the 17:20 end.
+    expect((await tick(p, new Date("2026-07-17T19:19:00Z"))).sent).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("is not eligible before the window has finished", async () => {
@@ -261,25 +306,11 @@ describe("the practice finish message waits for the stream", () => {
     const date = today(p);
     // Three earlier sessions of the same practice on the two prior days, each 20 min
     // and each fully covered, all at 80 bpm ⇒ a usual rise of +27 over a 53 baseline.
-    const insertPrior = db.prepare(
-      `INSERT INTO practice_logs
-         (profile_id, practice, date, start_time, duration_min, live, derived_window)
-       VALUES (?, 'Red light therapy', ?, ?, 20, 0, 1)`
-    );
-    const insertHr = db.prepare(
-      `INSERT INTO hr_minutes (profile_id, ts, bpm, n, source)
-       VALUES (?, ?, 80, 1, 'health-connect')`
-    );
-    for (const [day, hhmm] of [
+    seedPriorSessions(p, [
       ["2026-07-15", "09:00"],
       ["2026-07-15", "11:00"],
       ["2026-07-16", "09:00"],
-    ] as const) {
-      insertPrior.run(p, day, hhmm);
-      const base = Date.parse(`${day}T${hhmm}:00Z`);
-      for (let i = 0; i < 30; i++)
-        insertHr.run(p, new Date(base + i * 60_000).toISOString().slice(0, 16));
-    }
+    ]);
     seedPractice(p, date);
     seedHrMinutes(p, date, 30);
     const fetchMock = stubFetch();
@@ -288,9 +319,16 @@ describe("the practice finish message waits for the stream", () => {
     expect(lastPayload(fetchMock).body).toContain("(usual +27)");
   });
 
-  it("states the fact alone below the three-prior-events floor", async () => {
+  // TWO priors, not zero. Zero would be silent whatever the floor is, so it could not
+  // fail if the floor moved; two is one short of it, which is the only fixture that
+  // actually tests where the floor SITS.
+  it("states the fact alone one prior event short of the floor", async () => {
     const p = newProfile("PracNoUsual");
     const date = today(p);
+    seedPriorSessions(p, [
+      ["2026-07-16", "09:00"],
+      ["2026-07-16", "11:00"],
+    ]);
     seedPractice(p, date);
     seedHrMinutes(p, date, 30);
     const fetchMock = stubFetch();
