@@ -27,6 +27,7 @@ export type NotificationKind =
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "mood" // opt-in daily wellbeing check-in (#992; auto-pauses when ignored)
   | "practice" // pace-aware wellness-practice check-in (#1259)
+  | "practice-recap" // what a finished practice did to the heart rate (#4775)
   | "digest" // morning digest
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary

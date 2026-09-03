@@ -43,6 +43,7 @@ export const ALL_NOTIFICATION_KINDS = [
   "food",
   "mood",
   "practice",
+  "practice-recap",
   "digest",
   "upcoming",
   "weekly-recap",
@@ -251,6 +252,15 @@ export const NOTIFICATION_KIND_REGISTRY: readonly NotificationKindEntry[] = [
     safety: false,
     control: { type: "always" },
     more: "Driven by the weekly targets on your practice protocols — there is nothing to send until you create one. Dismissing the matching item on Upcoming silences this nudge too.",
+  },
+  {
+    kind: "practice-recap",
+    label: "Practice finish note",
+    blurb:
+      "What a finished practice did to your heart rate, once your watch's data has caught up.",
+    safety: false,
+    control: { type: "always" },
+    more: "It waits for the minute-by-minute heart rate covering the session, which usually arrives half an hour or so after you finish. If it never arrives, nothing is sent — a note with no number in it would only repeat the tap. Nothing is sent for a practice you have no heart-rate data for.",
   },
   {
     kind: "digest",

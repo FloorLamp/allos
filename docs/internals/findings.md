@@ -300,7 +300,21 @@ null case is exercised end to end.
 **Reach.** Coaching tier, registered under `PAIRED_OBS_PREFIX`; joins
 `collectCoachingFindings` and renders as a calm coaching-observation candidate in
 Show everything.
-Never Upcoming, never a notification, never dashboard Now, never an obligation. Keys
+Never Upcoming, never dashboard Now, never an obligation, and never a notification —
+**with one recorded exception**.
+
+> **The exception (owner decision, 2026-09-02, #4775 §5).** The `alcohol-*` entries may
+> render **one** line in the morning digest, behind `substance_telegram_enabled` (off by
+> default, #3330) and only above the pair's own effect floor. This overrules #2177's
+> "never a send" for that pair family and for nothing else; `docs/internals/substances.md`
+> §Reach records the same exception from the substance side. It is a ride-along, not a
+> send: `gatherSubstanceObservationLine` appends it to a Sleep section that already
+> exists, so it can never be the thing that makes a digest go out. The pair's monthly
+> dismissal silences the line exactly as it silences the card, the copy is the verdict's
+> own sentence (both arms' n, no advice verb, no direction word), and at most one
+> `alcohol-*` line goes out however many pairs clear their floors on the page.
+
+Keys
 are `paired-obs:<pair>:<YYYY-MM>` and declare their stem as `episodeFamily`
 (#2543), so a dismissal is per-month and repeat declines are read as an answer
 (#2386). Substance-conditioned pairs declare `adultOnly` and are withheld from a

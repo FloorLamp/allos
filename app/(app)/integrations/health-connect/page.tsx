@@ -9,6 +9,7 @@ import {
 } from "@/lib/integrations/health-connect";
 import {
   getConnection,
+  getHealthConnectCgmGlucose,
   getHealthConnectTokenInfo,
 } from "@/lib/integrations/connections";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
@@ -19,6 +20,7 @@ import { dateFromCreatedAt } from "@/lib/timeline-format";
 import IntegrationStatusHeader from "@/components/integrations/IntegrationStatusHeader";
 import SyncHistoryTable from "@/components/integrations/SyncHistoryTable";
 import HealthConnectSetup from "./HealthConnectSetup";
+import CgmGlucoseToggle from "./CgmGlucoseToggle";
 import { requestNowMs } from "@/lib/request-now";
 // The externally visible address of this deployment — one authority, shared with
 // the calendar feed, Strava and Withings (#2959).
@@ -99,6 +101,10 @@ export default async function HealthConnectPage() {
 
         {connected && (
           <>
+            <CgmGlucoseToggle
+              initial={getHealthConnectCgmGlucose(profile.id)}
+            />
+
             <SetupStepsCard
               title="Setup"
               steps={[

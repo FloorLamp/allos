@@ -3,6 +3,7 @@ import { getTimezone } from "@/lib/settings";
 import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
 import {
+  getHealthConnectCgmGlucose,
   resolveHealthConnectProfile,
   emitSyncEvent,
   recordUnmatchedHealthConnectPush,
@@ -203,7 +204,10 @@ export async function POST(req: Request) {
   // timezone (production Docker runs UTC, so the process TZ can't be trusted).
   const parsed = parseHealthConnectPayload(
     body,
-    getTimezone(INGEST_PROFILE_ID)
+    getTimezone(INGEST_PROFILE_ID),
+    // The connection's own glucose policy (#3182) — read per push, so flipping the
+    // switch takes effect on the next one with nothing to re-link.
+    { cgmConnection: getHealthConnectCgmGlucose(INGEST_PROFILE_ID) }
   );
   let counts: IngestCounts;
   let split: UpsertCounts;

@@ -28,6 +28,7 @@ import type { ActivityType } from "../types/training";
 import { activityTypeAskCallback } from "./callback-data";
 import { formatMessageLine } from "./message-line";
 import { GLYPH } from "./glyphs";
+import { zoneMinutesClause } from "../event-physiology";
 
 // The workout-affectable frequency scopes (#1122): the target kinds a lifting/cardio
 // session can actually advance. `food_group` (a nutrition scope, #580) and
@@ -194,6 +195,41 @@ export function importedRecapLine(facts: ImportedSessionFacts): string | null {
   if (segs.length === 0) return null;
   const lead = facts.title.trim() || "Workout";
   return [`${lead} done`, ...segs].join(" · ");
+}
+
+// ---- The in-session physiology clause (#4775 §2) ----
+
+// What the MINUTE STREAM says this session did, as a clause on the recap line:
+// "Z2 24 min · Z3 11 min · peak 168". It is the same `event-physiology` result the
+// activity page renders, formatted for a chat line — no second computation, and no
+// number here that the page would state differently.
+//
+// TWO REASONS IT CAN BE NULL, and neither is an error:
+//   • NOT COVERED. The Health Connect pipeline runs 30–61 min behind the wrist, so at
+//     the finish tap the session's own minutes are usually not in yet. A clause built
+//     then would describe a partial window in the confident register of a measurement.
+//     The caller keeps the import's own avg/max HR in that case — a figure the SOURCE
+//     stands behind, which is a different claim from one this app derived.
+//   • NOTHING MEASURED. A session worn without the watch has no minutes to split.
+//
+// It never creates a line. With no recap line to ride, the finish message is exactly
+// what it was before this issue — the contact-consent posture the type ask (#2272)
+// already follows: the system may add to a message going out, never make one exist.
+export function sessionPhysiologyClause(physiology: {
+  covered: boolean;
+  zoneMinutes: number[] | null;
+  inWindow: { peakBpm: number } | null;
+}): string | null {
+  if (!physiology.covered) return null;
+  const zones = physiology.zoneMinutes
+    ? zoneMinutesClause(physiology.zoneMinutes)
+    : null;
+  const peak =
+    physiology.inWindow != null
+      ? `peak ${Math.round(physiology.inWindow.peakBpm)}`
+      : null;
+  const parts = [zones, peak].filter((p): p is string => p != null);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 // ---- The finish message's own title (#2503) ----
