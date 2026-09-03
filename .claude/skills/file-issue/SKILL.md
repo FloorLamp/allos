@@ -117,6 +117,10 @@ unbaked decisions is the failure this skill exists to prevent.
 
 Read one exemplar first: #2856/#2857 for features, #2843/#2845 for bugs.
 
+**Title.** One clause, 72 characters max, no colon or dash tail; detail is the
+body's first line. A bug names the defect ("HRV drops silently since Aug 29");
+a feature names the outcome ("Button is the only button"). Rule: #4983.
+
 **Citations.** Every path rooted in a real top-level directory
 (`lib/dri.ts`, never bare `dri.ts`). When citing a line, name what is ON it,
 in backticks, in the same sentence.

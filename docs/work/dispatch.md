@@ -57,8 +57,9 @@ closed taxonomy, and `needs-human` handling.
 1. Read each issue whole via `issue-read.mjs`; `new` refuses a closed one.
 2. Generate the dispatch brief and record the branch in the task list.
 3. Require the agent to merge current `origin/main` and run the assigned gates.
-   Open the PR as soon as the gates pass; after another merge lands, run
-   `landing-independence.mjs` before deciding whether to rebase.
+   Open the PR as soon as the gates pass (title imperative, one clause, 72
+   chars max, it is the commit subject; only a `(#N …)` tail); after another
+   merge lands, run `landing-independence.mjs` before deciding to rebase.
 4. Read the full diff, verify claims, and post a substantive COMMENT review.
 5. Diagnose E2E reds locally; send code corrections back to the author unless
    the change is a worker-owned E2E fix.
