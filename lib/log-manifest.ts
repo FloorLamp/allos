@@ -552,8 +552,8 @@ export const LOG_MANIFEST = {
       // mode, which is what the ⋯ does. The feed row hosts no one-field inline edit
       // because #3958 leaves it nowhere to go — that ruling makes the row one line at
       // every viewport with the trailing affordance EXCLUSIVE (⋯ or ›, never both), and
-      // #4424 nowhere claims to override it. The day view's own card mounts the bar,
-      // whose rows are this control.
+      // #4424 nowhere claims to override it. The day view mounts the SAME door as
+      // every other kind since #4851, so the record's only symptom entry is the form.
       //
       // THE CONTROL HAS ONE MOUNT TODAY — the bar — so read `shared` as "the domain has
       // exactly one, and every symptom row hosting a write control mounts it", never as
