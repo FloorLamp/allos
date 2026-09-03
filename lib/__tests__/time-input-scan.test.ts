@@ -44,6 +44,11 @@ const HANDROLLED_ALLOW = new Map<
   // the same five fields the log form did, so it now MOUNTS that form and the pair it
   // carried is GONE rather than migrated.
   //
+  // PracticeSessionForm.tsx and activity-form/DateTimeFields.tsx left the list on
+  // #4384 fix 6's touch — NOT by adopting `WhenControl`, but by both mounting the one
+  // `TimeRangeFields` that now spells the pair. That is the FIRST entry below; it is the
+  // only kind of departure that shrinks this list without the control growing.
+  //
   // AND TWO MOUNTS MOVED THE OTHER WAY, which is a trade rather than a win and is
   // stated here rather than smuggled: the `/history` add door's practice case and that
   // record row's correction each stated a START through `WhenControl` and could not
@@ -52,28 +57,23 @@ const HANDROLLED_ALLOW = new Map<
   // shape this entry exists for. The ratchet's count does not move, because the pair is
   // spelled once and four surfaces mount it.
   [
-    "components/practices/PracticeSessionForm.tsx",
+    "components/TimeRangeFields.tsx",
     {
       count: 2,
       kind: "event",
       reason:
-        "the #3142 detailed practice start/end pair — the SAME range shape as the " +
-        "activity start/end pair below, unmodelled by the control for the same " +
-        "reason. #3143 extracted the deliberate historical form from the quick " +
-        "intent control so backfill remains exempt; the same two inputs moved, " +
-        "not grew. #4424 ruling 1 made this THE practice form — add and edit, at " +
-        "every mount — so four spellings of the pair are now this one. Migrates " +
-        "with DateTimeFields when the control grows a range form",
-    },
-  ],
-  [
-    "components/activity-form/DateTimeFields.tsx",
-    {
-      count: 2,
-      kind: "event",
-      reason:
-        "activity start/end pair — two times sharing one day, a shape the " +
-        "control does not model yet; migrates when it grows a range form",
+        "THE HOUSE START/END PAIR (#4384 fix 6) — two times sharing one day, a " +
+        "shape `WhenControl` does not model. It is ONE entry where there were two: " +
+        "the activity form's pair and the practice form's pair were the same two " +
+        "inputs with the same rules, and the practice one had lost #336's interplay " +
+        "on the way across. Both mount this now, so the count did not shrink because " +
+        "a surface migrated to `WhenControl` — it shrank because two spellings became " +
+        "one. AND IT IS STILL RAW SINCE #4218 LANDED, deliberately: `TimeField` " +
+        "replaced the minute grain INSIDE `WhenControl`, and putting it here too " +
+        "would restyle the activity form's clocks — a surface #4218's own pass " +
+        "left on this list rather than migrating. One component to change when " +
+        "that is decided, which is the point of the extraction. Migrates when " +
+        "the control grows a range form",
     },
   ],
   [
@@ -82,12 +82,12 @@ const HANDROLLED_ALLOW = new Map<
       count: 2,
       kind: "event",
       reason:
-        "the #1851 bed\u2192wake pair — the same range shape as the activity " +
+        "the #1851 bed\u2192wake pair — the same range shape as the house " +
         "start/end pair above and unmodelled for the same reason, plus one of " +
         "its own: NEITHER clock states a date. The wake day is the sitting's, " +
         "the bed day is DERIVED from the clock against the noon anchor, and " +
         "the pair resolves to instants in the PROFILE's zone at the write " +
-        "boundary rather than the browser's. Migrates with DateTimeFields " +
+        "boundary rather than the browser's. Migrates with TimeRangeFields " +
         "when the control grows a range form. The form's own sitting Time is " +
         "still WhenControl's and is not counted here.",
     },
