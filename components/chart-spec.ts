@@ -284,9 +284,6 @@ export interface ChartFrame {
   /** The height class alone, for the loading and offline placeholders, so a
    *  chunk fetch does not jump the layout by 100px (#407). */
   heightClass: string;
-  /** A legend ABOVE the plot, outside the recharts tree, so identity is never
-   *  colour-alone and it survives the code split. */
-  legend?: readonly ChartLegendEntry[];
   /** `data-*` the surface's specs address the box by. */
   data?: Readonly<Record<string, string>>;
 }
@@ -308,6 +305,10 @@ export interface TimeSeriesSpec {
    * to near-zero, and the numbers the axes carried are the caller's inline text.
    */
   sparkline?: boolean;
+  /** A legend ABOVE the plot, outside the recharts tree, so identity is never
+   *  colour-alone and it survives the code split. Every >= 2-series chart has
+   *  one: colour is a channel roughly 1 in 12 men cannot fully read. */
+  legend?: readonly ChartLegendEntry[];
   /** Charts sharing an id share hover position (the paired sleep + mood panels). */
   syncId?: string;
   syncMethod?: "index" | "value";
