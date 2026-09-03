@@ -52,6 +52,28 @@ function shortDate(date: string, prefs: DisplayFormatPrefs): string {
   });
 }
 
+// Date ticks anchor to the PLOT at its ends, not to their own centres (#4858). The
+// last tick sits at x = W - PLOT_RIGHT = 312, so a centred label wider than 2 ×
+// PLOT_RIGHT (16 user units) overflows the viewBox and the `<svg>` clips it.
+// Widening PLOT_RIGHT would only buy the label widths we happen to render today:
+// the width is the product of the date format and the locale, neither of which this
+// chart chooses. Anchoring costs nothing and keeps the label attached to its tick.
+//
+// A LONE TICK IS NOT AN END. With one sampled date its x is noon projected onto the
+// readings' own span — which need not contain noon — so it lands anywhere, plot edge
+// included but not preferentially. Neither end anchor is right for that, and where
+// its x escapes the plot the anchor is not what put it there. So a single tick keeps
+// the centred treatment, and this stays a change about the ENDS OF AN AXIS.
+function endTickAnchor(
+  index: number,
+  count: number
+): "start" | "middle" | "end" {
+  if (count === 1) return "middle";
+  if (index === count - 1) return "end";
+  if (index === 0) return "start";
+  return "middle";
+}
+
 function sampledDates(dates: string[], max = 4): string[] {
   const unique = [...new Set(dates)].sort();
   if (unique.length <= max) return unique;
@@ -165,7 +187,7 @@ export default function FeverChart({
         {fmtTemp(lo + 0.5, temperatureUnit)}
       </text>
 
-      {dates.map((date) => {
+      {dates.map((date, index) => {
         const x = xFor(date, null);
         return (
           <g key={date}>
@@ -180,7 +202,7 @@ export default function FeverChart({
             <text
               x={x}
               y={DATE_Y}
-              textAnchor="middle"
+              textAnchor={endTickAnchor(index, dates.length)}
               fontSize={LABEL}
               fill={chartNeutral}
             >

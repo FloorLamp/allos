@@ -47,6 +47,8 @@ import {
   getBodyCardPins,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
+import { displaySourcePoints } from "@/lib/metric-sources";
+import { metricSourceLabel } from "@/lib/metric-source-priority";
 import { bodyMetricMeasures } from "@/lib/body-metric-measures";
 import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { PEAK_FLOW_METRIC } from "@/lib/peak-flow";
@@ -227,22 +229,27 @@ export default async function BodySection({
 
   // Keep the UNWINDOWED display-unit series named (…All) so the overview tiles and
   // charts apply the shared range to the SAME arrays — one gather feeds both (#221).
-  const weightAll = weightSeries.map((w) => ({
-    date: w.date,
-    value: dispWeight(w.value, wu),
-  }));
+  //
+  // `displaySourcePoints` rather than a `.map` over `value` (#2653 state 6): a day two
+  // scales reported carries their readings too, and the companion mark drawn from
+  // them must convert through the SAME function as the number it sits beside.
+  const weightAll = displaySourcePoints(
+    weightSeries,
+    (kg) => dispWeight(kg, wu),
+    metricSourceLabel
+  );
   const weightChart = filterSeriesByRange(weightAll, range);
-  const bodyFatAll = getBodyMetricDailySeries(
-    profile.id,
-    "body_fat",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: round(w.value, 1) }));
+  const bodyFatAll = displaySourcePoints(
+    getBodyMetricDailySeries(profile.id, "body_fat", ALL_ROWS),
+    (v) => round(v, 1),
+    metricSourceLabel
+  );
   const bodyFatChart = filterSeriesByRange(bodyFatAll, range);
-  const restingHrAll = getBodyMetricDailySeries(
-    profile.id,
-    "resting_hr",
-    ALL_ROWS
-  ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
+  const restingHrAll = displaySourcePoints(
+    getBodyMetricDailySeries(profile.id, "resting_hr", ALL_ROWS),
+    Math.round,
+    metricSourceLabel
+  );
   const restingHrChart = filterSeriesByRange(restingHrAll, range);
 
   // The vitals' RAW, unwindowed reading rows (absorbed from the retired Vitals

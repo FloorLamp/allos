@@ -8,6 +8,7 @@
 import type { AppRoute } from "./hrefs";
 import type { DistanceUnit, TemperatureUnit } from "./settings";
 import type { Reason } from "./reasons";
+import type { BiomarkerRetestFacts } from "./biomarker-retest-copy";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import type { WriteTarget } from "./multi-view";
 import type { IntakeObligation } from "./types/intake";
@@ -376,6 +377,16 @@ export interface UpcomingItem {
   // Asking the domain deleted all three. Same lesson as #2578, one level up: what a
   // row IS comes from its producer, not from the bucket it shares.
   weeklyTarget?: boolean;
+  // THE BIOMARKER RETEST ROW'S FACTS (#3526), carried so each channel spells the
+  // last-tested DAY its own way. `detail` is still composed by the generator, with
+  // the raw ISO day — the honest answer for the login-less channels (the digest,
+  // Telegram) that read it verbatim and have no prefs to resolve. A surface WITH a
+  // login re-composes the same facts through its DisplayFormatPrefs (the #2579-B
+  // pattern), which is what `itemDetailText` in lib/upcoming-aggregate does.
+  //
+  // Only the `biomarker` domain sets it, and only because that domain's detail is
+  // the one whose text contains a calendar date.
+  retest?: BiomarkerRetestFacts;
   // Optional primary navigation CTA for status-driven items whose next step is
   // clearer than a generic title link (for example Reconnect / Review result).
   // This is presentation data carried on the shared model so Dashboard and

@@ -33,6 +33,12 @@ import { tickProfile } from "@/lib/notifications/tick";
 import { sendMessageRaw } from "@/lib/notifications/telegram-api";
 import { plainBody } from "@/lib/notifications/rich-text";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
+import { handleFoodCommand } from "@/lib/notifications/telegram-quick-log";
+import { rebuildMessage } from "@/lib/notifications/telegram";
+import {
+  keyboardChatOrigin,
+  withChatOrigin,
+} from "@/lib/notifications/chat-origin";
 import { USUAL_BACKFILL } from "@/lib/logged-via";
 import {
   answerCallbackQuery,
@@ -52,6 +58,7 @@ import { seedLoginTelegram } from "./fixtures";
 import {
   mintUsualRoutineAttachment,
   standingUsualOffer,
+  usualTokenOn,
   USUAL_OFFER_FAMILY,
 } from "@/lib/notifications/usual-routine-attach";
 import {
@@ -1223,5 +1230,122 @@ describe("the composed one-tap's ack, with a protein member", () => {
     const answer = lastAnswerText() ?? "";
     expect(answer).not.toBe("Nothing left to log");
     expect(answer).toContain("+30g protein");
+  });
+});
+
+// ── `/food` IS THE THIRD HOST, AND ITS REBUILD MATCHES ITS SEND (#4538) ──────
+//
+// `/food` re-renders `buildFoodNudge` for the window the reader is in — the same
+// builder, the same tokens, the same keyboard the tick sends unbidden — and it was the
+// one host of the three that never carried the composed one-tap. A habitual morning
+// reached from the slash command offered the per-group buttons and not the button that
+// logs the whole routine.
+//
+// PINNED AS A PAIR, because that is the only form in which "keyboard-identical" is
+// checkable: the SEND's delivered keyboard and the keyboard a REBUILD of that same
+// message pushes have to be the same object. The second case is the control — it forges
+// the state that makes the two differ (everything the offer named is already logged, so
+// the bundle reduces to nothing) and shows the comparison moving. Without it the
+// equality above would pass on a tree where neither side ever had a button.
+describe("/food carries the composed one-tap, and its rebuild agrees (#4538)", () => {
+  const CMD_CHAT = "5554538";
+
+  // `/food` renders the slot the reader is IN, so the clock is what decides which
+  // window the bundle is minted for. Pinned to a morning, which is the window these
+  // fixtures make habitual — an unpinned clock would seed Morning and then ask for
+  // whatever slot the suite happened to run in, and the offer gate would answer null
+  // for a reason that has nothing to do with the code under test.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T08:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function seedCommandProfile(tag: string) {
+    const profileId = makeProfile(tag).profileId;
+    seedLoginTelegram(profileId, CMD_CHAT);
+    seedHabitualMornings(profileId, ["fermented", "berries"]);
+    mkDose(mkItem(profileId, `${tag} Creatine`));
+    return { profileId, date: today(profileId) };
+  }
+
+  // The `/food` reply as delivered: the message the chokepoint sent, and the keyboard
+  // the pointer says the chat is showing.
+  async function sendFoodCommand(profileId: number) {
+    sendMock.mockClear();
+    await handleFoodCommand({
+      message_id: 1,
+      chat: { id: CMD_CHAT },
+      text: "/food",
+    });
+    const call = sendMock.mock.calls.at(-1);
+    expect(call, "/food sent nothing").toBeDefined();
+    const sent = call![1] as NotificationMessage;
+    const messageId = (await sendMock.mock.results.at(-1)!.value) as number;
+    return {
+      sent,
+      messageId,
+      delivered:
+        messagePointerAt(profileId, CMD_CHAT, messageId)?.keyboard ?? [],
+    };
+  }
+
+  // One rebuild through the chokepoint, exactly as a tap performs it: the builder
+  // re-rendered, the live keyboard's origin preserved, everything else the
+  // chokepoint's. Answers the keyboard that reached the wire.
+  async function rebuildOnce(
+    profileId: number,
+    messageId: number,
+    delivered: { callback_data?: string }[][],
+    date: string
+  ) {
+    editTextMock.mockClear();
+    await rebuildMessage(
+      profileId,
+      CMD_CHAT,
+      messageId,
+      withChatOrigin(
+        buildFoodNudge(profileId, "Morning", date)!,
+        keyboardChatOrigin(delivered)
+      )
+    );
+    return editTextMock.mock.calls.at(-1)![3]?.keyboard ?? [];
+  }
+
+  it("offers the bundle on the send, and rebuilds to the identical keyboard", async () => {
+    const { profileId, date } = seedCommandProfile("TG4538");
+    const { sent, messageId, delivered } = await sendFoodCommand(profileId);
+
+    // THE OFFER GATE PASSED, so the button is on the message the reader received —
+    // and the line above the keyboard names what it writes.
+    const usual = (sent.actions ?? [])
+      .map((a) => a.data ?? "")
+      .find((d) => parseOfferCallback(d, "usual") != null);
+    expect(usual, "/food carried no composed one-tap").toBeDefined();
+    expect(plainBody(sent.body)).toContain("Your usual Morning");
+    // Marked as a COMMAND keyboard, and still so after the chokepoint composed it.
+    expect(keyboardChatOrigin(delivered)).toBe("telegram-command");
+
+    expect(await rebuildOnce(profileId, messageId, delivered, date)).toEqual(
+      delivered
+    );
+  });
+
+  it("CONTROL: once nothing the offer named still stands, the two differ", async () => {
+    const { profileId, date } = seedCommandProfile("TG4538C");
+    const { messageId, delivered } = await sendFoodCommand(profileId);
+    expect(
+      usualTokenOn(delivered),
+      "the send had no bundle to lose"
+    ).not.toBeNull();
+
+    // Everything the bundle promised, logged elsewhere: both groups and the dose. The
+    // stored offer is an upper bound, so the attachment now reduces to nothing.
+    tap(profileId, "berries", date, "07:00:00");
+    tap(profileId, "fermented", date, "07:01:00");
+    const rebuilt = await rebuildOnce(profileId, messageId, delivered, date);
+
+    expect(usualTokenOn(rebuilt)).toBeNull();
+    expect(rebuilt).not.toEqual(delivered);
   });
 });

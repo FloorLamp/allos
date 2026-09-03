@@ -7,6 +7,9 @@ import {
   addAudiogram,
   removeAudiogram,
 } from "@/app/(app)/records/specialty/hearing/actions";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
+import { getSpecialtyLensEntries } from "@/lib/queries/specialty-lens";
+import SpecialtyHistoryStrip from "./SpecialtyHistoryStrip";
 
 // Hearing / audiology (issue #1600) — the sense-organ counterpart to Vision, and the
 // domain the app had grown only the PERIPHERY of: ototoxic-drug warnings (#717) and
@@ -19,7 +22,16 @@ import {
 // observation store the perio and vision analytes use, and the same rows that already
 // trend on the Clinical results surface (#713). No parallel table; see lib/audiogram.ts for
 // the full store argument.
-export default function HearingSection({ profileId }: { profileId: number }) {
+// HEARING CARE HISTORY (#2921): the specialty lens's audiology visits and
+// ear-coded conditions, below the audiogram list. Acting-profile only, like the
+// audiograms themselves.
+export default function HearingSection({
+  profileId,
+  formatPrefs,
+}: {
+  profileId: number;
+  formatPrefs?: DisplayFormatPrefs;
+}) {
   const audiograms = getAudiograms(profileId);
   const baseline = getHearingBaseline(profileId);
 
@@ -43,6 +55,14 @@ export default function HearingSection({ profileId }: { profileId: number }) {
         This is a record for you and your audiologist: it transcribes and
         compares measurements, it does not interpret them.
       </p>
+      <SpecialtyHistoryStrip
+        line="hearing"
+        entries={getSpecialtyLensEntries(profileId, "hearing").map((e) => ({
+          ...e,
+          profileId,
+        }))}
+        formatPrefs={formatPrefs}
+      />
     </div>
   );
 }

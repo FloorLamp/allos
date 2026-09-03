@@ -135,9 +135,12 @@ export function planPostMergeCensus(changes, routes) {
       }
       if (file === "app/(app)/page.tsx") {
         mappedFiles++;
-        // The harness treats UX_ROUTES=/ as a prefix for every route. Say that
-        // honestly instead of printing what looks like a home-only run.
-        fullReasons.add("the root app route changed");
+        // The dashboard's own page: `/` is the only route it renders, so it
+        // earns the same one-territory scope every other route page does. This
+        // used to claim a FULL run, honestly — under prefix matching `/` selects
+        // every route, so a home-only scope was not sayable. #4661 gave
+        // UX_ROUTES an exact form, and `=/` is it.
+        prefixes.add("=/");
         continue;
       }
       if (file.startsWith(APP_ROOT)) {

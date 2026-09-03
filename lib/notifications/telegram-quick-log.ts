@@ -945,6 +945,8 @@ export async function handleFoodCommand(
 
   const skipped: string[] = [];
   for (const pid of profileIds) {
+    const window = currentFoodSlot(pid);
+    const date = today(pid);
     // THE MINT SITE, AND THE ONLY PLACE THAT KNOWS (#3087). This is a REPLY to a
     // slash command, but it re-renders `buildFoodNudge` — the same builder, the same
     // `food:` tokens, the same keyboard the tick sends unbidden — so nothing about the
@@ -953,7 +955,7 @@ export async function handleFoodCommand(
     // module-level `telegram-nudge` on every one of these taps and so inverted the
     // exact nudge-vs-command axis #3087 exists to measure.
     const built = withChatOrigin(
-      buildFoodNudge(pid, currentFoodSlot(pid), today(pid)),
+      buildFoodNudge(pid, window, date),
       "telegram-command"
     );
     // Null is the life-stage gate (an infant logs no food groups, #591) — answered
@@ -962,13 +964,17 @@ export async function handleFoodCommand(
       skipped.push(getProfileNameById(pid) ?? "Profile");
       continue;
     }
-    // Attribution through the ONE derivation (#429), never a hand-built "[Name] ":
-    // the sweep's rebuild re-applies `prefixForProfile` at the chokepoint (#377), so a
-    // prefix minted by any other rule would silently appear or vanish the first time
-    // this nudge is rebuilt.
+    // THE THIRD HOST OF THE COMPOSED ONE-TAP (#4538, #2460). The tick's two hosts carry
+    // the bundle; this reply renders the SAME nudge for the SAME window and did not, so
+    // a habitual morning reached from `/food` offered the per-group buttons and not the
+    // one that logs the whole routine. Minted HERE for the reason the tick mints at its
+    // hosts: the host message exists, so a window with nothing to offer leaves no offer
+    // row behind. The tick's `foodTelegram` consent gate is not one here, for the same
+    // reason `/food` itself is ungated — this is a reply to a message just sent.
+    // Attribution and the pre-dispatch assertion are the chokepoint's.
     await sendTelegramMessage(
       chatId,
-      prefixMessage(built, prefixForProfile(pid)),
+      attachUsualRoutine(built, mintUsualRoutineAttachment(pid, window, date)),
       pid
     );
   }
@@ -1401,10 +1407,13 @@ import {
   resetMoodCheckinIgnored,
 } from "../settings";
 import { getProfileNameById } from "../profile-summary-load";
-import { prefixForProfile } from "./attribution";
 import { buildMoodCheckin } from "./mood";
 import { buildFoodNudge } from "./food";
 import { withChatOrigin } from "./chat-origin";
+import {
+  attachUsualRoutine,
+  mintUsualRoutineAttachment,
+} from "./usual-routine-attach";
 import { currentFoodSlot } from "../queries";
 import {
   buildPracticeCorrectionRebuild,
@@ -1482,7 +1491,7 @@ import {
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
-import { prefixMessage, type NotificationAction } from "./types";
+import type { NotificationAction } from "./types";
 import { GLYPH } from "./glyphs";
 
 // An offer-tail tap (#1505): expand the digest's "➕ Doses" button IN PLACE into

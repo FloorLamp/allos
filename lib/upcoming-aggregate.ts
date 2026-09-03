@@ -55,6 +55,8 @@ import {
   type UrgencyBand,
 } from "./upcoming";
 import { itemSuppressionPolicy } from "./upcoming-suppress";
+import { biomarkerRetestDetail } from "./biomarker-retest-copy";
+import { formatMonthDay, type DisplayFormatPrefs } from "./format-date";
 
 // ---------------------------------------------------------------------------
 // What folds
@@ -195,6 +197,30 @@ export function pageRowDetail(
 ): string | null {
   if (item.weeklyTarget === true) return null;
   return item.detail ?? null;
+}
+
+// THE RENDER BOUNDARY FOR AN ITEM'S DETAIL (#3526, the #2579-B pattern). A surface
+// that HAS a login calls this instead of reading `detail`, and gets the same sentence
+// with the day in the viewer's date shape.
+//
+// Only the retest row differs — it is the one detail whose text contains a calendar
+// date — so every other item's `detail` passes straight through and no producer has
+// to be taught about prefs. It lives HERE, as one function, because two surfaces
+// render this row (the dashboard's attention list and the Upcoming page) and a
+// second hand-written composition is how two spellings of one sentence start.
+//
+// `today` decides the auto-year in the PROFILE's day rather than the process clock,
+// exactly as the goal fold's formatMonthDay call does.
+export function itemDetailText(
+  item: Pick<UpcomingItem, "detail" | "retest">,
+  today: string,
+  formatPrefs: DisplayFormatPrefs
+): string | null {
+  if (!item.retest) return item.detail ?? null;
+  return biomarkerRetestDetail(
+    item.retest,
+    formatMonthDay(item.retest.effectiveDate, formatPrefs, { today })
+  );
 }
 
 // ---------------------------------------------------------------------------
