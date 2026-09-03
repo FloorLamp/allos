@@ -185,7 +185,7 @@ export default function MedicationCard({
     product: string | null;
   }[];
   // The redose-window status line (#798): "Redose OK — min interval passed · 2 of 4
-  // today" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
+  // in 24h" / "Next dose in ~2h · …" / "Max reached · …", or null when not configured.
   // Pre-formatted server-side via the shared redoseCardLabel.
   prnRedoseLine?: string | null;
   prnRedosePrimary?: boolean;
