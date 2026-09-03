@@ -79,6 +79,7 @@ export default function TimeField({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const popRef = useRef<HTMLElement | null>(null);
+  const hiddenRef = useRef<HTMLInputElement>(null);
   // WHICH HOST the wheel opens in decides the outside-click policy, and only
   // that — the fork itself is `AnchoredPanel`'s and is not repeated here. Same
   // split, and the same reasons, as `DateField`.
@@ -86,6 +87,36 @@ export default function TimeField({
 
   const shown =
     draft && draft.from === value ? draft.text : formatHhmm(value, timeFormat);
+
+  // THE DIRTY-FORM REGISTRY LISTENS FOR NATIVE EVENTS ON THE NAMED FIELD ITSELF
+  // (#4976), and this field's named element is the hidden sibling below — the
+  // VISIBLE input the person actually types into carries no `name`, so nothing
+  // it fires natively ever reaches the registry. Two dispatches stand in, one
+  // per event the registry listens for, in the order a real focus-then-type
+  // always produces them:
+  //
+  //   `focusin`, from the VISIBLE input's own `onFocus` below — BEFORE any
+  //   keystroke has changed `value`, so the hidden input's DOM value the
+  //   registry reads at that moment is still the PRE-EDIT one. That is what
+  //   lets it register the correct baseline; firing this only from a synthetic
+  //   post-commit effect (after `value` had already moved) would register the
+  //   field against its own just-edited value and it could never look dirty.
+  //   `onFocusIn` is idempotent for an already-registered field, so a second
+  //   focus mid-edit does not clobber the first baseline.
+  //
+  //   `input`, from THIS effect, once per committed `value` change — marks the
+  //   already-registered field touched. Skips the mount's own commit: the
+  //   hidden input's initial value already equals `value`, so dispatching then
+  //   would be a harmless no-op the registry discards anyway.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!name) return;
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    hiddenRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [name, value]);
 
   // The native input rejected a malformed time; a text input does not, so the
   // Constraint Validation API carries it (`required` only covers empty).
@@ -141,6 +172,13 @@ export default function TimeField({
         placeholder={timeFormat === "24h" ? "hh:mm" : "h:mm am"}
         inputMode="numeric"
         autoComplete="off"
+        // The dirty-form registration moment (#4976) — see the effect above for
+        // why it fires here rather than post-edit.
+        onFocus={() =>
+          hiddenRef.current?.dispatchEvent(
+            new Event("focusin", { bubbles: true })
+          )
+        }
         onChange={(e) => {
           const text = e.target.value;
           const parsed = parseClockHhmm(text);
@@ -160,8 +198,20 @@ export default function TimeField({
         className={`input pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly clock, so the canonical value is
-          submitted via a hidden input for `name` usage — DateField's own pattern. */}
-      {name && <input type="hidden" name={name} value={value} />}
+          submitted via a hidden input for `name` usage — DateField's own pattern.
+          `data-dirty-track-hidden` opts THIS hidden input into the dirty-form
+          registry, which excludes `type="hidden"` by default (components/
+          DirtyFormRegistry.tsx) — this one carries the field's whole value
+          rather than plumbing, so it is the one hidden input asking to be seen. */}
+      {name && (
+        <input
+          ref={hiddenRef}
+          type="hidden"
+          name={name}
+          value={value}
+          data-dirty-track-hidden="true"
+        />
+      )}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
