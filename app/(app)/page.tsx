@@ -62,6 +62,7 @@ import {
   frequencyScopeLabel,
   isStrengthProgrammingScope,
 } from "@/lib/frequency-targets";
+import { cadenceScopeNoun } from "@/lib/cadence";
 import { PACE_BADGE_CLASS } from "@/lib/pace-presentation";
 import {
   activeByKey,
@@ -1955,7 +1956,17 @@ async function renderDashboard(
         momentOpen
       ),
       {
-        label: `Log ${progress.target.scope_value}`,
+        // THE ROW SAYS WHAT IT IS, AND THE CONTROL SAYS WHAT IT DOES (#4841 item 2).
+        // The label used to be `Log ${scope_value}` beside an action that also read
+        // "Log", so the row printed the verb twice and named its subject by the
+        // STORED KEY — "Log Lower · 0 of 2 this week · Log". `cadenceScopeNoun` is
+        // the app's existing answer to "what is this target called" (the recap and
+        // the practice nudge already ask it), so the noun comes from there rather
+        // than from a second casing rule here.
+        label: cadenceScopeNoun(
+          progress.target.scope_kind,
+          progress.target.scope_value
+        ),
         detail: `${progress.count} of ${progress.per_week} this week`,
         href: habitHref,
         actionLabel: "Log",
@@ -2259,6 +2270,17 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // THE DOOR THAT ENDS THE DORMANCY (#4841 item 3). The line says a reading is
+        // missing; until now the only thing it opened was the history of the reading
+        // it says is missing. The write is the app's ONE quick-entry vitals form —
+        // the same door the Setup row opens — and "Vitals history" stays as the
+        // family's door beside it, like every other row in this family.
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+          />
+        ),
         presence: "dormant",
       }
     );
@@ -2314,6 +2336,13 @@ async function renderDashboard(
           ),
         href: "/trends#body",
         actionLabel: "Vitals history",
+        // Its blood-pressure sibling's door, for the same reason (#4841 item 3).
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "vitals" }}
+          />
+        ),
         presence: "dormant",
       }
     );

@@ -428,12 +428,18 @@ function everythingGroup(
       candidate.relevance.presence === "never")
   )
     return "setup";
+  // AN ACT IS AN ACT AT ANY PRESENCE (#4841 item 3). Dormancy describes the DATA —
+  // the quantity has gone quiet — and a dormant reading is a report, so it reads.
+  // A dormant candidate that carries a WRITE is not: "No blood pressure recorded
+  // since Mar 2022" is a prompt to take one, and grouping it under Read filed the
+  // prompt as a report whose only door was the history of the missing thing. The
+  // kind decides, and the presence still decides everything else it decided before.
+  if (candidate.kind === "action") return "act";
   if (
     candidate.relevance.kind === "profile-data" &&
     candidate.relevance.presence === "dormant"
   )
     return "read";
-  if (candidate.kind === "action") return "act";
   if (candidate.kind === "reading") return "read";
   if (candidate.kind === "statement") return "understand";
   return "active-states";
