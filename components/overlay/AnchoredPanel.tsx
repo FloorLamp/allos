@@ -68,6 +68,10 @@ import type { AnchoredAlign } from "@/lib/anchored-position";
 // no height management of its own — a caller that adds a `max-h-*` to
 // `panelClassName` is declaring a tighter cap for its own reasons, not making
 // the panel safe, and the inline max-height wins over it regardless.
+// `overscroll-contain` rides with the scroller: this popover draws a
+// full-viewport click-away catcher, so a drag its own scroller declines would
+// chain to the document and move the page BEHIND the open panel (#2774, and
+// lib/__tests__/overlay-motion-chokepoint.test.ts, which caught exactly this).
 //
 // A ROLE-LESS PANEL IS LEFT ALONE, and that is the discriminating rule rather
 // than a new prop. DateField's calendar opens when the FIELD takes focus and the
@@ -279,7 +283,7 @@ export default function AnchoredPanel({
           // anchor used to be.
           visibility: pos ? "visible" : "hidden",
         }}
-        className={`${popoverZIndexClass} overflow-x-hidden overflow-y-auto rounded-lg border border-black/10 bg-surface shadow-lg dark:border-white/10 ${panelClassName}`}
+        className={`${popoverZIndexClass} overflow-x-hidden overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-surface shadow-lg dark:border-white/10 ${panelClassName}`}
       >
         {children()}
       </div>
