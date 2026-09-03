@@ -1272,7 +1272,13 @@ export function parseHealthConnectPayload(
     const p = parts(t, tz);
     const ms = boundedOrNull(
       "hrv_ms",
-      sampleSeriesValue(h, ["rmssd_millis", "milliseconds", "ms", "rmssd", "value"])
+      sampleSeriesValue(h, [
+        "rmssd_millis",
+        "milliseconds",
+        "ms",
+        "rmssd",
+        "value",
+      ])
     );
     if (!p || !t || ms == null) {
       skip("heart_rate_variability");

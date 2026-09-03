@@ -797,6 +797,15 @@ function getIntegrationAttentionUncached(
 // whatever happened before them.
 const DROPPING_RUN_CAP = 60;
 
+// The profile's CONNECTED sources, which is exactly the set a dropping verdict can be
+// about. Asked directly rather than through getLatestSyncEventPerSource: that reader's
+// DISTINCT scan is already issued once per tick by getImportIssues, and asking it a
+// second time here doubled it (#2283's memo guard catches precisely that).
+const DROPPING_SOURCES_STMT = hoistedStatement(
+  `SELECT source_id FROM integration_connections
+    WHERE profile_id = ? AND status = 'connected'`
+);
+
 const DROPPING_RUNS_STMT = hoistedStatement(
   `SELECT at, ok, details FROM integration_sync_events
     WHERE profile_id = ? AND source_id = ?
@@ -816,13 +825,15 @@ const DROPPING_RUNS_STMT = hoistedStatement(
 function droppingIntegrations(profileId: number): AttentionIntegration[] {
   const out: AttentionIntegration[] = [];
   const nowAt = instantNow();
-  for (const latest of getLatestSyncEventPerSource(profileId)) {
-    const def = getIntegration(latest.source_id as IntegrationId);
+  const connected = DROPPING_SOURCES_STMT.all(profileId) as {
+    source_id: string;
+  }[];
+  for (const row of connected) {
+    const def = getIntegration(row.source_id as IntegrationId);
     const tolerance = silenceToleranceMinutes(def);
     // No declared tolerance means no window to judge over — the same exemption the
     // staleness rule takes for a source whose cadence we cannot state.
     if (!def || tolerance == null) continue;
-    if (getConnection(profileId, def.id)?.status !== "connected") continue;
     const runs = DROPPING_RUNS_STMT.all(profileId, def.id) as {
       at: string;
       ok: number;

@@ -91,7 +91,8 @@ export function parseSyncEventDetails(
       : [];
     const truncated = value.truncated === true;
     const tally = readTally(value.tally);
-    if (!warnings.length && !origins.length && !truncated && !tally) return null;
+    if (!warnings.length && !origins.length && !truncated && !tally)
+      return null;
     return {
       warnings,
       origins,
