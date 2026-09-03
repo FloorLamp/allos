@@ -21,6 +21,7 @@ import {
   chartExactDot,
   chartGridProps,
   chartInexactDot,
+  chartInstantAxisProps,
   chartMarkMotion,
   chartTooltipProps,
   useChartMotion,
@@ -32,14 +33,7 @@ import { loneReading } from "@/lib/trend-sparkline";
 import SingleReadingMark from "./SingleReadingMark";
 import { formatDateWithYear, formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import {
-  dateToEpoch,
-  epochToISO,
-  formatTimeTick,
-  spansYearBoundary,
-  timeAxisDomain,
-  timeAxisTicks,
-} from "@/lib/chart-time-axis";
+import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import {
   ANNOTATION_KIND_META,
   annotationTooltipLabel,
@@ -162,15 +156,12 @@ export default function BiomarkerChart({
   // 4-year lab gap renders four years wide, not one index step. Lab draws are the
   // sparsest, most-distorted series, so this chart leads the migration.
   const rows = data.map((d) => ({ ...d, t: dateToEpoch(d.date) }));
-  const xDomain = timeAxisDomain(data.map((d) => d.date));
-  const xTicks = timeAxisTicks(xDomain);
-  const withYear = spansYearBoundary(xDomain);
-  const dates = data.map((d) => d.date);
+  const xDates = data.map((d) => d.date);
   const tooltipAnnotations = annotations?.length
-    ? snapAnnotationsToDates(annotations, dates)
+    ? snapAnnotationsToDates(annotations, xDates)
     : [];
   const windowAreas = windows?.length
-    ? protocolWindowEpochs(windows, dates)
+    ? protocolWindowEpochs(windows, xDates)
     : [];
 
   // THE FILL CHANNEL (#2653, owner call 3). Hollow for a bounded reading
@@ -210,15 +201,7 @@ export default function BiomarkerChart({
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid {...chartGridProps(c)} />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={xDomain ?? ["auto", "auto"]}
-            ticks={xTicks.length ? xTicks : undefined}
-            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            {...chartAxisProps(c)}
-          />
+          <XAxis {...chartInstantAxisProps(c, xDates)} />
           <YAxis
             {...chartAxisProps(c)}
             domain={domain}

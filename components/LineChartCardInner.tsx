@@ -22,6 +22,7 @@ import {
   chartAxisProps,
   chartCurve,
   chartDash,
+  chartDayAxisProps,
   chartFittedAnnotationLabel,
   chartFullMargin,
   chartGridProps,
@@ -36,7 +37,6 @@ import {
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
-import { categoryDateTicks } from "@/lib/chart-time-axis";
 import SingleReadingMark from "./SingleReadingMark";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -368,17 +368,6 @@ export default function LineChartCard({
           return out;
         })
       : plotData;
-  // THE DATE AXIS' OWN TICKS (#4924). A category axis with no tick policy takes
-  // recharts' greedy end-anchored fit, which chose a 4-day step for the wide
-  // cards and a 3-day step for the narrow one on the same page from the same
-  // window. The policy is the numeric time axis' one, extended to categories:
-  // at most seven positions, on a calendar step chosen by span, ending on the
-  // window's last day. A non-date x (intraday HH:MM, a per-event index) has no
-  // calendar to step through, and a sparkline paints no axis at all.
-  const xTicks =
-    isoDates && !sparkline
-      ? categoryDateTicks(plotData.map((d) => d.date))
-      : undefined;
   const tickFmt =
     tickFormatter ??
     (isoDates
@@ -559,10 +548,13 @@ export default function LineChartCard({
         >
           {!sparkline && <CartesianGrid {...chartGridProps(c)} />}
           <XAxis
-            dataKey="date"
             tickFormatter={tickFmt}
-            ticks={xTicks}
-            {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
+            {...(sparkline
+              ? { dataKey: "date", ...chartSparklineAxisProps() }
+              : chartDayAxisProps(
+                  c,
+                  plotData.map((d) => d.date)
+                ))}
           />
           <YAxis
             {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}

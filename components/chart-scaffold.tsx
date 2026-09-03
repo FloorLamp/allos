@@ -5,8 +5,13 @@ import { Label, type LabelProps } from "recharts";
 import { textWidth } from "@/lib/chart-svg";
 import { chartNeutral } from "@/lib/chart-colors";
 import {
+  categoryDateTicks,
   CHART_VALUE_AXIS_NICE_TICKS,
   CHART_VALUE_AXIS_TICKS,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
 } from "@/lib/chart-time-axis";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
@@ -109,6 +114,60 @@ export function chartAxisProps(c: ChartColors, tickFill?: string) {
     axisLine: false,
     niceTicks: CHART_VALUE_AXIS_NICE_TICKS,
     tickCount: CHART_VALUE_AXIS_TICKS,
+  } as const;
+}
+
+// ── THE TWO TIME SCALES (#4925) ─────────────────────────────────────────────
+//
+// A time series' x is one of exactly two things, and each was hand-wired per
+// card. THREE cards (biomarker, compare, source-compare) carried a byte-identical
+// six-prop `<XAxis dataKey="t" type="number" scale="time" …>` block, and the
+// category cards carried none at all until #4924 gave them a tick set — so the
+// same axis was three copies in one shape and a default in the other.
+//
+// One bag per SCALE, both spreading the same `chartAxisProps` and the same tick
+// policy (lib/chart-time-axis.ts). A card says which scale its x is; nothing else
+// about the axis is its business.
+
+/**
+ * A category axis of ISO days — every category is a calendar day (#2258), and the
+ * tick set is the calendar-step policy. The caller keeps its own `tickFormatter`,
+ * which is the one thing that genuinely differs (a month-bucketed plot labels
+ * `YYYY-MM`).
+ */
+export function chartDayAxisProps(c: ChartColors, dates: readonly string[]) {
+  const ticks = categoryDateTicks(dates);
+  return {
+    dataKey: "date",
+    // UNDEFINED, NEVER AN EMPTY ARRAY. recharts reads `ticks || niceTicks`, and
+    // `[]` is truthy — so a category axis whose values are not dates (an intraday
+    // HH:MM slot grid, a per-event index) would render NO ticks at all rather
+    // than falling back to its own fit.
+    ticks: ticks.length ? ticks : undefined,
+    ...chartAxisProps(c),
+  } as const;
+}
+
+/**
+ * A numeric axis of INSTANTS, where x is proportional to elapsed time (#402): a
+ * four-year lab gap renders four years wide. `dataKey: "t"` is the epoch column
+ * the callers already build.
+ */
+export function chartInstantAxisProps(
+  c: ChartColors,
+  dates: readonly string[]
+) {
+  const domain = timeAxisDomain([...dates]);
+  const ticks = timeAxisTicks(domain);
+  const withYear = spansYearBoundary(domain);
+  return {
+    dataKey: "t",
+    type: "number",
+    scale: "time",
+    domain: domain ?? (["auto", "auto"] as const),
+    ticks: ticks.length ? ticks : undefined,
+    tickFormatter: (v: number) => formatTimeTick(v, withYear),
+    ...chartAxisProps(c),
   } as const;
 }
 
