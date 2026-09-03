@@ -1000,9 +1000,7 @@ test("no row on the dashboard draws an identity icon, and the severity marks sta
     const value = labValue(canonical);
     await expect(value).toBeVisible();
     return {
-      word: (
-        await value.getByTestId("medical-flag-text").innerText()
-      ).trim(),
+      word: (await value.getByTestId("medical-flag-text").innerText()).trim(),
       carets: await value.locator("svg").count(),
       // The paint the word exists to survive, read off the element rather than a
       // class string.
