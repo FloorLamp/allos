@@ -3,6 +3,7 @@
 import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import TodayMedRow from "@/components/medications/TodayMedRow";
 import { LabeledVerbChip } from "@/components/Chip";
 import { useTimeStatement } from "@/components/TimeStatement";
@@ -283,28 +284,28 @@ export default function QuickLogPrnControl({
   if (layout === "detail") {
     return (
       <div data-testid="quick-log-prn-item" data-item-id={itemId}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="section-label">Today</div>
-            <div
-              className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200"
-              data-testid="prn-day-label"
-            >
-              {dayLabel}
-            </div>
-            {redoseLine ? (
-              <div
-                className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
-                data-testid="prn-redose-line"
-              >
-                {redoseLine}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {control}
-          </div>
+        {/* THE SHARED HEADER ROW (#4548 ruling 4). The same "Today" eyebrow with the
+            same trailing control the read-only arm of this card already draws as a
+            CardSectionHeader — one alignment, one margin — so the two arms of the
+            medication card's Today block can no longer be arranged differently.
+            The day label and the redose line are the block's BODY, not the row. */}
+        <CardSectionHeader title="Today" variant="label">
+          {control}
+        </CardSectionHeader>
+        <div
+          className="text-sm font-medium text-slate-700 dark:text-slate-200"
+          data-testid="prn-day-label"
+        >
+          {dayLabel}
         </div>
+        {redoseLine ? (
+          <div
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="prn-redose-line"
+          >
+            {redoseLine}
+          </div>
+        ) : null}
         {options ? (
           <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
             {options}
