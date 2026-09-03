@@ -100,8 +100,8 @@ import {
 } from "@/lib/queries/upcoming/preventive";
 import { setProfileFoodTelegram } from "@/lib/settings/notifications";
 import { discardWorkoutSession } from "@/lib/workout-finish";
-import { dispatch, prefixForProfile } from "@/lib/notifications";
-import { prefixMessage } from "@/lib/notifications/types";
+import { dispatch } from "@/lib/notifications";
+import { composeForSend } from "@/lib/notifications/compose";
 import {
   buildIntakeReminderForSlots,
   renderDoseSession,
@@ -1367,14 +1367,14 @@ describe("the pointer claim is a compare-and-swap (#1788)", () => {
 // so two members' identical reminders became indistinguishable once resolved. The pointer
 // now records the delivered title, and the sweep composes the close from it.
 describe("a closed message says what it closed (#1822 item 7)", () => {
-  // The attribution the TICK applies at the send site (scripts/notify.ts), reproduced here
-  // so the pointer stores exactly the title a real multi-profile send delivers.
+  // Attribution is `dispatch`'s (#4538), so the send is the plain built message and the
+  // title the pointer stores is whatever the chokepoint composed — asked for here
+  // through the same function rather than reproduced by hand.
   async function sendAttributedReminder(profileId: number): Promise<string> {
     const built = buildIntakeReminderForSlots(profileId, ["Morning"]);
     expect(built).not.toBeNull();
-    const msg = prefixMessage(built!.message, prefixForProfile(profileId));
-    await dispatch(profileId, msg);
-    return msg.title;
+    await dispatch(profileId, built!.message);
+    return composeForSend(profileId, built!.message).title;
   }
 
   it("records attributed titles and keeps shared-chat closes distinguishable", async () => {
@@ -1473,8 +1473,10 @@ describe("a resolved close states the outcome (#2170/#2274)", () => {
     const text = String(editText.mock.calls.at(-1)![2]);
     // One tap-all collapses to ONE timed clause; the skip carries no time (#2867).
     expect(text).toMatch(/Tara A, Tara B taken \d\d:\d\d · Tara C skipped\.$/);
-    // The message's own subject still leads it (#1822 item 7).
-    expect(text.startsWith("💊 Morning supplements —")).toBe(true);
+    // The message's own subject still leads it (#1822 item 7) — attributed, because
+    // `dispatch` composes the label onto every send now (#4538) and the close names the
+    // title the pointer recorded at send time.
+    expect(text.startsWith("[Tally Tara] 💊 Morning supplements —")).toBe(true);
     // The domain's own words, and no app pointer (#2274).
     expect(text).not.toContain("logged");
     expect(text).not.toContain("In the app.");

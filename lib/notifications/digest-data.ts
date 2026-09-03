@@ -128,6 +128,7 @@ import {
   setDigestTailPointer,
 } from "../settings";
 import { getOfferedIntakeForSlot } from "../queries/intake";
+import { profileDayZone } from "../travel-excusal";
 
 const log = createLogger("notify");
 
@@ -174,9 +175,11 @@ export function gatherDigestSleep(
   const signal = getSleepSignal(profileId);
   if (!signal) return null;
 
-  const tz = getTimezone(profileId);
   const sessions = getSleepSessions(profileId);
-  const nights = mainSleepNights(sessions, tz);
+  // The zone each night was SLEPT in, not the one the profile is standing in now
+  // (#3428) — the digest and the Sleep page must agree about which night is last
+  // night, and after a travel switch a current-zone read moves the wake-day.
+  const nights = mainSleepNights(sessions, profileDayZone(profileId));
   if (nights.length === 0) return null;
   const last = nights[nights.length - 1];
 
@@ -872,7 +875,7 @@ export function digestSleepPendingTrace(
   const todayStr = today(profileId);
   const nights = mainSleepNights(
     getSleepSessions(profileId),
-    getTimezone(profileId)
+    profileDayZone(profileId)
   );
   const last = nights[nights.length - 1];
   const newestWakeDay = last?.wakeDay ?? null;

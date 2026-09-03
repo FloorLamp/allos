@@ -106,17 +106,59 @@ export interface HistoryAddVocabulary {
   moodDay: MoodFormDay;
   moodShowCalm: boolean;
   /**
-   * The composed "your usual <window>" offers standing on the day being read (#4118),
-   * one per window, seeded server-side. Empty for every kind but `food`, for a day
-   * outside the bundle's reach, and for a profile with no habit to offer.
-   */
-  usual: UsualRoutineDayOffer[];
-  /**
    * The acting profile's meal-bucket boundaries, so the food form's meal follows the
    * hour a backfill states on this door exactly as it does in the nutrition bar
    * (#2227 decision 4). Two numbers; the same read the bar's mount already makes.
    */
   foodSlotBoundaries: FoodSlotBoundaries;
+}
+
+// ── THE DAY'S STANDING OFFERS, ABOVE THE DOOR ROW (#4310 ruling) ─────────────
+//
+// The composed one-tap is an OFFER over foods and stacks (#4477's vocabulary) and never
+// a food: the tap writes servings AND doses. Under `Log food` the label under-named it,
+// and a reader reconstructing a day met the bundle behind the food door and the per-dose
+// backfill behind `Log a dose`. So the add door LEADS with the day's standing offers, in
+// the same accent offer chip the quick-log sheet's food overlay leads with, and the door
+// row keeps its per-kind grammar beneath.
+//
+// UNCHANGED IN THE MOVE: the day it stands on (#4118 — the record day, which is the day
+// its own label names) and resolving in place (#4045 §1). What went is the `close()`,
+// because there is no panel of its own to close from out here.
+//
+// ON A DAY WITH NO STANDING OFFER IT RENDERS NOTHING, which is what lets it sit above
+// every kind rather than inside one — the offer's own gate is the food half, and the
+// line is silent wherever that gate is.
+export function HistoryUsualOffers({
+  offers,
+  date,
+}: {
+  offers: UsualRoutineDayOffer[];
+  /** The day the reader is looking at, or today. */
+  date: string;
+}) {
+  const router = useRouter();
+  if (offers.length === 0) return null;
+  return (
+    <div className="grid" data-testid="history-add-usual">
+      {offers.map((offer) => (
+        <UsualRoutineControl
+          key={offer.window}
+          window={offer.window}
+          food={offer.food}
+          proteinGrams={offer.proteinGrams}
+          doses={offer.doses}
+          subjectName={null}
+          date={date}
+          testIds={{
+            button: `history-add-usual-${offer.window}`,
+            names: `history-add-usual-${offer.window}-names`,
+          }}
+          onLogged={() => router.refresh()}
+        />
+      ))}
+    </div>
+  );
 }
 
 export default function HistoryAddDoor({
@@ -137,21 +179,6 @@ export default function HistoryAddDoor({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ── THE ONE-TAP USUAL, ON A PAST DAY (#4118) ───────────────────────────────
-  //
-  // The web's answer to "reconstruct an empty day": the composed bundle, seeded to the
-  // day being read. Everything below the label was already built — the offer read is
-  // date-parameterized, the write core takes a day, and the bound is the core's.
-  //
-  // IT STANDS ON THE DOOR'S OWN DAY, and no longer chases a field. The door used to own
-  // a shared date input above every kind's form, so the offer had to re-read whenever
-  // that input moved or its label would keep promising Tuesday's breakfast while the
-  // field said Thursday. Ruling 2 deleted that input — each domain's one form carries
-  // its own date now — so the only day this control can be about is the record day it
-  // is seeded for, which is the day its own label names. The sequenced re-read moved to
-  // the nutrition bar, where a day PICKER still sits above the same offer.
-  const usual = vocabulary.usual;
-
   if (kind === "dose" && vocabulary.doseItems.length === 0) return null;
   if (kind === "practice" && vocabulary.practices.length === 0) return null;
   if (kind === "substance" && vocabulary.substances.length === 0) return null;
@@ -161,45 +188,6 @@ export default function HistoryAddDoor({
     setOpen(false);
     setError(null);
   }
-  // THE DOMAIN'S SHARED COMPOSED CONTROL, WITH THE RECORD DAY IN HAND (#4424 ruling 2).
-  // This door used to spell the bundle button a FOURTH time — its own markup, its own
-  // submit path, its own answer rounding — for the one reason that it knows a day. The
-  // shared control takes a `date` now, so the door renders which offers stand and owns
-  // nothing about the write: not the label, not the promise, not the sentence that
-  // answers it. Its `submit()` went with it; every other kind here is already the
-  // domain's own form, owning its own.
-  function usualControls(): ReactNode {
-    if (usual.length === 0) return null;
-    return (
-      <div className="grid" data-testid="history-add-usual">
-        {usual.map((offer) => (
-          <UsualRoutineControl
-            key={offer.window}
-            window={offer.window}
-            food={offer.food}
-            proteinGrams={offer.proteinGrams}
-            doses={offer.doses.map((d) => ({
-              id: d.id,
-              name: d.name,
-              stack: d.stack,
-            }))}
-            subjectName={null}
-            date={date}
-            testIds={{
-              button: `history-add-usual-${offer.window}`,
-              names: `history-add-usual-${offer.window}-names`,
-            }}
-            // Resolved in place, exactly as the forms beside it are (#4045 §1).
-            onLogged={() => {
-              close();
-              router.refresh();
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
-
   function form(): ReactNode {
     switch (kind) {
       case "food":
@@ -365,11 +353,6 @@ export default function HistoryAddDoor({
       </button>
       {open ? (
         <div className="mt-2" data-testid={`history-add-panel-${kind}`}>
-          {/* ABOVE the form, never inside it: the bundle is an alternative to filling
-              the form out, and nesting a button in a <form> makes it a submit control
-              of that form. The manual per-item path stays exactly where it was — the
-              one-tap is the fast path and never the only one. */}
-          {kind === "food" ? usualControls() : null}
           {form()}
           <InlineError data-testid={`history-add-error-${kind}`}>
             {error}
