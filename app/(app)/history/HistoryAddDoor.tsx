@@ -291,11 +291,12 @@ export default function HistoryAddDoor({
           />
         );
       case "symptom":
-        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2). The day view's own
-        // symptom card mounts the tap BAR, which is why this kind had no door at all —
-        // but a reader filtered to `?kind=symptom` is standing on no day, so the record
-        // could show symptom rows and correct them while offering no way to add one.
-        // The domain's form is that way, with the found day in hand.
+        // A DATE-CONTEXT WRAPPER, NOT A FORM (#4424 ruling 2, amended by #4851 to
+        // "symptom is an add-door kind everywhere"). This is now the record's ONLY
+        // symptom entry surface: the day view's standalone bar card retired with #4851,
+        // because carrying two entry surfaces for the one kind that had two is what put
+        // "+ Log symptom" on its own line below the chart. The domain's form is here,
+        // with the found day in hand.
         //
         // NO `dateField`: the store is UNIQUE(profile_id, date, symptom) and the form
         // says so — the day is the door's, not a field inside it.

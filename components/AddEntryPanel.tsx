@@ -51,7 +51,6 @@ export default function AddEntryPanel({
   id,
   panelId,
   testId,
-  toggleTestId,
   dense = false,
   presentation = "inline",
   housed = false,
@@ -68,9 +67,6 @@ export default function AddEntryPanel({
   // DOM id for the panel region, referenced by the toggle's aria-controls.
   panelId: string;
   testId?: string;
-  // The toggle's own testid, when the surface's spec names it independently of the
-  // wrapper (the day view's `history-symptom-toggle`). Defaults to `<testId>-toggle`.
-  toggleTestId?: string;
   // Tighter rhythm + a small-caps-weight heading, for a panel that sits INSIDE a
   // day view rather than at the foot of a page. Purely visual.
   dense?: boolean;
@@ -108,9 +104,7 @@ export default function AddEntryPanel({
         <button
           ref={triggerRef}
           type="button"
-          data-testid={
-            toggleTestId ?? (testId ? `${testId}-toggle` : undefined)
-          }
+          data-testid={testId ? `${testId}-toggle` : undefined}
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen(true)}
@@ -147,7 +141,7 @@ export default function AddEntryPanel({
     >
       <button
         type="button"
-        data-testid={toggleTestId ?? (testId ? `${testId}-toggle` : undefined)}
+        data-testid={testId ? `${testId}-toggle` : undefined}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}

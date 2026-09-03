@@ -22,7 +22,6 @@ import {
   getHomeLocation,
   getProfileAge,
   getTimezone,
-  getUnitPrefs,
 } from "@/lib/settings";
 import {
   getCustomSymptomNames,
@@ -31,8 +30,6 @@ import {
   getIntakeItems,
   getMoodOnDate,
   getSymptomLogOrder,
-  getSymptomNotesOnDate,
-  getSymptomSeveritiesOnDate,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import { getTrackedPractices } from "@/lib/queries/wellness";
@@ -48,8 +45,6 @@ import DaylightChip from "@/components/DaylightChip";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
-import SymptomEntryCard from "./SymptomEntryCard";
-import SymptomLogBar from "@/components/illness/SymptomLogBar";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
@@ -59,9 +54,7 @@ import {
 } from "@/lib/queries/weather-situations";
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
-import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { PICKER_SYMPTOMS, symptomLabel } from "@/lib/symptoms";
-import { isTaskConfigured } from "@/lib/ai-resolve";
 import { historyHref, type AppRoute } from "@/lib/hrefs";
 import { historyMemberFeed } from "@/lib/history";
 import {
@@ -502,11 +495,6 @@ export default async function HistoryPage(props: {
   // WHICH KINDS THE ADD DOOR CAN BE (#3958: "Log kinds only"). Clinical, training and
   // life records are created on their domain surfaces, and sleep arrives from an
   // integration and is corrected at its source.
-  //
-  // SYMPTOM ONLY WHERE THE BAR IS NOT (#4424 ruling 2). A symptom is quick-logged and
-  // the day view mounts the bar that does it — but a reader filtered to `?kind=symptom`
-  // is standing on no day, so that argument covered a view the bar never reaches: the
-  // record listed symptom rows, corrected them, and offered nothing to add one with.
   const addKind =
     kind === "food" ||
     kind === "dose" ||
@@ -514,11 +502,10 @@ export default async function HistoryPage(props: {
     kind === "mood" ||
     kind === "substance" ||
     kind === "body" ||
+    kind === "symptom" ||
     kind === "stool"
       ? kind
-      : kind === "symptom" && day == null
-        ? kind
-        : null;
+      : null;
   const defaultTime = zonedDateParts(
     getTimezone(actingProfileId),
     new Date()
@@ -610,9 +597,9 @@ export default async function HistoryPage(props: {
 
   // ── THE DAY VIEW'S INHERITANCE (#3958 phase 2; #1068/#1425/#799) ─────────
   //
-  // `/history?day=` is the app's one "that day" anchor now, so the four things
+  // `/history?day=` is the app's one "that day" anchor now, so the three things
   // `/timeline`'s single-day view carried come with it: the intraday panel, the day
-  // context chips, the prev/next nav with its swipe, and the SymptomLogBar mount.
+  // context chips, and the prev/next nav with its swipe.
   //
   // SINGLE-SUBJECT ONLY, which is the timeline's own rule and not a simplification:
   // daylight, UV, weather and cycle phase are ONE body's context, and a merged
@@ -676,20 +663,6 @@ export default async function HistoryPage(props: {
         feeds[0]?.gather.dayEvents ?? []
       )
     : null;
-
-  // RETRO SYMPTOM ENTRY (#799/#1517 C). The bar writes to the ACTING profile, so it
-  // mounts only on the acting profile's own day — never a mixed-subject write. It
-  // opens on arrival when logging IS the point of the visit: the day already carries
-  // symptom entries, or an illness-type situation is active.
-  const daySymptomSeverities = dayContext
-    ? getSymptomSeveritiesOnDate(actingProfileId, dayContext)
-    : {};
-  const daySymptomNotes = dayContext
-    ? getSymptomNotesOnDate(actingProfileId, dayContext)
-    : {};
-  const dayIllnessActive = dayContext
-    ? hasActiveIllnessSituation(actingProfileId)
-    : false;
 
   // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
   //
@@ -1056,38 +1029,6 @@ export default async function HistoryPage(props: {
             formatPrefs={prefs}
             profileId={actingProfileId}
           />
-        </div>
-      ) : null}
-
-      {/* THE SYMPTOM BAR'S CONVENIENCE MOUNT (#799), which is the whole reason a
-          symptom is not an Add-door kind: symptoms are quick-logged against a day,
-          not declared as an entry. Acting profile only — the card renders only on
-          `dayContext`, which is already the acting profile's own day. */}
-      {dayContext && canWrite ? (
-        <div className={`mb-3 ${railGutter}`}>
-          <SymptomEntryCard
-            dateLabel={formatLongDate(dayContext, prefs)}
-            defaultOpen={
-              Object.keys(daySymptomSeverities).length > 0 ||
-              Object.keys(daySymptomNotes).length > 0 ||
-              dayIllnessActive
-            }
-          >
-            <SymptomLogBar
-              date={dayContext}
-              initial={daySymptomSeverities}
-              initialNotes={daySymptomNotes}
-              symptoms={PICKER_SYMPTOMS}
-              customNames={getCustomSymptomNames(actingProfileId)}
-              rankedKeys={getSymptomLogOrder(actingProfileId)}
-              suggestActivateIllness={!dayIllnessActive}
-              temperatureUnit={getUnitPrefs(loginId).temperatureUnit}
-              textIntakeEnabled={isTaskConfigured("symptom-map")}
-              // Unconditional: the card above renders only on the acting profile's
-              // own day, so this link can never name someone else's analysis.
-              analysisHref="/trends/symptoms"
-            />
-          </SymptomEntryCard>
         </div>
       ) : null}
 
