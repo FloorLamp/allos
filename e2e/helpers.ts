@@ -921,6 +921,13 @@ export async function hydratedClick(
  * looks for the control.
  */
 export async function openFoodAdd(page: Page): Promise<void> {
+  // WAIT FOR THE SURFACE BEFORE ASKING WHETHER IT HAS A DOOR. `food-quick-log` is the
+  // add layer on BOTH mounts, so its arrival is what makes the question below
+  // answerable; asked earlier, "no door here" and "no page yet" are the same empty
+  // count and the helper returns having opened nothing. e2e/offline-food-log.spec.ts
+  // navigates with `waitUntil: "commit"` on purpose, which returns before the document
+  // is parsed, so that spec asks this question at its very earliest.
+  await page.getByTestId("food-quick-log").waitFor({ state: "attached" });
   const fold = page.getByTestId("food-add");
   if ((await fold.count()) === 0) return;
   // ALREADY OPEN IS DONE, not "click it again": the summary stays in the DOM once the
@@ -933,12 +940,9 @@ export async function openFoodAdd(page: Page): Promise<void> {
   await page.getByTestId("food-add-door").click();
   await expect(page.getByTestId("food-add-panel")).toBeVisible();
   // AND WAIT FOR THE FOLD TO FINISH OPENING. `.motion-disclose` transitions
-  // `::details-content`'s block-size over 200ms and CLIPS it while it runs
-  // (app/globals.css), so the panel is already "visible" while a control deep inside it
-  // still measures zero and reads as HIDDEN. Measured 2026-09-03: the pre-hydration
-  // test in e2e/offline-food-log.spec.ts failed on `protein-quickadd-input` once in a
-  // thirteen-file batch and passed 5/5 alone — a timing window, not a missing element.
-  // This waits for the animation rather than re-rolling the dice on it.
+  // `::details-content`'s block-size and clips it while it runs (app/globals.css); a
+  // probe against the just-opened door counts four running animations. So the caller
+  // measures a settled panel rather than one mid-open.
   await fold.evaluate((el) =>
     Promise.all(
       el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => {}))
