@@ -124,9 +124,10 @@ test.describe("the day chart at phone width (#1512 F / #1518)", () => {
       // CLOSING them widens again, and the reset button is still the way out.
       await touchPinch(member, centre, 120, 30);
       await expect
-        .poll(async () =>
-          Number(await chart.getAttribute("data-view-to")) -
-          Number(await chart.getAttribute("data-view-from"))
+        .poll(
+          async () =>
+            Number(await chart.getAttribute("data-view-to")) -
+            Number(await chart.getAttribute("data-view-from"))
         )
         .toBeGreaterThan(zoomed.to - zoomed.from);
       await chart.getByTestId("intraday-zoom-reset").click();

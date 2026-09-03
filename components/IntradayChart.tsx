@@ -326,7 +326,8 @@ export default function IntradayChart({
         const plotPx = (geo.plotW / geo.viewBoxWidth) * rect.width;
         next = panView(geo.view, plotPx > 0 ? (pan / plotPx) * span : 0);
       } else if (dy !== 0) {
-        const userX = ((event.clientX - rect.left) / rect.width) * geo.viewBoxWidth;
+        const userX =
+          ((event.clientX - rect.left) / rect.width) * geo.viewBoxWidth;
         // A trackpad pinch arrives here as a ctrlKey wheel and takes the same path.
         next = zoomViewAt(
           geo.view,

@@ -299,10 +299,7 @@ export function zoomViewAt(
   if (next === span) return null;
   const at = Math.max(view.from, Math.min(view.to, atMinute));
   const ratio = (at - view.from) / span;
-  const from = Math.max(
-    0,
-    Math.min(MINUTES_IN_DAY - next, at - ratio * next)
-  );
+  const from = Math.max(0, Math.min(MINUTES_IN_DAY - next, at - ratio * next));
   return { from, to: from + next };
 }
 

@@ -42,7 +42,9 @@ async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
 }
 
 /** The chart's visible window, in minutes — what every #4852 gesture moves. */
-async function readWindow(chart: Locator): Promise<{ from: number; to: number }> {
+async function readWindow(
+  chart: Locator
+): Promise<{ from: number; to: number }> {
   return {
     from: Number(await chart.getAttribute("data-view-from")),
     to: Number(await chart.getAttribute("data-view-to")),
@@ -265,7 +267,10 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await svg.scrollIntoViewIfNeeded();
       const overChart = async () => {
         const box = (await svg.boundingBox())!;
-        await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
+        await member.mouse.move(
+          box.x + box.width / 2,
+          box.y + box.height * 0.6
+        );
       };
 
       // ZOOM OUT AT THE FULL DAY: nothing to widen, so the page keeps the wheel.

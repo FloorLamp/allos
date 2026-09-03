@@ -595,12 +595,48 @@ describe("wheel and pinch zoom (#4852)", () => {
   it.each([
     // The pointer's minute keeps its position in the plot — the anchoring that
     // makes a wheel feel like it zooms where you are pointing.
-    ["about the middle", { from: 480, to: 600 }, 540, 0.5, { from: 510, to: 570 }],
-    ["about the left edge", { from: 480, to: 600 }, 480, 0.5, { from: 480, to: 540 }],
-    ["out, clamped to midnight", { from: 0, to: 120 }, 0, 2, { from: 0, to: 240 }],
-    ["out, clamped to the day's end", { from: 1320, to: 1440 }, 1440, 2, { from: 1200, to: 1440 }],
-    ["in, clamped to the narrowest window", { from: 0, to: 12 }, 6, 0.5, { from: 1, to: 11 }],
-    ["out, clamped to the whole day", { from: 600, to: 660 }, 630, 100, { from: 0, to: MINUTES_IN_DAY }],
+    [
+      "about the middle",
+      { from: 480, to: 600 },
+      540,
+      0.5,
+      { from: 510, to: 570 },
+    ],
+    [
+      "about the left edge",
+      { from: 480, to: 600 },
+      480,
+      0.5,
+      { from: 480, to: 540 },
+    ],
+    [
+      "out, clamped to midnight",
+      { from: 0, to: 120 },
+      0,
+      2,
+      { from: 0, to: 240 },
+    ],
+    [
+      "out, clamped to the day's end",
+      { from: 1320, to: 1440 },
+      1440,
+      2,
+      { from: 1200, to: 1440 },
+    ],
+    [
+      "in, clamped to the narrowest window",
+      { from: 0, to: 12 },
+      6,
+      0.5,
+      { from: 1, to: 11 },
+    ],
+    [
+      "out, clamped to the whole day",
+      { from: 600, to: 660 },
+      630,
+      100,
+      { from: 0, to: MINUTES_IN_DAY },
+    ],
   ])("zooms %s", (_label, view, at, factor, expected) => {
     expect(zoomViewAt(view, at, factor)).toEqual(expected);
   });
@@ -613,9 +649,19 @@ describe("wheel and pinch zoom (#4852)", () => {
   });
 
   it.each([
-    ["slides a zoomed window", { from: 480, to: 600 }, 30, { from: 510, to: 630 }],
+    [
+      "slides a zoomed window",
+      { from: 480, to: 600 },
+      30,
+      { from: 510, to: 630 },
+    ],
     ["clamps to midnight", { from: 480, to: 600 }, -600, { from: 0, to: 120 }],
-    ["rounds to whole minutes", { from: 480, to: 600 }, 30.4, { from: 510, to: 630 }],
+    [
+      "rounds to whole minutes",
+      { from: 480, to: 600 },
+      30.4,
+      { from: 510, to: 630 },
+    ],
   ])("%s", (_label, view, delta, expected) => {
     const next = panView(view, delta)!;
     expect(next).toEqual(expected);
@@ -625,7 +671,11 @@ describe("wheel and pinch zoom (#4852)", () => {
 
   it.each([
     ["the whole day is already visible", FULL_DAY_VIEW, 60],
-    ["the window is against the edge it is pushed toward", { from: 1380, to: 1440 }, 100],
+    [
+      "the window is against the edge it is pushed toward",
+      { from: 1380, to: 1440 },
+      100,
+    ],
     ["the nudge is under a minute", { from: 480, to: 600 }, 0.4],
   ])("pans nothing when %s", (_label, view, delta) => {
     expect(panView(view, delta)).toBeNull();
