@@ -220,7 +220,7 @@ export function seedPrnLedger(): void {
 
   // A second PRN med with a CONFIRMED redose notice (#798): min interval 6h, max 4/day,
   // opt-in on, and ONE administration ~7h ago — so the redose window is OPEN and the
-  // card/widget render the "Redose OK — min interval passed · 1 of 4 today" status line.
+  // card/widget render the "Redose OK — min interval passed · 1 of 4 in 24h" status line.
   // Synthetic name → matches no interaction dataset; high supply so it never joins the
   // low-supply fixtures. Idempotent (recreated each boot, administration stays
   // today-relative).

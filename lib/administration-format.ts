@@ -80,7 +80,7 @@ export function administrationDayLabel(
   return lastClock ? `${n} · last ${lastClock}` : n;
 }
 
-// When a neighboring redose line already owns the daily count ("1 of 4 today"),
+// When a neighboring redose line already owns the 24h count ("1 of 4 in 24h"),
 // keep this line focused on the other useful fact instead of repeating "1 today".
 // A missing clock is unusual, but the fallback remains honest and useful.
 export function administrationLastDoseLabel(

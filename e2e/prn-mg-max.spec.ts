@@ -11,9 +11,9 @@ import { hydratedClick } from "./helpers";
 // These specs assert the two rendered halves:
 //   • the `prn-max:` care finding fires on SUMMED SNAPSHOTTED MILLIGRAMS when the
 //     mg/day max is confirmed and the amounts are known — 3 × 800 mg = 2400 mg
-//     against a 1200 mg/day ceiling that "3 of 6 doses" would have read as calm —
+//     against a 1200 mg/24h ceiling that "3 of 6 doses" would have read as calm —
 //     and its copy states the mg basis, never a dose count;
-//   • the med form's "Maximum mg per day" field round-trips through save/edit.
+//   • the med form's "Maximum mg in 24 hours" field round-trips through save/edit.
 //
 // Each test owns its fixture rows (unique names on profile 1, idempotent cleanup
 // in beforeEach + finally) and asserts only on those; dates derive from
@@ -129,12 +129,12 @@ test("the over-max finding fires on summed milligrams and states the mg basis", 
     await page.goto("/upcoming");
     const finding = page.getByTestId(`upcoming-item-prn-max:${otcId}`);
     await expect(finding).toBeVisible();
-    await expect(finding).toContainText(`${OTC_NAME} — over your daily max`);
+    await expect(finding).toContainText(`${OTC_NAME} — over your 24-hour max`);
     // Milligram copy — summed exposure vs the mg/day ceiling, both members
     // named, and NEVER a dose-count framing (the basis is stated, #1854).
-    await expect(finding).toContainText("2400 mg logged today");
+    await expect(finding).toContainText("2400 mg logged in the last 24h");
     await expect(finding).toContainText(
-      "most conservative confirmed max of 1200 mg per day"
+      "most conservative confirmed max of 1200 mg in 24h"
     );
     await expect(finding).toContainText(RX_NAME);
     await expect(finding).not.toContainText("doses logged");
@@ -147,7 +147,7 @@ test("the over-max finding fires on summed milligrams and states the mg basis", 
       .filter({ hasText: OTC_NAME })
       .getByTestId("prn-redose-line");
     await expect(redoseLine).toContainText("Max reached");
-    await expect(redoseLine).toContainText("2400 of 1200 mg today");
+    await expect(redoseLine).toContainText("2400 of 1200 mg in 24h");
     await expect(redoseLine).toContainText("across 2 items");
   } finally {
     const cleanup = openDb();
