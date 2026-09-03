@@ -501,7 +501,7 @@ describe("merge-gate.mjs", () => {
         at("e2e-main (2)", "cancelled"),
         at("e2e-main (2)", "success"),
       ],
-      "is green (2 shards)",
+      "is green (2 of 2 shards ran)",
     ],
     [[at("e2e-main (1)", "cancelled")], "every shard run was cancelled"],
   ])("reports main's e2e-main standing: %#", (runs, expected) => {
