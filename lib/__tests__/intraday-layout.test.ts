@@ -234,6 +234,31 @@ describe("the background bands add no lane", () => {
     expect(band.right).toBeCloseTo(projectMinute(withSun, 1146), 6);
   });
 
+  // #4918's empty-day ruling, and its own trap: the ROW-STACK floor above only
+  // guards `showSleepRow`/`hasExpectedSleep`; a truly rowless day (no HR, no
+  // sleep, no blocks, no ticks) leaves `axisY === padTop` UNLESS something else
+  // gives the plot a canvas — which is exactly the day this ruling is about ("the
+  // daylight band and the day context draw alone").
+  it("still has a canvas for the daylight band on a day with no rows AT ALL", () => {
+    const emptyWithSun = model({
+      hr: null,
+      solarDay: { sunriseMin: 372, sunsetMin: 1146 },
+    });
+    const geo = intradayGeometry(emptyWithSun, "wide");
+    expect(geo.axisY).toBeGreaterThan(geo.padTop);
+    const band = daylightBandX(geo, emptyWithSun)!;
+    expect(band).not.toBeNull();
+    expect(band.right).toBeGreaterThan(band.left);
+    // The floor costs NOTHING once anything else already reserves the row stack —
+    // proved by comparison rather than a hardcoded number, so a future row this
+    // module gains cannot silently make the floor start double-reserving.
+    const emptyNoSun = model({ hr: null });
+    const bareEmpty = intradayGeometry(emptyNoSun, "wide");
+    expect(bareEmpty.axisY).toBe(geo.axisY);
+    const normalDay = intradayGeometry(model(), "wide"); // default fixture HAS hr
+    expect(normalDay.axisY).toBeGreaterThan(bareEmpty.padTop);
+  });
+
   it("draws nothing without a solarDay, and nothing outside the visible window", () => {
     const bareModel = model();
     const geo = intradayGeometry(bareModel, "wide");

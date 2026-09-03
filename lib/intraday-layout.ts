@@ -233,6 +233,14 @@ export function intradayGeometry(
   if (hasPractice) cursor += base.workH + base.rowGap;
   const tickTop = cursor;
   if (hasTicks) cursor += base.tickH + base.rowGap;
+  // THE EMPTY-DAY FLOOR (#4918's empty-day ruling). A day with none of the five
+  // rows above still needs a CANVAS: `daylightBandX` spans from `padTop` to
+  // `axisY`, and without this, a rowless day leaves `axisY === padTop` — a
+  // zero-height band on the one day the ruling most wants it visible ("the
+  // daylight band and the day context draw alone"). Reserved ONLY when nothing
+  // else reserved anything: the instant any row exists, its own height already
+  // gives the band a canvas, so this can never widen an already-tall chart.
+  if (cursor === base.padTop) cursor += base.hrH;
   const axisY = cursor;
 
   const hr = model.hr;
