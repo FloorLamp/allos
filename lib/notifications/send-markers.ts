@@ -202,7 +202,8 @@ export const SEND_MARKER_REGISTRY: readonly SendMarkerEntry[] = [
     cadence: "one-shot",
     store: "profile_settings",
     shape: "`<practiceLogId>`",
-    value: "the practice row's own profile-local date, the day the note was sent for",
+    value:
+      "the practice row's own profile-local date, the day the note was sent for",
     writer: "lib/notifications/practice-recap-dispatch.ts",
     retention:
       "None: one note per practice row (#4775 §3), keyed on an id that never recycles. It is stamped ONLY on delivery, so a row that aged out of the two-hour bound without the stream ever covering it leaves the key unset — the marker records a send that happened, and there was none.",

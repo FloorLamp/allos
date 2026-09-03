@@ -26,7 +26,11 @@ const DAY = "2026-05-20";
 const WINDOW = { start: `${DAY}T10:00`, end: `${DAY}T10:30` };
 
 // A flat-ish stream from `from` for `count` minutes at `bpm`, one bucket a minute.
-function run(from: string, count: number, bpm: number | ((i: number) => number)) {
+function run(
+  from: string,
+  count: number,
+  bpm: number | ((i: number) => number)
+) {
   return Array.from({ length: count }, (_, i) => ({
     ts: shiftLocalMinutes(from, i),
     bpm: typeof bpm === "number" ? bpm : bpm(i),
@@ -111,12 +115,15 @@ describe("in-window facts", () => {
   it.each([
     [PRE_WINDOW_MIN, 1],
     [PRE_WINDOW_MIN + 1, 0],
-  ])("a bucket %i min before the start is %i minutes of baseline", (back, n) => {
-    const p = physiology({
-      minutes: [{ ts: shiftLocalMinutes(WINDOW.start, -back), bpm: 61 }],
-    });
-    expect(p.preWindowMeanBpm).toBe(n === 1 ? 61 : null);
-  });
+  ])(
+    "a bucket %i min before the start is %i minutes of baseline",
+    (back, n) => {
+      const p = physiology({
+        minutes: [{ ts: shiftLocalMinutes(WINDOW.start, -back), bpm: 61 }],
+      });
+      expect(p.preWindowMeanBpm).toBe(n === 1 ? 61 : null);
+    }
+  );
 });
 
 describe("recovery", () => {
@@ -141,7 +148,10 @@ describe("recovery", () => {
   it("is null when the profile has no resting-HR history", () => {
     const p = physiology({
       restingCeilingBpm: null,
-      minutes: [...run(`${DAY}T10:00`, 30, 140), ...run(`${DAY}T10:30`, 20, 50)],
+      minutes: [
+        ...run(`${DAY}T10:00`, 30, 140),
+        ...run(`${DAY}T10:30`, 20, 50),
+      ],
     });
     expect(p.recoveryMin).toBeNull();
   });
@@ -191,26 +201,37 @@ describe("coverage — the honesty gate", () => {
   });
 
   it("ages the frontier against now, never below zero", () => {
-    expect(physiology({ frontier: `${DAY}T12:00`, now: `${DAY}T12:45` })
-      .frontierAgeMin).toBe(45);
+    expect(
+      physiology({ frontier: `${DAY}T12:00`, now: `${DAY}T12:45` })
+        .frontierAgeMin
+    ).toBe(45);
     // A frontier ahead of the caller's clock is clock skew, not negative age.
-    expect(physiology({ frontier: `${DAY}T13:00`, now: `${DAY}T12:45` })
-      .frontierAgeMin).toBe(0);
+    expect(
+      physiology({ frontier: `${DAY}T13:00`, now: `${DAY}T12:45` })
+        .frontierAgeMin
+    ).toBe(0);
   });
 });
 
 describe("zone minutes", () => {
   it("splits the in-window minutes through the profile's model", () => {
     const p = physiology({
-      minutes: [...run(`${DAY}T10:00`, 20, 120), ...run(`${DAY}T10:20`, 10, 165)],
+      minutes: [
+        ...run(`${DAY}T10:00`, 20, 120),
+        ...run(`${DAY}T10:20`, 10, 165),
+      ],
     });
     expect(p.zoneMinutes?.reduce((a, b) => a + b, 0)).toBe(30);
-    expect(zoneMinutesClause(p.zoneMinutes!)).toMatch(/^Z\d \d+ min( · Z\d \d+ min)*$/);
+    expect(zoneMinutesClause(p.zoneMinutes!)).toMatch(
+      /^Z\d \d+ min( · Z\d \d+ min)*$/
+    );
   });
 
   it("has no split without a zone model", () => {
-    expect(physiology({ zoneModel: null, minutes: run(`${DAY}T10:00`, 5, 120) })
-      .zoneMinutes).toBeNull();
+    expect(
+      physiology({ zoneModel: null, minutes: run(`${DAY}T10:00`, 5, 120) })
+        .zoneMinutes
+    ).toBeNull();
   });
 
   it("names only the zones with minutes in them", () => {

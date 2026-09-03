@@ -35,6 +35,7 @@ import { getFoodDailyServingTotalsInRange } from "./nutrition";
 import { getActivityDates } from "./training/activities";
 import { getBodyMetricDailySeries, getMetricDailyTotals } from "./metrics";
 import { getSleepDurationTrend } from "./sleep";
+import { getOvernightHrMinSeries } from "./event-physiology";
 
 // What the factor side of one entry knows about the window: the days the factor was
 // LOGGED on, and the days that can legitimately join the control arm.
@@ -108,6 +109,11 @@ function outcomeSeries(
       // body_metrics keys on (profile_id, date, source), so this goes through the
       // shared daily fold rather than raw rows (#1615).
       return getBodyMetricDailySeries(profileId, "resting_hr", limitDays);
+    case "overnight-hr-min":
+      // The night's FLOOR over its own sleep-session window (#4775 §5), never a
+      // clock-hour slice — the same scoping the digest's overnight line uses, so the
+      // pair and that line can never disagree about what "overnight" meant.
+      return getOvernightHrMinSeries(profileId, limitDays);
     case "main-sleep-minutes":
       // MAIN overnight sleep per wake-day (#1118) — never the raw `sleep_min` total,
       // which sums a same-day nap into the night and would double-count it.

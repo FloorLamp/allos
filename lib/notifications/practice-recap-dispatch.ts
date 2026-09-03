@@ -165,7 +165,10 @@ export async function runPracticeRecaps(
   const nowLocal = zonedMinuteStr(getTimezone(profileId), at);
   let sent = 0;
   let failed = false;
-  for (const { row, window } of recentlyFinishedPractices(profileId, nowLocal)) {
+  for (const { row, window } of recentlyFinishedPractices(
+    profileId,
+    nowLocal
+  )) {
     const markerKey = practiceRecapMarkerKey(row.id);
     if (getProfileSetting(profileId, markerKey) != null) continue;
     const msg = buildPracticeRecap(profileId, row, window, at);

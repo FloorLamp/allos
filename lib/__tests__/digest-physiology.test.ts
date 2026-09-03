@@ -44,9 +44,7 @@ function yesterdayLines(activities: DigestInput["activities"]): string[] {
 describe("the Yesterday recovery clause", () => {
   it("states the recovery beside the profile's own usual", () => {
     expect(
-      yesterdayLines([
-        { ...session, recoveryMin: 28, usualRecoveryMin: 35 },
-      ])[0]
+      yesterdayLines([{ ...session, recoveryMin: 28, usualRecoveryMin: 35 }])[0]
     ).toContain("back to resting in 28 min (usual 35)");
   });
 

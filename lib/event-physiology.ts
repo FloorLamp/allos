@@ -203,11 +203,14 @@ export function eventPhysiology(input: EventPhysiologyInput): EventPhysiology {
       : null;
 
   const zoneMinutes =
-    zoneModel && minutes.length > 0 ? zoneMinuteTotals(minutes, zoneModel) : null;
+    zoneModel && minutes.length > 0
+      ? zoneMinuteTotals(minutes, zoneModel)
+      : null;
 
   const preStart = shiftLocalMinutes(window.start, -PRE_WINDOW_MIN);
   const pre = all.filter((b) => b.ts >= preStart && b.ts < window.start);
-  const preWindowMeanBpm = pre.length > 0 ? meanOf(pre.map((b) => b.bpm)) : null;
+  const preWindowMeanBpm =
+    pre.length > 0 ? meanOf(pre.map((b) => b.bpm)) : null;
 
   // RECOVERY. The first minute at or after the window's end whose bpm sits back
   // inside the resting range. `>= window.end` and not `>` because the window is
@@ -249,7 +252,9 @@ export function eventPhysiology(input: EventPhysiologyInput): EventPhysiology {
  * kind — most recent first. Null below `USUAL_MIN_EVENTS`, which is the signal to
  * render the fact with no comparison clause rather than to invent a weaker one.
  */
-export function usualValue(priorsNewestFirst: readonly number[]): number | null {
+export function usualValue(
+  priorsNewestFirst: readonly number[]
+): number | null {
   const recent = priorsNewestFirst.slice(0, USUAL_RECENT_EVENTS);
   if (recent.length < USUAL_MIN_EVENTS) return null;
   return meanOf(recent);
@@ -275,7 +280,9 @@ export function practiceEffectBpm(
 }
 
 /** Zone minutes as `Z2 24 min · Z3 11 min`, loudest-zone-first order preserved. */
-export function zoneMinutesClause(zoneMinutes: readonly number[]): string | null {
+export function zoneMinutesClause(
+  zoneMinutes: readonly number[]
+): string | null {
   const parts = zoneMinutes.flatMap((min, i) =>
     min > 0 ? [`Z${i + 1} ${Math.round(min)} min`] : []
   );

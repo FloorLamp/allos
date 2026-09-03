@@ -6,7 +6,12 @@
 
 import { db, today } from "../db";
 import { now } from "../clock";
-import { parseUtcSql, shiftDateStr, zonedDateParts, zonedMinuteStr } from "../date";
+import {
+  parseUtcSql,
+  shiftDateStr,
+  zonedDateParts,
+  zonedMinuteStr,
+} from "../date";
 import {
   getIntakeItems,
   getIntakeDoses,
@@ -35,6 +40,9 @@ import {
   digestTimeSuggestionLine,
 } from "../digest-time-suggestion";
 import { getFindingSuppressions } from "../queries/upcoming/suppressions";
+import { isFindingSuppressed } from "../findings";
+import { buildPairedObservationFindings } from "../rule-findings";
+import { getProfileSubstanceTelegram } from "../settings/notifications";
 import { upcomingToFinding } from "../findings";
 import { dismissedSignalKeys, findingProminence } from "../dismissal-fatigue";
 import { recentPRs, recentCardioPRs } from "../coaching";
@@ -270,6 +278,39 @@ function gatherOvernightHr(
   };
 }
 
+/**
+ * ONE paired-observation line about the drink log for the digest (#4775 §5), or null.
+ *
+ * THE REACH EXCEPTION, in one place. #2177 ruled that a paired observation is never a
+ * send, and `docs/internals/substances.md` §Reach that no substance ever generates a
+ * finding-driven send. The owner overruled both for THIS pair family on 2026-09-02,
+ * and both documents record it. The three things that made those rulings right are all
+ * kept:
+ *   • the per-profile opt-in `substance_telegram_enabled`, OFF by default (#3330), is
+ *     asked by the CALLER before this runs — nothing about substances is computed, let
+ *     alone sent, for a profile that has not asked;
+ *   • the pair's own monthly dismissal applies, so declining it in the app silences it
+ *     here too (dismiss once, silence everywhere, #227);
+ *   • the copy is the verdict's own sentence, with both arms' n and no advice verb —
+ *     not a second, chattier rendering written for a chat window.
+ *
+ * AT MOST ONE, whatever the page shows. Two lines about one night is a cost the page
+ * accepted (two alcohol pairs can clear their floors together); a morning message is
+ * not the place to pay it, so the first in registry order speaks and the rest do not.
+ */
+export function gatherSubstanceObservationLine(
+  profileId: number,
+  todayStr: string
+): string | null {
+  const suppressions = getFindingSuppressions(profileId);
+  for (const finding of buildPairedObservationFindings(profileId, todayStr)) {
+    if (!finding.dedupeKey.includes(":alcohol-")) continue;
+    if (isFindingSuppressed(finding, suppressions, todayStr)) continue;
+    return finding.detail ?? null;
+  }
+  return null;
+}
+
 // How many personal records were set on `date` — the notable predicate behind a
 // demoted Activities section (#1797). It is the SAME recentPRs / recentCardioPRs pair
 // the weekly recap and the Trends fitness lens read (#221), asked at a one-day window:
@@ -348,6 +389,12 @@ export function gatherDigestInput(
   // Gathered up front: the Tune control has to know whether a Sleep section is in
   // play today before the return object is assembled.
   const sleep = gatherDigestSleep(profileId, demoted);
+  // §5's opt-in is asked HERE, before anything about substances is computed: a profile
+  // that has not turned it on pays nothing and is told nothing (#3330).
+  const substanceObservationLine =
+    sleep && getProfileSubstanceTelegram(profileId)
+      ? gatherSubstanceObservationLine(profileId, td)
+      : null;
 
   const active = getIntakeItems(profileId).filter((s) => s.active);
   const itemById = new Map(active.map((item) => [item.id, item]));
@@ -484,8 +531,11 @@ export function gatherDigestInput(
         // By morning the stream has long since covered last night's session, which is
         // exactly why this is the carrier and the finish tap is not: `eventRecovery`
         // returns null on an uncovered window and the clause simply is not there.
-        ...(eventRecovery(profileId, a, priorEventWindows(profileId, a.type, a)) ??
-          {}),
+        ...(eventRecovery(
+          profileId,
+          a,
+          priorEventWindows(profileId, a.type, a)
+        ) ?? {}),
       }))
     : [];
   const yDue = dueDoseIdsOn(yd);
@@ -730,6 +780,7 @@ export function gatherDigestInput(
         ),
       };
     })(),
+    substanceObservationLine,
     // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
     // is fresh; buildDigest renders a Sleep section only when present.
     sleep,

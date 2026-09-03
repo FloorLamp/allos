@@ -196,7 +196,22 @@ dedicated store, so one store never has two quick-log owners in the census.
 Substance data stays out of share links, the emergency card and print surfaces by
 default, and a send names a substance only behind the per-profile opt-in below. The
 neutral stance changes what the **owner** can do, not what the app broadcasts. No
-substance ever generates a finding-driven send.
+substance ever generates a finding-driven send — **with one recorded exception**.
+
+**The exception (owner decision, 2026-09-02, #4775 §5).** The paired-observation
+`alcohol-*` entries (`lib/paired-observations.ts`) may render **one** line in the
+morning digest, behind `substance_telegram_enabled` and only above the pair's own
+effect floor. This overrules #2177's "never a send" for this pair family and nothing
+else. It is one line, never a message of its own: it is appended to a Sleep section
+that already exists, so it cannot be the thing that makes a digest go out. Everything
+that made the original ruling right still holds — the opt-in is off by default, the
+pair's monthly dismissal silences the line as it silences the card, and the copy is
+the verdict's own sentence with both arms' n and no advice verb. The gather is
+`gatherSubstanceObservationLine` (`lib/notifications/digest-data.ts`), which asks the
+flag before it computes anything at all.
+
+What the exception does NOT open: no other substance, no cap finding, no second line,
+and no send that exists because of a substance.
 
 Telegram carries this profile's alcohol rows only after an explicit per-profile opt-in —
 `substance_telegram_enabled`, off by default, the same consent shape as food buttons

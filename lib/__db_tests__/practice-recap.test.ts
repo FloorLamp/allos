@@ -220,7 +220,9 @@ describe("the practice finish message waits for the stream", () => {
     expect(r.sent).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
     // NOT burned: the row is still eligible for the rest of the bound.
-    expect(getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null).toBeNull();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
   });
 
   // The same row, one tick later, with the pipeline caught up.
@@ -255,7 +257,9 @@ describe("the practice finish message waits for the stream", () => {
     const r = await tick(p, new Date("2026-07-17T19:21:00Z"));
     expect(r.sent).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null).toBeNull();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
   });
 
   // The other side of the same boundary, so the bound is a bound and not a wall.
@@ -287,7 +291,9 @@ describe("the practice finish message waits for the stream", () => {
     const fetchMock = stubFetch();
     expect((await tick(p)).sent).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null).toBeNull();
+    expect(
+      getProfileSetting(p, practiceRecapMarkerKey(rowId)) ?? null
+    ).toBeNull();
   });
 
   it("contacts nobody when the kind is off on the delivery channel", async () => {

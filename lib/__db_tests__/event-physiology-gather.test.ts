@@ -18,10 +18,7 @@ import {
   getHrFrontierLocal,
   restingCeilingBpm,
 } from "@/lib/queries/event-physiology";
-import {
-  getHrMinutesInRange,
-  getProfileZoneModel,
-} from "@/lib/queries";
+import { getHrMinutesInRange, getProfileZoneModel } from "@/lib/queries";
 import { scopeBucketsToWindows, zoneMinuteTotals } from "@/lib/training-zones";
 import type { UnitPrefs } from "@/lib/settings";
 
@@ -128,9 +125,7 @@ describe("one computation, two consumers", () => {
     );
     // The fixture's own arithmetic, so a silent widening of the window is visible.
     expect(detail.heartRate.minutes).toHaveLength(30);
-    expect(
-      detail.heartRate.zoneMinutes!.reduce((a, b) => a + b, 0)
-    ).toBe(30);
+    expect(detail.heartRate.zoneMinutes!.reduce((a, b) => a + b, 0)).toBe(30);
   });
 
   it("gives the page the two facts the extraction added", () => {

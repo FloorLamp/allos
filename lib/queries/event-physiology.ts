@@ -26,6 +26,9 @@ import { now as clockNow } from "../clock";
 import { getHrMinutesInRange } from "./metrics";
 import { getProfileZoneModel } from "./zones";
 import { getRestingHrSignal } from "./coaching";
+import { getSleepSessions } from "./metrics";
+import { mainSleepNights } from "../sleep-regularity";
+import { profileDayZone } from "../travel-excusal";
 import {
   eventPhysiology,
   physiologyDaySpan,
@@ -178,4 +181,71 @@ export function priorEventWindows(
       before.id,
       USUAL_RECENT_EVENTS
     ) as ActivityWindowInput[];
+}
+
+// ── The overnight minimum, per night (#4775 §5) ──────────────────────────────
+
+/**
+ * The least of a night that has to be MEASURED before its minimum describes the
+ * night rather than a moment. An hour: below that the floor is whatever the watch
+ * happened to catch, and a single low minute from a half-worn night would sit in a
+ * paired-observation arm as if it were a night's reading.
+ */
+export const OVERNIGHT_MIN_MEASURED_MIN = 60;
+
+/**
+ * The overnight HR MINIMUM per night, dated on the WAKE day, oldest→newest.
+ *
+ * Scoped to each night's own main sleep SESSION (#1118) rather than to clock hours,
+ * for the reason §4's line is: a 02:00 bedtime and a 22:00 one are the same night.
+ *
+ * ONE read of the minute stream covers the whole span rather than one per night —
+ * ninety nights through the per-event gather would be ninety day-range reads, and
+ * this runs inside the coaching gather on every dashboard render.
+ *
+ * A night is DROPPED, not zero-filled, when the stream has not passed its end (the
+ * most recent night on a lagging pipeline) or when under an hour of it was measured.
+ * The paired engine's arms are counts of nights, so a dropped night is simply one
+ * fewer datapoint — which is honest — while a wrong one moves a mean.
+ */
+export function getOvernightHrMinSeries(
+  profileId: number,
+  limitDays: number
+): { date: string; value: number }[] {
+  const tz = getTimezone(profileId);
+  const zone = profileDayZone(profileId);
+  const nights = mainSleepNights(getSleepSessions(profileId), zone).slice(
+    -limitDays
+  );
+  if (nights.length === 0) return [];
+  const local = (at: string): string | null => {
+    const d = parseUtcSql(at);
+    return d ? zonedMinuteStr(tz, d) : null;
+  };
+  const windows = nights.flatMap((night) => {
+    const start = local(night.start);
+    const end = local(night.end);
+    return start && end && end > start
+      ? [{ wakeDay: night.wakeDay, start, end }]
+      : [];
+  });
+  if (windows.length === 0) return [];
+  const frontier = getHrFrontierLocal(profileId);
+  if (frontier == null) return [];
+  const minutes = getHrMinutesInRange(
+    profileId,
+    windows[0].start.slice(0, 10),
+    windows[windows.length - 1].end.slice(0, 10)
+  );
+  const out: { date: string; value: number }[] = [];
+  for (const w of windows) {
+    if (frontier < w.end) continue;
+    const inNight = minutes.filter((b) => b.ts >= w.start && b.ts < w.end);
+    if (inNight.length < OVERNIGHT_MIN_MEASURED_MIN) continue;
+    out.push({
+      date: w.wakeDay,
+      value: Math.min(...inNight.map((b) => b.bpm)),
+    });
+  }
+  return out;
 }

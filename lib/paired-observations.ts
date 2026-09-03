@@ -156,7 +156,15 @@ export type PairedFactorSource = "alcohol-servings" | "logged-activity";
 
 // Which measured series the outcome is read from. Same closed-union discipline.
 export type PairedOutcomeStream =
-  "overnight-hrv" | "next-morning-resting-hr" | "main-sleep-minutes";
+  | "overnight-hrv"
+  | "next-morning-resting-hr"
+  // The night's MINIMUM heart rate over its own main sleep session, from the minute
+  // stream (#4775 §5) — a different quantity from the device's daily resting figure
+  // above, and on the owner's own 90-day prod snapshot a far more legible one: drink
+  // evenings vs logged-dry evenings ran +3.2 bpm on the overnight minimum (53.5 vs
+  // 50.3, n 27/18) where the daily `resting_hr` ran +1.3, under this floor.
+  | "overnight-hr-min"
+  | "main-sleep-minutes";
 
 // How the CONTROL arm is populated — the "absence of a log" question above.
 //   • logging-evidence  — a day joins the without-arm only when it carries independent
@@ -273,6 +281,56 @@ export const PAIRED_OBSERVATIONS: readonly PairedObservationEntry[] = [
       "The same factor against the outcome nearly every profile has, so the observation " +
       "is not restricted to HRV-capable wearables. Expected to be silent more often than " +
       "not — the floor is above the gap the issue's fixture shows.",
+  },
+  {
+    // Slot argued: the SAME factor and the same outcome ORGAN as the entry above, and
+    // the reason it is a second slot rather than a rewrite of that one is that they
+    // read different instruments. `alcohol-resting-hr` reads the device's daily
+    // resting figure — one number the wearable computes and publishes. This reads the
+    // FLOOR of the night from the minute stream itself, over the sleep session's own
+    // window. On the owner's 90-day prod snapshot the two disagree in the way that
+    // matters: the daily figure moved 1.3 bpm (silent, correctly, under the 3 bpm
+    // floor) while the overnight minimum moved 3.2 and the overnight mean 4.5. The
+    // entry above is kept and stays mostly silent, because retiring it would delete a
+    // shipped, dismissible pair and its monthly key from under anyone who has already
+    // answered it.
+    //
+    // The two can both clear their floors on one profile, which is the same
+    // two-lines-about-one-night cost `alcohol-resting-hr` already accepted beside
+    // `alcohol-hrv`. The DIGEST does not pay that cost: §5's reach rule renders at
+    // most ONE alcohol line there, whatever the page shows.
+    key: "alcohol-overnight-hr",
+    factor: {
+      source: "alcohol-servings",
+      control: "logging-evidence",
+      adultOnly: true,
+      // Unchanged wording, deliberately: the `logging-evidence` control admits a night
+      // as dry when food was logged and no drink was, and the owner has named a real
+      // drink night that qualified. "evenings with a drink LOGGED" is the claim the
+      // data can actually support, and it is the claim the copy makes.
+      withPhrase: "evenings with a drink logged",
+      withoutPhrase: "on evenings without",
+    },
+    outcome: {
+      stream: "overnight-hr-min",
+      label: "the night's lowest heart rate",
+      unit: "bpm",
+      format: "number",
+      decimals: 0,
+      offsetDays: 1,
+      // 3 bpm, the same floor as the resting-HR entry above and for the same reason:
+      // a heart rate drifts a couple of beats with fitness, illness and the device,
+      // and three is where a mean difference stops being inside that drift.
+      floor: 3,
+    },
+    title: "Drink evenings and the night's lowest heart rate",
+    // The daily-average heart-rate series — the closest chart the app has to the
+    // quantity this pair reads. It is a COARSER cut of the same stream, not the same
+    // series, so the label says heart rate rather than promising the overnight floor.
+    actionHref: metricDetailHref("hr"),
+    actionLabel: "View heart rate",
+    rationale:
+      "The instrument, not the organ, is what this slot buys: the device's daily resting figure hides an effect the minute stream shows, measured at +3.2 bpm against +1.3 on the owner's own 90 days. Without it the alcohol factor is legible only to a profile whose wearable happens to publish a responsive daily resting HR.",
   },
   {
     // Slot argued: the counterweight. Training is the factor users most expect to see a

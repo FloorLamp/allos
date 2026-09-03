@@ -275,6 +275,21 @@ export interface DigestInput {
   // Empty on a quiet 24h, and an empty list renders NO section — the digest must never
   // manufacture news to fill space (the same rule the delta line already follows).
   recentChangeLines?: string[];
+  // ONE paired-observation line about the drink log (#4775 §5), preformatted from the
+  // SAME `buildPairedObservationFindings` verdict the Wellness page renders — both
+  // arms' n, no direction word, no advice verb, and the pair's own monthly dismissal
+  // already applied by the gather.
+  //
+  // THIS IS THE ONE SUBSTANCE FINDING THAT MAY BE SENT, and it is an exception the
+  // owner made on 2026-09-02 to #2177's "never a send" and to the substances doc's
+  // "no substance ever generates a finding-driven send". Both documents record it.
+  // Everything that made those rulings right still holds: it is behind
+  // `substance_telegram_enabled`, which is OFF by default (#3330), so nothing about
+  // substances reaches a profile that has not asked for it.
+  //
+  // A RIDE-ALONG, NOT A REASON TO SEND. It is appended only to a Sleep section that
+  // already exists, so it can never be the thing that makes a message.
+  substanceObservationLine?: string | null;
   // Last night's sleep (issue #1117), or null when the sleep summary is off or
   // there's no fresh sleep data. When present the digest gets a calm Sleep section.
   sleep?: DigestSleep | null;
@@ -849,6 +864,16 @@ export function buildDigest(input: DigestInput): DigestModel | null {
         })
       );
     }
+    // The drink-log observation (#4775 §5), LAST in the section and only when the
+    // section already has something in it — the same contact-consent shape the
+    // Yesterday section's food-limit line uses.
+    if (input.substanceObservationLine && sleepLines.length > 0)
+      sleepLines.push(
+        formatEmphasizedLine({
+          glyph: GLYPH.trend,
+          head: input.substanceObservationLine,
+        })
+      );
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
 
