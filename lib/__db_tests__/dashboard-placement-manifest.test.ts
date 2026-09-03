@@ -1159,6 +1159,21 @@ describe("actual atomic dashboard manifests", () => {
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
   const QUERY_BASELINE: Record<string, number> = {
+    // +1 on four personas and +3 on two (#4956): the attention read now also asks
+    // whether a live source is DROPPING a record type. That is one scan of this
+    // profile's CONNECTED sources, plus one bounded window of recent runs per
+    // connected source that declares a silence tolerance. Four personas have no such
+    // source and pay the scan alone; `marathon-runner` and `biohacker` each have two
+    // (health-connect and strava) and pay a window read for each, hence +3. Counted
+    // per persona in this file's own statement trace: the scan 1 everywhere, the
+    // window 0/2/0/0/0/2. Bounded by the number of connected sources and never by
+    // history — DROPPING_RUN_CAP caps what each window read returns.
+    //
+    // RE-MEASURED ON THE MERGED TREE after #4953's +1/+4 landed, and the +1/+3 came
+    // back unchanged on every persona, so the two compose. Re-measuring was not a
+    // formality here: on three personas this branch's +1 and #4953's +1 produced the
+    // SAME number from the same base, so git auto-merged them as one change and the
+    // merge was quietly a query short on each.
     // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
     // as well as their own table, so a profile whose only eye care is VISITS stops
     // having its pane hidden. That is one representative-id encounters read plus
@@ -1205,17 +1220,17 @@ describe("actual atomic dashboard manifests", () => {
     // RE-MEASURED ON THE MERGED TREE, with #4775's −1 already in main's numbers: the
     // same +1/+4 came back on every persona, so the two moves compose rather than
     // interact. Measured, not arithmetic on two branches' deltas.
-    bodybuilder: 226,
-    "marathon-runner": 225,
-    household: 275,
-    pregnant: 222,
-    "diabetic-cgm": 233,
+    bodybuilder: 227,
+    "marathon-runner": 228,
+    household: 276,
+    pregnant: 223,
+    "diabetic-cgm": 234,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 251,
+    biohacker: 254,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's

@@ -71,7 +71,6 @@ import {
 import {
   TREND_METRIC_META,
   bodyCardIdForSeriesKey,
-  trendMetricChartScale,
   buildTrendMetricTile,
   savedMetricIdForTrendSlug,
   stableEmptyLast,
@@ -108,8 +107,6 @@ import type {
   ClinicalObservation,
 } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
-import LineChartCard from "@/components/LineChartCard";
-import ChartCard from "@/components/ChartCard";
 import TrendMiniCard from "@/components/TrendMiniCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
@@ -283,6 +280,7 @@ export default async function BodySection({
     (r) => ({
       date: r.date,
       value: Math.round(r.value),
+      partial: r.partial,
     })
   );
   // Skin temperature variation keeps 1 decimal, unlike its whole-unit neighbours:
@@ -528,6 +526,7 @@ export default async function BodySection({
     // its goal overlay + the shared event annotations came here with it.
     vitalsCharts.push({
       key: "resting_hr",
+      slug: "resting-hr",
       testid: "vitals-resting-hr",
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
@@ -644,23 +643,15 @@ export default async function BodySection({
       unit: ` ${wu}`,
       color: chartSeries.brand,
       ...goalOverlay("weight", weightChart, ` ${wu}`, 1),
-      // Contextual entry to the bulk-correction panel (#1603): a bad RUN in this
-      // chart (miscalibrated scale, lb-as-kg import) is fixed in one pass on
-      // Data → Review, not row-at-a-time. A FOOTER action, not a headerAction:
-      // the header row is the card's full-width tap target (#1488, pinned by
-      // chart-tap-through.spec) and must not cede width to a sibling affordance.
-      footerAction: (
-        <DestinationLink
-          href="/data?section=review&fix=weight#bulk-correction"
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          data-testid="body-weight-fix-range"
-        >
-          Fix a range
-        </DestinationLink>
-      ),
+      // The bulk-correction door is EARNED now, not placed (#4924 fix 6): the
+      // card's footer band renders it for any metric the review page can correct
+      // while that chart is naming a live outage, from `correctionField` in the
+      // registry. Weight was the only card that had it, and every metric with a
+      // bad imported run has the same problem.
     },
     bodyfat: {
       key: "bodyfat",
+      slug: "body-fat",
       testid: "body-chart-bodyfat",
       detailHref: metricDetailHref("body-fat"),
       title: TREND_METRIC_META["body-fat"].title,
@@ -673,6 +664,7 @@ export default async function BodySection({
     // vitals section is resting HR's one home now.
     resting_hr: {
       key: "resting_hr",
+      slug: "resting-hr",
       detailHref: metricDetailHref("resting-hr"),
       title: TREND_METRIC_META["resting-hr"].title,
       data: restingHrChart,
@@ -738,6 +730,7 @@ export default async function BodySection({
   ).map((r) => ({
     date: r.date,
     value: Math.round(r.value),
+    partial: r.partial,
   }));
   const activeCaloriesChart = filterSeriesByRange(activeCaloriesAll, range);
   // Sleep keeps its detailed regularity / stage analysis on /sleep, while Trends →
@@ -784,13 +777,21 @@ export default async function BodySection({
     profile.id,
     "hydration_l",
     ALL_ROWS
-  ).map((r) => ({ date: r.date, value: round(r.value, 2) }));
+  ).map((r) => ({
+    date: r.date,
+    value: round(r.value, 2),
+    partial: r.partial,
+  }));
   const hydrationChart = filterSeriesByRange(hydrationAll, range);
   const caloriesAll = getMetricDailyTotals(
     profile.id,
     "nutrition_kcal",
     ALL_ROWS
-  ).map((r) => ({ date: r.date, value: Math.round(r.value) }));
+  ).map((r) => ({
+    date: r.date,
+    value: Math.round(r.value),
+    partial: r.partial,
+  }));
   const caloriesChart = filterSeriesByRange(caloriesAll, range);
   // BMI over the weight series, pairing each weigh-in with the height in effect ON
   // OR BEFORE that date — the SAME date-paired derivation the growth card uses, so
@@ -822,19 +823,17 @@ export default async function BodySection({
   const hrAll = getHrDailySummary(profile.id, 3650).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
+    // Today's average is over the minutes so far (#4924); the flag travels with
+    // the point so the mark, the stroke and the headline all say the same thing.
+    partial: r.partial,
   }));
   const hrChart = filterSeriesByRange(hrAll, range);
 
   // Every day-grain chart on this page densifies to the CALENDAR (#2258): the
   // series names itself, the shared range supplies the window, and the per-series
-  // gap registry decides whether a missing day is a hole or a real zero. The check-in
-  // cards below spell it through this helper; the metric specs let TrendMetricCharts
-  // derive the same key from their slug, so a card and its tile can never be
-  // windowed differently.
-  const bodyGapFill = (slug: TrendMetricSlug): DayFillSpec => ({
-    seriesKey: metricSeriesKey(savedMetricIdForTrendSlug(slug)),
-    ...dayFillWindow(range),
-  });
+  // gap registry decides whether a missing day is a hole or a real zero. Every
+  // card here is a spec now, so TrendMetricCharts derives the key from each one's
+  // slug and a card and its tile can never be windowed differently.
   // Sleep duration is a per-night READING plotted here and on /sleep, so it declares
   // its policy under the shared render-only key rather than by hand.
   const sleepGapFill: DayFillSpec = {
@@ -896,7 +895,6 @@ export default async function BodySection({
       data: stepsChart,
       unit: TREND_METRIC_META.steps.unit,
       color: chartSeries.sky,
-      ...trendMetricChartScale(TREND_METRIC_META.steps),
     });
   }
   if (activeCaloriesAll.length > 0) {
@@ -907,7 +905,6 @@ export default async function BodySection({
       data: activeCaloriesChart,
       unit: TREND_METRIC_META["active-calories"].unit,
       color: chartSeries.rose,
-      ...trendMetricChartScale(TREND_METRIC_META["active-calories"]),
     });
   }
   if (hasSleep) {
@@ -987,7 +984,6 @@ export default async function BodySection({
       data: hydrationChart,
       unit: " L",
       color: chartSeries.sky,
-      ...trendMetricChartScale(TREND_METRIC_META.hydration),
     });
   }
   if (caloriesAll.length > 0) {
@@ -998,7 +994,6 @@ export default async function BodySection({
       data: caloriesChart,
       unit: " kcal",
       color: chartSeries.amber,
-      ...trendMetricChartScale(TREND_METRIC_META.calories),
     });
   }
   // ONE presence boolean per block, shared by its menu item and its render.
@@ -1036,28 +1031,34 @@ export default async function BodySection({
   // on the same scale, with the same never-range-checked contract — so any drift
   // between their scaffolds, footers or colors would be an accident rather than a
   // decision. Colors come from the registry the tile and the detail page also read.
-  const checkInCard = (slug: CheckInMetricSlug, data: Point[]) => (
-    <ChartCard
-      anchorId={slug}
-      testid={`${slug}-trend`}
-      title={TREND_METRIC_META[slug].title}
-      description="1–5 daily check-ins · selected date range"
-      detailHref={metricDetailHref(slug)}
-      footer={
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          A subjective self-rating from your daily check-ins — never
-          range-checked.
-        </p>
-      }
-    >
-      <LineChartCard
-        data={data}
-        label={TREND_METRIC_META[slug].title}
-        color={TREND_METRIC_META[slug].color}
-        gapFill={bodyGapFill(slug)}
-      />
-    </ChartCard>
-  );
+  //
+  // A CARD SPEC, not a pre-rendered node (#4924 fix 5). These three were assembled
+  // here and handed to the stack as finished JSX, which meant they were the one
+  // kind of member the shared card path never reached: no protocol window was
+  // fanned into them (the reason Mood alone showed no shaded band on a page where
+  // every other card did), no declared 1–5 domain, and their own footer sentence
+  // in their own wrapper. As specs they take the same path every other chart takes.
+  const checkInChart = (
+    slug: CheckInMetricSlug,
+    data: Point[]
+  ): TrendChartSpec => ({
+    key: slug,
+    anchorId: slug,
+    testid: `${slug}-trend`,
+    title: TREND_METRIC_META[slug].title,
+    description: "1–5 daily check-ins · selected date range",
+    detailHref: metricDetailHref(slug),
+    data,
+    unit: TREND_METRIC_META[slug].unit,
+    color: TREND_METRIC_META[slug].color,
+    decimals: TREND_METRIC_META[slug].decimals,
+    footer: (
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        A subjective self-rating from your daily check-ins — never
+        range-checked.
+      </p>
+    ),
+  });
 
   // Every member, before ordering. Membership is unchanged — each entry is still
   // present-gated exactly where it was — and every chart carries its own anchor now
@@ -1090,7 +1091,7 @@ export default async function BodySection({
           {
             id: "mood",
             label: TREND_METRIC_META.mood.title,
-            node: checkInCard("mood", moodChart),
+            chart: checkInChart("mood", moodChart),
           },
         ]
       : []),
@@ -1099,7 +1100,7 @@ export default async function BodySection({
           {
             id: "energy",
             label: TREND_METRIC_META.energy.title,
-            node: checkInCard("energy", energyChart),
+            chart: checkInChart("energy", energyChart),
           },
         ]
       : []),
@@ -1108,7 +1109,7 @@ export default async function BodySection({
           {
             id: "calm",
             label: TREND_METRIC_META.calm.title,
-            node: checkInCard("calm", calmChart),
+            chart: checkInChart("calm", calmChart),
           },
         ]
       : []),

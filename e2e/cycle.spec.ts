@@ -413,7 +413,9 @@ test.describe("menstrual cycle (#714)", () => {
     // with a count and nothing else (the ≤140px chrome budget), and puts daylight, UV,
     // weather and cycle phase on `?day=` — the one surface that is about a single day.
     await page.goto(`/history?day=${TODAY}`);
-    await expect(page.getByTestId("history-day-context")).toBeVisible();
+    // #4918 ruling 3: the standalone strip retired into the chart card's own
+    // context line.
+    await expect(page.getByTestId("intraday-panel")).toBeVisible();
     await expect(page.getByTestId("cycle-phase-chip")).toBeVisible();
   });
 
@@ -438,7 +440,7 @@ test.describe("menstrual cycle (#714)", () => {
       // A hand-typed future day clamps rather than 404ing or rendering a blank
       // future — #3958's edge-case ruling — and what it lands on is today.
       await page.goto(`/history?day=${FUTURE_DATE}`);
-      await expect(page.getByTestId("history-day-context")).toBeVisible();
+      await expect(page.getByTestId("intraday-panel")).toBeVisible();
       await expect(page.getByTestId("cycle-phase-chip")).toBeVisible();
       await expect(page.locator(`#timeline-day-${FUTURE_DATE}`)).toHaveCount(0);
     } finally {

@@ -85,6 +85,20 @@ export interface IntradayInput {
   // Wall-clock minute of "now", set ONLY when the rendered day is the profile's
   // today. Null on every other day (no now-marker).
   nowMinute: number | null;
+  // THE DAYLIGHT BAND (#4918 ruling 3). Sunrise/sunset in minutes past local
+  // midnight, straight from lib/sun.ts's solarDay — the SAME reader DaylightChip's
+  // icon row gates on (both endpoints present; null on a polar day/night, where the
+  // chip's own text line already says the honest thing and a background band would
+  // only compete with it). Null whenever there is no home location, or nothing to
+  // draw — the day view asks; the dashboard's "day so far" card passes null.
+  solarDay: { sunriseMin: number; sunsetMin: number } | null;
+  // THE EXPECTED SLEEP WINDOW (#4918 ruling 7) — the profile's typical bed/wake
+  // pair, in raw CLOCK minutes (typicalBedTime/typicalWakeTime, 0..1439), the SAME
+  // pair the dashboard's usual band already reads (#3253). The caller passes this
+  // only when TODAY is waiting for last night's sleep (getSleepWaitingState
+  // returned a state) — never derived here, never on a past day, where the window
+  // means nothing.
+  expectedSleep: { bedMinutes: number; wakeMinutes: number } | null;
 }
 
 // ── Model (what the SVG draws) ───────────────────────────────────────────────
@@ -168,6 +182,16 @@ const EXCLUDED_TICK_CATEGORIES: ReadonlySet<TimelineCategory> = new Set([
   "insight",
 ]);
 
+// The resolved expected-sleep window, in the axis's own relative minute space
+// (see buildIntradayModel) — mirrors IntradaySleepBlock's clip shape without the
+// fields (key, stages) a window that never happened has no use for.
+export interface IntradayExpectedSleep {
+  startMinute: number;
+  endMinute: number;
+  clippedStart: boolean;
+  clippedEnd: boolean;
+}
+
 export interface IntradayModel {
   date: string;
   minutesInDay: number;
@@ -176,6 +200,8 @@ export interface IntradayModel {
   blocks: IntradayBlock[];
   ticks: IntradayTick[];
   nowMinute: number | null;
+  solarDay: { sunriseMin: number; sunsetMin: number } | null;
+  expectedSleep: IntradayExpectedSleep | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -305,11 +331,15 @@ export function splitHrSegments(
 
 // ── The model ────────────────────────────────────────────────────────────────
 
-// Build the day's intraday model, or NULL when nothing on the day is intraday —
-// so an ordinary day (a weigh-in and a lab panel, none of them clock-timed, no HR,
-// no sleep) renders no empty frame at all. Each layer is independently data-gated
-// the same way.
-export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
+// Build the day's intraday model. ALWAYS returns one (#4918's empty-day ruling):
+// a day with nothing on it (no HR, no sleep, no windowed workout, no clock-timed
+// event) gets a model whose four data layers are all empty rather than no model at
+// all — the day view's card draws the daylight band and its context line on that
+// model just as it would any other, and only the ROWS are missing. Each layer is
+// independently data-gated the same way; a caller that only cares whether there is
+// anything to plot reads hr/sleep/blocks/ticks directly (the dashboard's "day so
+// far" card gates on hr.pointCount, unaffected by this).
+export function buildIntradayModel(input: IntradayInput): IntradayModel {
   const points = downsampleHr(input.date, input.hr);
   const hr: IntradayHrLayer | null =
     points.length > 0
@@ -468,16 +498,27 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
   }
   ticks.sort((a, b) => a.minute - b.minute || a.key.localeCompare(b.key));
 
-  if (!hr && sleep.length === 0 && blocks.length === 0 && ticks.length === 0) {
-    return null;
-  }
-
   const nowMinute =
     input.nowMinute != null &&
     input.nowMinute >= 0 &&
     input.nowMinute <= MINUTES_IN_DAY
       ? input.nowMinute
       : null;
+
+  // Bed sits the NIGHT BEFORE wake whenever the two clock minutes say so: a
+  // typical 23:00 bedtime relative to a 06:30 wake crosses local midnight, so it
+  // draws from BEFORE this day's 00:00 — negative, like any other span that bleeds
+  // in from yesterday (clipToDay already knows how to draw that; see sleep above).
+  // A bedtime that is itself a small clock minute (a 01:00 night owl) already sits
+  // on the SAME day as its wake and needs no shift.
+  const expectedSleep = input.expectedSleep
+    ? clipToDay(
+        input.expectedSleep.bedMinutes > input.expectedSleep.wakeMinutes
+          ? input.expectedSleep.bedMinutes - MINUTES_IN_DAY
+          : input.expectedSleep.bedMinutes,
+        input.expectedSleep.wakeMinutes
+      )
+    : null;
 
   return {
     date: input.date,
@@ -487,6 +528,8 @@ export function buildIntradayModel(input: IntradayInput): IntradayModel | null {
     blocks,
     ticks,
     nowMinute,
+    solarDay: input.solarDay,
+    expectedSleep,
   };
 }
 

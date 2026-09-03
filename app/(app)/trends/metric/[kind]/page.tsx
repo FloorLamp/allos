@@ -45,7 +45,6 @@ import {
   TREND_METRIC_META,
   isTrendMetricSlug,
   resolveTrendMetricUnit,
-  trendMetricChartScale,
   trendMetricPeriodStats,
   savedMetricIdForTrendSlug,
   seriesCoverageNote,
@@ -432,7 +431,6 @@ export default async function TrendMetricDetailPage(props: {
     // What the plot ACTUALLY covers, whenever the selected window is wider than the
     // series — the reconciliation between a lit "90D" pill and a week-wide axis.
     note: seriesCoverageNote(windowed, range),
-    ...trendMetricChartScale(meta),
   };
 
   const latest =

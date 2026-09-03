@@ -73,7 +73,11 @@ export function SyncOutcomeLine({
 // setup page's status header, its history table, and Review can't drift.
 export function SyncDetailsNotes({ ev }: { ev: IntegrationSyncEvent }) {
   const details = parseSyncEventDetails(ev.details ?? null);
-  if (!details) return null;
+  // Emptiness is representable here since #4956: a run can carry ONLY a per-type tally,
+  // which is machine evidence for the `dropping` derivation and has no note to show. A
+  // bare `!details` guard would then render an empty amber block on every push.
+  if (!details || !(details.warnings.length || details.origins.length))
+    return null;
   return (
     <div
       className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-300"

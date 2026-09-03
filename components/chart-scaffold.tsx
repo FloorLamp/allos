@@ -4,6 +4,19 @@ import { useEffect, useState } from "react";
 import { Label, type LabelProps } from "recharts";
 import { textWidth } from "@/lib/chart-svg";
 import { chartNeutral } from "@/lib/chart-colors";
+import {
+  ANNOTATION_KIND_META,
+  type AnnotationKind,
+} from "@/lib/trend-annotations";
+import {
+  categoryDateTicks,
+  CHART_VALUE_AXIS_NICE_TICKS,
+  CHART_VALUE_AXIS_TICKS,
+  formatTimeTick,
+  spansYearBoundary,
+  timeAxisDomain,
+  timeAxisTicks,
+} from "@/lib/chart-time-axis";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -81,6 +94,17 @@ export function chartGridProps(c: ChartColors) {
  * Axis props: ticks in a text token, no tick marks, no axis spine. The spine and
  * ticks duplicate information the gridlines and labels already carry.
  *
+ * AND THE TICK VALUES ARE A POLICY (#4924). Every card handed recharts an axis
+ * with no `tickCount` and no nice-number mode, so the numbers down the side were
+ * whatever its default `adaptive` fit produced: 4.75 / 5.7 / 6.65 hours of sleep,
+ * 55 / 66 / 77 / 88 / 99 bpm. Those are honest divisions of the data range and
+ * nobody reads a chart in ninths. `snap125` snaps the step to 1 / 2 / 2.5 / 5 at
+ * each order of magnitude, which is how a person would have chosen it.
+ *
+ * It applies to whichever axis carries NUMBERS: recharts ignores both props on a
+ * category axis, and the date axis takes an explicit tick set instead
+ * (`categoryDateTicks`, lib/chart-time-axis.ts).
+ *
  * `tickFill` overrides the tick color, and exists for exactly one case: a
  * dual-axis chart where the axis serves ONE series. Even there the answer is
  * usually the neutral token — identity belongs to the marks and the legend, and
@@ -92,6 +116,62 @@ export function chartAxisProps(c: ChartColors, tickFill?: string) {
     stroke: c.axis,
     tickLine: false,
     axisLine: false,
+    niceTicks: CHART_VALUE_AXIS_NICE_TICKS,
+    tickCount: CHART_VALUE_AXIS_TICKS,
+  } as const;
+}
+
+// ── THE TWO TIME SCALES (#4925) ─────────────────────────────────────────────
+//
+// A time series' x is one of exactly two things, and each was hand-wired per
+// card. THREE cards (biomarker, compare, source-compare) carried a byte-identical
+// six-prop `<XAxis dataKey="t" type="number" scale="time" …>` block, and the
+// category cards carried none at all until #4924 gave them a tick set — so the
+// same axis was three copies in one shape and a default in the other.
+//
+// One bag per SCALE, both spreading the same `chartAxisProps` and the same tick
+// policy (lib/chart-time-axis.ts). A card says which scale its x is; nothing else
+// about the axis is its business.
+
+/**
+ * A category axis of ISO days — every category is a calendar day (#2258), and the
+ * tick set is the calendar-step policy. The caller keeps its own `tickFormatter`,
+ * which is the one thing that genuinely differs (a month-bucketed plot labels
+ * `YYYY-MM`).
+ */
+export function chartDayAxisProps(c: ChartColors, dates: readonly string[]) {
+  const ticks = categoryDateTicks(dates);
+  return {
+    dataKey: "date",
+    // UNDEFINED, NEVER AN EMPTY ARRAY. recharts reads `ticks || niceTicks`, and
+    // `[]` is truthy — so a category axis whose values are not dates (an intraday
+    // HH:MM slot grid, a per-event index) would render NO ticks at all rather
+    // than falling back to its own fit.
+    ticks: ticks.length ? ticks : undefined,
+    ...chartAxisProps(c),
+  } as const;
+}
+
+/**
+ * A numeric axis of INSTANTS, where x is proportional to elapsed time (#402): a
+ * four-year lab gap renders four years wide. `dataKey: "t"` is the epoch column
+ * the callers already build.
+ */
+export function chartInstantAxisProps(
+  c: ChartColors,
+  dates: readonly string[]
+) {
+  const domain = timeAxisDomain([...dates]);
+  const ticks = timeAxisTicks(domain);
+  const withYear = spansYearBoundary(domain);
+  return {
+    dataKey: "t",
+    type: "number",
+    scale: "time",
+    domain: domain ?? (["auto", "auto"] as const),
+    ticks: ticks.length ? ticks : undefined,
+    tickFormatter: (v: number) => formatTimeTick(v, withYear),
+    ...chartAxisProps(c),
   } as const;
 }
 
@@ -233,6 +313,25 @@ export function chartBarCursorProps(c: ChartColors) {
   return { fill: c.grid, fillOpacity: 0.5 } as const;
 }
 
+// ── the curve (#4924) ───────────────────────────────────────────────────────
+
+/**
+ * The curve EVERY line in this app draws: straight segments between readings.
+ *
+ * It was `type="monotone"` written out at nine call sites across six cards — a
+ * mark decision that never made it into the scaffold, so it could not be fixed
+ * once. `curveMonotoneX` invents a smooth path through the points: on a dense
+ * daily series that is a harmless smoothing, and on FIVE WEIGH-INS over a
+ * quarter it draws a peak between two readings that nobody measured. The chart
+ * cannot tell those apart, because the two get the same curve.
+ *
+ * A straight segment asserts exactly what its two endpoints bound and nothing
+ * between them, which is the only claim a line here is entitled to make. The
+ * separate #2653 states still say how much to trust the segment (demoted for a
+ * thin series, cut at an over-limit hole); this decides its SHAPE, once.
+ */
+export const chartCurve = "linear" as const;
+
 // ── marks (Part 2: dots, annotations, stack gaps) ───────────────────────────
 
 /** Above this many points a line's per-point dots stop being data and start
@@ -299,11 +398,43 @@ export function chartLineDot(
     color,
     pointCount,
     enabled = true,
-  }: { color: string; pointCount: number; enabled?: boolean }
+    isolated,
+    inexact,
+  }: {
+    color: string;
+    pointCount: number;
+    enabled?: boolean;
+    // Indices whose stroke is cut on BOTH sides (lib/trend-sparkline's
+    // `isolatedReadings`). They draw whatever the density says.
+    isolated?: ReadonlySet<number>;
+    // Indices whose value is not the whole of what it will be — a bucket the
+    // profile's local day is still filling (#4924). They draw HOLLOW, and they
+    // draw whatever the density says, because the mark is the claim.
+    inexact?: ReadonlySet<number>;
+  }
 ) {
-  if (!enabled || pointCount > DENSE_SERIES_POINTS) return false as const;
-  return chartExactDot(c, color);
+  if (!enabled) return false as const;
+  // TWO EXCEPTIONS TO THE CLUTTER RULE, AND THEY ARE THE SAME EXCEPTION (#4924).
+  //
+  // The density threshold is a CLUTTER rule: above thirty points the dots fuse
+  // into a heavy line and the stroke already says where every reading is, so
+  // hover carries the value instead. That argument holds for a reading the
+  // stroke DRAWS. It collapses for a reading the stroke cannot reach — an
+  // isolated reading had no segment and no dot, so a value that exists rendered
+  // as nothing at all — and for one whose mark carries a claim the stroke does
+  // not make, which is what hollow says. Both keep their marks at any density.
+  const dense = pointCount > DENSE_SERIES_POINTS;
+  // A series whose marks are all alike takes the PROP BAG, which is the shape
+  // recharts renders through its own `<Dot>` — same geometry, and it keeps the
+  // `recharts-dot` / `recharts-line-dot` classes specs and stylesheets address.
+  // Below the threshold an isolated reading is already drawn, so only an INEXACT
+  // point makes the marks differ from each other.
+  if (!dense && size(inexact) === 0) return chartExactDot(c, color);
+  if (dense && size(isolated) + size(inexact) === 0) return false as const;
+  return chartPointDot(c, color, { isolated, inexact, dense });
 }
+
+const size = (s?: ReadonlySet<number>) => s?.size ?? 0;
 
 /** The resting mark for an EXACT reading, unconditionally — for the two cards
  *  that draw their own `<circle>` per point and so cannot take a prop bag that
@@ -314,7 +445,72 @@ export function chartExactDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+    // The RESTING-MARK selector, so a spec can count the marks a reader can
+    // actually see. recharts' own `.recharts-line-dot` is on the layer whether
+    // the mark is a dot or an empty group.
+    className: CHART_DOT_CLASS,
   } as const;
+}
+
+/** The class every resting mark carries. */
+export const CHART_DOT_CLASS = "chart-dot";
+
+/**
+ * The dot layer when the marks are not all alike: hollow where the value is not
+ * the whole of what it will be, solid where the stroke cannot reach, and nothing
+ * at all for a point a dense stroke already draws. A renderer rather than a prop
+ * bag because the decision is per POINT, and recharts hands a dot function the
+ * point's index.
+ */
+function chartPointDot(
+  c: ChartColors,
+  color: string,
+  {
+    isolated,
+    inexact,
+    dense,
+  }: {
+    isolated?: ReadonlySet<number>;
+    inexact?: ReadonlySet<number>;
+    dense: boolean;
+  }
+) {
+  // What recharts' own `<Dot>` would have put on the circle (`DotItem` merges the
+  // Line's `recharts-line-dot` with `recharts-dot`). A per-point RENDERER bypasses
+  // that entirely, so the classes are restated here rather than silently dropped:
+  // e2e/sleep-page.spec.ts finds the SRI card's marks by `.recharts-dot`, and a
+  // selector that stops matching because a mark became conditional is the same
+  // regression as the mark disappearing.
+  const rechartsDot = "recharts-dot recharts-line-dot";
+  const exact = chartExactDot(c, color);
+  const hollow = chartInexactDot(c, color);
+  return function PointDot({
+    cx,
+    cy,
+    index,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+    index?: number;
+  }) {
+    if (typeof cx !== "number" || typeof cy !== "number" || index == null) {
+      return <g />;
+    }
+    const mark = inexact?.has(index)
+      ? hollow
+      : !dense || isolated?.has(index)
+        ? exact
+        : null;
+    if (!mark) return <g />;
+    return (
+      <circle
+        {...mark}
+        className={`${rechartsDot} ${mark.className}`}
+        cx={cx}
+        cy={cy}
+      />
+    );
+  };
 }
 
 /**
@@ -333,6 +529,8 @@ export function chartInexactDot(c: ChartColors, color: string) {
     fill: c.surface,
     stroke: color,
     strokeWidth: 1.5,
+    className: CHART_DOT_CLASS,
+    "data-inexact": true,
   } as const;
 }
 
@@ -459,6 +657,36 @@ export function chartSparseDot(c: ChartColors, color: string) {
     fill: color,
     stroke: c.surface,
     strokeWidth: 1,
+  } as const;
+}
+
+// ── THE REFERENCE-MARK VOCABULARY (#4925) ───────────────────────────────────
+//
+// A protocol window and an event annotation are the same two marks on every
+// chart that carries them, and three cards spelled both out: the same
+// `fillOpacity` and `strokeOpacity` on the area, the same dash and opacity on the
+// line, each reading its colour out of `ANNOTATION_KIND_META` by hand. The
+// COLOUR is the kind's (identity), and the WEIGHT is the scaffold's — a window
+// has to sit under the series without competing with it, and that is one
+// decision, not three.
+
+/** A shaded intervention window (#660), behind the series. */
+export function chartWindowAreaProps(kind: AnnotationKind) {
+  const color = ANNOTATION_KIND_META[kind].color;
+  return {
+    fill: color,
+    fillOpacity: 0.08,
+    stroke: color,
+    strokeOpacity: 0.3,
+  } as const;
+}
+
+/** A vertical event marker (a medication start, an appointment, a situation). */
+export function chartAnnotationLineProps(kind: AnnotationKind) {
+  return {
+    stroke: ANNOTATION_KIND_META[kind].color,
+    strokeDasharray: chartDash.annotation,
+    strokeOpacity: 0.6,
   } as const;
 }
 

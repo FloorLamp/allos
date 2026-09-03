@@ -229,6 +229,7 @@ import { migration as mImagingReportNarrative } from "./20260902-imaging-report-
 import { migration as mDoseWriteBundle } from "./20260902-dose-write-bundle";
 import { migration as mNotifyLifecycleOwner } from "./20260902-notify-lifecycle-owner";
 import { migration as mBodyMetricMeasureInstants } from "./20260902-body-metric-measure-instants";
+import { migration as mEventsGeneralizeEndurancePlans } from "./20260903-events-generalize-endurance-plans";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -467,6 +468,7 @@ export const MIGRATIONS: Migration[] = [
   mDoseWriteBundle,
   mNotifyLifecycleOwner,
   mBodyMetricMeasureInstants,
+  mEventsGeneralizeEndurancePlans,
 ];
 
 // The CLOSED numbered era (001–185): ids frozen, each === its array position + 1

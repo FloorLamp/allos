@@ -173,6 +173,9 @@ export interface IntradayGeometry extends IntradayVariantSpec {
   /** Whether any practice session drew a block — its own row since #4852. */
   hasPractice: boolean;
   hasTicks: boolean;
+  /** Whether #4918 ruling 7's expected-sleep band is drawing this day (today,
+   *  waiting on last night, no session in hand yet). */
+  hasExpectedSleep: boolean;
   hrTop: number;
   /** Baseline for the bed/wake time labels, above the sleep band (#1512 A). */
   sleepLabelY: number;
@@ -206,12 +209,16 @@ export function intradayGeometry(
   const base = INTRADAY_VARIANTS[variant];
   const hasHr = model.hr != null;
   const hasSleep = model.sleep.length > 0;
+  const hasExpectedSleep = model.expectedSleep != null;
   const hasWorkouts = model.blocks.some((b) => b.source === "activity");
   const hasPractice = model.blocks.some((b) => b.source === "practice");
   const hasTicks = model.ticks.length > 0;
-  // The bed/wake labels get their own strip above the band: painting them inside
-  // it would sit them on the stage sub-bands, and painting them below would cross
-  // the session-block row.
+  // THE ROW RESERVES for a real session OR #4918 ruling 7's expected-sleep band —
+  // either one needs the same lane, and the band is drawn there only until a
+  // session lands, never beside one (see IntradayModel.expectedSleep). The bed/wake
+  // LABELS still get their own strip above the band only for a real session
+  // (below) — the expected band draws no bed/wake text of its own.
+  const showSleepRow = hasSleep || hasExpectedSleep;
   const sleepLabelH = hasSleep ? base.labelSize + 3 : 0;
 
   let cursor = base.padTop;
@@ -219,13 +226,21 @@ export function intradayGeometry(
   if (hasHr) cursor += base.hrH + base.rowGap;
   const sleepLabelY = cursor + base.labelSize;
   const sleepTop = cursor + sleepLabelH;
-  if (hasSleep) cursor += sleepLabelH + base.sleepH + base.rowGap;
+  if (showSleepRow) cursor += sleepLabelH + base.sleepH + base.rowGap;
   const workTop = cursor;
   if (hasWorkouts) cursor += base.workH + base.rowGap;
   const practiceTop = cursor;
   if (hasPractice) cursor += base.workH + base.rowGap;
   const tickTop = cursor;
   if (hasTicks) cursor += base.tickH + base.rowGap;
+  // THE EMPTY-DAY FLOOR (#4918's empty-day ruling). A day with none of the five
+  // rows above still needs a CANVAS: `daylightBandX` spans from `padTop` to
+  // `axisY`, and without this, a rowless day leaves `axisY === padTop` — a
+  // zero-height band on the one day the ruling most wants it visible ("the
+  // daylight band and the day context draw alone"). Reserved ONLY when nothing
+  // else reserved anything: the instant any row exists, its own height already
+  // gives the band a canvas, so this can never widen an already-tall chart.
+  if (cursor === base.padTop) cursor += base.hrH;
   const axisY = cursor;
 
   const hr = model.hr;
@@ -252,6 +267,7 @@ export function intradayGeometry(
     hasWorkouts,
     hasPractice,
     hasTicks,
+    hasExpectedSleep,
     hrTop,
     sleepLabelY,
     sleepTop,
@@ -403,6 +419,59 @@ export function clipToView(
   const end = Math.min(geo.view.to, endMinute);
   if (!(end > start)) return null;
   return { startMinute: start, endMinute: end };
+}
+
+// ── Background bands (#4918 rulings 3 and 7) ────────────────────────────────
+
+/**
+ * The daylight band's clipped x-span, or null when the day carries no solarDay
+ * (no home location, polar day/night — DaylightChip's own text line already says
+ * the honest thing there) or the band falls entirely outside the visible window.
+ *
+ * A BACKGROUND band — it reserves no row. `intradayGeometry` never sees
+ * `model.solarDay` at all, so adding or removing it cannot move `cursor` or
+ * `height`; this answers the x question alone, against the plot geometry that was
+ * already decided.
+ */
+export function daylightBandX(
+  geo: IntradayGeometry,
+  model: Pick<IntradayModel, "solarDay">
+): { left: number; right: number } | null {
+  if (!model.solarDay) return null;
+  const clipped = clipToView(
+    geo,
+    model.solarDay.sunriseMin,
+    model.solarDay.sunsetMin
+  );
+  if (!clipped) return null;
+  return {
+    left: projectMinute(geo, clipped.startMinute),
+    right: projectMinute(geo, clipped.endMinute),
+  };
+}
+
+/**
+ * The expected-sleep band's clipped x-span, or null when there is none to draw
+ * (see IntradayModel.expectedSleep) or it falls entirely outside the visible
+ * window. The caller confines it to the sleep row's own vertical bounds
+ * (`geo.sleepTop`/`sleepH`, reserved by `showSleepRow` above) — this answers only
+ * the x question, the same split every other span in this module uses.
+ */
+export function expectedSleepBandX(
+  geo: IntradayGeometry,
+  model: Pick<IntradayModel, "expectedSleep">
+): { left: number; right: number } | null {
+  if (!model.expectedSleep) return null;
+  const clipped = clipToView(
+    geo,
+    model.expectedSleep.startMinute,
+    model.expectedSleep.endMinute
+  );
+  if (!clipped) return null;
+  return {
+    left: projectMinute(geo, clipped.startMinute),
+    right: projectMinute(geo, clipped.endMinute),
+  };
 }
 
 // ── Axis ─────────────────────────────────────────────────────────────────────

@@ -117,6 +117,20 @@ const WAITING: SleepWaitingState = {
   lastCheckedAt: null,
 };
 
+// Every chip is quiet by default (DaylightChip needs a home, CyclePhaseChip a
+// phase), so this is the "nothing to add" shape most of this file's tests want —
+// the rulings-4-and-7 tests are about the header and the waiting line, not #4918
+// ruling 3's chips, which get their own describe block below.
+const NO_CONTEXT = {
+  home: null,
+  timezone: "America/Los_Angeles",
+  daylightOutdoor: 0,
+  uv: null,
+  cyclePhase: null,
+  cyclePeriod: null,
+  weather: null,
+} as const;
+
 describe("the chart card's header and context line (#4918 rulings 4 and 7)", () => {
   it("moves the instruction sentence behind a glyph and keeps the freshness line", () => {
     render(
@@ -124,6 +138,7 @@ describe("the chart card's header and context line (#4918 rulings 4 and 7)", () 
         model={MODEL}
         formatPrefs={DEFAULT_FORMAT_PREFS}
         profileId={1}
+        {...NO_CONTEXT}
       />
     );
     // The sentence is no longer a permanent line; it is the glyph's accessible name.
@@ -144,6 +159,7 @@ describe("the chart card's header and context line (#4918 rulings 4 and 7)", () 
         model={MODEL}
         formatPrefs={DEFAULT_FORMAT_PREFS}
         profileId={1}
+        {...NO_CONTEXT}
         waiting={WAITING}
         waitingDetail="Usually in by ~07:04"
       />
@@ -162,8 +178,58 @@ describe("the chart card's header and context line (#4918 rulings 4 and 7)", () 
         model={MODEL}
         formatPrefs={DEFAULT_FORMAT_PREFS}
         profileId={1}
+        {...NO_CONTEXT}
       />
     );
     expect(screen.queryByTestId("intraday-context")).toBeNull();
+  });
+});
+
+// #4918 ruling 3: the standalone `history-day-context` strip retired into this
+// card's own context line. Real DaylightChip/CyclePhaseChip render here (only
+// IntradayChart is mocked above), so this is the converse of the removal: the
+// facts that strip used to carry must still be loud, inside `intraday-panel`.
+describe("the day's context lives in the card now (#4918 ruling 3)", () => {
+  const HOME = { lat: 37.77, lng: -122.42 };
+
+  it("renders the daylight chip, the cycle phase chip, and the weather line inside the card", () => {
+    render(
+      <IntradayPanel
+        model={MODEL}
+        formatPrefs={DEFAULT_FORMAT_PREFS}
+        profileId={1}
+        home={HOME}
+        timezone="America/Los_Angeles"
+        daylightOutdoor={0}
+        uv={null}
+        cyclePhase="luteal"
+        cyclePeriod={null}
+        weather="Heatwave, day 3"
+      />
+    );
+    const card = screen.getByTestId("intraday-panel");
+    expect(card.querySelector('[data-testid="daylight-chip"]')).not.toBeNull();
+    expect(
+      card.querySelector('[data-testid="cycle-phase-chip"]')
+    ).not.toBeNull();
+    const weatherLine = card.querySelector(
+      '[data-testid="history-day-weather"]'
+    );
+    expect(weatherLine).not.toBeNull();
+    expect(weatherLine!.textContent).toBe("Heatwave, day 3");
+  });
+
+  it("draws none of it on an ordinary day — every chip stays quiet by default", () => {
+    render(
+      <IntradayPanel
+        model={MODEL}
+        formatPrefs={DEFAULT_FORMAT_PREFS}
+        profileId={1}
+        {...NO_CONTEXT}
+      />
+    );
+    expect(screen.queryByTestId("daylight-chip")).toBeNull();
+    expect(screen.queryByTestId("cycle-phase-chip")).toBeNull();
+    expect(screen.queryByTestId("history-day-weather")).toBeNull();
   });
 });

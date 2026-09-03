@@ -24,7 +24,13 @@ async function newestDay(page: Page): Promise<string> {
 
 test("the day view shows sunrise/sunset daylight chips", async ({ page }) => {
   await page.goto(`/history?day=${await newestDay(page)}`);
-  const chip = page.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
+  // #4918 ruling 3: the chip lives INSIDE the chart card now, not a standalone
+  // strip — scoped here rather than page-wide, so a regression that moved it back
+  // out (or dropped it entirely) would be caught rather than passed by a looser
+  // page-wide match.
+  const panel = page.getByTestId("intraday-panel");
+  await expect(panel).toBeVisible();
+  const chip = panel.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
   await expect(chip).toBeVisible();
   // Sunrise/sunset are rendered as HH:MM times.
   await expect(chip).toContainText(/\d{1,2}:\d{2}/);

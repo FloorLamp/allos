@@ -214,11 +214,11 @@ test.describe("auto-hiding top chrome (#1416 B)", () => {
     const close = drawer.getByRole("button", { name: "Close menu" });
     await expect(close).toHaveAttribute("data-icon-button", "");
     await expectPhoneTapTargets(page, "mobile drawer close", [close]);
-    // A TOP-LEVEL row (#3079 moved Timeline into the collapsed "Plan & review"
+    // A TOP-LEVEL row (#4965 moved Trends into the collapsed "Plan & review"
     // group). What this case claims is that the drawer opens and its navigation is
     // reachable — an assertion about the drawer, not about the nav registry.
     await expect(
-      drawer.getByRole("link", { name: "Trends", exact: true })
+      drawer.getByRole("link", { name: "History", exact: true })
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
@@ -583,7 +583,7 @@ test.describe("reduced motion (#1416 F)", () => {
     // collapses its exit duration to 0, so the unmount is immediate.
     const drawer = await openMobileDrawer(page);
     await expect(
-      drawer.getByRole("link", { name: "Trends", exact: true })
+      drawer.getByRole("link", { name: "History", exact: true })
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);

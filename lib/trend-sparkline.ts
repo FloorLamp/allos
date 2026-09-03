@@ -20,7 +20,7 @@
 // "which one".
 
 import { daysBetweenDateStr } from "./date";
-import type { DayFillWindow, DayGapFill } from "./day-fill";
+import type { DayFillWindow, DayGapFill, DaySeriesPoint } from "./day-fill";
 import { fillDailyRows, fillDailySeries } from "./day-fill";
 import type { DaySourceSpread } from "./metric-sources";
 
@@ -525,10 +525,10 @@ export interface DayFillSpec extends DayFillWindow {
  * days, or a 90-day window with 12 weigh-ins would silently lose its dots).
  */
 export function applyDayFill(
-  points: readonly { date: string; value: number | null }[],
+  points: readonly DaySeriesPoint[],
   spec: DayFillSpec | null | undefined
 ): {
-  data: { date: string; value: number | null }[];
+  data: DaySeriesPoint[];
   bridges: boolean | null;
   realCount: number;
 } {
@@ -773,6 +773,64 @@ export function overLimitHoles(
   }
   flush(points.length - 1, true);
   return holes;
+}
+
+/**
+ * The plotted readings NO STROKE REACHES, by index (#4924).
+ *
+ * THE DEFECT. Three shipped rules compounded on the Active Calories card. Its
+ * `slot-null` policy breaks the stroke at every null day, so only calendar-
+ * adjacent readings join. Resting dots turn off above `DENSE_SERIES_POINTS`,
+ * fed the window's REAL reading count. And the sparse demotion judges the MEDIAN
+ * interval, which a densely-logged June keeps at 1. So an August reading with no
+ * neighbour had no segment and no dot: it existed only on hover, under a caption
+ * saying "No data since Aug 30" over a plot that visibly ended on Jul 27.
+ *
+ * A clutter threshold was deciding for a reading whose MARK is its only
+ * representation. This is the predicate that separates the two: a reading the
+ * stroke already draws may be thinned out of the dot layer, and a reading the
+ * stroke cannot reach may not.
+ *
+ * Read off the render topology rather than re-derived from the policy, so the
+ * answer cannot disagree with what was drawn:
+ *   • cut into RUNS (an over-limit hole broke the stroke) — a run holding one
+ *     reading draws no segment, so that reading is isolated;
+ *   • one BRIDGED line — every reading joins every other, so only a series of
+ *     one is isolated (and that one already has `loneReading`'s own mark);
+ *   • one UNBRIDGED line — a reading joins only a calendar neighbour.
+ */
+export function isolatedReadings(
+  values: readonly (number | null)[],
+  { bridged, runs }: { bridged: boolean; runs?: readonly (readonly number[])[] }
+): Set<number> {
+  const real = (i: number) => values[i] != null;
+  const out = new Set<number>();
+  if (runs != null && runs.length > 1) {
+    for (const [from, to] of runs) {
+      let only = -1;
+      let count = 0;
+      for (let i = from; i <= to && count < 2; i++) {
+        if (real(i)) {
+          only = i;
+          count++;
+        }
+      }
+      if (count === 1) out.add(only);
+    }
+    return out;
+  }
+  if (bridged) {
+    const drawn = values.reduce<number[]>(
+      (acc, v, i) => (v == null ? acc : [...acc, i]),
+      []
+    );
+    if (drawn.length === 1) out.add(drawn[0]);
+    return out;
+  }
+  values.forEach((v, i) => {
+    if (v != null && !real(i - 1) && !real(i + 1)) out.add(i);
+  });
+  return out;
 }
 
 /**

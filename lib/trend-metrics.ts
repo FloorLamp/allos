@@ -25,6 +25,7 @@ import type { DayFillSpec } from "./trend-sparkline";
 import { applyCardOrder, type BodyCardId } from "./trends-card-rank";
 import type { DateRange } from "./timeline-format";
 import type { BodyMetricKind } from "./types";
+import type { CorrectionFieldId } from "./bulk-correction";
 
 // Stable per-metric slugs — the `/trends/metric/<slug>` route param, the tile's
 // in-page order key, and the detail-page title source. Append-only (a bookmarked
@@ -133,6 +134,20 @@ export interface TrendMetricMeta {
   // and whose axis ticks are thousands-grouped. See trendMetricChartScale() for why the
   // two travel together, and why a ratio/index metric must NOT take them.
   countMetric?: boolean;
+  // A DECLARED value-axis domain, for a metric whose scale is a fact about the
+  // instrument rather than about the readings (#4924). A 1–5 self-rating is 1–5
+  // whether or not anyone rated a 1 this quarter; recharts' auto domain plotted
+  // Mood on a 2–4 axis, which makes an ordinary week look like a swing and puts a
+  // reading on the axis line. Only for a scale with real ends: a weight or a
+  // resting HR has none, and pinning one would flatten the signal instead.
+  domain?: [number, number];
+  // The `?fix=` key Data → Review accepts for this metric's bulk-correction
+  // panel, when it has one (#4924 fix 6). A chart naming a live outage offers the
+  // door from HERE rather than from a hand-placed prop on one card — a bad run is
+  // the same problem whichever metric it landed in, and only four metrics are
+  // correctable, so the ones that are not must not offer a link that lands on a
+  // panel with nothing selected.
+  correctionField?: CorrectionFieldId;
 }
 
 // The registry. Colors mirror the body census chart colors so a metric keeps
@@ -198,6 +213,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
+    correctionField: "hrv",
   },
   // A SIGNED nightly deviation from the tracker's own rolling baseline, not an
   // absolute temperature — which is why it carries 1 decimal (the whole readable
@@ -249,6 +265,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     windowed: true,
     goalMetric: "weight",
     quickAdd: "measurements",
+    correctionField: "weight",
   },
   "body-fat": {
     slug: "body-fat",
@@ -260,6 +277,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     windowed: true,
     goalMetric: "body_fat",
     quickAdd: "measurements",
+    correctionField: "body-fat",
   },
   "resting-hr": {
     slug: "resting-hr",
@@ -271,6 +289,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     windowed: true,
     goalMetric: "resting_hr",
     quickAdd: "measurements",
+    correctionField: "resting-hr",
   },
   height: {
     slug: "height",
@@ -444,6 +463,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     unit: "",
     color: chartSeries.amber,
     decimals: 1,
+    domain: [1, 5],
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -459,6 +479,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     unit: "",
     color: chartSeries.violet,
     decimals: 1,
+    domain: [1, 5],
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -470,6 +491,7 @@ export const TREND_METRIC_META: Record<TrendMetricSlug, TrendMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
+    domain: [1, 5],
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -870,6 +892,9 @@ export function trendMetricChartScale(meta: TrendMetricMeta): {
   yDomain?: [number | "auto", number | "auto"];
   groupYTicks?: boolean;
 } {
+  // A DECLARED domain wins: it is a fact about the scale, not a fit to the data,
+  // so there is nothing for the count rule (or recharts) to decide underneath it.
+  if (meta.domain) return { yDomain: meta.domain, groupYTicks: undefined };
   return meta.countMetric
     ? { yDomain: [0, "auto"], groupYTicks: true }
     : { yDomain: undefined, groupYTicks: undefined };

@@ -46,12 +46,16 @@ import {
   formatRelativeTime,
 } from "@/lib/format-date";
 import { shiftDateStr, zonedDateParts } from "@/lib/date";
-import DaylightChip from "@/components/DaylightChip";
-import CyclePhaseChip from "@/components/CyclePhaseChip";
 import TimelineDayNav from "@/components/TimelineDayNav";
 import IntradayPanel from "@/components/IntradayPanel";
 import { getIntradayDay } from "@/lib/queries/intraday";
-import { getLastNightSummary, getSleepWaitingState } from "@/lib/queries/sleep";
+import { solarDay } from "@/lib/sun";
+import {
+  getLastNightSummary,
+  getSleepWaitingState,
+  typicalBedTime,
+  typicalWakeTime,
+} from "@/lib/queries/sleep";
 import { sleepWaitingDetail } from "@/lib/sleep-waiting";
 import { getUvDoseForDays } from "@/lib/queries/weather";
 import { evaluateSeries, notableStatesSummary } from "@/lib/weather-situations";
@@ -660,24 +664,15 @@ export default async function HistoryPage(props: {
     ? periodOnDate(cyclePeriods, dayContext, todayStr)
     : null;
 
-  // THE INTRADAY PANEL (#1068) — the day rotated 90°. It reads the list this page
-  // RESOLVED (`gather.dayEvents`), never a second query, which is what makes "a tick
-  // can never name something the list below does not show" true by construction.
-  // Null when nothing on the day is intraday, so a quiet day draws no empty frame.
-  const intraday = dayContext
-    ? getIntradayDay(
-        actingProfileId,
-        dayContext,
-        feeds[0]?.gather.dayEvents ?? []
-      )
-    : null;
-
   // TODAY'S UNARRIVED NIGHT, NAMED (#4918 ruling 7 / defect 4). #2097's one pure
   // decision, gathered by the SAME reader the dashboard row and the /sleep hero use,
   // so the day view cannot disagree with them about whether this profile is waiting.
   // TODAY ONLY: the window is clock-relative (wake anchor plus the measured arrival
   // lag), so it says nothing at all about a past day and is not asked there. Null on
   // the common day, which leaves the panel exactly as it was.
+  //
+  // RESOLVED BEFORE THE INTRADAY MODEL below, because the chart's expected-sleep
+  // band (ruling 7) is gated on this same state — never a second decision.
   const sleepWaiting =
     day != null && day === todayStr
       ? (getSleepWaitingState(
@@ -685,6 +680,53 @@ export default async function HistoryPage(props: {
           getLastNightSummary(actingProfileId)?.wakeDay ?? null
         ) ?? undefined)
       : undefined;
+
+  // THE EXPECTED SLEEP WINDOW (#4918 ruling 7) — the profile's typical bed/wake
+  // pair, the SAME pair the dashboard's usual band already reads (#3253), fed to
+  // the chart only while `sleepWaiting` says there is nothing real to draw yet.
+  // Either boundary can fall below the 14-night gate and come back null; the model
+  // treats "only one of the pair" as nothing to draw (see buildIntradayModel).
+  const expectedSleep = sleepWaiting
+    ? (() => {
+        const bedMinutes = typicalBedTime(actingProfileId);
+        const wakeMinutes = typicalWakeTime(actingProfileId);
+        return bedMinutes != null && wakeMinutes != null
+          ? { bedMinutes, wakeMinutes }
+          : null;
+      })()
+    : null;
+
+  // THE DAYLIGHT BAND'S SUNRISE/SUNSET (#4918 ruling 3) — the SAME solarDay
+  // DaylightChip's own icon row reads, resolved once here for the chart's
+  // background band. Gated exactly like the chip: both endpoints present, which
+  // excludes a polar day/night (the chip's text line already says that honestly).
+  const daylightBand = (() => {
+    if (!dayContext || !home) return null;
+    const day = solarDay(home.lat, home.lng, dayContext, profileTimezone);
+    return day && day.sunriseMin != null && day.sunsetMin != null
+      ? { sunriseMin: day.sunriseMin, sunsetMin: day.sunsetMin }
+      : null;
+  })();
+
+  // THE INTRADAY PANEL (#1068) — the day rotated 90°. It reads the list this page
+  // RESOLVED (`gather.dayEvents`), never a second query, which is what makes "a tick
+  // can never name something the list below does not show" true by construction.
+  //
+  // ALWAYS a model now (#4918's empty-day ruling): a quiet day still gets one, with
+  // its four data layers all empty, so the card below can still draw the daylight
+  // band and its context line. Null here means only "no day is open at all"
+  // (`dayContext`), never "nothing happened".
+  const intraday = dayContext
+    ? getIntradayDay(
+        actingProfileId,
+        dayContext,
+        feeds[0]?.gather.dayEvents ?? [],
+        {
+          solarDay: daylightBand,
+          expectedSleep,
+        }
+      )
+    : null;
 
   // WHETHER THE DAY'S LOG ROWS COLLAPSE (#3958 phase 2).
   //
@@ -983,46 +1025,6 @@ export default async function HistoryPage(props: {
         />
       ) : null}
 
-      {/* THE DAY'S CONTEXT (#1068's neighbours: daylight, UV, weather, cycle phase).
-          Body context for ONE body, so it renders only on a single-subject day —
-          `?view=everyone&day=` still lists the rows and simply draws no chips, which
-          is the merged feed's own rule rather than a gap.
-
-          Each chip is quiet by default: `DaylightChip` draws nothing without a home
-          location, `CyclePhaseChip` nothing off a cycle, and the weather line only on
-          a day the #1726 predicates called notable — so the WRAPPER is conditional on
-          there being content, not on the day, or an ordinary Tuesday draws an empty
-          strip.
-
-          THE CONDITION ASKS ABOUT EVERY CHIP, not just the home-gated ones. Gating it
-          on `home` alone was wrong and a spec caught it: a profile tracking cycles
-          with no home location set got no strip at all, so the phase chip — which
-          needs no location — disappeared with the two that do. */}
-      {dayContext &&
-      (home ||
-        dayWeather ||
-        dayCyclePhase != null ||
-        dayCyclePeriod != null) ? (
-        <div className={`mb-3 ${railGutter}`} data-testid="history-day-context">
-          <DaylightChip
-            home={home}
-            date={dayContext}
-            timezone={profileTimezone}
-            outdoorMinutes={daylightOutdoor}
-            uv={dayUv}
-          />
-          <CyclePhaseChip phase={dayCyclePhase} period={dayCyclePeriod} />
-          {dayWeather ? (
-            <div
-              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="history-day-weather"
-            >
-              {dayWeather}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
       {/* THE DAY AT A GLANCE (#1068), above the list it maps. Rendered from the
           resolved row set rather than a second gather — see `HistoryGather.dayEvents`
           — so the chart cannot show a mark for something the list below dropped.
@@ -1033,13 +1035,31 @@ export default async function HistoryPage(props: {
           day's content — #3958 lists it beside the rows — so it does not spend the
           chrome budget above the first record, and the add layer it swapped with is
           now directly above the rows it creates (#4832's offers-first order inside
-          that layer is unchanged). */}
+          that layer is unchanged).
+
+          THE CARD ALWAYS RENDERS (#4918's empty-day ruling and ruling 3). The
+          standalone `history-day-context` strip retired into the card's own context
+          line — daylight, UV, cycle phase and weather, body context for ONE body, so
+          it only has anything to say on a single-subject day (`?view=everyone&day=`
+          still lists the rows and simply draws no chips, the merged feed's own rule).
+          Each chip stays quiet by default (`DaylightChip` draws nothing without a
+          home location, `CyclePhaseChip` nothing off a cycle), so a quiet Tuesday
+          draws no context row at all — but the CARD itself, and the daylight band
+          on the plot, draw regardless: `intraday` is non-null whenever a day is
+          open (see above), rows or none. */}
       {intraday ? (
         <div className={railGutter}>
           <IntradayPanel
             model={intraday}
             formatPrefs={prefs}
             profileId={actingProfileId}
+            home={home}
+            timezone={profileTimezone}
+            daylightOutdoor={daylightOutdoor}
+            uv={dayUv}
+            cyclePhase={dayCyclePhase}
+            cyclePeriod={dayCyclePeriod}
+            weather={dayWeather}
             waiting={sleepWaiting}
             waitingDetail={
               sleepWaiting
