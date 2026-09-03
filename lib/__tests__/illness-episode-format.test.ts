@@ -441,8 +441,9 @@ describe("orderIllnessCockpits", () => {
 });
 
 // The derived fever row's own edge cases (#4712 item 4). The assembly-tier proof —
-// that the row appears beside a STATED fever row and that the counts do not move — is
-// in lib/__db_tests__/illness-episode.test.ts; this pins the composition itself.
+// that a stated fever row makes the derived one yield for THAT DAY only (owner-ruled
+// 2026-09-03, judgement 3) — is in lib/__db_tests__/illness-episode.test.ts; this pins
+// the composition itself, including the `statedFeverDates` suppression below.
 describe("deriveFeverSeries", () => {
   const reading = (
     date: string,
@@ -515,6 +516,21 @@ describe("deriveFeverSeries", () => {
     expect(
       series!.days.map((d) => [d.date, d.peakDegF, d.time, d.readingId])
     ).toEqual(expected);
+  });
+
+  it("a date in statedFeverDates yields — per date, not for the whole series (#4712 judgement 3)", () => {
+    const readings = [
+      reading("2026-06-01", "08:00", 103.4, "high", 1),
+      reading("2026-06-02", "08:00", 101.0, "high", 2),
+    ];
+    const series = deriveFeverSeries(readings, new Set(["2026-06-01"]));
+    expect(series).not.toBeNull();
+    expect(series!.days.map((d) => d.date)).toEqual(["2026-06-02"]);
+  });
+
+  it("every flagged date stated yields nothing at all, not a fallback row", () => {
+    const readings = [reading("2026-06-01", "08:00", 103.4, "high", 1)];
+    expect(deriveFeverSeries(readings, new Set(["2026-06-01"]))).toBeNull();
   });
 });
 
