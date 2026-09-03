@@ -71,6 +71,79 @@ describe("Button", () => {
     ).toBe("");
   });
 
+  // THE ONE DESTRUCTIVE PAINT (#4978). Same claim shape as the primary test
+  // above: danger is button-control plus one paint utility, never a swap, so
+  // the box, focus ring and spinner stay the same declarations as every rank.
+  it("adds paint for the one destructive variant and removes nothing", () => {
+    render(
+      <>
+        <Button data-testid="secondary">Cancel</Button>
+        <Button variant="danger" data-testid="danger">
+          Delete
+        </Button>
+      </>
+    );
+
+    expect(screen.getByTestId("secondary").className.split(" ")).toEqual([
+      "button-control",
+    ]);
+    expect(screen.getByTestId("danger").className.split(" ")).toEqual([
+      "button-control",
+      "button-control-danger",
+    ]);
+    expect(
+      screen.getByTestId("danger").getAttribute("data-button-control")
+    ).toBe("");
+  });
+
+  // PENDING AND DISABLED ON `danger` REUSE PRIMARY'S TREATMENT (#4978 AC).
+  // Both rank utilities scope their paint to
+  // `:not(:disabled):not([aria-disabled="true"])` in app/globals.css, so the
+  // ONE shared muted-disabled rule on `button-control` itself is what paints
+  // a not-yet-actionable button of EITHER rank — never a faded rank colour.
+  // The component's half of that contract is to never special-case a rank's
+  // class list for disabled or pending state; table-driven across both ranks
+  // so a mutation that gives `danger` its own disabled/pending treatment reds
+  // only that row while `primary`'s stays green, proving the reuse rather than
+  // asserting it.
+  it.each([
+    { variant: "primary" as const, paintClass: "button-control-primary" },
+    { variant: "danger" as const, paintClass: "button-control-danger" },
+  ])(
+    "keeps the $variant paint class through disabled and pending",
+    async ({ variant, paintClass }) => {
+      const expectedClass = `button-control ${paintClass}`;
+
+      const { unmount } = render(
+        <Button variant={variant} disabled data-testid="ranked">
+          Go
+        </Button>
+      );
+      const disabledButton = screen.getByTestId("ranked");
+      expect(disabledButton.className).toBe(expectedClass);
+      expect((disabledButton as HTMLButtonElement).disabled).toBe(true);
+      unmount();
+
+      const result = Promise.withResolvers<void>();
+      const submitted = vi.fn((_formData: FormData) => result.promise);
+      render(
+        <form action={submitted}>
+          <SubmitActionChip variant={variant} data-testid="ranked-submit">
+            Go
+          </SubmitActionChip>
+        </form>
+      );
+      const submitButton = screen.getByTestId("ranked-submit");
+      fireEvent.click(submitButton);
+      await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
+      expect(submitButton.getAttribute("aria-busy")).toBe("true");
+      expect((submitButton as HTMLButtonElement).disabled).toBe(true);
+      expect(submitButton.className).toBe(expectedClass);
+
+      await act(async () => result.resolve());
+    }
+  );
+
   it("keeps a destination a link under the same closed treatment", () => {
     render(
       <DestinationActionLink href="/upcoming" data-testid="destination">

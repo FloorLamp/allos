@@ -937,6 +937,30 @@
   }
 }
 
+@utility button-control-danger {
+  /* THE TYPED BUTTON'S ONE DESTRUCTIVE PAINT (#4978). A destructive action has
+     to be told apart from its neighbour BEFORE the tap — undo is after — so
+     `danger` joins `primary` as the primitive's second (and last) rank paint,
+     built the same way: colours lifted from the retiring `.btn-danger` family
+     so a migrated mount looks like what it replaced.
+
+     PAINT ONLY, ADDED TO `button-control` RATHER THAN REPLACING IT, exactly
+     like `button-control-primary` above — the box, the reserved border,
+     `whitespace-nowrap`, the focus ring and the pending spinner are the SAME
+     declarations regardless of rank. Scoped away from the disabled states so
+     the family's ONE disabled treatment (#1450 cluster B) still wins: a
+     pending or disabled destructive action renders the same muted surface a
+     pending or disabled primary does, never a faded red. */
+  &:not(:disabled):not([aria-disabled="true"]) {
+    border-color: transparent;
+    background-color: var(--danger-btn);
+    color: var(--danger-btn-fg);
+  }
+  &:not(:disabled):not([aria-disabled="true"]):hover {
+    background-color: var(--danger-btn-hover);
+  }
+}
+
 @utility duplicate-resolution-primary {
   @apply contents;
   & > .button-control:not(:disabled) {
