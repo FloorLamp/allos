@@ -206,10 +206,17 @@ export function priorEventWindows(
  * Fitting from a measurement is the house style here — but DECLARED from it, never
  * learned at runtime, which that document forbids outright.
  *
- * The closest relative is the one that was NOT fitted. The 40-minute bedtime floor is
+ * The closest relative is the one that was NOT fitted: the 40-minute bedtime floor,
  * "dominated" at N=4 and "kept only because it costs nothing and still states the
- * intent" — an unfitted number earning its place by saying what it means. That is
- * exactly this constant's shape, and the honest comparison.
+ * intent". But it is the closest relative, not a twin, and the difference runs against
+ * this constant. That floor is INERT — dominated is why the docs can say it costs
+ * nothing — while this one is the sole gate and actively drops nights. And it is
+ * bounded on both sides by a measurement (long enough that a watch put down minutes
+ * before the slot is not announced, short enough that the measured 55-minute incident
+ * still clears it), where sixty has no bound in either direction.
+ *
+ * So this is the least-evidenced number on the stream, not one of two. That is the
+ * honest comparison, and it is the reason the revisit rule below is not a formality.
  *
  * WHAT A FIT WOULD ACTUALLY NEED, since the obvious answer is the wrong one. Counting
  * how many nights a threshold excludes measures its COST, not its correctness. The
