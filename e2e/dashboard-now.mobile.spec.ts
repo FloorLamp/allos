@@ -298,6 +298,52 @@ test("unmet weekly targets leave a handled day's Now empty", async ({
   }
 });
 
+// #4841 item 2 — THE ACT ROW SAYS ITS VERB ONCE AND NAMES ITS TARGET.
+//
+// From the owner's phone screenshot: "Log cardio · 0 of 2 this week · Log". The row's
+// label was `Log ${scope_value}` beside an action that also read "Log", so the row
+// printed the verb twice and named its subject by the STORED KEY — which is why the
+// screenshot showed "Lower" and "Chest" capitalised beside "cardio" and "berries".
+//
+// Now Quiet's two open targets are strength GROUPS, whose stored keys ("Lower",
+// "Upper") are exactly the shape that read wrong; `cadenceScopeNoun` turns them into
+// "Lower body" / "Upper body". The verb count is taken over the ROW'S OWN text, which
+// is the thing the reader sees twice — an assertion on the action alone would have
+// stayed green through the whole defect, because the action was always right.
+test("a frequency-target act row names its target and says Log once", async ({
+  browser,
+}) => {
+  const page = await openDashboard(browser, { username: E2E_LOGIN_NOWQUIET });
+  try {
+    await openDashboardAll(page);
+    for (const scopeValue of NOW_QUIET_TARGETS) {
+      const row = page
+        .locator(
+          '[data-testid="dashboard-candidate"][data-candidate-id^="target.log:"]'
+        )
+        .filter({ hasText: `${scopeValue} body` });
+      await expect(row).toHaveCount(1);
+      // The NOUN, exactly — "Log Lower" and "Lower" both fail this.
+      await expect(row.getByTestId("standing-label")).toHaveText(
+        `${scopeValue} body`
+      );
+      // ONE verb on the row, and it is the action's. Counted over the row's whole
+      // rendered text rather than over any one element, because "twice" was a fact
+      // about the ROW: before the fix this read 2.
+      //
+      // `innerText` AND NOT `textContent`, and it is the assertion's correctness and
+      // not a preference: textContent concatenates the label straight onto the
+      // action ("…this weekLog"), which destroys the word boundary the count is
+      // keyed on — measured here, where the textContent spelling counted 0 on the
+      // FIXED tree and 1 on the broken one, i.e. exactly backwards.
+      const shown = await row.innerText();
+      expect(shown.match(/\bLog\b/g)?.length ?? 0).toBe(1);
+    }
+  } finally {
+    await page.context().close();
+  }
+});
+
 // ── The behind week: #3245, #3543 and #3548 on one fixture ──────────────────────────
 //
 // PACE_BEHIND sits on day 4 with two untouched 2x/week strength-group targets, so

@@ -10,7 +10,7 @@ import { shiftDateStr } from "@/lib/date";
 import { DEFAULT_FORMAT_PREFS, formatLongDate } from "@/lib/format-date";
 import { setFixtureTimezone } from "./fixture-timezones";
 import { dashboardCandidatePrefix } from "./dashboard-candidate";
-import { openDashboardAll, settledClick } from "./helpers";
+import { hydratedClick, openDashboardAll, settledClick } from "./helpers";
 import { dormantRecordSince } from "@/lib/domain-dormancy";
 
 // THE LATEST-VITALS RECENCY FLOOR (issue #2303).
@@ -433,6 +433,79 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     await expect(bpAge).toHaveText(shownDay(TODAY));
     await expect(bpAge).not.toHaveText(MACHINE_DATE);
     await expect(bpAge).not.toHaveAttribute("data-stale", "true");
+  } finally {
+    await page.context().close();
+    destroyVitalsFixture(fixture);
+  }
+});
+// #4841 item 3 — THE DORMANT LINE IS AN ACT, AND ITS DOOR IS THE MEASUREMENT.
+//
+// "No blood pressure recorded since Mar 2022" is a prompt to take a reading. It sat
+// under READ, filed as a report, and the only thing it opened was the history of the
+// reading it says is missing — a door that cannot end the state the line describes.
+//
+// At 390px because the door is the whole of what a phone reader gets: the row has no
+// hover, so what it opens is what it is.
+test("the dormant blood-pressure line acts, and its control opens the vitals form", async ({
+  browser,
+}, testInfo) => {
+  const fixture = createVitalsFixture(testInfo, {
+    bpDaysAgo: BP_DORMANT_DAYS,
+    tag: "dormant-act",
+  });
+  const page = await loginAs(
+    browser,
+    { username: fixture.username, password: E2E_MEMBER_PASSWORD },
+    { viewport: { width: 390, height: 844 }, hasTouch: true }
+  );
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const bpCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.blood-pressure:"
+    );
+    // Still the dormant line #3226 wrote — the presence and the sentence are what
+    // this issue leaves alone.
+    await expect(bpCandidate).toHaveAttribute("data-presence", "dormant");
+
+    // WHERE IT SITS. Both directions, because the group is a partition: naming Act
+    // alone would pass on a tree that drew the row in both.
+    await expect(
+      page
+        .getByTestId("dashboard-everything-act")
+        .locator('[data-candidate-id="vitals.blood-pressure:dormant"]')
+    ).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId("dashboard-everything-read")
+        .locator('[data-candidate-id="vitals.blood-pressure:dormant"]')
+    ).toHaveCount(0);
+
+    // The family's door is unchanged — the history is still one tap away, as the
+    // row's own words rather than as its only affordance.
+    await expect(
+      bpCandidate.getByRole("link", { name: "Vitals history" })
+    ).toHaveAttribute("href", "/trends#body");
+
+    // AND THE DOOR THAT CAN END THE DORMANCY. The row's control opens the app's one
+    // quick-write surface on the vitals group — the same form, disclosed at first
+    // render, that the palette route in the previous test opens.
+    //
+    // `hydratedClick`, not `settledClick`: opening the overlay is a pure client
+    // toggle and posts nothing, so the Server-Action wait would time out on a
+    // working control.
+    await hydratedClick(
+      page,
+      bpCandidate.getByTestId("dashboard-quick-entry-action")
+    );
+    const body = page.getByTestId("quick-entry-body");
+    await expect(body).toHaveAttribute("data-form", "measurements");
+    await expect(
+      body
+        .getByTestId("measurements-quick-add")
+        .locator("#measurements-group-vitals-fields")
+    ).toBeVisible();
   } finally {
     await page.context().close();
     destroyVitalsFixture(fixture);
