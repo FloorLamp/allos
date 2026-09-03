@@ -395,6 +395,10 @@ export interface ParsedPayload {
   hrMinutes: NormHrMinute[];
   activities: NormActivity[];
   vitals: NormVital[];
+  // Continuous-sensor glucose, routed here instead of onto `vitals` (#3182). Empty
+  // for every payload whose glucose is a discrete observation, which is every
+  // payload until a `specimen_source` says otherwise or the connection's switch is on.
+  glucoseTrace: NormGlucoseTrace[];
   skipped: number;
   details: HealthConnectSyncDetails;
   // THE EXPORTER'S OWN STAMP ON THIS PUSH (`payload.timestamp`), as an absolute
@@ -410,6 +414,20 @@ export interface ParsedPayload {
   // Zone-qualified or nothing: a bare local date-time would resolve against the
   // SERVER's zone, which must never decide whether a health row is deleted.
   pushedAt: string | null;
+}
+
+/**
+ * One continuous-sensor reading on its way to `glucose_trace` (#3181/#3182).
+ *
+ * `origin` is the Android package that wrote the record (`metadata.data_origin`),
+ * carried per ROW rather than per push because one Health Connect connection
+ * aggregates every writing app on the phone. It is what qualifies the trace's
+ * `source`, and it is nullable because the exporter emits metadata conditionally.
+ */
+export interface NormGlucoseTrace {
+  ts: string;
+  mgdl: number;
+  origin: string | null;
 }
 
 export interface HealthConnectOriginChoice {
@@ -470,6 +488,51 @@ function dataOrigin(rec: Record<string, unknown>): string | null {
   if (!metadata || typeof metadata !== "object") return null;
   const raw = (metadata as Record<string, unknown>).data_origin;
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+// ---- glucose routing: trace vs observation (#3182) ----
+//
+// A fingerstick meter and a CGM push the SAME Health Connect record type, so "is this
+// `blood_glucose`" cannot decide where a reading belongs. The owner's ruling
+// (2026-09-02, on #3182) settles it in two clauses, and the SAFETY DEFAULT is the
+// load-bearing one:
+//
+//   * `specimenSource` = interstitial fluid  → the trace store (#3181, the ruling in
+//     docs/internals/reading-model.md). The sensor telling the truth about itself.
+//   * capillary, whole blood, ANY other value, and — the default — an UNSET field →
+//     the existing `medical_records` Glucose observation path. Nothing silently
+//     becomes a trace: a genuine discrete draw misrouted into a trace store loses its
+//     identity, its band and its document, and a guessing discriminator gets that
+//     wrong in whichever direction it guesses.
+//   * one per-connection override turns every glucose record from the connection into
+//     a trace regardless of the field.
+//
+// WHAT IS AND IS NOT VERIFIED, because the default was chosen rather than measured:
+// the allowed values are the platform's; what Dexcom or any meter app actually writes
+// into the field is NOT verified, and there is no recorded payload anywhere in this
+// repo carrying it. The default is a safety choice. The override is what the first
+// person whose sensor leaves the field blank flips, once.
+//
+// THE SPELLING IS THE PLATFORM'S, NOT THIS REPO'S. Nothing here has ever written a
+// specimen source, so there is no local convention to copy: Health Connect names the
+// constant `SPECIMEN_SOURCE_INTERSTITIAL_FLUID` and an exporter may serialize it as
+// `interstitial_fluid`, `interstitialFluid`, `INTERSTITIAL_FLUID` or with a space.
+// Folding case and dropping the separators accepts all four with one comparison
+// rather than an enumeration that goes stale.
+export type GlucoseRouting = "trace" | "observation";
+
+const INTERSTITIAL = "interstitialfluid";
+
+export function glucoseRouting(
+  rec: Record<string, unknown>,
+  cgmConnection: boolean
+): GlucoseRouting {
+  if (cgmConnection) return "trace";
+  const raw = rec.specimen_source ?? rec.specimenSource;
+  if (typeof raw !== "string") return "observation";
+  return raw.toLowerCase().replace(/[^a-z]/g, "") === INTERSTITIAL
+    ? "trace"
+    : "observation";
 }
 
 function originChoices(
@@ -723,16 +786,29 @@ function payloadPushInstant(raw: unknown): string | null {
   return Number.isFinite(Date.parse(raw)) ? raw : null;
 }
 
+/** Per-connection ingest policy the payload itself cannot state. */
+export interface ParseHealthConnectOptions {
+  /**
+   * "Treat glucose from this connection as a continuous sensor" (#3182) — the one
+   * switch on the connection screen. OFF by default and nothing asks at setup, so
+   * an omitted option is the same answer as an unset switch.
+   */
+  cgmConnection?: boolean;
+}
+
 export function parseHealthConnectPayload(
   body: unknown,
-  tz: string
+  tz: string,
+  options: ParseHealthConnectOptions = {}
 ): ParsedPayload {
+  const cgmConnection = options.cgmConnection === true;
   const out: ParsedPayload = {
     bodyMetrics: [],
     samples: [],
     hrMinutes: [],
     activities: [],
     vitals: [],
+    glucoseTrace: [],
     skipped: 0,
     details: { warnings: [], origins: [] },
     pushedAt: null,
@@ -1029,9 +1105,15 @@ export function parseHealthConnectPayload(
     canonical: string,
     category: "vitals" | "lab",
     unit: string,
-    valueOf: (rec: Record<string, unknown>) => number | null
+    valueOf: (rec: Record<string, unknown>) => number | null,
+    // Records this observation path does NOT own. Only glucose passes one (#3182):
+    // a record routed to the trace store is emitted by the loop below and must not
+    // also become a `medical_records` row, nor be counted as skipped for not being
+    // one. Absent for every other type, which owns its key outright.
+    owns?: (rec: Record<string, unknown>) => boolean
   ) => {
     for (const rec of asArray(payload[key])) {
+      if (owns && !owns(rec)) continue;
       const t = typeof rec.time === "string" ? rec.time : undefined;
       const p = parts(t, tz);
       const value = boundedOrNull(canonical, valueOf(rec));
@@ -1093,13 +1175,35 @@ export function parseHealthConnectPayload(
         unit: "mmHg",
       });
   }
-  // Glucose mmol/L → mg/dL; body temperature °C → °F (canonical units).
+  // Glucose mmol/L → mg/dL. ONE record type, TWO destinations (#3182): a reading the
+  // routing calls a trace goes to `glucose_trace` and never becomes a `Glucose`
+  // observation; everything else — which is everything, until a specimen source says
+  // otherwise or the connection's switch is on — takes the path it always took.
   // Glucose is a lab (#1076), not a vital sign — category 'lab' so it stays on the
   // lab list once the biomarker surfaces scope to `lab` only.
-  vital("blood_glucose", "Glucose", "lab", "mg/dL", (r) => {
+  const toMgdl = (r: Record<string, unknown>) => {
     const v = num(r.mmol_per_liter, r.mmol, r.value);
     return v == null ? null : Math.round(v * 18.0156 * 10) / 10;
-  });
+  };
+  vital("blood_glucose", "Glucose", "lab", "mg/dL", toMgdl, (rec) =>
+    glucoseRouting(rec, cgmConnection) === "observation"
+  );
+  for (const rec of asArray(payload.blood_glucose)) {
+    if (glucoseRouting(rec, cgmConnection) === "observation") continue;
+    const t = typeof rec.time === "string" ? rec.time : undefined;
+    // The SAME plausibility bound the observation path applies (#132) — the routing
+    // decides the store, never how hard a value is checked.
+    const mgdl = boundedOrNull("Glucose", toMgdl(rec));
+    if (!t || !parts(t, tz) || mgdl == null) {
+      out.skipped++;
+      continue;
+    }
+    out.glucoseTrace.push({
+      ts: utcInstant(new Date(t)),
+      mgdl,
+      origin: dataOrigin(rec),
+    });
+  }
   vital("oxygen_saturation", "Oxygen Saturation", "vitals", "%", (r) =>
     num(r.percentage, r.percent, r.value)
   );

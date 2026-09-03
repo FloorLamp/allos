@@ -47,6 +47,7 @@ import {
 } from "./integrations/sync-log";
 import {
   deriveGlucoseDay,
+  GLUCOSE_DERIVED_METRICS,
   GLUCOSE_MEAN_METRIC,
   GLUCOSE_TIME_IN_RANGE_METRIC,
   GLUCOSE_TRACE_POINTS_METRIC,
@@ -127,6 +128,28 @@ function recomputeDay(
   return upsertMetricSamples(profileId, rows, source);
 }
 
+export interface GlucoseTraceOptions {
+  /**
+   * A source this write now KNOWS to be the same sensor, whose points it takes over.
+   *
+   * THE LATE-METADATA CASE (#3182, the owner's source-identity addendum). A trace's
+   * `source` is in its primary key, and the Health Connect exporter emits record
+   * metadata CONDITIONALLY — so the same sensor's readings arrive under a bare
+   * fallback source while the metadata is missing and under a qualified one once it
+   * appears. Left alone that is two traces for one sensor, and a re-push of a reading
+   * already stored is a second POINT rather than an update of the first.
+   *
+   * So the qualified write absorbs the unqualified one: its rows are re-keyed onto
+   * this source, and the days they covered join the recompute below. Absorption runs
+   * BEFORE the upsert loop, which is what makes a re-pushed reading count as
+   * `unchanged` instead of `inserted` — the point was already stored, only its source
+   * was unknown.
+   *
+   * One-directional and one-way: a qualified source is never absorbed into anything.
+   */
+  absorbSource?: string;
+}
+
 /**
  * Store a batch of CGM points and refresh the days they touch.
  *
@@ -137,7 +160,8 @@ function recomputeDay(
 export function recordGlucoseTrace(
   profileId: number,
   rows: readonly GlucoseTraceInput[],
-  source: string
+  source: string,
+  options: GlucoseTraceOptions = {}
 ): GlucoseTraceWrite {
   const tz = getTimezone(profileId);
   const out: GlucoseTraceWrite = {
@@ -167,10 +191,42 @@ export function recordGlucoseTrace(
     points.push({ ts, mgdl });
     days.add(day);
   }
-  out.days = [...days].sort();
-  if (points.length === 0) return out;
+  if (points.length === 0) {
+    out.days = [...days].sort();
+    return out;
+  }
+
+  const absorb =
+    options.absorbSource && options.absorbSource !== source
+      ? options.absorbSource
+      : null;
 
   writeTx(() => {
+    if (absorb) {
+      // The absorbed trace's own days join the recompute — its points move under a
+      // new source, and a day is summarised PER SOURCE, so a day this batch never
+      // mentions would otherwise keep a summary of a trace that is no longer there.
+      for (const r of db
+        .prepare("SELECT ts FROM glucose_trace WHERE profile_id = ? AND source = ?")
+        .all(profileId, absorb) as { ts: string }[]) {
+        const day = localDayOf(tz, r.ts);
+        if (day) days.add(day);
+      }
+      // `OR REPLACE`: an instant this sensor already holds under BOTH names is one
+      // reading, so the collision is resolved rather than raised — and every day
+      // involved is recomputed below, so no summary survives the move.
+      db.prepare(
+        "UPDATE OR REPLACE glucose_trace SET source = ? WHERE profile_id = ? AND source = ?"
+      ).run(source, profileId, absorb);
+      // The derived half moves with it, or the two stores disagree — this module's
+      // one invariant. The values are rewritten by the recompute; this only stops the
+      // old source keeping a day's summary it no longer has a trace for.
+      db.prepare(
+        `UPDATE OR REPLACE metric_samples SET source = ?
+          WHERE profile_id = ? AND source = ? AND metric IN (${GLUCOSE_DERIVED_METRICS.map(() => "?").join(", ")})`
+      ).run(source, profileId, absorb, ...GLUCOSE_DERIVED_METRICS);
+    }
+    out.days = [...days].sort();
     // Pre-image on the full key: a re-push of an identical point is `unchanged`,
     // not a write. better-sqlite3's `info.changes` counts a matched row whether or
     // not a value differed, so the compare has to be explicit — the same reason

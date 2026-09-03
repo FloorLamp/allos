@@ -1096,6 +1096,7 @@ describe("each batch is processed in ascending started_at order", () => {
       hrMinutes: [],
       activities: [],
       vitals: [],
+      glucoseTrace: [],
       skipped: 0,
       details: { warnings: [], origins: [] },
       pushedAt: null,
