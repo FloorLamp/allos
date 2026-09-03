@@ -52,9 +52,10 @@ import type { TimezoneSwitch } from "@/lib/travel-timezone";
 //   THERE IS NO DAY-RANGE LOOKBACK, and the absence is deliberate. An earlier draft
 //   carried `SWITCH_LOOKBACK_DAYS = 3` because the owner's first phrasing named it —
 //   the old `SWEEP_DAYS` number wearing a new hat, never independently evidenced. It
-//   constrained nothing: the predicate above decides what is touched, and the stored
-//   history is already bounded (`SWITCH_RETENTION_DAYS`, `MAX_STORED_SWITCHES` in
-//   lib/travel-timezone.ts). Owner ruling, #3524, 2026-08-23: "a number that constrains
+//   constrained nothing: the predicate above decides what is touched, and a departed
+//   zone is only ever read against a reading instant. (#3428 has since unbounded the
+//   stored history, which that draft also leaned on; the predicate is what carried the
+//   argument.) Owner ruling, #3524, 2026-08-23: "a number that constrains
 //   nothing is one someone will defend later."
 
 // A zone the profile has left, and the instant it left. `at` is milliseconds since the

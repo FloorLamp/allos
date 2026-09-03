@@ -294,3 +294,43 @@ describe("nothing here is carried by motion (#2654)", () => {
     expect(added).not.toMatch(/animationDuration=|transition-|animate-/);
   });
 });
+
+describe("state 6 — two sources on one day are two marks, in the funnel", () => {
+  const SCAFFOLD = "components/chart-scaffold.tsx";
+  const scaffold = fs.readFileSync(path.join(REPO, SCAFFOLD), "utf8");
+
+  it("the funnel asks the shared decision and draws the scaffold's companion", () => {
+    expect(/\bsourceSpreadCompanions\(/.test(funnel)).toBe(true);
+    expect(/dot=\{chartOtherSourceDot\(c\)\}/.test(funnel)).toBe(true);
+    expect(funnel).toContain('data-testid="chart-source-spread-note"');
+  });
+
+  it("only a dated day-grain series plotted on value takes it — never a sparkline or an aggregated plot", () => {
+    expect(
+      /isoDates && key === "value" && !longRange && !sparkline\s*\?\s*sourceSpreadCompanions\(/.test(
+        funnel
+      )
+    ).toBe(true);
+  });
+
+  it("the companion is drawn BEFORE the series' own line, so the plotted reading is never painted over", () => {
+    const companion = funnel.indexOf("dataKey={`other${column}`}");
+    const own = funnel.indexOf("dataKey={key}");
+    expect(companion).toBeGreaterThan(-1);
+    expect(companion).toBeLessThan(own);
+  });
+
+  it("the companion spends no spoken-for channel: solid, ordinary radius, the declared neutral, offset in x", () => {
+    const body = scaffold.slice(
+      scaffold.indexOf("export function chartOtherSourceDot")
+    );
+    const dot = body.slice(0, body.indexOf("\n}\n"));
+    expect(dot).toContain("r={CHART_DOT_R}");
+    expect(dot).toContain("fill={chartNeutral}");
+    expect(dot).not.toContain("fill={c.surface}");
+    expect(dot).toContain("cx={cx + CHART_PAIR_OFFSET_X}");
+    expect(/export const CHART_PAIR_OFFSET_X = [1-9]\d*;/.test(scaffold)).toBe(
+      true
+    );
+  });
+});

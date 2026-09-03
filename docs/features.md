@@ -1530,7 +1530,8 @@ old `/coverage` route is likewise gone;) the six specialty surfaces — Vision /
 Hearing / Dental / Skin / Mental health / Substance use — are the Specialty group's
 sub-tabs; the old `/vision`, `/dental`, `/skin`, and `/medical/instruments`
 routes were removed too (as was `/medical/substance-use`, ahead of #1635), with Vision/Dental
-data-gated on data presence (a hidden sub-tab's route re-gates server-side),
+data-gated on data presence — their own rows, or **specialty-lens** care in that
+line (#2921) — (a hidden sub-tab's route re-gates server-side),
 Substance use life-stage-gated to adults + unknown-age profiles (hidden for a
 known minor, its instruments being adult-validated), and Skin/Mental health
 always rendered — the latter because their in-page forms are the only creation
@@ -1676,7 +1677,11 @@ preventive rule, not duplicated here. Degrades without an AI key: the document
 is stored and the record entered manually via the same form. The **Vision
 section is data-gated** (#1042): it appears on Health record once a prescription
 is on file — Data → Import creates rows too, so the empty section never strands
-creation. The FHIR `VisionPrescription` structured-import mapper is a separate
+creation — or once the **specialty lens** finds eye care (#2921): a child with
+years of ophthalmology follow-ups and no refraction yet gets the tab from the
+visits alone. Below the prescriptions, an **Eye care history** strip lists that
+lens — the classified visits and eye-coded conditions, each linking to the
+record it already lives on. The FHIR `VisionPrescription` structured-import mapper is a separate
 follow-up (#708); this table is its destination.
 
 ### Dental
@@ -1690,7 +1695,8 @@ reuse the biomarker store and trend/flag alongside labs; extracted from an
 uploaded dental exam/treatment record via AI (dental has no FHIR feed) or added
 manually. Dental X-rays are imaging studies, not modeled here. Like Vision, the
 **Dental section is data-gated** (#1042) — it appears on Health record once a
-record is on file. When an **invasive** dental procedure is _planned_
+record is on file, or once the specialty lens finds dental care (#2921) — and it
+carries the same **Dental care history** strip. When an **invasive** dental procedure is _planned_
 (extraction / implant / oral or periodontal surgery), a **safety cross-check**
 surfaces a calm, cited pre-procedure note against your record — an
 antiresorptive (bisphosphonate/denosumab) → MRONJ caution, a high-risk cardiac
@@ -1722,6 +1728,17 @@ biopsy from the same appointment already had.
 **Scope boundary, by design:** this is a self-monitoring record for you and your
 dermatologist — it tracks and compares, it never assesses malignancy or scores
 the ABCDE observations into a verdict.
+
+**The specialty lens (#2921).** All four anatomical panes — Vision, Dental,
+Hearing, Skin — carry a **care-history strip** below their own table: the visits
+and coded diagnoses that belong to that area of care, each linking to the record
+it already lives on. A visit is placed by its clinician's specialty first, then
+its facility's, then the same curated visit vocabulary the preventive engine
+matches on (#515); a diagnosis by its ICD-10 block. Nothing is stored — the
+grouping is derived each time the pane is read, so correcting a provider's
+specialty reflows it — and a visit that identifies no line simply appears in no
+strip rather than being guessed into one. Mental health and Substance use keep
+their life-stage gates and carry no strip.
 
 ### Hearing
 

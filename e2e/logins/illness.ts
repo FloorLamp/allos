@@ -178,3 +178,14 @@ export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
 // loops never contend. Its clips are synthetic container headers (e2e/video-fixture.ts).
 export const E2E_LOGIN_SICK_VIDEO = "e2e_sick_video";
 export const SICK_VIDEO_PROFILE = "Sick Video (e2e)";
+
+// #4858 — the fever chart's DATE AXIS, whose end ticks anchor to the plot rather
+// than centring on their own x. A dedicated sick-solo login whose stored date
+// format is ISO ("2026-09-03", ~10 characters against the default "Sep 3"'s 5), so
+// the last tick's label is comfortably wider than the 8 user units PLOT_RIGHT
+// leaves it. That width is the point: profile 1's own episode overflows its viewBox
+// by 0-3px depending on where the run's clock puts the last stamp, which is why the
+// shared guard saw this defect only on some runs. Here the overflow would be ~16px
+// on every run, so a revert of the anchoring reds deterministically.
+export const E2E_LOGIN_FEVER_AXIS = "e2e_fever_axis";
+export const FEVER_AXIS_PROFILE = "Fever Axis (e2e)";

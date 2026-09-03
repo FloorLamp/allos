@@ -115,22 +115,20 @@ export interface KnownOffender {
  * e2e-hygiene allowlist: the probe asserts each entry is STILL offending, so the
  * day one is fixed the census fails and asks for the entry to be deleted. An entry
  * cannot quietly outlive the defect it names.
+ *
+ * IT IS CURRENTLY EMPTY, and that is the mechanism working rather than the ledger
+ * going away: its one entry was the Upcoming biomarker-retest line, and #3526 fixed
+ * the surface by moving the composition to the render boundary — so the census went
+ * red on the entry and the entry was deleted, exactly as this comment promised.
+ *
+ * WHOEVER ADDS THE NEXT ENTRY should restore the collision control that went with the
+ * last one: an e2e test that forges a date AND a lab unit into the entry's own testid
+ * and asserts the ledger licenses only the date. It needs a registered entry to have a
+ * subject at all, and a committed skip is not allowed here (lib/__tests__/e2e-hygiene),
+ * so it was deleted rather than parked. Its pure half lives on in
+ * lib/__tests__/machine-date-census.test.ts, which loops over whatever is registered.
  */
-export const CENSUS_KNOWN_OFFENDERS: KnownOffender[] = [
-  {
-    route: "/",
-    testId: "attention-item-detail",
-    source: "lib/biomarker-retest-copy.ts — biomarkerRetestDetail()",
-    why:
-      '"Last tested 2025-05-29 (15mo ago) · retest every 6mo". The sentence is ' +
-      "composed inside the Upcoming generator (lib/queries/upcoming/generators.ts), " +
-      "a profile-scoped query with NO login in context that also feeds the " +
-      "notification and digest builders — so threading DisplayFormatPrefs through it " +
-      "is a change to the Upcoming item contract, not a formatting call, and it is " +
-      "materially larger than the surfaces #3492 enumerated. Found BY this census on " +
-      "the run that first went green, which is the census doing its job.",
-  },
-];
+export const CENSUS_KNOWN_OFFENDERS: KnownOffender[] = [];
 
 /**
  * Match only a date-rule hit to the date ledger. A different census rule may hit

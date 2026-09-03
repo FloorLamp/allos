@@ -6,8 +6,12 @@
 // "how did I sleep last night" (the one-question-one-computation rule, #221).
 //
 // Pure — no DB, no clock, no network — so the same math runs in the page, the
-// widget, and the unit tests. Timezone-correct: all clock math converts each
-// stored absolute instant to profile-local wall clock via zonedDateParts.
+// widget, and the unit tests. Timezone-correct in the strong sense (#3428): every
+// stored instant is converted through the zone the profile's day was running on AT
+// THAT INSTANT (`ProfileDayZone`), not the zone it is standing in now — so a night
+// slept in New York keeps its New York clock after the traveller lands in Los
+// Angeles. A profile that has never moved passes a plain zone name and nothing
+// changes.
 
 import { daysBetweenDateStr, shiftDateStr, zonedDateParts } from "./date";
 import { isStreamActive } from "./stream-activity";
@@ -19,6 +23,7 @@ import {
 } from "./format-date";
 import { mainSleepPeriod, type SleepSession } from "./sleep-regularity";
 import type { BedtimeSupplementSummary } from "./sleep-bedtime-supplements";
+import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // A night's MAIN-sleep stage breakdown (minutes), attributed from timestamped
 // metric_samples by getSleepStageDailyTotals. Nap stages stay out so the stage
@@ -85,14 +90,15 @@ export interface LastNightSummary {
 // same anchor mainSleepNights / buildNights use.
 function groupByWakeDay(
   sessions: SleepSession[],
-  tz: string
+  zone: ProfileDayZone
 ): Map<string, SleepSession[]> {
   const byDay = new Map<string, SleepSession[]>();
   for (const s of sessions) {
     const a = new Date(s.start).getTime();
     const b = new Date(s.end).getTime();
     if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-    const day = zonedDateParts(tz, new Date(s.end)).date;
+    const end = new Date(s.end);
+    const day = zonedDateParts(zoneOf(zone, end), end).date;
     const arr = byDay.get(day);
     if (arr) arr.push(s);
     else byDay.set(day, [s]);
@@ -104,12 +110,12 @@ function groupByWakeDay(
 // session. The hero and dashboard sleep presentation read THIS — same inputs, same answer.
 export function lastNightSummary(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   stagesByDay: Map<string, SleepStageMinutes> = new Map(),
   opts: { baselineDays?: number } = {}
 ): LastNightSummary | null {
   const baselineDays = opts.baselineDays ?? 30;
-  const byDay = groupByWakeDay(sessions, tz);
+  const byDay = groupByWakeDay(sessions, zone);
   if (byDay.size === 0) return null;
 
   const days = [...byDay.keys()].sort();
@@ -139,13 +145,19 @@ export function lastNightSummary(
       : null;
   const deltaMin = baselineAvgMin == null ? null : durationMin - baselineAvgMin;
 
+  const periodStart = new Date(period.start);
+  const periodEnd = new Date(period.end);
   return {
     wakeDay: latest,
     durationMin,
     // Merged night spans the outer edges: onset of the first fragment → wake of the
     // last (#1191). For a single overnight these are its own bed/wake, unchanged.
-    bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.start)).hhmm),
-    wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.end)).hhmm),
+    bedMinutes: hhmmToMinutes(
+      zonedDateParts(zoneOf(zone, periodStart), periodStart).hhmm
+    ),
+    wakeMinutes: hhmmToMinutes(
+      zonedDateParts(zoneOf(zone, periodEnd), periodEnd).hhmm
+    ),
     baselineAvgMin,
     deltaMin,
     baselineNights,
@@ -399,15 +411,17 @@ function clockHour(hhmm: string): number {
 // interval is forward-going before the phase-aware plot aligns nights together.
 export function consistencyNights(
   mainNights: { wakeDay: string; start: string; end: string }[],
-  tz: string,
+  zone: ProfileDayZone,
   schedule: {
     typicalBedMinute?: number | null;
     typicalWakeMinute?: number | null;
   } = {}
 ): ConsistencyNight[] {
   const rows = mainNights.map((n) => {
-    const bed = zonedDateParts(tz, new Date(n.start)).hhmm;
-    const wake = zonedDateParts(tz, new Date(n.end)).hhmm;
+    const start = new Date(n.start);
+    const end = new Date(n.end);
+    const bed = zonedDateParts(zoneOf(zone, start), start).hhmm;
+    const wake = zonedDateParts(zoneOf(zone, end), end).hhmm;
     const bedHour = clockHour(bed);
     const rawWakeHour = clockHour(wake);
     const wakeHour = rawWakeHour <= bedHour ? rawWakeHour + 24 : rawWakeHour;
