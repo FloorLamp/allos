@@ -7,6 +7,7 @@ import {
   type LastNightSummary,
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
+import { SLEEP_SKEW_HEDGE } from "@/lib/sleep-clock-skew";
 import type { TimeFormat } from "@/lib/format-date";
 import { historyDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
@@ -77,12 +78,18 @@ export default function SleepHero({
   presentation,
   bedtimeSupplements,
   usualSleepBand,
+  clockSkewSuspect = false,
 }: {
   summary: LastNightSummary;
   timeFormat: TimeFormat;
   presentation: SleepRecordPresentation;
   bedtimeSupplements: BedtimeSupplementSummary | null;
   usualSleepBand: string | null;
+  // This night's synced session disagrees with the heart rate recorded across it
+  // (#4299). The window is still SHOWN — it is what the source stated, and hiding it
+  // would leave nothing to recognise as wrong — but it is no longer stated as fact, and
+  // the usual band it would be compared against is withheld.
+  clockSkewSuspect?: boolean;
 }) {
   const delta = baselineDeltaPhrase(summary);
   const source = activityProvenanceLabel(summary.source);
@@ -138,13 +145,22 @@ export default function SleepHero({
               </span>
             )}
           </p>
-          {usualSleepBand && (
+          {clockSkewSuspect ? (
             <p
-              className="mt-1 text-sm tabular-nums text-slate-500 dark:text-slate-400"
-              data-testid="sleep-usual-times"
+              className="mt-1 text-sm text-slate-500 dark:text-slate-400"
+              data-testid="sleep-clock-skew-hedge"
             >
-              Usually ~{usualSleepBand}.
+              {SLEEP_SKEW_HEDGE}
             </p>
+          ) : (
+            usualSleepBand && (
+              <p
+                className="mt-1 text-sm tabular-nums text-slate-500 dark:text-slate-400"
+                data-testid="sleep-usual-times"
+              >
+                Usually ~{usualSleepBand}.
+              </p>
+            )
           )}
         </div>
 

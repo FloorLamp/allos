@@ -158,6 +158,10 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
   "ttc-workup:": () => "Fertility conversation suggestion",
   "mood-obs:": () => "Mood observation",
   "sleep-mood:": () => "Sleep & mood observation",
+  // #4299: the tail is the OLDEST suspect night of the run, so the date names WHEN the
+  // source's clock started disagreeing — the one fact that tells two episodes apart.
+  "sleep-clock-skew:": (t) =>
+    part(t, 0) ? `Sleep clock check — from ${part(t, 0)}` : "Sleep clock check",
   // #2177: the head is a registry pair key, so the label is the pair's OWN declared
   // title rather than a second copy of it here — a silenced observation reads in this
   // list exactly as it read where it was dismissed.
