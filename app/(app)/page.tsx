@@ -241,6 +241,7 @@ import DashboardQuickEntryAction from "@/components/dashboard/DashboardQuickEntr
 import {
   StandingAge,
   staleMeasurementDoor,
+  vitalsFamilySeat,
 } from "@/components/dashboard/StandingAge";
 import IllnessCockpitBody from "../../components/illness/IllnessCockpitBody";
 import { LoggedViaSurface } from "@/components/LoggedViaSurface";
@@ -1788,18 +1789,29 @@ async function renderDashboard(
       : localTimeWindow(nowSlots.Evening, 1439),
     todayMood == null
   );
+  // ROWS ARE NAMED BY THEIR NOUN (#4841 item 3 census): this row led with the same
+  // verb its own control already said — "Log today's mood" beside a button reading
+  // "Log", the #4841 item 2 shape — and once a mood is logged the mismatch turned
+  // outright wrong: the label switched to "Update" while the default control still
+  // read "Log". One noun names the row; the control's own label is the one place
+  // the verb lives, and now says what it will actually do.
   add(moodCheckinCandidate, {
-    label: todayMood ? "Update today's mood" : "Log today's mood",
+    label: "Today's mood",
     detail: isMoodCheckinPaused({
       enabled: getProfileMoodCheckin(profile.id),
       ignoredCount: getMoodCheckinIgnored(profile.id),
     })
       ? "Daily reminders are paused."
       : undefined,
-    control: <DashboardQuickEntryAction form="mood" />,
+    control: (
+      <DashboardQuickEntryAction
+        form="mood"
+        actionLabel={todayMood ? "Update" : "Log"}
+      />
+    ),
   });
   aheadPresentations.set(moodCheckinCandidate.candidateId, {
-    label: todayMood ? "Update today's mood" : "Log today's mood",
+    label: "Today's mood",
     ...(nowSlots.Evening == null
       ? {}
       : {
@@ -2087,7 +2099,12 @@ async function renderDashboard(
           protocol.practiceUsuallyToday
         ),
         {
-          label: `Log ${protocol.practiceName}`,
+          // ROWS ARE NAMED BY THEIR NOUN (#4841 item 3, owner ruling 2026-09-03
+          // 14:05 UTC): the label used to lead with the same verb every row
+          // in this shape carries on its own action — "Log Cold plunge" beside
+          // an "Open" button that already says what the tap does. The row's
+          // identity is the practice's name; the action stays on the button.
+          label: protocol.practiceName,
           href: protocol.href,
           actionLabel: "Open",
         }
@@ -2300,6 +2317,31 @@ async function renderDashboard(
         dateLabel: formatLongDate(vitalsModel.restingHr.date, formatPrefs),
       })
     : null;
+  // THE FAMILY EXISTS THE MOMENT EITHER QUANTITY HAS EVER BEEN RECORDED (#4841 item
+  // 4) — a reading years dormant still counts, which is what lets the Setup
+  // bootstrap row below retire. "Live in Standing" is narrower: a dormant reading
+  // takes its own tail seat (below) and carries its own door there, so it is not
+  // a candidate for the family's ONE Standing-cluster door.
+  const vitalsFamilyExists =
+    vitalsModel?.bp != null || vitalsModel?.restingHr != null;
+  const bpLiveInStanding = vitalsModel?.bp != null && !vitalsModel.bp.dormant;
+  const restingHrLiveInStanding =
+    vitalsModel?.restingHr != null && !vitalsModel.restingHr.dormant;
+  const vitalsFamilySeatKey = vitalsFamilySeat(
+    bpLiveInStanding,
+    restingHrLiveInStanding
+  );
+  // ONE "Log a vital" DOOR FOR THE FAMILY (owner ruling 2026-09-03 12:25 UTC),
+  // present whenever a member is live in Standing — fresh or individually stale —
+  // rather than gated on that row's own staleness the way #4826 left it. Seated
+  // by `vitalsFamilySeatKey`, never both rows at once.
+  const vitalsFamilyControl = vitalsFamilySeatKey ? (
+    <DashboardQuickEntryAction
+      form="measurements"
+      prefill={{ measurementGroup: "vitals" }}
+      actionLabel="Log a vital"
+    />
+  ) : undefined;
   if (vitalsModel?.bp?.dormant)
     add(
       dailyCandidates.vitalDormant(
@@ -2362,7 +2404,10 @@ async function renderDashboard(
         })(),
         href: "/trends#body",
         disclosure: bpAge?.title ?? undefined,
-        control: staleMeasurementDoor(bpAge!, "vitals", "Log a vital"),
+        control:
+          vitalsFamilySeatKey === "blood-pressure"
+            ? vitalsFamilyControl
+            : undefined,
         presence: "current",
       }
     );
@@ -2434,14 +2479,22 @@ async function renderDashboard(
         },
         href: "/trends#body",
         disclosure: restingHrAge?.title ?? undefined,
-        control: staleMeasurementDoor(restingHrAge!, "vitals", "Log a vital"),
+        control:
+          vitalsFamilySeatKey === "resting-heart-rate"
+            ? vitalsFamilyControl
+            : undefined,
         presence: "current",
       }
     );
   add(
     setupCandidates.vitalsBootstrap({
       subject: profileSubject,
-      applicable: canWrite,
+      // RETIRES ONCE THE FAMILY HAS ANY READING (#4841 item 4, 2026-09-02 report):
+      // this bootstrap door and the family's own Standing-cluster door both open
+      // the same form, so a profile with even a dormant reading gets ONE of them,
+      // never both. A profile with no vitals reading at all keeps this door — the
+      // #4160 first-run case, untouched.
+      applicable: canWrite && !vitalsFamilyExists,
       sourceOrder: sourceOrder++,
     }),
     {
@@ -2583,6 +2636,19 @@ async function renderDashboard(
         detail: dormantRecordLine("weight", ageDays),
         href: "/trends",
         actionLabel: "Body metrics",
+        // THE SAME DOOR THE LIVE ROW EARNS (#4841 item 4, owner ruling 2026-09-03
+        // 14:05 UTC: "dormant weight gets the same log-a-weight door as the live
+        // row"). The live row's door is `staleMeasurementDoor`, gated on a glance-age
+        // token a dormant row has none of; spelled out here the same way the dormant
+        // vitals rows already are, on the same form and group. "Body metrics" stays
+        // as the row's own words for its history door.
+        control: (
+          <DashboardQuickEntryAction
+            form="measurements"
+            prefill={{ measurementGroup: "body" }}
+            actionLabel="Log weight"
+          />
+        ),
         presence: "dormant",
       }
     );

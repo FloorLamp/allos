@@ -47,3 +47,21 @@ export function staleMeasurementDoor(
     />
   ) : undefined;
 }
+
+// THE VITALS FAMILY'S ONE SEAT (#4841 item 4, owner ruling 2026-09-03 12:25 UTC).
+// Blood pressure and resting heart rate are two separate Standing families, each with
+// its own row — but the owner ruled ONE "Log a vital" door for the pair, in a
+// family-level control slot, present whenever the family exists rather than only when
+// a reading is stale (#4826's per-row `staleMeasurementDoor` folds into this). With no
+// single family grouping the two rows, "one door" is a SEAT: whichever row is
+// currently live in Standing (not dormant — a dormant reading holds its own door
+// outside Standing, unchanged) carries it, blood pressure first. This is the one
+// decision point a second door could reappear from, so it is pure and tested alone.
+export function vitalsFamilySeat(
+  bpLive: boolean,
+  restingHrLive: boolean
+): "blood-pressure" | "resting-heart-rate" | null {
+  if (bpLive) return "blood-pressure";
+  if (restingHrLive) return "resting-heart-rate";
+  return null;
+}

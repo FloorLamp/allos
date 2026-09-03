@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   StandingAge,
   staleMeasurementDoor,
+  vitalsFamilySeat,
 } from "@/components/dashboard/StandingAge";
 import { DashboardFactRow } from "@/components/dashboard/DashboardStandingCluster";
 import type { DashboardPlacement } from "@/lib/dashboard-relevance";
@@ -116,4 +117,23 @@ describe("a Standing reading at its family's floor", () => {
     ).toBe("/trends#body");
     expect(screen.getByRole("button", { name: "Log weight" })).toBeTruthy();
   });
+});
+
+// THE VITALS FAMILY'S ONE SEAT (#4841 item 4). Blood pressure and resting heart rate
+// are two separate rows; the owner ruled ONE "Log a vital" door for the pair. This is
+// the whole decision of which row carries it, pinned as a table so a future edit that
+// starts returning two seats — or none while a member is live — goes red here first,
+// before any page ever renders a second door.
+describe("the vitals family's door seat", () => {
+  it.each([
+    [true, true, "blood-pressure"],
+    [true, false, "blood-pressure"],
+    [false, true, "resting-heart-rate"],
+    [false, false, null],
+  ] as const)(
+    "bp live=%s, resting HR live=%s → %s",
+    (bpLive, restingHrLive, seat) => {
+      expect(vitalsFamilySeat(bpLive, restingHrLive)).toBe(seat);
+    }
+  );
 });
