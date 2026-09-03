@@ -1,12 +1,16 @@
 // DB INTEGRATION TIER — a queued capture whose date is one day AHEAD of the profile's
 // today (#4425 review finding).
 //
-// WHY THIS DATE IS REACHABLE, which is the whole point: the queue stamps
-// `localDate()` (lib/offline/queue.ts) off the BROWSER clock — "the client's local date
-// at capture time", in the queue's own words — while every write core resolves the day
-// through `today(profileId)`, the PROFILE's zone. A device east of the profile's
-// configured zone therefore captures tomorrow. That is a traveller, or simply a profile
-// whose zone was set once and never followed the phone.
+// WHY THIS DATE IS REACHABLE, which is the whole point. It used to be reachable through
+// the QUEUE: the dose capture stamped its day off the browser's zone while every core
+// resolves the day through `today(profileId)`, the profile's zone, so a device east of
+// that zone captured tomorrow. #4559 closed that route at the capture — the day is read
+// in the profile's zone now, and the browser-zone helper is gone from the tree.
+//
+// The date is still reachable, because it never depended on that route: a queued intent
+// is a wire value a device holds and can be replayed on any later day, and the dated
+// forms post a day the person typed. The bound below is what makes either safe, so it
+// stays exactly where #4425 put it.
 //
 // #4425 gave three replayed cores the shared not-future invariant, and only two of the
 // three could report it. `upsertMoodLog` and `logBristolStool` answer the replay's own
@@ -16,8 +20,10 @@
 // "dead-letters with its reason instead of vanishing"; that one vanished, and the fix
 // is to judge the day at `insertVitals`' own door where the channel already exists.
 
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { db, today } from "@/lib/db";
+import { setTimezone } from "@/lib/settings";
+import { TIER_FROZEN_INSTANT } from "./frozen-clock";
 import { shiftDateStr } from "@/lib/date";
 import { applyIntent, insertVitals } from "@/lib/offline/writes";
 import { buildIntent } from "@/lib/offline/queue";
@@ -37,6 +43,14 @@ function readingCount(profileId: number): number {
       .get(profileId) as { n: number }
   ).n;
 }
+
+const mood = (valence: number) => ({
+  valence,
+  energy: null,
+  anxiety: null,
+  factors: [],
+  note: null,
+});
 
 const VITALS_PAYLOAD = {
   systolic: "118",
@@ -64,7 +78,7 @@ describe("a capture dated ahead of the profile's day (#4425 review)", () => {
   it.each<[FlowKind, IntentPayload, (p: number) => number]>([
     [
       "mood",
-      { valence: 4, energy: null, anxiety: null, factors: [], note: null },
+      mood(4),
       (p) =>
         (
           db
@@ -126,5 +140,72 @@ describe("a capture dated ahead of the profile's day (#4425 review)", () => {
     );
     expect(outcome).toMatchObject({ wrote: true });
     expect(readingCount(p)).toBeGreaterThan(0);
+  });
+});
+
+// THE ANCHOR IS THE CAPTURE, AND REPLAY MUST NOT MOVE IT (#4559). Reading the day in
+// the profile's zone is only faithful if it is read AT THE TAP; a replay that re-derived
+// it would land a Tuesday-night check-in on Wednesday for no reason but a slow
+// reconnect, and the queue's own contract is that a late replay lands on the day the
+// user logged it however long the queue sat.
+//
+// This is what a replay-side redesign would break, so it is pinned here rather than
+// left as prose: the queue sits across the profile's midnight, and the day does not
+// move. The double replay is the second half of the same property — `UNIQUE(profile_id,
+// date)` upserts and the practice flow's day-idempotence all key on the replayed date,
+// and an idempotence that holds only on the first replay is not idempotence.
+describe("a capture replayed after the profile's day has moved (#4559)", () => {
+  const CAPTURE = new Date("2026-08-29T23:50:00.000Z");
+  // Twenty minutes later, and a different day in UTC — the profile's own midnight, not
+  // the host's.
+  const REPLAY = new Date("2026-08-30T00:10:00.000Z");
+
+  afterEach(() => vi.setSystemTime(TIER_FROZEN_INSTANT));
+
+  it("lands on the captured day, and lands there again on a second flush", () => {
+    const p = newProfile("capture-anchor");
+    setTimezone(p, "UTC");
+
+    vi.setSystemTime(CAPTURE);
+    const captureDay = today(p);
+    const intent = buildIntent("mood", captureDay, mood(4), p, CAPTURE);
+
+    vi.setSystemTime(REPLAY);
+    // The fixture reaches the state the assertion is about: the profile's today has
+    // genuinely moved past the captured day before either replay runs.
+    expect(today(p)).not.toBe(captureDay);
+
+    expect(applyIntent(p, intent)).toEqual({ status: "done" });
+    expect(applyIntent(p, intent)).toEqual({ status: "duplicate" });
+
+    expect(
+      db
+        .prepare("SELECT date FROM mood_logs WHERE profile_id = ?")
+        .all(p)
+        .map((row) => (row as { date: string }).date)
+    ).toEqual([captureDay]);
+  });
+
+  // BOTH SPELLINGS DRAIN THROUGH ONE QUEUE. The fix is at the CAPTURE, so a device
+  // that has not reloaded still holds intents a pre-fix build stamped in the BROWSER's
+  // zone — a day ahead of the profile's, whenever the device sits east of it. Those
+  // replay beside intents the fixed capture stamped, and each entry gets its own
+  // transaction, so the stale day has to dead-letter ITSELF and take nothing with it.
+  // The pre-fix leg is the deliberate failure here: it is the only one asserted to be
+  // refused, and the row below is what proves the refusal cost the other one nothing.
+  it("dead-letters a pre-fix capture without costing the fixed one beside it", () => {
+    const p = newProfile("mixed-queue");
+    const day = today(p);
+    const preFix = buildIntent("mood", shiftDateStr(day, 1), mood(2), p);
+    const fixed = buildIntent("mood", day, mood(5), p);
+
+    expect(applyIntent(p, preFix).status).toBe("rejected");
+    expect(applyIntent(p, fixed)).toEqual({ status: "done" });
+
+    expect(
+      db
+        .prepare("SELECT date, valence FROM mood_logs WHERE profile_id = ?")
+        .all(p)
+    ).toEqual([{ date: day, valence: 5 }]);
   });
 });
