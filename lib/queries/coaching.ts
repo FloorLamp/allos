@@ -200,6 +200,10 @@ export function getNiggleContext(profileId: number): NiggleCoachingContext[] {
     // A stamp we cannot place in the profile's day falls back to today — the disclosure
     // then reads "from today" rather than printing a raw instant at the user.
     lastReportedDay: localDayOf(tz, n.lastReportedAt) ?? todayStr,
+    // The lift the report blamed, for the pre-workout heads-up's second trigger half
+    // and its copy (#3211 part 4). Already canonical — the store normalizes through
+    // `exerciseHistoryKey` on the way in.
+    sourceExercise: n.sourceExercise,
   }));
 }
 

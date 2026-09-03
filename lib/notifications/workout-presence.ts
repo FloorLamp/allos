@@ -57,9 +57,7 @@ import {
 import { OBLIGATION_ORDER } from "../intake-schedule";
 import { intakeShortLabels } from "../intake-short-name";
 import { dispatch } from "./index";
-import { prefixForProfile } from "./attribution";
 import { workoutFinishCallback } from "./callback-data";
-import { prefixMessage } from "./types";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -432,19 +430,14 @@ export async function runPostWorkoutForActivity(
     };
   }
 
-  // ATTRIBUTION (#1721). "🏋️ Post-workout — 2 doses" / "🏋️ Workout complete" name
-  // nobody, and this is a dispatch-path builder, so it never met the tick's
-  // prefixMessage. In a shared household chat a post-workout DOSE list is
-  // unattributable. prefixForProfile is the one derivation (#377/#429) — it labels
-  // only when the instance tracks more than one profile, so a single-profile
-  // instance is unchanged.
+  // ATTRIBUTION (#1721) is now `dispatch`'s (#4538): "🏋️ Post-workout — 2 doses" /
+  // "🏋️ Workout complete" name nobody, and in a shared household chat a post-workout
+  // DOSE list is unattributable — so the label is applied to every dispatch rather
+  // than by whichever builder remembered to ask for it.
   //
   // The winner dispatches OUTSIDE the election transaction (#3058 contract): a
   // network round trip can never sit inside a write lock three processes share.
-  const results = await dispatch(
-    profileId,
-    prefixMessage(msg, prefixForProfile(profileId))
-  );
+  const results = await dispatch(profileId, msg);
   if (results.length === 0) {
     // No channel configured — release the claim so a later-configured channel
     // (or the tick backstop) can elect a fresh winner.

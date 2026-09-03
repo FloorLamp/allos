@@ -470,7 +470,9 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
   }
 
   async function openStatement(): Promise<void> {
-    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-when-toggle"))
+    );
   }
 
   it("offers no day field — the surface's day is fixed text", async () => {
@@ -550,7 +552,9 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
         />
       </CockpitDayProvider>
     );
-    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-when-toggle"))
+    );
     await act(async () =>
       fireEvent.change(screen.getByTestId("prn-log-when-time"), {
         target: { value: "19:15" },
@@ -592,7 +596,9 @@ describe("the PRN row's earlier-dose statement takes the card's day (#4691/#4738
     await act(async () =>
       fireEvent.click(screen.getByTestId("symptom-day-alt"))
     );
-    await act(async () => fireEvent.click(screen.getByTestId("prn-log-more")));
+    await act(async () =>
+      fireEvent.click(screen.getByTestId("prn-log-when-toggle"))
+    );
     await act(async () =>
       fireEvent.change(screen.getByTestId("prn-log-when-time"), {
         target: { value: "19:15" },

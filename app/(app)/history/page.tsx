@@ -14,7 +14,7 @@ import TimelineFilterLink from "@/components/TimelineFilterLink";
 import EventCalendar from "@/components/EventCalendar";
 import type { DoseLedgerItem } from "@/components/intake/dose-ledger-entry";
 import HistoryRows from "./HistoryRows";
-import HistoryAddDoor from "./HistoryAddDoor";
+import HistoryAddDoor, { HistoryUsualOffers } from "./HistoryAddDoor";
 import { requireScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
@@ -563,14 +563,6 @@ export default async function HistoryPage(props: {
           // The acting profile's meal-bucket boundaries, so the food form's Meal
           // follows a stated hour here exactly as it does in the nutrition bar.
           foodSlotBoundaries: profileFoodSlotBoundaries(actingProfileId),
-          // THE COMPOSED ONE-TAP FOR THE DAY BEING READ (#4118). Seeded here, and this
-          // is the only day the door's control can be about (#4424 ruling 2 deleted the
-          // shared date input it used to chase). Empty for every other kind — a
-          // `Log a use` door has no breakfast to offer.
-          usual:
-            addKind === "food"
-              ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
-              : [],
         }
       : null;
   // WHETHER THIS KIND HAS A DOOR AT ALL — the dose door's own presence rule, which the
@@ -588,6 +580,14 @@ export default async function HistoryPage(props: {
             ? addVocabulary.symptoms.length > 0
             : true
     : false;
+  // THE DAY'S STANDING COMPOSED OFFERS (#4118), read for the day being looked at rather
+  // than for a kind (#4310 ruling): the usual is an offer over foods and stacks, never a
+  // food, so it leads the add door above the per-kind row instead of sitting inside
+  // `Log food`. `usualRoutineDayOffers` gates on the bundle's reach and then on the food
+  // half, so a day with no habit standing returns before it touches intake at all.
+  const usualOffers = canWrite
+    ? usualRoutineDayOffers(actingProfileId, day ?? todayStr)
+    : [];
   const subjectNames: Record<number, string> = {};
   if (everyone) {
     for (const profile of scope.profiles) {
@@ -981,6 +981,9 @@ export default async function HistoryPage(props: {
           bounded by today. */}
       {canWrite ? (
         <div className={`mb-2 text-sm ${railGutter}`} data-testid="history-add">
+          {/* THE OFFERS LINE FIRST (#4310 ruling), before the per-kind grammar below it,
+              and silent on a day with no standing offer. */}
+          <HistoryUsualOffers offers={usualOffers} date={day ?? todayStr} />
           {!hasAddDoor ? (
             /* IN ALL — AND IN A KIND WITH NOTHING TO OFFER — THE DOOR ASKS THE KIND
                FIRST, which on a record page is the same act as narrowing to it. It

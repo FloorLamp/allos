@@ -144,9 +144,17 @@ describe("post-merge census route planning", () => {
     "app/layout.tsx",
     "app/(app)/layout.tsx",
     "app/(app)/actions.ts",
-    "app/(app)/page.tsx",
   ])("treats shared shell path %s as a full census", (file) => {
     expect(planPostMergeCensus([changed(file)], routes).mode).toBe("full");
+  });
+
+  // The dashboard's own page is a route page, not shell. It claimed a full run
+  // only because `UX_ROUTES=/` was a prefix for every route; #4661's exact form
+  // lets it earn the same one-territory scope every other route page does.
+  it("scopes the root app route to the dashboard alone", () => {
+    expect(
+      planPostMergeCensus([changed("app/(app)/page.tsx")], routes)
+    ).toMatchObject({ mode: "scoped", routes: ["=/"] });
   });
 
   it("fails when a changed app territory has no live census route", () => {
