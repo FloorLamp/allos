@@ -29,11 +29,13 @@ afterEach(cleanup);
 describe("synced daily cards read their headline through headlineFor (#4763)", () => {
   it.each([
     {
+      // The grouping is DERIVED from the key now (#4924): `steps` is a count
+      // metric in the registry, so the card reads the same axis treatment the
+      // four call sites used to spread in by hand — and a card that forgot to
+      // got recharts' defaults silently.
       name: "steps groups today's total like its axis",
       chart: spec({
         key: "steps",
-        groupYTicks: true,
-        yDomain: [0, "auto"],
         data: [
           { date: "2026-09-01", value: 8412 },
           { date: TODAY, value: 2120 },
@@ -47,7 +49,6 @@ describe("synced daily cards read their headline through headlineFor (#4763)", (
       chart: spec({
         key: "active-calories",
         unit: " kcal",
-        groupYTicks: true,
         data: [{ date: "2026-08-01", value: 1412 }],
       }),
       headline: "1,412 kcal",

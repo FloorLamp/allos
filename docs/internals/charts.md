@@ -176,6 +176,40 @@ recharts tree.)
 | Stacked segments | 2px surface gap, so segments read as discrete quantities                                                            | `chartStackSegmentProps`           |
 | Legend           | every ≥ 2-series chart has one                                                                                      | `ChartLegend`                      |
 
+### Ticks are a policy, not a default (#4924)
+
+Both axes used to be whatever recharts fitted. The value axis printed
+`4.75 / 5.7 / 6.65 / 7.6 / 8.55` hours of sleep and `55 / 66 / 77 / 88 / 99` bpm
+— honest divisions of the data range, and not numbers anyone reads a chart in.
+The date axis took recharts' greedy end-anchored fit, which chose a 4-day step
+for the wide cards and a 3-day step for the narrow one on the same page from the
+same window, so two cards side by side were two rulers.
+
+Both live in `lib/chart-time-axis.ts` now, and both are one rule:
+
+- **Value axis** — `snap125` (recharts' 1/2/2.5/5 step algorithm) at
+  `CHART_VALUE_AXIS_TICKS` ticks, spread by `chartAxisProps` onto whichever axis
+  is numeric. Six, not five: at five the same sleep domain snaps out to
+  `4 / 6 / 8 / 10 / 12` and a third of the plot is hours nobody slept.
+- **Date axis** — `categoryDateTicks` places at most `CHART_DATE_AXIS_TICKS`
+  positions on a calendar step chosen by span (a day, a week, a fortnight, a
+  month, a quarter), **anchored at the last day and walking backwards**. The
+  window's own last day therefore keeps its tick even when nothing was logged on
+  it (#2258), and the last label's clearance from the svg edge (#4866) is
+  unchanged, because that is where recharts anchored too.
+
+**A bounded metric declares its domain.** `TrendMetricMeta.domain` is for a scale
+that is a fact about the instrument rather than about the readings: a 1–5
+check-in rating is 1–5 whether or not anyone rated a 1 this quarter, and the auto
+domain plotted Mood on a 2–4 axis with a reading sitting on the axis line. Only
+for a scale with real ends — a weight or a resting HR has none, and pinning one
+would flatten the signal instead. `trendMetricChartScale` reads it, and
+`TrendMetricCharts` derives that from each card's own key, so no call site
+spreads an axis treatment in by hand.
+
+`lib/__tests__/chart-tick-policy.test.ts` runs both halves over the three domains
+the screenshot actually had.
+
 Linked charts use the shared `LineChartCard` `syncId`/`syncMethod` props. When
 sample rates differ, the caller supplies a value-based nearest-time method; it
 must not use array-index synchronization, which would align a one-minute stream

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { Label, type LabelProps } from "recharts";
 import { textWidth } from "@/lib/chart-svg";
 import { chartNeutral } from "@/lib/chart-colors";
+import {
+  CHART_VALUE_AXIS_NICE_TICKS,
+  CHART_VALUE_AXIS_TICKS,
+} from "@/lib/chart-time-axis";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -81,6 +85,17 @@ export function chartGridProps(c: ChartColors) {
  * Axis props: ticks in a text token, no tick marks, no axis spine. The spine and
  * ticks duplicate information the gridlines and labels already carry.
  *
+ * AND THE TICK VALUES ARE A POLICY (#4924). Every card handed recharts an axis
+ * with no `tickCount` and no nice-number mode, so the numbers down the side were
+ * whatever its default `adaptive` fit produced: 4.75 / 5.7 / 6.65 hours of sleep,
+ * 55 / 66 / 77 / 88 / 99 bpm. Those are honest divisions of the data range and
+ * nobody reads a chart in ninths. `snap125` snaps the step to 1 / 2 / 2.5 / 5 at
+ * each order of magnitude, which is how a person would have chosen it.
+ *
+ * It applies to whichever axis carries NUMBERS: recharts ignores both props on a
+ * category axis, and the date axis takes an explicit tick set instead
+ * (`categoryDateTicks`, lib/chart-time-axis.ts).
+ *
  * `tickFill` overrides the tick color, and exists for exactly one case: a
  * dual-axis chart where the axis serves ONE series. Even there the answer is
  * usually the neutral token — identity belongs to the marks and the legend, and
@@ -92,6 +107,8 @@ export function chartAxisProps(c: ChartColors, tickFill?: string) {
     stroke: c.axis,
     tickLine: false,
     axisLine: false,
+    niceTicks: CHART_VALUE_AXIS_NICE_TICKS,
+    tickCount: CHART_VALUE_AXIS_TICKS,
   } as const;
 }
 

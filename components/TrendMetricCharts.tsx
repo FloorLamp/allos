@@ -16,6 +16,8 @@ import {
 import {
   isTrendMetricSlug,
   savedMetricIdForTrendSlug,
+  trendMetricChartScale,
+  TREND_METRIC_META,
 } from "@/lib/trend-metrics";
 import { metricSeriesKey } from "@/lib/saved-items";
 import type { DayFillWindow } from "@/lib/day-fill";
@@ -68,11 +70,6 @@ export interface TrendChartSpec {
   // pinned by chart-tap-through.spec), so an affordance must not take width from
   // it.
   footerAction?: ReactNode;
-  // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
-  // ticks. Composed by lib/trend-metrics' trendMetricChartScale() from the ONE
-  // registry, never re-decided per surface.
-  yDomain?: [number | "auto", number | "auto"];
-  groupYTicks?: boolean;
   // The chart's tap-through destination (#1488) — REQUIRED, `null` only with a
   // same-line `detail-none:` justification at the call site. Every registered body
   // metric has one via `metricDetailHref(slug)`; the metric detail page's OWN chart
@@ -133,7 +130,8 @@ export interface TrendStackItem {
 // attached — so the reading's own day travels beside the number and the header decides
 // whether to say it.
 function latestHeadline(
-  chart: TrendChartSpec
+  chart: TrendChartSpec,
+  grouped: boolean | undefined
 ): { text: string; date: string } | null {
   for (let i = chart.data.length - 1; i >= 0; i--) {
     const point = chart.data[i];
@@ -142,7 +140,7 @@ function latestHeadline(
     if (point.value != null)
       return {
         text: `${
-          chart.groupYTicks
+          grouped
             ? groupChartValue(point.value, chart.decimals)
             : roundChartValue(point.value, chart.decimals)
         }${chart.unit}`,
@@ -229,9 +227,22 @@ export default function TrendMetricCharts({
   //
   // A non-registry card (the sleep chart, a check-in node) declares no floor, so it is
   // left exactly as it was rather than guessed at.
+  // The axis treatment a card takes, read off its own metric rather than spread in
+  // by every call site (#4924). WHICH treatment applies was already a registry
+  // question (`trendMetricChartScale`) and the answer travelled as two props that
+  // four builders had to remember to pass; a card that forgot got recharts'
+  // defaults silently. Derived here from the same `key` the gap policy is derived
+  // from, so the domain a metric declares reaches every surface that draws it.
+  const scaleFor = (chart: TrendChartSpec) => {
+    const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
+    return slug
+      ? trendMetricChartScale(TREND_METRIC_META[slug])
+      : { yDomain: undefined, groupYTicks: undefined };
+  };
+
   const headlineFor = (chart: TrendChartSpec): ReactNode => {
     if (chart.hideTitle) return null;
-    const latest = latestHeadline(chart);
+    const latest = latestHeadline(chart, scaleFor(chart).groupYTicks);
     if (!latest) return null;
     const slug = isTrendMetricSlug(chart.key) ? chart.key : null;
     const freshness =
@@ -264,6 +275,7 @@ export default function TrendMetricCharts({
   };
 
   const chartCard = (chart: TrendChartSpec) => {
+    const scale = scaleFor(chart);
     // ONE reading is a marker, not a plot (#2615 item 3) — the same degrade the
     // Overview tiles have drawn since #1485 G, over the same predicate, so a tile and
     // the card it taps through to cannot render the identical situation two ways.
@@ -326,8 +338,8 @@ export default function TrendMetricCharts({
             annotations={shown}
             windows={shownWindows}
             referenceValue={chart.referenceValue ?? null}
-            yDomain={chart.yDomain}
-            groupYTicks={chart.groupYTicks}
+            yDomain={scale.yDomain}
+            groupYTicks={scale.groupYTicks}
             decimals={chart.decimals}
             singleReadingAsChart={chart.singleReadingAsChart}
             gapFill={gapFillFor(chart)}
