@@ -256,8 +256,11 @@ export async function logFoodServing(
       : fields.mealSlot
   );
   if (outcome.kind === "unknown-group") return formError("Unknown food group.");
-  // The core's own day bound (#4118). The picker offers today and six days back; a POST
-  // that names a day it never offered — the future especially — is answered, not stored.
+  // The core's own day bound (#4118), and it is NOT-FUTURE only: any real past day
+  // passes, which is what `/history`'s food door needs. The food bar's seven-day picker
+  // is the BAR'S OWN one-tap offer, never this bound (#4754 retired the shared one) —
+  // it retires when #4477's `+ Add` door replaces it, and the write then reaches
+  // whatever day the page shows. So a malformed or future date is answered, not stored.
   if (outcome.kind === "invalid-date") return formError("Pick a valid day.");
   // The curated limit note (#2377), resolved AFTER the write for two reasons. The
   // food–drug ledger detects a co-occurrence from the day's servings, so the serving has
