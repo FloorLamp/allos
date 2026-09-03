@@ -538,7 +538,7 @@ export function seedIntradayPanel(): void {
   // (clipped at the left edge, never re-attributed) with one deep-stage sub-band,
   // per-minute HR from midnight through mid-morning with a workout spike, a windowed
   // cardio activity (the workout block), and two clock-timed document uploads (the tick
-  // rail), and a windowed evening practice session on its own Practice row (#4852).
+  // rail), and a windowed morning practice session on its own Practice row (#4852).
   // Because the day is today, the now-marker renders too.
   //
   // THREE DAYS BACK carries only a weigh-in — a real feed event with NO clock time — so
@@ -630,14 +630,16 @@ export function seedIntradayPanel(): void {
       ])
     );
 
-    // Layer 3b — the evening PRACTICE session (#4852). Same block shape as the ride
-    // above and its OWN row: a workout and a sauna on one line read as one kind of
-    // thing. Bounded by a stated start AND end, so it earns a block rather than the
-    // start-only tick a session with no length gets.
+    // Layer 3b — the PRACTICE session (#4852). Same block shape as the ride above
+    // and its OWN row: a workout and a sauna on one line read as one kind of thing.
+    // Bounded by a stated start AND end, so it earns a block rather than the
+    // start-only tick a session with no length gets. 07:00–07:30 keeps it clear of
+    // the ride and inside the wear window — see INTRADAY_PRACTICE for why the
+    // second one matters to the lag sentence.
     db.prepare(
       `INSERT INTO practice_logs
          (profile_id, practice, date, start_time, end_time, duration_min, source)
-       VALUES (?, ?, ?, '19:00', '19:30', 30, 'manual')`
+       VALUES (?, ?, ?, '07:00', '07:30', 30, 'manual')`
     ).run(idId, INTRADAY_PRACTICE, idToday);
 
     // Layer 4 — clock-timed feed events for the tick rail. Two document uploads at
