@@ -601,6 +601,11 @@ export interface SleepMoodHistoryRow {
   // read-only here as it is in the dialog), and `moodLogId` is the day's check-in.
   sleepSampleId: number | null;
   moodLogId: number | null;
+  // The night's SYNCED session contradicts the heart rate recorded across it
+  // (#4299), so this row's times are not stated as fact and — uniquely among synced
+  // sleep — the row carries a `sleepSampleId` the ⋯ menu can remove. Editing a synced
+  // night stays refused; the detector's mark buys a way OUT, not a way in.
+  sleepSuspect: boolean;
 }
 
 // Date union for the factual history table. Unlike pairSleepMood, this retains a
@@ -632,6 +637,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: null,
       sleepSampleId: null,
       moodLogId: null,
+      sleepSuspect: false,
     });
   }
   for (const mood of moods) {
@@ -652,6 +658,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: row?.sleepEditHours ?? null,
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: mood.id ?? null,
+      sleepSuspect: row?.sleepSuspect ?? false,
     });
   }
   for (const stageRow of stageRows) {
@@ -672,6 +679,7 @@ export function buildSleepMoodHistory(
       sleepEditHours: row?.sleepEditHours ?? null,
       sleepSampleId: row?.sleepSampleId ?? null,
       moodLogId: row?.moodLogId ?? null,
+      sleepSuspect: row?.sleepSuspect ?? false,
     });
   }
   return [...byDate.values()].sort((a, b) =>
@@ -698,7 +706,9 @@ export function attachEditableManualSleep(
       sleepEditHours: existingIsEditable ? manual.value / 60 : null,
       // DELETABLE exactly where EDITABLE is (#2556): the same duration-only manual
       // row, identified the same way. A night the dialog refuses to edit is not one
-      // this menu offers to remove.
+      // this menu offers to remove — with ONE exception, added by the caller after
+      // this pass: a synced night the clock-skew detector marked (#4299), which stays
+      // uneditable and becomes deletable.
       sleepSampleId: existingIsEditable ? (manual.id ?? null) : null,
     };
   });

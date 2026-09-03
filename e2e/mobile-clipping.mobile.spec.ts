@@ -946,6 +946,13 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     // dialog starts pushing 6px of nothing past the edge at once. So the forgery
     // removes the reserve first, and the assertions below are then measuring the
     // real regression rather than a control nobody would write.
+    //
+    // RESTORED BELOW, before the third phase (#4963): this inline override is
+    // scoped to the two assertions that need the reserve gone. Left in place, the
+    // third phase would measure the sheet's REAL content — the frecency-ranked
+    // food-group chips (#591/#2225) — against a body this test itself narrowed,
+    // which makes the third phase's verdict a function of chip order and, through
+    // it, of the clock, rather than of the clipped label it exists to check.
     await content.evaluate((node) => {
       node.style.paddingRight = "0px";
       const row = document.createElement("div");
@@ -977,8 +984,17 @@ test.describe("no dialog body overflows sideways at a phone viewport (#3395)", (
     // alive. A `truncate` label overruns its own box by a mile and CLIPS every
     // pixel of it, so it can never make the region scrollable. Without the
     // computed-overflow filter three innocent labels topped this list.
+    //
+    // THE RESERVE COMES BACK FIRST (#4963). This phase is not proving anything
+    // about a stripped container — that was the phase above. Restoring the
+    // `pointer-coarse:pr-1.5` reserve (dropping the inline override) puts the
+    // region back in the state every real dialog ships in, so what remains under
+    // test is only the clipped label, never the sheet's own ranked chip row —
+    // which real chips are on screen, and where their wrapped row happens to
+    // break, is content this test does not control and must not be graded on.
     await content.evaluate((node) => {
       node.querySelector('[data-testid="e2e-flush-tap-target"]')?.remove();
+      node.style.removeProperty("padding-right");
       const clipped = document.createElement("div");
       clipped.setAttribute("data-testid", "e2e-clipped-label");
       clipped.className = "truncate";

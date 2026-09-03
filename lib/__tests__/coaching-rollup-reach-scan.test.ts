@@ -41,6 +41,10 @@ const FOOD_DRUG_LEDGER_FINDINGS = "lib/food-drug-ledger-findings.ts";
 // last four are the producers #3095 annotated when it introduced the floor.
 // `staleExerciseGroupFinding` is the training-stale GROUP envelope (#3095's
 // fifth annotation), a helper inside buildTrainingObservationFindings.
+// The sleep clock-skew observation (#4299) is rollup-only for a reason worth
+// stating: the Sleep page HEDGES a suspect night's times and offers the delete,
+// but it renders no finding envelope, so the rollup is the only place the
+// observation itself is reachable.
 const ROLLUP_ONLY: ReadonlyArray<{ builder: string; file: string }> = [
   { builder: "buildMoodFindings", file: RULE_FINDINGS },
   { builder: "buildSleepMoodBridgeFindings", file: RULE_FINDINGS },
@@ -53,6 +57,7 @@ const ROLLUP_ONLY: ReadonlyArray<{ builder: string; file: string }> = [
   { builder: "buildMedicationDuplicationFindings", file: RULE_FINDINGS },
   { builder: "buildDataQualityFindings", file: RULE_FINDINGS },
   { builder: "buildCycleBleedingFindings", file: RULE_FINDINGS },
+  { builder: "buildSleepClockSkewFindings", file: RULE_FINDINGS },
 ];
 
 const STALE_GROUP_HELPER = "staleExerciseGroupFinding";
