@@ -80,11 +80,19 @@ interface Shape {
   /** The unlogged-run band, which carries its own class so a protocol window and
    *  a silence in the data are never confused (LineChartCardInner). */
   gapBands: number;
+  /** The document order of the drawn layers. A renderer emits its reference
+   *  marks in ONE place in the tree, where nine cards each chose their own, so
+   *  "the same marks in a different order" is a change this has to be able to
+   *  see. */
+  layers: string[];
   legend: string[];
   xTicks: string[];
   yTicks: string[];
-  /** The plot box the card hands its consumer: height class and the data-*
-   *  attributes e2e addresses it by. */
+  /** The plot box the card hands its consumer: its classes and the `data-*`
+   *  attributes e2e addresses it by. The classes are SORTED — Tailwind utilities
+   *  are order-independent in the cascade, so their written order is not a
+   *  rendered fact and pinning it would red on a cosmetic rewrite while saying
+   *  nothing about the picture. Which classes are THERE is the fact. */
   box: string;
 }
 
@@ -105,6 +113,13 @@ function readShape(root: HTMLElement): Shape {
     refLines: n(".recharts-reference-line"),
     refAreas: n(".recharts-reference-area"),
     gapBands: n(".chart-unlogged-band"),
+    layers: [
+      ...root.querySelectorAll(
+        ".recharts-line, .recharts-area, .recharts-bar, .recharts-scatter, .recharts-reference-line, .recharts-reference-area"
+      ),
+    ].map((e) =>
+      (e.getAttribute("class") ?? "").replace(/^recharts-layer /, "")
+    ),
     legend: t('[data-testid="chart-legend-item"]'),
     xTicks: t(
       ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value"
@@ -113,7 +128,11 @@ function readShape(root: HTMLElement): Shape {
       ".recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value"
     ),
     box: [
-      outer?.getAttribute("class") ?? "",
+      (outer?.getAttribute("class") ?? "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .sort()
+        .join(" "),
       outer?.getAttribute("data-testid") ?? "",
       outer?.getAttribute("data-axis-mode") ?? "",
       outer?.getAttribute("data-axis-scale") ?? "",
@@ -167,10 +186,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-line"],
       legend: [],
       xTicks: ["01-01", "01-02", "01-03"],
       yTicks: ["79", "79.5", "80", "80.5", "81", "81.5"],
-      box: "h-64 min-w-0 max-w-full",
+      box: "h-64 max-w-full min-w-0",
     },
   },
   {
@@ -202,10 +222,22 @@ const CASES: ReadonlyArray<{
       refLines: 4,
       refAreas: 3,
       gapBands: 1,
+      layers: [
+        "recharts-reference-area",
+        "recharts-reference-area",
+        "recharts-reference-area chart-unlogged-band",
+        "recharts-reference-line",
+        "recharts-reference-line",
+        "recharts-reference-line",
+        "recharts-reference-line",
+        "recharts-line",
+        "recharts-line",
+        "recharts-line",
+      ],
       legend: [],
       xTicks: ["01-02", "01-04", "01-06", "01-08", "01-10", "01-12"],
       yTicks: ["1", "2", "3", "4", "5"],
-      box: "h-64 min-w-0 max-w-full",
+      box: "h-64 max-w-full min-w-0",
     },
   },
   {
@@ -231,10 +263,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-line"],
       legend: [],
       xTicks: [],
       yTicks: [],
-      box: "h-20 min-w-0 max-w-full",
+      box: "h-20 max-w-full min-w-0",
     },
   },
   {
@@ -263,6 +296,13 @@ const CASES: ReadonlyArray<{
       refLines: 1,
       refAreas: 3,
       gapBands: 0,
+      layers: [
+        "recharts-reference-area",
+        "recharts-reference-area",
+        "recharts-reference-area",
+        "recharts-reference-line",
+        "recharts-line",
+      ],
       legend: [],
       xTicks: ["01-01", "01-15", "01-29", "02-12", "02-26", "03-12"],
       yTicks: ["65", "85", "105", "125", "135"],
@@ -300,6 +340,12 @@ const CASES: ReadonlyArray<{
       refLines: 1,
       refAreas: 1,
       gapBands: 0,
+      layers: [
+        "recharts-reference-area",
+        "recharts-reference-line",
+        "recharts-line",
+        "recharts-line",
+      ],
       legend: ["LDL", "Weight"],
       xTicks: ["01-01", "01-02", "01-03"],
       yTicks: [
@@ -316,7 +362,7 @@ const CASES: ReadonlyArray<{
         "81",
         "81.5",
       ],
-      box: "flex h-72 w-full flex-col | compare-chart | dual | time",
+      box: "flex flex-col h-72 w-full | compare-chart | dual | time",
     },
   },
   {
@@ -346,10 +392,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-line", "recharts-line"],
       legend: ["LDL", "HDL"],
       xTicks: ["01-01", "01-02", "01-03"],
       yTicks: ["40", "60", "80", "100", "120", "140"],
-      box: "flex h-72 w-full flex-col | compare-chart | shared | time",
+      box: "flex flex-col h-72 w-full | compare-chart | shared | time",
     },
   },
   {
@@ -420,6 +467,13 @@ const CASES: ReadonlyArray<{
       refLines: 1,
       refAreas: 0,
       gapBands: 0,
+      layers: [
+        "recharts-reference-line",
+        "recharts-line",
+        "recharts-line",
+        "recharts-line",
+        "recharts-line",
+      ],
       legend: [],
       xTicks: ["0m", "5m", "10m", "15m", "20m", "24m"],
       yTicks: ["40", "60", "80", "100", "120", "140"],
@@ -462,10 +516,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-line", "recharts-line"],
       legend: ["Manual", "Oura"],
       xTicks: ["01-01", "01-02", "01-03"],
       yTicks: ["5000", "5500", "6000", "6500", "7000", "7500"],
-      box: "h-64 flex w-full flex-col",
+      box: "flex flex-col h-64 w-full",
     },
   },
   {
@@ -494,10 +549,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-bar", "recharts-bar"],
       legend: [],
       xTicks: ["01-01", "01-02", "01-03", "01-04"],
       yTicks: ["0 g", "100 g", "200 g", "300 g", "400 g", "500 g"],
-      box: "h-64 min-w-0 max-w-full",
+      box: "h-64 max-w-full min-w-0",
     },
   },
   {
@@ -520,6 +576,14 @@ const CASES: ReadonlyArray<{
       refLines: 1,
       refAreas: 0,
       gapBands: 0,
+      layers: [
+        "recharts-bar",
+        "recharts-bar",
+        "recharts-bar",
+        "recharts-bar",
+        "recharts-bar",
+        "recharts-reference-line",
+      ],
       legend: [],
       xTicks: ["01-01", "01-08"],
       yTicks: ["0 min", "50 min", "100 min", "150 min", "200 min", "250 min"],
@@ -548,10 +612,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-bar"],
       legend: [],
       xTicks: [],
       yTicks: [],
-      box: "h-20 min-w-0 max-w-full",
+      box: "h-20 max-w-full min-w-0",
     },
   },
   {
@@ -576,10 +641,11 @@ const CASES: ReadonlyArray<{
       refLines: 0,
       refAreas: 0,
       gapBands: 0,
+      layers: ["recharts-scatter"],
       legend: [],
       xTicks: ["6", "6.5", "7", "7.5", "8", "8.5"],
       yTicks: ["3", "3.5", "4", "4.5", "5", "5.5"],
-      box: "h-64 min-w-0 max-w-full | scatter-chart",
+      box: "h-64 max-w-full min-w-0 | scatter-chart",
     },
   },
 ];
