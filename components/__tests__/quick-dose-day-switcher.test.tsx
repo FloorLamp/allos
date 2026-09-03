@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import QuickDoseList from "@/components/quick-entry/QuickDoseList";
 import DoseStatusControl from "@/components/DoseStatusControl";
-import { localDate } from "@/lib/offline/queue";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
@@ -44,6 +45,11 @@ vi.mock("@/app/(app)/nutrition/intake-actions", () => ({
 afterEach(() => vi.restoreAllMocks());
 
 const TODAY = "2026-08-28";
+
+// What `useTimezone()` answers with no provider above it — the context's own default.
+// The renders below are unwrapped, so this is the zone their captures resolve in, and
+// naming it keeps them independent of whatever zone the test host runs in.
+const DEFAULT_TZ = "UTC";
 
 function dose(doseId: number, name: string, stack: string | null = null) {
   return { doseId, name, detail: "1 scoop", stack };
@@ -121,7 +127,7 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
     });
     expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
     expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-    expect(date).toBe(localDate(new Date(payload.clientTakenAt)));
+    expect(date).toBe(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt)));
     expect(mocks.toast).toHaveBeenCalledWith(
       "Dose saved offline — will sync when you reconnect."
     );
@@ -172,8 +178,53 @@ describe("today's quick dose uses the shared offline contract (#3272)", () => {
       const [flow, date, payload] = mocks.enqueue.mock.calls[0]!;
       expect(flow).toBe("dose");
       expect(date).toBe(TODAY);
-      expect(localDate(new Date(payload.clientTakenAt))).toBe("2026-08-29");
-      expect(date).not.toBe(localDate(new Date(payload.clientTakenAt)));
+      expect(dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt))).toBe(
+        "2026-08-29"
+      );
+      expect(date).not.toBe(
+        dateStrInTz(DEFAULT_TZ, new Date(payload.clientTakenAt))
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // THE UNDATED ROW NAMES ITS OWN DAY, AND IT NAMES THE PROFILE'S (#4559). This is the
+  // one capture site in the app that had to derive a day rather than being handed one,
+  // and it derived it from the BROWSER's zone — so a phone east of the profile's zone
+  // captured tomorrow, and the write cores, which resolve every day through
+  // `today(profileId)`, judged it against a day the profile had not reached.
+  //
+  // TWO ZONES 25 HOURS APART, because one cannot tell these apart. At this instant they
+  // name DIFFERENT days, and the retired reading produced the HOST's day for both — so
+  // whatever zone the test host runs in, at most one row could ever have passed under
+  // it. The pair is the discriminator; either alone is satisfied by the bug.
+  it.each([
+    ["Pacific/Kiritimati", "2026-08-30"],
+    ["Pacific/Niue", "2026-08-29"],
+  ])("captures the day %s is on, not the browser's", async (tz, day) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T12:00:00.000Z"));
+    try {
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+      mocks.enqueue.mockResolvedValue("kept");
+      render(
+        <TimezoneProvider tz={tz}>
+          <DoseStatusControl
+            doseId={DAILY_DOSE}
+            taken={false}
+            skipped={false}
+            variant="pill"
+          />
+        </TimezoneProvider>
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("dose-take"));
+      });
+
+      const [flow, date] = mocks.enqueue.mock.calls[0]!;
+      expect({ flow, date }).toEqual({ flow: "dose", date: day });
     } finally {
       vi.useRealTimers();
     }

@@ -267,6 +267,28 @@ test("a months-old blood pressure is age-labeled and loses its arrow, while yest
     await expect(hrAge).not.toHaveAttribute("data-stale", "true");
     await expect(hr).toContainText("up versus previous resting heart rate");
 
+    // #4841 item 4 (owner ruling 2026-09-03 12:25 UTC): the vitals family carries
+    // ONE "Log a vital" door, not one per row — #4826 gated each row's door on
+    // ITS OWN staleness, so this fixture (a stale BP beside a fresh, untouched
+    // resting HR) used to grow a door on the BP row alone by accident of age
+    // rather than by design. Both directions are asserted on the SAME pair of
+    // locators the rest of this test already uses, so this cannot pass on a page
+    // that lost the door everywhere: it seats on blood pressure, first in the
+    // family's declared order, and the resting-HR row — fresh, not stale, and so
+    // never eligible under the old per-row rule either — carries none.
+    await expect(
+      bpCandidate.getByRole("button", { name: "Log a vital" })
+    ).toHaveCount(1);
+    await expect(
+      hrCandidate.getByRole("button", { name: "Log a vital" })
+    ).toHaveCount(0);
+    // The bootstrap Setup door retires once the family has any reading, even a
+    // stale one (2026-09-02 report folded into item 4): the family's own door
+    // above is this profile's one way in now.
+    await expect(
+      page.locator('[data-candidate-id="vitals.bootstrap"]')
+    ).toHaveCount(0);
+
     // Nothing is hidden and nothing is emptied: the header still says "Latest vitals"
     // (latest is a fact; current was the claim removed) and the write that ends the
     // dormancy is still one gesture away. #3366 moved that gesture off the card and
@@ -381,6 +403,16 @@ test("a blood pressure past the year floor states its gap instead of a number, t
     await expect(hrAgeToken).toHaveText("yesterday");
     await expect(hrAgeToken).not.toHaveText(MACHINE_DATE);
     await expect(hr).toContainText("up versus previous resting heart rate");
+
+    // #4841 item 4: WITH BLOOD PRESSURE DORMANT (no seat in Standing to carry the
+    // family's door — its own separate door is the dormant line's, asserted
+    // below), the family's ONE "Log a vital" door seats on the resting-HR row
+    // instead — live, and not itself stale, which is the "present whenever the
+    // family exists, fresh or stale" half of the ruling: this row would have
+    // carried no control at all under #4826's per-row rule.
+    await expect(
+      hrCandidate.getByRole("button", { name: "Log a vital" })
+    ).toHaveCount(1);
 
     // The write that ends the dormancy is still one gesture from the row (#1892),
     // through the quick-write surface it moved to in #3366 rather than a card of its
@@ -502,6 +534,56 @@ test("the dormant blood-pressure line acts, and its control opens the vitals for
         .getByTestId("measurements-quick-add")
         .locator("#measurements-group-vitals-fields")
     ).toBeVisible();
+  } finally {
+    await page.context().close();
+    destroyVitalsFixture(fixture);
+  }
+});
+
+// #4841 item 4 — THE DOOR NEEDS NO STALENESS AT ALL.
+//
+// The two tests above both happen to carry one aged row, so a door that reappeared
+// only because #4826's OWN per-row gate still fired on it would slip past them.
+// This fixture is neither: a blood pressure from yesterday beside a resting HR from
+// yesterday, both inside every floor there is. The owner's ruling is "present
+// whenever the family exists" — not "whenever a member is stale" — and this is the
+// one shape that tells the two apart.
+test("the vitals family's door is present with no stale reading in sight", async ({
+  browser,
+}, testInfo) => {
+  const fixture = createVitalsFixture(testInfo, {
+    bpDaysAgo: 1,
+    tag: "both-fresh",
+  });
+  const page = await loginAs(browser, {
+    username: fixture.username,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/");
+    await openDashboardAll(page);
+    const bpCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.blood-pressure:"
+    );
+    const hrCandidate = dashboardCandidatePrefix(
+      page,
+      "vitals.resting-heart-rate:"
+    );
+    await expect(
+      bpCandidate.getByTestId("vitals-latest-bp-age")
+    ).not.toHaveAttribute("data-stale", "true");
+    await expect(
+      hrCandidate.getByTestId("vitals-latest-resting-hr-age")
+    ).not.toHaveAttribute("data-stale", "true");
+
+    // ONE door despite NEITHER row being stale — the fold's core claim.
+    await expect(
+      bpCandidate.getByRole("button", { name: "Log a vital" })
+    ).toHaveCount(1);
+    await expect(
+      hrCandidate.getByRole("button", { name: "Log a vital" })
+    ).toHaveCount(0);
   } finally {
     await page.context().close();
     destroyVitalsFixture(fixture);

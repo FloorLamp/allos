@@ -12,7 +12,8 @@ import { type TimeStatement } from "@/components/TimeStatement";
 import { LabeledVerbChip } from "@/components/Chip";
 import { doseConfirmMessage } from "@/lib/dose-outcome-text";
 import { microMotionPlan } from "@/lib/micro-motion";
-import { localDate } from "@/lib/offline/queue";
+import { useTimezone } from "@/components/TimezoneProvider";
+import { dateStrInTz } from "@/lib/date";
 import {
   DOSE_ACTION_AMBER,
   DOSE_ACTION_BRAND,
@@ -154,6 +155,11 @@ export default function DoseStatusControl({
   const todayTap = useWritePipeline("dose-status");
   const datedTap = useWritePipeline("dose-day");
   const pipeline = date == null ? todayTap : datedTap;
+  // THE PROFILE'S ZONE, NOT THE BROWSER'S (#4559). An undated row has to name its own
+  // day when the tap is captured offline, and the server-resolved zone this provider
+  // carries is the same authority `today(profileId)` reads at replay — so the day the
+  // capture claims and the day the write cores judge cannot disagree.
+  const tz = useTimezone();
   const state = optimistic ?? (taken ? "taken" : skipped ? "skipped" : "clear");
   // Whichever transition this control could start from here is the one in flight.
   const busy =
@@ -272,7 +278,7 @@ export default function DoseStatusControl({
             message: "You're offline — reconnect to change a logged dose.",
           };
         const flow = target === "taken" ? "dose" : "skip-dose";
-        const capturedDate = date ?? localDate(tappedAt);
+        const capturedDate = date ?? dateStrInTz(tz, tappedAt);
         return {
           kind: "capture",
           flow,

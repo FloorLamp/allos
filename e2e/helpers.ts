@@ -3819,6 +3819,19 @@ export async function expectAtomicCardPairs(
  *
  * Idempotent by construction — it opens only the groups reading `aria-expanded="false"`
  * — so a spec may call it after any navigation without tracking what it already did.
+ *
+ * hydratedClick, not click (#4905): this is the SAME control `dose-skip.spec.ts:39`
+ * already reaches for with hydratedClick, because it is the first interaction after a
+ * goto — a tap that lands before hydration is swallowed. And a click alone doesn't say
+ * the group opened: a swallowed tap left this returning successfully with the group
+ * still shut, and the failure would surface later as "the dose row is missing" —
+ * reading like a data problem rather than a tap that never landed. Reading `aria-expanded`
+ * back after the click is what fails it here instead.
+ *
+ * The button itself is a stable member of the list — expanding one group only toggles
+ * its own sibling `<ul>` (DayLedger.tsx), it does not add, remove or reorder any
+ * `ledger-due-group-*` button — so re-resolving `groups.nth(i)` against the live
+ * locator each iteration addresses the same buttons throughout the loop.
  */
 export async function expandLedgerDueGroups(page: Page): Promise<void> {
   const groups = page.locator('[data-testid^="ledger-due-group-"]');
@@ -3826,7 +3839,8 @@ export async function expandLedgerDueGroups(page: Page): Promise<void> {
   for (let i = 0; i < count; i++) {
     const group = groups.nth(i);
     if ((await group.getAttribute("aria-expanded")) === "false") {
-      await group.click();
+      await hydratedClick(page, group);
+      await expect(group).toHaveAttribute("aria-expanded", "true");
     }
   }
 }
