@@ -219,7 +219,10 @@ describe("getSuspectSleepSessions", () => {
     const old = shiftDateStr(T, -(SLEEP_SKEW_HISTORY_DAYS + 5));
     skewedNight(old);
     expect(
-      getSuspectSleepSessions(profileId, shiftDateStr(T, -SLEEP_SKEW_HISTORY_DAYS))
+      getSuspectSleepSessions(
+        profileId,
+        shiftDateStr(T, -SLEEP_SKEW_HISTORY_DAYS)
+      )
     ).toEqual([]);
     expect(getSuspectSleepSessions(profileId, old)).toHaveLength(1);
   });
@@ -407,7 +410,9 @@ describe("deleting a suspect synced session (#4299)", () => {
     expect(storedSessions()).toEqual([
       { date: day, started_at: corrected.start },
     ]);
-    expect(getSuspectSleepSessions(profileId, shiftDateStr(T, -30))).toEqual([]);
+    expect(getSuspectSleepSessions(profileId, shiftDateStr(T, -30))).toEqual(
+      []
+    );
   });
 
   it("leaves a window containing the deleted night exactly as an unrecorded one", () => {

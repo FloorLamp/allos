@@ -546,7 +546,10 @@ export function getSleepMoodData(
   // that pass identified, or a synced session the detector contradicted — never both, and
   // a suspect night stays UNeditable either way (`sleepEditable` is untouched here).
   const suspectSampleByWakeDay = new Map(
-    getSuspectSleepSessions(profileId, since).map((s) => [s.wakeDay, s.sampleId])
+    getSuspectSleepSessions(profileId, since).map((s) => [
+      s.wakeDay,
+      s.sampleId,
+    ])
   );
   const history = editableHistory.map((row) => {
     const suspectSampleId = suspectSampleByWakeDay.get(row.date) ?? null;
