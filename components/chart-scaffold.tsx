@@ -360,16 +360,15 @@ export function chartLineDot(
   // isolated reading had no segment and no dot, so a value that exists rendered
   // as nothing at all — and for one whose mark carries a claim the stroke does
   // not make, which is what hollow says. Both keep their marks at any density.
-  const marked = size(isolated) + size(inexact) > 0;
-  if (pointCount <= DENSE_SERIES_POINTS && !marked) {
-    return chartExactDot(c, color);
-  }
-  if (pointCount > DENSE_SERIES_POINTS && !marked) return false as const;
-  return chartPointDot(c, color, {
-    isolated,
-    inexact,
-    dense: pointCount > DENSE_SERIES_POINTS,
-  });
+  const dense = pointCount > DENSE_SERIES_POINTS;
+  // A series whose marks are all alike takes the PROP BAG, which is the shape
+  // recharts renders through its own `<Dot>` — same geometry, and it keeps the
+  // `recharts-dot` / `recharts-line-dot` classes specs and stylesheets address.
+  // Below the threshold an isolated reading is already drawn, so only an INEXACT
+  // point makes the marks differ from each other.
+  if (!dense && size(inexact) === 0) return chartExactDot(c, color);
+  if (dense && size(isolated) + size(inexact) === 0) return false as const;
+  return chartPointDot(c, color, { isolated, inexact, dense });
 }
 
 const size = (s?: ReadonlySet<number>) => s?.size ?? 0;
@@ -413,6 +412,13 @@ function chartPointDot(
     dense: boolean;
   }
 ) {
+  // What recharts' own `<Dot>` would have put on the circle (`DotItem` merges the
+  // Line's `recharts-line-dot` with `recharts-dot`). A per-point RENDERER bypasses
+  // that entirely, so the classes are restated here rather than silently dropped:
+  // e2e/sleep-page.spec.ts finds the SRI card's marks by `.recharts-dot`, and a
+  // selector that stops matching because a mark became conditional is the same
+  // regression as the mark disappearing.
+  const rechartsDot = "recharts-dot recharts-line-dot";
   const exact = chartExactDot(c, color);
   const hollow = chartInexactDot(c, color);
   return function PointDot({
@@ -427,11 +433,20 @@ function chartPointDot(
     if (typeof cx !== "number" || typeof cy !== "number" || index == null) {
       return <g />;
     }
-    if (inexact?.has(index)) return <circle {...hollow} cx={cx} cy={cy} />;
-    if (!dense || isolated?.has(index)) {
-      return <circle {...exact} cx={cx} cy={cy} />;
-    }
-    return <g />;
+    const mark = inexact?.has(index)
+      ? hollow
+      : !dense || isolated?.has(index)
+        ? exact
+        : null;
+    if (!mark) return <g />;
+    return (
+      <circle
+        {...mark}
+        className={`${rechartsDot} ${mark.className}`}
+        cx={cx}
+        cy={cy}
+      />
+    );
   };
 }
 

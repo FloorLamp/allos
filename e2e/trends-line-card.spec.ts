@@ -329,6 +329,14 @@ test("today's HR is drawn as the day it is, not the day it will be (#4924 fix 4)
     // is still filling is an outline of a value rather than one.
     const hollow = hr.locator("circle[data-inexact]");
     await expect(hollow).toHaveCount(1);
+    // …drawn by a per-point renderer, which bypasses recharts' own `<Dot>`. The
+    // CONVERSE of that change, in the same file: the mark still answers to the
+    // class every other dot on every other chart answers to (e2e/sleep-page.spec.ts
+    // finds the SRI marks that way), so making a mark conditional did not quietly
+    // take it out of reach of the selectors that were already looking for it.
+    await expect(hr.locator("circle.recharts-dot[data-inexact]")).toHaveCount(
+      1
+    );
 
     // THE STROKE. It ends at the last COMPLETE day: the rightmost pixel any line
     // reaches is left of the partial mark, rather than a segment falling from
