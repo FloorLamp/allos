@@ -118,6 +118,13 @@ export default async function AppLayout({
   const readOnlyIds = scope.profiles
     .filter((p) => scope.access.get(p.id) === "read")
     .map((p) => p.id);
+  // The household members this login may WRITE (#4932) — the quick-log sheet's
+  // subject chip lists exactly these in its "Who is this for?" block. Derived from
+  // the SAME already-resolved access map as `readOnlyIds` above (never a second
+  // accessForProfile scan), the complement of it plus admin's implicit all-write.
+  const writableProfiles = scope.profiles.filter(
+    (p) => scope.access.get(p.id) === "write"
+  );
   // Own-profile link (#1013): the acting profile's subject name when the login is
   // acting as someone OTHER than its own profile (null when acting as self / no
   // own-profile set). Threaded to the live workout editor + dock — the fastest-
@@ -317,6 +324,8 @@ export default async function AppLayout({
                   are expected to reach with no connection. */}
                   <QuickEntryProvider
                     measurements={measurementsQuickEntry(login.id, profile.id)}
+                    writableProfiles={writableProfiles}
+                    actingProfileId={scope.actingProfileId}
                   >
                     <ActivityEditorProvider
                       units={units}

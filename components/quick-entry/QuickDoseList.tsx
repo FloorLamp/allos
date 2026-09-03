@@ -63,6 +63,7 @@ export default function QuickDoseList({
   prn,
   pastDays,
   onDone,
+  subjectProfileId,
 }: {
   today: string;
   doses: QuickEntryDose[];
@@ -73,6 +74,12 @@ export default function QuickDoseList({
   // emptying on its own is NOT that moment any more: closing then would take the
   // switcher, and the missed day behind it, away with it.
   onDone: () => void;
+  // The sheet's chosen subject (#4932), when it is not the acting profile —
+  // `today`/`doses`/`pastDays` are already gathered for this subject; this is what
+  // makes the WRITES cross the same boundary (#4429) rather than landing on the
+  // acting profile the gather no longer reflects. `DoseStatusControl` and
+  // `resolveDayDoses` both re-gate it server-side.
+  subjectProfileId?: number;
 }) {
   // Doses resolved during THIS overlay session, dropped from their day's list. Local
   // rather than re-fetched: the sheet is a transactional surface, and re-running the
@@ -179,6 +186,7 @@ export default function QuickDoseList({
             }))
           }
           onResolved={(doseIds) => markResolved(day, doseIds)}
+          subjectProfileId={subjectProfileId}
         />
       ) : remaining.length === 0 && !prn?.meds.length ? (
         <p
@@ -230,6 +238,7 @@ export default function QuickDoseList({
                 variant="pill"
                 payload={dose.dueText}
                 rowLeaves
+                profileId={subjectProfileId}
                 onSettled={(result) => {
                   if (result.ok) markResolved(today, [dose.doseId]);
                   else
@@ -244,7 +253,11 @@ export default function QuickDoseList({
         </ul>
       ) : null}
       {day === today && prn && prn.meds.length > 0 && (
-        <QuickLogPrnContent {...prn} title={null} />
+        <QuickLogPrnContent
+          {...prn}
+          title={null}
+          profileId={subjectProfileId}
+        />
       )}
     </div>
   );
@@ -258,6 +271,7 @@ function PastDayDoses({
   notes,
   onNote,
   onResolved,
+  subjectProfileId,
 }: {
   date: string;
   slots: { bucket: TimeBucket; doses: QuickEntryPastDose[] }[];
@@ -266,6 +280,7 @@ function PastDayDoses({
   notes: Record<string, string>;
   onNote: (doseId: number, text: string) => void;
   onResolved: (doseIds: readonly number[]) => void;
+  subjectProfileId?: number;
 }) {
   const { resolveAll, bulkBlocked } = useDoseDayResolution({
     date,
@@ -273,6 +288,7 @@ function PastDayDoses({
       "Something went wrong — reopen this sheet to see what was logged.",
     note: onNote,
     resolved: onResolved,
+    profileId: subjectProfileId,
   });
 
   if (slots.length === 0) {
@@ -360,6 +376,7 @@ function PastDayDoses({
                     compact
                     itemName={dose.name}
                     rowLeaves
+                    profileId={subjectProfileId}
                     onSettled={(result) => {
                       if (result.ok) onResolved([dose.doseId]);
                       else onNote(dose.doseId, result.error);
