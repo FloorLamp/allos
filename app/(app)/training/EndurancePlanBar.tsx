@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
 import Button from "@/components/Button";
+import Combobox from "@/components/Combobox";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import {
@@ -55,6 +56,9 @@ export default function EndurancePlanBar({
   kindSuggestions: readonly string[];
 }) {
   const [showForm, setShowForm] = useState(false);
+  // The Combobox is controlled, so the kind lives here. Reset with the form so a
+  // cancelled entry does not carry its word into the next one.
+  const [kind, setKind] = useState("race");
 
   return (
     <div className="card" data-testid="endurance-plan-bar">
@@ -179,6 +183,7 @@ export default function EndurancePlanBar({
           action={async (fd) => {
             await createEndurancePlan(fd);
             setShowForm(false);
+            setKind("race");
           }}
           className="subpanel-inset-sm mt-4 space-y-3 rounded-lg border border-black/5 p-3 dark:border-white/10"
           data-testid="endurance-form"
@@ -192,23 +197,23 @@ export default function EndurancePlanBar({
               <label className="section-label" htmlFor="endurance-kind">
                 Kind
               </label>
-              {/* The kind is stored as free text (#3285), so the control is an input
-                  with a datalist rather than a select: the four words below are
-                  suggestions, and a club with a fifth one can just type it. */}
-              <input
+              {/* The kind is stored as free TEXT (#3285), so this is a create-on-type
+                  Combobox rather than a select: the suggestions are the common words
+                  and a club with a fifth one just types it. The native autocomplete
+                  element the #1176/#1177 guard bans would have been the obvious reach
+                  and the wrong one — prefix-only matching is exactly the wrong
+                  affordance for a vocabulary the user is allowed to extend. */}
+              <Combobox
                 id="endurance-kind"
+                value={kind}
+                onChange={setKind}
+                options={[...kindSuggestions]}
+                allowFreeText
                 name="kind"
-                list="endurance-kind-options"
-                defaultValue="race"
-                maxLength={40}
-                className="input mt-1 w-full"
-                data-testid="endurance-kind"
+                ariaLabel="Kind"
+                placeholder="e.g. race, meet, tournament"
+                freeTextLabel={(q) => <>Use “{q}”</>}
               />
-              <datalist id="endurance-kind-options">
-                {kindSuggestions.map((k) => (
-                  <option key={k} value={k} />
-                ))}
-              </datalist>
             </div>
             <div>
               <label className="section-label" htmlFor="endurance-discipline">

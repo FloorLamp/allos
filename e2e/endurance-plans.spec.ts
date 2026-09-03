@@ -130,7 +130,7 @@ test.describe("endurance event plans (#839)", () => {
 
     await page.getByTestId("endurance-add-toggle").click();
     await expect(page.getByTestId("endurance-form")).toBeVisible();
-    await page.getByTestId("endurance-kind").fill("meet");
+    await page.getByRole("combobox", { name: "Kind" }).fill("meet");
     await page.getByTestId("endurance-discipline").selectOption("");
     await page.getByTestId("endurance-event-name").fill("E2E County Meet");
     await page.getByTestId("endurance-event-date").fill(futureEventDate());
@@ -151,7 +151,7 @@ test.describe("endurance event plans (#839)", () => {
     // A second active meet is allowed — the one-per-scope rule is about a cardio
     // discipline, and a meet has none.
     await page.getByTestId("endurance-add-toggle").click();
-    await page.getByTestId("endurance-kind").fill("tournament");
+    await page.getByRole("combobox", { name: "Kind" }).fill("tournament");
     await page.getByTestId("endurance-discipline").selectOption("");
     await page.getByTestId("endurance-event-name").fill("E2E Club Open");
     await page.getByTestId("endurance-event-date").fill(futureEventDate());
