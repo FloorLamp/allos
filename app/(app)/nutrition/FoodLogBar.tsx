@@ -20,6 +20,7 @@ import FoodGroupIcon, {
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
 import OfferRow from "@/components/OfferRow";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import IntakeContextBar from "@/components/IntakeContextBar";
 import {
   useClaimToastKey,
@@ -2091,8 +2092,7 @@ export default function FoodLogBar({
               were a totals display AND the slot picker — and only the picker half
               belongs with the add list. The totals are the ledger's group headings
               above; this is the choice, next to the rows that act on it. */}
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="section-label">Add to {activeSlot}</h3>
+          <CardSectionHeader title={`Add to ${activeSlot}`} variant="label">
             <SegmentedControl
               options={FOOD_SLOTS.map((meal) => ({
                 value: meal,
@@ -2104,7 +2104,7 @@ export default function FoodLogBar({
               ariaLabel="Meal to add to"
               testId="food-meal-slots"
             />
-          </div>
+          </CardSectionHeader>
           {/* The regularity shortcut (#2380). Present only when the ledger says this
               window has a habit AND at least two of it are still unlogged today — one
               group is already one tap on the row below, so the offer would cost more to
