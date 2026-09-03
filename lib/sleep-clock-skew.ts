@@ -30,8 +30,11 @@
 //
 // Pure — no DB, no clock. The gather is lib/queries/sleep-clock-skew.ts.
 
+import { utcInstant } from "./date";
+
 // One per-minute HR bucket as stored: `ts` is a canonical UTC instant (hr_minutes.ts
-// has been an absolute instant since migration 164), `bpm` the count-weighted average.
+// has been an absolute instant since migration 164 — docs/internals/time-columns.md),
+// `bpm` the count-weighted average.
 export interface HrMinuteSample {
   ts: string;
   bpm: number;
@@ -65,23 +68,28 @@ const MINUTE_MS = 60_000;
 // sample before either is allowed to speak. Below this the answer is "no concurrent
 // coverage", which is a NON-detection: a session with a sparse or absent trace can
 // never flag, however odd its clocks look (#4299 acceptance criterion 2).
-const MIN_HR_COVERAGE = 0.5;
+export const MIN_HR_COVERAGE = 0.5;
 
 // The median gap, in bpm, at which a claimed window reads as awake-level against a
-// comparable trough elsewhere. Derived from the sighting: the contradicted session
-// averaged up to 75 bpm while the real overnight trough four hours earlier averaged
-// 57–62 — a gap of 13 to 18. Ordinary within-night variation (an early-morning
-// awakening leaving a slightly deeper trough elsewhere in the same night) is a few
-// bpm. 10 sits between them, closer to the noise than to the defect on purpose:
-// this feeds a calm observation and a delete affordance, never an alarm.
+// comparable trough elsewhere. The ONE measurement behind it is the sighting in #4299:
+// the contradicted session ran up to 75 bpm while the real overnight trough four hours
+// earlier ran 57–62, so the observed gap was 13–18. 10 sits below that on purpose —
+// this feeds a calm observation and a delete affordance, never an alarm, so the cost of
+// the threshold being a little low is a hedge nobody needed, not a missed contradiction.
+// It is NOT derived from any measurement of ordinary within-night variation; nothing in
+// this repo measures that, and a number invented for it would read as though something
+// had.
 //
 // The MEDIAN is the "bulk of the session" test, not a separate one — a median 10 bpm
 // above the trough's median means at least half the claimed minutes are that high.
-const MIN_MEDIAN_BPM_GAP = 10;
+export const MIN_MEDIAN_BPM_GAP = 10;
 
-// How far either side of the claimed session to look for the real trough. The observed
-// skew is 6 hours; a stale zone reference can be any offset, and ±12h covers every one
-// of them while staying inside "the surrounding day".
+// How far either side of the claimed session's START to look for the real trough. This
+// is a bound on "the surrounding day", NOT a claim to cover every possible offset error
+// — zone offsets run −12:00 to +14:00, so a stale reference can in principle be further
+// out than this. The observed skew is 6h, a window wider than a day would start
+// comparing one night against another, and a trough more than 12h from the claim is not
+// evidence about THIS night.
 const SEARCH_RADIUS_MS = 12 * 60 * MINUTE_MS;
 
 // Step the comparison window by a quarter hour. Finer buys nothing — a trough is hours
@@ -97,23 +105,29 @@ function median(values: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-// The median bpm over [from, to), or null when the window's coverage is too thin to
-// carry a claim. `expectedMinutes` is the window's own width, so coverage is measured
-// against what a complete trace would hold rather than against a constant.
-function windowMedian(
+// The median and mean bpm over [from, to), or null when the window's coverage is too
+// thin to carry a claim. Coverage is measured against the window's OWN width in
+// minutes, so a five-hour night is judged against what a complete five-hour trace would
+// hold rather than against a constant.
+//
+// The MEAN is carried only to break ties between windows of equal median (see the
+// search below); nothing compares it across windows of different medians.
+function windowStats(
   samples: readonly { at: number; bpm: number }[],
   from: number,
   to: number
-): number | null {
+): { median: number; mean: number } | null {
   const inside: number[] = [];
   for (const s of samples) {
     if (s.at >= from && s.at < to) inside.push(s.bpm);
   }
   const expectedMinutes = Math.round((to - from) / MINUTE_MS);
   if (expectedMinutes <= 0) return null;
-  return inside.length / expectedMinutes >= MIN_HR_COVERAGE
-    ? median(inside)
-    : null;
+  if (inside.length / expectedMinutes < MIN_HR_COVERAGE) return null;
+  return {
+    median: median(inside),
+    mean: inside.reduce((a, b) => a + b, 0) / inside.length,
+  };
 }
 
 /**
@@ -133,36 +147,55 @@ export function detectSleepClockSkew(
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return null;
   }
-  const samples = hr.flatMap((s) => {
+  const samples: { at: number; bpm: number }[] = [];
+  for (const s of hr) {
     const at = Date.parse(s.ts);
-    return Number.isFinite(at) && Number.isFinite(s.bpm) ? [{ at, bpm: s.bpm }] : [];
-  });
+    if (Number.isFinite(at) && Number.isFinite(s.bpm))
+      samples.push({ at, bpm: s.bpm });
+  }
   if (samples.length === 0) return null;
 
-  const claimedBpm = windowMedian(samples, start, end);
-  if (claimedBpm == null) return null;
+  const claimed = windowStats(samples, start, end);
+  if (claimed == null) return null;
 
   // Every equal-width window in the surrounding day that does NOT overlap the claim.
   // Equal width is what makes "comparable" true by construction: a five-hour night is
   // compared against five-hour windows, never against a ten-minute dip.
+  //
+  // Ranked by median, ties broken by the lower MEAN. The tie-break is not cosmetic: at
+  // a quarter-hour step many overlapping windows share the trough's median — a window
+  // straddling the trough's leading edge has the same median as the trough itself once
+  // half its minutes are asleep — and without the tie-break the earliest of them wins,
+  // so `troughStart` would name an hour up to half a session-width before the real
+  // onset. The copy quotes this instant, so naming the wrong hour is a wrong statement,
+  // not a rounding.
   const width = end - start;
-  let best: { bpm: number; at: number } | null = null;
+  let best: { median: number; mean: number; at: number } | null = null;
   for (
     let from = start - SEARCH_RADIUS_MS;
-    from <= end + SEARCH_RADIUS_MS - width;
+    from <= start + SEARCH_RADIUS_MS;
     from += SEARCH_STEP_MS
   ) {
     if (from < end && from + width > start) continue; // overlaps the claim
-    const bpm = windowMedian(samples, from, from + width);
-    if (bpm != null && (best == null || bpm < best.bpm)) best = { bpm, at: from };
+    const stats = windowStats(samples, from, from + width);
+    if (stats == null) continue;
+    if (
+      best == null ||
+      stats.median < best.median ||
+      (stats.median === best.median && stats.mean < best.mean)
+    ) {
+      best = { ...stats, at: from };
+    }
   }
-  if (best == null || claimedBpm - best.bpm < MIN_MEDIAN_BPM_GAP) return null;
+  if (best == null || claimed.median - best.median < MIN_MEDIAN_BPM_GAP) {
+    return null;
+  }
 
   return {
     start: session.start,
     end: session.end,
-    claimedBpm,
-    troughBpm: best.bpm,
-    troughStart: new Date(best.at).toISOString().slice(0, 19) + "Z",
+    claimedBpm: claimed.median,
+    troughBpm: best.median,
+    troughStart: utcInstant(new Date(best.at)),
   };
 }
