@@ -6,6 +6,7 @@ import {
   accessForProfile,
 } from "@/lib/auth";
 import { assembleIllnessEpisode } from "@/lib/illness-episode";
+import { antipyreticPrnMeds } from "@/lib/prn-defaults";
 import {
   episodeRowToDerived,
   resolveEpisodeAcrossProfiles,
@@ -387,6 +388,9 @@ export default async function EpisodePage(props: {
                   rangeStart={rangeStart}
                   rangeEnd={rangeEnd}
                   profileId={target}
+                  antipyreticMeds={antipyreticPrnMeds(prnMeds)}
+                  intakeContext={intakeContext}
+                  nowIso={clockNow().toISOString()}
                   photoControl={
                     <label
                       htmlFor="episode-symptom-photo-input"

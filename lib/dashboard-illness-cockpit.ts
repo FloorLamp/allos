@@ -16,6 +16,7 @@ import {
   getEpisodeMedReconciliations,
 } from "./queries";
 import type { PrnMedForQuickLog } from "./queries/intake/adherence";
+import { antipyreticPrnMeds } from "./prn-defaults";
 import {
   loadIntakeFormContext,
   type IntakeFormContext,
@@ -34,6 +35,11 @@ export interface DashboardIllnessControls {
   staleNudge: StaleEpisodeNudge | null;
   medReconciliation: EpisodeMedSuggestion[];
   prnMeds: PrnMedForQuickLog[];
+  // The fever-reducing subset of prnMeds (#4712 judgement 1) — the temperature fold's
+  // inline dose offer reuses IllnessMedicationLogger over just this narrower list,
+  // rather than the whole PRN cabinet, so a fever reading never offers to log an
+  // antihistamine.
+  antipyreticPrnMeds: PrnMedForQuickLog[];
   intakeOptions: IntakeCatalogOptions;
   // The whole subject context the cockpit's add-medication fold feeds its form
   // (#4609) — this profile's, not the viewer's.
@@ -120,8 +126,10 @@ export function gatherDashboardIllnessCockpits(
   let staleAcked = new Set<number>();
   let reconciliations = new Map<number, EpisodeMedSuggestion[]>();
   if (options.canWrite) {
+    const prnMeds = getPrnMedicationsForQuickLog(profileId);
     sharedControls = {
-      prnMeds: getPrnMedicationsForQuickLog(profileId),
+      prnMeds,
+      antipyreticPrnMeds: antipyreticPrnMeds(prnMeds),
       intakeOptions: getIntakeCatalogOptions(profileId),
       intakeForm: loadIntakeFormContext(profileId, options.weightUnit),
       customNames: getCustomSymptomNames(profileId),

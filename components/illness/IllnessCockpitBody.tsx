@@ -132,6 +132,12 @@ export default function IllnessCockpitBody({
               episodeId={episode.id ?? undefined}
               showTitle={false}
               analysisHref={crossProfile ? undefined : "/trends/symptoms"}
+              // The fold's inline fever offer (#4712 judgement 1) — the SAME PRN
+              // list and subject context this body's own Meds section already
+              // gathered, narrowed to fever reducers.
+              antipyreticMeds={controls.antipyreticPrnMeds}
+              intakeContext={controls.intakeForm}
+              nowIso={nowIso}
             />
           </section>
         ) : null}
