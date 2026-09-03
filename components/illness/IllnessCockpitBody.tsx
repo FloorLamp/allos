@@ -132,6 +132,16 @@ export default function IllnessCockpitBody({
               episodeId={episode.id ?? undefined}
               showTitle={false}
               analysisHref={crossProfile ? undefined : "/trends/symptoms"}
+              // NO DOSE OFFER HERE (#4712 judgement 1, corrected). This body's own
+              // Meds section below (`cockpit-prn`) renders whenever `controls.prnMeds`
+              // is non-empty — which is EVERY time `controls.antipyreticPrnMeds`
+              // would be too, since it is that same list narrowed. Feeding the fold's
+              // dose offer real meds here would therefore always duplicate a chip the
+              // persistent section is already showing, one situation group holding two
+              // `cockpit-med-chip-<id>` for one medication — the ruling offers what
+              // isn't already on screen, not a second copy of what is. The Meds
+              // section IS this cockpit's durable dose surface; the offer stays
+              // episode-only on this mount.
             />
           </section>
         ) : null}
