@@ -1185,8 +1185,13 @@ export function parseHealthConnectPayload(
     const v = num(r.mmol_per_liter, r.mmol, r.value);
     return v == null ? null : Math.round(v * 18.0156 * 10) / 10;
   };
-  vital("blood_glucose", "Glucose", "lab", "mg/dL", toMgdl, (rec) =>
-    glucoseRouting(rec, cgmConnection) === "observation"
+  vital(
+    "blood_glucose",
+    "Glucose",
+    "lab",
+    "mg/dL",
+    toMgdl,
+    (rec) => glucoseRouting(rec, cgmConnection) === "observation"
   );
   for (const rec of asArray(payload.blood_glucose)) {
     if (glucoseRouting(rec, cgmConnection) === "observation") continue;

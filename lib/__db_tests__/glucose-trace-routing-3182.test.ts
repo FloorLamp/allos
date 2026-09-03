@@ -45,11 +45,9 @@ beforeEach(() => {
 
 /** Drive the real ingest over one `blood_glucose` push. */
 function push(records: Record<string, unknown>[]) {
-  const parsed = parseHealthConnectPayload(
-    { blood_glucose: records },
-    TZ,
-    { cgmConnection: getHealthConnectCgmGlucose(profileId) }
-  );
+  const parsed = parseHealthConnectPayload({ blood_glucose: records }, TZ, {
+    cgmConnection: getHealthConnectCgmGlucose(profileId),
+  });
   return ingestHealthConnectPayload(profileId, parsed, HEALTH_CONNECT_ID);
 }
 

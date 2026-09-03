@@ -207,7 +207,9 @@ export function recordGlucoseTrace(
       // new source, and a day is summarised PER SOURCE, so a day this batch never
       // mentions would otherwise keep a summary of a trace that is no longer there.
       for (const r of db
-        .prepare("SELECT ts FROM glucose_trace WHERE profile_id = ? AND source = ?")
+        .prepare(
+          "SELECT ts FROM glucose_trace WHERE profile_id = ? AND source = ?"
+        )
         .all(profileId, absorb) as { ts: string }[]) {
         const day = localDayOf(tz, r.ts);
         if (day) days.add(day);
