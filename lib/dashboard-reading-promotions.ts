@@ -33,14 +33,26 @@ export function clinicalResultBecameNotable(
   );
 }
 
+// `contradicted` is the #4299 verdict, already reached by the clock-skew detector: this
+// night's synced session disagrees with the heart rate recorded across it. A promotion
+// lifts a reading into the Standing attention tier, and a tier built on data the body's
+// own record contradicts is noise wearing a safety costume — so the arrival is withheld
+// and the family sits in its quiet band. It is a VERDICT compared here, not judged here:
+// nothing in this module reads a bpm, a bedtime history or a timezone switch.
 export function sleepArrivedInWakeWindow(
   freshness: "last-night" | "recent" | "stale",
   wakeDayAge: number | null,
   wakeMinutes: number,
   minutesOfDay: number,
+  contradicted = false,
   windowMinutes = 180
 ): boolean {
-  if (freshness !== "last-night" || wakeDayAge == null || wakeDayAge < 0)
+  if (
+    contradicted ||
+    freshness !== "last-night" ||
+    wakeDayAge == null ||
+    wakeDayAge < 0
+  )
     return false;
   const ageMinutes = wakeDayAge * 1440 + minutesOfDay - wakeMinutes;
   return ageMinutes >= 0 && ageMinutes <= windowMinutes;

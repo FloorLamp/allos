@@ -571,6 +571,54 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks[0].anchorId).toBe(timelineEntryAnchorId("practice:3"));
   });
 
+  // #4852 — WHICH ROW the block draws in. The feed CATEGORY is the discriminator
+  // because `clockWindow` has exactly two producers (an activity and one practice
+  // session) and the window itself says nothing about which ledger it came from.
+  it("tags each block with the ledger its row draws under", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          activityEvent("a:1"),
+          practiceEvent("practice:6", win("19:00", "19:30", null)),
+        ],
+      })
+    );
+    expect(model!.blocks.map((b) => [b.eventId, b.source])).toEqual([
+      ["a:1", "activity"],
+      ["practice:6", "practice"],
+    ]);
+  });
+
+  // THE ROW'S POPULATION AFTER #4897, checked because both changes are about the
+  // same practices. #4775's ruling made `startLivePracticeSession` stamp the
+  // practice's OWN usual duration and mark it `derived_window = 1`, so a Start-now
+  // session that used to reach this model start-only — and drew as a TICK — now
+  // arrives with a bounded window and draws as a BLOCK, on the row #4852 gives it.
+  // Neither change is wrong; the pair is what needed asserting.
+  //
+  // The honesty rule is intact and NARROWER, not gone: the fabrication it forbids
+  // is this renderer inventing a length, and the derived window is the ROW's own
+  // claim about itself. A practice whose usual duration is unknown still writes
+  // none, so start-only still reaches here and still ticks — the case below.
+  it("draws a Start-now practice's derived window as a block on its own row", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          practiceEvent("practice:started", {
+            ...win("19:00", null, 25),
+            derived_duration: true,
+          }),
+          // No usual duration to stamp: still start-only, still a tick.
+          practiceEvent("practice:lengthless", win("06:30", null, null)),
+        ],
+      })
+    );
+    expect(
+      model!.blocks.map((b) => [b.source, b.startMinute, b.endMinute])
+    ).toEqual([["practice", 1140, 1165]]);
+    expect(model!.ticks.map((t) => t.minute)).toEqual([390]);
+  });
+
   it("stays data-gated: a day of untimed practice rows draws no panel", () => {
     expect(
       buildIntradayModel(
