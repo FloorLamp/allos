@@ -6,9 +6,6 @@ import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidateRoute } from "@/lib/revalidate";
 import { db, writeTx } from "@/lib/db";
 import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
-import { type TrainingLogFeedPage } from "@/lib/training-log-feed";
-import { normalizeTrainingLogFilters } from "@/lib/training-log-filters";
-import { resolveTrainingLogFeed } from "./training-log-feed-resolve";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
@@ -37,7 +34,6 @@ import {
   type FinishWorkoutOutcome,
   type StartWorkoutResult,
 } from "@/lib/workout-finish";
-import { isRealIsoDate } from "@/lib/date";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import {
   isStrengthTrainingRelevant,
@@ -374,34 +370,6 @@ function parseMergeDropIds(formData: FormData): number[] {
   const single = Number(formData.get("drop_id"));
   if (Number.isInteger(single) && single > 0) seen.add(single);
   return [...seen];
-}
-
-// Load one window of the Training Log feed (issues #451, #1634). The Training → Log
-// surface renders only its newest UNFILTERED page server-side; this fetches the
-// next-older window on a "Load more" tap (or when a deep link targets a day/activity
-// below the loaded set) — and, since #1634, page one of a FILTERED feed whenever the
-// user changes a filter, so search pages over matches across the whole ledger instead
-// of over whatever windows happen to be loaded.
-//
-// A READ, but scoped to the SESSION's active profile (or, in a household view, its
-// authorized view-set — resolveTrainingLogFeed re-resolves the scope on every call).
-// `before` and `filters` are the only client inputs and neither selects a profile:
-// the cursor is used purely as a `date <` bound, and the filters are normalized
-// (normalizeTrainingLogFilters) before anything reaches SQL — an unknown activity type,
-// an over-long query, or a malformed tag degrades to "no such filter" rather than
-// being trusted. A malformed cursor normalizes to null (start from the newest day).
-export async function loadTrainingLogPage(
-  before: string | null,
-  filters?: unknown
-): Promise<TrainingLogFeedPage> {
-  await requireSession();
-  const cursor =
-    typeof before === "string" && isRealIsoDate(before) ? before : null;
-  const feed = await resolveTrainingLogFeed(
-    normalizeTrainingLogFilters(filters),
-    cursor
-  );
-  return { groups: feed.groups, nextBefore: feed.cursor };
 }
 
 export async function deleteActivity(

@@ -23,7 +23,7 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
     await page.goto("/training?tab=log"); // default "Log" tab renders the Training Log feed
 
     const keeperRow = page
-      .locator('[id^="activity-"]')
+      .getByTestId("history-row")
       .filter({ hasText: "Set merge keeper" });
     await expect(keeperRow).toHaveCount(1);
     await expect(page.getByText("Set merge dupe")).toBeVisible();
