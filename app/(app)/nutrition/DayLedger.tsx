@@ -22,6 +22,7 @@ import { bulkTakeLabel, dosesPhrase } from "@/lib/usual-routine";
 import { historyClock } from "@/lib/history-format";
 import type { DisplayFormatPrefs } from "@/lib/settings";
 import { TIME_BUCKET_LABELS } from "@/lib/intake-schedule";
+import CardSectionHeader from "@/components/CardSectionHeader";
 import {
   dayCountsLabel,
   stackLabel,
@@ -638,8 +639,7 @@ export default function DayLedger({
 
   return (
     <section data-testid="day-ledger" className="space-y-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="section-label">Ledger</h3>
+      <CardSectionHeader title="Ledger" variant="label">
         <span className="flex items-center gap-3">
           <p
             data-testid="day-ledger-census"
@@ -659,7 +659,7 @@ export default function DayLedger({
             </Button>
           )}
         </span>
-      </div>
+      </CardSectionHeader>
       {selecting && (
         <div
           data-testid="ledger-selection-bar"
@@ -772,10 +772,10 @@ export default function DayLedger({
                 .toLowerCase()
                 .replaceAll(" ", "-")}`}
             >
-              <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                <h4 className="section-label">
-                  {TIME_BUCKET_LABELS[group.bucket]}
-                </h4>
+              <CardSectionHeader
+                title={TIME_BUCKET_LABELS[group.bucket]}
+                variant="label"
+              >
                 <span
                   data-testid={`ledger-group-count-${group.bucket
                     .toLowerCase()
@@ -784,7 +784,7 @@ export default function DayLedger({
                 >
                   {dayCountsLabel(group.servings, group.doses)}
                 </span>
-              </div>
+              </CardSectionHeader>
               {/* Keep-apart guidance is rendered WHERE THE DUE DOSES ARE (#3987's
                   anti-drop gate): it is current safety advice about what to take
                   together, so it belongs beside the taps, not on a management list. */}

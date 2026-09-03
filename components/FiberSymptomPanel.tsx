@@ -4,6 +4,7 @@ import type { FiberSymptomPanel as PanelModel } from "@/lib/fiber-symptom-panel"
 import { chartFiberPanelMarks } from "@/lib/chart-colors";
 import { severityLabelFor, symptomLabel } from "@/lib/symptoms";
 import { SeriesPoint, SeriesSummary } from "@/components/SeriesAccess";
+import CardSectionHeader from "@/components/CardSectionHeader";
 
 // The fiber × GI-symptom read-together panel (issue #2788): the daily fiber series
 // and the GI-symptom days on ONE time axis, so the reader can draw their own
@@ -63,16 +64,12 @@ export default function FiberSymptomPanel({
       data-testid="fiber-symptom-panel"
       className="border-t border-black/5 pt-5 dark:border-white/5"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="section-label">Fiber &amp; gut symptoms</h3>
+      <CardSectionHeader title="Fiber & gut symptoms" variant="label">
         <span className="text-xs text-slate-500 dark:text-slate-400">
           Last 4 weeks
         </span>
-      </div>
-      <div
-        className="mt-2 flex items-end gap-px"
-        data-testid="fiber-symptom-strip"
-      >
+      </CardSectionHeader>
+      <div className="flex items-end gap-px" data-testid="fiber-symptom-strip">
         {panel.days.map((day) => {
           const worst = day.symptoms[0]?.severity ?? 0;
           const label = dayTitle(day, formatPrefs);

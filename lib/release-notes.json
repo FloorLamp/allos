@@ -1,6 +1,116 @@
 {
   "days": [
     {
+      "date": "2026-09-03",
+      "entries": [
+        {
+          "pr": 4848,
+          "kind": "security",
+          "category": "Household",
+          "title": "Mood check-ins are shown on shared household surfaces after all",
+          "issues": [4807]
+        },
+        {
+          "pr": 4834,
+          "kind": "feature",
+          "category": "Medical",
+          "title": "The illness card leads with recovery: a countdown, and Feeling better",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Medicines on the illness card sit on one row you tap to open",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "Panels on the illness card open in place instead of moving the page",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "fix",
+          "category": "Medical",
+          "title": "The illness card is a readable column on a big screen, not a stretched phone",
+          "issues": [4752]
+        },
+        {
+          "pr": 4834,
+          "kind": "feature",
+          "category": "Household",
+          "title": "When more than one person has something on Now, each group carries their name",
+          "issues": [4752]
+        },
+        {
+          "pr": 4831,
+          "kind": "fix",
+          "category": "Reminders",
+          "title": "A refused notification setting is taken back instead of looking saved",
+          "issues": [4736]
+        },
+        {
+          "pr": 4831,
+          "kind": "feature",
+          "category": "Reminders",
+          "title": "Notification channels are one status strip instead of four separate cards",
+          "issues": [2565]
+        },
+        {
+          "pr": 4825,
+          "kind": "feature",
+          "category": "Trends",
+          "title": "Today’s chart moves onto the dashboard, beside the rest of today",
+          "issues": [4763, 4767]
+        },
+        {
+          "pr": 4825,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Trends drops its 1D window; today’s detail is on History instead",
+          "issues": [4763, 4767]
+        },
+        {
+          "pr": 4849,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Cards inside a fold reach the screen edges on a phone",
+          "issues": [3920]
+        },
+        {
+          "pr": 4818,
+          "kind": "fix",
+          "category": "Trends",
+          "title": "Reading the newest point on a standing chart no longer runs off the card",
+          "issues": [4534]
+        },
+        {
+          "pr": 4824,
+          "kind": "fix",
+          "category": "Training",
+          "title": "Practice duration is worked out from the start and end you enter",
+          "issues": [4384]
+        },
+        {
+          "pr": 4824,
+          "kind": "feature",
+          "category": "Training",
+          "title": "Practice start and end each offer a now, and an end before its start is refused",
+          "issues": [4384]
+        },
+        {
+          "pr": 4824,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "Setting an exact time shows a labelled box instead of a blank one",
+          "issues": [4384]
+        }
+      ]
+    },
+    {
       "date": "2026-09-02",
       "entries": [
         {
@@ -359,6 +469,27 @@
           "category": "Interface",
           "title": "The time field uses the 12- or 24-hour clock you chose, not your device’s",
           "issues": [4218]
+        },
+        {
+          "pr": 4806,
+          "kind": "fix",
+          "category": "Interface",
+          "title": "A notice raised while a sheet is opening no longer lands on top of it",
+          "issues": [4796]
+        },
+        {
+          "pr": 4801,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "Editing someone else’s past dose keeps their clock, not yours",
+          "issues": [4693]
+        },
+        {
+          "pr": 4801,
+          "kind": "fix",
+          "category": "Medications",
+          "title": "You can log and correct doses on another person’s medicine page",
+          "issues": [4693]
         }
       ]
     },

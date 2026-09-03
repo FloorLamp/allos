@@ -211,7 +211,6 @@ export default function LogPracticeButton({
   const statement = useTimeStatement({
     shown: inlineWhen && !currentLive,
     day: today,
-    label: "Happened earlier?",
     // SHORT, because it is a VISIBLE field label now (#4384 fix 3) and this row is one
     // of several on a phone-width sheet. The sentence it replaces was an `aria-label`
     // nobody could see; what disambiguates the rows is the practice's own heading
@@ -219,7 +218,6 @@ export default function LogPracticeButton({
     timeLabel: "End time",
     testId: "practice-when",
     disabled: pending || ledger.pending(),
-    className: "w-full",
   });
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
@@ -561,6 +559,9 @@ export default function LogPracticeButton({
               <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
               Just finished
             </button>
+            {/* The clock door's seat (#4426): immediately right of the action whose
+                time it restates. */}
+            {statement.door}
           </>
         )}
         {showDetails && (
@@ -578,7 +579,9 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {statement.node}
+      {statement.reveal ? (
+        <div className="w-full">{statement.reveal}</div>
+      ) : null}
       {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}

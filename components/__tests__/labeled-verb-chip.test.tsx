@@ -163,10 +163,12 @@ describe("the PRN row adopts the labeled-verb chip (#4753)", () => {
     expect(pill.textContent).toBe("200 mgTake");
     // The seat is a real sibling of the pill, not a second target inside it: the door
     // is the row's own control and keeps its own name.
-    expect(pill.contains(screen.getByTestId("prn-log-more"))).toBe(false);
+    expect(pill.contains(screen.getByTestId("prn-log-when-toggle"))).toBe(
+      false
+    );
     expect(pill.parentElement?.className).toContain("gap-3");
     expect(pill.parentElement).toBe(
-      screen.getByTestId("prn-log-more").parentElement
+      screen.getByTestId("prn-log-when-toggle").parentElement
     );
   });
 

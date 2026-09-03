@@ -244,7 +244,7 @@ export default function QuickDoseList({
         </ul>
       ) : null}
       {day === today && prn && prn.meds.length > 0 && (
-        <QuickLogPrnContent {...prn} title={null} showPageLink={false} />
+        <QuickLogPrnContent {...prn} title={null} />
       )}
     </div>
   );

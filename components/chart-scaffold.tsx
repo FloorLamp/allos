@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Label, type LabelProps } from "recharts";
 import { textWidth } from "@/lib/chart-svg";
+import { chartNeutral } from "@/lib/chart-colors";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { useHydrated } from "./useHydrated";
 import type { ChartColors } from "./useChartColors";
@@ -258,7 +259,8 @@ export const DENSE_SERIES_POINTS = 30;
 // The two evictees moved to the channel each actually meant:
 //   • sparse emphasis → MARK SIZE (`CHART_SPARSE_DOT_R`, below): it was always
 //     about mark-vs-stroke prominence, not about the reading being exact.
-//   • two sources on one day (#2653 state 6) → paired OFFSET marks.
+//   • two sources on one day (#2653 state 6) → paired OFFSET marks
+//     (`chartOtherSourceDot`, below).
 //
 // `lib/__tests__/chart-fill-channel.test.ts` fails on a surface-filled dot
 // anywhere but `chartInexactDot`, so the channel cannot silently re-fork.
@@ -332,6 +334,63 @@ export function chartInexactDot(c: ChartColors, color: string) {
     stroke: color,
     strokeWidth: 1.5,
   } as const;
+}
+
+// ── PAIRED MARKS: two sources, one day (#2653 state 6) ──────────────────────
+//
+// A day two sources reported is drawn as TWO marks at one x: the series' own where
+// it always sat, and a companion beside it at what the other source said. The PAIR
+// is the channel — one mark is one account of the day, two are two — which is what
+// owner call 3 left for this state after assigning fill to exactness. The three
+// spoken-for channels stay untouched, deliberately: FILL solid (both readings are
+// exact; a hollow companion would claim the other source reported a bound), SIZE
+// `CHART_DOT_R` (another reading at ordinary weight, neither emphasised nor
+// demoted), COLOUR the declared NEUTRAL that docs/internals/charts.md §1 reserves
+// for "a bucket that genuinely means other / none" — exactly what a source the
+// election did not keep is. A series hue would assert a second series.
+//
+// The x offset is what keeps the pair legible when the two numbers are close —
+// stacked coincident dots are the smudge the issue opened with — and small enough
+// that the companion still reads as its own day's rather than the next one's.
+//
+// NO CONNECTOR between the two marks. A hairline would state a RANGE, and two
+// accounts of one day are not a spread around a value; the caption below the plot
+// already names what the grey mark is. It would also cost an `ErrorBar` per series
+// on every chart in the funnel to buy one day's emphasis.
+//
+// AND IT DOES NOT REACH `SourceCompareChart`. That surface plots every source as its
+// own named, coloured, legended series on purpose — the pair is the glance-level
+// answer for a chart showing ONE series, and drawing it there would say twice, in two
+// vocabularies, what that chart already says once.
+
+/** How far a companion mark sits from its day's own x, in px. */
+export const CHART_PAIR_OFFSET_X = 4;
+
+/**
+ * The companion mark for a reading the source election did not keep. A renderer
+ * rather than a prop bag because the offset needs the `cx` recharts resolves.
+ */
+export function chartOtherSourceDot(c: ChartColors) {
+  return function OtherSourceDot({
+    cx,
+    cy,
+  }: {
+    cx?: number | string;
+    cy?: number | string;
+  }) {
+    if (typeof cx !== "number" || typeof cy !== "number") return <g />;
+    return (
+      <circle
+        cx={cx + CHART_PAIR_OFFSET_X}
+        cy={cy}
+        r={CHART_DOT_R}
+        fill={chartNeutral}
+        stroke={c.surface}
+        strokeWidth={1}
+        data-testid="chart-other-source-dot"
+      />
+    );
+  };
 }
 
 /** The hover dot. Bigger than every resting dot (and present even when resting

@@ -48,6 +48,7 @@
 // even across a spring-forward, where the absolute duration of that night is 23h.
 
 import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
+import { zoneOf, type ProfileDayZone } from "./travel-timezone";
 
 // One recorded sleep session. `start`/`end` are absolute ISO instants (the same
 // zone-independent anchors stored in metric_samples.started_at/ended_at). `source`
@@ -275,7 +276,7 @@ export function mainSleepPeriod<T extends SleepSession>(
 // still sees every session.
 export function mainSleepNights(
   sessions: SleepSession[],
-  tz: string
+  zone: ProfileDayZone
 ): { wakeDay: string; start: string; end: string; durationMin: number }[] {
   const byDay = new Map<string, SleepSession[]>();
   for (const s of sessions) {
@@ -287,7 +288,8 @@ export function mainSleepNights(
       endMs <= startMs
     )
       continue;
-    const wakeDay = zonedDateParts(tz, new Date(s.end)).date;
+    const end = new Date(s.end);
+    const wakeDay = zonedDateParts(zoneOf(zone, end), end).date;
     const arr = byDay.get(wakeDay);
     if (arr) arr.push(s);
     else byDay.set(wakeDay, [s]);
@@ -326,12 +328,13 @@ export interface NapSession<T extends SleepSession = SleepSession> {
 
 export function napSessions<T extends SleepSession>(
   sessions: readonly T[],
-  tz: string
+  zone: ProfileDayZone
 ): NapSession<T>[] {
   const byDay = new Map<string, T[]>();
   for (const session of sessions) {
     if (!isValidWindow(session)) continue;
-    const wakeDay = zonedDateParts(tz, new Date(session.end)).date;
+    const end = new Date(session.end);
+    const wakeDay = zonedDateParts(zoneOf(zone, end), end).date;
     const group = byDay.get(wakeDay);
     if (group) group.push(session);
     else byDay.set(wakeDay, [session]);
@@ -374,13 +377,13 @@ function median(values: number[]): number {
 // wake-aware morning notification hour and backs the digest's typical-wake line.
 function typicalSleepClockTime(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   boundary: "start" | "end",
   opts: SleepRegularityOptions = {}
 ): number | null {
   const windowDays = opts.windowDays ?? 28;
   const minNights = opts.minNights ?? 14;
-  const nights = mainSleepNights(sessions, tz); // main overnight per wake-day, oldest→newest
+  const nights = mainSleepNights(sessions, zone); // main overnight per wake-day, oldest→newest
   if (nights.length === 0) return null;
   const asOf = opts.asOf ?? nights[nights.length - 1].wakeDay;
   const windowStart = shiftDateStr(asOf, -(windowDays - 1));
@@ -391,17 +394,17 @@ function typicalSleepClockTime(
   // Clock-minute per night, noon-anchored so the median is well-defined across
   // midnight; convert the median back to a familiar clock minute-of-day.
   const relativeMinutes = inWindow.map((night) =>
-    noonRelative(localParts(night[boundary], tz).min)
+    noonRelative(localParts(night[boundary], zone).min)
   );
   return (Math.round(median(relativeMinutes)) + NOON) % EPOCHS_PER_DAY;
 }
 
 export function typicalWakeTime(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): number | null {
-  return typicalSleepClockTime(sessions, tz, "end", opts);
+  return typicalSleepClockTime(sessions, zone, "end", opts);
 }
 
 // The matching canonical bedtime derivation used when assessing whole-schedule
@@ -409,10 +412,10 @@ export function typicalWakeTime(
 // window, minimum-night gate, timezone math, and robust median.
 export function typicalBedTime(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): number | null {
-  return typicalSleepClockTime(sessions, tz, "start", opts);
+  return typicalSleepClockTime(sessions, zone, "start", opts);
 }
 
 export interface SleepRegularityOptions {
@@ -557,9 +560,15 @@ interface Night {
   durationMin: number; // wall-clock minutes asleep (main session)
 }
 
-// Wall-clock (date + minute-of-day) of an absolute instant in `tz`.
-function localParts(iso: string, tz: string): { date: string; min: number } {
-  const p = zonedDateParts(tz, new Date(iso));
+// Wall-clock (date + minute-of-day) of an absolute instant, in the zone the profile's
+// day was running on AT that instant (#3428) — not the one it is standing in now, or
+// every night slept before a move renders shifted by the offset it moved across.
+function localParts(
+  iso: string,
+  zone: ProfileDayZone
+): { date: string; min: number } {
+  const at = new Date(iso);
+  const p = zonedDateParts(zoneOf(zone, at), at);
   return { date: p.date, min: minuteOfDay(p.hhmm) };
 }
 
@@ -605,7 +614,7 @@ function markAsleep(
 // timing metrics and the observed-night set.
 function buildNights(
   sessions: SleepSession[],
-  tz: string
+  zone: ProfileDayZone
 ): { grid: Map<string, Uint8Array>; nightsByDay: Map<string, Night> } {
   const grid = new Map<string, Uint8Array>();
   const nightsByDay = new Map<string, Night>();
@@ -614,8 +623,8 @@ function buildNights(
     const endMs = new Date(s.end).getTime();
     if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs)
       continue;
-    const start = localParts(s.start, tz);
-    const end = localParts(s.end, tz);
+    const start = localParts(s.start, zone);
+    const end = localParts(s.end, zone);
     markAsleep(grid, start.date, start.min, end.date, end.min);
     const durationMin = Math.round((endMs - startMs) / 60000);
     const wakeDay = end.date;
@@ -654,13 +663,13 @@ function sleepDayEpochs(
 // observed pair exists (nothing to compare).
 export function computeSleepRegularity(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): SleepRegularity | null {
   const windowDays = opts.windowDays ?? 28;
   const minNights = opts.minNights ?? 14;
 
-  const { grid, nightsByDay } = buildNights(sessions, tz);
+  const { grid, nightsByDay } = buildNights(sessions, zone);
   if (nightsByDay.size === 0) return null;
 
   const allDays = [...nightsByDay.keys()].sort();
@@ -751,14 +760,14 @@ export function computeSleepRegularity(
 // alongside nightly duration.
 export function sriTrend(
   sessions: SleepSession[],
-  tz: string,
+  zone: ProfileDayZone,
   opts: SleepRegularityOptions = {}
 ): { date: string; sri: number }[] {
-  const { nightsByDay } = buildNights(sessions, tz);
+  const { nightsByDay } = buildNights(sessions, zone);
   const anchors = [...nightsByDay.keys()].sort();
   const out: { date: string; sri: number }[] = [];
   for (const asOf of anchors) {
-    const r = computeSleepRegularity(sessions, tz, { ...opts, asOf });
+    const r = computeSleepRegularity(sessions, zone, { ...opts, asOf });
     if (r) out.push({ date: asOf, sri: r.sri });
   }
   return out;

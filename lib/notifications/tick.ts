@@ -18,7 +18,6 @@ import { withChatOrigin } from "./chat-origin";
 import { attachUsualRoutine } from "../notifications/usual-routine-attach";
 import {
   attachUsualForSlots,
-  dispatchableUsual,
   planUsualRoutine,
   type UsualRoutineSlotPlan,
 } from "../notifications/usual-routine-plan";
@@ -39,11 +38,8 @@ import {
   recordWearReminderClaim,
   wearReminderSend,
 } from "../notifications/wear-reminder";
-import { dispatch, prefixForProfile } from "../notifications";
-import {
-  prefixMessage,
-  type NotificationMessage,
-} from "../notifications/types";
+import { dispatch } from "../notifications";
+import { type NotificationMessage } from "../notifications/types";
 import {
   getNotifySchedule,
   getSetting,
@@ -171,8 +167,7 @@ export async function runTickSlot(
     log.info("nothing due", { profile: profileId, slot });
     return "nothing-due";
   }
-  const msg = prefixMessage(built, prefixForProfile(profileId));
-  const { delivered, failed } = await send(profileId, msg);
+  const { delivered, failed } = await send(profileId, built);
   if (delivered) {
     setProfileSetting(profileId, markerKey, date);
     onDelivered?.();
@@ -245,7 +240,6 @@ export async function runManualNotification(
     log.info("nothing due", { kind: arg, profile: profileId });
     return 0;
   }
-  msg = prefixMessage(msg, prefixForProfile(profileId));
   const { failed } = await send(profileId, msg);
   return failed ? 1 : 0;
 }
@@ -355,7 +349,6 @@ export async function tickProfile(
   const coachingInput = (): CoachingInput =>
     (coachingInputCache ??= gatherCoachingInput(profileId, "kg", "km"));
 
-  const prefix = prefixForProfile(profileId);
   let anyFailed = false;
 
   // ── THE COMPOSED ONE-TAP'S PLACEMENT (#2460) ──────────────────────────────
@@ -450,10 +443,7 @@ export async function tickProfile(
         built.slots,
         usualPlans
       );
-      const { delivered, failed } = await send(
-        profileId,
-        prefixMessage(message, prefix)
-      );
+      const { delivered, failed } = await send(profileId, message);
       if (failed) anyFailed = true;
       // Mark each contributing slot once delivered so none re-sends later today;
       // if nothing delivered (no channel / all failed) leave unmarked so a retry
@@ -495,10 +485,7 @@ export async function tickProfile(
     // caregiver is never pinged just to be told there is nothing to do.
     const round = buildHouseholdRound(profileId, householdSlotsDue);
     if (round) {
-      const { delivered, failed } = await send(
-        profileId,
-        prefixMessage(round, prefix)
-      );
+      const { delivered, failed } = await send(profileId, round);
       if (failed) anyFailed = true;
       if (delivered) {
         for (const s of householdSlotsDue)
@@ -584,11 +571,9 @@ export async function tickProfile(
               "telegram-nudge"
             );
             return nudge
-              ? dispatchableUsual(
-                  attachUsualRoutine(
-                    nudge,
-                    usualPlans.get(w)?.claim("food") ?? null
-                  )
+              ? attachUsualRoutine(
+                  nudge,
+                  usualPlans.get(w)?.claim("food") ?? null
                 )
               : null;
           },
@@ -928,8 +913,7 @@ export async function tickProfile(
         }
       );
       if (built) {
-        const msg = prefixMessage(built, prefix);
-        const { delivered, failed } = await send(profileId, msg);
+        const { delivered, failed } = await send(profileId, built);
         if (failed) anyFailed = true;
         if (delivered)
           setProfileSetting(profileId, TICK_SLOT_MARKER_KEYS.practice, date);

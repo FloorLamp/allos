@@ -12,6 +12,8 @@ import { db } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { collectUpcoming } from "@/lib/queries";
 import { seedProfile, type SeededProfile } from "./fixtures";
+import { biomarkerRetestDetail } from "@/lib/biomarker-retest-copy";
+import { itemDetailText } from "@/lib/upcoming-aggregate";
 
 let p: SeededProfile;
 let oldDate: string;
@@ -82,5 +84,40 @@ describe("vitamin-D 25-hydroxy retest family", () => {
     const keys = biomarkerKeys();
     expect(keys).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
     expect(keys).not.toContain("biomarker:vitamin d, 1,25-dihydroxy");
+  });
+});
+
+// #3526 — THE LOGIN-LESS HALF, pinned where the generator actually runs. This layer
+// has no login, so the sentence it composes keeps the RAW ISO day: the digest and the
+// Telegram builders read `detail` verbatim and have no prefs to resolve. The row also
+// carries the same facts structurally, so a surface WITH a login re-composes the same
+// sentence with the day in the viewer's shape — and the two must be the SAME facts, or
+// the page and the digest would quietly state different days.
+describe("the retest row carries its facts and keeps the raw ISO day", () => {
+  it("composes `detail` from the carried facts, in ISO, and re-renders through prefs", () => {
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = ? AND panel = 'Vitamin D'"
+    ).run(p.profileId);
+    addReading("Vitamin D, 25-Hydroxy", oldDate, 20);
+
+    const item = collectUpcoming(p.profileId, p.todayStr).find(
+      (i) => i.domain === "biomarker"
+    )!;
+    expect(item.retest).toBeDefined();
+    expect(item.retest!.effectiveDate).toBe(oldDate);
+    expect(item.retest!.intervalMonths).toBeGreaterThan(0);
+    expect(item.detail).toContain(`Last tested ${oldDate} (`);
+    expect(item.detail).toBe(biomarkerRetestDetail(item.retest!, oldDate));
+
+    // The same row through the render boundary: same facts, the login's day shape.
+    // A day-first login reads "29 May 2025", never the ISO run of digits.
+    const [year, , day] = oldDate.split("-");
+    const rendered = itemDetailText(item, p.todayStr, {
+      dateFormat: "dmy",
+      timeFormat: "24h",
+    })!;
+    expect(rendered).toContain(`Last tested ${Number(day)} `);
+    expect(rendered).toContain(` ${year} (`);
+    expect(rendered).not.toContain(oldDate);
   });
 });

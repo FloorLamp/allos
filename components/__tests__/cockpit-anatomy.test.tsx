@@ -209,7 +209,7 @@ describe("meds are labeled-verb chips, detail only when acting (#4752 item 4)", 
     expect(give.textContent).toBe("160 mgGive");
     expect(give.getAttribute("aria-label")).toBe("Give Ibuprofen · 160 mg");
     // The clock door, in its seat and spelled only as the glyph (#4752 item 8).
-    const door = within(panel).getByTestId("prn-log-more");
+    const door = within(panel).getByTestId("prn-log-when-toggle");
     expect(door.getAttribute("aria-label")).toBe("Happened earlier?");
     expect(door.querySelector("span")?.className).toContain("sr-only");
     // Per-med detail lives HERE and only here.
