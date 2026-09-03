@@ -6,12 +6,17 @@ import { hydratedClick } from "./helpers";
 // its own control beside the ✅ take. This drives the whole cycle in the real app
 // against a freshly-created, uniquely-named supplement so it never disturbs the
 // seeded intake rows other specs rely on, and deletes it at the end.
-
-const NAME = "Skip State Zinc";
+//
+// UNIQUE AGAINST THE SEED IS NOT UNIQUE AGAINST ITSELF (#4906): `e2e-changed` runs a
+// changed file at `--repeat-each=3`, and copies of this spec sharing one worker DB
+// each create a supplement called NAME — the `toHaveCount(1)` below then sees 2 or 3
+// and the teardown deletes race. `testInfo.repeatEachIndex` is the same fix
+// `medications-followups.spec.ts:320` already uses for the identical reason.
 
 test("dose check-off cycles taken → skipped → clear as a tri-state", async ({
   page,
-}) => {
+}, testInfo) => {
+  const NAME = `Skip State Zinc ${testInfo.repeatEachIndex}`;
   await page.goto("/nutrition?tab=supplements");
 
   // ── Create a single daily Morning dose ──────────────────────────────────────
