@@ -268,7 +268,7 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
       outcome: "logged",
     });
     prnRow();
-    fireEvent.click(screen.getByTestId("prn-log-more"));
+    fireEvent.click(screen.getByTestId("prn-log-when-toggle"));
     fireEvent.change(timeField(), { target: { value: "07:05" } });
     // THE FIXTURE REACHES THE STATE THE VERDICT IS ABOUT. Every assertion below is
     // about what happens to a statement that EXISTS, and all of them would pass over a
@@ -293,7 +293,7 @@ describe("the PRN row spends its statement on the tap that paid for it (#4426)",
     // reopening offers an empty field rather than a minute that would silently correct
     // the row the tap just wrote.
     expect(screen.queryByTestId("prn-log-when-time")).toBeNull();
-    fireEvent.click(screen.getByTestId("prn-log-more"));
+    fireEvent.click(screen.getByTestId("prn-log-when-toggle"));
     expect(timeField().value).toBe("");
   });
 });

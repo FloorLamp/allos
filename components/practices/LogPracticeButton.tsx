@@ -211,11 +211,9 @@ export default function LogPracticeButton({
   const statement = useTimeStatement({
     shown: inlineWhen && !currentLive,
     day: today,
-    label: "Happened earlier?",
     timeLabel: `End time of this ${practice} session`,
     testId: "practice-when",
     disabled: pending || ledger.pending(),
-    className: "w-full",
   });
 
   // The stepper's current value as the pure helper speaks it. A half-typed or
@@ -547,6 +545,14 @@ export default function LogPracticeButton({
               <IconCheck className="h-3.5 w-3.5" stroke={2.5} aria-hidden />
               Just finished
             </button>
+            {/* THE CLOCK DOOR IN ITS SEAT (#4426's rendering ruling): immediately
+                right of "Just finished", the action whose time it restates, in the
+                same 34px box as the buttons beside it. It was a full-width
+                "Happened earlier?" text button under the whole cluster, which is
+                the dialect the ruling converges — the glyph is the only spelling
+                and WHERE it sits is half the claim. `shown` already keeps it off a
+                running session, whose End action derives its own elapsed time. */}
+            {statement.door}
           </>
         )}
         {showDetails && (
@@ -564,7 +570,11 @@ export default function LogPracticeButton({
           </button>
         )}
       </div>
-      {statement.node}
+      {/* The reveal opens BELOW the cluster, where a day, a minute and the stepper
+          have room; the door above is what opens it. */}
+      {statement.reveal ? (
+        <div className="w-full">{statement.reveal}</div>
+      ) : null}
       {detailsOpen && (
         <ModalShell
           title={`Log ${practice}`}

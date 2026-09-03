@@ -657,7 +657,7 @@ test("a PRN-only profile logs an as-needed dose from the dose sheet", async ({
     // row's own control, so what is asserted is the distance between two
     // rectangles, never a class.
     const pillBox = (await prn.getByTestId("prn-log-now").boundingBox())!;
-    const doorBox = (await prn.getByTestId("prn-log-more").boundingBox())!;
+    const doorBox = (await prn.getByTestId("prn-log-when-toggle").boundingBox())!;
     expect(doorBox.x - (pillBox.x + pillBox.width)).toBeGreaterThanOrEqual(11);
     expect(doorBox.x - (pillBox.x + pillBox.width)).toBeLessThanOrEqual(13);
     // One word, and it never says "now".

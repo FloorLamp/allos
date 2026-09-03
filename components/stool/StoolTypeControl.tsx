@@ -64,10 +64,8 @@ export default function StoolTypeControl({
   // tap's (`TAP_REACH`).
   const statement = useTimeStatement({
     day: today,
-    label: "Happened earlier?",
     timeLabel: "Time it happened",
     testId: "stool-when",
-    className: "mt-3",
   });
   useEffect(
     () => () => {
@@ -198,7 +196,13 @@ export default function StoolTypeControl({
           </button>
         ))}
       </div>
-      {statement.node}
+      {/* THE CLOCK DOOR (#4426's rendering ruling), in the row directly under the
+          seven type buttons it modifies — this domain's action is the GRID, so
+          "immediately right" has no single button to sit against and the door takes
+          the first seat after it instead. It was a "Happened earlier?" text button
+          here; the glyph is the only spelling now. */}
+      <div className="mt-3 flex items-center gap-2">{statement.door}</div>
+      {statement.reveal ? <div className="mt-2">{statement.reveal}</div> : null}
       <p
         data-testid="quick-entry-stool-count"
         className="mt-3 text-sm text-slate-500 dark:text-slate-400"

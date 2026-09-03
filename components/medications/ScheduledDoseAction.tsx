@@ -61,10 +61,8 @@ export default function ScheduledDoseAction({
     shown: !readOnly && !taken && !skipped,
     day: dateStrInTz(tz),
     tz,
-    label: "Taken earlier?",
     timeLabel: `Time ${doseLabel || "this dose"} was taken`,
     testId: "scheduled-dose-when",
-    className: "w-full",
   });
   return (
     <div
@@ -111,23 +109,33 @@ export default function ScheduledDoseAction({
               : "Not logged"}
         </span>
       ) : (
-        <DoseStatusControl
-          doseId={doseId}
-          taken={taken}
-          skipped={skipped}
-          variant="pill"
-          // THE VERB NAMES THE ACT (#4753 ruling 2), and this row is deliberately
-          // NOT the chip: ruling 1 says a control with nothing non-redundant left to
-          // show is a plain verb button, and the row's own link already prints the
-          // amount and the slot this tap would put in a label ("1 tablet", "Morning").
-          // So the copy migrates and the shape does not.
-          label={taken ? "Taken" : "Take"}
-          compact={compactActions}
-          profileId={profileId}
-          statement={statement}
-        />
+        // THE DOOR IN ITS SEAT (#4426's rendering ruling): immediately right of the
+        // take/skip pair it modifies and in the same 34px box, rather than the
+        // full-width "Taken earlier?" text button that used to sit under the whole
+        // row and spelled this one question a fifth way. The pair and the door share
+        // one group so the row's `justify-between` cannot push them apart.
+        <div className="flex shrink-0 items-center gap-2">
+          <DoseStatusControl
+            doseId={doseId}
+            taken={taken}
+            skipped={skipped}
+            variant="pill"
+            // THE VERB NAMES THE ACT (#4753 ruling 2), and this row is deliberately
+            // NOT the chip: ruling 1 says a control with nothing non-redundant left to
+            // show is a plain verb button, and the row's own link already prints the
+            // amount and the slot this tap would put in a label ("1 tablet", "Morning").
+            // So the copy migrates and the shape does not.
+            label={taken ? "Taken" : "Take"}
+            compact={compactActions}
+            profileId={profileId}
+            statement={statement}
+          />
+          {statement.door}
+        </div>
       )}
-      {statement.node}
+      {statement.reveal ? (
+        <div className="w-full">{statement.reveal}</div>
+      ) : null}
     </div>
   );
 }

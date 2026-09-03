@@ -1,6 +1,6 @@
 "use client";
 
-import { IconClock, IconCheck } from "@tabler/icons-react";
+import { IconCheck } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { useOptimisticLedger } from "@/components/useOptimisticLedger";
 import TodayMedRow from "@/components/medications/TodayMedRow";
@@ -49,14 +49,6 @@ import { dateStrInTz } from "@/lib/date";
 // blocking, so this NEVER confirms. It does take layer 1 — the shared ledger's
 // post-success cooldown, keyed per offset so the now-tap and a retro entry are separate
 // writes — which absorbs the queued second click on the same button.
-// THE CLOCK DOOR IS A GLYPH AND ITS NAME IS A QUESTION (#4426's time-grammar ruling,
-// rendered by #4752 item 8). "Earlier dose" was the door's visible words AND its
-// accessible name; the ruling makes the clock the ONLY spelling of "happened
-// earlier", so the words go and the question becomes the name. It is spelled as the
-// accessible name alone and NEVER as a `title=`: #2378/#3375 ruled hover-only text
-// out of this codebase because a touch or keyboard reader never receives it, and
-// lib/__tests__/raw-title-boundary.test.ts holds that line.
-const EARLIER_DOSE = "Happened earlier?";
 // ONE WORD, AND NEVER "now" (#4753's copy migration, owner-blessed on the issue).
 // "Taken now" carried the whole sentence because the button had no label to say it
 // with; the chip's label states the dose, so the verb is only the verb.
@@ -144,7 +136,6 @@ export default function QuickLogPrnControl({
   const statement = useTimeStatement({
     day: cardDay,
     tz,
-    label: EARLIER_DOSE,
     timeLabel: "Specific time",
     testId: "prn-log-when",
     disabled: busy,
@@ -199,24 +190,13 @@ export default function QuickLogPrnControl({
     });
   }
 
-  // THE CLOCK DOOR, drawn once and seated by whichever arm renders below. It is
-  // #4426's toggle — the reveal opens in this row's FOOTER, which is why this mount
-  // takes the statement in two pieces — so the pill's seat holds the door itself
-  // rather than a second copy of the statement.
-  const clockDoor = (
-    <button
-      type="button"
-      onClick={() => statement.setOpen(!statement.open)}
-      disabled={busy}
-      className={`${DOSE_ACTION_ICON} ${DOSE_ACTION_NEUTRAL}`}
-      aria-expanded={statement.open}
-      aria-label={EARLIER_DOSE}
-      data-testid="prn-log-more"
-    >
-      <IconClock className="h-4 w-4" stroke={2} />
-      <span className="sr-only">{EARLIER_DOSE}</span>
-    </button>
-  );
+  // THE CLOCK DOOR IS THE SHARED CONTROL'S OWN (#4426's rendering ruling). This row
+  // used to hand-roll the glyph button beside the statement it opened — the last
+  // hand-rolled half of the toggle in the tree — so the door's box, its glyph and its
+  // accessible name lived here and could drift from every other mount's. Seated by
+  // whichever arm renders below; the reveal opens in this row's FOOTER, which is why
+  // this mount takes the statement in two pieces.
+  const clockDoor = statement.door;
 
   const control = compactActions ? (
     // THE ICON-ONLY ARM KEEPS THE SHAPE IT SHIPPED WITH, deliberately (#4753, open
