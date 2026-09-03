@@ -2286,13 +2286,18 @@ async function renderDashboard(
         actionLabel: "Vitals history",
         // THE DOOR THAT ENDS THE DORMANCY (#4841 item 3). The line says a reading is
         // missing; until now the only thing it opened was the history of the reading
-        // it says is missing. The write is the app's ONE quick-entry vitals form —
-        // the same door the Setup row opens — and "Vitals history" stays as the
-        // family's door beside it, like every other row in this family.
+        // it says is missing. This is the door #4757 gives a stale reading, on the
+        // row where the reading is gone altogether — the same form, the same group
+        // and the same words as `staleMeasurementDoor` puts on the live vitals rows,
+        // so the family speaks once. It is spelled out rather than borrowed because
+        // that helper is gated on a glance-age token, and a dormant row has no
+        // reading left to have an age. "Vitals history" stays beside it as the
+        // family's door, like every other row here.
         control: (
           <DashboardQuickEntryAction
             form="measurements"
             prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
           />
         ),
         presence: "dormant",
@@ -2350,6 +2355,7 @@ async function renderDashboard(
           <DashboardQuickEntryAction
             form="measurements"
             prefill={{ measurementGroup: "vitals" }}
+            actionLabel="Log a vital"
           />
         ),
         presence: "dormant",
