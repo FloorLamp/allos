@@ -44,11 +44,9 @@ The cross-account truth is GitHub alone: `main`, remote branches, open PRs,
 4. Stale triggers from the old account never fire here: re-arm the watch
    and every relay you were owed, from the Ladder's state, not from memory.
 
-Usage limits: a session's `rate_limit_info` says only allowed, warning or
-rejected, never a percentage. Wind down cleanly (`lifecycle.md` §Wind-down,
-both workers, hand-off comment on the Ladder) only when the owner says the
-weekly usage is near 90%. A rejection is not a wind-down: banked branches
-survive it, and the PM resumes both workers after `resetsAt`.
+Usage: `rate_limit_info` says only allowed, warning or rejected. Wind down
+(`lifecycle.md` §Wind-down, hand-off on the Ladder) only when the owner says
+weekly usage is near 90%; a rejection is a pause, resumed after `resetsAt`.
 
 ## The watch loop
 
@@ -92,8 +90,7 @@ doing" and at the end of a session-day. It prints data; the report is yours:
 2. **Incidents and what changed because of them** — each red main, revert
    or stall that led to a rule, and the rule it produced (process merges
    and owner rulings are the candidates). A red that changed nothing is a line.
-3. **Progress** — the counts, what is in flight, what is blocked and on
-   whom, and the next rung of the Ladder.
+3. **Progress** — counts, in flight, blocked and on whom, the next rung.
 
 ## Relays and correctives
 
@@ -164,18 +161,14 @@ every question by VISIBLE impact and rules the low half itself.
 
 ## Reporting to the owner
 
-- Lead with what changed and what needs them. A watch with nothing wrong is
-  one line.
-- Say which recommendations they overruled when closing a sweep; say which
-  items were resolved by events rather than by a ruling.
-- When they ask for an assessment, give the assessment and stop; do not
-  apply a fix they have not asked for.
+- Lead with what changed and what needs them; a quiet watch is one line.
+- Closing a sweep, say which recommendations they overruled and which items
+  events resolved.
+- An assessment is the deliverable; do not apply a fix nobody asked for.
 
 ## What is never yours
 
 - Feature code, dispatch, review, merge — the worker's.
 - Filing issues from a half-formed idea — `file-issue`.
-- Ruling on the owner's behalf. Silence is not consent; a stale question is
-  re-checked, not answered.
-- Reading another container's scratch state. Remote branches, PRs, issue
-  comments and the session status line are the only cross-session truth.
+- Ruling on the owner's behalf: silence is not consent; stale is re-checked.
+- Reading another container's scratch state: GitHub is the only shared truth.
