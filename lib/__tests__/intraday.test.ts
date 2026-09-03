@@ -613,9 +613,9 @@ describe("buildIntradayModel — practice sessions", () => {
         ],
       })
     );
-    expect(model!.blocks.map((b) => [b.source, b.startMinute, b.endMinute])).toEqual(
-      [["practice", 1140, 1165]]
-    );
+    expect(
+      model!.blocks.map((b) => [b.source, b.startMinute, b.endMinute])
+    ).toEqual([["practice", 1140, 1165]]);
     expect(model!.ticks.map((t) => t.minute)).toEqual([390]);
   });
 
