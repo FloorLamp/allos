@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   profileMessagePrefix,
-  prefixMessage,
   type NotificationMessage,
 } from "../notifications/types";
+import { composeMessage } from "../notifications/compose";
 
 describe("profileMessagePrefix", () => {
   it("is empty on a single-profile instance", () => {
@@ -19,21 +19,23 @@ describe("profileMessagePrefix", () => {
   });
 });
 
-describe("prefixMessage", () => {
+// `composeMessage` is the whole of what a send and a rebuild apply (#4538); with no
+// attachment and no chat origin it is exactly the title label, which is what these pin.
+describe("composeMessage: the attribution prefix", () => {
   const msg: NotificationMessage = {
     title: "💊 Morning supplements",
     body: "…",
   };
 
   it("prepends the prefix to the title only", () => {
-    expect(prefixMessage(msg, "[Alex] ")).toEqual({
+    expect(composeMessage(msg, "[Alex] ")).toEqual({
       title: "[Alex] 💊 Morning supplements",
       body: "…",
     });
   });
 
   it("returns the message unchanged for an empty prefix", () => {
-    expect(prefixMessage(msg, "")).toBe(msg);
+    expect(composeMessage(msg, "")).toBe(msg);
   });
 
   it("preserves actions", () => {
@@ -41,7 +43,7 @@ describe("prefixMessage", () => {
       ...msg,
       actions: [{ label: "✅ D3", data: "take:1:2:3:2026-07-03" }],
     };
-    expect(prefixMessage(withActions, "[Alex] ").actions).toEqual(
+    expect(composeMessage(withActions, "[Alex] ").actions).toEqual(
       withActions.actions
     );
   });
@@ -49,7 +51,7 @@ describe("prefixMessage", () => {
 
 // The Telegram tap-rebuild paths (handleDoseTap / handleAllTaken) re-render a
 // session message from scratch and must re-apply the SAME send-time prefix
-// (prefixForProfile → profileMessagePrefix → prefixMessage), or a shared-chat
+// (prefixForProfile → profileMessagePrefix → composeMessage), or a shared-chat
 // reminder collapses to an unattributable title after a button tap — a parent
 // could confirm the wrong child's doses (issue #377). This pins that the rebuild
 // composition (the pure half) still labels the title with live buttons attached.
@@ -65,19 +67,19 @@ describe("rebuild keeps the profile prefix (issue #377)", () => {
   };
 
   it("labels a rebuilt multi-profile message and keeps its buttons", () => {
-    const out = prefixMessage(rebuilt, profileMessagePrefix("Ada", 2));
+    const out = composeMessage(rebuilt, profileMessagePrefix("Ada", 2));
     expect(out.title).toBe("[Ada] 💊 Morning supplements");
     expect(out.actions).toEqual(rebuilt.actions); // live buttons survive
   });
 
   it("keeps two family members' rebuilt messages distinguishable", () => {
-    const ada = prefixMessage(rebuilt, profileMessagePrefix("Ada", 2)).title;
-    const ben = prefixMessage(rebuilt, profileMessagePrefix("Ben", 2)).title;
+    const ada = composeMessage(rebuilt, profileMessagePrefix("Ada", 2)).title;
+    const ben = composeMessage(rebuilt, profileMessagePrefix("Ben", 2)).title;
     expect(ada).not.toBe(ben);
   });
 
   it("adds no label on a single-profile instance (unchanged rebuild)", () => {
-    expect(prefixMessage(rebuilt, profileMessagePrefix("Ada", 1))).toBe(
+    expect(composeMessage(rebuilt, profileMessagePrefix("Ada", 1))).toBe(
       rebuilt
     );
   });

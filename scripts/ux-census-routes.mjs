@@ -339,3 +339,31 @@ export function routeSlug(route) {
     ? "home"
     : route.slice(1).replace(/\//g, "-").replace(/[[\]]/g, "");
 }
+
+// UX_ROUTES scoping, and the one route it could not express (#4661).
+//
+// An entry is a PREFIX: `/trends` takes the hub and everything under it, which
+// is what a directory-shaped diff earns. The dashboard is `/`, every route
+// starts with `/`, so under prefix rules `UX_ROUTES=/` selects the whole app —
+// the most-changed surface was the one that could not be censused alone. An `=`
+// prefix asks for an exact match instead, so `UX_ROUTES==/` is the dashboard and
+// nothing else. Existing spellings keep their meaning; unset still means every
+// route.
+/**
+ * @param {string | undefined} spec comma-separated `UX_ROUTES` value
+ * @returns {{ entries: string[], keep: (route: string) => boolean }}
+ */
+export function censusRouteScope(spec) {
+  const entries = (spec || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const keep = (route) =>
+    !entries.length ||
+    entries.some((entry) =>
+      entry.startsWith("=")
+        ? route === entry.slice(1)
+        : route === entry || route.startsWith(entry)
+    );
+  return { entries, keep };
+}

@@ -52,6 +52,8 @@ import {
   NOTIF_PROFILE,
   E2E_LOGIN_PROTEIN,
   PROTEIN_QUICKADD_PROFILE,
+  E2E_LOGIN_FEVER_AXIS,
+  FEVER_AXIS_PROFILE,
 } from "../fixture-logins";
 import {
   seedMemberLogin,
@@ -724,5 +726,89 @@ export function seedSymptomVideoEpisode(): void {
   seedMemberLogin(E2E_LOGIN_SICK_VIDEO, pid, "write");
   console.log(
     `e2e: seeded symptom-video episode fixture — profile ${pid} (${SICK_VIDEO_PROFILE}) (#1598)`
+  );
+}
+
+// ── Fever-chart date axis (#4858) ────────────────────────────────────────────
+// Appended to the seed run's TAIL on purpose: it introduces a profile, a login and
+// an episode, and running it after every existing fixture keeps their row ids
+// exactly where they were.
+//
+// The fixture that makes the fever chart's LAST date tick clip when its label is
+// centred on it. Two properties do that, and both are deliberate:
+//
+//   * The last reading sits at NOON, so it is the episode's latest stamp and the
+//     tick for its own date lands exactly on the plot's right edge (x = 312 of the
+//     320-unit viewBox). Profile 1's episode cannot pin this — its latest stamp
+//     moves with the run's clock, so its last tick drifts across ~3 user units and
+//     the clip it produces crosses the guard's 2px tolerance on only some runs.
+//   * The login stores the ISO date format, so the label is "2026-09-03" rather
+//     than "Sep 3" — roughly 50px against 25px. PLOT_RIGHT leaves 8 user units;
+//     the issue's argument for anchoring over budgeting is precisely that the label
+//     width belongs to the date format and the locale, not to the chart.
+//
+// Read-only in its spec, and its own profile, so nothing here moves under a
+// sibling that writes.
+export function seedFeverAxisEpisode(): void {
+  const pid = adultFixtureProfileId(FEVER_AXIS_PROFILE);
+  const on = today(pid);
+  const started = shiftDateStr(on, -3);
+  const tz = getTimezone(pid);
+
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(pid);
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, start_date, end_date)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(pid, started);
+
+  const seedSym = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  seedSym.run(pid, started, "fever", 3);
+  seedSym.run(pid, on, "cough", 2);
+
+  // Four days of readings, one per day, so the chart samples four date ticks. The
+  // LAST is at 12:00 — see the header: that is what puts its tick on the plot edge.
+  const insTemp = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit,
+        canonical_name, source, occurred_at)
+     VALUES (?, ?, 'vitals', 'Body Temperature', ?, ?, 'degF',
+             'Body Temperature', 'manual', ?)`
+  );
+  db.prepare(
+    "DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Body Temperature'"
+  ).run(pid);
+  const readings: [number, string, number][] = [
+    [3, "09:00", 100.4],
+    [2, "09:00", 101.2],
+    [1, "09:00", 100.1],
+    [0, "12:00", 99.4],
+  ];
+  const tempIds = readings.map(([ago, time, degF]) => {
+    const day = shiftDateStr(on, -ago);
+    return Number(
+      insTemp.run(
+        pid,
+        day,
+        String(degF),
+        degF,
+        utcInstant(zonedWallTimeToUtc(tz, day, time)!)
+      ).lastInsertRowid
+    );
+  });
+  reconcileFlags(pid, tempIds);
+
+  const loginId = seedMemberLogin(E2E_LOGIN_FEVER_AXIS, pid, "write");
+  db.prepare(
+    `INSERT INTO login_settings (login_id, key, value) VALUES (?, 'date_format', 'iso')
+       ON CONFLICT(login_id, key) DO UPDATE SET value = excluded.value`
+  ).run(loginId);
+
+  console.log(
+    `e2e: seeded fever-axis episode fixture — profile ${pid} (${FEVER_AXIS_PROFILE}), ISO date format (#4858)`
   );
 }
