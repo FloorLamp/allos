@@ -754,23 +754,30 @@ export default function LineChartCard({
               below, so a reader still gets one value per day and the legend still
               sees one series. */}
           {strokeRuns.length > 1 &&
-            strokeRuns.map(([from], r) => (
-              <Line
-                key={`run-${from}`}
-                type={chartCurve}
-                dataKey={`run${r}`}
-                stroke={color}
-                {...(sparse
-                  ? chartSparseLineProps()
-                  : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
-                dot={false}
-                activeDot={false}
-                legendType="none"
-                tooltipType="none"
-                {...chartMarkMotion(motion)}
-                connectNulls
-              />
-            ))}
+            strokeRuns.map(([from, to], r) =>
+              // A run holding ONE reading has no segment to draw, and a
+              // single-point <Line> still emits a zero-length path sitting under
+              // that reading's mark — a stroke that says nothing and measures as
+              // if the line reached the point. `isolatedReadings` draws its mark.
+              plotData.slice(from, to + 1).filter((d) => d.value != null)
+                .length < 2 ? null : (
+                <Line
+                  key={`run-${from}`}
+                  type={chartCurve}
+                  dataKey={`run${r}`}
+                  stroke={color}
+                  {...(sparse
+                    ? chartSparseLineProps()
+                    : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
+                  dot={false}
+                  activeDot={false}
+                  legendType="none"
+                  tooltipType="none"
+                  {...chartMarkMotion(motion)}
+                  connectNulls
+                />
+              )
+            )}
           {/* THE SECOND ACCOUNT OF A DAY (#2653 state 6). One strokeless line per
               companion column, so a day two devices answered shows both numbers
               instead of the one the election kept. Drawn BEFORE the series' own
