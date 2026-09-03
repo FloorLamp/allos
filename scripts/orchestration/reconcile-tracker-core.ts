@@ -1355,25 +1355,21 @@ export function gatherEvidence(
     snapshot.issues.filter((i) => i.state === "open").map((i) => i.number)
   );
 
-  // The title rule (#4983), and this module's standing posture applies to it
-  // exactly: FLAG, never fix. Deciding which 72 characters carry an issue's
-  // truth is a human read, and nothing here proposes one — the finding carries
-  // no `correction`, so no patch is proposable from it, and the applier's only
-  // write is the issue BODY in any case.
-  //
-  // OPEN ISSUES ONLY. A closed issue's title is a record somebody has finished
+  // The title rule (#4983). This module's standing posture applies to it
+  // exactly: FLAG, never fix — deciding which 72 characters carry an issue's
+  // truth is a human read. The finding carries no `correction`, so no patch is
+  // proposable from it, and the applier's only write is the issue BODY anyway.
+  // OPEN issues only: a closed issue's title is a record somebody has finished
   // reading, and the ruling leaves closed issues alone.
   //
   // Gathered HERE, after the per-issue loop, so a long title does not evict an
   // issue from `verifiedClean` — that list answers "did this issue's claims
   // about main hold", and 96% of open titles are over the rule today, so
-  // folding the two in would empty the list and cost the report its clean
-  // half until the backlog pass lands.
+  // folding the two in would empty it until the backlog pass lands.
   //
   // LENGTH ONLY, which is what the ruling's reconcile half asks for. The
   // clause and tail halves are the merge gate's, on PR titles; flagging every
-  // colon in the tracker would list 162 of 315 issues and train the reader to
-  // skim the section.
+  // colon here would list 162 of 315 issues and train the reader to skim.
   for (const issue of snapshot.issues) {
     if (issue.state !== "open") continue;
     const length = titleLength(issue.title);
