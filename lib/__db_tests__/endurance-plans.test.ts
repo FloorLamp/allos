@@ -26,7 +26,10 @@ import {
   setEndurancePlanStatusCore,
   deleteEndurancePlanCore,
 } from "@/lib/endurance-plans";
-import { enduranceLongSessionKey } from "@/lib/endurance-plan";
+import {
+  coachedPlan,
+  enduranceLongSessionKey,
+} from "@/lib/endurance-plan";
 
 function makeProfile(name: string): number {
   return Number(
@@ -76,7 +79,7 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
   it("computes this-week targets from the last completed week and this week's actuals", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
 
     // Base = 20 km (last completed week) → this-week target ≈ 20 × 1.1 = 22.
     expect(card.thisWeek.targetVolumeKm).toBeCloseTo(22, 0);
@@ -89,7 +92,7 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
   it("detects the long session via the Strava label, not the raw longest run", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     // The 8 km LABELED long run wins over the 12 km unlabeled run.
     expect(card.actualLongSessionKm).toBe(8);
   });
@@ -105,14 +108,14 @@ describe("endurance plan card — trajectory + actuals (#839)", () => {
       targetDistanceKm: 10,
     });
     const plan = getEndurancePlan(profileId, (out as { id: number }).id)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     expect(card.actualLongSessionKm).toBe(13);
   });
 
   it("flips to a taper before the event, ending on the event week", () => {
     const { profileId, planId } = seedPlanFixture();
     const plan = getEndurancePlan(profileId, planId)!;
-    const card = getEndurancePlanCard(profileId, plan, TODAY);
+    const card = getEndurancePlanCard(profileId, coachedPlan(plan)!, TODAY);
     const taper = card.trajectory.weeks.filter((w) => w.phase === "taper");
     // A 10k tapers for 1 week.
     expect(taper.length).toBe(1);

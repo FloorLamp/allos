@@ -367,19 +367,17 @@ export function enduranceEventItems(
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
     .map((p) => {
-      const disc =
-        p.discipline === "run"
-          ? "Run"
-          : p.discipline === "ride"
-            ? "Ride"
-            : "Swim";
-      const dist = fmtDistance(p.targetDistanceKm, distanceUnit);
-      const name = p.eventName?.trim() || `${dist} ${disc}`;
+      // The detail line is the cardio pair when there is one (#3285), else the open
+      // event kind — a lifting meet has no discipline and no distance to name.
+      const detail =
+        p.discipline != null && p.targetDistanceKm != null
+          ? `${disciplineLabel(p.discipline)} · ${fmtDistance(p.targetDistanceKm, distanceUnit)}`
+          : eventKindLabel(p.kind);
       return {
         key: `endurance-event:${p.id}`,
         domain: "training" as const,
-        title: `Event: ${name}`,
-        detail: `${disc} · ${dist}`,
+        title: `Event: ${eventTitle(p)}`,
+        detail,
         href: "/training" as const,
         dueDate: p.eventDate,
         suppressible: false,
@@ -443,6 +441,11 @@ export function markCarePlanItemDone(
     return { kind: "completed" };
   });
 }
+import {
+  disciplineLabel,
+  eventKindLabel,
+  eventTitle,
+} from "../../endurance-plan";
 import {
   carePlanUpcomingItems,
   isCarePlanItemOpen,

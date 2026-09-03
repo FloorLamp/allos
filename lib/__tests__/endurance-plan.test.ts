@@ -11,7 +11,7 @@ import {
   MAX_WEEKLY_RAMP,
   RECOVERY_CADENCE_WEEKS,
   LONG_SESSION_FRACTION,
-  type EndurancePlan,
+  type CoachedEndurancePlan,
 } from "../endurance-plan";
 
 // A comfortably-feasible half-marathon plan: 20 weeks out, decent base.
@@ -198,8 +198,9 @@ describe("disciplineForActivityName (#839)", () => {
 });
 
 describe("buildEndurancePlanCard + enduranceArmFor (#839)", () => {
-  const plan: EndurancePlan = {
+  const plan: CoachedEndurancePlan = {
     id: 7,
+    kind: "race",
     eventName: "City Half",
     discipline: "run",
     eventDate: "2026-05-25",

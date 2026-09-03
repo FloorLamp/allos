@@ -10,13 +10,23 @@ import {
   deleteEndurancePlanCore,
   type EndurancePlanPatch,
 } from "@/lib/endurance-plans";
-import { isEnduranceDiscipline } from "@/lib/endurance-plan";
+import {
+  isEnduranceDiscipline,
+  type EndurancePlanDiscipline,
+} from "@/lib/endurance-plan";
 import { toKm, submittedDistanceUnit } from "@/lib/units";
 import type { DistanceUnit } from "@/lib/settings";
 import { getUnitPrefs } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { getProfileAge } from "@/lib/settings/profile-attrs";
 import { isTrainingRelevant } from "@/lib/life-stage";
+
+// The one message for every shape the core calls invalid, and the pair rule is the
+// half a user can actually hit: a discipline with no distance, or a distance with no
+// discipline. Naming both sides is what makes the error actionable rather than a
+// re-statement of "that didn't work".
+const TARGET_PAIR_ERROR =
+  "Add an event date. A discipline and a target distance go together — set both, or neither.";
 
 function trainingUnavailable(profileId: number): FormResult | null {
   return isTrainingRelevant(getProfileAge(profileId))
@@ -71,10 +81,25 @@ function capturedDistanceUnit(
 }
 
 // The target distance is entered in the login's display unit (km/mi) → canonical km.
-function parseDistanceKm(raw: string, unit: DistanceUnit): number {
-  const n = Number(String(raw).trim());
-  if (!Number.isFinite(n) || n <= 0) return 0;
+// NULL for a blank field since #3285: an event without a cardio target leaves it empty,
+// and the core refuses a distance without a discipline (and the reverse) as a PAIR.
+function parseDistanceKm(raw: string, unit: DistanceUnit): number | null {
+  const t = String(raw).trim();
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n <= 0) return 0; // 0 fails the core's band → "invalid"
   return toKm(n, unit);
+}
+
+// The submitted discipline: a known one, `null` for the blank option (an event with no
+// cardio arm), or `undefined` for a value that is neither — which the caller refuses
+// rather than silently storing as "no discipline".
+function parseDiscipline(
+  raw: FormDataEntryValue | null
+): EndurancePlanDiscipline | null | undefined {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  return isEnduranceDiscipline(t) ? t : undefined;
 }
 
 // Create a new active plan. Refuses a second active plan for the same discipline.
@@ -84,11 +109,12 @@ export async function createEndurancePlan(
   const { profile, login } = await requireWriteAccess();
   const unavailable = trainingUnavailable(profile.id);
   if (unavailable) return unavailable;
-  const discipline = String(formData.get("discipline") ?? "").trim();
-  if (!isEnduranceDiscipline(discipline))
-    return formError("Pick a discipline (run, ride, or swim).");
+  const discipline = parseDiscipline(formData.get("discipline"));
+  if (discipline === undefined)
+    return formError("Pick a discipline (run, ride, or swim), or leave it blank.");
   const unit = capturedDistanceUnit(formData, login.id);
   const out = createEndurancePlanCore(profile.id, {
+    kind: String(formData.get("kind") ?? ""),
     eventName: String(formData.get("event_name") ?? ""),
     discipline,
     eventDate: String(formData.get("event_date") ?? "").trim(),
@@ -105,8 +131,7 @@ export async function createEndurancePlan(
     return formError(
       `You already have an active ${discipline} plan. Complete or abandon it first.`
     );
-  if (out.kind !== "ok")
-    return formError("Add an event date and a target distance.");
+  if (out.kind !== "ok") return formError(TARGET_PAIR_ERROR);
   revalidateEndurance();
   return formOk();
 }
@@ -126,12 +151,13 @@ export async function updateEndurancePlan(
   if (unavailable) return unavailable;
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id)) return formError("Invalid plan.");
-  const discipline = String(formData.get("discipline") ?? "").trim();
-  if (!isEnduranceDiscipline(discipline))
-    return formError("Pick a discipline (run, ride, or swim).");
+  const discipline = parseDiscipline(formData.get("discipline"));
+  if (discipline === undefined)
+    return formError("Pick a discipline (run, ride, or swim), or leave it blank.");
   const unit = capturedDistanceUnit(formData, login.id);
   // Discipline is validated above and always named — it is what the duplicate check reads.
   const patch: EndurancePlanPatch = { discipline };
+  if (formData.has("kind")) patch.kind = String(formData.get("kind"));
   if (formData.has("event_name"))
     patch.eventName = String(formData.get("event_name"));
   if (formData.has("event_date"))
@@ -149,8 +175,7 @@ export async function updateEndurancePlan(
   const out = updateEndurancePlanCore(profile.id, id, patch);
   if (out.kind === "duplicate")
     return formError(`You already have another active ${discipline} plan.`);
-  if (out.kind !== "ok")
-    return formError("Add an event date and a target distance.");
+  if (out.kind !== "ok") return formError(TARGET_PAIR_ERROR);
   revalidateEndurance();
   return formOk();
 }

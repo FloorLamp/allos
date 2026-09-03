@@ -18,11 +18,11 @@ import {
 // notifications. The plan/trajectory model is derived server-side (one computation, #221),
 // so the numbers here match the recommendation arm + the long-session finding.
 
-export interface EndurancePlanView {
-  id: number;
-  title: string;
-  disciplineLabel: string;
-  eventDate: string; // formatted long date
+// The per-event trajectory block. Present only for an event with the cardio pair
+// (#3285) — a lifting meet has nothing to project — so the card renders its header,
+// its date and its controls either way and this section is what varies. ONE view
+// type with an optional half, not a second card shape.
+export interface EnduranceTrajectoryView {
   weeksToEvent: number;
   feasible: boolean;
   message: string;
@@ -32,15 +32,27 @@ export interface EndurancePlanView {
   longSession: string;
   longSessionDone: boolean;
   hasLongSession: boolean;
+}
+
+export interface EndurancePlanView {
+  id: number;
+  title: string;
+  // The badge: the discipline for a cardio plan, else the open event kind (#3285).
+  badge: string;
+  eventDate: string; // formatted long date
+  weeksToEvent: number;
+  trajectory: EnduranceTrajectoryView | null;
   notes: string | null;
 }
 
 export default function EndurancePlanBar({
   plans,
   distanceUnit,
+  kindSuggestions,
 }: {
   plans: EndurancePlanView[];
   distanceUnit: "km" | "mi";
+  kindSuggestions: readonly string[];
 }) {
   const [showForm, setShowForm] = useState(false);
 
@@ -56,7 +68,8 @@ export default function EndurancePlanBar({
               its title + "Add plan", so an empty state costs one row, not a block. */}
           {(plans.length > 0 || showForm) && (
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Training toward a race? Set the event and coaching builds a safe
+              Racing, competing, or on a meet card? Record the event and its
+              date. Add a discipline and a distance and coaching builds a safe
               weekly volume trajectory — ramp, long session, and taper.
             </p>
           )}
@@ -67,7 +80,7 @@ export default function EndurancePlanBar({
           className="btn-ghost flex items-center gap-1 text-sm"
           data-testid="endurance-add-toggle"
         >
-          <IconPlus size={16} /> Add plan
+          <IconPlus size={16} /> Add event
         </button>
       </div>
 
@@ -81,7 +94,7 @@ export default function EndurancePlanBar({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
-                  {p.disciplineLabel}
+                  {p.badge}
                 </span>
                 <span
                   className="font-medium text-slate-800 dark:text-slate-100"
@@ -115,31 +128,35 @@ export default function EndurancePlanBar({
                 </div>
               </div>
 
-              <p
-                className="mt-2 text-slate-700 dark:text-slate-200"
-                data-testid="endurance-plan-target"
-              >
-                This week: <strong>{p.actualVolume}</strong> of{" "}
-                <strong>{p.targetVolume}</strong> target
-                {p.hasLongSession && (
-                  <>
-                    {" · "}long session {p.longSession}{" "}
-                    {p.longSessionDone ? "✓ done" : "due"}
-                  </>
-                )}
-              </p>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
-                <div
-                  className="h-full rounded-full bg-sky-500"
-                  style={{ width: `${p.progressPct}%` }}
-                />
-              </div>
-              <p
-                className={`mt-2 text-xs ${p.feasible ? "text-slate-500 dark:text-slate-400" : "text-amber-700 dark:text-amber-300"}`}
-                data-testid="endurance-plan-message"
-              >
-                {p.message}
-              </p>
+              {p.trajectory && (
+                <>
+                  <p
+                    className="mt-2 text-slate-700 dark:text-slate-200"
+                    data-testid="endurance-plan-target"
+                  >
+                    This week: <strong>{p.trajectory.actualVolume}</strong> of{" "}
+                    <strong>{p.trajectory.targetVolume}</strong> target
+                    {p.trajectory.hasLongSession && (
+                      <>
+                        {" · "}long session {p.trajectory.longSession}{" "}
+                        {p.trajectory.longSessionDone ? "✓ done" : "due"}
+                      </>
+                    )}
+                  </p>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-sky-500"
+                      style={{ width: `${p.trajectory.progressPct}%` }}
+                    />
+                  </div>
+                  <p
+                    className={`mt-2 text-xs ${p.trajectory.feasible ? "text-slate-500 dark:text-slate-400" : "text-amber-700 dark:text-amber-300"}`}
+                    data-testid="endurance-plan-message"
+                  >
+                    {p.trajectory.message}
+                  </p>
+                </>
+              )}
               {p.notes && (
                 <NotesText
                   notes={p.notes}
@@ -153,7 +170,7 @@ export default function EndurancePlanBar({
 
       {plans.length === 0 && !showForm && (
         <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-          No event plans. Add one to train toward a race.
+          No events. Add a race, a competition or a meet to track it here.
         </p>
       )}
 
@@ -172,8 +189,30 @@ export default function EndurancePlanBar({
           <input type="hidden" name="distance_unit" value={distanceUnit} />
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
+              <label className="section-label" htmlFor="endurance-kind">
+                Kind
+              </label>
+              {/* The kind is stored as free text (#3285), so the control is an input
+                  with a datalist rather than a select: the four words below are
+                  suggestions, and a club with a fifth one can just type it. */}
+              <input
+                id="endurance-kind"
+                name="kind"
+                list="endurance-kind-options"
+                defaultValue="race"
+                maxLength={40}
+                className="input mt-1 w-full"
+                data-testid="endurance-kind"
+              />
+              <datalist id="endurance-kind-options">
+                {kindSuggestions.map((k) => (
+                  <option key={k} value={k} />
+                ))}
+              </datalist>
+            </div>
+            <div>
               <label className="section-label" htmlFor="endurance-discipline">
-                Discipline
+                Discipline (optional)
               </label>
               <select
                 id="endurance-discipline"
@@ -182,6 +221,7 @@ export default function EndurancePlanBar({
                 className="input mt-1 w-full"
                 data-testid="endurance-discipline"
               >
+                <option value="">None — not a distance event</option>
                 <option value="run">Run</option>
                 <option value="ride">Ride</option>
                 <option value="swim">Swim</option>
@@ -223,7 +263,6 @@ export default function EndurancePlanBar({
                 type="number"
                 step="0.1"
                 min="0"
-                required
                 placeholder="21.1"
                 className="input mt-1 w-full"
                 data-testid="endurance-distance"
@@ -244,7 +283,7 @@ export default function EndurancePlanBar({
           </div>
           <div className="flex items-center gap-2">
             <SubmitButton pendingLabel="Saving…" data-testid="endurance-submit">
-              Add plan
+              Add event
             </SubmitButton>
             <button
               type="button"

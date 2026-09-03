@@ -1,4 +1,9 @@
 import { activityComponentSportNames } from "./activity-icon";
+import {
+  disciplineLabel,
+  eventKindLabel,
+  type EndurancePlanDiscipline,
+} from "./endurance-plan";
 import { trainingActivityPageHref } from "./hrefs";
 import { isDraftActivityRow } from "./activity-draft";
 import { shiftDateStr } from "./date";
@@ -1232,7 +1237,7 @@ function collectEvents(
     const planBounds = exact("event_date");
     const plans = db
       .prepare(
-        `SELECT id, event_name, discipline, event_date, target_distance_km, status, created_at
+        `SELECT id, kind, event_name, discipline, event_date, target_distance_km, status, created_at
            FROM endurance_plans
           WHERE profile_id = ? AND status != 'abandoned'${planBounds.clause}
           ORDER BY event_date DESC, id DESC
@@ -1240,23 +1245,28 @@ function collectEvents(
       )
       .all(profileId, ...planBounds.params, perTableLimit) as {
       id: number;
+      kind: string;
       event_name: string | null;
-      discipline: string;
+      discipline: EndurancePlanDiscipline | null;
       event_date: string;
-      target_distance_km: number;
+      target_distance_km: number | null;
       status: string;
       created_at: string;
     }[];
     for (const p of plans) {
-      const disc =
-        p.discipline === "run"
-          ? "Run"
-          : p.discipline === "ride"
-            ? "Ride"
-            : "Swim";
+      // The cardio pair travels together (#3285), so one test covers both halves and
+      // an event without it reads by its KIND rather than falling through to "Swim ·
+      // NaN km" — which is what a chained ternary on a now-nullable column does.
+      const cardio =
+        p.discipline != null && p.target_distance_km != null
+          ? `${disciplineLabel(p.discipline)} · ${Math.round(p.target_distance_km * 10) / 10} km`
+          : null;
+      const disc = cardio ?? eventKindLabel(p.kind);
       const name =
         p.event_name?.trim() ||
-        `${Math.round(p.target_distance_km * 10) / 10} km ${disc}`;
+        (p.discipline != null && p.target_distance_km != null
+          ? `${Math.round(p.target_distance_km * 10) / 10} km ${disciplineLabel(p.discipline)}`
+          : eventKindLabel(p.kind));
       pushLimited(
         events,
         {
@@ -1264,7 +1274,7 @@ function collectEvents(
           date: p.event_date,
           category: "endurance",
           title: `Event: ${name}`,
-          subtitle: `${disc} · ${Math.round(p.target_distance_km * 10) / 10} km`,
+          subtitle: disc,
           href: "/training",
           sortTime: timeFromCreatedAt(p.created_at, tz),
           tone: p.status === "completed" ? "good" : "default",
