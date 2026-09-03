@@ -77,6 +77,20 @@
 // residual case this does NOT fix is a run that starts in the minutes BEFORE 23:45
 // and reaches a SQL-judged assertion after it; closing that needs the seam on
 // auth.test.ts's side, not a different instant here.
+//
+// AND ROLLING THE DAY DECOUPLES THE FROZEN DATE FROM SQL'S, for those same 15
+// minutes: a row stamped by `datetime('now')` lands on the real day while `today()`
+// answers the frozen one. That is not new — a run straddling real midnight already
+// does it, which is why the instant is captured once per worker above — but this
+// widens the window from seconds to a quarter of an hour, and three specs read a
+// calendar day off the REAL clock and compare it to a frozen-clock day:
+// history-gather.test.ts (module-scope TODAY/TOMORROW, evaluated before the freeze
+// hooks run), dose-lifecycle.test.ts (`const DATE = today(1)`, same), and
+// attention-flagged-window.test.ts (seeds `datetime('now', ?)`, queries
+// `today(profileId)`). Measured: they go red with the frozen day one ahead. Binding
+// those three to this module's instant — lib/clock.ts's own "bind sqlNow() wherever
+// the stamp's calendar DAY is later read" — is what makes the window green rather
+// than differently red, and it is NOT done here.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 
