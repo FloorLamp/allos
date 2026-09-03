@@ -66,9 +66,27 @@ export const setupCandidates = {
       source === "wizard"
         ? "onboarding.setup-progress"
         : "onboarding.checklist-progress",
-      "onboarding.setup",
+      source === "wizard" ? "onboarding.setup" : "onboarding.checklist",
       "unknown",
       "current",
+      { relevance: { kind: "setup" } }
+    );
+  },
+  // ONE ROW PER REMAINING STEP (#4362 ruling 3). The checklist was one candidate
+  // whose facts column held every remaining label joined by "·", so a first-run
+  // reader got ONE door for four steps and none of the sentences saying why any of
+  // them is worth doing. The owner ruled it earns its own moment block, and the
+  // `data-candidate-id` census amendment that requires is sanctioned there.
+  //
+  // They share the checklist's groupKey with the progress row, so the block prints
+  // one header over the set exactly as every other moment does.
+  onboardingChecklistStep(ctx: DomainCandidateContext, suggestion: string) {
+    return action(
+      ctx,
+      `onboarding.checklist:${suggestion}`,
+      `onboarding.checklist-step:${suggestion}`,
+      "onboarding.checklist",
+      "may",
       { relevance: { kind: "setup" } }
     );
   },
