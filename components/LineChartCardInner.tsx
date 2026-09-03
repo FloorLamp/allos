@@ -16,10 +16,14 @@ import {
 import type { ComponentProps } from "react";
 import { useChartColors } from "./useChartColors";
 import {
+  CHART_LINE_STROKE_WIDTH,
   chartActiveDot,
   chartAnnotationLabel,
+  chartAnnotationLineProps,
   chartAxisProps,
+  chartCurve,
   chartDash,
+  chartDayAxisProps,
   chartFittedAnnotationLabel,
   chartFullMargin,
   chartGridProps,
@@ -31,18 +35,15 @@ import {
   chartSparseDot,
   chartSparseLineProps,
   chartTooltipProps,
-  CHART_LINE_STROKE_WIDTH,
+  chartWindowAreaProps,
   useChartMotion,
 } from "./chart-scaffold";
 import { chartBand, chartSeries } from "@/lib/chart-colors";
-import Link from "next/link";
 import SingleReadingMark from "./SingleReadingMark";
 import { formatLongDate, formatMonthDay } from "@/lib/format-date";
-import { dataSectionHref } from "@/lib/hrefs";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { groupChartValue, roundChartValue } from "@/lib/chart-format";
 import {
-  ANNOTATION_KIND_META,
   annotationTooltipLabel,
   snapAnnotationsToDates,
   snapWindowsToDates,
@@ -58,6 +59,7 @@ import {
   applyDayFill,
   gapBreaksPastLimit,
   gapLimitDaysForSeriesKey,
+  isolatedReadings,
   loneReading,
   overLimitHoles,
   seriesGapForSeriesKey,
@@ -72,6 +74,7 @@ import {
 } from "@/lib/trend-sparkline";
 import type { DaySourceSpread } from "@/lib/metric-sources";
 import { EmptyState } from "@/components/ui";
+import { useChartCaptions } from "./ChartCaptionBand";
 
 // A full ISO date (YYYY-MM-DD) — distinguishes date series (which get the
 // compact-axis + friendly-tooltip default below) from time/category x-values.
@@ -116,7 +119,15 @@ export default function LineChartCard({
   // already in this chart's display unit and already NAMED (lib/metric-sources'
   // `displaySourcePoints`), because a document's name lives in a table this
   // component cannot read. A caller with no multi-source read omits the field.
-  data: { date: string; value: number | null; sources?: DaySourceSpread }[];
+  // `partial` marks a bucket the profile's local day has not finished filling
+  // (#4924) — today's step total, today's HR average. It draws as the hollow
+  // inexact mark and the stroke stops at the last complete day.
+  data: {
+    date: string;
+    value: number | null;
+    partial?: boolean;
+    sources?: DaySourceSpread;
+  }[];
   dataKey?: string;
   label: string;
   color?: string;
@@ -269,6 +280,7 @@ export default function LineChartCard({
   const plotData: {
     date: string;
     value: number | null;
+    partial?: boolean;
     band?: [number, number];
   }[] = longRange
     ? longRange.points.map((p) => ({
@@ -326,10 +338,17 @@ export default function LineChartCard({
   // bridged stroke, with the marks and the tooltip staying on one strokeless
   // line above them. Nothing is hidden, no point moves, and no value is invented
   // to span anything.
+  // TODAY IS NOT ON THE STROKE (#4924). A segment drawn to a bucket the day has
+  // not finished filling asserts a fall (or a spike) that is only the clock. The
+  // cut is the SAME machinery an over-limit hole uses — the series is split into
+  // runs and each run draws its own bridged stroke — so the partial point keeps
+  // its mark, its hover and its place on the axis, and only the line stops short.
+  const cutAt = new Set<string>();
+  if (breaksPastLimit) for (const hole of interiorHoles) cutAt.add(hole.from);
+  const firstPartial = plotData.find((d) => d.partial && d.value != null);
+  if (firstPartial) cutAt.add(firstPartial.date);
   const strokeRuns: number[][] = [];
-  if (breaksPastLimit && interiorHoles.length > 0) {
-    const cutAt = new Set<string>();
-    for (const hole of interiorHoles) cutAt.add(hole.from);
+  if (cutAt.size > 0) {
     let runStart = 0;
     plotData.forEach((row, i) => {
       if (!cutAt.has(row.date)) return;
@@ -391,9 +410,6 @@ export default function LineChartCard({
     ...(referenceBand ? [referenceBand] : []),
     ...(referenceBands ?? []),
   ];
-  if (data.length === 0) {
-    return <EmptyState message="No data yet" />;
-  }
   // The value formatter the tooltip shares between the mean line, the companion
   // marks and (aggregated charts only) the band's low–high pair — one number shape
   // per chart.
@@ -437,6 +453,39 @@ export default function LineChartCard({
     isoDates && key === "value" && !singleReadingAsChart
       ? loneReading(data)
       : null;
+  // THE CAPTIONS GO UP TO THE CARD (#4924). They used to be `<p>`s inside the
+  // wrapper this component returned — a wrapper that sat INSIDE the card's
+  // fixed-height plot slot, so the sentences overflowed the box and printed over
+  // the card's own footer or flush against its bottom edge. What crosses the
+  // boundary is a DESCRIPTOR: the sentences are this chart's, because only it
+  // knows its own gaps, its aggregation and its sources; the layout is the
+  // card's, because it owns the height and the padding.
+  //
+  // Unconditional, and above the two degrade returns below, because it is a HOOK:
+  // an empty card and a one-reading mark hand up nothing, they do not skip the
+  // call. A sparkline hands up nothing either — a tile has no room for a
+  // sentence, and its numbers are the caller's.
+  useChartCaptions(
+    sparkline || data.length === 0 || (lone != null && lone.value != null)
+      ? null
+      : {
+          ...(spreadCaption ? { spread: spreadCaption } : {}),
+          ...(longRange
+            ? { longRange: longRangeCaption(longRange.grain) }
+            : {}),
+          ...(sparse ? { sparse: sparseSeriesCaption(sparse) } : {}),
+          ...(trailingHole && lastReadingDate
+            ? {
+                trailingOutage: trailingOutageCaption(
+                  formatMonthDay(lastReadingDate, formatPrefs)
+                ),
+              }
+            : {}),
+        }
+  );
+  if (data.length === 0) {
+    return <EmptyState message="No data yet" />;
+  }
   if (lone && lone.value != null) {
     return (
       <div className={`${heightClass} min-w-0 max-w-full`}>
@@ -457,6 +506,20 @@ export default function LineChartCard({
       </div>
     );
   }
+  // The readings no stroke reaches (#4924), read off the topology just built:
+  // the runs when the series was cut, the bridging policy when it was not. They
+  // draw their resting mark whatever the density threshold says, because for
+  // them the mark is the whole of their representation.
+  const isolated = isolatedReadings(
+    plotData.map((d) => d.value),
+    { bridged: bridges, runs: strokeRuns }
+  );
+  // FILL MEANS EXACTNESS (owner call 3 on #2830). A bucket the day is still
+  // filling is a number known only to be a floor of the day's, so it takes the
+  // one hollow mark rather than a colour, a badge or a size of its own.
+  const inexact = new Set(
+    plotData.flatMap((d, i) => (d.partial && d.value != null ? [i] : []))
+  );
   const chartRows =
     spreadColumns === 0
       ? runData
@@ -486,9 +549,13 @@ export default function LineChartCard({
         >
           {!sparkline && <CartesianGrid {...chartGridProps(c)} />}
           <XAxis
-            dataKey="date"
             tickFormatter={tickFmt}
-            {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
+            {...(sparkline
+              ? { dataKey: "date", ...chartSparklineAxisProps() }
+              : chartDayAxisProps(
+                  c,
+                  plotData.map((d) => d.date)
+                ))}
           />
           <YAxis
             {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
@@ -564,16 +631,12 @@ export default function LineChartCard({
             />
           ) : null}
           {snappedWindows.map((w, i) => {
-            const color = ANNOTATION_KIND_META[w.kind].color;
             return (
               <ReferenceArea
                 key={`win-${w.start}-${w.end}-${i}`}
                 x1={w.start}
                 x2={w.end}
-                fill={color}
-                fillOpacity={0.08}
-                stroke={color}
-                strokeOpacity={0.3}
+                {...chartWindowAreaProps(w.kind)}
               />
             );
           })}
@@ -653,9 +716,7 @@ export default function LineChartCard({
             <ReferenceLine
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={a.date}
-              stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray={chartDash.annotation}
-              strokeOpacity={0.6}
+              {...chartAnnotationLineProps(a.kind)}
             />
           ))}
           {/* The spread band, under the mean line — each bucket's low–high as a
@@ -680,23 +741,30 @@ export default function LineChartCard({
               below, so a reader still gets one value per day and the legend still
               sees one series. */}
           {strokeRuns.length > 1 &&
-            strokeRuns.map(([from], r) => (
-              <Line
-                key={`run-${from}`}
-                type="monotone"
-                dataKey={`run${r}`}
-                stroke={color}
-                {...(sparse
-                  ? chartSparseLineProps()
-                  : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
-                dot={false}
-                activeDot={false}
-                legendType="none"
-                tooltipType="none"
-                {...chartMarkMotion(motion)}
-                connectNulls
-              />
-            ))}
+            strokeRuns.map(([from, to], r) =>
+              // A run holding ONE reading has no segment to draw, and a
+              // single-point <Line> still emits a zero-length path sitting under
+              // that reading's mark — a stroke that says nothing and measures as
+              // if the line reached the point. `isolatedReadings` draws its mark.
+              plotData.slice(from, to + 1).filter((d) => d.value != null)
+                .length < 2 ? null : (
+                <Line
+                  key={`run-${from}`}
+                  type={chartCurve}
+                  dataKey={`run${r}`}
+                  stroke={color}
+                  {...(sparse
+                    ? chartSparseLineProps()
+                    : { strokeWidth: CHART_LINE_STROKE_WIDTH })}
+                  dot={false}
+                  activeDot={false}
+                  legendType="none"
+                  tooltipType="none"
+                  {...chartMarkMotion(motion)}
+                  connectNulls
+                />
+              )
+            )}
           {/* THE SECOND ACCOUNT OF A DAY (#2653 state 6). One strokeless line per
               companion column, so a day two devices answered shows both numbers
               instead of the one the election kept. Drawn BEFORE the series' own
@@ -705,7 +773,7 @@ export default function LineChartCard({
           {Array.from({ length: spreadColumns }, (_, column) => (
             <Line
               key={`other-${column}`}
-              type="monotone"
+              type={chartCurve}
               dataKey={`other${column}`}
               stroke="none"
               dot={chartOtherSourceDot(c)}
@@ -716,7 +784,7 @@ export default function LineChartCard({
             />
           ))}
           <Line
-            type="monotone"
+            type={chartCurve}
             dataKey={key}
             // A cut series draws its strokes per run, above; this line keeps the
             // marks and the tooltip and paints no stroke of its own, so the two
@@ -750,6 +818,8 @@ export default function LineChartCard({
                     // Tile sparklines opt into resting points; dense series still
                     // fall through chartLineDot's shared clutter threshold.
                     enabled: showDots && (!sparkline || sparklineDots),
+                    isolated,
+                    inexact,
                   })
             }
             activeDot={chartActiveDot(color)}
@@ -760,69 +830,5 @@ export default function LineChartCard({
       </ResponsiveContainer>
     </div>
   );
-  // Every caption here is an honesty note ABOUT THE MARK, and a sparkline takes
-  // none of them: a tile has no room for a sentence, and its numbers are the
-  // caller's.
-  if (sparkline || (!longRange && !sparse && !trailingHole && !spreadCaption))
-    return chart;
-  return (
-    <div className="min-w-0 max-w-full">
-      {chart}
-      {/* WHOSE READINGS THESE ARE (#2653 state 6). The grey marks are the one thing
-          on the plot a reader has no other way to name, so the caption names them —
-          which source is plotted, how many days another also covered, and who — and
-          takes no side: which number is right is not something the chart knows. */}
-      {spreadCaption && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-source-spread-note"
-        >
-          {spreadCaption}
-        </p>
-      )}
-      {/* The aggregated chart's honesty caption (#1938): each point is a summary,
-          and the plot must say so on the surface, not only in the tooltip. */}
-      {longRange && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-long-range-note"
-        >
-          {longRangeCaption(longRange.grain)}
-        </p>
-      )}
-      {/* The demoted plot's count (#2653 state 5). Same slot, same neutral text
-          token, no chip and no colour — it lets a reader price the stroke, and a
-          badge would make the chart look more considered instead of less
-          certain. */}
-      {sparse && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-sparse-note"
-        >
-          {sparseSeriesCaption(sparse)}
-        </p>
-      )}
-      {/* THE LIVE OUTAGE, NAMED (#2653 state 4). The chart already drew the hole;
-          this says when it started and routes to where the diagnosis lives. It is
-          deliberately NOT a verdict — #2146's quiet-stream judgement stays on
-          Data → Review, and this annotation only explains a gap the reader can
-          already see and offers the one door that leads somewhere about it. */}
-      {trailingHole && lastReadingDate && (
-        <p
-          className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="chart-trailing-outage-note"
-        >
-          {trailingOutageCaption(formatMonthDay(lastReadingDate, formatPrefs))}{" "}
-          ·{" "}
-          <Link
-            href={dataSectionHref("review")}
-            className="text-link"
-            data-testid="chart-trailing-outage-link"
-          >
-            Data → Review
-          </Link>
-        </p>
-      )}
-    </div>
-  );
+  return chart;
 }

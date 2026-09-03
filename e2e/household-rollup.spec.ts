@@ -114,10 +114,11 @@ test.describe("Household view for members (issue #31)", () => {
     // Nav link hidden for a single-profile login… and the group it now lives in
     // (#3079) is EXPANDED first, with an ungated sibling proving the expansion —
     // otherwise this count reads 0 because the group is collapsed and the
-    // requiresMultiProfile gate goes untested while staying green.
+    // requiresMultiProfile gate goes untested while staying green. Trends
+    // (#4965), not History — History left this group for a top-level row.
     const soloNav = memberPage.locator("aside nav");
     await soloNav.getByRole("button", { name: "Plan & review" }).click();
-    await expect(soloNav.getByRole("link", { name: "History" })).toBeVisible();
+    await expect(soloNav.getByRole("link", { name: "Trends" })).toBeVisible();
     await expect(
       memberPage.getByRole("link", { name: "Household" })
     ).toHaveCount(0);

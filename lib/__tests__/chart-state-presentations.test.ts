@@ -20,6 +20,13 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const FUNNEL = "components/LineChartCardInner.tsx";
 const funnel = fs.readFileSync(path.join(REPO, FUNNEL), "utf8");
+// Since #4924 the funnel decides WHAT each caption says and the card's footer
+// band renders it, so the sentences and their markers are read here. The split
+// is the point of that fix — the chart owns the claim, the card owns the layout —
+// and a scan that kept looking for the markup in the funnel would be asserting
+// the arrangement the screenshot was filed about.
+const BAND = "components/ChartCaptionBand.tsx";
+const band = fs.readFileSync(path.join(REPO, BAND), "utf8");
 
 describe("state 1 — one reading is a marker, not a plot", () => {
   it("the funnel itself degrades, so every consumer inherits it", () => {
@@ -82,14 +89,15 @@ describe("states 2 and 4 — the quiet span is visibly quiet, and names itself",
     // the trailing hole, so the line stopped short of the axis edge — mutely.
     expect(funnel).toContain("trailingHole");
     expect(/trailingOutageCaption\(/.test(funnel)).toBe(true);
-    expect(/data-testid="chart-trailing-outage-note"/.test(funnel)).toBe(true);
+    expect(/trailingOutage:/.test(funnel)).toBe(true);
+    expect(/data-testid="chart-trailing-outage-note"/.test(band)).toBe(true);
   });
 
   it("the caption links to where the diagnosis lives, at the chart", () => {
     // Owner ruling 2026-08-13: the label renders at the chart, with the link, and
     // routes to Data → Review rather than re-homing #2146's verdict onto the card.
-    expect(funnel).toContain('dataSectionHref("review")');
-    expect(funnel).toContain("Data → Review");
+    expect(band).toContain('dataSectionHref("review")');
+    expect(band).toContain("Data → Review");
   });
 
   it("the since-date never reaches for an index that may not exist", () => {
@@ -195,8 +203,15 @@ describe("state 3 — an over-limit hole earns a hole", () => {
     // recharts' connectNulls is all-or-nothing, and the declared policy is
     // neither. The runs are what express it.
     expect(/const strokeRuns/.test(funnel)).toBe(true);
-    const runs = funnel.slice(funnel.indexOf("strokeRuns.length > 1 &&"));
-    expect(runs.slice(0, 900)).toContain("connectNulls");
+    // Bounded by the block that FOLLOWS the runs, not by a character count: the
+    // count was an arbitrary 900 and #4924 pushed `connectNulls` past it with a
+    // comment. The companion-mark lines below also carry a `connectNulls`, so the
+    // window still has to end before them or a neighbour could satisfy this.
+    const runs = funnel.slice(
+      funnel.indexOf("strokeRuns.length > 1 &&"),
+      funnel.indexOf("THE SECOND ACCOUNT OF A DAY")
+    );
+    expect(runs).toContain("connectNulls");
   });
 
   it("the runs carry stroke only — one tooltip and one set of marks survive", () => {
@@ -302,7 +317,7 @@ describe("state 6 — two sources on one day are two marks, in the funnel", () =
   it("the funnel asks the shared decision and draws the scaffold's companion", () => {
     expect(/\bsourceSpreadCompanions\(/.test(funnel)).toBe(true);
     expect(/dot=\{chartOtherSourceDot\(c\)\}/.test(funnel)).toBe(true);
-    expect(funnel).toContain('data-testid="chart-source-spread-note"');
+    expect(band).toContain('data-testid="chart-source-spread-note"');
   });
 
   it("only a dated day-grain series plotted on value takes it — never a sparkline or an aggregated plot", () => {

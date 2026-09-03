@@ -1,6 +1,10 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
-import { expectNoClippedContent, openDashboardAll } from "./helpers";
+import {
+  expectNoClippedContent,
+  openDashboardAll,
+  openEverythingFold,
+} from "./helpers";
 import { CONTROL_BOX_PX } from "@/lib/tap-floor-tokens";
 import {
   E2E_LOGIN_ROUTINEUSUAL,
@@ -217,6 +221,15 @@ test.describe("the dashboard's row grammar (#3365/#4076)", () => {
   test("no two blocks in the tail share a title", async ({ page }) => {
     await page.goto("/");
     await openDashboardAll(page);
+    // A CAPPED BAND'S FOLD MUST BE OPEN FIRST (#4065), or its blocks' headers are
+    // real DOM nodes inside a closed native `<details>` — not rendered, so
+    // `allInnerTexts()` reads them as the EMPTY STRING rather than their actual
+    // title, and four genuinely different titles collapse onto one "duplicate"
+    // that was never there. Opening both possible band folds (each a no-op where
+    // the band didn't cap on this render) makes every block's real title readable,
+    // which is what "no two blocks share a title" is actually a claim about.
+    await openEverythingFold(page, "understand");
+    await openEverythingFold(page, "setup");
     const lane = page.getByTestId("dashboard-all-contents");
 
     // Every heading the lane draws BELOW its five group labels: a moment block's

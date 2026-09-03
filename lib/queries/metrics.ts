@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db, today } from "../db";
 import { ALL_ROWS } from "../trends";
 import { cache } from "../request-cache";
 import { snapshotCached } from "../read-snapshot";
@@ -289,6 +289,34 @@ export function getBodyMetricsPage(
   };
 }
 
+// ── THE DAY THAT IS NOT OVER (#4924) ────────────────────────────────────────
+//
+// A daily bucket over a STREAM is a running total until local midnight, and every
+// reader here handed today's half-day back looking exactly like a finished one.
+// On the owner's morning screenshot the Heart Rate card's headline read 59 bpm —
+// an overnight-plus-morning average — off a last point that fell off a cliff, and
+// Active Calories spiked for the same reason in the other direction. The as-of
+// stamp could not help: it is a STALENESS gate, so a today-dated reading is
+// treated as maximally trustworthy exactly when it is least finished.
+//
+// The flag is on the ROW because only the reader knows which day the profile is
+// living in, and it is set only where the bucket genuinely accumulates: an
+// additive daily total and the HR minute aggregate. A point reading taken today
+// (a height, a tape measure) is complete the moment it is taken, and calling it
+// partial would be a second, wrong claim.
+//
+// A metric with no row for today is untouched — there is nothing to qualify.
+
+/** A daily row's day is the profile's own today, so the bucket is still filling. */
+function markPartialToday<T extends { date: string }>(
+  profileId: number,
+  rows: T[]
+): (T & { partial?: true })[] {
+  const last = rows.at(-1);
+  if (!last || last.date !== today(profileId)) return rows;
+  return [...rows.slice(0, -1), { ...last, partial: true as const }];
+}
+
 // The body-metrics rows recorded FOR one day. A different question from a page of
 // history: the Body census asks it to decide whether a day's composition number is
 // one physical reading (and may therefore print that reading's clock) or a blend of
@@ -337,7 +365,7 @@ function getMetricDailyTotalsUncached(
   profileId: number,
   metric: string,
   limitDays = 180
-): { date: string; value: number }[] {
+): { date: string; value: number; partial?: true }[] {
   const priority = getMetricSourcePriority(profileId);
   if (metricAggregation(metric) === "AVG") {
     const chosen = priority[metric];
@@ -367,12 +395,18 @@ function getMetricDailyTotalsUncached(
       .all(profileId, metric, limitDays) as { date: string; value: number }[];
     return rows.reverse();
   }
-  return getAdditiveMetricDailyTotalsBatchWithPriority(
+  // An additive daily total ACCUMULATES through the local day, so today's is a
+  // running number rather than the day's (#4924). The AVG branch above returns
+  // point readings, which are complete when taken.
+  return markPartialToday(
     profileId,
-    [metric],
-    limitDays,
-    priority
-  ).get(metric)!;
+    getAdditiveMetricDailyTotalsBatchWithPriority(
+      profileId,
+      [metric],
+      limitDays,
+      priority
+    ).get(metric)!
+  );
 }
 export const getMetricDailyTotals = snapshotCached(
   "metrics.daily-totals",
@@ -1224,7 +1258,7 @@ function recentHrCutoff(profileId: number, limitDays: number): string | null {
 export function getHrDailySummary(
   profileId: number,
   limitDays = 180
-): { date: string; avg: number; min: number; max: number }[] {
+): { date: string; avg: number; min: number; max: number; partial?: true }[] {
   // Bound the GROUP BY to the limitDays most-recent days-with-data (issue #387).
   // The JS slice below still picks one source per day over exactly this window.
   const cutoff = recentHrCutoff(profileId, limitDays);
@@ -1245,8 +1279,11 @@ export function getHrDailySummary(
   ).sort((a, b) => (a.date < b.date ? -1 : 1));
   // Match SQLite LIMIT semantics used by the other Trends queries: a negative
   // limit is the ALL_ROWS sentinel, not Array.slice(1).
-  return (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
-    ({ date, avg, min, max }) => ({ date, avg, min, max })
+  return markPartialToday(
+    profileId,
+    (limitDays < 0 ? picked : picked.slice(-limitDays)).map(
+      ({ date, avg, min, max }) => ({ date, avg, min, max })
+    )
   );
 }
 
@@ -1259,7 +1296,7 @@ export function getHrDailySummaryInRange(
   profileId: number,
   from?: string,
   to?: string
-): { date: string; avg: number; min: number; max: number }[] {
+): { date: string; avg: number; min: number; max: number; partial?: true }[] {
   if (!from && !to) return getHrDailySummary(profileId, -1);
 
   // One window whichever end is open: an absent bound is resolved to the profile's
@@ -1274,15 +1311,18 @@ export function getHrDailySummaryInRange(
   const { startUtc, endUtc } = localDaySpan(tz, fromDay, toDay);
   const rows = hrDayAggregates(profileId, tz, startUtc, endUtc);
 
-  return pickRowsOneSourcePerDay(
-    rows,
-    resolutionFor(profileId, "heart_rate"),
-    (row) => row.date,
-    (row) => row.source,
-    (row) => row.n
-  )
-    .sort((left, right) => (left.date < right.date ? -1 : 1))
-    .map(({ date, avg, min, max }) => ({ date, avg, min, max }));
+  return markPartialToday(
+    profileId,
+    pickRowsOneSourcePerDay(
+      rows,
+      resolutionFor(profileId, "heart_rate"),
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.n
+    )
+      .sort((left, right) => (left.date < right.date ? -1 : 1))
+      .map(({ date, avg, min, max }) => ({ date, avg, min, max }))
+  );
 }
 
 // The most recent day that has any HR buckets, or null.

@@ -1,6 +1,7 @@
 // Real-schema candidate census and query budget for the dashboard cutover (#3096).
 
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { utcInstant, shiftDateStr } from "@/lib/date";
@@ -704,6 +705,109 @@ describe("actual atomic dashboard manifests", () => {
     }
   });
 
+  // THE COMPLETENESS CONTRACT EXTENDED TO THE BAND CAP (owner ruling 2026-09-03,
+  // #4065). "Keeps drawing the tail it did not drop" above is a claim about the
+  // MANIFEST — the placement the ranker hands the canvas. Since #4065 the Understand
+  // and Setup bands can fold most of what they draw behind a count, so completeness
+  // now also has to survive RENDERING: a candidate the manifest admits must still be
+  // ON THE PAGE once the cap and its fold are applied, open or closed. Real persona
+  // data is what actually exercises a folded family (the unit-tier fixtures in
+  // lib/__tests__/dashboard-placement-canvas.test.ts prove the mechanism in
+  // isolation; this proves it against the same seeded populations #3366's baseline
+  // measured — 74 Understand rows, 65+ Setup rows across six personas).
+  it("keeps every folded Understand/Setup candidate on the page, and the fold is exercised", () => {
+    // THE CAP UNIT, reproduced from DashboardPlacementCanvas.tsx's own `momentBlocks`
+    // grouping key (`candidate.groupKey ?? <unique>`) rather than re-imported, since
+    // that function is private to the component. This is the POSITIVE half of the
+    // measurement below (which bands actually trigger the fold), not the guard
+    // itself — the guard is the presence assertion inside the loop, which reuses
+    // nothing from this count.
+    const blockCount = (
+      group: DashboardEverythingGroup,
+      placements: DashboardPlacementCanvasProps["placements"]
+    ) => {
+      const members = placements.filter(
+        (placement) =>
+          placement.lane === "everything" &&
+          placement.everythingGroup === group &&
+          placement.admitted
+      );
+      return new Set(
+        members.map(
+          (placement) =>
+            placement.candidate.groupKey ?? placement.candidate.candidateId
+        )
+      ).size;
+    };
+
+    // STRIP THE LIVE CONTROLS, KEEP THE STRUCTURE. A real persona's presentations
+    // carry write controls (`DoseConfirmButton`, snooze/dismiss menus) that reach
+    // into app-shell context (toast, quick-entry, offline queue, …) this isolated
+    // render does not have — and does not need, since candidacy and fold placement
+    // never depend on what a control renders. `data-candidate-id` sits on the row
+    // itself, so dropping `value`/`detail`/`control` proves the same completeness
+    // claim without reconstructing the shell.
+    const structuralOnly = (
+      presentations: DashboardPlacementCanvasProps["presentations"]
+    ): DashboardPlacementCanvasProps["presentations"] =>
+      new Map(
+        [...presentations].map(([id, presentation]) => [
+          id,
+          {
+            label: presentation.label,
+            href: presentation.href,
+            actionLabel: presentation.actionLabel,
+            moment: presentation.moment,
+          },
+        ])
+      );
+
+    let cappedBandsExercised = 0;
+    for (const [persona, placements] of manifests) {
+      const presentations = structuralOnly(rowPresentations.get(persona)!);
+      const html = renderToStaticMarkup(
+        createElement(DashboardPlacementCanvas, {
+          dateLabel: "September 3, 2026",
+          placements,
+          presentations,
+          aheadPresentations: structuralOnly(aheadPresentations.get(persona)!),
+          attentionBadgeCount: 0,
+          // A placeholder — some personas carry an open illness episode and the
+          // canvas requires this whenever they do; its content is irrelevant to
+          // the Understand/Setup bands under test.
+          illnessGroupNode: createElement("div"),
+        })
+      );
+      for (const group of ["understand", "setup"] as const) {
+        const admitted = placements.filter(
+          (placement) =>
+            placement.lane === "everything" &&
+            placement.everythingGroup === group &&
+            placement.admitted
+        );
+        // THE POSITIVE CONTROL, per band: nothing in this loop can mean anything on
+        // an empty band.
+        if (admitted.length === 0) continue;
+        for (const placement of admitted)
+          expect(
+            html,
+            `${persona}/${group}: ${placement.candidate.candidateId} missing from the rendered page`
+          ).toContain(`data-candidate-id="${placement.candidate.candidateId}"`);
+        if (blockCount(group, placements) > 3) {
+          cappedBandsExercised += 1;
+          expect(
+            html,
+            `${persona}/${group}: has >3 blocks but rendered no fold`
+          ).toContain(`data-testid="dashboard-everything-${group}-fold"`);
+        }
+      }
+    }
+    // The loop above is satisfiable by a population that never exceeds the cap
+    // anywhere — the seeded personas are what makes the fold assertion above mean
+    // something rather than never firing.
+    expect(cappedBandsExercised).toBeGreaterThan(0);
+  });
+
   // THE TAIL'S GENERIC WRITE CARDS ARE GONE, AND THE SHEET HAS THEM (#3366/#4064).
   //
   // Owner ruling: the quick logger is the app's one quick-write surface, so an
@@ -1055,6 +1159,21 @@ describe("actual atomic dashboard manifests", () => {
   // none carries an open illness, and /medications is unmoved: med-data now reads the
   // same rows through the one loader instead of assembling its own copy.
   const QUERY_BASELINE: Record<string, number> = {
+    // +1 on four personas and +3 on two (#4956): the attention read now also asks
+    // whether a live source is DROPPING a record type. That is one scan of this
+    // profile's CONNECTED sources, plus one bounded window of recent runs per
+    // connected source that declares a silence tolerance. Four personas have no such
+    // source and pay the scan alone; `marathon-runner` and `biohacker` each have two
+    // (health-connect and strava) and pay a window read for each, hence +3. Counted
+    // per persona in this file's own statement trace: the scan 1 everywhere, the
+    // window 0/2/0/0/0/2. Bounded by the number of connected sources and never by
+    // history — DROPPING_RUN_CAP caps what each window read returns.
+    //
+    // RE-MEASURED ON THE MERGED TREE after #4953's +1/+4 landed, and the +1/+3 came
+    // back unchanged on every persona, so the two compose. Re-measuring was not a
+    // formality here: on three personas this branch's +1 and #4953's +1 produced the
+    // SAME number from the same base, so git auto-merged them as one change and the
+    // merge was quietly a query short on each.
     // +2 each (#2921): the Vision/Dental relevance bits now ask the SPECIALTY LENS
     // as well as their own table, so a profile whose only eye care is VISITS stops
     // having its pane hidden. That is one representative-id encounters read plus
@@ -1107,21 +1226,29 @@ describe("actual atomic dashboard manifests", () => {
     // asking, not answering. A persona that DID ride today pays the reads that produce
     // the sentence, which is the cost of having one rather than of looking.
     //
-    // RE-MEASURED ON THE MERGED TREE against #4299's numbers, which had themselves been
-    // measured against #4775's: the same +1 came back on all six, biohacker included.
-    // Three independent moves in this baseline today and each composes with the others
-    // — measured each time, never summed.
-    bodybuilder: 227,
-    "marathon-runner": 226,
-    household: 276,
-    pregnant: 223,
-    "diabetic-cgm": 234,
+    // RE-MEASURED ON THE MERGED TREE against #4967's numbers, which were themselves
+    // measured against #4299's, which were measured against #4775's: the same +1 came
+    // back on all six every time. Four independent moves in this baseline today and
+    // each composes with the others — measured each time, never summed.
+    //
+    // AND NEVER TAKEN FROM THE MERGE. On the merge against #4967, four of these six
+    // numbers were IDENTICAL on both sides while meaning different things — each side
+    // had added its own +1 to a different base — so git auto-merged them as agreement
+    // and only flagged the two that happened to differ. Taking that merge would have
+    // left four personas a query short with nothing to show for it. The numbers below
+    // came from running the gate on the merged tree, which is the only thing that can
+    // tell "we agree" from "we both landed on 227 by coincidence".
+    bodybuilder: 228,
+    "marathon-runner": 229,
+    household: 277,
+    pregnant: 224,
+    "diabetic-cgm": 235,
     // +9 (#4424 ruling 7): Upcoming's practice rows mount the shared row control, so
     // the row now resolves what that control renders — `getTrackedPractices`, which is
     // one grouped today-tally and one live sweep however many practices there are,
     // plus the usual-duration vote per practice. Assembling the same four fields
     // per-target instead measured +13.
-    biohacker: 252,
+    biohacker: 255,
     // −1 each (#4775): the paired-observation registry gained a third alcohol entry
     // (`alcohol-overnight-hr`), which reads the SAME `food_daily_totals` window the
     // other two already read — and the factor read happens before each entry's

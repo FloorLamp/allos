@@ -35,17 +35,55 @@
 export type EndurancePlanDiscipline = "run" | "ride" | "swim";
 export type EndurancePlanStatus = "active" | "completed" | "abandoned";
 
-// A stored plan row (the goal only — the trajectory is never persisted).
+// The event KIND (#3285) is OPEN — free text, no CHECK on the column and no union
+// here. These are the words the form offers as a datalist, not the words the store
+// accepts: a club with a fifth name for what it does should not need a migration.
+// What a row is when nobody said otherwise — and what every pre-#3285 row IS, so
+// the migration's backfill and the create path agree on one word.
+export const DEFAULT_EVENT_KIND = "race";
+
+export const EVENT_KIND_SUGGESTIONS: readonly string[] = [
+  "race",
+  "competition",
+  "meet",
+  "tournament",
+];
+
+// A stored event row (the goal only — the trajectory is never persisted).
+//
+// `discipline` and `targetDistanceKm` are the CARDIO PAIR (#3285). They are null
+// together on a lifting meet or a tournament, and present together on the endurance
+// plan #839 shipped. Nothing narrows them individually: `coachedPlan` below is the
+// one door, so no function downstream of it needs a guard for "has a discipline and
+// nothing to aim at" — that state cannot reach them.
 export interface EndurancePlan {
   id: number;
+  kind: string;
   eventName: string | null;
-  discipline: EndurancePlanDiscipline;
+  discipline: EndurancePlanDiscipline | null;
   eventDate: string; // YYYY-MM-DD
-  targetDistanceKm: number;
+  targetDistanceKm: number | null;
   targetTimeSec: number | null;
   status: EndurancePlanStatus;
   notes: string | null;
   completedOn: string | null;
+}
+
+// An event the trajectory engine can coach: the cardio pair is present. Every
+// consumer of an `EndurancePlanCard` — the arm, the long-session finding, the
+// coaching engine, the recommendation — reads through this type and so kept its
+// signature unchanged when the columns went nullable.
+export type CoachedEndurancePlan = EndurancePlan & {
+  discipline: EndurancePlanDiscipline;
+  targetDistanceKm: number;
+};
+
+// The ONE narrowing door. Null for an event with no cardio pair — a meet, a
+// tournament, a race whose distance the user never entered.
+export function coachedPlan(plan: EndurancePlan): CoachedEndurancePlan | null {
+  const { discipline, targetDistanceKm } = plan;
+  if (discipline == null || targetDistanceKm == null) return null;
+  return { ...plan, discipline, targetDistanceKm };
 }
 
 export const ENDURANCE_DISCIPLINES: readonly EndurancePlanDiscipline[] = [
@@ -225,13 +263,29 @@ function taperFactor(pos: number): number {
 // volume (recompute-from-actuals), applies the 10% ramp cap, inserts recovery weeks,
 // and a distance-scaled taper; if the date is too soon it returns feasible=false
 // with the safe trajectory (never an unsafe ramp).
+// Whole training weeks from today to the event's week, floored at 0 (an event this
+// week counts as "event week"). Extracted so an event with NO trajectory — a lifting
+// meet — counts down by the same rule as one with; the countdown is a property of the
+// calendar, not of the coaching arm.
+export function weeksToEvent(
+  todayStr: string,
+  eventDate: string,
+  weekStart = 0
+): number {
+  return Math.max(
+    0,
+    weeksBetween(
+      startOfWeek(todayStr, weekStart),
+      startOfWeek(eventDate, weekStart)
+    )
+  );
+}
+
 export function computeEnduranceTrajectory(
   input: EnduranceTrajectoryInput
 ): EnduranceTrajectory {
   const weekStart = input.weekStart ?? 0;
-  const todayWeek = startOfWeek(input.today, weekStart);
-  const eventWeek = startOfWeek(input.eventDate, weekStart);
-  const eventWeekIndex = Math.max(0, weeksBetween(todayWeek, eventWeek));
+  const eventWeekIndex = weeksToEvent(input.today, input.eventDate, weekStart);
 
   const peakLong = peakLongSessionKm(input.discipline, input.targetDistanceKm);
   // Weekly volume needed to support the peak long session (never below current).
@@ -389,7 +443,7 @@ export interface EnduranceArm {
 // week's ACTUAL logged progress. A pure formatter combines the (stored) plan, the
 // (derived) trajectory, and the (gathered) actuals — one computation every surface reads.
 export interface EndurancePlanCard {
-  plan: EndurancePlan;
+  plan: CoachedEndurancePlan;
   trajectory: EnduranceTrajectory;
   // trajectory.weeks[0] — THIS week's prescription (target volume + long session).
   thisWeek: EnduranceWeek;
@@ -400,15 +454,67 @@ export interface EndurancePlanCard {
   remainingKm: number;
 }
 
-function planTitle(plan: EndurancePlan): string {
-  return plan.eventName?.trim()
-    ? plan.eventName.trim()
-    : `${round1(plan.targetDistanceKm)} km ${disciplineLabel(plan.discipline)}`;
+// The display name for ANY event (#3285): the user's name where they gave one, else
+// the cardio pair spelled out, else the kind. One rule, so the Overview card, the
+// completion milestone and the timeline row cannot drift apart.
+// Structural, not `EndurancePlan`, so the timeline's raw SQL row reaches the SAME
+// rule without being shaped into a whole plan first. Spelling the fallback twice is
+// exactly how the card and the timeline row would drift apart.
+export function eventTitle(
+  plan: {
+    kind: string;
+    eventName: string | null;
+    discipline: EndurancePlanDiscipline | null;
+    targetDistanceKm: number | null;
+  },
+  formatDistanceKm: (km: number) => string = defaultKm
+): string {
+  const named = plan.eventName?.trim();
+  if (named) return named;
+  const { discipline, targetDistanceKm } = plan;
+  if (discipline != null && targetDistanceKm != null)
+    return `${formatDistanceKm(targetDistanceKm)} ${disciplineLabel(discipline)}`;
+  return eventKindLabel(plan.kind);
+}
+
+// Canonical km, for every caller with no viewer to format for. The Upcoming rows
+// pass the viewer's pref instead (#1019) — and BOTH the title and the detail take
+// it, because an unnamed event's title CONTAINS a distance: threading it into only
+// one of them is the regression `upcoming-display-units.test.ts` caught here.
+const defaultKm = (km: number) => `${round1(km)} km`;
+
+// The one-line descriptor beside the title: the cardio pair where there is one, else
+// the open kind. Same pairing rule, same two callers as `eventTitle`.
+export function eventDetail(
+  plan: {
+    kind: string;
+    discipline: EndurancePlanDiscipline | null;
+    targetDistanceKm: number | null;
+  },
+  formatDistanceKm: (km: number) => string = defaultKm
+): string {
+  const { discipline, targetDistanceKm } = plan;
+  return discipline != null && targetDistanceKm != null
+    ? `${disciplineLabel(discipline)} · ${formatDistanceKm(targetDistanceKm)}`
+    : eventKindLabel(plan.kind);
+}
+
+// An open kind rendered for a human: "race" → "Race", "time trial" → "Time trial".
+// Sentence case only — the store holds whatever the user typed and this must not
+// pretend to know more words than it does.
+export function eventKindLabel(kind: string): string {
+  const t = kind.trim();
+  if (!t) return "Event";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function planTitle(plan: CoachedEndurancePlan): string {
+  return eventTitle(plan);
 }
 
 // Assemble the plan card from a plan, its trajectory, and this week's actuals.
 export function buildEndurancePlanCard(a: {
-  plan: EndurancePlan;
+  plan: CoachedEndurancePlan;
   trajectory: EnduranceTrajectory;
   actualVolumeKm: number;
   actualLongSessionKm: number;

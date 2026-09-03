@@ -86,10 +86,11 @@ test.describe("life-stage gates past substance use (#2807)", () => {
       // #3079 made Longevity a child of the collapsed "Plan & review" group. Expand
       // it — and prove the expansion with an ungated sibling — so this absence is
       // still the ADULT-ONLY gate being observed and not a closed disclosure.
+      // Trends (#4965), not History — History left this group for a top-level row.
       const sidebarNav = page.locator("aside nav");
       await sidebarNav.getByRole("button", { name: "Plan & review" }).click();
       await expect(
-        sidebarNav.getByRole("link", { name: "History" })
+        sidebarNav.getByRole("link", { name: "Trends" })
       ).toBeVisible();
       await expect(page.getByRole("link", { name: "Longevity" })).toHaveCount(
         0

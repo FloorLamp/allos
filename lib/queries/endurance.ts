@@ -9,11 +9,14 @@ import { startOfWeekStr } from "../date";
 import { parseComponents, type ActivityComponent } from "../types";
 import {
   buildEndurancePlanCard,
+  coachedPlan,
   computeEnduranceTrajectory,
   detectLongSessionKm,
   disciplineForActivityName,
   enduranceArmFor,
+  weeksToEvent,
   type EnduranceArm,
+  type CoachedEndurancePlan,
   type EndurancePlan,
   type EndurancePlanCard,
   type EndurancePlanDiscipline,
@@ -123,7 +126,7 @@ function disciplineVolume(
 // The plan card for one plan (plan + recomputed trajectory + this-week actuals).
 export function getEndurancePlanCard(
   profileId: number,
-  plan: EndurancePlan,
+  plan: CoachedEndurancePlan,
   todayStr: string
 ): EndurancePlanCard {
   const vol = disciplineVolume(profileId, plan.discipline, todayStr);
@@ -151,9 +154,46 @@ export function getEndurancePlanCards(
   profileId: number,
   todayStr = today(profileId)
 ): EndurancePlanCard[] {
+  return getEnduranceEvents(profileId, todayStr)
+    .map((e) => e.card)
+    .filter((c): c is EndurancePlanCard => c !== null);
+}
+
+// An upcoming ACTIVE event and its trajectory, if it has one (#3285). This is the
+// wider set `getEndurancePlanCards` narrows: EVERY active future event, with a card
+// only where the cardio pair makes one derivable. A lifting meet is a real row here
+// and a null card — not a missing event — which is what lets the Overview render it
+// beside the marathon without a second component or a second store.
+export interface EnduranceEvent {
+  plan: EndurancePlan;
+  card: EndurancePlanCard | null;
+  // The countdown, computed here for EVERY event rather than read off the trajectory,
+  // so a meet counts down by the same rule as a marathon. Identical to
+  // `card.trajectory.weeksToEvent` where a card exists — the trajectory calls the same
+  // pure helper with the same profile week-start.
+  weeksToEvent: number;
+}
+
+export function getEnduranceEvents(
+  profileId: number,
+  todayStr = today(profileId)
+): EnduranceEvent[] {
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= todayStr)
-    .map((p) => getEndurancePlanCard(profileId, p, todayStr));
+    .map((p) => {
+      const coached = coachedPlan(p);
+      return {
+        plan: p,
+        card: coached
+          ? getEndurancePlanCard(profileId, coached, todayStr)
+          : null,
+        weeksToEvent: weeksToEvent(
+          todayStr,
+          p.eventDate,
+          getWeekStart(profileId)
+        ),
+      };
+    });
 }
 
 // The plan-aware cardio ARM for the recommendation model (#221) — the soonest active

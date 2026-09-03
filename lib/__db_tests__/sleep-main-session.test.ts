@@ -159,7 +159,10 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     const totals = getMetricDailyTotals(profileId, "sleep_min").filter(
       (r) => r.date === night2Day
     );
-    expect(totals).toEqual([{ date: night2Day, value: 390 }]);
+    // `partial` because that wake-day is the profile's TODAY and the frozen clock
+    // is mid-day (#4924): another nap could still land in this very total, which
+    // is the same accumulation this test exists to warn about.
+    expect(totals).toEqual([{ date: night2Day, value: 390, partial: true }]);
   });
 
   it("lastNightMin is the overnight session (300), not the nap-summed 390", () => {

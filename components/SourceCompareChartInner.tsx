@@ -11,10 +11,12 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import {
-  ChartLegend,
   chartActiveDot,
   chartAxisProps,
+  chartCurve,
   chartGridProps,
+  chartInstantAxisProps,
+  ChartLegend,
   chartLineDot,
   chartMarkMotion,
   chartTooltipProps,
@@ -22,14 +24,7 @@ import {
 } from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
-import {
-  dateToEpoch,
-  epochToISO,
-  formatTimeTick,
-  spansYearBoundary,
-  timeAxisDomain,
-  timeAxisTicks,
-} from "@/lib/chart-time-axis";
+import { dateToEpoch, epochToISO } from "@/lib/chart-time-axis";
 import { EmptyState } from "@/components/ui";
 
 // Multi-series line chart grouped by SOURCE (issue #14): one line per provider
@@ -81,9 +76,7 @@ export default function SourceCompareChartInner({
     return row;
   });
   const labelByKey = new Map(series.map((s) => [s.key, s.label]));
-  const xDomain = timeAxisDomain(dates);
-  const xTicks = timeAxisTicks(xDomain);
-  const withYear = spansYearBoundary(xDomain);
+  const xDates = dates;
 
   if (rows.length === 0) {
     return <EmptyState message="No data yet" />;
@@ -105,15 +98,7 @@ export default function SourceCompareChartInner({
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid {...chartGridProps(c)} />
-          <XAxis
-            dataKey="t"
-            type="number"
-            scale="time"
-            domain={xDomain ?? ["auto", "auto"]}
-            ticks={xTicks.length ? xTicks : undefined}
-            tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            {...chartAxisProps(c)}
-          />
+          <XAxis {...chartInstantAxisProps(c, xDates)} />
           <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
           <Tooltip
             formatter={(v, name) => [
@@ -128,7 +113,7 @@ export default function SourceCompareChartInner({
           {series.map((s) => (
             <Line
               key={s.key}
-              type="monotone"
+              type={chartCurve}
               dataKey={s.key}
               stroke={s.color}
               strokeWidth={2}

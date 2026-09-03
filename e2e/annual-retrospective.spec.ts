@@ -106,8 +106,9 @@ test("the year is reachable without spending a permanent nav row (#2762)", async
     0
   );
   // …and the group DID expand, so the absence above is the ruling and not a shut
-  // disclosure: an ungated sibling proves it.
-  await expect(nav.getByRole("link", { name: "History" })).toBeVisible();
+  // disclosure: an ungated sibling proves it. Trends (#4965), not History — History
+  // left this group for a top-level row and would be visible with the group shut.
+  await expect(nav.getByRole("link", { name: "Trends" })).toBeVisible();
 
   // Reachable, through the palette that now carries it.
   const input = await openCommandPalette(page);

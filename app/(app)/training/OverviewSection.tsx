@@ -70,7 +70,13 @@ import {
 } from "@/lib/situations";
 import { exerciseInjuryVerdict, injuryReviewDue } from "@/lib/injury-model";
 import { resolveTrainingTemper } from "@/lib/niggle-model";
-import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
+import { getEnduranceEvents, getEnduranceArm } from "@/lib/queries";
+import {
+  disciplineLabel,
+  eventKindLabel,
+  eventTitle,
+  EVENT_KIND_SUGGESTIONS,
+} from "@/lib/endurance-plan";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
 import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
@@ -335,45 +341,46 @@ export default async function OverviewSection() {
     ? getActivitySuggestions(profile.id).lifts
     : [];
 
-  // Endurance event plans (#839): the active plans' recomputed this-week trajectory,
-  // shaped into the display view (distances formatted server-side in the login's unit).
-  const endurancePlans: EndurancePlanView[] = getEndurancePlanCards(
+  // Events (#839, generalized by #3285): every ACTIVE upcoming event, with its
+  // recomputed this-week trajectory where the cardio pair makes one derivable —
+  // shaped into the display view (distances formatted server-side in the login's
+  // unit). An event with no discipline (a lifting meet, a tournament) renders the
+  // same card without the trajectory block, which is why the view's trajectory half
+  // is optional rather than the card being a second component.
+  const endurancePlans: EndurancePlanView[] = getEnduranceEvents(
     profile.id,
     todayStr
-  ).map((c) => {
-    const t = c.trajectory;
-    return {
-      id: c.plan.id,
-      title:
-        c.plan.eventName?.trim() ||
-        `${fmtDistance(c.plan.targetDistanceKm, du)} ${c.plan.discipline}`,
-      disciplineLabel:
-        c.plan.discipline === "run"
-          ? "Run"
-          : c.plan.discipline === "ride"
-            ? "Ride"
-            : "Swim",
-      eventDate: formatRelativeDate(c.plan.eventDate, todayStr),
-      weeksToEvent: t.weeksToEvent,
-      feasible: t.feasible,
-      message: t.message,
-      targetVolume: fmtDistance(c.thisWeek.targetVolumeKm, du),
-      actualVolume: fmtDistance(c.actualVolumeKm, du),
+  ).map(({ plan, card, weeksToEvent }) => ({
+    id: plan.id,
+    title: eventTitle(plan),
+    badge: plan.discipline
+      ? disciplineLabel(plan.discipline)
+      : eventKindLabel(plan.kind),
+    eventDate: formatRelativeDate(plan.eventDate, todayStr),
+    weeksToEvent,
+    trajectory: card && {
+      weeksToEvent: card.trajectory.weeksToEvent,
+      feasible: card.trajectory.feasible,
+      message: card.trajectory.message,
+      targetVolume: fmtDistance(card.thisWeek.targetVolumeKm, du),
+      actualVolume: fmtDistance(card.actualVolumeKm, du),
       progressPct: Math.max(
         0,
         Math.min(
           100,
-          c.thisWeek.targetVolumeKm > 0
-            ? Math.round((c.actualVolumeKm / c.thisWeek.targetVolumeKm) * 100)
+          card.thisWeek.targetVolumeKm > 0
+            ? Math.round(
+                (card.actualVolumeKm / card.thisWeek.targetVolumeKm) * 100
+              )
             : 0
         )
       ),
-      longSession: fmtDistance(c.thisWeek.longSessionKm, du),
-      longSessionDone: c.longSessionDone,
-      hasLongSession: c.thisWeek.longSessionKm > 0,
-      notes: c.plan.notes,
-    };
-  });
+      longSession: fmtDistance(card.thisWeek.longSessionKm, du),
+      longSessionDone: card.longSessionDone,
+      hasLongSession: card.thisWeek.longSessionKm > 0,
+    },
+    notes: plan.notes,
+  }));
   const sessionCard = session
     ? {
         label:
@@ -652,7 +659,11 @@ export default async function OverviewSection() {
         />
       )}
 
-      <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
+      <EndurancePlanBar
+        plans={endurancePlans}
+        distanceUnit={du}
+        kindSuggestions={EVENT_KIND_SUGGESTIONS}
+      />
 
       {/* 6. RECENT CARDIO PRs — strength progress is already visible in the
           standards ladder; this remains the cardio hand-off to Analyze. */}
