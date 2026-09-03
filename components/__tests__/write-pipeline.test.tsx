@@ -154,7 +154,9 @@ describe("the client write pipeline (#3276)", () => {
       expect(flow).toBe("dose");
       expect(Date.parse(payload.clientTakenAt)).toBeGreaterThanOrEqual(before);
       expect(Date.parse(payload.clientTakenAt)).toBeLessThanOrEqual(after);
-      expect(date).toBe(dateStrInTz(PROFILE_TZ, new Date(payload.clientTakenAt)));
+      expect(date).toBe(
+        dateStrInTz(PROFILE_TZ, new Date(payload.clientTakenAt))
+      );
       expect(mocks.toast).toHaveBeenCalledWith(
         "Dose saved offline — will sync when you reconnect."
       );
