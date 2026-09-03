@@ -2138,30 +2138,33 @@ export default function FoodLogBar({
                   names the day it will write to, so the one thing the door promises is
                   the one thing the panel does. */}
               <span>
-                Add{activeDate === today ? "" : ` to ${activeDay?.label ?? activeDate}`}
+                Add
+                {activeDate === today
+                  ? ""
+                  : ` to ${activeDay?.label ?? activeDate}`}
               </span>
             </button>
           )}
           <div hidden={folds && !addOpen} data-testid="food-add-panel">
-          {/* WHERE THE NEXT TAP LANDS. This was the Meals cards' second job — they
+            {/* WHERE THE NEXT TAP LANDS. This was the Meals cards' second job — they
               were a totals display AND the slot picker — and only the picker half
               belongs with the add list. The totals are the ledger's day census
               above; this is the choice, next to the rows that act on it. */}
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="section-label">Add to {activeSlot}</h3>
-            <SegmentedControl
-              options={FOOD_SLOTS.map((meal) => ({
-                value: meal,
-                label: meal,
-                testId: `food-slot-${meal.toLowerCase()}`,
-              }))}
-              value={activeSlot}
-              onChange={setActiveSlot}
-              ariaLabel="Meal to add to"
-              testId="food-meal-slots"
-            />
-          </div>
-          {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="section-label">Add to {activeSlot}</h3>
+              <SegmentedControl
+                options={FOOD_SLOTS.map((meal) => ({
+                  value: meal,
+                  label: meal,
+                  testId: `food-slot-${meal.toLowerCase()}`,
+                }))}
+                value={activeSlot}
+                onChange={setActiveSlot}
+                ariaLabel="Meal to add to"
+                testId="food-meal-slots"
+              />
+            </div>
+            {/* TAP WRITES NOW, AND THE TIME IS A FOLD (#3273's ruled shape, #3987).
               The control used to stand open above the rows on every visit; it is a
               question most taps never answer, so it collapses behind one affordance
               and the bare tap keeps its meaning.
@@ -2177,61 +2180,61 @@ export default function FoodLogBar({
               8pm — and clearing it returns to untimed slot taps. The day is FIXED to the
               selected one either way, so the pair rule holds by construction and the
               hour offer is that day's own. */}
-          <Disclosure
-            data-testid="food-eating-time"
-            open={whenOpen}
-            onToggle={(e) => setWhenOpen(e.currentTarget.open)}
-            className="mb-2.5"
-          >
-            <summary
-              data-testid="food-when-summary"
-              className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
+            <Disclosure
+              data-testid="food-eating-time"
+              open={whenOpen}
+              onToggle={(e) => setWhenOpen(e.currentTarget.open)}
+              className="mb-2.5"
             >
-              <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-              <span>{statingTime ? "Happened earlier?" : "Set time?"}</span>
-              {statedTime && (
-                <span
-                  data-testid="food-when-set"
-                  className="font-semibold text-slate-700 tabular-nums dark:text-slate-200"
-                >
-                  {statedTime}
-                </span>
-              )}
-            </summary>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <WhenControl
-                mode="state"
-                grain="hour"
-                value={whenForDay}
-                onChange={setEatingWhen}
-                minDate={activeDate}
-                maxDate={activeDate}
-                timeLabel="When the servings you add were eaten"
-                testId="food-when"
-              />
-              <span
-                data-testid="food-eating-time-note"
-                className="w-full text-xs text-slate-500 dark:text-slate-400"
+              <summary
+                data-testid="food-when-summary"
+                className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-slate-500 [&::-webkit-details-marker]:hidden dark:text-slate-400"
               >
-                {statedTime
-                  ? `Servings you add are recorded as eaten at ${statedTime}${
-                      // The filing named OUT LOUD when it leaves the active tab
-                      // (#2269): a serving stating 19:00 from the Morning tab lands
-                      // in Evening, and the answer text says so before the tap does.
-                      (() => {
-                        const filing = statedFilingSlot();
-                        return filing && filing !== activeSlot
-                          ? ` and land in ${filing}`
-                          : "";
-                      })()
-                    }.`
-                  : statingTime
-                    ? "Servings you add are recorded with no eating time until you say one."
-                    : `Servings you add land in ${activeSlot} with no time until you set one.`}
-              </span>
-            </div>
-          </Disclosure>
-          {/* The regularity shortcut (#2380). Present only when the ledger says this
+                <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                <span>{statingTime ? "Happened earlier?" : "Set time?"}</span>
+                {statedTime && (
+                  <span
+                    data-testid="food-when-set"
+                    className="font-semibold text-slate-700 tabular-nums dark:text-slate-200"
+                  >
+                    {statedTime}
+                  </span>
+                )}
+              </summary>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <WhenControl
+                  mode="state"
+                  grain="hour"
+                  value={whenForDay}
+                  onChange={setEatingWhen}
+                  minDate={activeDate}
+                  maxDate={activeDate}
+                  timeLabel="When the servings you add were eaten"
+                  testId="food-when"
+                />
+                <span
+                  data-testid="food-eating-time-note"
+                  className="w-full text-xs text-slate-500 dark:text-slate-400"
+                >
+                  {statedTime
+                    ? `Servings you add are recorded as eaten at ${statedTime}${
+                        // The filing named OUT LOUD when it leaves the active tab
+                        // (#2269): a serving stating 19:00 from the Morning tab lands
+                        // in Evening, and the answer text says so before the tap does.
+                        (() => {
+                          const filing = statedFilingSlot();
+                          return filing && filing !== activeSlot
+                            ? ` and land in ${filing}`
+                            : "";
+                        })()
+                      }.`
+                    : statingTime
+                      ? "Servings you add are recorded with no eating time until you say one."
+                      : `Servings you add land in ${activeSlot} with no time until you set one.`}
+                </span>
+              </div>
+            </Disclosure>
+            {/* The regularity shortcut (#2380). Present only when the ledger says this
               window has a habit AND at least two of it are still unlogged today — one
               group is already one tap on the row below, so the offer would cost more to
               read than it saves. The label NAMES every group it will write, and both it
@@ -2241,35 +2244,35 @@ export default function FoodLogBar({
               counts the scoop as a member (#4379/#4765) — `data-groups` stays catalog
               slugs alone, because the reserved key is a member of the NAME and never of
               the posted group list. */}
-          {usualFoodStands && (
-            <button
-              type="button"
-              data-testid="food-usual-offer"
-              data-groups={usualGroups.map((g) => g.slug).join(",")}
-              data-doses={doseIds.join(",")}
-              aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
-              disabled={usualLedger.blocked()}
-              onClick={() => void logUsual()}
-              className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
-            >
-              <IconPlus
-                className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
-                stroke={2}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  Your usual {activeSlot}
+            {usualFoodStands && (
+              <button
+                type="button"
+                data-testid="food-usual-offer"
+                data-groups={usualGroups.map((g) => g.slug).join(",")}
+                data-doses={doseIds.join(",")}
+                aria-label={`Log your usual ${activeSlot}: ${usualPhrase}`}
+                disabled={usualLedger.blocked()}
+                onClick={() => void logUsual()}
+                className="mb-2.5 flex w-full items-center gap-3 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 text-left transition hover:bg-brand-50 disabled:opacity-50 dark:border-brand-900 dark:bg-brand-950/40 dark:hover:bg-brand-950/60"
+              >
+                <IconPlus
+                  className="h-5 w-5 shrink-0 text-brand-700 dark:text-brand-300"
+                  stroke={2}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    Your usual {activeSlot}
+                  </span>
+                  <span
+                    data-testid="food-usual-names"
+                    className="block truncate text-xs text-slate-600 dark:text-slate-300"
+                  >
+                    {usualPhrase}
+                  </span>
                 </span>
-                <span
-                  data-testid="food-usual-names"
-                  className="block truncate text-xs text-slate-600 dark:text-slate-300"
-                >
-                  {usualPhrase}
-                </span>
-              </span>
-            </button>
-          )}
-          {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
+              </button>
+            )}
+            {/* THE OVERFLOW DISCLOSURE IS A CITIZEN OF THIS LIST (#3362), not a
               section after it. It does the same job as the rows above it —
               reach a food-group row — so it wears the same card idiom and sits
               at the list's own `space-y-1.5` rhythm. Living INSIDE the list
@@ -2278,8 +2281,8 @@ export default function FoodLogBar({
               and used to sit between the rows and this control. `min-h-14`
               lifts it from the 42px `py-2.5` control it was — under the app's
               own 44px `tap-target` floor — to the food rows' height. */}
-          <div className="space-y-1.5">
-            {/* THE QUICK ROWS HAVE A NAME, and the reason is the disclosure below
+            <div className="space-y-1.5">
+              {/* THE QUICK ROWS HAVE A NAME, and the reason is the disclosure below
                 them. Since #3362 the overflow control is a citizen of this same
                 list, so its rows — collapsed, but in the DOM — sit under
                 `food-quick-log` too. Three specs had to spell out an exclusion to
@@ -2298,70 +2301,73 @@ export default function FoodLogBar({
                 gaps between these children and the gap from this element to the
                 disclosure are the same 6px they were when all of them were
                 siblings. */}
-            <div data-testid="food-quick-rows" className="space-y-1.5">
-              {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
-              {proteinQuickAdd && (
-                <ProteinQuickAdd
-                  key={activeDate}
-                  today={activeDate}
-                  initialGrams={
-                    proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
-                  }
-                  lastPreset={proteinQuickAdd.lastPreset}
-                />
-              )}
-              {proteinSplit < quickGroups.length &&
-                rows(quickGroups.slice(proteinSplit))}
-            </div>
-            {moreGroups.length > 0 && (
-              <Disclosure data-testid="food-more-groups">
-                <summary
-                  data-testid="food-more-groups-summary"
-                  // `min-h-12` (48px), NOT `min-h-14`: the rows this control extends
-                  // are one dense line now (#3987) and it has to be the same height as
-                  // them, which mobile-ui-polish measures as a RELATIONSHIP. It still
-                  // clears the 44px tap floor on its own.
-                  className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200 sm:w-72"
-                >
-                  {/* "ALL GROUPS ›" (#4477's blessed door): the tail of the ranking,
+              <div data-testid="food-quick-rows" className="space-y-1.5">
+                {proteinSplit > 0 && rows(quickGroups.slice(0, proteinSplit))}
+                {proteinQuickAdd && (
+                  <ProteinQuickAdd
+                    key={activeDate}
+                    today={activeDate}
+                    initialGrams={
+                      proteinQuickAdd.initialGramsByDate[activeDate] ?? 0
+                    }
+                    lastPreset={proteinQuickAdd.lastPreset}
+                  />
+                )}
+                {proteinSplit < quickGroups.length &&
+                  rows(quickGroups.slice(proteinSplit))}
+              </div>
+              {moreGroups.length > 0 && (
+                <Disclosure data-testid="food-more-groups">
+                  <summary
+                    data-testid="food-more-groups-summary"
+                    // `min-h-12` (48px), NOT `min-h-14`: the rows this control extends
+                    // are one dense line now (#3987) and it has to be the same height as
+                    // them, which mobile-ui-polish measures as a RELATIONSHIP. It still
+                    // clears the 44px tap floor on its own.
+                    className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-(--border) bg-surface px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-(--ghost-hover) [&::-webkit-details-marker]:hidden dark:text-slate-200 sm:w-72"
+                  >
+                    {/* "ALL GROUPS ›" (#4477's blessed door): the tail of the ranking,
                       named as the whole catalog it opens rather than as a remainder
                       count, because the ranked chips above it are no longer a list this
                       is the rest of. */}
-                  <span>All groups</span>
-                  <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                </summary>
-                {/* The expanded tier sections keep their own layout — this
+                    <span>All groups</span>
+                    <IconChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                  </summary>
+                  {/* The expanded tier sections keep their own layout — this
                     change is about the collapsed control's size and rhythm. */}
-                <div className="mt-4 space-y-5">
-                  {TIER_ORDER.map((tier) => {
-                    const tierGroups = moreGroups.filter(
-                      (g) => g.tier === tier
-                    );
-                    if (tierGroups.length === 0) return null;
-                    return (
-                      <div key={tier}>
-                        <h3 className="mb-2 section-label">
-                          {TIER_LABEL[tier]}
-                        </h3>
-                        {rows(tierGroups)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </Disclosure>
+                  <div className="mt-4 space-y-5">
+                    {TIER_ORDER.map((tier) => {
+                      const tierGroups = moreGroups.filter(
+                        (g) => g.tier === tier
+                      );
+                      if (tierGroups.length === 0) return null;
+                      return (
+                        <div key={tier}>
+                          <h3 className="mb-2 section-label">
+                            {TIER_LABEL[tier]}
+                          </h3>
+                          {rows(tierGroups)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Disclosure>
+              )}
+            </div>
+            {folds && (
+              <button
+                type="button"
+                data-testid="food-add-close"
+                onClick={() => setAddOpen(false)}
+                className="mt-2 flex min-h-11 items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"
+              >
+                <IconChevronDown
+                  className="h-3.5 w-3.5 rotate-180"
+                  stroke={2}
+                />
+                Done adding
+              </button>
             )}
-          </div>
-          {folds && (
-            <button
-              type="button"
-              data-testid="food-add-close"
-              onClick={() => setAddOpen(false)}
-              className="mt-2 flex min-h-11 items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"
-            >
-              <IconChevronDown className="h-3.5 w-3.5 rotate-180" stroke={2} />
-              Done adding
-            </button>
-          )}
           </div>
         </section>
         {nutrientSummary}

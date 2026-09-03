@@ -367,7 +367,7 @@ export default function DayLedger({
       <span
         aria-hidden={label ? undefined : true}
         data-testid={label ? `ledger-gutter-${label.toLowerCase()}` : undefined}
-        className="w-14 shrink-0 self-start pt-0.5 text-[11px] font-medium text-slate-400 dark:text-slate-500"
+        className="w-14 shrink-0 self-start pt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400"
       >
         {label}
       </span>
