@@ -160,8 +160,9 @@ Its intraday panel projects the day's timed data onto a midnight-to-midnight
 clock: minute-level heart rate, sleep blocks and stages, workout spans, and
 clock-timed entries. Tapping a mark jumps to the corresponding record below.
 Layers render only when that day has relevant data; the scrolling multi-day feed
-never pays the cost of an intraday chart. The selected day also offers one-tap
-symptom backfill without requiring an illness episode.
+never pays the cost of an intraday chart. The selected day also offers symptom
+backfill without requiring an illness episode: **Symptoms** sits in its Add past
+row like every other log kind, and the form opens on the day you are reading.
 
 ## Symptom log
 
