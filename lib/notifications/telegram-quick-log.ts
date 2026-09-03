@@ -49,9 +49,9 @@ export async function handleDoseCommand(
           dose: formatMedicationDoseProduct(m.amount, m.product),
           status: prnQuickLogRedoseStatus(m, now),
           // Family-aware throughout (#1027): the count the app shows spans the
-          // ingredient family, so the list can't read "1 today" where the card says
-          // "3 of 4 today across 2 items".
-          countToday: m.familyCount,
+          // ingredient family, so the list can't read "1 in 24h" where the card says
+          // "3 of 4 in 24h across 2 items".
+          countInWindow: m.familyCount,
           maxDailyCount: m.familyMaxDailyCount ?? m.maxDailyCount,
           familyMemberCount: m.familyMemberCount,
         })}`,
@@ -175,7 +175,7 @@ export async function handlePrnLogTap(
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
   // The answer states the verdict that now stands (#1717), read back from POST-write
   // state through the same classification the card shows — so an at-max tap says
-  // "Max reached · 5 of 4 today" instead of a bare "Logged ✅". The app treats a
+  // "Max reached · 5 of 4 in 24h" instead of a bare "Logged ✅". The app treats a
   // redose window as guidance rather than a gate, so Telegram logs it too; what it
   // must not be is LAXER about saying so.
   const logged = administrationLogged(outcome);

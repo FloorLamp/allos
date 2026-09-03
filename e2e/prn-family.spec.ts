@@ -56,7 +56,7 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
   const redoseLine = main.getByTestId("prn-redose-line").first(); // first-ok: the family-held redose line on this spec's DEDICATED fixture profile (E2E_LOGIN_PRN_FAMILY) — deterministic
   await expect(redoseLine).toBeVisible();
   await expect(redoseLine).toContainText("Next dose in ~");
-  await expect(redoseLine).toContainText("1 of 4 today");
+  await expect(redoseLine).toContainText("1 of 4 in 24h");
   await expect(redoseLine).toContainText("across 2 items");
   // No surface (Today panel or med row) shows a false green light.
   await expect(
