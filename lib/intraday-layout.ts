@@ -278,11 +278,12 @@ export function blockRowTop(
  * both gestures feel anchored under the pointer rather than under the middle.
  *
  * NULL IS THE WHOLE POINT OF THE RETURN TYPE, and it is a scroll decision, not an
- * error: the caller must let the page have the event. Two cases reach it — the
- * view is already the whole day and the gesture would only widen it (without this,
- * a chart in the middle of a long day view is a scroll TRAP: the wheel is
- * swallowed and the page never moves), and the span is already at a clamp so the
- * window would not move at all.
+ * error: the caller must let the page have the event, because a chart that
+ * swallows a wheel it has no use for is a scroll TRAP in the middle of a long day
+ * view. ONE test carries it — the clamped span is unchanged — and the case that
+ * matters most falls out of it rather than needing a rule of its own: at the full
+ * day the span already IS the day, so widening it clamps straight back and the
+ * page keeps the wheel. Zooming IN there still narrows, and is still captured.
  */
 export function zoomViewAt(
   view: IntradayView,
@@ -291,7 +292,6 @@ export function zoomViewAt(
 ): IntradayView | null {
   const span = view.to - view.from;
   if (!(span > 0) || !(factor > 0) || !Number.isFinite(factor)) return null;
-  if (view.from <= 0 && view.to >= MINUTES_IN_DAY && factor >= 1) return null;
   const next = Math.min(
     MINUTES_IN_DAY,
     Math.max(MIN_ZOOM_MINUTES, span * factor)

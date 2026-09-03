@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { type Locator } from "@playwright/test";
 import { loginAs } from "./nav";
 import {
   expectSvgTextInsidePlot,
@@ -9,6 +10,7 @@ import {
   E2E_LOGIN_INTRADAY,
   E2E_MEMBER_PASSWORD,
   INTRADAY_ACTIVITY,
+  INTRADAY_PRACTICE,
   INTRADAY_TICK_DOC,
 } from "./fixture-logins";
 
@@ -39,6 +41,14 @@ async function openFixtureDay(page: Awaited<ReturnType<typeof loginAs>>) {
   return date;
 }
 
+/** The chart's visible window, in minutes — what every #4852 gesture moves. */
+async function readWindow(chart: Locator): Promise<{ from: number; to: number }> {
+  return {
+    from: Number(await chart.getAttribute("data-view-from")),
+    to: Number(await chart.getAttribute("data-view-to")),
+  };
+}
+
 test.describe("the day view's intraday panel (#1068)", () => {
   test("renders the day's layers and a tick jumps to its feed entry", async ({
     browser,
@@ -64,11 +74,35 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // the previous day) with its deep-stage sub-band.
       await expect(chart.getByTestId("intraday-sleep-block")).toHaveCount(1);
       await expect(chart.getByTestId("intraday-sleep-stage")).toHaveCount(1);
-      // Layer 3 — the windowed ride. The block layer is not workout-only since
-      // #3142; this profile logs no practice, so the ride is still the only block.
-      const workout = chart.getByTestId("intraday-block");
-      await expect(workout).toHaveCount(1);
-      await expect(workout).toHaveAttribute("data-title", INTRADAY_ACTIVITY);
+      // Layer 3 — the two windowed sessions, ON THEIR OWN ROWS (#4852). The ride is
+      // Train's, the evening sauna is Practice's; same shape and colour, different
+      // line, because a workout and a sauna stacked together read as one thing.
+      const blocks = chart.getByTestId("intraday-block");
+      await expect(blocks).toHaveCount(2);
+      await expect(
+        chart.locator('[data-testid="intraday-block"][data-source="activity"]')
+      ).toHaveAttribute("data-title", INTRADAY_ACTIVITY);
+      await expect(
+        chart.locator('[data-testid="intraday-block"][data-source="practice"]')
+      ).toHaveAttribute("data-title", INTRADAY_PRACTICE);
+      // Both rows are NAMED in the gutter…
+      await expect(chart.locator('[data-row="Train"]')).toHaveCount(1);
+      await expect(chart.locator('[data-row="Practice"]')).toHaveCount(1);
+      // …and they are different LINES: the practice block's rect sits strictly
+      // below the activity's, which is the whole of the ruling. Read off the drawn
+      // rects rather than the row labels, because the block's placement is the
+      // thing that used to be shared.
+      const rowTops = await chart.evaluate((el) => {
+        const y = (source: string) =>
+          Number(
+            el
+              .querySelector(`[data-source="${source}"] rect`)
+              ?.getAttribute("y")
+          );
+        return { activity: y("activity"), practice: y("practice") };
+      });
+      expect(rowTops.activity).toBeGreaterThan(0);
+      expect(rowTops.practice).toBeGreaterThan(rowTops.activity);
       // Layer 5 — today only.
       await expect(chart.getByTestId("intraday-now")).toBeAttached();
 
@@ -125,12 +159,18 @@ test.describe("the day view's intraday panel (#1068)", () => {
 
       // The 08:00–09:00 ride is named inside its own block (elided to the block's
       // width), so a 45-minute run and a 45-minute lift are no longer identical
-      // rectangles.
-      const name = chart.getByTestId("intraday-block-name");
-      await expect(name).toHaveCount(1);
-      const drawn = (await name.textContent())!.replace("…", "");
-      expect(drawn.length).toBeGreaterThan(0);
-      expect(INTRADAY_ACTIVITY.startsWith(drawn)).toBe(true);
+      // rectangles. Since #4852 the evening practice carries its own name on its
+      // own row — and names are placed PER ROW, so neither can drop the other.
+      const names = chart.getByTestId("intraday-block-name");
+      await expect(names).toHaveCount(2);
+      const drawn = (await names.allTextContents()).map((t) =>
+        t.replace("…", "")
+      );
+      expect(drawn.every((t) => t.length > 0)).toBe(true);
+      expect(
+        drawn.some((t) => INTRADAY_ACTIVITY.startsWith(t)) &&
+          drawn.some((t) => INTRADAY_PRACTICE.startsWith(t))
+      ).toBe(true);
     } finally {
       await member.context().close();
     }
@@ -167,8 +207,11 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(readout).not.toHaveText("");
 
       // Tapping the block selects its window. The anchor is still the
-      // pre-hydration fallback, so this asserts the ENHANCED behavior.
-      await chart.getByTestId("intraday-block").click();
+      // pre-hydration fallback, so this asserts the ENHANCED behavior. Scoped to
+      // the Train row's block: the day carries a practice block too since #4852.
+      await chart
+        .locator('[data-testid="intraday-block"][data-source="activity"]')
+        .click();
       await expect(chart).toHaveAttribute("data-zoomed", "true");
       const reset = chart.getByTestId("intraday-zoom-reset");
       await expect(reset).toBeVisible();
@@ -189,6 +232,91 @@ test.describe("the day view's intraday panel (#1068)", () => {
       await expect(
         member.getByTestId("intraday-panel").locator(WIDE)
       ).toHaveAttribute("data-zoomed", "false");
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // #4852 — WHEEL ZOOM, AND THE ONE EXCEPTION THAT KEEPS IT FROM BEING A TRAP.
+  // A chart that swallows every wheel is a chart a reader cannot scroll past, so
+  // both directions at the full day are asserted, and the scroll-through case
+  // FIRST: once the chart is zoomed the trap is invisible.
+  test("the wheel zooms about the pointer, pans, and lets the page scroll at full day", async ({
+    browser,
+  }) => {
+    test.slow();
+
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_INTRADAY,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await openFixtureDay(member);
+      const chart = member.getByTestId("intraday-panel").locator(WIDE);
+      await expect(chart).toBeVisible();
+      // WAIT FOR THE CONTENT, not the box: the wheel target is the drawing, and a
+      // window read before the layers land is a claim about an empty frame.
+      await expect(chart.getByTestId("intraday-hr")).toBeVisible();
+      const fullDay = { from: "0", to: "1440" };
+      await expect(chart).toHaveAttribute("data-view-from", fullDay.from);
+      await expect(chart).toHaveAttribute("data-view-to", fullDay.to);
+
+      const svg = chart.getByTestId("intraday-svg");
+      await svg.scrollIntoViewIfNeeded();
+      const overChart = async () => {
+        const box = (await svg.boundingBox())!;
+        await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
+      };
+
+      // ZOOM OUT AT THE FULL DAY: nothing to widen, so the page keeps the wheel.
+      await overChart();
+      const before = await member.evaluate(() => window.scrollY);
+      await member.mouse.wheel(0, 500);
+      await expect
+        .poll(() => member.evaluate(() => window.scrollY))
+        .toBeGreaterThan(before);
+      await expect(chart).toHaveAttribute("data-zoomed", "false");
+      await expect(chart).toHaveAttribute("data-view-to", fullDay.to);
+
+      // ZOOM IN ABOUT THE POINTER: aimed at the 07:15 tick, the window narrows
+      // AROUND that minute rather than around the middle of the day — and the page
+      // does NOT move, which is the preventDefault half of the ruling.
+      const morningTick = chart.getByTestId("intraday-tick").first(); // first-ok: ticks are time-ordered and spec-owned; 07:15 is the earliest
+      const tickBox = (await morningTick.boundingBox())!;
+      const anchorX = tickBox.x + tickBox.width / 2;
+      const settled = await member.evaluate(() => window.scrollY);
+      for (let i = 0; i < 3; i++) {
+        const box = (await svg.boundingBox())!;
+        await member.mouse.move(anchorX, box.y + box.height * 0.6);
+        await member.mouse.wheel(0, -400);
+      }
+      await expect(chart).toHaveAttribute("data-zoomed", "true");
+      expect(await member.evaluate(() => window.scrollY)).toBe(settled);
+      const zoomed = await readWindow(chart);
+      expect(zoomed.to - zoomed.from).toBeLessThan(360);
+      // 07:15 is minute 435. The pointer's minute stayed inside the window it
+      // produced — an unanchored zoom about the day's centre could not.
+      expect(zoomed.from).toBeLessThanOrEqual(435);
+      expect(zoomed.to).toBeGreaterThanOrEqual(435);
+
+      // HORIZONTAL WHEEL PANS a zoomed view: the window slides and its SPAN is the
+      // one thing that may not change.
+      const box = (await svg.boundingBox())!;
+      await member.mouse.move(box.x + box.width / 2, box.y + box.height * 0.6);
+      await member.mouse.wheel(300, 0);
+      await expect
+        .poll(async () => (await readWindow(chart)).from)
+        .toBeGreaterThan(zoomed.from);
+      const panned = await readWindow(chart);
+      expect(panned.to - panned.from).toBe(zoomed.to - zoomed.from);
+
+      // Escape still returns the whole day — the gesture layer added a way IN, not
+      // a second way out.
+      await svg.focus();
+      await member.keyboard.press("Escape");
+      await expect(chart).toHaveAttribute("data-zoomed", "false");
+      await expect(chart).toHaveAttribute("data-view-from", fullDay.from);
+      await expect(chart).toHaveAttribute("data-view-to", fullDay.to);
     } finally {
       await member.context().close();
     }
@@ -250,8 +378,9 @@ test.describe("the day view's intraday panel (#1068)", () => {
       // WAIT FOR THE CONTENT, NOT THE BOX: the HR band is what makes this a chart
       // rather than an axis, and it is the layer the presence gate is about.
       await expect(chart.getByTestId("intraday-hr")).toBeVisible();
-      // The seeded ride's window, shaded on the axis — the AC's "shaded window".
-      await expect(chart.getByTestId("intraday-block")).toHaveCount(1);
+      // The seeded ride's window, shaded on the axis — the AC's "shaded window" —
+      // beside the evening practice's on the row below it (#4852).
+      await expect(chart.getByTestId("intraday-block")).toHaveCount(2);
 
       // The lag sentence, on the row's own facts. Compared against the PANEL's
       // rather than against a literal: both mounts read one `intradayFreshness`

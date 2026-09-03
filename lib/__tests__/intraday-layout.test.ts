@@ -18,6 +18,9 @@ import {
   sleepEdgeLabels,
   blockLayout,
   blockLabels,
+  blockRowTop,
+  panView,
+  zoomViewAt,
   type IntradayVariant,
 } from "@/lib/intraday-layout";
 import { MINUTES_IN_DAY, type IntradayModel } from "@/lib/intraday";
@@ -523,5 +526,108 @@ describe("reading a value at a minute (#1515)", () => {
   it("reports nothing across a wear gap rather than the far side's value", () => {
     expect(nearestHrPoint(segments, 700, 5)).toBeNull();
     expect(nearestHrPoint([], 700, 5)).toBeNull();
+  });
+});
+
+// PRACTICE SESSIONS GET THEIR OWN ROW (#4852). A morning workout and an evening
+// sauna stacked on one line read as one kind of thing; the block keeps its shape
+// and its colour and changes line.
+describe("the practice row (#4852)", () => {
+  it("puts Practice directly under Train, and each block on its own line", () => {
+    const geo = intradayGeometry(
+      model({ blocks: [workout(), practice()] }),
+      "wide"
+    );
+    expect(geo.practiceTop).toBeGreaterThanOrEqual(geo.workTop + geo.workH);
+    expect(blockRowTop(geo, workout())).toBe(geo.workTop);
+    expect(blockRowTop(geo, practice())).toBe(geo.practiceTop);
+  });
+
+  // The collapse rule every other row already follows, applied to both halves of
+  // the split: a day with only practices reserves NO Train strip, and an HR-only
+  // day reserves neither. `tickTop - workTop` is the height the two rows cost, so
+  // a row that collapsed but kept its strip cannot pass.
+  it.each([
+    ["an activity and a practice", [workout(), practice()], true, true],
+    ["only practices", [practice()], false, true],
+    ["only activities", [workout()], true, false],
+    ["heart rate only", [], false, false],
+  ] as const)("%s", (_label, blocks, train, sessions) => {
+    const geo = intradayGeometry(model({ blocks: [...blocks] }), "wide");
+    expect([geo.hasWorkouts, geo.hasPractice]).toEqual([train, sessions]);
+    const rows = (train ? 1 : 0) + (sessions ? 1 : 0);
+    expect(geo.tickTop - geo.workTop).toBe(rows * (geo.workH + geo.rowGap));
+    // A practice-only day starts its row where Train would have been, rather than
+    // leaving an empty line above it.
+    expect(geo.practiceTop).toBe(
+      geo.workTop + (train ? geo.workH + geo.rowGap : 0)
+    );
+  });
+
+  // Names are placed PER ROW. The single shared row layout this replaced drops one
+  // of a same-minute pair — asserted here so the split is proved against the
+  // behaviour it fixes, not only against itself.
+  it("keeps both names when an activity and a practice share a minute", () => {
+    const a = workout({ startMinute: 480, endMinute: 525 });
+    const p = practice({ startMinute: 482, endMinute: 520 });
+    const geo = intradayGeometry(model({ blocks: [a, p] }), "compact");
+    expect(blockLabels(geo, [a, p])).toHaveLength(1);
+    expect(blockLabels(geo, [a])).toHaveLength(1);
+    expect(blockLabels(geo, [p])).toHaveLength(1);
+  });
+});
+
+// WHEEL AND PINCH (#4852). Both gestures are one span multiplier about one minute,
+// so both are this pair of pure functions and the component only maps an event to
+// them. NULL is the interesting return: it means the gesture moves nothing and the
+// caller must NOT preventDefault, which is the whole difference between a chart a
+// reader can scroll past and a scroll trap.
+describe("wheel and pinch zoom (#4852)", () => {
+  it("hands the full day's zoom-out back to the page and keeps its zoom-in", () => {
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 1.3)).toBeNull();
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 1)).toBeNull();
+    expect(zoomViewAt(FULL_DAY_VIEW, 600, 0.5)).toEqual({
+      from: 300,
+      to: 1020,
+    });
+  });
+
+  it.each([
+    // The pointer's minute keeps its position in the plot — the anchoring that
+    // makes a wheel feel like it zooms where you are pointing.
+    ["about the middle", { from: 480, to: 600 }, 540, 0.5, { from: 510, to: 570 }],
+    ["about the left edge", { from: 480, to: 600 }, 480, 0.5, { from: 480, to: 540 }],
+    ["out, clamped to midnight", { from: 0, to: 120 }, 0, 2, { from: 0, to: 240 }],
+    ["out, clamped to the day's end", { from: 1320, to: 1440 }, 1440, 2, { from: 1200, to: 1440 }],
+    ["in, clamped to the narrowest window", { from: 0, to: 12 }, 6, 0.5, { from: 1, to: 11 }],
+    ["out, clamped to the whole day", { from: 600, to: 660 }, 630, 100, { from: 0, to: MINUTES_IN_DAY }],
+  ])("zooms %s", (_label, view, at, factor, expected) => {
+    expect(zoomViewAt(view, at, factor)).toEqual(expected);
+  });
+
+  // Already AT a clamp: the window cannot move, so the page keeps the event rather
+  // than the chart swallowing a scroll it has no use for.
+  it("returns null when the window is already at a clamp", () => {
+    expect(zoomViewAt({ from: 0, to: MIN_ZOOM_MINUTES }, 5, 0.5)).toBeNull();
+    expect(zoomViewAt({ from: 480, to: 600 }, 540, 0)).toBeNull();
+  });
+
+  it.each([
+    ["slides a zoomed window", { from: 480, to: 600 }, 30, { from: 510, to: 630 }],
+    ["clamps to midnight", { from: 480, to: 600 }, -600, { from: 0, to: 120 }],
+    ["rounds to whole minutes", { from: 480, to: 600 }, 30.4, { from: 510, to: 630 }],
+  ])("%s", (_label, view, delta, expected) => {
+    const next = panView(view, delta)!;
+    expect(next).toEqual(expected);
+    // A pan is not a zoom: the span is the one thing it may never change.
+    expect(next.to - next.from).toBe(view.to - view.from);
+  });
+
+  it.each([
+    ["the whole day is already visible", FULL_DAY_VIEW, 60],
+    ["the window is against the edge it is pushed toward", { from: 1380, to: 1440 }, 100],
+    ["the nudge is under a minute", { from: 480, to: 600 }, 0.4],
+  ])("pans nothing when %s", (_label, view, delta) => {
+    expect(panView(view, delta)).toBeNull();
   });
 });

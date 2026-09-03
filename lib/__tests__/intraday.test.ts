@@ -571,6 +571,24 @@ describe("buildIntradayModel — practice sessions", () => {
     expect(model!.ticks[0].anchorId).toBe(timelineEntryAnchorId("practice:3"));
   });
 
+  // #4852 — WHICH ROW the block draws in. The feed CATEGORY is the discriminator
+  // because `clockWindow` has exactly two producers (an activity and one practice
+  // session) and the window itself says nothing about which ledger it came from.
+  it("tags each block with the ledger its row draws under", () => {
+    const model = buildIntradayModel(
+      input({
+        events: [
+          activityEvent("a:1"),
+          practiceEvent("practice:6", win("19:00", "19:30", null)),
+        ],
+      })
+    );
+    expect(model!.blocks.map((b) => [b.eventId, b.source])).toEqual([
+      ["a:1", "activity"],
+      ["practice:6", "practice"],
+    ]);
+  });
+
   it("stays data-gated: a day of untimed practice rows draws no panel", () => {
     expect(
       buildIntradayModel(

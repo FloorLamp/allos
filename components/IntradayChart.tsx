@@ -124,6 +124,10 @@ function RowName({
   if (!placed) return null;
   return (
     <text
+      data-testid="intraday-row-name"
+      // The row's FULL name. `placed.text` is elided to the gutter, so the drawn
+      // glyphs are not the claim — which row exists is.
+      data-row={text}
       x={placed.x}
       y={y}
       textAnchor={placed.anchor}
@@ -467,6 +471,12 @@ export default function IntradayChart({
       data-testid="intraday-chart"
       data-variant={variant}
       data-zoomed={zoomed ? "true" : "false"}
+      // The visible window in MINUTES — the machine-readable form of what the
+      // reset button says in words. A gesture's whole effect is these two numbers,
+      // so a spec can assert a wheel zoom's anchor or a pan's preserved span
+      // exactly, instead of parsing a clock the profile's format prefs own.
+      data-view-from={Math.round(geo.view.from)}
+      data-view-to={Math.round(geo.view.to)}
       style={{ maxWidth: `${geo.maxWidthPx}px` }}
     >
       <svg

@@ -2982,6 +2982,50 @@ async function dragToEnd(
   await consumeSuppressedTap(cdp, to);
 }
 
+/**
+ * A two-finger PINCH, through the same CDP channel `touchSwipe` uses (#4852).
+ *
+ * Both fingers move symmetrically about `center`: `from` is each one's starting
+ * distance from it and `to` its finishing one, so `to > from` spreads the fingers
+ * (zoom in) and `to < from` closes them.
+ *
+ * EVERY TOUCH POINT CARRIES AN `id`, and that is not decoration: without one
+ * Chromium treats the second point as a replacement for the first, the page sees
+ * an ordinary one-finger drag, and a pinch spec passes or fails on the drag-select
+ * path instead — the exact confusion this helper exists to make impossible.
+ */
+export async function touchPinch(
+  page: Page,
+  center: { x: number; y: number },
+  from: number,
+  to: number,
+  steps = 8
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const fingers = (gap: number) => [
+    { x: center.x - gap, y: center.y, id: 1 },
+    { x: center.x + gap, y: center.y, id: 2 },
+  ];
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: fingers(from),
+    });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: fingers(from + ((to - from) * i) / steps),
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
 // ── A DRAG LEAVES ONE SWALLOWED TAP BEHIND, AND SPENDS IT HERE (#3262) ───────
 //
 // After a touch drag whose STARTING element forbids the axis the drag travels on,

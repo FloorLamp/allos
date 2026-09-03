@@ -61,7 +61,8 @@ export const NWAY_PROFILE = "N-Way Merge (e2e)";
 // profile carrying a full INTRADAY day: an overnight sleep session that starts before
 // midnight (so its block is clipped, not re-attributed) with one deep-stage window,
 // per-minute HR across the morning including a workout spike, a windowed cardio
-// activity (the workout block), and two clock-timed document uploads (the tick rail).
+// activity (the Train row's block), a windowed evening practice session (the Practice
+// row's, #4852), and two clock-timed document uploads (the tick rail).
 // A SECOND day (three days back) carries only a day-grained weigh-in, so the same
 // profile proves the panel's data gate — the day renders, the panel does not. The
 // intraday day is TODAY, so the now-marker renders too. Dedicated on purpose: the
@@ -71,6 +72,11 @@ export const NWAY_PROFILE = "N-Way Merge (e2e)";
 export const E2E_LOGIN_INTRADAY = "e2e_intraday";
 export const INTRADAY_PROFILE = "Intraday (e2e)";
 export const INTRADAY_ACTIVITY = "Sunrise ride (e2e)";
+// #4852 — an evening PRACTICE session on the same day, so the fixture carries both
+// kinds of block and the chart's Train and Practice rows are each non-empty. Its
+// window is nowhere near the 08:00–09:00 ride, so neither name is dropped for a
+// collision and each row's block is unambiguously its own.
+export const INTRADAY_PRACTICE = "Evening sauna (e2e)";
 export const INTRADAY_TICK_DOC = "e2e-intraday-morning-panel.pdf";
 export const INTRADAY_TICK_TIME = "07:15";
 
