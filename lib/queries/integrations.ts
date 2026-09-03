@@ -13,10 +13,13 @@ import {
   staleSyncs,
   staleSyncDetail,
   silenceToleranceMinutes,
+  silenceMinutes,
+  formatTolerance,
   isStaleSyncEvent,
   STALE_SYNC_EVENT_ID,
   type StaleSync,
 } from "@/lib/integrations/staleness";
+import { droppedTypes, metricLabel } from "@/lib/integrations/sync-details";
 import type { AttentionIntegration } from "@/lib/attention";
 import {
   shouldShowConnectedSource,
@@ -762,7 +765,7 @@ export const getIntegrationAttention = cache(
 function getIntegrationAttentionUncached(
   profileId: number
 ): AttentionIntegration[] {
-  return getImportIssues(profileId).map((ev) => {
+  const issues = getImportIssues(profileId).map((ev) => {
     const integration = getIntegration(ev.source_id as IntegrationId);
     return {
       id: integration?.id ?? null,
@@ -771,6 +774,75 @@ function getIntegrationAttentionUncached(
       kind: isStaleSyncEvent(ev) ? ("stale" as const) : ("failing" as const),
     };
   });
+  // A source already reported as broken is not ALSO reported as dropping: one row per
+  // source is the rule every one of these signals obeys, and "reconnect it" outranks
+  // "one of its types isn't landing" — you cannot act on the second until the first is
+  // fixed. This is the same yielding `quiet-stream` does, applied one rung up.
+  const represented = new Set(issues.map((i) => i.id));
+  return [
+    ...issues,
+    ...droppingIntegrations(profileId).filter((i) => !represented.has(i.id)),
+  ];
+}
+
+// How many recent runs the dropping derivation will read per source. A CAP, not the
+// window: the window is the source's own silence tolerance (#2263), and this only
+// bounds the rows the tolerance is applied to. 60 runs covers 12 h at one run every
+// 12 minutes — comfortably past the Health Connect exporter's ~20-minute re-push, the
+// densest source here. When it does NOT reach back a full tolerance the derivation
+// abstains rather than judging a bisected window, so the cap can only cost a signal,
+// never invent one.
+const DROPPING_RUN_CAP = 60;
+
+const DROPPING_RUNS_STMT = hoistedStatement(
+  `SELECT at, ok, details FROM integration_sync_events
+    WHERE profile_id = ? AND source_id = ?
+    ORDER BY at DESC, id DESC
+    LIMIT ${DROPPING_RUN_CAP}`
+);
+
+// SOURCES THAT ARE ALIVE AND SWALLOWING A RECORD TYPE (#4956).
+//
+// Every run `ok`, rows landing, the card green — and one type arriving in every push
+// and being discarded, because the sender renamed the field the parser reads. Three
+// types went that way for six days across 405 `ok` pushes, and the only trace was one
+// line on one history page. `droppedTypes` reads the per-type tally each run recorded;
+// this decides whether the source has been doing it long enough to say so, over the
+// SAME silence tolerance the quiet-stop rule uses, so a source has one window and not
+// two. A type that lands once clears itself on the next read.
+function droppingIntegrations(profileId: number): AttentionIntegration[] {
+  const out: AttentionIntegration[] = [];
+  const nowAt = instantNow();
+  for (const latest of getLatestSyncEventPerSource(profileId)) {
+    const def = getIntegration(latest.source_id as IntegrationId);
+    const tolerance = silenceToleranceMinutes(def);
+    // No declared tolerance means no window to judge over — the same exemption the
+    // staleness rule takes for a source whose cadence we cannot state.
+    if (!def || tolerance == null) continue;
+    if (getConnection(profileId, def.id)?.status !== "connected") continue;
+    const runs = DROPPING_RUNS_STMT.all(profileId, def.id) as {
+      at: string;
+      ok: number;
+      details: string | null;
+    }[];
+    const within = runs.filter(
+      (r) => (silenceMinutes(r.at, nowAt) ?? Infinity) <= tolerance
+    );
+    // ABSTAIN unless the cap left us a window that actually spans the tolerance:
+    // judging a bisected window can only lose the landing that would have cleared a
+    // type, which is the one direction an alert must never fail in.
+    if (within.length === runs.length && runs.length === DROPPING_RUN_CAP)
+      continue;
+    const dropped = droppedTypes(within);
+    if (!dropped.length) continue;
+    out.push({
+      id: def.id,
+      sourceName: def.name,
+      detail: `${dropped.map(metricLabel).join(", ")} arrived in every sync for the last ${formatTolerance(tolerance)} and none were stored. Check the sync history.`,
+      kind: "dropping" as const,
+    });
+  }
+  return out;
 }
 
 // The single most recent event (any outcome) for a source, or null — the grid
