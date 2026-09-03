@@ -137,7 +137,12 @@ describe("a re-sent row keeps the day it was attributed to (#3428, write side)",
 
     // The night is on ONE day, and it is the day it was slept into.
     const totals = getMetricDailyTotals(profileId, "sleep_min");
-    expect(totals).toEqual([{ date: "2026-05-02", value: NIGHT_MIN }]);
+    // The frozen clock sits inside 2026-05-02 local, so the day's additive total
+    // is still open (#4924). The DAY is the claim this test makes; `partial` is
+    // the reader saying the day is not over yet.
+    expect(totals).toEqual([
+      { date: "2026-05-02", value: NIGHT_MIN, partial: true },
+    ]);
   });
 
   it("EASTWARD: Honolulu → Tokyo, the night keeps its Honolulu wake-day across two re-sends", () => {
