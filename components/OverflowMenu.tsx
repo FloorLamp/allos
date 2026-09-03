@@ -207,15 +207,19 @@ export default function OverflowMenu({
         aria-label={label}
         aria-haspopup="menu"
         data-testid="overflow-menu-trigger"
-        // ≥44px EFFECTIVE hit box (#644, one number ruled on #3514): a 16px glyph
-        // centered in a 40px RENDERED box, extended to 52 on a coarse pointer by
-        // `.tap-target`'s `inset: -6px`. The comment here used to claim "≥40px hit
-        // box (#644)" — #644's mechanism never produced 40, and the row density this
-        // control lives in is why the box stays 40 RENDERED rather than growing: the
-        // ruling's second mechanism exists for exactly this case. The 32px variant
-        // the responsive-table surface shrinks it to carries its own `::after`
-        // (app/globals.css, `.table-cards`), also at -6px, also reaching 44.
-        className="tap-target flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+        // THE CONTROL BOX, LIKE EVERY OTHER CONTROL (#4362 ruling 5, over #3938).
+        // This rendered 40 (`h-10`) and was the one control that did not, which
+        // #4362's fifth item found by measuring #4076's row invariant rather than
+        // its acceptance criteria: a 40px trigger sat beside a 34px "Mark taken" in
+        // 48 rows. No exception is minted for it — it reads `--control-box` so the
+        // number cannot drift from the one the box owns.
+        //
+        // ≥44px EFFECTIVE hit box (#644, one number ruled on #3514) still holds and
+        // holds by the same mechanism: `.tap-target`'s `inset: -6px` per side is a
+        // fixed 12px, so 34 + 2×6 = 46 clears the floor exactly as 40 + 12 = 52 did.
+        // The 32px variant the responsive-table surface shrinks it to carries its own
+        // `::after` (app/globals.css, `.table-cards`), also at -6px, also reaching 44.
+        className="tap-target flex h-(--control-box) w-(--control-box) items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
       >
         <IconDots className="h-4 w-4" />
       </button>
