@@ -469,9 +469,18 @@ test.describe("the Day ledger (#3987 phase 1)", () => {
     // row with the ground's own colour and the comparison must agree, then restore and
     // it must part again. A control that re-queried would only prove that SOME read
     // can see a difference.
+    //
+    // AND WITH A GROUND READ IN THE SAME BREATH (#4903). This forged with `light.ground`
+    // — captured at the top of the test, before a theme flip and two reloads — so it
+    // also asserted that a colour measured three navigations ago is still the current
+    // one. That is not what this control is controlling for, and it is what failed
+    // under load: the two grounds differed by a real amount, not a rounding step. The
+    // control's own claim is untouched, because both halves of the comparison below
+    // still come from the same object through the same reader.
+    const beforeForge = await tones();
     await dueRow.evaluate((el, bg) => {
       (el as HTMLElement).style.backgroundColor = bg;
-    }, light.ground);
+    }, beforeForge.ground);
     const forged = await tones();
     expect(
       forged.due,
