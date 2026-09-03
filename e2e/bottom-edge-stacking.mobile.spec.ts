@@ -370,6 +370,17 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
     for (const animation of document.getAnimations()) animation.finish();
   }, ARRIVAL_HOLD_MS);
   await settledClick(page, logFood);
+  // LET THE SHEET THIS ONE REPLACES LEAVE THE MAP FIRST. `--bottom-edge-offset` is the
+  // MAX over claimants, and the quick-log sheet keeps its own resting claim until it
+  // UNMOUNTS — which `usePresence` times from lib/motion's JS constant, so the ten-second
+  // paint hold below does not delay it. While both are claiming, the published number is
+  // whichever is taller, and that is not a fact about the arriving panel at all: it made
+  // this case pass only for as long as the food form happened to be the taller of the
+  // two, and #4477's compressed add layer made it the shorter one — same 582, same red,
+  // a different reason than the under-reporting arrival #4796 fixed. Waiting for the
+  // unmount leaves exactly one claimant, so the reading below is the arriving panel's
+  // own edge and the assertion can fail again for the reason it exists for.
+  await expect(logSheet).toHaveCount(0);
   const sheet = page.getByTestId("quick-entry-sheet");
   const panel = sheet.locator("[data-sheet-panel]");
   await expect(sheet.getByTestId("food-log-bar")).toBeVisible();
@@ -429,14 +440,14 @@ test("the quick-log sheet claims while its body is still arriving, and releases 
   // FROM — 505.04 here — and a notice raised in that window came to rest on the
   // sheet.
   //
-  // THE DEPARTING SHEET IS A SEPARATE, OPPOSITE CASE, and it is unchanged: the
-  // quick-log sheet is still playing its exit here, and its own resting claim
-  // (582) stays in the map until it unmounts, because nothing re-measures a
-  // panel that is only being translated away. That direction is SAFE — it
-  // over-states how much edge is spoken for, so a notice clears more than it
-  // needs to rather than landing on something. It is why 582 was byte-identical
-  // in every CI red: it was the max while the arriving panel under-reported at
-  // 505.04. With the arriving panel honest at 615 it simply loses the max.
+  // THE DEPARTING SHEET IS A SEPARATE, OPPOSITE CASE: a panel playing its exit keeps
+  // its resting claim until it unmounts, because nothing re-measures an element that is
+  // only being translated away. That direction is SAFE — it over-states how much edge is
+  // spoken for, so a notice clears more than it needs to rather than landing on
+  // something — but it also MASKS this assertion, which is why the wait above exists.
+  // 582 was byte-identical in every CI red on both sides of that: it was the departing
+  // sheet's own claim, taken as the max first over an arriving panel under-reporting at
+  // 505.04, and later over an honest one that had simply become shorter than it.
   expect(arriving.claimed).toBeCloseTo(viewport - settled.y, 0);
 
   // Closing RELEASES the claim down to the nav dock — the same shape the
