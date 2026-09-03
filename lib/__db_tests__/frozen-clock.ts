@@ -48,10 +48,26 @@
 // tests, mostly token and session expiries seeded in JS and judged against SQL's clock,
 // while the same magnitude of POSITIVE gap reds none of them. A midday constant would
 // sit in the middle of the harmful half.
+//
+// AND THE NEGATIVE HALF IS NOW UNREACHABLE (#4837). Everything above stands; this
+// amends only its one unchecked step. The paragraph measures the negative gap at "at
+// worst 15 minutes" and stops there, because it was weighing the gap's SIGN against
+// its MAGNITUDE. Nothing had asked whether 15 minutes was small enough for the
+// tolerances actually written down: `auth.test.ts:346` allows 1000 ms, so the tier
+// went red from 23:45:01 to 23:59:59 UTC every day — four open PRs on 2026-09-02,
+// one assertion, no relevant diff between them.
+//
+// So the day the wall time lands on is now chosen against the real clock rather than
+// taken from it: past the wall time, freeze on the NEXT UTC day. The gap that was at
+// worst 15 minutes negative is instead never less than MIN_LEAD_OVER_REAL_CLOCK_MS
+// positive, which is the same argument this paragraph already makes, carried to the
+// one case it did not reach. The endorsed instant is still 23:45, still late on its
+// own day, and the date still tracks the real calendar — one day ahead of it for the
+// last hour and a quarter of each day, never drifting further.
 
 import { afterAll, beforeAll, beforeEach, vi } from "vitest";
 
-// The frozen wall time, on whatever the current UTC day is.
+// The frozen wall time. `frozenInstantFrom` below picks which UTC day it lands on.
 export const FROZEN_WALL_TIME_UTC = "23:45:00.000Z";
 
 /** The default frozen instant for a UTC day. Exported for ./frozen-clock.test.ts. */
@@ -60,13 +76,41 @@ export function frozenInstantForDay(day: string): Date {
 }
 
 /**
+ * How far ahead of the real clock the frozen instant must always sit.
+ *
+ * SQLite's `datetime('now')` keeps advancing through a run that the fake Date does
+ * not, so a lead smaller than the tier's own wall time is a lead the real clock can
+ * eat before the last assertion reads it. The tier's worst measured wall time is
+ * 862 s, on this same contended orchestration box at load average 18.1
+ * (vitest.timeouts.ts, measured 2026-08-21); an hour is ~4.2x that, the margin that
+ * file derives its own ceilings at, and its whole cost is that the frozen date is a
+ * day ahead of the real one for the 75 minutes a day the rollover is in force.
+ */
+export const MIN_LEAD_OVER_REAL_CLOCK_MS = 60 * 60 * 1000;
+
+/**
+ * The instant to freeze at, given the real clock: FROZEN_WALL_TIME_UTC on `realNow`'s
+ * own UTC day, or on the NEXT one when today's has passed or is too close to leave
+ * MIN_LEAD_OVER_REAL_CLOCK_MS between the two clocks.
+ *
+ * Takes the real clock as an ARGUMENT rather than reading it, so the property that
+ * matters — the returned instant leads `realNow`, at every minute of the day — is
+ * checkable without waiting for 23:45 (./frozen-clock.test.ts).
+ */
+export function frozenInstantFrom(realNow: Date): Date {
+  const instant = frozenInstantForDay(realNow.toISOString().slice(0, 10));
+  if (instant.getTime() - realNow.getTime() < MIN_LEAD_OVER_REAL_CLOCK_MS) {
+    instant.setUTCDate(instant.getUTCDate() + 1);
+  }
+  return instant;
+}
+
+/**
  * The instant this tier freezes at. Captured ONCE per worker process, before anything
  * fakes Date, so a run that straddles real midnight cannot hand two files in the same
  * worker different days.
  */
-export const TIER_FROZEN_INSTANT = frozenInstantForDay(
-  new Date().toISOString().slice(0, 10)
-);
+export const TIER_FROZEN_INSTANT = frozenInstantFrom(new Date());
 
 function freeze(): void {
   vi.useFakeTimers({ toFake: ["Date"] });
